@@ -258,3 +258,24 @@ Task 1
 - **Parallel tool races:** File-mutating tools must eventually use an Oino equivalent of Pi's file mutation queue.
 - **Session leaf persistence:** A JSONL append-only file does not naturally encode mutable leaf unless modeled carefully. The first implementation should define whether leaf is in manager memory only or persisted via explicit navigation entries.
 - **Testing without real providers:** Faux streams must be rich enough to exercise streaming, errors, tool calls, usage, and aborts.
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Partially Done 7/12
+- Strong foundation is present and committed on `main` as `c9c7521`: the workspace compiles, all six planned crates exist, core shared types serialize, the basic loop streams text, tools execute, sessions persist to JSONL, the local execution env works, the harness exposes typed hooks, and Pi compatibility docs exist.
+- Fully verified against acceptance criteria: Tasks 1, 2, 3, 7, 8, 9, and 11.
+- Partially complete: Task 4 lacks a length-stop test and still has an `AgentStart`/`AgentEnd` run-id mismatch in `oino-agent-loop` (`AgentStart` uses a fresh UUID before `run_agent_loop_continue_inner`; `AgentEnd` uses the inner UUID). `ToolCallDelta` is currently ignored rather than accumulated.
+- Partially complete: Task 5 has the tool protocol and execution pipeline, but no actual JSON Schema validation beyond storing `input_schema`; tests do not yet prove preflight order, completion-order tool events, blocked tool behavior, failed tool behavior, or hook patch/block behavior.
+- Partially complete: Task 6 implements the wrapper, queues, abort, and subscribers, but tests do not yet cover the concurrent prompt guard or abort during tools; `AgentState` does not expose tools.
+- Partially complete: Task 10 provides a usable harness skeleton, but provider/auth resolver boundaries are placeholders, provider hooks are exposed as string mutators rather than integrated into request flow, and `QueueUpdate` events are defined but not emitted/tested.
+- Partially complete: Task 12 has passing unit/e2e coverage, but the required matrix is not complete for length stops, concurrent prompt guard, abort during tools, queue updates, and tool hook block/patch behavior.
+- Ralph context: `.unipi/ralph/oino-core-runtime.state.json` still marks the loop active at iteration 1, and `.unipi/ralph/oino-core-runtime.md` has an unchecked checklist even though the plan file marks tasks completed. This appears to be workflow housekeeping rather than a code failure, but it should be reconciled before treating the Ralph loop as closed.
+
+Codebase Checks:
+- ✓ Format passed: `cargo fmt --all -- --check`
+- ✓ Lint passed: `cargo clippy --workspace --all-targets -- -D warnings`
+- ✓ Tests passed: `cargo test --workspace` (25 tests total: 20 unit + 5 integration, plus doctests)
+- ✓ Docs build passed: `cargo doc --workspace --no-deps`
+- ✓ Git branch: `main`; no worktree merge required.
