@@ -1,0 +1,24 @@
+[package]
+name = "oino-harness"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+oino-agent = { path = "../oino-agent" }
+oino-agent-loop = { path = "../oino-agent-loop" }
+oino-env = { path = "../oino-env" }
+oino-session = { path = "../oino-session" }
+oino-types = { path = "../oino-types" }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

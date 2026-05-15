@@ -1,0 +1,19 @@
+[package]
+name = "oino-agent"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+futures.workspace = true
+oino-agent-loop = { path = "../oino-agent-loop" }
+oino-types = { path = "../oino-types" }
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
