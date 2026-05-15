@@ -17,7 +17,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     future::Future,
     pin::Pin,
     sync::{
@@ -346,14 +346,13 @@ pub async fn run_agent_loop(
     prompt: Message,
     config: AgentLoopConfig,
 ) -> LoopResult<AgentLoopOutput> {
+    let run_id = Uuid::new_v4();
     let messages = vec![prompt];
+    config
+        .event_sink
+        .emit(AgentEvent::AgentStart { run_id })
+        .await?;
     if let Some(first) = messages.first() {
-        config
-            .event_sink
-            .emit(AgentEvent::AgentStart {
-                run_id: Uuid::new_v4(),
-            })
-            .await?;
         config
             .event_sink
             .emit(AgentEvent::MessageStart {
@@ -368,34 +367,26 @@ pub async fn run_agent_loop(
             })
             .await?;
     }
-    run_agent_loop_continue_inner(messages, config, false).await
+    run_agent_loop_continue_inner(messages, config, run_id).await
 }
 
 pub async fn run_agent_loop_continue(
     messages: Vec<Message>,
     config: AgentLoopConfig,
 ) -> LoopResult<AgentLoopOutput> {
+    let run_id = Uuid::new_v4();
     config
         .event_sink
-        .emit(AgentEvent::AgentStart {
-            run_id: Uuid::new_v4(),
-        })
+        .emit(AgentEvent::AgentStart { run_id })
         .await?;
-    run_agent_loop_continue_inner(messages, config, false).await
+    run_agent_loop_continue_inner(messages, config, run_id).await
 }
 
 async fn run_agent_loop_continue_inner(
     mut messages: Vec<Message>,
     config: AgentLoopConfig,
-    agent_started: bool,
+    run_id: OinoId,
 ) -> LoopResult<AgentLoopOutput> {
-    let run_id = Uuid::new_v4();
-    if agent_started {
-        config
-            .event_sink
-            .emit(AgentEvent::AgentStart { run_id })
-            .await?;
-    }
     let mut final_stop = StopReason::Unknown;
     for turn in 0..config.max_turns {
         if config.abort_signal.is_aborted() {
@@ -504,6 +495,50 @@ async fn run_agent_loop_continue_inner(
     })
 }
 
+#[derive(Debug, Default)]
+struct PartialToolCall {
+    name: Option<String>,
+    arguments: String,
+}
+
+fn finalize_partial_tool_calls(
+    content: &mut Vec<ContentBlock>,
+    partial_order: &[OinoId],
+    partial_tool_calls: &BTreeMap<OinoId, PartialToolCall>,
+) {
+    let finalized: BTreeSet<OinoId> = content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::ToolCall { id, .. } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    for id in partial_order {
+        if finalized.contains(id) {
+            continue;
+        }
+        let Some(partial) = partial_tool_calls.get(id) else {
+            continue;
+        };
+        let Some(name) = partial.name.clone() else {
+            continue;
+        };
+        let arguments = if partial.arguments.trim().is_empty() {
+            Value::Object(Default::default())
+        } else {
+            match serde_json::from_str(&partial.arguments) {
+                Ok(value) => value,
+                Err(_) => Value::String(partial.arguments.clone()),
+            }
+        };
+        content.push(ContentBlock::ToolCall {
+            id: *id,
+            name,
+            arguments,
+        });
+    }
+}
+
 async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> LoopResult<Message> {
     let id = Uuid::new_v4();
     let mut content: Vec<ContentBlock> = Vec::new();
@@ -512,6 +547,8 @@ async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> Loo
     let mut usage: Option<Usage> = None;
     let mut provider: Option<ProviderMetadata> = None;
     let mut stop_reason = StopReason::Unknown;
+    let mut partial_tool_calls: BTreeMap<OinoId, PartialToolCall> = BTreeMap::new();
+    let mut partial_order: Vec<OinoId> = Vec::new();
     config
         .event_sink
         .emit(AgentEvent::MessageStart {
@@ -550,16 +587,42 @@ async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> Loo
             AssistantStreamEvent::ThinkingDelta { delta } => {
                 thinking.push_str(&delta);
             }
-            AssistantStreamEvent::ToolCallDelta { .. } => {}
+            AssistantStreamEvent::ToolCallDelta {
+                id,
+                name,
+                arguments_delta,
+            } => {
+                if !partial_tool_calls.contains_key(&id) {
+                    partial_order.push(id);
+                }
+                let partial = partial_tool_calls.entry(id).or_default();
+                if let Some(name) = name {
+                    partial.name = Some(name);
+                }
+                partial.arguments.push_str(&arguments_delta);
+            }
             AssistantStreamEvent::ToolCallDone {
                 id,
                 name,
                 arguments,
-            } => content.push(ContentBlock::ToolCall {
-                id,
-                name,
-                arguments,
-            }),
+            } => {
+                if !partial_tool_calls.contains_key(&id) {
+                    partial_order.push(id);
+                }
+                partial_tool_calls.insert(
+                    id,
+                    PartialToolCall {
+                        name: Some(name.clone()),
+                        arguments: serde_json::to_string(&arguments)
+                            .unwrap_or_else(|_| arguments.to_string()),
+                    },
+                );
+                content.push(ContentBlock::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                });
+            }
             AssistantStreamEvent::Usage { usage: reported } => usage = Some(reported),
             AssistantStreamEvent::Done {
                 stop_reason: reason,
@@ -577,6 +640,7 @@ async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> Loo
             }
         }
     }
+    finalize_partial_tool_calls(&mut content, &partial_order, &partial_tool_calls);
     if !text.is_empty() {
         content.insert(0, ContentBlock::Text { text });
     }
@@ -650,6 +714,40 @@ fn assistant_tool_calls(message: &Message) -> Vec<ToolCall> {
     }
 }
 
+fn validate_arguments(schema: &Value, arguments: &Value) -> Result<(), String> {
+    let Some(schema_object) = schema.as_object() else {
+        return Ok(());
+    };
+    if let Some(expected_type) = schema_object.get("type").and_then(Value::as_str) {
+        let matches_type = match expected_type {
+            "object" => arguments.is_object(),
+            "array" => arguments.is_array(),
+            "string" => arguments.is_string(),
+            "number" => arguments.is_number(),
+            "integer" => arguments.as_i64().is_some() || arguments.as_u64().is_some(),
+            "boolean" => arguments.is_boolean(),
+            "null" => arguments.is_null(),
+            _ => true,
+        };
+        if !matches_type {
+            return Err(format!(
+                "arguments did not match JSON schema type `{expected_type}`"
+            ));
+        }
+    }
+    if let Some(required) = schema_object.get("required").and_then(Value::as_array) {
+        let Some(argument_object) = arguments.as_object() else {
+            return Err("arguments must be an object to satisfy required properties".into());
+        };
+        for property in required.iter().filter_map(Value::as_str) {
+            if !argument_object.contains_key(property) {
+                return Err(format!("missing required argument `{property}`"));
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn execute_tool_batch(
     calls: Vec<ToolCall>,
     config: &AgentLoopConfig,
@@ -679,6 +777,10 @@ async fn execute_tool_batch(
                 continue;
             }
         };
+        if let Err(err) = validate_arguments(&tool.definition().input_schema, &prepared_args) {
+            prepared.push((call.clone(), None, ToolResult::error(&call, err)));
+            continue;
+        }
         let mut prepared_call = ToolCall {
             arguments: prepared_args,
             ..call
@@ -995,6 +1097,246 @@ mod tests {
             })
             .collect();
         assert_eq!(tool_names, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn run_id_matches_between_agent_start_and_end() {
+        let sink = VecEventSink::new();
+        let stream = Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            provider: None,
+        }]));
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.event_sink = Arc::new(sink.clone());
+        let output = run_agent_loop(Message::user_text("hi"), config).await;
+        assert!(output.is_ok());
+        let events = sink.events().await;
+        let start_id = events.iter().find_map(|event| match event {
+            AgentEvent::AgentStart { run_id } => Some(*run_id),
+            _ => None,
+        });
+        let end_id = events.iter().find_map(|event| match event {
+            AgentEvent::AgentEnd { run_id, .. } => Some(*run_id),
+            _ => None,
+        });
+        assert_eq!(start_id, end_id);
+    }
+
+    #[tokio::test]
+    async fn length_stop_is_reported() {
+        let stream = Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+            stop_reason: StopReason::Length,
+            provider: None,
+        }]));
+        let config = AgentLoopConfig::new(model(), stream);
+        let output = run_agent_loop(Message::user_text("hi"), config).await;
+        let output = match output {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+        assert_eq!(output.stop_reason, StopReason::Length);
+    }
+
+    #[tokio::test]
+    async fn tool_call_deltas_are_accumulated() {
+        let call = Uuid::new_v4();
+        let stream = Arc::new(FauxStream::turns(vec![
+            vec![
+                AssistantStreamEvent::ToolCallDelta {
+                    id: call,
+                    name: Some("echo".into()),
+                    arguments_delta: "{\"value\":".into(),
+                },
+                AssistantStreamEvent::ToolCallDelta {
+                    id: call,
+                    name: None,
+                    arguments_delta: "42}".into(),
+                },
+                AssistantStreamEvent::Done {
+                    stop_reason: StopReason::ToolUse,
+                    provider: None,
+                },
+            ],
+            vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }],
+        ]));
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config
+            .tools
+            .insert("echo".into(), Arc::new(FakeTool::new("echo", "ok")));
+        let output = run_agent_loop(Message::user_text("tools"), config).await;
+        let output = match output {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+        assert!(output.messages.iter().any(|message| matches!(
+            message,
+            Message::ToolResult { tool_name, is_error: false, .. } if tool_name == "echo"
+        )));
+    }
+
+    #[tokio::test]
+    async fn preflight_is_source_order_and_parallel_end_events_follow_completion_order() {
+        let call_a = Uuid::new_v4();
+        let call_b = Uuid::new_v4();
+        let stream = Arc::new(FauxStream::turns(vec![
+            vec![
+                AssistantStreamEvent::ToolCallDone {
+                    id: call_a,
+                    name: "a".into(),
+                    arguments: serde_json::json!({}),
+                },
+                AssistantStreamEvent::ToolCallDone {
+                    id: call_b,
+                    name: "b".into(),
+                    arguments: serde_json::json!({}),
+                },
+                AssistantStreamEvent::Done {
+                    stop_reason: StopReason::ToolUse,
+                    provider: None,
+                },
+            ],
+            vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }],
+        ]));
+        let sink = VecEventSink::new();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_hook = Arc::clone(&seen);
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.event_sink = Arc::new(sink.clone());
+        config.before_tool_call = Some(Arc::new(move |call| {
+            let seen = Arc::clone(&seen_hook);
+            Box::pin(async move {
+                seen.lock().await.push(call.name.clone());
+                Ok(BeforeToolCallResult::Allow(call))
+            })
+        }));
+        let mut a = FakeTool::new("a", "A");
+        a.delay_ms = 20;
+        let b = FakeTool::new("b", "B");
+        config.tools.insert("a".into(), Arc::new(a));
+        config.tools.insert("b".into(), Arc::new(b));
+        let output = run_agent_loop(Message::user_text("tools"), config).await;
+        assert!(output.is_ok());
+        assert_eq!(*seen.lock().await, vec!["a".to_string(), "b".to_string()]);
+        let end_order: Vec<String> = sink
+            .events()
+            .await
+            .into_iter()
+            .filter_map(|event| match event {
+                AgentEvent::ToolExecutionEnd { result, .. } => Some(result.tool_name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(end_order, vec!["b".to_string(), "a".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn failed_tools_are_normalized_to_error_results() {
+        let call = Uuid::new_v4();
+        let stream = Arc::new(FauxStream::once(vec![
+            AssistantStreamEvent::ToolCallDone {
+                id: call,
+                name: "fail".into(),
+                arguments: serde_json::json!({}),
+            },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                provider: None,
+            },
+        ]));
+        let mut tool = FakeTool::new("fail", "kaput");
+        tool.fail = true;
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.tools.insert("fail".into(), Arc::new(tool));
+        let output = run_agent_loop(Message::user_text("tools"), config).await;
+        let output = match output {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+        assert!(output.messages.iter().any(|message| matches!(
+            message,
+            Message::ToolResult { tool_name, is_error: true, content, .. }
+                if tool_name == "fail"
+                    && matches!(content.first(), Some(ContentBlock::Text { text }) if text.contains("kaput"))
+        )));
+    }
+
+    #[tokio::test]
+    async fn schema_validation_blocks_invalid_tool_arguments() {
+        let call = Uuid::new_v4();
+        let stream = Arc::new(FauxStream::once(vec![
+            AssistantStreamEvent::ToolCallDone {
+                id: call,
+                name: "needs_arg".into(),
+                arguments: serde_json::json!({}),
+            },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                provider: None,
+            },
+        ]));
+        let mut tool = FakeTool::new("needs_arg", "should not run");
+        tool.definition.input_schema = serde_json::json!({
+            "type": "object",
+            "required": ["value"]
+        });
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.tools.insert("needs_arg".into(), Arc::new(tool));
+        let output = run_agent_loop(Message::user_text("tools"), config).await;
+        let output = match output {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+        assert!(output.messages.iter().any(|message| matches!(
+            message,
+            Message::ToolResult { is_error: true, content, .. }
+                if matches!(content.first(), Some(ContentBlock::Text { text }) if text.contains("missing required argument"))
+        )));
+    }
+
+    #[tokio::test]
+    async fn tool_hooks_can_block_and_patch_results() {
+        let call = Uuid::new_v4();
+        let stream = Arc::new(FauxStream::once(vec![
+            AssistantStreamEvent::ToolCallDone {
+                id: call,
+                name: "blocked".into(),
+                arguments: serde_json::json!({}),
+            },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                provider: None,
+            },
+        ]));
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.tools.insert(
+            "blocked".into(),
+            Arc::new(FakeTool::new("blocked", "should not run")),
+        );
+        config.before_tool_call = Some(Arc::new(|_call| {
+            Box::pin(async { Ok(BeforeToolCallResult::Block("blocked by hook".into())) })
+        }));
+        config.after_tool_call = Some(Arc::new(|mut result| {
+            Box::pin(async move {
+                result.details = Some(serde_json::json!({"patched": true}));
+                Ok(result)
+            })
+        }));
+        let output = run_agent_loop(Message::user_text("tools"), config).await;
+        let output = match output {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+        assert!(output.messages.iter().any(|message| matches!(
+            message,
+            Message::ToolResult { is_error: true, details: Some(details), .. }
+                if details.get("patched") == Some(&serde_json::json!(true))
+        )));
     }
 
     #[tokio::test]

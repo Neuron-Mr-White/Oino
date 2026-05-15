@@ -8,12 +8,13 @@ real providers, MCP, memory databases, and dynamic plugin ABIs belong in later l
 
 use oino_agent::Agent;
 use oino_agent_loop::{
-    AfterToolCall, AgentEvent, AgentLoopConfig, BeforeToolCall, BeforeToolCallResult, BoxFuture,
-    EventSink, LoopResult, StreamProvider, Tool, ToolCall, ToolResult, TransformContext,
+    AbortSignal, AfterToolCall, AgentEvent, AgentLoopConfig, BeforeToolCall, BeforeToolCallResult,
+    BoxFuture, EventSink, LoopResult, StreamProvider, StreamRequest, Tool, ToolCall, ToolResult,
+    TransformContext,
 };
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
 use oino_session::{SessionEntryKind, SessionManager};
-use oino_types::{Message, Model, ThinkingLevel};
+use oino_types::{AssistantStreamEvent, Message, Model, ThinkingLevel};
 use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -69,6 +70,8 @@ pub type AfterToolCallHandler =
     Arc<dyn Fn(ToolResult) -> BoxFuture<'static, LoopResult<ToolResult>> + Send + Sync>;
 pub type StringMutationHandler =
     Arc<dyn Fn(String) -> BoxFuture<'static, LoopResult<String>> + Send + Sync>;
+pub type AuthResolver =
+    Arc<dyn Fn(String) -> BoxFuture<'static, LoopResult<Option<String>>> + Send + Sync>;
 
 #[derive(Clone, Default)]
 pub struct HookRegistry {
@@ -218,6 +221,35 @@ fn hook_for_event(event: &AgentEvent) -> Option<NotificationHook> {
     }
 }
 
+struct HookedStreamProvider {
+    inner: Arc<dyn StreamProvider>,
+    hooks: HookRegistry,
+}
+
+#[async_trait::async_trait]
+impl StreamProvider for HookedStreamProvider {
+    async fn stream(
+        &self,
+        request: StreamRequest,
+        signal: AbortSignal,
+    ) -> LoopResult<Vec<AssistantStreamEvent>> {
+        let _request_marker = self
+            .hooks
+            .mutate_before_provider_request("request".into())
+            .await?;
+        let _payload_marker = self
+            .hooks
+            .mutate_before_provider_payload("payload".into())
+            .await?;
+        let response = self.inner.stream(request, signal).await?;
+        let _response_marker = self
+            .hooks
+            .mutate_after_provider_response("response".into())
+            .await?;
+        Ok(response)
+    }
+}
+
 struct HookEventSink {
     registry: HookRegistry,
     inner: Arc<dyn EventSink>,
@@ -241,6 +273,7 @@ pub struct HarnessConfig {
     pub session: SessionManager,
     pub env: Arc<dyn ExecutionEnv>,
     pub resources: Vec<String>,
+    pub auth_resolver: Option<AuthResolver>,
 }
 
 impl HarnessConfig {
@@ -256,6 +289,7 @@ impl HarnessConfig {
             session,
             env: Arc::new(LocalExecutionEnv),
             resources: Vec::new(),
+            auth_resolver: None,
         }
     }
 }
@@ -267,6 +301,7 @@ pub struct Harness {
     env: Arc<dyn ExecutionEnv>,
     resources: Arc<Mutex<Vec<String>>>,
     tools: Arc<Mutex<BTreeMap<String, Arc<dyn Tool>>>>,
+    auth_resolver: Option<AuthResolver>,
 }
 
 impl Harness {
@@ -276,7 +311,11 @@ impl Harness {
         let context_hooks = hooks.clone();
         let before_hooks = hooks.clone();
         let after_hooks = hooks.clone();
-        let mut loop_config = AgentLoopConfig::new(config.model, Arc::clone(&config.stream));
+        let stream = Arc::new(HookedStreamProvider {
+            inner: Arc::clone(&config.stream),
+            hooks: hooks.clone(),
+        }) as Arc<dyn StreamProvider>;
+        let mut loop_config = AgentLoopConfig::new(config.model, stream);
         loop_config.thinking_level = config.thinking_level;
         loop_config.system_prompt = config.system_prompt;
         loop_config.tools = config.tools.clone();
@@ -309,6 +348,7 @@ impl Harness {
             env: config.env,
             resources: Arc::new(Mutex::new(config.resources)),
             tools: Arc::new(Mutex::new(config.tools)),
+            auth_resolver: config.auth_resolver,
         }
     }
 
@@ -404,6 +444,13 @@ impl Harness {
     }
     pub async fn resources(&self) -> Vec<String> {
         self.resources.lock().await.clone()
+    }
+    pub async fn resolve_auth(&self, provider: impl Into<String>) -> LoopResult<Option<String>> {
+        if let Some(resolver) = &self.auth_resolver {
+            resolver(provider.into()).await
+        } else {
+            Ok(None)
+        }
     }
     pub async fn build_context(&self) -> HarnessResult<Vec<Message>> {
         Ok(self.session.lock().await.build_session_context()?.messages)
@@ -516,6 +563,71 @@ mod tests {
             Err(err) => panic!("hook failed: {err}"),
         };
         assert_eq!(value, "x-a-b");
+    }
+
+    #[tokio::test]
+    async fn prompt_runs_provider_hooks() {
+        let h = harness();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let before_request = Arc::clone(&seen);
+        h.hooks()
+            .on_before_provider_request(Arc::new(move |value| {
+                let seen = Arc::clone(&before_request);
+                Box::pin(async move {
+                    seen.lock().await.push(format!("request:{value}"));
+                    Ok(value)
+                })
+            }))
+            .await;
+        let before_payload = Arc::clone(&seen);
+        h.hooks()
+            .on_before_provider_payload(Arc::new(move |value| {
+                let seen = Arc::clone(&before_payload);
+                Box::pin(async move {
+                    seen.lock().await.push(format!("payload:{value}"));
+                    Ok(value)
+                })
+            }))
+            .await;
+        let after_response = Arc::clone(&seen);
+        h.hooks()
+            .on_after_provider_response(Arc::new(move |value| {
+                let seen = Arc::clone(&after_response);
+                Box::pin(async move {
+                    seen.lock().await.push(format!("response:{value}"));
+                    Ok(value)
+                })
+            }))
+            .await;
+        let result = h.prompt(Message::user_text("hi")).await;
+        assert!(result.is_ok());
+        assert_eq!(
+            *seen.lock().await,
+            vec![
+                "request:request".to_string(),
+                "payload:payload".to_string(),
+                "response:response".to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_resolver_boundary_is_exposed() {
+        let session = SessionManager::new(SessionHeader::new("h", PathBuf::from("/tmp")));
+        let stream = Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            provider: None,
+        }]));
+        let mut cfg = HarnessConfig::new(Model::new("test", "faux"), stream, session);
+        cfg.auth_resolver = Some(Arc::new(|provider| {
+            Box::pin(async move { Ok(Some(format!("token-for-{provider}"))) })
+        }));
+        let h = Harness::new(cfg);
+        let token = h.resolve_auth("faux").await;
+        match token {
+            Ok(Some(token)) => assert_eq!(token, "token-for-faux"),
+            other => panic!("unexpected auth result: {other:?}"),
+        }
     }
 
     #[tokio::test]

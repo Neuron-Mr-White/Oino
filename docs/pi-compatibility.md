@@ -37,7 +37,7 @@ Tools implement `Tool` and expose:
 - `ToolUpdateCallback` for progress updates.
 - `ToolResult` with `is_error`, `details`, and `terminate` hints.
 
-Tool errors are normalized into error `ToolResult`s by the loop. Parallel tool completion events may complete in runtime order, while final tool-result messages preserve assistant source order.
+Tool errors are normalized into error `ToolResult`s by the loop. Tool arguments pass through a JSON Schema boundary that currently validates common `type` and `required` constraints. Parallel tool completion events may complete in runtime order, while final tool-result messages preserve assistant source order.
 
 ## Agent wrapper mapping
 
@@ -98,7 +98,7 @@ Oino `HookRegistry` currently models these Pi-inspired hook categories:
 - `before_compaction`
 - `before_tree_navigation`
 
-Provider request/payload/response hooks are typed string placeholders in this first runtime because provider-specific serialization is intentionally outside the pure loop.
+Provider request/payload/response hooks are typed string placeholders in this first runtime because provider-specific serialization is intentionally outside the pure loop. The harness now runs those hooks around the stream-provider request lifecycle and exposes an auth resolver boundary for provider adapters.
 
 ## Execution environment
 

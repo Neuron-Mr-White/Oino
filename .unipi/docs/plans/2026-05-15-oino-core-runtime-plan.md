@@ -279,3 +279,25 @@ Codebase Checks:
 - ✓ Tests passed: `cargo test --workspace` (25 tests total: 20 unit + 5 integration, plus doctests)
 - ✓ Docs build passed: `cargo doc --workspace --no-deps`
 - ✓ Git branch: `main`; no worktree merge required.
+
+
+---
+
+## Work Follow-Up After Review
+
+Status: completed. Addressed reviewer remarks on Tasks 4, 5, 6, 10, and 12.
+
+- Fixed low-level loop lifecycle consistency: `AgentStart` and `AgentEnd` now share one run id.
+- Added length-stop coverage and accumulated `ToolCallDelta` handling.
+- Added a JSON Schema validation boundary for common `type` and `required` constraints.
+- Added tests for preflight ordering, parallel completion-order tool events, source-order result messages, blocked tools, failed tools, and after-hook patching.
+- Exposed active tool definitions in `AgentState`; added tests for concurrent prompt rejection and abort during tool execution.
+- Emitted `QueueUpdate` events from steering/follow-up queues and tested them.
+- Integrated provider request/payload/response hooks into the harness stream lifecycle and added an auth resolver boundary.
+- Updated docs and Ralph checklist, then re-ran the full quality gate.
+
+Follow-up Quality Gate:
+- ✓ `cargo fmt --all -- --check`
+- ✓ `cargo clippy --workspace --all-targets -- -D warnings`
+- ✓ `cargo test --workspace` (37 tests total plus doctests)
+- ✓ `cargo doc --workspace --no-deps`

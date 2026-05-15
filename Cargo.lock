@@ -284,8 +284,10 @@ dependencies = [
  "futures",
  "oino-agent-loop",
  "oino-types",
+ "serde_json",
  "thiserror",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

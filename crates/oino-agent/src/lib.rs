@@ -9,7 +9,7 @@ has no session persistence, provider serialization, UI, or filesystem responsibi
 use futures::future::join_all;
 use oino_agent_loop::{
     run_agent_loop, run_agent_loop_continue, AbortSignal, AgentEvent, AgentLoopConfig,
-    AgentLoopOutput, BoxFuture, EventSink, LoopError, LoopResult,
+    AgentLoopOutput, BoxFuture, EventSink, LoopError, LoopResult, ToolDefinition,
 };
 use oino_types::{Message, Model, ThinkingLevel};
 use std::{collections::VecDeque, sync::Arc};
@@ -39,6 +39,7 @@ pub struct AgentState {
     pub model: Model,
     pub thinking_level: ThinkingLevel,
     pub system_prompt: Option<String>,
+    pub tools: Vec<ToolDefinition>,
     pub is_streaming: bool,
 }
 
@@ -61,6 +62,11 @@ impl Agent {
             model: config.model.clone(),
             thinking_level: config.thinking_level,
             system_prompt: config.system_prompt.clone(),
+            tools: config
+                .tools
+                .values()
+                .map(|tool| tool.definition())
+                .collect(),
             is_streaming: false,
         };
         Self {
@@ -111,6 +117,7 @@ impl Agent {
         &self,
         tools: std::collections::BTreeMap<String, Arc<dyn oino_agent_loop::Tool>>,
     ) {
+        self.state.lock().await.tools = tools.values().map(|tool| tool.definition()).collect();
         self.config.lock().await.tools = tools;
     }
 
@@ -125,13 +132,37 @@ impl Agent {
     }
 
     pub async fn steer(&self, message: Message) -> LoopResult<()> {
-        self.steering.lock().await.push_back(message);
-        Ok(())
+        let pending = {
+            let mut queue = self.steering.lock().await;
+            queue.push_back(message);
+            queue.len()
+        };
+        self.config
+            .lock()
+            .await
+            .event_sink
+            .emit(AgentEvent::QueueUpdate {
+                queue: "steering".into(),
+                pending,
+            })
+            .await
     }
 
     pub async fn follow_up(&self, message: Message) -> LoopResult<()> {
-        self.follow_up.lock().await.push_back(message);
-        Ok(())
+        let pending = {
+            let mut queue = self.follow_up.lock().await;
+            queue.push_back(message);
+            queue.len()
+        };
+        self.config
+            .lock()
+            .await
+            .event_sink
+            .emit(AgentEvent::QueueUpdate {
+                queue: "follow_up".into(),
+                pending,
+            })
+            .await
     }
 
     pub async fn abort(&self) {
@@ -250,8 +281,10 @@ impl EventSink for SubscriberSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oino_agent_loop::{AgentLoopConfig, FauxStream, StreamProvider};
-    use oino_types::{AssistantStreamEvent, StopReason};
+    use oino_agent_loop::{
+        AgentLoopConfig, FauxStream, StreamProvider, ToolExecutionMode, VecEventSink,
+    };
+    use oino_types::{AssistantStreamEvent, ContentBlock, StopReason};
 
     fn config() -> AgentLoopConfig {
         AgentLoopConfig::new(
@@ -297,6 +330,91 @@ mod tests {
         assert!(queued.is_ok());
         let output = agent.prompt(Message::user_text("hi")).await;
         assert!(output.is_ok());
+    }
+
+    #[tokio::test]
+    async fn concurrent_prompt_is_rejected() {
+        let stream = Arc::new(FauxStream::once(vec![
+            AssistantStreamEvent::ToolCallDone {
+                id: uuid::Uuid::new_v4(),
+                name: "slow".into(),
+                arguments: serde_json::json!({}),
+            },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                provider: None,
+            },
+        ]));
+        let mut cfg = AgentLoopConfig::new(Model::new("test", "faux"), stream);
+        let mut slow = oino_agent_loop::FakeTool::new("slow", "ok");
+        slow.delay_ms = 50;
+        slow.mode = ToolExecutionMode::Sequential;
+        cfg.tools.insert("slow".into(), Arc::new(slow));
+        let agent = Arc::new(Agent::new(cfg));
+        let running = Arc::clone(&agent);
+        let handle = tokio::spawn(async move { running.prompt(Message::user_text("first")).await });
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        let second = agent.prompt(Message::user_text("second")).await;
+        assert!(matches!(second, Err(AgentError::Busy)));
+        let first = handle.await;
+        assert!(matches!(first, Ok(Ok(_))));
+    }
+
+    #[tokio::test]
+    async fn abort_during_tools_returns_error_tool_result() {
+        let stream = Arc::new(FauxStream::once(vec![
+            AssistantStreamEvent::ToolCallDone {
+                id: uuid::Uuid::new_v4(),
+                name: "slow".into(),
+                arguments: serde_json::json!({}),
+            },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                provider: None,
+            },
+        ]));
+        let mut cfg = AgentLoopConfig::new(Model::new("test", "faux"), stream);
+        let mut slow = oino_agent_loop::FakeTool::new("slow", "ok");
+        slow.delay_ms = 50;
+        cfg.tools.insert("slow".into(), Arc::new(slow));
+        let agent = Arc::new(Agent::new(cfg));
+        let running = Arc::clone(&agent);
+        let handle = tokio::spawn(async move { running.prompt(Message::user_text("tools")).await });
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        agent.abort().await;
+        let output = match handle.await {
+            Ok(Ok(output)) => output,
+            Ok(Err(err)) => panic!("agent failed: {err}"),
+            Err(err) => panic!("join failed: {err}"),
+        };
+        assert!(output.messages.iter().any(|message| matches!(
+            message,
+            Message::ToolResult { is_error: true, content, .. }
+                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "aborted")
+        )));
+    }
+
+    #[tokio::test]
+    async fn queue_updates_are_emitted_and_tools_are_in_state() {
+        let sink = VecEventSink::new();
+        let mut cfg = config();
+        cfg.event_sink = Arc::new(sink.clone());
+        let agent = Agent::new(cfg);
+        let mut tools = std::collections::BTreeMap::new();
+        tools.insert(
+            "visible".into(),
+            Arc::new(oino_agent_loop::FakeTool::new("visible", "ok"))
+                as Arc<dyn oino_agent_loop::Tool>,
+        );
+        agent.set_tools(tools).await;
+        let queued = agent.follow_up(Message::user_text("next")).await;
+        assert!(queued.is_ok());
+        assert_eq!(agent.state().await.tools.len(), 1);
+        let events = sink.events().await;
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AgentEvent::QueueUpdate { queue, pending: 1 } if queue == "follow_up"
+        )));
     }
 
     #[tokio::test]
