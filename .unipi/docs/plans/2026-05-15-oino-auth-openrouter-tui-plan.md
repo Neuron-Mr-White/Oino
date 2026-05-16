@@ -57,7 +57,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     4. Implement typed errors via `thiserror` without including secret values.
     5. Add temp-dir based tests.
 
-- in-progress: Task 3 — Implement `oino-auth` resolution order and harness adapter
+- completed: Task 3 — Implement `oino-auth` resolution order and harness adapter
   - Description: Resolve credentials in the chosen order and expose a small adapter usable by the existing `oino-harness::AuthResolver` boundary.
   - Dependencies: Task 2.
   - Acceptance Criteria:
@@ -140,7 +140,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     4. Implement Ratatui layout: message panel, input panel, status/help line.
     5. Add pure-state tests before terminal integration.
 
-- unstarted: Task 8 — Implement app runtime wiring and terminal event loop
+- completed: Task 8 — Implement app runtime wiring and terminal event loop
   - Description: Compose auth, OpenRouter, harness, in-memory session, and TUI into a runnable `oino` binary.
   - Dependencies: Tasks 3, 6, and 7.
   - Acceptance Criteria:
