@@ -22,6 +22,8 @@ use std::{
 use thiserror::Error;
 
 const DEFAULT_OPENROUTER_MODEL: &str = "openai/gpt-4o-mini";
+const MISSING_OPENROUTER_API_KEY_MESSAGE: &str =
+    "Missing OpenRouter API key. Set OPENROUTER_API_KEY or add ~/.oino/auth.json.";
 
 #[derive(Debug, Error)]
 enum AppError {
@@ -70,8 +72,8 @@ async fn main() -> Result<(), AppError> {
     };
     let provider = Arc::new(OpenRouterProvider::new(auth.clone(), provider_config)?)
         as Arc<dyn StreamProvider>;
-    let harness = build_harness(config.model, provider, auth)?;
-    run_tui(harness).await
+    let harness = build_harness(config.model, provider, auth.clone())?;
+    run_tui(harness, auth).await
 }
 
 fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
@@ -110,7 +112,7 @@ fn build_harness(
     Ok(Harness::new(config))
 }
 
-async fn run_tui(harness: Harness) -> Result<(), AppError> {
+async fn run_tui(harness: Harness, auth: AuthStorage) -> Result<(), AppError> {
     let mut terminal = TerminalGuard::enter()?;
     let mut state = TuiState::new();
     loop {
@@ -128,6 +130,11 @@ async fn run_tui(harness: Harness) -> Result<(), AppError> {
             TuiAction::None => {}
             TuiAction::Quit => break,
             TuiAction::SubmitPrompt(prompt) => {
+                if let Err(message) = preflight_openrouter_credentials(&auth).await {
+                    state.set_error(message);
+                    state.status = "Enter send • Esc/Ctrl-C quit".into();
+                    continue;
+                }
                 state.set_working(true);
                 terminal.draw(&state)?;
                 match harness.prompt(Message::user_text(prompt)).await {
@@ -146,10 +153,18 @@ async fn run_tui(harness: Harness) -> Result<(), AppError> {
     Ok(())
 }
 
+async fn preflight_openrouter_credentials(auth: &AuthStorage) -> Result<(), String> {
+    match auth.resolve_openrouter_api_key().await {
+        Ok(_) => Ok(()),
+        Err(AuthError::MissingCredential { .. }) => Err(MISSING_OPENROUTER_API_KEY_MESSAGE.into()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
 fn user_facing_error(err: &HarnessError) -> String {
     let message = err.to_string();
     if message.contains("missing credential") || message.contains("OPENROUTER_API_KEY") {
-        "Missing OpenRouter API key. Set OPENROUTER_API_KEY or add ~/.oino/auth.json.".into()
+        MISSING_OPENROUTER_API_KEY_MESSAGE.into()
     } else {
         message
     }
@@ -220,6 +235,31 @@ mod tests {
         assert!(messages
             .iter()
             .any(|message| matches!(message, Message::Assistant { .. })));
+    }
+
+    #[tokio::test]
+    async fn preflight_reports_missing_openrouter_key_as_tui_message() {
+        let auth = AuthStorage::new(
+            AuthConfig::new(std::env::temp_dir().join("oino-app-preflight-missing-auth.json"))
+                .with_process_env(false),
+        );
+        let result = preflight_openrouter_credentials(&auth).await;
+        match result {
+            Err(message) => assert_eq!(message, MISSING_OPENROUTER_API_KEY_MESSAGE),
+            Ok(()) => panic!("expected missing credential message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn preflight_accepts_runtime_openrouter_key() {
+        let auth = AuthStorage::new(
+            AuthConfig::new(std::env::temp_dir().join("oino-app-preflight-auth.json"))
+                .with_runtime_override("openrouter", "sk-test")
+                .with_process_env(false),
+        );
+        if let Err(message) = preflight_openrouter_credentials(&auth).await {
+            panic!("preflight should accept runtime credential: {message}");
+        }
     }
 
     #[tokio::test]

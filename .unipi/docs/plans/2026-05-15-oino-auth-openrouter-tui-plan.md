@@ -251,3 +251,18 @@ Codebase Checks:
 - ✓ Lint passed: `cargo clippy --workspace --all-targets -- -D warnings`
 - ✓ Tests passed: `cargo test --workspace` (61 tests + doctests)
 - ✓ Docs passed: `cargo doc --workspace --no-deps`
+
+---
+
+## Worker Follow-up
+
+Addressed the reviewer remark for Task 8:
+- Added an app-level OpenRouter auth preflight before `Harness::prompt` is invoked from the TUI loop.
+- Missing credentials now set the TUI error banner to: `Missing OpenRouter API key. Set OPENROUTER_API_KEY or add ~/.oino/auth.json.`
+- Added tests covering missing-key preflight behavior and runtime-key preflight success.
+
+Follow-up Quality Gate:
+- ✓ `cargo fmt --all -- --check`
+- ✓ `cargo clippy --workspace --all-targets -- -D warnings`
+- ✓ `cargo test --workspace` (63 tests + doctests)
+- ✓ `cargo doc --workspace --no-deps`
