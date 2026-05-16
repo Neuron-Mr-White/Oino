@@ -124,7 +124,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     4. Convert parser/provider errors into `LoopResult`/`AssistantStreamEvent::Error` consistently with existing core patterns.
     5. Add mocked HTTP tests for happy path, missing auth, and error response if feasible.
 
-- unstarted: Task 7 — Implement minimal `oino-tui` state and rendering
+- completed: Task 7 — Implement minimal `oino-tui` state and rendering
   - Description: Build pure UI state, message projection, and a Ratatui render function for a message list plus one-line input box.
   - Dependencies: Task 1.
   - Acceptance Criteria:
