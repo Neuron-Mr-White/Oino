@@ -159,7 +159,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     5. On prompt submit, run harness prompt and update UI state; show spinner/status while waiting.
     6. Handle quit keys and errors gracefully.
 
-- unstarted: Task 9 — Add user/setup documentation
+- completed: Task 9 — Add user/setup documentation
   - Description: Document how to configure OpenRouter auth, run the TUI, and understand the new crate boundaries.
   - Dependencies: Tasks 2, 6, and 8.
   - Acceptance Criteria:
