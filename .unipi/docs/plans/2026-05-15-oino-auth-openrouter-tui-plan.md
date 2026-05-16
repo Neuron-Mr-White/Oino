@@ -235,3 +235,19 @@ Expected result:
 3. Status indicates the app is waiting/working.
 4. Assistant response appears in the message panel.
 5. Esc or Ctrl-C exits and restores the terminal.
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Partially Done 9/10
+- Tasks 1-7, 9, and 10 are complete and verified against the acceptance criteria.
+- Task 8 is mostly complete: the app binary wires auth + OpenRouter + harness + in-memory session + Ratatui; reads `OINO_MODEL`, `OINO_OPENROUTER_REFERER`, and `OINO_OPENROUTER_TITLE`; submits prompts through `Harness::prompt`; and restores terminal state through `TerminalGuard`.
+- Reviewer follow-up for Task 8: missing OpenRouter credentials currently surface through the agent loop as an assistant error message because `consume_stream` normalizes provider `StreamProvider` errors into `AssistantStreamEvent::Error`. The app-level `user_facing_error()` banner path is only used for `HarnessError`, so the specific TUI banner text “Set `OPENROUTER_API_KEY` or add `~/.oino/auth.json`” is not guaranteed for missing credentials. Add explicit app/provider preflight or transcript-error styling/test coverage for this acceptance item.
+- No matching Ralph loop was found for this auth/OpenRouter/TUI plan; existing `.unipi/ralph/oino-core-runtime.*` files belong to the earlier core-runtime work.
+
+Codebase Checks:
+- ✓ Format passed: `cargo fmt --all -- --check`
+- ✓ Lint passed: `cargo clippy --workspace --all-targets -- -D warnings`
+- ✓ Tests passed: `cargo test --workspace` (61 tests + doctests)
+- ✓ Docs passed: `cargo doc --workspace --no-deps`
