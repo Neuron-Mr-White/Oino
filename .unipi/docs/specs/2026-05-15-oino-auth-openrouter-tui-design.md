@@ -335,14 +335,14 @@ Expected: terminal opens, user types a prompt, assistant response appears.
 
 ## Implementation Checklist
 
-- [ ] Task 1 — Add workspace crates and dependency baseline for `oino-auth`, `oino-provider-openrouter`, `oino-tui`, and app/binary wiring.
-- [ ] Task 2 — Implement `oino-auth` API-key storage/resolution with OpenRouter env/auth-file mapping and tests.
-- [ ] Task 3 — Implement OpenRouter request serialization and SSE parsing fixtures without live API calls.
-- [ ] Task 4 — Implement `OpenRouterProvider` as `StreamProvider`, including auth resolution, HTTP request, stream parsing, stop reason mapping, and error handling.
-- [ ] Task 5 — Implement minimal Ratatui state, rendering, and keyboard/input behavior independent of provider logic.
-- [ ] Task 6 — Implement app runtime wiring: auth + OpenRouter + harness + session + TUI event loop.
-- [ ] Task 7 — Add docs for auth file format, OpenRouter setup, first TUI usage, and architecture boundaries.
-- [ ] Task 8 — Add automated tests and final quality gate; include optional manual OpenRouter smoke-test instructions.
+- [x] Task 1 — Add workspace crates and dependency baseline for `oino-auth`, `oino-provider-openrouter`, `oino-tui`, and app/binary wiring. Covered by plan Task 1.
+- [x] Task 2 — Implement `oino-auth` API-key storage/resolution with OpenRouter env/auth-file mapping and tests. Covered by plan Tasks 2–3.
+- [x] Task 3 — Implement OpenRouter request serialization and SSE parsing fixtures without live API calls. Covered by plan Tasks 4–5.
+- [x] Task 4 — Implement `OpenRouterProvider` as `StreamProvider`, including auth resolution, HTTP request, stream parsing, stop reason mapping, and error handling. Covered by plan Task 6.
+- [x] Task 5 — Implement minimal Ratatui state, rendering, and keyboard/input behavior independent of provider logic. Covered by plan Task 7.
+- [x] Task 6 — Implement app runtime wiring: auth + OpenRouter + harness + session + TUI event loop. Covered by plan Task 8.
+- [x] Task 7 — Add docs for auth file format, OpenRouter setup, first TUI usage, and architecture boundaries. Covered by plan Task 9.
+- [x] Task 8 — Add automated tests and final quality gate; include optional manual OpenRouter smoke-test instructions. Covered by plan Task 10.
 
 ## Open Questions
 
