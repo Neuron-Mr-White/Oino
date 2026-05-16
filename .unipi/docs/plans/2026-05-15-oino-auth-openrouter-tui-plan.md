@@ -41,7 +41,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     3. Add minimal `src/lib.rs` or `src/main.rs` files for each crate.
     4. Keep dependency direction one-way: provider depends on auth/core; app depends on all; auth does not depend on provider/app/TUI.
 
-- unstarted: Task 2 — Implement `oino-auth` credential model and storage
+- completed: Task 2 — Implement `oino-auth` credential model and storage
   - Description: Build generic API-key storage/resolution that can serve OpenRouter now and future providers later.
   - Dependencies: Task 1.
   - Acceptance Criteria:
