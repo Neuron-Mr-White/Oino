@@ -1,0 +1,36 @@
+[tasks.dev]
+description = "Run the Oino TUI app"
+run = "cargo run -p oino-app --bin oino"
+
+[tasks.check]
+description = "Check the full Rust workspace"
+run = "cargo check --workspace"
+
+[tasks.fmt]
+description = "Format the workspace"
+run = "cargo fmt --all"
+
+[tasks.fmt-check]
+description = "Verify Rust formatting"
+run = "cargo fmt --all -- --check"
+
+[tasks.lint]
+description = "Run clippy with workspace warnings denied"
+run = "cargo clippy --workspace --all-targets -- -D warnings"
+
+[tasks.test]
+description = "Run all workspace tests"
+run = "cargo test --workspace"
+
+[tasks.doc]
+description = "Build workspace docs without dependencies"
+run = "cargo doc --workspace --no-deps"
+
+[tasks.quality]
+description = "Run the standard Oino quality gate"
+run = [
+  "cargo fmt --all -- --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo test --workspace",
+  "cargo doc --workspace --no-deps",
+]

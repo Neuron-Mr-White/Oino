@@ -1,0 +1,103 @@
+{
+  "skill_name": "ratatui",
+  "evals": [
+    {
+      "id": "live-kafka-browser",
+      "prompt": "Build a Ratatui Kafka/log browser for our Rust CLI. It should list topics on the left, stream matching records on the right, support / search with history/autocomplete, follow/unfollow, record details with syntax-highlighted JSON, schema/detail side views, copy/export/open actions, and must remain responsive during high-volume streams.",
+      "expected_output": "A concrete implementation plan or patch using the Ratatui skill's inspector, streaming, tables, input-focus, document-viewer, and architecture patterns.",
+      "files": [],
+      "assertions": [
+        "Mentions reading or applying references/inspectors-explorers.md, streaming-async.md, tables-grids.md, input-focus.md, and document-viewers.md.",
+        "Defines explicit State/Event/Action or component architecture with terminal lifecycle cleanup.",
+        "Uses cancelable async workers/channels and bounded per-frame draining or ring buffer for records.",
+        "Includes follow/unfollow semantics where manual navigation disables follow.",
+        "Includes contextual shortcuts/footer, search history/autocomplete, and record detail precomputation/highlighting.",
+        "Includes TestBackend/snapshot or state-transition tests for streaming, focus, and narrow widths."
+      ]
+    },
+    {
+      "id": "sql-grid-horizontal-scroll",
+      "prompt": "Implement the result table for a terminal SQL workbench in Ratatui. Results can have 200 columns and 100k rows. I need frozen first columns, horizontal scroll, row/cell selection, yanking current cell/row/all rows, search highlights, and sane behavior at 80 columns wide.",
+      "expected_output": "A data-grid design using offscreen/custom table rendering, explicit selection modes, frozen columns, width caps, and tests.",
+      "files": [],
+      "assertions": [
+        "Mentions references/tables-grids.md and input-focus.md, and likely inspectors-explorers.md.",
+        "Uses explicit row/column/cell selection state rather than only TableState.",
+        "Describes frozen columns and horizontal x_offset/column_offsets or offscreen-buffer rendering.",
+        "Uses Unicode/display-width-aware truncation and capped/redistributed column widths.",
+        "Includes copy/yank modes with confirmation for all rows.",
+        "Includes wide/narrow render tests and selection/scroll state tests."
+      ]
+    },
+    {
+      "id": "streaming-agent-chat",
+      "prompt": "Create a Codex-like Ratatui chat UI for an agent. It needs a scrollback transcript, right-aligned user bubbles, left-aligned assistant/tool bubbles, multiline composer, bracketed paste, slash commands, tool-call status cards, streaming token updates, code block numbering/copy, and an external editor handoff.",
+      "expected_output": "A chat/agent shell design using composer state, bubble cache, frame coalescing, paste handling, tool lifecycle, and terminal handoff.",
+      "files": [],
+      "assertions": [
+        "Mentions references/chat-agent.md, streaming-async.md, input-focus.md, document-viewers.md, and architecture.md.",
+        "Separates transcript, composer draft, backend turn status, scroll state, and bottom-pane/modal state.",
+        "Uses frame coalescing/FrameRequester or equivalent for streaming updates.",
+        "Handles bracketed paste normalization and contextual Escape behavior.",
+        "Describes bubble caching invalidated by width/streaming changes and code block numbering/extraction.",
+        "Includes terminal restoration/pause event stream for external editor handoff."
+      ]
+    },
+    {
+      "id": "network-telemetry-dashboard",
+      "prompt": "Design a Ratatui traceroute/network telemetry dashboard with a hop table, latency chart, frequency histogram, optional GeoIP map, freeze mode, configurable columns, help/settings overlays, and an info bar showing runtime toggles. It should degrade gracefully in small terminals.",
+      "expected_output": "A telemetry dashboard design using frame snapshots, mode-dependent layout, typed columns, chart/map fallbacks, freeze mode, and tests.",
+      "files": [],
+      "assertions": [
+        "Mentions references/telemetry-dashboards.md, layouts.md, streaming-async.md, and theming-polish.md.",
+        "Splits data snapshot from GUI state and includes freeze/pause snapshot behavior.",
+        "Uses mode-dependent layout with optional tabs/flows/body/footer/info bar or equivalent.",
+        "Specifies configurable typed columns with fixed/variable width allocation.",
+        "Hides charts/maps or provides compact fallback at small sizes.",
+        "Includes tests for breakpoints, region maps/resize, freeze mode, and settings/help overlays."
+      ]
+    },
+    {
+      "id": "markdown-schema-viewer",
+      "prompt": "Build a Ratatui markdown/schema viewer that can render long docs with headings, tables, fenced code, links, search, and images if the terminal supports them. It must parse off the UI thread, survive resize/reload without stale events, and show link/search status in the last line.",
+      "expected_output": "A document-viewer design with worker parse pipeline, document ids, section model, overlays, image cache, and semantic theming.",
+      "files": [],
+      "assertions": [
+        "Mentions references/document-viewers.md, streaming-async.md, theming-polish.md, and input-focus.md.",
+        "Uses document/version ids and ignores stale worker/image events.",
+        "Uses a section model with heights rather than flattening all lines every frame.",
+        "Describes async image/header hydration and cache reuse across reparses.",
+        "Includes link/search overlays and status-line input queue.",
+        "Includes tests for stale events, scroll/viewport skipping, search/link overlays, and resize reflow."
+      ]
+    },
+    {
+      "id": "fixed-grid-game",
+      "prompt": "I want a Ratatui minesweeper/chess-like board game component with keyboard and mouse navigation, a fixed-size centered grid, labels/help around the board, legal move/active cell highlighting, promotion or win/loss overlays, and clean separation from game logic.",
+      "expected_output": "A fixed-grid game component design using independent rules state, UI cursor/selection state, board rect mapping, centered constraints, layers, overlays, and tests.",
+      "files": [],
+      "assertions": [
+        "Mentions references/games-boards.md, layouts.md, input-focus.md, and theming-polish.md.",
+        "Separates rules/game state from UI cursor/selection/overlay state.",
+        "Computes centered exact grid or ratio board layout from frame area.",
+        "Maps mouse coordinates to board cells only through a stored board rect and handles board flip if relevant.",
+        "Uses Clear overlays for promotion/end/help and blocks normal board input while overlay is active.",
+        "Includes cursor clamp, mouse mapping, fixed-size layout, and overlay tests."
+      ]
+    },
+    {
+      "id": "ratatui-audit",
+      "prompt": "Review this existing Ratatui app for UX/architecture problems. Focus on terminal cleanup, focus routing, resize behavior, tables, streaming async work, themes, and tests. Give me a prioritized fix plan with concrete file-level recommendations.",
+      "expected_output": "An audit report using the main router plus relevant subskills, organized by severity with concrete fixes and validation steps.",
+      "files": [],
+      "assertions": [
+        "Mentions using the ratatui skill and identifies which reference files are relevant from code shape.",
+        "Checks terminal lifecycle cleanup and panic/error restoration.",
+        "Checks explicit focus/mode/view-stack routing and modal key priority.",
+        "Checks responsive layouts/tiny terminal behavior and Unicode-width table handling.",
+        "Checks async/render separation and redraw coalescing for streaming paths.",
+        "Provides prioritized fixes and concrete tests/snapshots to add."
+      ]
+    }
+  ]
+}
