@@ -66,7 +66,10 @@ impl AuthCredential {
 impl fmt::Debug for AuthCredential {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ApiKey { .. } => f.debug_struct("ApiKey").field("key", &"<redacted>").finish(),
+            Self::ApiKey { .. } => f
+                .debug_struct("ApiKey")
+                .field("key", &"<redacted>")
+                .finish(),
         }
     }
 }
@@ -94,7 +97,11 @@ impl ProviderAuthSpec {
 
     #[must_use]
     pub fn openrouter() -> Self {
-        Self::new(OPENROUTER_PROVIDER_ID, OPENROUTER_AUTH_KEY, OPENROUTER_ENV_VAR)
+        Self::new(
+            OPENROUTER_PROVIDER_ID,
+            OPENROUTER_AUTH_KEY,
+            OPENROUTER_ENV_VAR,
+        )
     }
 }
 
@@ -131,7 +138,11 @@ impl AuthConfig {
     }
 
     #[must_use]
-    pub fn with_runtime_override(mut self, provider: impl Into<String>, key: impl Into<String>) -> Self {
+    pub fn with_runtime_override(
+        mut self,
+        provider: impl Into<String>,
+        key: impl Into<String>,
+    ) -> Self {
         self.runtime_overrides
             .insert(provider.into(), AuthCredential::api_key(key));
         self
@@ -186,10 +197,12 @@ impl AuthStorage {
 
     pub async fn save_all(&self, entries: &AuthFile) -> AuthResult<()> {
         if let Some(parent) = self.config.auth_path.parent() {
-            fs::create_dir_all(parent).await.map_err(|source| AuthError::Io {
-                path: parent.to_path_buf(),
-                source,
-            })?;
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|source| AuthError::Io {
+                    path: parent.to_path_buf(),
+                    source,
+                })?;
         }
         let text = serde_json::to_string_pretty(entries).map_err(|source| AuthError::Json {
             path: self.config.auth_path.clone(),
@@ -273,10 +286,12 @@ async fn write_secret_file(path: &PathBuf, contents: &[u8]) -> AuthResult<()> {
             path: path.clone(),
             source,
         })?;
-    file.write_all(contents).await.map_err(|source| AuthError::Io {
-        path: path.clone(),
-        source,
-    })?;
+    file.write_all(contents)
+        .await
+        .map_err(|source| AuthError::Io {
+            path: path.clone(),
+            source,
+        })?;
     file.flush().await.map_err(|source| AuthError::Io {
         path: path.clone(),
         source,
@@ -291,10 +306,12 @@ async fn write_secret_file(path: &PathBuf, contents: &[u8]) -> AuthResult<()> {
 
 #[cfg(not(unix))]
 async fn write_secret_file(path: &PathBuf, contents: &[u8]) -> AuthResult<()> {
-    fs::write(path, contents).await.map_err(|source| AuthError::Io {
-        path: path.clone(),
-        source,
-    })
+    fs::write(path, contents)
+        .await
+        .map_err(|source| AuthError::Io {
+            path: path.clone(),
+            source,
+        })
 }
 
 #[cfg(test)]
@@ -399,7 +416,8 @@ mod tests {
         {
             panic!("set credential failed: {err}");
         }
-        let storage = AuthStorage::new(AuthConfig::new(path).with_env_override(OPENROUTER_ENV_VAR, "env"));
+        let storage =
+            AuthStorage::new(AuthConfig::new(path).with_env_override(OPENROUTER_ENV_VAR, "env"));
         let key = match storage.resolve_openrouter_api_key().await {
             Ok(key) => key,
             Err(err) => panic!("resolve failed: {err}"),

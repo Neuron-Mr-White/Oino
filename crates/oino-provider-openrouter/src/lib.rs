@@ -8,9 +8,13 @@ OpenAI-compatible chat-completions API and converts streaming SSE chunks back in
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use oino_agent_loop::{AbortSignal, LoopError, LoopResult, StreamProvider, StreamRequest, ToolDefinition};
+use oino_agent_loop::{
+    AbortSignal, LoopError, LoopResult, StreamProvider, StreamRequest, ToolDefinition,
+};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
-use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ProviderMetadata, StopReason, Usage};
+use oino_types::{
+    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ProviderMetadata, StopReason, Usage,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, time::Duration};
@@ -145,7 +149,8 @@ impl OpenRouterProvider {
                 return Ok(events);
             }
             let chunk = chunk.map_err(|err| OpenRouterError::Http(err.to_string()))?;
-            let text = std::str::from_utf8(&chunk).map_err(|err| OpenRouterError::Sse(err.to_string()))?;
+            let text =
+                std::str::from_utf8(&chunk).map_err(|err| OpenRouterError::Sse(err.to_string()))?;
             events.extend(parser.push_str(text)?);
         }
         events.extend(parser.finish()?);
@@ -214,7 +219,9 @@ pub struct OpenRouterToolCallFunction {
     pub arguments: String,
 }
 
-pub fn build_chat_request(request: &StreamRequest) -> Result<OpenRouterChatRequest, OpenRouterError> {
+pub fn build_chat_request(
+    request: &StreamRequest,
+) -> Result<OpenRouterChatRequest, OpenRouterError> {
     if request.model.provider != oino_auth::OPENROUTER_PROVIDER_ID {
         return Err(OpenRouterError::Serialization(format!(
             "model provider `{}` is not openrouter",
@@ -268,7 +275,11 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
             let tool_calls = content
                 .iter()
                 .filter_map(|block| match block {
-                    ContentBlock::ToolCall { id, name, arguments } => Some(OpenRouterToolCall {
+                    ContentBlock::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    } => Some(OpenRouterToolCall {
                         id: id.to_string(),
                         kind: "function".into(),
                         function: OpenRouterToolCallFunction {
@@ -309,11 +320,13 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
                 tool_calls: Vec::new(),
             })
         }
-        Message::Custom { name, model_visible, .. } if *model_visible => {
-            Err(OpenRouterError::UnsupportedContent(format!(
-                "custom message `{name}` needs app-level conversion before OpenRouter"
-            )))
-        }
+        Message::Custom {
+            name,
+            model_visible,
+            ..
+        } if *model_visible => Err(OpenRouterError::UnsupportedContent(format!(
+            "custom message `{name}` needs app-level conversion before OpenRouter"
+        ))),
         Message::Custom { .. } => Err(OpenRouterError::UnsupportedContent(
             "runtime-only custom message cannot be sent to OpenRouter".into(),
         )),
@@ -345,7 +358,11 @@ fn optional_text_content(content: &[ContentBlock]) -> Result<Option<String>, Ope
             }
         }
     }
-    if text.is_empty() { Ok(None) } else { Ok(Some(text)) }
+    if text.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(text))
+    }
 }
 
 #[derive(Debug, Default)]
@@ -404,7 +421,9 @@ impl SseEventParser {
         }
         let mut events = Vec::new();
         if let Some(usage) = chunk.usage {
-            events.push(AssistantStreamEvent::Usage { usage: usage.into() });
+            events.push(AssistantStreamEvent::Usage {
+                usage: usage.into(),
+            });
         }
         for choice in chunk.choices {
             if let Some(delta) = choice.delta {
@@ -430,15 +449,18 @@ impl SseEventParser {
     }
 
     fn tool_delta_to_event(&mut self, delta: OpenRouterToolCallDelta) -> AssistantStreamEvent {
-        let state = self.tool_states.entry(delta.index).or_insert_with(|| PartialToolState {
-            id: delta
-                .id
-                .as_deref()
-                .and_then(|id| Uuid::parse_str(id).ok())
-                .unwrap_or_else(Uuid::new_v4),
-            name: None,
-            arguments: String::new(),
-        });
+        let state = self
+            .tool_states
+            .entry(delta.index)
+            .or_insert_with(|| PartialToolState {
+                id: delta
+                    .id
+                    .as_deref()
+                    .and_then(|id| Uuid::parse_str(id).ok())
+                    .unwrap_or_else(Uuid::new_v4),
+                name: None,
+                arguments: String::new(),
+            });
         if let Some(id) = delta.id.as_deref().and_then(|id| Uuid::parse_str(id).ok()) {
             state.id = id;
         }
@@ -604,8 +626,8 @@ fn sanitize_error_body(text: &str) -> String {
 mod tests {
     use super::*;
     use oino_agent_loop::{StreamRequest, ToolDefinition};
-    use serde_json::json;
     use oino_types::{ContentBlock, Message, Model, ThinkingLevel};
+    use serde_json::json;
 
     fn request(messages: Vec<Message>) -> StreamRequest {
         StreamRequest {
@@ -689,10 +711,18 @@ mod tests {
             Ok(events) => events,
             Err(err) => panic!("parse failed: {err}"),
         };
-        assert!(events.contains(&AssistantStreamEvent::TextDelta { delta: "hel".into() }));
+        assert!(events.contains(&AssistantStreamEvent::TextDelta {
+            delta: "hel".into()
+        }));
         assert!(events.contains(&AssistantStreamEvent::TextDelta { delta: "lo".into() }));
         assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::Usage { usage } if usage.input_tokens == 1 && usage.output_tokens == 2)));
-        assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::Done { stop_reason: StopReason::EndTurn, .. })));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -707,7 +737,10 @@ mod tests {
             Ok(events) => events,
             Err(err) => panic!("parse failed: {err}"),
         };
-        assert_eq!(second, vec![AssistantStreamEvent::TextDelta { delta: "a".into() }]);
+        assert_eq!(
+            second,
+            vec![AssistantStreamEvent::TextDelta { delta: "a".into() }]
+        );
     }
 
     #[test]
@@ -724,7 +757,13 @@ mod tests {
         };
         assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::ToolCallDelta { name: Some(name), .. } if name == "read")));
         assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::ToolCallDone { name, arguments, .. } if name == "read" && arguments["path"] == "README.md")));
-        assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::Done { stop_reason: StopReason::ToolUse, .. })));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::ToolUse,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -745,14 +784,19 @@ mod tests {
     #[tokio::test]
     async fn provider_reports_missing_auth_before_http() {
         let auth = AuthStorage::new(
-            oino_auth::AuthConfig::new(std::env::temp_dir().join("oino-provider-missing-auth.json"))
-                .with_process_env(false),
+            oino_auth::AuthConfig::new(
+                std::env::temp_dir().join("oino-provider-missing-auth.json"),
+            )
+            .with_process_env(false),
         );
         let provider = match OpenRouterProvider::new(auth, OpenRouterConfig::default()) {
             Ok(provider) => provider,
             Err(err) => panic!("provider init failed: {err}"),
         };
-        match provider.stream_inner(request(vec![Message::user_text("hi")]), AbortSignal::new()).await {
+        match provider
+            .stream_inner(request(vec![Message::user_text("hi")]), AbortSignal::new())
+            .await
+        {
             Err(OpenRouterError::Auth(AuthError::MissingCredential { provider, .. })) => {
                 assert_eq!(provider, "openrouter");
             }

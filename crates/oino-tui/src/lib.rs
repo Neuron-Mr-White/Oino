@@ -84,7 +84,9 @@ impl TuiState {
     pub fn handle_key(&mut self, key: KeyEvent) -> TuiAction {
         match key.code {
             KeyCode::Esc => TuiAction::Quit,
-            KeyCode::Char('c') | KeyCode::Char('C') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('c') | KeyCode::Char('C')
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
                 TuiAction::Quit
             }
             KeyCode::Enter => {
@@ -101,7 +103,9 @@ impl TuiState {
                 self.input.pop();
                 TuiAction::None
             }
-            KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() => {
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
+            {
                 self.input.push(ch);
                 TuiAction::None
             }
@@ -176,7 +180,11 @@ fn summarize_content(content: &[ContentBlock]) -> String {
 pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
         .split(frame.area());
 
     let mut lines: Vec<Line<'_>> = state
@@ -191,7 +199,9 @@ pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
             let role_style = if message.is_error {
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             };
             Line::from(vec![
                 Span::styled(format!("{}: ", message.role), role_style),
@@ -210,7 +220,11 @@ pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
         .wrap(Wrap { trim: false });
     frame.render_widget(messages, chunks[0]);
 
-    let input_title = if state.working { "Input (working)" } else { "Input" };
+    let input_title = if state.working {
+        "Input (working)"
+    } else {
+        "Input"
+    };
     let input = Paragraph::new(format!("> {}", state.input))
         .block(Block::default().title(input_title).borders(Borders::ALL));
     frame.render_widget(input, chunks[1]);
@@ -263,7 +277,10 @@ mod tests {
 
     #[test]
     fn projects_messages() {
-        let messages = vec![Message::user_text("hello"), Message::assistant_text("hi", oino_types::StopReason::EndTurn)];
+        let messages = vec![
+            Message::user_text("hello"),
+            Message::assistant_text("hi", oino_types::StopReason::EndTurn),
+        ];
         let views = project_messages(&messages);
         assert_eq!(views.len(), 2);
         assert_eq!(views[0].role, "user");

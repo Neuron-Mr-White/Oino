@@ -174,7 +174,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     3. Include troubleshooting for missing key, 401/403, 429, and terminal reset issues.
     4. Add manual smoke-test command and expected behavior.
 
-- unstarted: Task 10 — Final quality gate and plan bookkeeping
+- completed: Task 10 — Final quality gate and plan bookkeeping
   - Description: Verify the whole workspace, update plan/spec statuses, and commit completed work.
   - Dependencies: Tasks 1 through 9.
   - Acceptance Criteria:

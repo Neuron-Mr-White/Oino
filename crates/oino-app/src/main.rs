@@ -6,14 +6,19 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use oino_agent_loop::{BoxFuture, LoopError, StreamProvider};
-use oino_auth::{AuthConfig, AuthError, AuthStorage, ProviderAuthSpec};
+use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
 use oino_session::{SessionHeader, SessionManager};
 use oino_tui::{render, TuiAction, TuiState};
 use oino_types::{Message, Model};
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{io::{self, Stdout}, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    io::{self, Stdout},
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 use thiserror::Error;
 
 const DEFAULT_OPENROUTER_MODEL: &str = "openai/gpt-4o-mini";
@@ -63,7 +68,8 @@ async fn main() -> Result<(), AppError> {
         title: config.title.clone(),
         ..OpenRouterConfig::default()
     };
-    let provider = Arc::new(OpenRouterProvider::new(auth.clone(), provider_config)?) as Arc<dyn StreamProvider>;
+    let provider = Arc::new(OpenRouterProvider::new(auth.clone(), provider_config)?)
+        as Arc<dyn StreamProvider>;
     let harness = build_harness(config.model, provider, auth)?;
     run_tui(harness).await
 }
@@ -71,18 +77,23 @@ async fn main() -> Result<(), AppError> {
 fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
     Arc::new(move |provider: String| {
         let auth = auth.clone();
-        let fut: BoxFuture<'static, oino_agent_loop::LoopResult<Option<String>>> = Box::pin(async move {
-            let spec = if provider == oino_auth::OPENROUTER_PROVIDER_ID {
-                ProviderAuthSpec::openrouter()
-            } else {
-                ProviderAuthSpec::new(provider.clone(), provider.clone(), format!("{}_API_KEY", provider.to_uppercase()))
-            };
-            match auth.resolve_api_key(&spec).await {
-                Ok(key) => Ok(Some(key)),
-                Err(AuthError::MissingCredential { .. }) => Ok(None),
-                Err(err) => Err(LoopError::Stream(err.to_string())),
-            }
-        });
+        let fut: BoxFuture<'static, oino_agent_loop::LoopResult<Option<String>>> =
+            Box::pin(async move {
+                let spec = if provider == oino_auth::OPENROUTER_PROVIDER_ID {
+                    ProviderAuthSpec::openrouter()
+                } else {
+                    ProviderAuthSpec::new(
+                        provider.clone(),
+                        provider.clone(),
+                        format!("{}_API_KEY", provider.to_uppercase()),
+                    )
+                };
+                match auth.resolve_api_key(&spec).await {
+                    Ok(key) => Ok(Some(key)),
+                    Err(AuthError::MissingCredential { .. }) => Ok(None),
+                    Err(err) => Err(LoopError::Stream(err.to_string())),
+                }
+            });
         fut
     })
 }
@@ -176,6 +187,7 @@ impl Drop for TerminalGuard {
 mod tests {
     use super::*;
     use oino_agent_loop::FauxStream;
+    use oino_auth::AuthConfig;
     use oino_types::{AssistantStreamEvent, StopReason};
 
     #[test]
@@ -205,7 +217,9 @@ mod tests {
             Ok(messages) => messages,
             Err(err) => panic!("prompt failed: {err}"),
         };
-        assert!(messages.iter().any(|message| matches!(message, Message::Assistant { .. })));
+        assert!(messages
+            .iter()
+            .any(|message| matches!(message, Message::Assistant { .. })));
     }
 
     #[tokio::test]
