@@ -266,3 +266,19 @@ Follow-up Quality Gate:
 - ✓ `cargo clippy --workspace --all-targets -- -D warnings`
 - ✓ `cargo test --workspace` (63 tests + doctests)
 - ✓ `cargo doc --workspace --no-deps`
+
+---
+
+## Reviewer Remarks
+
+REVIEWER-REMARK: Done
+- Tasks 1-10 are complete and verified against the acceptance criteria.
+- The previous Task 8 reviewer follow-up is resolved: `crates/oino-app/src/main.rs` now preflights OpenRouter credentials before calling `Harness::prompt`, and missing credentials set the TUI banner to `Missing OpenRouter API key. Set OPENROUTER_API_KEY or add ~/.oino/auth.json.`
+- Added app tests cover both missing-key preflight behavior and runtime-key preflight success.
+- No matching Ralph loop was used for this auth/OpenRouter/TUI plan; existing `.unipi/ralph/oino-core-runtime.*` files belong to prior core-runtime work.
+
+Codebase Checks:
+- ✓ Format passed: `cargo fmt --all -- --check`
+- ✓ Lint passed: `cargo clippy --workspace --all-targets -- -D warnings`
+- ✓ Tests passed: `cargo test --workspace` (63 tests + doctests)
+- ✓ Docs passed: `cargo doc --workspace --no-deps`
