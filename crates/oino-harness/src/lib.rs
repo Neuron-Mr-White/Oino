@@ -9,8 +9,8 @@ real providers, MCP, memory databases, and dynamic plugin ABIs belong in later l
 use oino_agent::Agent;
 use oino_agent_loop::{
     AbortSignal, AfterToolCall, AgentEvent, AgentLoopConfig, BeforeToolCall, BeforeToolCallResult,
-    BoxFuture, EventSink, LoopResult, StreamProvider, StreamRequest, Tool, ToolCall, ToolResult,
-    TransformContext,
+    BoxFuture, EventSink, LoopResult, StreamEventSink, StreamProvider, StreamRequest, Tool,
+    ToolCall, ToolResult, TransformContext,
 };
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
 use oino_session::{SessionEntryKind, SessionManager};
@@ -233,6 +233,15 @@ impl StreamProvider for HookedStreamProvider {
         request: StreamRequest,
         signal: AbortSignal,
     ) -> LoopResult<Vec<AssistantStreamEvent>> {
+        self.inner.stream(request, signal).await
+    }
+
+    async fn stream_events(
+        &self,
+        request: StreamRequest,
+        signal: AbortSignal,
+        sink: StreamEventSink,
+    ) -> LoopResult<()> {
         let _request_marker = self
             .hooks
             .mutate_before_provider_request("request".into())
@@ -241,12 +250,12 @@ impl StreamProvider for HookedStreamProvider {
             .hooks
             .mutate_before_provider_payload("payload".into())
             .await?;
-        let response = self.inner.stream(request, signal).await?;
+        self.inner.stream_events(request, signal, sink).await?;
         let _response_marker = self
             .hooks
             .mutate_after_provider_response("response".into())
             .await?;
-        Ok(response)
+        Ok(())
     }
 }
 

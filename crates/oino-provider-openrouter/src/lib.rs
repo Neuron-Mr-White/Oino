@@ -9,20 +9,27 @@ OpenAI-compatible chat-completions API and converts streaming SSE chunks back in
 use async_trait::async_trait;
 use futures::StreamExt;
 use oino_agent_loop::{
-    AbortSignal, LoopError, LoopResult, StreamProvider, StreamRequest, ToolDefinition,
+    AbortSignal, BoxFuture, LoopError, LoopResult, StreamEventSink, StreamProvider, StreamRequest,
+    ToolDefinition,
 };
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_types::{
-    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ProviderMetadata, StopReason, Usage,
+    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ProviderMetadata, StopReason,
+    ThinkingLevel, Usage,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
 const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 const CHAT_COMPLETIONS_PATH: &str = "/chat/completions";
+const MODELS_PATH: &str = "/models";
 
 #[derive(Debug, Error)]
 pub enum OpenRouterError {
@@ -38,6 +45,8 @@ pub enum OpenRouterError {
     Http(String),
     #[error("OpenRouter request aborted")]
     Aborted,
+    #[error("OpenRouter stream sink error: {0}")]
+    StreamSink(String),
 }
 
 impl From<OpenRouterError> for LoopError {
@@ -77,6 +86,11 @@ impl OpenRouterConfig {
             CHAT_COMPLETIONS_PATH
         )
     }
+
+    #[must_use]
+    pub fn models_endpoint(&self) -> String {
+        format!("{}{}", self.base_url.trim_end_matches('/'), MODELS_PATH)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -104,13 +118,15 @@ impl OpenRouterProvider {
         &self.config
     }
 
-    async fn stream_inner(
+    async fn stream_events_inner(
         &self,
         request: StreamRequest,
         signal: AbortSignal,
-    ) -> Result<Vec<AssistantStreamEvent>, OpenRouterError> {
+        sink: StreamEventSink,
+    ) -> Result<(), OpenRouterError> {
         if signal.is_aborted() {
-            return Ok(vec![AssistantStreamEvent::Aborted]);
+            emit_to_sink(&sink, AssistantStreamEvent::Aborted).await?;
+            return Ok(());
         }
         let api_key = self
             .auth
@@ -142,20 +158,32 @@ impl OpenRouterProvider {
         }
         let mut parser = SseEventParser::new();
         let mut stream = response.bytes_stream();
-        let mut events = Vec::new();
         while let Some(chunk) = stream.next().await {
             if signal.is_aborted() {
-                events.push(AssistantStreamEvent::Aborted);
-                return Ok(events);
+                emit_to_sink(&sink, AssistantStreamEvent::Aborted).await?;
+                return Ok(());
             }
             let chunk = chunk.map_err(|err| OpenRouterError::Http(err.to_string()))?;
             let text =
                 std::str::from_utf8(&chunk).map_err(|err| OpenRouterError::Sse(err.to_string()))?;
-            events.extend(parser.push_str(text)?);
+            for event in parser.push_str(text)? {
+                emit_to_sink(&sink, event).await?;
+            }
         }
-        events.extend(parser.finish()?);
-        Ok(events)
+        for event in parser.finish()? {
+            emit_to_sink(&sink, event).await?;
+        }
+        Ok(())
     }
+}
+
+async fn emit_to_sink(
+    sink: &StreamEventSink,
+    event: AssistantStreamEvent,
+) -> Result<(), OpenRouterError> {
+    sink(event)
+        .await
+        .map_err(|err| OpenRouterError::StreamSink(err.to_string()))
 }
 
 #[async_trait]
@@ -165,8 +193,86 @@ impl StreamProvider for OpenRouterProvider {
         request: StreamRequest,
         signal: AbortSignal,
     ) -> LoopResult<Vec<AssistantStreamEvent>> {
-        self.stream_inner(request, signal).await.map_err(Into::into)
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let sink_events = Arc::clone(&events);
+        let sink = Arc::new(move |event| {
+            let sink_events = Arc::clone(&sink_events);
+            let fut: BoxFuture<'static, LoopResult<()>> = Box::pin(async move {
+                let mut events = sink_events
+                    .lock()
+                    .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?;
+                events.push(event);
+                Ok(())
+            });
+            fut
+        });
+        self.stream_events(request, signal, sink).await?;
+        let events = events
+            .lock()
+            .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?
+            .clone();
+        Ok(events)
     }
+
+    async fn stream_events(
+        &self,
+        request: StreamRequest,
+        signal: AbortSignal,
+        sink: StreamEventSink,
+    ) -> LoopResult<()> {
+        self.stream_events_inner(request, signal, sink)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct OpenRouterModelInfo {
+    pub id: String,
+    pub name: Option<String>,
+    #[serde(default)]
+    pub supported_parameters: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct OpenRouterModelsResponse {
+    data: Vec<OpenRouterModelInfo>,
+}
+
+pub async fn list_models(
+    config: &OpenRouterConfig,
+) -> Result<Vec<OpenRouterModelInfo>, OpenRouterError> {
+    let client = reqwest::Client::builder()
+        .timeout(config.timeout)
+        .build()
+        .map_err(|err| OpenRouterError::Http(err.to_string()))?;
+    let mut builder = client.get(config.models_endpoint());
+    if let Some(referer) = &config.referer {
+        builder = builder.header("HTTP-Referer", referer);
+    }
+    if let Some(title) = &config.title {
+        builder = builder.header("X-OpenRouter-Title", title);
+    }
+    let response = builder
+        .send()
+        .await
+        .map_err(|err| OpenRouterError::Http(err.to_string()))?;
+    if !response.status().is_success() {
+        return Err(OpenRouterError::Http(format!(
+            "OpenRouter models request failed with status {}",
+            response.status()
+        )));
+    }
+    let body = response
+        .json::<OpenRouterModelsResponse>()
+        .await
+        .map_err(|err| OpenRouterError::Http(err.to_string()))?;
+    Ok(body.data)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OpenRouterReasoning {
+    pub effort: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -176,6 +282,8 @@ pub struct OpenRouterChatRequest {
     pub stream: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<OpenRouterTool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<OpenRouterReasoning>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -247,6 +355,21 @@ pub fn build_chat_request(
         messages,
         stream: true,
         tools,
+        reasoning: openrouter_reasoning(request.thinking_level),
+    })
+}
+
+fn openrouter_reasoning(level: ThinkingLevel) -> Option<OpenRouterReasoning> {
+    let effort = match level {
+        ThinkingLevel::Off => return None,
+        ThinkingLevel::Minimal => "minimal",
+        ThinkingLevel::Low => "low",
+        ThinkingLevel::Medium => "medium",
+        ThinkingLevel::High => "high",
+        ThinkingLevel::XHigh => "xhigh",
+    };
+    Some(OpenRouterReasoning {
+        effort: effort.into(),
     })
 }
 
@@ -351,11 +474,7 @@ fn optional_text_content(content: &[ContentBlock]) -> Result<Option<String>, Ope
                     "image content is not supported in the first OpenRouter adapter".into(),
                 ));
             }
-            ContentBlock::Thinking { .. } => {
-                return Err(OpenRouterError::UnsupportedContent(
-                    "thinking content is not sent back to OpenRouter yet".into(),
-                ));
-            }
+            ContentBlock::Thinking { .. } => {}
         }
     }
     if text.is_empty() {
@@ -626,7 +745,7 @@ fn sanitize_error_body(text: &str) -> String {
 mod tests {
     use super::*;
     use oino_agent_loop::{StreamRequest, ToolDefinition};
-    use oino_types::{ContentBlock, Message, Model, ThinkingLevel};
+    use oino_types::{ContentBlock, Message, Model, StopReason, ThinkingLevel};
     use serde_json::json;
 
     fn request(messages: Vec<Message>) -> StreamRequest {
@@ -660,6 +779,67 @@ mod tests {
                 "stream": true
             })
         );
+    }
+
+    #[test]
+    fn serializes_assistant_messages_without_replaying_thinking() {
+        let built = match build_chat_request(&request(vec![Message::Assistant {
+            id: Uuid::new_v4(),
+            content: vec![
+                ContentBlock::Thinking {
+                    text: "private reasoning".into(),
+                    redacted: false,
+                },
+                ContentBlock::Text {
+                    text: "public answer".into(),
+                },
+            ],
+            stop_reason: Some(StopReason::EndTurn),
+            usage: None,
+            provider: None,
+        }])) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        let json = match serde_json::to_value(built) {
+            Ok(value) => value,
+            Err(err) => panic!("serialize failed: {err}"),
+        };
+        assert_eq!(json["messages"][1]["role"], "assistant");
+        assert_eq!(json["messages"][1]["content"], "public answer");
+    }
+
+    #[test]
+    fn serializes_reasoning_effort_when_enabled() {
+        let mut req = request(vec![Message::user_text("think")]);
+        req.thinking_level = ThinkingLevel::High;
+        let built = match build_chat_request(&req) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        let json = match serde_json::to_value(built) {
+            Ok(value) => value,
+            Err(err) => panic!("serialize failed: {err}"),
+        };
+        assert_eq!(json["reasoning"]["effort"], "high");
+    }
+
+    #[test]
+    fn deserializes_model_catalog_response() {
+        let response = match serde_json::from_value::<OpenRouterModelsResponse>(json!({
+            "data": [{
+                "id": "openai/gpt-4o-mini",
+                "name": "GPT 4o Mini",
+                "supported_parameters": ["tools", "reasoning"]
+            }]
+        })) {
+            Ok(value) => value,
+            Err(err) => panic!("deserialize failed: {err}"),
+        };
+        assert_eq!(response.data[0].id, "openai/gpt-4o-mini");
+        assert!(response.data[0]
+            .supported_parameters
+            .contains(&"reasoning".to_string()));
     }
 
     #[test]
@@ -793,8 +973,16 @@ mod tests {
             Ok(provider) => provider,
             Err(err) => panic!("provider init failed: {err}"),
         };
+        let sink = Arc::new(|_event| {
+            let fut: BoxFuture<'static, LoopResult<()>> = Box::pin(async { Ok(()) });
+            fut
+        });
         match provider
-            .stream_inner(request(vec![Message::user_text("hi")]), AbortSignal::new())
+            .stream_events_inner(
+                request(vec![Message::user_text("hi")]),
+                AbortSignal::new(),
+                sink,
+            )
             .await
         {
             Err(OpenRouterError::Auth(AuthError::MissingCredential { provider, .. })) => {

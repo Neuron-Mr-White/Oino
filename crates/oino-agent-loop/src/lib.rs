@@ -269,6 +269,9 @@ pub struct StreamRequest {
     pub tools: Vec<ToolDefinition>,
 }
 
+pub type StreamEventSink =
+    Arc<dyn Fn(AssistantStreamEvent) -> BoxFuture<'static, LoopResult<()>> + Send + Sync>;
+
 #[async_trait]
 pub trait StreamProvider: Send + Sync {
     async fn stream(
@@ -276,6 +279,18 @@ pub trait StreamProvider: Send + Sync {
         request: StreamRequest,
         signal: AbortSignal,
     ) -> LoopResult<Vec<AssistantStreamEvent>>;
+
+    async fn stream_events(
+        &self,
+        request: StreamRequest,
+        signal: AbortSignal,
+        sink: StreamEventSink,
+    ) -> LoopResult<()> {
+        for event in self.stream(request, signal).await? {
+            sink(event).await?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -346,27 +361,33 @@ pub async fn run_agent_loop(
     prompt: Message,
     config: AgentLoopConfig,
 ) -> LoopResult<AgentLoopOutput> {
+    run_agent_loop_with_context(Vec::new(), prompt, config).await
+}
+
+pub async fn run_agent_loop_with_context(
+    mut messages: Vec<Message>,
+    prompt: Message,
+    config: AgentLoopConfig,
+) -> LoopResult<AgentLoopOutput> {
     let run_id = Uuid::new_v4();
-    let messages = vec![prompt];
     config
         .event_sink
         .emit(AgentEvent::AgentStart { run_id })
         .await?;
-    if let Some(first) = messages.first() {
-        config
-            .event_sink
-            .emit(AgentEvent::MessageStart {
-                message_id: first.id(),
-                role: "user".into(),
-            })
-            .await?;
-        config
-            .event_sink
-            .emit(AgentEvent::MessageEnd {
-                message: first.clone(),
-            })
-            .await?;
-    }
+    config
+        .event_sink
+        .emit(AgentEvent::MessageStart {
+            message_id: prompt.id(),
+            role: "user".into(),
+        })
+        .await?;
+    config
+        .event_sink
+        .emit(AgentEvent::MessageEnd {
+            message: prompt.clone(),
+        })
+        .await?;
+    messages.push(prompt);
     run_agent_loop_continue_inner(messages, config, run_id).await
 }
 
@@ -541,14 +562,7 @@ fn finalize_partial_tool_calls(
 
 async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> LoopResult<Message> {
     let id = Uuid::new_v4();
-    let mut content: Vec<ContentBlock> = Vec::new();
-    let mut text = String::new();
-    let mut thinking = String::new();
-    let mut usage: Option<Usage> = None;
-    let mut provider: Option<ProviderMetadata> = None;
-    let mut stop_reason = StopReason::Unknown;
-    let mut partial_tool_calls: BTreeMap<OinoId, PartialToolCall> = BTreeMap::new();
-    let mut partial_order: Vec<OinoId> = Vec::new();
+    let accumulator = Arc::new(Mutex::new(StreamAccumulator::default()));
     config
         .event_sink
         .emit(AgentEvent::MessageStart {
@@ -556,46 +570,112 @@ async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> Loo
             role: "assistant".into(),
         })
         .await?;
-    let events = match config
+
+    let event_sink = Arc::clone(&config.event_sink);
+    let abort_signal = config.abort_signal.clone();
+    let handler_accumulator = Arc::clone(&accumulator);
+    let handler = Arc::new(move |event| {
+        let event_sink = Arc::clone(&event_sink);
+        let abort_signal = abort_signal.clone();
+        let accumulator = Arc::clone(&handler_accumulator);
+        let fut: BoxFuture<'static, LoopResult<()>> = Box::pin(async move {
+            let mut accumulator = accumulator.lock().await;
+            accumulator
+                .apply_event(event, id, &event_sink, &abort_signal)
+                .await
+        });
+        fut
+    });
+
+    if let Err(err) = config
         .stream
-        .stream(request, config.abort_signal.clone())
+        .stream_events(request, config.abort_signal.clone(), handler)
         .await
     {
-        Ok(events) => events,
-        Err(err) => vec![AssistantStreamEvent::Error {
-            message: err.to_string(),
-        }],
-    };
-    for event in events {
-        if config.abort_signal.is_aborted() {
-            stop_reason = StopReason::Aborted;
-            break;
+        let mut accumulator = accumulator.lock().await;
+        accumulator
+            .apply_event(
+                AssistantStreamEvent::Error {
+                    message: err.to_string(),
+                },
+                id,
+                &config.event_sink,
+                &config.abort_signal,
+            )
+            .await?;
+    }
+
+    let mut accumulator = accumulator.lock().await;
+    if config.abort_signal.is_aborted() {
+        accumulator.stop_reason = StopReason::Aborted;
+    }
+    let message = accumulator.finish(id);
+    config
+        .event_sink
+        .emit(AgentEvent::MessageEnd {
+            message: message.clone(),
+        })
+        .await?;
+    Ok(message)
+}
+
+#[derive(Debug)]
+struct StreamAccumulator {
+    content: Vec<ContentBlock>,
+    text: String,
+    thinking: String,
+    usage: Option<Usage>,
+    provider: Option<ProviderMetadata>,
+    stop_reason: StopReason,
+    partial_tool_calls: BTreeMap<OinoId, PartialToolCall>,
+    partial_order: Vec<OinoId>,
+}
+
+impl Default for StreamAccumulator {
+    fn default() -> Self {
+        Self {
+            content: Vec::new(),
+            text: String::new(),
+            thinking: String::new(),
+            usage: None,
+            provider: None,
+            stop_reason: StopReason::Unknown,
+            partial_tool_calls: BTreeMap::new(),
+            partial_order: Vec::new(),
+        }
+    }
+}
+
+impl StreamAccumulator {
+    async fn apply_event(
+        &mut self,
+        event: AssistantStreamEvent,
+        message_id: OinoId,
+        event_sink: &Arc<dyn EventSink>,
+        abort_signal: &AbortSignal,
+    ) -> LoopResult<()> {
+        if abort_signal.is_aborted() {
+            self.stop_reason = StopReason::Aborted;
+            return Ok(());
         }
         match event {
             AssistantStreamEvent::TextDelta { delta } => {
-                text.push_str(&delta);
-                let mut update = content_without_text(&content);
-                update.insert(0, ContentBlock::Text { text: text.clone() });
-                config
-                    .event_sink
-                    .emit(AgentEvent::MessageUpdate {
-                        message_id: id,
-                        content: update,
-                    })
-                    .await?;
+                self.text.push_str(&delta);
+                self.emit_update(message_id, event_sink).await?;
             }
             AssistantStreamEvent::ThinkingDelta { delta } => {
-                thinking.push_str(&delta);
+                self.thinking.push_str(&delta);
+                self.emit_update(message_id, event_sink).await?;
             }
             AssistantStreamEvent::ToolCallDelta {
                 id,
                 name,
                 arguments_delta,
             } => {
-                if !partial_tool_calls.contains_key(&id) {
-                    partial_order.push(id);
+                if !self.partial_tool_calls.contains_key(&id) {
+                    self.partial_order.push(id);
                 }
-                let partial = partial_tool_calls.entry(id).or_default();
+                let partial = self.partial_tool_calls.entry(id).or_default();
                 if let Some(name) = name {
                     partial.name = Some(name);
                 }
@@ -606,10 +686,10 @@ async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> Loo
                 name,
                 arguments,
             } => {
-                if !partial_tool_calls.contains_key(&id) {
-                    partial_order.push(id);
+                if !self.partial_tool_calls.contains_key(&id) {
+                    self.partial_order.push(id);
                 }
-                partial_tool_calls.insert(
+                self.partial_tool_calls.insert(
                     id,
                     PartialToolCall {
                         name: Some(name.clone()),
@@ -617,63 +697,107 @@ async fn consume_stream(config: &AgentLoopConfig, request: StreamRequest) -> Loo
                             .unwrap_or_else(|_| arguments.to_string()),
                     },
                 );
-                content.push(ContentBlock::ToolCall {
+                self.content.push(ContentBlock::ToolCall {
                     id,
                     name,
                     arguments,
                 });
+                self.emit_update(message_id, event_sink).await?;
             }
-            AssistantStreamEvent::Usage { usage: reported } => usage = Some(reported),
+            AssistantStreamEvent::Usage { usage: reported } => self.usage = Some(reported),
             AssistantStreamEvent::Done {
                 stop_reason: reason,
                 provider: meta,
             } => {
-                stop_reason = reason;
-                provider = meta;
+                self.stop_reason = reason;
+                self.provider = meta;
             }
             AssistantStreamEvent::Error { message } => {
-                text.push_str(&message);
-                stop_reason = StopReason::Error;
+                self.text.push_str(&message);
+                self.stop_reason = StopReason::Error;
+                self.emit_update(message_id, event_sink).await?;
             }
             AssistantStreamEvent::Aborted => {
-                stop_reason = StopReason::Aborted;
+                self.stop_reason = StopReason::Aborted;
             }
         }
+        Ok(())
     }
-    finalize_partial_tool_calls(&mut content, &partial_order, &partial_tool_calls);
-    if !text.is_empty() {
-        content.insert(0, ContentBlock::Text { text });
+
+    async fn emit_update(
+        &self,
+        message_id: OinoId,
+        event_sink: &Arc<dyn EventSink>,
+    ) -> LoopResult<()> {
+        event_sink
+            .emit(AgentEvent::MessageUpdate {
+                message_id,
+                content: self.current_content(),
+            })
+            .await
     }
-    if !thinking.is_empty() {
-        content.insert(
-            0,
-            ContentBlock::Thinking {
-                text: thinking,
-                redacted: false,
-            },
+
+    fn current_content(&self) -> Vec<ContentBlock> {
+        let mut update = content_without_text(&self.content);
+        if !self.text.is_empty() {
+            update.insert(
+                0,
+                ContentBlock::Text {
+                    text: self.text.clone(),
+                },
+            );
+        }
+        if !self.thinking.is_empty() {
+            update.insert(
+                0,
+                ContentBlock::Thinking {
+                    text: self.thinking.clone(),
+                    redacted: false,
+                },
+            );
+        }
+        update
+    }
+
+    fn finish(&mut self, id: OinoId) -> Message {
+        finalize_partial_tool_calls(
+            &mut self.content,
+            &self.partial_order,
+            &self.partial_tool_calls,
         );
+        if !self.text.is_empty() {
+            self.content.insert(
+                0,
+                ContentBlock::Text {
+                    text: self.text.clone(),
+                },
+            );
+        }
+        if !self.thinking.is_empty() {
+            self.content.insert(
+                0,
+                ContentBlock::Thinking {
+                    text: self.thinking.clone(),
+                    redacted: false,
+                },
+            );
+        }
+        if self
+            .content
+            .iter()
+            .any(|block| matches!(block, ContentBlock::ToolCall { .. }))
+            && matches!(self.stop_reason, StopReason::Unknown | StopReason::EndTurn)
+        {
+            self.stop_reason = StopReason::ToolUse;
+        }
+        Message::Assistant {
+            id,
+            content: std::mem::take(&mut self.content),
+            stop_reason: Some(self.stop_reason.clone()),
+            usage: self.usage.take(),
+            provider: self.provider.take(),
+        }
     }
-    if content
-        .iter()
-        .any(|block| matches!(block, ContentBlock::ToolCall { .. }))
-        && matches!(stop_reason, StopReason::Unknown | StopReason::EndTurn)
-    {
-        stop_reason = StopReason::ToolUse;
-    }
-    let message = Message::Assistant {
-        id,
-        content,
-        stop_reason: Some(stop_reason),
-        usage,
-        provider,
-    };
-    config
-        .event_sink
-        .emit(AgentEvent::MessageEnd {
-            message: message.clone(),
-        })
-        .await?;
-    Ok(message)
 }
 
 fn content_without_text(content: &[ContentBlock]) -> Vec<ContentBlock> {
@@ -1035,6 +1159,46 @@ mod tests {
         assert!(events
             .iter()
             .any(|event| matches!(event, AgentEvent::AgentEnd { .. })));
+    }
+
+    #[tokio::test]
+    async fn thinking_deltas_stream_as_message_updates() {
+        let sink = VecEventSink::new();
+        let stream = Arc::new(FauxStream::once(vec![
+            AssistantStreamEvent::ThinkingDelta {
+                delta: "thinking".into(),
+            },
+            AssistantStreamEvent::TextDelta {
+                delta: "answer".into(),
+            },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            },
+        ]));
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.event_sink = Arc::new(sink.clone());
+        let output = match run_agent_loop(Message::user_text("hi"), config).await {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+        assert!(matches!(
+            output.messages.last(),
+            Some(Message::Assistant { content, .. })
+                if content.iter().any(|block| matches!(
+                    block,
+                    ContentBlock::Thinking { text, .. } if text == "thinking"
+                ))
+        ));
+        let events = sink.events().await;
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AgentEvent::MessageUpdate { content, .. }
+                if content.iter().any(|block| matches!(
+                    block,
+                    ContentBlock::Thinking { text, .. } if text == "thinking"
+                ))
+        )));
     }
 
     #[tokio::test]

@@ -8,7 +8,7 @@ has no session persistence, provider serialization, UI, or filesystem responsibi
 
 use futures::future::join_all;
 use oino_agent_loop::{
-    run_agent_loop, run_agent_loop_continue, AbortSignal, AgentEvent, AgentLoopConfig,
+    run_agent_loop_continue, run_agent_loop_with_context, AbortSignal, AgentEvent, AgentLoopConfig,
     AgentLoopOutput, BoxFuture, EventSink, LoopError, LoopResult, ToolDefinition,
 };
 use oino_types::{Message, Model, ThinkingLevel};
@@ -214,10 +214,10 @@ impl Agent {
             subscribers: Arc::clone(&self.subscribers),
         });
 
+        let messages = self.state.lock().await.messages.clone();
         let result = if let Some(message) = prompt {
-            run_agent_loop(message, config).await
+            run_agent_loop_with_context(messages, message, config).await
         } else {
-            let messages = self.state.lock().await.messages.clone();
             run_agent_loop_continue(messages, config).await
         };
 
@@ -302,6 +302,36 @@ mod tests {
         let output = agent.prompt(Message::user_text("hi")).await;
         assert!(output.is_ok());
         assert!(!agent.messages().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn prompt_preserves_existing_transcript() {
+        let stream = Arc::new(FauxStream::turns(vec![
+            vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }],
+            vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }],
+        ])) as Arc<dyn StreamProvider>;
+        let agent = Agent::new(AgentLoopConfig::new(Model::new("test", "faux"), stream));
+        let first = match agent.prompt(Message::user_text("one")).await {
+            Ok(output) => output,
+            Err(err) => panic!("first prompt failed: {err}"),
+        };
+        assert_eq!(first.messages.len(), 2);
+        let second = match agent.prompt(Message::user_text("two")).await {
+            Ok(output) => output,
+            Err(err) => panic!("second prompt failed: {err}"),
+        };
+        assert_eq!(second.messages.len(), 4);
+        assert!(matches!(
+            second.messages.first(),
+            Some(Message::User { .. })
+        ));
+        assert!(matches!(second.messages.get(2), Some(Message::User { .. })));
     }
 
     #[tokio::test]

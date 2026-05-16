@@ -27,6 +27,19 @@ Oino's `AgentEvent` covers Pi lifecycle events:
 
 Event dispatch is deterministic and sequential per registered sink/hook order. Notification hooks observe state; mutation occurs only through explicit typed return values.
 
+## Default built-in tools
+
+Pi's default model-visible tools are `read`, `bash`, `edit`, and `write`. Oino now wires the same initial set through `oino-tools`:
+
+| Pi default tool | Oino implementation |
+| --- | --- |
+| `read` | `ReadTool` with `path`, `offset`, and `limit`; text output truncates with continuation hints |
+| `bash` | `BashTool` with `command` and optional timeout seconds; stdout/stderr truncate from the tail |
+| `edit` | `EditTool` with exact unique `edits[].oldText` replacements |
+| `write` | `WriteTool` that creates parents and overwrites content |
+
+`write` and `edit` request sequential execution to avoid concurrent file mutations. Image reads currently return a text note instead of a model-visible image block because the first OpenRouter adapter still serializes only text content.
+
 ## Tool semantics
 
 Tools implement `Tool` and expose:
@@ -106,4 +119,4 @@ Pi's local/remote operation boundary maps to `oino_env::ExecutionEnv`, with `Loc
 
 ## Deferred layers
 
-The following remain intentionally out of scope for this core pass: Ratatui UI, real providers, subagents, memory database, dynamic plugin ABI, permissions UI, MCP, workflow packages, and file mutation queues.
+The following remain intentionally out of scope for this core pass: subagents, memory database, dynamic plugin ABI, permissions UI, MCP, workflow packages, image tool-result serialization, and per-file mutation queues.
