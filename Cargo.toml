@@ -6,6 +6,10 @@ members = [
   "crates/oino-session",
   "crates/oino-harness",
   "crates/oino-env",
+  "crates/oino-auth",
+  "crates/oino-provider-openrouter",
+  "crates/oino-tui",
+  "crates/oino-app",
 ]
 resolver = "2"
 
@@ -17,6 +21,11 @@ repository = "https://example.invalid/oino"
 [workspace.dependencies]
 async-trait = "0.1"
 futures = "0.3"
+bytes = "1"
+crossterm = "0.28"
+dirs = "5"
+ratatui = "0.29"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 schemars = { version = "0.8", features = ["uuid1"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

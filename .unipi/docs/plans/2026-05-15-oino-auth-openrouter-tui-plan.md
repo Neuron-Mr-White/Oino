@@ -27,7 +27,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
 
 ## Tasks
 
-- unstarted: Task 1 — Add workspace crates and dependency baseline
+- completed: Task 1 — Add workspace crates and dependency baseline
   - Description: Create the auth, OpenRouter provider, TUI, and app crates with the right workspace membership, dependencies, lint inheritance, and minimal compileable public APIs.
   - Dependencies: None.
   - Acceptance Criteria:
