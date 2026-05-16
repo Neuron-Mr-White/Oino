@@ -1,10 +1,16 @@
 # Oino
 
-Oino is a Rust-native agent runtime inspired by Pi's architecture. The workspace now has a headless core plus the first interactive shell: API-key auth, an OpenRouter provider adapter, and a minimal Ratatui UI with a message list and input box.
+Oino is a Rust-native agent runtime inspired by Pi's architecture. The workspace now has a headless core plus the first rebuilt interactive shell: API-key auth, an OpenRouter provider adapter, Pi-like built-in coding tools, and a modular Ratatui chat interface with a transcript and composer.
 
 ## Quickstart: OpenRouter TUI
 
 Set an OpenRouter API key and run the binary:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... mise run dev
+```
+
+Equivalent Cargo command:
 
 ```bash
 OPENROUTER_API_KEY=sk-or-... cargo run -p oino-app --bin oino
@@ -17,12 +23,14 @@ OINO_MODEL=openai/gpt-4o-mini \
 OINO_OPENROUTER_REFERER=https://example.invalid \
 OINO_OPENROUTER_TITLE=Oino \
 OPENROUTER_API_KEY=sk-or-... \
-cargo run -p oino-app --bin oino
+mise run dev
 ```
 
 Default model: `openai/gpt-4o-mini`.
 
-The TUI opens a message panel and a bottom input box. Type a prompt, press Enter, wait for the assistant response, and exit with Esc or Ctrl-C.
+The TUI opens a bubble-style transcript and bottom composer. Type a prompt, press Enter to submit, use Ctrl-J, Alt-Enter, or Shift-Enter for a newline, use Up/Down to move through multi-line input, watch the assistant response stream into the transcript, and exit with Esc or Ctrl-C. The app starts with Pi-like default coding tools: `read`, `bash`, `edit`, and `write`. Type `/` at the start of the composer to open command suggestions; arrows choose, Tab completes, Enter runs the highlighted command, and Esc dismisses suggestions before quitting. Type `/settings` or the `Ctrl-O s` chord to open the reusable settings overlay: the first page is a settings menu with arrow-marked choices, Enter opens dedicated child pages such as Model Selection, Thinking Level, or Collapse Mode, and `/` inside Model Selection opens an inline model search box that Esc clears back to the normal list UX. Collapse Mode cycles thinking and tool display through Full, Truncate, and Collapse. The composer expands as drafts grow, input pauses while a prompt is running, and tiny terminals get a safe fallback message.
+
+OpenRouter model names are cached at `~/.oino/openrouter-models.json`. The app loads that cache immediately, refreshes the full model list in the background on an interval, and uses each model's supported parameters to limit available thinking levels. User-selected settings persist at `~/.oino/settings.json`; `OINO_MODEL` remains an environment override for the startup model.
 
 ## Auth file
 
@@ -48,12 +56,13 @@ The auth crate writes the file with user-only permissions on Unix where feasible
 - `oino-agent-loop`: pure async loop, stream consumption, event sink, tool protocol, and faux test utilities. Provider serialization stays outside this crate.
 - `oino-agent`: stateful wrapper around the loop with queues, subscribers, cancellation, and idle settlement.
 - `oino-session`: append-only session trees plus JSONL persistence. It reconstructs model context without owning providers/tools.
-- `oino-env`: execution-environment abstraction and local filesystem/process adapter for future tools.
+- `oino-env`: execution-environment abstraction and local filesystem/process adapter for tools.
+- `oino-tools`: built-in Pi-like local coding tools (`read`, `bash`, `edit`, `write`) implemented on `ExecutionEnv`.
 - `oino-harness`: high-level binding of agent, sessions, env, providers, resources, and typed hooks.
 - `oino-auth`: generic credential storage/resolution. It knows provider ids/env-var mappings, not HTTP protocols.
-- `oino-provider-openrouter`: OpenRouter request serialization, HTTP streaming, SSE parsing, and conversion into `AssistantStreamEvent`.
-- `oino-tui`: Ratatui state/rendering for messages and one-line input. No provider/auth logic.
-- `oino-app`: binary/runtime wiring for auth + provider + harness + session + TUI.
+- `oino-provider-openrouter`: OpenRouter model listing, request serialization, HTTP streaming, SSE parsing, and conversion into `AssistantStreamEvent`.
+- `oino-tui`: modular Ratatui state, slash-command suggestions, reusable overlay/settings state, composer input handling, theming, and chat transcript rendering. No provider/auth logic.
+- `oino-app`: binary/runtime wiring for auth + provider + harness + session + TUI, including non-blocking model-cache refresh.
 
 Provider code is intentionally separate from auth: auth answers “what credential should provider `openrouter` use?”, while the provider knows OpenRouter's base URL, endpoint, headers, request JSON, SSE chunks, finish reasons, and tool-call shape. Neither concern leaks into `oino-agent-loop`.
 
@@ -67,4 +76,4 @@ Provider code is intentionally separate from auth: auth answers “what credenti
 
 ## Current limitations
 
-The first shell renders final responses after the provider call completes. It does not yet include token-by-token TUI streaming, `/login`, model picker, persisted session browser, markdown rendering, MCP, plugins, memory DB, or permissions UI.
+The first shell supports token-by-token transcript updates for provider text/thinking deltas, local coding tool calls, and a `/settings` model/thinking overlay. It does not yet include `/login`, persisted session browser, markdown rendering, MCP, plugins, memory DB, or permissions UI.
