@@ -1,0 +1,23 @@
+[package]
+name = "oino-tools"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+oino-agent-loop = { path = "../oino-agent-loop" }
+oino-env = { path = "../oino-env" }
+oino-types = { path = "../oino-types" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

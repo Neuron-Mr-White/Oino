@@ -6,6 +6,7 @@ members = [
   "crates/oino-session",
   "crates/oino-harness",
   "crates/oino-env",
+  "crates/oino-tools",
   "crates/oino-auth",
   "crates/oino-provider-openrouter",
   "crates/oino-tui",
@@ -33,6 +34,8 @@ thiserror = "1"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 tempfile = "3"
+unicode-segmentation = "1"
+unicode-width = "0.2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

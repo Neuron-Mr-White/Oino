@@ -804,14 +804,18 @@ name = "oino-app"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "dirs",
  "oino-agent-loop",
  "oino-auth",
  "oino-harness",
  "oino-provider-openrouter",
  "oino-session",
+ "oino-tools",
  "oino-tui",
  "oino-types",
  "ratatui",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
 ]
@@ -887,12 +891,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "oino-tools"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "oino-agent-loop",
+ "oino-env",
+ "oino-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "oino-tui"
 version = "0.1.0"
 dependencies = [
  "crossterm",
  "oino-types",
  "ratatui",
+ "serde",
+ "unicode-segmentation",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
