@@ -57,7 +57,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     4. Implement typed errors via `thiserror` without including secret values.
     5. Add temp-dir based tests.
 
-- unstarted: Task 3 — Implement `oino-auth` resolution order and harness adapter
+- in-progress: Task 3 — Implement `oino-auth` resolution order and harness adapter
   - Description: Resolve credentials in the chosen order and expose a small adapter usable by the existing `oino-harness::AuthResolver` boundary.
   - Dependencies: Task 2.
   - Acceptance Criteria:
@@ -73,7 +73,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     4. Add optional adapter function in app or provider layer for harness compatibility.
     5. Test precedence with temp files and scoped environment variable setup.
 
-- unstarted: Task 4 — Implement OpenRouter request DTOs and serialization tests
+- completed: Task 4 — Implement OpenRouter request DTOs and serialization tests
   - Description: Convert Oino stream requests into OpenRouter/OpenAI-compatible chat-completions JSON without making network calls.
   - Dependencies: Task 1.
   - Acceptance Criteria:
@@ -89,7 +89,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     4. Return typed errors for image/thinking/custom shapes not supported in first milestone.
     5. Add JSON snapshot-style assertions using `serde_json::json!`.
 
-- unstarted: Task 5 — Implement OpenRouter SSE parsing and event normalization
+- completed: Task 5 — Implement OpenRouter SSE parsing and event normalization
   - Description: Parse OpenRouter streaming SSE chunks into Oino `AssistantStreamEvent`s without live API calls.
   - Dependencies: Task 4.
   - Acceptance Criteria:
@@ -106,7 +106,7 @@ Work will happen directly on `main` per user choice. The low-level `oino-agent-l
     4. Add stop-reason mapping helper and tests.
     5. Add malformed chunk/error payload tests.
 
-- unstarted: Task 6 — Implement `OpenRouterProvider` HTTP `StreamProvider`
+- completed: Task 6 — Implement `OpenRouterProvider` HTTP `StreamProvider`
   - Description: Use auth, request serialization, reqwest streaming, SSE parsing, abort signal checks, and typed error mapping to implement real OpenRouter model calls.
   - Dependencies: Tasks 3, 4, and 5.
   - Acceptance Criteria:
