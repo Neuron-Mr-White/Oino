@@ -44,7 +44,7 @@ OpenRouter finish reasons are normalized to Oino stop reasons:
 
 Automated tests use serialization and SSE fixtures only; they do not call OpenRouter.
 
-Provider text/thinking deltas are forwarded as they arrive, so the TUI can update the current assistant chat bubble before the full provider call completes. Tool calls are executed by the harness and rendered back into the transcript as tool result bubbles. The provider also exposes OpenRouter model listing and serializes non-off Oino thinking levels as OpenRouter reasoning effort.
+Provider text/thinking deltas are forwarded as they arrive, so the TUI can update the current assistant chat bubble before the full provider call completes. Tool calls are executed by the harness and rendered back into the transcript as tool result bubbles. The provider also exposes OpenRouter model listing and serializes Oino thinking levels as OpenRouter reasoning effort. `Off` is sent explicitly as `reasoning: { effort: "none", exclude: true }` instead of omitting reasoning, because OpenRouter may otherwise include reasoning tokens by default when a model decides to emit them.
 
 ## Built-in tools
 

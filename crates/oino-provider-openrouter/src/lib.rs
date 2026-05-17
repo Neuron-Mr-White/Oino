@@ -272,7 +272,10 @@ pub async fn list_models(
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct OpenRouterReasoning {
-    pub effort: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -360,16 +363,17 @@ pub fn build_chat_request(
 }
 
 fn openrouter_reasoning(level: ThinkingLevel) -> Option<OpenRouterReasoning> {
-    let effort = match level {
-        ThinkingLevel::Off => return None,
-        ThinkingLevel::Minimal => "minimal",
-        ThinkingLevel::Low => "low",
-        ThinkingLevel::Medium => "medium",
-        ThinkingLevel::High => "high",
-        ThinkingLevel::XHigh => "xhigh",
+    let (effort, exclude) = match level {
+        ThinkingLevel::Off => ("none", Some(true)),
+        ThinkingLevel::Minimal => ("minimal", None),
+        ThinkingLevel::Low => ("low", None),
+        ThinkingLevel::Medium => ("medium", None),
+        ThinkingLevel::High => ("high", None),
+        ThinkingLevel::XHigh => ("xhigh", None),
     };
     Some(OpenRouterReasoning {
-        effort: effort.into(),
+        effort: Some(effort.into()),
+        exclude,
     })
 }
 
@@ -776,9 +780,24 @@ mod tests {
                     {"role": "system", "content": "be kind"},
                     {"role": "user", "content": "hello"}
                 ],
+                "reasoning": {"effort": "none", "exclude": true},
                 "stream": true
             })
         );
+    }
+
+    #[test]
+    fn serializes_reasoning_none_when_off() {
+        let built = match build_chat_request(&request(vec![Message::user_text("hello")])) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        let json = match serde_json::to_value(built) {
+            Ok(value) => value,
+            Err(err) => panic!("serialize failed: {err}"),
+        };
+        assert_eq!(json["reasoning"]["effort"], "none");
+        assert_eq!(json["reasoning"]["exclude"], true);
     }
 
     #[test]
@@ -822,6 +841,7 @@ mod tests {
             Err(err) => panic!("serialize failed: {err}"),
         };
         assert_eq!(json["reasoning"]["effort"], "high");
+        assert!(json["reasoning"].get("exclude").is_none());
     }
 
     #[test]
