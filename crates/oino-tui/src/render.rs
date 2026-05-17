@@ -13,10 +13,10 @@ use crate::{
     transcript::transcript_lines,
 };
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
     Frame,
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -101,33 +101,23 @@ pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> us
 }
 
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
-    let inner_width = area.width.saturating_sub(2) as usize;
     let inner_height = area.height.saturating_sub(2) as usize;
-    let mut lines = transcript_lines(
-        &state.messages,
-        state.error.as_deref(),
-        inner_width,
-        state.settings.thinking_collapse_mode,
-        state.settings.tool_collapse_mode,
-        state.settings.chat_style,
-        theme,
-    );
-
-    if lines.is_empty() {
-        lines.push(Line::from(vec![Span::styled(
-            "No messages yet. Send a task to start.",
-            Style::default().fg(theme.muted),
-        )]));
+    let full_inner_width = area.width.saturating_sub(2) as usize;
+    let mut lines = transcript_lines_for_width(state, full_inner_width, theme);
+    let mut has_scrollbar = lines.len() > inner_height && area.width > 4 && inner_height > 1;
+    if has_scrollbar {
+        lines = transcript_lines_for_width(state, full_inner_width.saturating_sub(1).max(1), theme);
+        has_scrollbar = lines.len() > inner_height;
     }
 
     let total_lines = lines.len();
+    let start = state
+        .transcript_scroll
+        .visible_start(total_lines, inner_height);
     let scrolled_offset = state
         .transcript_scroll
         .resolved_offset_from_bottom(total_lines, inner_height);
     if total_lines > inner_height {
-        let start = state
-            .transcript_scroll
-            .visible_start(total_lines, inner_height);
         lines = lines.into_iter().skip(start).take(inner_height).collect();
     }
 
@@ -146,6 +136,67 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
         .borders(Borders::ALL)
         .border_style(border_style);
     frame.render_widget(Paragraph::new(lines).block(block), area);
+
+    if has_scrollbar {
+        render_transcript_scrollbar(frame, area, start, inner_height, total_lines, theme);
+    }
+}
+
+fn transcript_lines_for_width(state: &TuiState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    let mut lines = transcript_lines(
+        &state.messages,
+        state.error.as_deref(),
+        width,
+        state.settings.thinking_collapse_mode,
+        state.settings.tool_collapse_mode,
+        state.settings.chat_style,
+        theme,
+    );
+
+    if lines.is_empty() {
+        lines.push(Line::from(vec![Span::styled(
+            "No messages yet. Send a task to start.",
+            Style::default().fg(theme.muted),
+        )]));
+    }
+
+    lines
+}
+
+fn render_transcript_scrollbar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    start: usize,
+    visible_lines: usize,
+    total_lines: usize,
+    theme: &Theme,
+) {
+    let viewport = area.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    if viewport.width == 0 || viewport.height == 0 || total_lines <= visible_lines {
+        return;
+    }
+    let scrollable_range = total_lines.saturating_sub(visible_lines);
+    let mut scrollbar_state = ScrollbarState::new(scrollable_range)
+        .position(start.min(scrollable_range))
+        .viewport_content_length(visible_lines);
+    frame.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some("│"))
+            .track_style(Style::default().fg(theme.panel_border))
+            .thumb_symbol("┃")
+            .thumb_style(
+                Style::default()
+                    .fg(theme.focused_border)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        viewport,
+        &mut scrollbar_state,
+    );
 }
 
 fn render_composer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -908,6 +959,10 @@ mod tests {
             .collect::<String>();
         assert!(tail.contains("message 19"));
         assert!(!tail.contains("message 00"));
+        assert!(
+            tail.contains("┃"),
+            "long transcript should show scrollbar thumb"
+        );
 
         state.scroll_transcript_to_top();
         let top = draw_state(80, 18, &state)
@@ -918,6 +973,10 @@ mod tests {
         assert!(top.contains("message 00"));
         assert!(!top.contains("message 19"));
         assert!(top.contains("Oino ↑"));
+        assert!(
+            top.contains("┃"),
+            "scrolled transcript should keep scrollbar visible"
+        );
     }
 
     #[test]
