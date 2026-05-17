@@ -5,8 +5,8 @@ mod user_settings;
 
 use crossterm::{
     event::{
-        self, Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-        PushKeyboardEnhancementFlags,
+        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind,
+        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -382,13 +382,17 @@ async fn run_tui(
         if !event::poll(Duration::from_millis(50))? {
             continue;
         }
-        let Event::Key(key) = event::read()? else {
-            continue;
+        let action = match event::read()? {
+            Event::Key(key) => {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                state.handle_key(key)
+            }
+            Event::Paste(text) => state.handle_paste(&text),
+            _ => continue,
         };
-        if key.kind != KeyEventKind::Press {
-            continue;
-        }
-        match state.handle_key(key) {
+        match action {
             TuiAction::None => {}
             TuiAction::Quit => break,
             TuiAction::SetModel(model) => {
@@ -425,7 +429,7 @@ async fn run_tui(
             TuiAction::SubmitPrompt(prompt) => {
                 if prompt_in_flight {
                     state.set_error("A prompt is already running.");
-                    state.status = "Working…".into();
+                    state.status = "● Generating… input paused".into();
                     continue;
                 }
                 if let Err(message) = preflight_openrouter_credentials(&auth).await {
@@ -764,6 +768,7 @@ impl TerminalGuard {
         execute!(
             stdout,
             EnterAlternateScreen,
+            EnableBracketedPaste,
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
         )?;
         let backend = CrosstermBackend::new(stdout);
@@ -786,6 +791,7 @@ impl Drop for TerminalGuard {
         let _ = disable_raw_mode();
         let _ = execute!(
             self.terminal.backend_mut(),
+            DisableBracketedPaste,
             PopKeyboardEnhancementFlags,
             LeaveAlternateScreen
         );

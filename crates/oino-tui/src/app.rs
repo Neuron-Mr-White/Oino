@@ -279,7 +279,7 @@ impl TuiState {
         self.working = working;
         self.composer.set_enabled(!working);
         self.status = if working {
-            "Working… input paused".into()
+            "● Generating… input paused".into()
         } else {
             HELP_STATUS.into()
         };
@@ -301,6 +301,18 @@ impl TuiState {
 
     pub fn clear_error(&mut self) {
         self.error = None;
+    }
+
+    pub fn handle_paste(&mut self, text: &str) -> TuiAction {
+        if self.overlay.is_some() || self.chord != ChordState::None || !self.composer.is_enabled() {
+            return TuiAction::None;
+        }
+        self.focus = TuiFocus::Composer;
+        let before = self.composer.text().to_string();
+        if self.composer.insert_text(text) {
+            self.after_composer_edit(&before);
+        }
+        TuiAction::None
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -723,6 +735,20 @@ mod tests {
         assert_eq!(state.handle_key(key(KeyCode::Char('x'))), TuiAction::None);
         assert_eq!(state.input(), "");
         assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.handle_paste("pasted"), TuiAction::None);
+        assert_eq!(state.input(), "");
+        assert!(state.status.contains("Generating"));
+    }
+
+    #[test]
+    fn pasted_newlines_insert_without_submitting() {
+        let mut state = TuiState::new();
+        assert_eq!(state.handle_paste("first\nsecond"), TuiAction::None);
+        assert_eq!(state.input(), "first\nsecond");
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SubmitPrompt("first\nsecond".into())
+        );
     }
 
     #[test]

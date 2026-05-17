@@ -61,6 +61,21 @@ impl ComposerState {
         self.cursor = char_count(&self.text);
     }
 
+    pub fn insert_text(&mut self, text: &str) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        if text.is_empty() {
+            return true;
+        }
+        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        let cursor = self.cursor.min(char_count(&self.text));
+        let byte_index = byte_index_at_char(&self.text, cursor);
+        self.text.insert_str(byte_index, &normalized);
+        self.cursor = cursor + char_count(&normalized);
+        true
+    }
+
     pub fn replace_char_range(&mut self, start: usize, end: usize, replacement: &str) {
         let len = char_count(&self.text);
         let start = start.min(len);
@@ -388,6 +403,15 @@ mod tests {
         composer.replace_char_range(10, 12, "model ");
         assert_eq!(composer.text(), "/settings model ");
         assert_eq!(composer.cursor(), 16);
+    }
+
+    #[test]
+    fn insert_text_preserves_pasted_newlines_without_submitting() {
+        let mut composer = ComposerState::new();
+        assert!(composer.handle_edit_key(key(KeyCode::Char('a'))));
+        assert!(composer.insert_text("b\r\nc\rd"));
+        assert_eq!(composer.text(), "ab\nc\nd");
+        assert_eq!(composer.cursor(), 6);
     }
 
     #[test]

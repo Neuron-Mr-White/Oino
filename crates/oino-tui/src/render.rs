@@ -121,18 +121,24 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
         lines = lines.into_iter().skip(start).take(inner_height).collect();
     }
 
-    let title = if scrolled_offset == 0 {
-        " Oino ".to_string()
-    } else {
-        format!(" Oino ↑{scrolled_offset} ")
+    let title = match (state.working, scrolled_offset) {
+        (true, 0) => " Oino • Generating… ".to_string(),
+        (true, offset) => format!(" Oino • Generating… ↑{offset} "),
+        (false, 0) => " Oino ".to_string(),
+        (false, offset) => format!(" Oino ↑{offset} "),
     };
     let border_style = if state.focus == TuiFocus::Transcript {
         Style::default().fg(theme.focused_border)
     } else {
         Style::default().fg(theme.panel_border)
     };
+    let title_style = if state.working {
+        theme.working.add_modifier(Modifier::BOLD)
+    } else {
+        theme.title
+    };
     let block = Block::default()
-        .title(Span::styled(title, theme.title))
+        .title(Span::styled(title, title_style))
         .borders(Borders::ALL)
         .border_style(border_style);
     frame.render_widget(Paragraph::new(lines).block(block), area);
@@ -201,7 +207,7 @@ fn render_transcript_scrollbar(
 
 fn render_composer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
     let title = if state.working {
-        " Task (working) "
+        " Task • Generating… "
     } else {
         " Task "
     };
@@ -932,6 +938,20 @@ mod tests {
         assert!(text.contains("test/model"));
         assert!(text.contains("hello"));
         assert!(text.contains(INPUT_PLACEHOLDER));
+    }
+
+    #[test]
+    fn render_working_state_shows_generating_indicator() {
+        let mut state = TuiState::new();
+        state.set_working(true);
+        let buffer = draw_state(80, 20, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Generating"));
+        assert!(text.contains("input paused"));
     }
 
     #[test]
