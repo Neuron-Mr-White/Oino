@@ -38,6 +38,10 @@ The TUI opens a configurable transcript and bottom composer. Type `/help` for a 
 
 OpenRouter model names are cached at `~/.oino/openrouter-models.json`. The app loads that cache immediately, refreshes the full model list in the background on an interval, and uses each model's supported parameters to limit available thinking levels. Model identifiers use the single `provider:model-id` format, for example `openrouter:xai/glm-5.1`. Thinking `Off` is sent to OpenRouter explicitly as reasoning `none` with reasoning excluded, rather than relying on provider defaults. User-selected settings persist at `~/.oino/settings.json`; `OINO_MODEL` remains an environment override for the startup model. Sessions persist as one JSONL file per session under `~/.oino/sessions/<uuid>.jsonl`; the first line is the session header, later lines are append-only entries, and non-interactive continuation uses `oino --session <uuid> <message-or-command>`. A blank startup session is kept in memory and is not written to disk just because you open `/sessions`.
 
+Oino now owns an explicit resource convention instead of silently reading Pi, Claude, or generic agent paths. On launch it creates visible defaults without overwriting user edits: `~/.oino/SYSTEM.md`, `~/.oino/settings.json`, `~/.oino/skills/`, `<project>/.oino/AGENT.md`, `<project>/.oino/prompts/`, and `<project>/.oino/skills/`. The global `SYSTEM.md` is loaded first, project `AGENT.md` is loaded after it, and available skills are advertised by name/description so the agent can load full `SKILL.md` files on demand. Prompt templates are single Markdown files under `<project>/.oino/prompts/` and expand as slash commands such as `/review`; skills use `skills/<name>/SKILL.md` and can be invoked as `/skill:<name> [args]`.
+
+The command palette labels resource types explicitly: `[SYS]` for built-in commands, `[PROMPT]` for prompt templates, and `[SKILL]` for skills. Use `/prompts` and `/skills` to browse resources with fuzzy search, `/reload` to rescan `SYSTEM.md`, `AGENT.md`, prompts, and skills, `/P:<query>` to search only prompt commands, and `/S:<query>` to search only skill commands.
+
 ## Auth file
 
 Oino can also read an API key from `~/.oino/auth.json`:
@@ -82,4 +86,4 @@ Provider code is intentionally separate from auth: auth answers “what credenti
 
 ## Current limitations
 
-The first shell supports token-by-token transcript updates for provider text/thinking deltas, Markdown-rendered assistant output, local coding tool calls, persisted JSONL sessions, non-interactive `--session <uuid>` continuation, and `/new`/`/sessions`/`/settings`/`/model`/`/thinking` commands. It does not yet include `/login`, MCP, plugins, memory DB, or permissions UI.
+The first shell supports token-by-token transcript updates for provider text/thinking deltas, Markdown-rendered assistant output, local coding tool calls, persisted JSONL sessions, non-interactive `--session <uuid>` continuation, Oino-owned resource files, prompt templates, skills, and `/new`/`/sessions`/`/settings`/`/prompts`/`/skills`/`/reload`/`/model`/`/thinking` commands. It does not yet include `/login`, MCP, dynamic plugins/packages, memory DB, migration/import commands, or permissions UI.

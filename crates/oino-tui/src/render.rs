@@ -1320,10 +1320,12 @@ fn prompts_lines(
                 let active = *item_index == state.prompts.cursor;
                 Some(resource_item_line(
                     display_index,
-                    &item.display_name(),
-                    &item.description,
-                    &item.scope,
-                    &item.source,
+                    ResourceLineItem {
+                        command: item.display_name(),
+                        description: &item.description,
+                        scope: &item.scope,
+                        source: &item.source,
+                    },
                     active,
                     content_width,
                     theme,
@@ -1393,10 +1395,12 @@ fn skills_lines(
                 let active = *item_index == state.skills.cursor;
                 Some(resource_item_line(
                     display_index,
-                    &item.command(),
-                    &item.description,
-                    &item.scope,
-                    &item.source,
+                    ResourceLineItem {
+                        command: item.command(),
+                        description: &item.description,
+                        scope: &item.scope,
+                        source: &item.source,
+                    },
                     active,
                     content_width,
                     theme,
@@ -1429,22 +1433,28 @@ fn resource_search_line(
     }
 }
 
+struct ResourceLineItem<'a> {
+    command: String,
+    description: &'a str,
+    scope: &'a str,
+    source: &'a str,
+}
+
 fn resource_item_line(
     index: usize,
-    command: &str,
-    description: &str,
-    scope: &str,
-    source: &str,
+    item: ResourceLineItem<'_>,
     active: bool,
     width: usize,
     theme: &Theme,
 ) -> Line<'static> {
     let marker = arrow_marker(active);
     let prefix = format!(
-        "{marker} {}. {command} [{scope}] — ",
-        index.saturating_add(1)
+        "{marker} {}. {} [{}] — ",
+        index.saturating_add(1),
+        item.command,
+        item.scope
     );
-    let detail = format!("{description} • {source}");
+    let detail = format!("{} • {}", item.description, item.source);
     let text = truncate_with_ellipsis(&format!("{prefix}{detail}"), width.max(1));
     Line::styled(text, item_style(active, false, theme))
 }

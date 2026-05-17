@@ -26,6 +26,10 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
         "fuzzy search project file paths; Tab inserts the highlighted path",
     ),
     HelpEntry::Item(
+        "/P:<query> / /S:<query>",
+        "scope slash suggestions to prompt templates or skills",
+    ),
+    HelpEntry::Item(
         "Paste",
         "large or multiline pastes collapse visually but still submit in full",
     ),
@@ -39,6 +43,16 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
         "browse saved sessions; press Enter to continue one",
     ),
     HelpEntry::Item("/settings", "open settings pages"),
+    HelpEntry::Item(
+        "/prompts",
+        "browse prompt templates from <project>/.oino/prompts/",
+    ),
+    HelpEntry::Item(
+        "/skills",
+        "browse skills from ~/.oino/skills/ and <project>/.oino/skills/",
+    ),
+    HelpEntry::Item("/reload", "reload SYSTEM.md, AGENT.md, prompts, and skills"),
+    HelpEntry::Item("/skill:<name>", "load and run a selected skill"),
     HelpEntry::Item(
         "/model <provider:model>",
         "change model directly, or /model to open model selection",
