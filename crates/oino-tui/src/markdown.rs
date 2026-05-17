@@ -1,11 +1,12 @@
 #![forbid(unsafe_code)]
 
-use crate::theme::Theme;
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use crate::{text::truncate_to_width, theme::Theme};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
 };
+use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -18,6 +19,7 @@ struct MarkdownStyles {
     strong: Style,
     strike: Style,
     code: Style,
+    code_border: Style,
     link: Style,
     muted: Style,
     quote: Style,
@@ -37,7 +39,10 @@ impl MarkdownStyles {
             emphasis: Style::default().add_modifier(Modifier::ITALIC),
             strong: Style::default().add_modifier(Modifier::BOLD),
             strike: Style::default().add_modifier(Modifier::CROSSED_OUT),
-            code: base.fg(theme.focused_border),
+            code: base.fg(theme.tool_border),
+            code_border: Style::default()
+                .fg(theme.panel_border)
+                .add_modifier(Modifier::BOLD),
             link: base
                 .fg(theme.focused_border)
                 .add_modifier(Modifier::UNDERLINED),
@@ -73,11 +78,23 @@ struct ItemContext {
     marker_pending: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct TableState {
+    alignments: Vec<Alignment>,
     rows: Vec<Vec<String>>,
     current_row: Vec<String>,
     current_cell: String,
+}
+
+impl TableState {
+    fn new(alignments: Vec<Alignment>) -> Self {
+        Self {
+            alignments,
+            rows: Vec::new(),
+            current_row: Vec::new(),
+            current_cell: String::new(),
+        }
+    }
 }
 
 struct MarkdownRenderer {
@@ -176,7 +193,8 @@ impl MarkdownRenderer {
         options.insert(Options::ENABLE_FOOTNOTES);
         options.insert(Options::ENABLE_SMART_PUNCTUATION);
 
-        for event in Parser::new_ext(markdown, options) {
+        let normalized = unwrap_markdown_table_fences(markdown);
+        for event in Parser::new_ext(normalized.as_ref(), options) {
             self.handle_event(event);
         }
     }
@@ -215,9 +233,9 @@ impl MarkdownRenderer {
             Event::SoftBreak | Event::HardBreak if self.in_code_block => {
                 self.code_block_content.push('\n');
             }
-            Event::Start(Tag::Table(_)) => {
+            Event::Start(Tag::Table(alignments)) => {
                 self.flush_current_line();
-                self.table = Some(TableState::default());
+                self.table = Some(TableState::new(alignments));
             }
             Event::End(TagEnd::Table) if self.table.is_some() => {
                 self.render_table();
@@ -497,28 +515,19 @@ impl MarkdownRenderer {
         if parts.is_empty() {
             parts.push("");
         }
+
         let mut consumed_block_prefix = false;
-        if let Some(lang) = self
+        let label = self
             .code_block_lang
-            .as_ref()
+            .as_deref()
             .filter(|lang| !lang.trim().is_empty())
-            .cloned()
-        {
-            let (mut initial, mut subsequent) = self.block_prefixes(&mut consumed_block_prefix);
-            initial.push_span(Span::styled(format!("{lang} "), self.styles.muted));
-            subsequent.push_span(Span::styled("  ", self.styles.muted));
-            push_wrapped_line(
-                &mut self.lines,
-                Line::styled("", self.styles.muted),
-                self.width,
-                initial,
-                subsequent,
-            );
-        }
+            .unwrap_or("code")
+            .to_string();
+        self.push_code_block_border(Some(&label), true, &mut consumed_block_prefix);
         for part in parts {
             let (mut initial, mut subsequent) = self.block_prefixes(&mut consumed_block_prefix);
-            initial.push_span(Span::styled("    ", self.styles.muted));
-            subsequent.push_span(Span::styled("    ", self.styles.muted));
+            initial.push_span(Span::styled("│ ", self.styles.code_border));
+            subsequent.push_span(Span::styled("│ ", self.styles.code_border));
             push_wrapped_line(
                 &mut self.lines,
                 Line::styled(part.to_string(), self.styles.code),
@@ -527,6 +536,25 @@ impl MarkdownRenderer {
                 subsequent,
             );
         }
+        self.push_code_block_border(None, false, &mut consumed_block_prefix);
+    }
+
+    fn push_code_block_border(
+        &mut self,
+        label: Option<&str>,
+        top: bool,
+        consumed_block_prefix: &mut bool,
+    ) {
+        let (initial, subsequent) = self.block_prefixes(consumed_block_prefix);
+        let available = self.width.saturating_sub(line_width(&initial)).max(1);
+        let border = code_block_border_text(label, top, available);
+        push_wrapped_line(
+            &mut self.lines,
+            Line::styled(border, self.styles.code_border),
+            self.width,
+            initial,
+            subsequent,
+        );
     }
 
     fn block_prefixes(
@@ -555,6 +583,7 @@ impl MarkdownRenderer {
         }
 
         let rows = normalize_table_rows(&rows, column_count);
+        let alignments = normalize_table_alignments(&table.alignments, column_count);
         let widths = table_column_widths(&rows, self.width);
         if widths.is_empty() {
             return;
@@ -563,7 +592,13 @@ impl MarkdownRenderer {
         let mut consumed_block_prefix = false;
         self.push_table_border(&widths, "┌", "┬", "┐", &mut consumed_block_prefix);
         for (row_index, row) in rows.iter().enumerate() {
-            self.push_table_row(row, &widths, row_index == 0, &mut consumed_block_prefix);
+            self.push_table_row(
+                row,
+                &widths,
+                &alignments,
+                row_index == 0,
+                &mut consumed_block_prefix,
+            );
             if row_index + 1 < rows.len() {
                 self.push_table_border(&widths, "├", "┼", "┤", &mut consumed_block_prefix);
             }
@@ -601,6 +636,7 @@ impl MarkdownRenderer {
         &mut self,
         row: &[String],
         widths: &[usize],
+        alignments: &[Alignment],
         is_header: bool,
         consumed_block_prefix: &mut bool,
     ) {
@@ -628,7 +664,11 @@ impl MarkdownRenderer {
                     .and_then(|segments| segments.get(visual_row))
                     .map(String::as_str)
                     .unwrap_or("");
-                line.push_span(Span::styled(pad_to_width(segment, *width), cell_style));
+                let alignment = alignments.get(index).copied().unwrap_or(Alignment::None);
+                line.push_span(Span::styled(
+                    align_to_width(segment, *width, alignment),
+                    cell_style,
+                ));
             }
             line.push_span(Span::styled(" │", self.styles.table_border));
             let (initial, subsequent) = self.block_prefixes(consumed_block_prefix);
@@ -646,12 +686,250 @@ impl MarkdownRenderer {
 fn code_block_language(kind: CodeBlockKind<'_>) -> Option<String> {
     match kind {
         CodeBlockKind::Fenced(info) => info
-            .split_whitespace()
+            .split([',', ' ', '\t'])
             .next()
             .filter(|lang| !lang.trim().is_empty())
             .map(ToString::to_string),
         CodeBlockKind::Indented => None,
     }
+}
+
+fn code_block_border_text(label: Option<&str>, top: bool, width: usize) -> String {
+    let width = width.max(1);
+    if !top {
+        return format!("╰{}", "─".repeat(width.saturating_sub(1)));
+    }
+
+    let mut border = String::from("╭");
+    if width == 1 {
+        return border;
+    }
+    border.push('─');
+
+    if let Some(label) = label.map(str::trim).filter(|label| !label.is_empty()) {
+        let max_label_width = width.saturating_sub(4);
+        if max_label_width > 0 {
+            let label = truncate_to_width(label, max_label_width);
+            border.push(' ');
+            border.push_str(&label);
+            border.push(' ');
+        }
+    }
+
+    let used = border.width();
+    if used < width {
+        border.push_str(&"─".repeat(width - used));
+        border
+    } else if used == width {
+        border
+    } else {
+        truncate_to_width(&border, width)
+    }
+}
+
+fn unwrap_markdown_table_fences(markdown: &str) -> Cow<'_, str> {
+    if !markdown.contains("```") && !markdown.contains("~~~") {
+        return Cow::Borrowed(markdown);
+    }
+
+    #[derive(Debug)]
+    enum ActiveFence {
+        Passthrough(FenceLine),
+        MarkdownCandidate {
+            fence: FenceLine,
+            opening: String,
+            body: String,
+        },
+    }
+
+    let mut out = String::with_capacity(markdown.len());
+    let mut active: Option<ActiveFence> = None;
+
+    for line in markdown.split_inclusive('\n') {
+        if let Some(current) = active.take() {
+            match current {
+                ActiveFence::Passthrough(fence) => {
+                    out.push_str(line);
+                    if !is_closing_fence_line(line, fence) {
+                        active = Some(ActiveFence::Passthrough(fence));
+                    }
+                }
+                ActiveFence::MarkdownCandidate {
+                    fence,
+                    opening,
+                    mut body,
+                } => {
+                    if is_closing_fence_line(line, fence) {
+                        if markdown_fence_body_contains_table(&body, fence.blockquoted) {
+                            out.push_str(&body);
+                        } else {
+                            out.push_str(&opening);
+                            out.push_str(&body);
+                            out.push_str(line);
+                        }
+                    } else {
+                        body.push_str(line);
+                        active = Some(ActiveFence::MarkdownCandidate {
+                            fence,
+                            opening,
+                            body,
+                        });
+                    }
+                }
+            }
+            continue;
+        }
+
+        if let Some((fence, is_markdown)) = opening_fence_line(line) {
+            if is_markdown {
+                active = Some(ActiveFence::MarkdownCandidate {
+                    fence,
+                    opening: line.to_string(),
+                    body: String::new(),
+                });
+            } else {
+                out.push_str(line);
+                active = Some(ActiveFence::Passthrough(fence));
+            }
+        } else {
+            out.push_str(line);
+        }
+    }
+
+    if let Some(current) = active {
+        match current {
+            ActiveFence::Passthrough(_) => {}
+            ActiveFence::MarkdownCandidate { opening, body, .. } => {
+                out.push_str(&opening);
+                out.push_str(&body);
+            }
+        }
+    }
+
+    Cow::Owned(out)
+}
+
+fn opening_fence_line(line: &str) -> Option<(FenceLine, bool)> {
+    let scanned = strip_fence_line_prefix(line)?;
+    let (marker, len) = parse_fence_marker(scanned)?;
+    let info = scanned[len..].trim();
+    let is_markdown = info
+        .split_whitespace()
+        .next()
+        .is_some_and(|token| matches!(token, "md" | "markdown"));
+    Some((
+        FenceLine {
+            marker,
+            len,
+            blockquoted: line_is_blockquoted_fence(line),
+        },
+        is_markdown,
+    ))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FenceLine {
+    marker: char,
+    len: usize,
+    blockquoted: bool,
+}
+
+fn is_closing_fence_line(line: &str, fence: FenceLine) -> bool {
+    let Some(scanned) = strip_fence_line_prefix(line) else {
+        return false;
+    };
+    if fence.blockquoted != line_is_blockquoted_fence(line) {
+        return false;
+    }
+    parse_fence_marker(scanned).is_some_and(|(marker, len)| {
+        marker == fence.marker && len >= fence.len && scanned[len..].trim().is_empty()
+    })
+}
+
+fn strip_fence_line_prefix(line: &str) -> Option<&str> {
+    let without_newline = line.strip_suffix('\n').unwrap_or(line);
+    let mut byte_index = 0usize;
+    let mut columns = 0usize;
+    for ch in without_newline.chars() {
+        match ch {
+            ' ' if columns < 4 => {
+                byte_index += ch.len_utf8();
+                columns += 1;
+            }
+            '\t' if columns < 4 => {
+                byte_index += ch.len_utf8();
+                columns += 4;
+            }
+            _ => break,
+        }
+        if columns >= 4 {
+            return None;
+        }
+    }
+
+    let trimmed = &without_newline[byte_index..];
+    Some(strip_blockquote_marker(trimmed))
+}
+
+fn strip_blockquote_marker(line: &str) -> &str {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix('>') else {
+        return line;
+    };
+    rest.strip_prefix(' ').unwrap_or(rest)
+}
+
+fn line_is_blockquoted_fence(line: &str) -> bool {
+    let without_newline = line.strip_suffix('\n').unwrap_or(line);
+    without_newline.trim_start().starts_with('>')
+}
+
+fn parse_fence_marker(line: &str) -> Option<(char, usize)> {
+    let marker = line.chars().next()?;
+    if !matches!(marker, '`' | '~') {
+        return None;
+    }
+    let len = line.chars().take_while(|ch| *ch == marker).count();
+    (len >= 3).then_some((marker, len))
+}
+
+fn markdown_fence_body_contains_table(body: &str, blockquoted: bool) -> bool {
+    let mut previous: Option<String> = None;
+    for line in body.lines() {
+        let text = if blockquoted {
+            strip_blockquote_marker(line)
+        } else {
+            line
+        };
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            previous = None;
+            continue;
+        }
+        if let Some(header) = previous.as_deref() {
+            if is_table_header_line(header) && is_table_delimiter_line(trimmed) {
+                return true;
+            }
+        }
+        previous = Some(trimmed.to_string());
+    }
+    false
+}
+
+fn is_table_header_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.contains('|') && !is_table_delimiter_line(trimmed)
+}
+
+fn is_table_delimiter_line(line: &str) -> bool {
+    let trimmed = line.trim().trim_matches('|').trim();
+    if trimmed.is_empty() || !trimmed.contains("---") {
+        return false;
+    }
+    trimmed
+        .split('|')
+        .map(str::trim)
+        .all(|cell| !cell.is_empty() && cell.chars().all(|ch| matches!(ch, '-' | ':' | ' ')))
 }
 
 fn normalize_table_rows(rows: &[Vec<String>], column_count: usize) -> Vec<Vec<String>> {
@@ -662,6 +940,16 @@ fn normalize_table_rows(rows: &[Vec<String>], column_count: usize) -> Vec<Vec<St
             normalized
         })
         .collect()
+}
+
+fn normalize_table_alignments(alignments: &[Alignment], column_count: usize) -> Vec<Alignment> {
+    let mut normalized = alignments
+        .iter()
+        .copied()
+        .take(column_count)
+        .collect::<Vec<_>>();
+    normalized.resize(column_count, Alignment::None);
+    normalized
 }
 
 fn table_column_widths(rows: &[Vec<String>], max_width: usize) -> Vec<usize> {
@@ -783,12 +1071,20 @@ fn push_wrapped_table_word(
     }
 }
 
-fn pad_to_width(text: &str, width: usize) -> String {
+fn align_to_width(text: &str, width: usize, alignment: Alignment) -> String {
     let used = text.width();
     if used >= width {
-        text.to_string()
-    } else {
-        format!("{text}{}", " ".repeat(width - used))
+        return text.to_string();
+    }
+    let padding = width - used;
+    match alignment {
+        Alignment::Right => format!("{}{text}", " ".repeat(padding)),
+        Alignment::Center => {
+            let left = padding / 2;
+            let right = padding - left;
+            format!("{}{text}{}", " ".repeat(left), " ".repeat(right))
+        }
+        Alignment::Left | Alignment::None => format!("{text}{}", " ".repeat(padding)),
     }
 }
 
@@ -932,6 +1228,81 @@ mod tests {
             .unwrap_or_else(|| panic!("missing table border span"));
         assert_eq!(border_span.style.fg, Some(Theme::default().focused_border));
         assert!(border_span.style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn renders_code_blocks_with_labelled_border() {
+        let lines = render_markdown_lines(
+            "```rust,no_run\nfn main() {}\n```",
+            32,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert!(plain_lines
+            .first()
+            .is_some_and(|line| line.starts_with("╭─ rust")));
+        assert!(plain_lines.iter().any(|line| line == "│ fn main() {}"));
+        assert!(plain_lines.iter().any(|line| line.starts_with('╰')));
+        assert!(plain_lines.iter().all(|line| line.width() <= 32));
+    }
+
+    #[test]
+    fn unwraps_markdown_fence_tables_before_rendering() {
+        let lines = render_markdown_lines(
+            "```markdown\n| A | B |\n|---|---|\n| 1 | 2 |\n```\n",
+            40,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+        let joined = plain_lines.join("\n");
+
+        assert!(plain_lines.iter().any(|line| line.starts_with('┌')));
+        assert!(joined.contains("│ 1"));
+        assert!(!joined.contains("```"));
+    }
+
+    #[test]
+    fn keeps_non_table_markdown_fences_as_code() {
+        let lines = render_markdown_lines(
+            "```markdown\n**bold**\n```\n",
+            40,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+        let joined = plain_lines.join("\n");
+
+        assert!(plain_lines
+            .first()
+            .is_some_and(|line| line.starts_with("╭─ markdown")));
+        assert!(joined.contains("│ **bold**"));
+        assert!(!plain_lines.iter().any(|line| line.starts_with('┌')));
+    }
+
+    #[test]
+    fn honors_markdown_table_alignment() {
+        assert_eq!(align_to_width("left", 6, Alignment::Left), "left  ");
+        assert_eq!(align_to_width("7", 4, Alignment::Right), "   7");
+        assert_eq!(align_to_width("ok", 4, Alignment::Center), " ok ");
+
+        let lines = render_markdown_lines(
+            "| Item | Qty | Note |\n| :--- | ---: | :---: |\n| A | 7 | ok |",
+            80,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+        let row = plain_lines
+            .iter()
+            .find(|line| line.contains('A') && line.contains('7') && line.contains("ok"))
+            .unwrap_or_else(|| panic!("missing aligned table row: {plain_lines:?}"));
+
+        assert!(row.contains("│ A"));
+        assert!(row.contains("│    7 │"));
+        assert!(row.contains("│  ok  │"));
     }
 
     #[test]
