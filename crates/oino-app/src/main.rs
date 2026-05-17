@@ -25,6 +25,7 @@ use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
+use oino_resource::{ResourceCatalog, ResourcePaths};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
@@ -130,6 +131,8 @@ enum AppError {
     Harness(#[from] HarnessError),
     #[error(transparent)]
     Session(#[from] oino_session::SessionError),
+    #[error(transparent)]
+    Resource(#[from] oino_resource::ResourceError),
     #[error("invalid arguments: {0}")]
     InvalidArguments(String),
     #[error("invalid model identifier `{0}`; expected provider:model-id")]
@@ -158,6 +161,8 @@ struct TuiLaunchConfig {
     initial_chat_style: oino_tui::ChatStyle,
     provider_config: OpenRouterConfig,
     session_path: PathBuf,
+    resource_paths: ResourcePaths,
+    resource_catalog: ResourceCatalog,
     open_settings: bool,
 }
 
@@ -248,6 +253,8 @@ async fn main() -> Result<(), AppError> {
 
     let auth = AuthStorage::default_file()?;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let resource_paths = ResourcePaths::for_cwd(&cwd)?;
+    let resource_catalog = load_resource_catalog(&resource_paths)?;
     let (session_path, session) = load_or_create_session(cli.session, cwd.clone()).await?;
     let session_context = session.build_session_context()?;
     if cli.model.is_none() {
@@ -274,10 +281,12 @@ async fn main() -> Result<(), AppError> {
         provider,
         auth.clone(),
         session,
+        &resource_catalog,
     )?;
 
     if cli.settings || cli.input.is_some() {
-        return run_non_interactive(cli, harness, auth, config, session_path).await;
+        return run_non_interactive(cli, harness, auth, config, session_path, resource_catalog)
+            .await;
     }
 
     run_tui(
@@ -291,6 +300,8 @@ async fn main() -> Result<(), AppError> {
             initial_chat_style: config.chat_style,
             provider_config,
             session_path,
+            resource_paths,
+            resource_catalog,
             open_settings: false,
         },
     )
@@ -327,23 +338,59 @@ fn build_harness(
     provider: Arc<dyn StreamProvider>,
     auth: AuthStorage,
     session: SessionManager,
+    resource_catalog: &ResourceCatalog,
 ) -> Result<Harness, AppError> {
     let cwd = session.header().cwd.clone();
     let model = Model::from_identifier(&model_identifier)
         .ok_or_else(|| AppError::InvalidModelIdentifier(model_identifier.clone()))?;
     let mut config = HarnessConfig::new(model, provider, session);
     config.tools = oino_tools::default_tools(Arc::clone(&config.env), cwd.clone());
-    config.system_prompt = Some(default_system_prompt(&cwd));
+    config.system_prompt = Some(default_system_prompt(&cwd, resource_catalog));
     config.thinking_level = thinking_level;
     config.auth_resolver = Some(build_auth_resolver(auth));
     Ok(Harness::new(config))
 }
 
-fn default_system_prompt(cwd: &std::path::Path) -> String {
-    format!(
-        "You are an expert coding assistant operating inside Oino, a terminal coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.\n\nAvailable tools:\n- read: Read file contents\n- bash: Execute bash commands (ls, rg, find, etc.)\n- edit: Make precise file edits with exact text replacement\n- write: Create or overwrite files\n\nGuidelines:\n- Use bash for file operations like ls, rg, find.\n- Use read to examine files instead of cat or sed.\n- Use edit for precise changes; oldText must match exactly and uniquely.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses.\n- Show file paths clearly when working with files.\n\nCurrent working directory: {}",
-        cwd.display()
-    )
+fn load_resource_catalog(paths: &ResourcePaths) -> Result<ResourceCatalog, AppError> {
+    paths.ensure_skeleton()?;
+    Ok(paths.load_catalog())
+}
+
+fn default_system_prompt(cwd: &std::path::Path, catalog: &ResourceCatalog) -> String {
+    let mut sections = Vec::new();
+    for section in catalog.system_prompt_sections() {
+        sections.push(format!(
+            "# {}\n\n<!-- {} -->\n{}",
+            section.title,
+            section.path.display(),
+            section.content
+        ));
+    }
+    let visible_skills = catalog
+        .skills
+        .iter()
+        .filter(|skill| !skill.disable_model_invocation)
+        .collect::<Vec<_>>();
+    if !visible_skills.is_empty() {
+        let mut skills = String::from("<available_skills>\n");
+        for skill in visible_skills {
+            skills.push_str("  <skill>\n");
+            skills.push_str(&format!("    <name>{}</name>\n", skill.name));
+            skills.push_str(&format!(
+                "    <description>{}</description>\n",
+                skill.description
+            ));
+            skills.push_str(&format!(
+                "    <location>{}</location>\n",
+                skill.path.display()
+            ));
+            skills.push_str("  </skill>\n");
+        }
+        skills.push_str("</available_skills>\n\nWhen a task matches a skill, read its SKILL.md from the listed location before using it.");
+        sections.push(skills);
+    }
+    sections.push(format!("Current working directory: {}", cwd.display()));
+    sections.join("\n\n---\n\n")
 }
 
 async fn run_tui(
@@ -359,6 +406,8 @@ async fn run_tui(
         initial_chat_style,
         provider_config,
         mut session_path,
+        resource_paths: _resource_paths,
+        resource_catalog: _resource_catalog,
         open_settings,
     } = launch;
     let mut terminal = TerminalGuard::enter()?;
@@ -860,6 +909,7 @@ async fn run_non_interactive(
     auth: AuthStorage,
     mut config: AppConfig,
     session_path: PathBuf,
+    resource_catalog: ResourceCatalog,
 ) -> Result<(), AppError> {
     if let Some(model) = cli.model.clone() {
         let command =
@@ -886,6 +936,8 @@ async fn run_non_interactive(
                     ..OpenRouterConfig::default()
                 },
                 session_path,
+                resource_paths: resource_catalog.paths.clone(),
+                resource_catalog,
                 open_settings: true,
             },
         )
@@ -1453,18 +1505,32 @@ mod tests {
             },
         ])) as Arc<dyn StreamProvider>;
         let session = SessionManager::new(SessionHeader::new("test", PathBuf::from("/tmp")));
+        let temp = match tempfile::tempdir() {
+            Ok(temp) => temp,
+            Err(err) => panic!("tempdir failed: {err}"),
+        };
+        let resource_paths =
+            match ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path()) {
+                Ok(paths) => paths,
+                Err(err) => panic!("resource paths failed: {err}"),
+            };
+        if let Err(err) = resource_paths.ensure_skeleton() {
+            panic!("resource skeleton failed: {err}");
+        }
+        let resource_catalog = resource_paths.load_catalog();
         let harness = match build_harness(
             "openrouter:test/model".into(),
             ThinkingLevel::Off,
             stream,
             auth,
             session,
+            &resource_catalog,
         ) {
             Ok(harness) => harness,
             Err(err) => panic!("harness build failed: {err}"),
         };
         let system_prompt = harness.get_system_prompt().await.unwrap_or_default();
-        assert!(system_prompt.contains("Available tools:"));
+        assert!(system_prompt.contains("## Available tools"));
         assert!(system_prompt.contains("read"));
         assert!(system_prompt.contains("bash"));
         assert!(system_prompt.contains("edit"));

@@ -5,6 +5,7 @@ members = [
   "crates/oino-agent",
   "crates/oino-session",
   "crates/oino-harness",
+  "crates/oino-resource",
   "crates/oino-env",
   "crates/oino-tools",
   "crates/oino-auth",

@@ -483,6 +483,10 @@ impl Harness {
         Ok(())
     }
 
+    pub async fn set_system_prompt(&self, system_prompt: Option<String>) {
+        self.agent.set_system_prompt(system_prompt).await;
+    }
+
     pub async fn set_tools(&self, tools: BTreeMap<String, Arc<dyn Tool>>) {
         self.agent.set_tools(tools.clone()).await;
         *self.tools.lock().await = tools;

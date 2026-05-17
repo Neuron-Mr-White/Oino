@@ -29,6 +29,23 @@ From today onwards, keep all conventions we know so far in this file so future a
 - Keep focus/mode explicit. Key hints should reflect the active focus/mode.
 - Render text width-aware and preserve tiny-terminal fallbacks.
 
+## Oino resource layer direction
+
+- Oino should load Oino-owned paths by default rather than silently coping with external conventions such as `~/.agents`, `.agents/`, `.pi/`, `AGENTS.md`, or `CLAUDE.md`.
+- Future migration/import commands can copy external conventions into Oino paths, but default loading should stay deterministic and explicit.
+- Global resources should live under `~/.oino/`:
+  - `SYSTEM.md` — global system prompt, created/populated on launch.
+  - `settings.json` — existing global user settings.
+  - `skills/<name>/SKILL.md` — global skills.
+- Project resources should live under `<project>/.oino/`:
+  - `AGENT.md` — project instructions, created/populated on launch.
+  - `prompts/*.md` — prompt templates.
+  - `skills/<name>/SKILL.md` — project skills.
+- Resource/config files and directories should be visible and populated even in blank/default state; do not add new hidden files or folders without documenting them first.
+- Prompt templates are one-shot reusable user prompts; skills are on-demand capability folders with `SKILL.md` plus optional scripts/references/assets.
+- Resource command UI should label categories explicitly: `[SYS]` for system commands, `[PROMPT]` for prompt templates, and `[SKILL]` for skills.
+- `/prompts` and `/skills` should open searchable browsers; `/P:<query>` and `/S:<query>` should scope slash suggestions to prompts or skills and support Tab completion.
+
 ## Oino session behavior
 
 - Local sessions live under `~/.oino/sessions/<uuid>.jsonl`.

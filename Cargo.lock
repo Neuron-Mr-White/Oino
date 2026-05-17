@@ -967,6 +967,7 @@ dependencies = [
  "oino-auth",
  "oino-harness",
  "oino-provider-openrouter",
+ "oino-resource",
  "oino-session",
  "oino-tools",
  "oino-tui",
@@ -1034,6 +1035,16 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "oino-resource"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
