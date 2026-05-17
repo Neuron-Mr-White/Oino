@@ -22,6 +22,7 @@ struct MarkdownStyles {
     muted: Style,
     quote: Style,
     list_marker: Style,
+    table_border: Style,
 }
 
 impl MarkdownStyles {
@@ -45,6 +46,9 @@ impl MarkdownStyles {
                 .fg(theme.muted)
                 .add_modifier(Modifier::ITALIC),
             list_marker: Style::default().fg(theme.focused_border),
+            table_border: Style::default()
+                .fg(theme.focused_border)
+                .add_modifier(Modifier::BOLD),
         }
     }
 
@@ -220,12 +224,14 @@ impl MarkdownRenderer {
                 self.table = None;
                 self.push_blank();
             }
-            Event::Start(Tag::TableRow) if self.table.is_some() => {
+            Event::Start(Tag::TableHead) | Event::Start(Tag::TableRow) if self.table.is_some() => {
                 if let Some(table) = self.table.as_mut() {
                     table.current_row.clear();
                 }
             }
-            Event::End(TagEnd::TableRow) if self.table.is_some() => {
+            Event::End(TagEnd::TableHead) | Event::End(TagEnd::TableRow)
+                if self.table.is_some() =>
+            {
                 if let Some(table) = self.table.as_mut() {
                     if !table.current_row.is_empty() {
                         table.rows.push(std::mem::take(&mut table.current_row));
@@ -558,7 +564,7 @@ impl MarkdownRenderer {
         self.push_table_border(&widths, "┌", "┬", "┐", &mut consumed_block_prefix);
         for (row_index, row) in rows.iter().enumerate() {
             self.push_table_row(row, &widths, row_index == 0, &mut consumed_block_prefix);
-            if row_index == 0 && rows.len() > 1 {
+            if row_index + 1 < rows.len() {
                 self.push_table_border(&widths, "├", "┼", "┤", &mut consumed_block_prefix);
             }
         }
@@ -584,7 +590,7 @@ impl MarkdownRenderer {
         let (initial, subsequent) = self.block_prefixes(consumed_block_prefix);
         push_wrapped_line(
             &mut self.lines,
-            Line::styled(border, self.styles.muted),
+            Line::from(Span::styled(border, self.styles.table_border)),
             self.width,
             initial,
             subsequent,
@@ -612,10 +618,10 @@ impl MarkdownRenderer {
 
         for visual_row in 0..height {
             let mut line = Line::default();
-            line.push_span(Span::styled("│ ", self.styles.muted));
+            line.push_span(Span::styled("│ ", self.styles.table_border));
             for (index, width) in widths.iter().enumerate() {
                 if index > 0 {
-                    line.push_span(Span::styled(" │ ", self.styles.muted));
+                    line.push_span(Span::styled(" │ ", self.styles.table_border));
                 }
                 let segment = wrapped
                     .get(index)
@@ -624,7 +630,7 @@ impl MarkdownRenderer {
                     .unwrap_or("");
                 line.push_span(Span::styled(pad_to_width(segment, *width), cell_style));
             }
-            line.push_span(Span::styled(" │", self.styles.muted));
+            line.push_span(Span::styled(" │", self.styles.table_border));
             let (initial, subsequent) = self.block_prefixes(consumed_block_prefix);
             push_wrapped_line(&mut self.lines, line, self.width, initial, subsequent);
         }
@@ -906,13 +912,26 @@ mod tests {
         assert!(plain_lines
             .first()
             .is_some_and(|line| line.starts_with('┌')));
-        assert!(plain_lines.iter().any(|line| line.starts_with('├')));
+        assert!(
+            plain_lines
+                .iter()
+                .filter(|line| line.starts_with('├'))
+                .count()
+                >= 2
+        );
         assert!(plain_lines.last().is_some_and(|line| line.starts_with('└')));
         assert!(joined.contains("Alpha"));
         assert!(joined.contains("instead of being"));
         assert!(joined.contains("truncated"));
         assert!(!joined.contains('…'));
         assert!(plain_lines.iter().all(|line| line.width() <= 54));
+
+        let border_span = lines
+            .first()
+            .and_then(|line| line.spans.first())
+            .unwrap_or_else(|| panic!("missing table border span"));
+        assert_eq!(border_span.style.fg, Some(Theme::default().focused_border));
+        assert!(border_span.style.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
