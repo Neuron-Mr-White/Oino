@@ -163,6 +163,39 @@ pub fn command_suggestions_for(
 }
 
 #[must_use]
+pub fn file_suggestions_for(
+    input: &str,
+    cursor: usize,
+    files: &[String],
+) -> Option<CommandSuggestionsView> {
+    let context = file_suggestion_context(input, cursor)?;
+    let query = context.query.to_lowercase();
+    let mut scored = files
+        .iter()
+        .filter_map(|file| fuzzy_file_score(file, &query).map(|score| (score, file)))
+        .collect::<Vec<_>>();
+    scored.sort_by(|(left_score, left), (right_score, right)| {
+        right_score
+            .cmp(left_score)
+            .then_with(|| left.len().cmp(&right.len()))
+            .then_with(|| left.cmp(right))
+    });
+    let items = scored
+        .into_iter()
+        .take(10)
+        .map(|(_, file)| CommandSuggestionItem {
+            label: file.clone(),
+            summary: "file".into(),
+            replacement: format!("@{file}"),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: false,
+        })
+        .collect::<Vec<_>>();
+    Some(view("Files", context.query, items))
+}
+
+#[must_use]
 pub fn command_query(input: &str, cursor: usize) -> Option<String> {
     let context = suggestion_context(input, cursor)?;
     if context.completed.is_empty() {
@@ -451,6 +484,13 @@ struct SuggestionContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct FileSuggestionContext {
+    query: String,
+    replace_start: usize,
+    replace_end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Token {
     text: String,
     start: usize,
@@ -505,6 +545,53 @@ fn suggestion_context(input: &str, cursor: usize) -> Option<SuggestionContext> {
         replace_start,
         replace_end,
     })
+}
+
+fn file_suggestion_context(input: &str, cursor: usize) -> Option<FileSuggestionContext> {
+    let len = char_count(input);
+    let cursor = cursor.min(len);
+    let token = tokens_with_ranges(input)
+        .into_iter()
+        .find(|token| token.start < cursor.saturating_add(1) && cursor <= token.end)?;
+    if !token.text.starts_with('@') {
+        return None;
+    }
+    let query_end = cursor
+        .saturating_sub(token.start)
+        .min(char_count(&token.text));
+    let query = char_range(&token.text, 1, query_end);
+    Some(FileSuggestionContext {
+        query,
+        replace_start: token.start,
+        replace_end: token.end,
+    })
+}
+
+fn fuzzy_file_score(file: &str, query: &str) -> Option<usize> {
+    if query.is_empty() {
+        return Some(1);
+    }
+    let lower = file.to_lowercase();
+    if lower == query {
+        return Some(10_000);
+    }
+    if lower.starts_with(query) {
+        return Some(8_000usize.saturating_sub(file.len()));
+    }
+    if lower.contains(query) {
+        return Some(6_000usize.saturating_sub(file.len()));
+    }
+
+    let mut score = 0usize;
+    let mut search_start = 0usize;
+    for ch in query.chars() {
+        let found = lower[search_start..].find(ch)?;
+        score = score.saturating_add(100).saturating_sub(found);
+        search_start = search_start
+            .saturating_add(found)
+            .saturating_add(ch.len_utf8());
+    }
+    Some(score)
 }
 
 fn tokens_with_ranges(input: &str) -> Vec<Token> {
@@ -634,6 +721,22 @@ mod tests {
             .unwrap_or_else(|| panic!("missing chat style suggestions"));
         assert_eq!(view.title, "Chat Style");
         assert_eq!(view.items[0].label, "agentic");
+    }
+
+    #[test]
+    fn file_suggestions_rank_and_replace_at_mentions() {
+        let files = vec![
+            "README.md".to_string(),
+            "crates/oino-tui/src/app.rs".to_string(),
+            "crates/oino-app/src/main.rs".to_string(),
+        ];
+        let view = file_suggestions_for("please inspect @tui/app", 23, &files)
+            .unwrap_or_else(|| panic!("missing file suggestions"));
+
+        assert_eq!(view.title, "Files");
+        assert_eq!(view.items.len(), 1);
+        assert_eq!(view.items[0].replacement, "@crates/oino-tui/src/app.rs");
+        assert_eq!(view.items[0].replace_start, 15);
     }
 
     #[test]

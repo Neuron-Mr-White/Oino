@@ -11,5 +11,6 @@ pub enum TuiAction {
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),
     SetChatStyle(ChatStyle),
+    AbortPrompt,
     Quit,
 }

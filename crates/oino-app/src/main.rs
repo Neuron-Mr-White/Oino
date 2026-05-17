@@ -6,15 +6,19 @@ mod user_settings;
 use crossterm::{
     cursor::MoveTo,
     event::{
-        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind,
-        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags, MouseButton, MouseEvent,
+        MouseEventKind, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute, queue,
     style::{
         Attribute as CAttribute, Color as CColor, Print, ResetColor, SetAttribute,
         SetForegroundColor,
     },
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
 use model_catalog::ModelCatalogUpdate;
 use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider};
@@ -24,14 +28,15 @@ use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
 use oino_session::{SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
-    transcript_url_overlays, transcript_visible_lines, CollapseMode, ParsedCommand,
-    SettingsCommand, TerminalUrlOverlay, TuiAction, TuiState, HELP_STATUS,
+    transcript_click_targets, transcript_url_overlays, transcript_visible_lines, CollapseMode,
+    ParsedCommand, SettingsCommand, TerminalClickTarget, TerminalUrlOverlay, TuiAction, TuiState,
+    HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io::{self, Stdout, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -354,7 +359,9 @@ async fn run_tui(
         open_settings,
     } = launch;
     let mut terminal = TerminalGuard::enter()?;
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
+    state.set_file_paths(scan_project_files(&cwd));
     state
         .settings
         .set_collapse_modes(initial_thinking_collapse_mode, initial_tool_collapse_mode);
@@ -395,7 +402,19 @@ async fn run_tui(
                 }
                 state.handle_key(key)
             }
-            Event::Paste(text) => state.handle_paste(&text),
+            Event::Paste(text) => {
+                if let Some(inserted) = dropped_file_paths_to_mentions(&text, &cwd) {
+                    state.insert_literal(&inserted)
+                } else {
+                    state.handle_paste(&text)
+                }
+            }
+            Event::Mouse(mouse) => {
+                if let Ok((width, height)) = terminal.size() {
+                    handle_mouse_event(mouse, &mut state, &cwd, width, height);
+                }
+                continue;
+            }
             _ => continue,
         };
         match action {
@@ -432,6 +451,12 @@ async fn run_tui(
                 persist_current_settings(&mut state).await;
                 save_tui_session(&mut state, &harness, &session_path).await;
             }
+            TuiAction::AbortPrompt => {
+                if prompt_in_flight {
+                    harness.abort().await;
+                    state.status = "Stopping response…".into();
+                }
+            }
             TuiAction::SubmitPrompt(prompt) => {
                 if prompt_in_flight {
                     state.set_error("A prompt is already running.");
@@ -465,6 +490,164 @@ async fn run_tui(
         }
     }
     Ok(())
+}
+
+fn handle_mouse_event(
+    mouse: MouseEvent,
+    state: &mut TuiState,
+    cwd: &Path,
+    width: u16,
+    height: u16,
+) {
+    if !mouse.modifiers.contains(KeyModifiers::CONTROL)
+        || !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+    {
+        return;
+    }
+    let targets = transcript_click_targets(state, width, height);
+    let Some(target) = targets
+        .iter()
+        .find(|target| click_hits_target(mouse.column, mouse.row, target))
+    else {
+        return;
+    };
+
+    match open_external_target(&target.target, cwd) {
+        Ok(()) => state.status = format!("Opened {}", target.target),
+        Err(err) => state.set_error(format!("Open failed for {}: {err}", target.target)),
+    }
+}
+
+fn click_hits_target(column: u16, row: u16, target: &TerminalClickTarget) -> bool {
+    row == target.y && column >= target.x && column < target.x.saturating_add(target.width)
+}
+
+fn open_external_target(target: &str, cwd: &Path) -> io::Result<()> {
+    let target = if is_external_url(target) || target.starts_with("file://") {
+        target.to_string()
+    } else {
+        let path = PathBuf::from(target);
+        if path.is_absolute() {
+            path_to_string(&path)
+        } else {
+            path_to_string(&cwd.join(path))
+        }
+    };
+
+    let status = if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(&target).status()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &target])
+            .status()
+    } else {
+        std::process::Command::new("xdg-open").arg(&target).status()
+    }?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("opener exited with {status}")))
+    }
+}
+
+fn is_external_url(value: &str) -> bool {
+    value.starts_with("http://") || value.starts_with("https://")
+}
+
+fn scan_project_files(root: &Path) -> Vec<String> {
+    const MAX_FILES: usize = 5000;
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy();
+            if path.is_dir() {
+                if matches!(
+                    file_name.as_ref(),
+                    ".git" | "target" | "node_modules" | ".direnv" | ".cache"
+                ) {
+                    continue;
+                }
+                stack.push(path);
+            } else if path.is_file() {
+                if let Some(relative) = relative_path_string(root, &path) {
+                    files.push(relative);
+                    if files.len() >= MAX_FILES {
+                        files.sort();
+                        return files;
+                    }
+                }
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+fn dropped_file_paths_to_mentions(text: &str, cwd: &Path) -> Option<String> {
+    let candidates = dropped_file_path_candidates(text);
+    if candidates.is_empty() {
+        return None;
+    }
+    let mut mentions = Vec::new();
+    for candidate in candidates {
+        let path = normalize_dropped_path(&candidate);
+        if !path.exists() {
+            return None;
+        }
+        let mention = relative_path_string(cwd, &path).unwrap_or_else(|| path_to_string(&path));
+        mentions.push(format!("@{mention}"));
+    }
+    Some(format!("{} ", mentions.join(" ")))
+}
+
+fn dropped_file_path_candidates(text: &str) -> Vec<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    if trimmed.lines().count() > 1 {
+        trimmed
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(trim_shell_path)
+            .collect()
+    } else {
+        vec![trim_shell_path(trimmed)]
+    }
+}
+
+fn normalize_dropped_path(candidate: &str) -> PathBuf {
+    let candidate = candidate
+        .strip_prefix("file://")
+        .map(percent_decode_file_url)
+        .unwrap_or_else(|| candidate.to_string());
+    PathBuf::from(candidate)
+}
+
+fn trim_shell_path(value: &str) -> String {
+    value
+        .trim_matches(|ch| matches!(ch, '\'' | '"'))
+        .to_string()
+}
+
+fn percent_decode_file_url(value: &str) -> String {
+    value.replace("%20", " ")
+}
+
+fn relative_path_string(root: &Path, path: &Path) -> Option<String> {
+    path.strip_prefix(root).ok().map(path_to_string)
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 async fn run_non_interactive(
@@ -800,7 +983,10 @@ impl TerminalGuard {
         execute!(
             stdout,
             EnterAlternateScreen,
+            Clear(ClearType::All),
+            MoveTo(0, 0),
             EnableBracketedPaste,
+            EnableMouseCapture,
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
         )?;
         let backend = CrosstermBackend::new(stdout);
@@ -828,6 +1014,7 @@ impl Drop for TerminalGuard {
         let _ = execute!(
             self.terminal.backend_mut(),
             DisableBracketedPaste,
+            DisableMouseCapture,
             PopKeyboardEnhancementFlags,
             LeaveAlternateScreen
         );

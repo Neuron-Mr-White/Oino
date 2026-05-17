@@ -398,6 +398,10 @@ impl Harness {
         Ok(output.messages)
     }
 
+    pub async fn abort(&self) {
+        self.agent.abort().await;
+    }
+
     pub async fn skill(&self, name: &str, input: &str) -> HarnessResult<Vec<Message>> {
         self.prompt(Message::user_text(format!("Run skill `{name}`:\n{input}")))
             .await

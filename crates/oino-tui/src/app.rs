@@ -3,10 +3,13 @@
 use crate::{
     action::TuiAction,
     command::{
-        command_suggestions_for, parse_command, CommandSuggestionsState, CommandSuggestionsView,
-        ParsedCommand, SettingsCommand,
+        command_suggestions_for, file_suggestions_for, parse_command, CommandSuggestionsState,
+        CommandSuggestionsView, ParsedCommand, SettingsCommand,
     },
-    composer::ComposerState,
+    composer::{
+        char_count, collapsed_paste_summary, normalize_paste_text, should_collapse_paste,
+        ComposerState, MAX_PASTE_CHARS,
+    },
     message::{project_content_blocks, project_message, project_messages, MessageView},
     settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
@@ -14,7 +17,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
 
 pub const HELP_STATUS: &str =
-    "Enter send • PgUp/PgDn scroll transcript • type / or Ctrl-O s settings • Ctrl-J/Alt-Enter newline • Esc/Ctrl-C quit";
+    "Enter send • PgUp/PgDn scroll transcript • type / or @file • Ctrl-O s settings • Ctrl-O e expand paste • Ctrl-C twice quit";
 
 const DEFAULT_TRANSCRIPT_PAGE_LINES: usize = 10;
 const TRANSCRIPT_SCROLL_LINE_STEP: usize = 1;
@@ -102,6 +105,8 @@ pub struct TuiState {
     pub chord: ChordState,
     pub transcript_scroll: TranscriptScroll,
     transcript_page_lines: usize,
+    quit_pending: bool,
+    file_paths: Vec<String>,
 }
 
 impl Default for TuiState {
@@ -119,6 +124,8 @@ impl Default for TuiState {
             chord: ChordState::None,
             transcript_scroll: TranscriptScroll::default(),
             transcript_page_lines: DEFAULT_TRANSCRIPT_PAGE_LINES,
+            quit_pending: false,
+            file_paths: Vec::new(),
         }
     }
 }
@@ -149,6 +156,10 @@ impl TuiState {
 
     pub fn set_transcript_page_lines(&mut self, lines: usize) {
         self.transcript_page_lines = lines.max(1);
+    }
+
+    pub fn set_file_paths(&mut self, paths: Vec<String>) {
+        self.file_paths = paths;
     }
 
     pub fn scroll_transcript_up(&mut self, lines: usize) {
@@ -191,7 +202,9 @@ impl TuiState {
             return None;
         }
         let mut view =
-            command_suggestions_for(input, self.composer.cursor(), &self.settings.models)?;
+            command_suggestions_for(input, self.composer.cursor(), &self.settings.models).or_else(
+                || file_suggestions_for(input, self.composer.cursor(), &self.file_paths),
+            )?;
         view.selected = if view.items.is_empty() {
             0
         } else {
@@ -308,6 +321,38 @@ impl TuiState {
             return TuiAction::None;
         }
         self.focus = TuiFocus::Composer;
+        let normalized = normalize_paste_text(text);
+        let paste_chars = char_count(&normalized);
+        if paste_chars > MAX_PASTE_CHARS {
+            self.status = format!(
+                "Paste rejected: {paste_chars} chars exceeds the {MAX_PASTE_CHARS} char limit"
+            );
+            return TuiAction::None;
+        }
+
+        let before = self.composer.text().to_string();
+        let inserted = if should_collapse_paste(&normalized) {
+            let summary = collapsed_paste_summary(&normalized);
+            let inserted = self.composer.insert_collapsed_paste(&normalized).is_some();
+            if inserted {
+                self.status =
+                    format!("Collapsed {summary} • Ctrl-O e expand • Enter sends full text");
+            }
+            inserted
+        } else {
+            self.composer.insert_text(&normalized)
+        };
+        if inserted {
+            self.after_composer_edit(&before);
+        }
+        TuiAction::None
+    }
+
+    pub fn insert_literal(&mut self, text: &str) -> TuiAction {
+        if self.overlay.is_some() || self.chord != ChordState::None || !self.composer.is_enabled() {
+            return TuiAction::None;
+        }
+        self.focus = TuiFocus::Composer;
         let before = self.composer.text().to_string();
         if self.composer.insert_text(text) {
             self.after_composer_edit(&before);
@@ -317,8 +362,14 @@ impl TuiState {
 
     pub fn handle_key(&mut self, key: KeyEvent) -> TuiAction {
         if is_force_quit_key(key) {
-            return TuiAction::Quit;
+            if self.quit_pending {
+                return TuiAction::Quit;
+            }
+            self.quit_pending = true;
+            self.status = "Press Ctrl-C again to quit • Esc stops a running response".into();
+            return TuiAction::None;
         }
+        self.quit_pending = false;
 
         if self.chord != ChordState::None {
             return self.handle_chord_key(key);
@@ -346,7 +397,12 @@ impl TuiState {
         }
 
         if matches!(key.code, KeyCode::Esc) {
-            return TuiAction::Quit;
+            if self.working {
+                self.status = "Stopping response…".into();
+                return TuiAction::AbortPrompt;
+            }
+            self.status = "Esc ignored • press Ctrl-C twice to quit".into();
+            return TuiAction::None;
         }
 
         match key.code {
@@ -373,6 +429,14 @@ impl TuiState {
             (ChordState::CtrlO, KeyCode::Char('t' | 'T')) if key.modifiers.is_empty() => {
                 self.focus = TuiFocus::Transcript;
                 self.status = "Transcript focus • ↑/↓ or j/k line • PgUp/PgDn page • Home/End top/bottom • Esc composer".into();
+                TuiAction::None
+            }
+            (ChordState::CtrlO, KeyCode::Char('e' | 'E')) if key.modifiers.is_empty() => {
+                if self.composer.expand_collapsed_paste_at_cursor() {
+                    self.status = "Expanded pasted block".into();
+                } else {
+                    self.status = "No collapsed paste block at cursor".into();
+                }
                 TuiAction::None
             }
             (_, KeyCode::Esc) => {
@@ -514,6 +578,7 @@ impl TuiState {
         }
         if let Some(view) =
             command_suggestions_for(input, self.composer.cursor(), &self.settings.models)
+                .or_else(|| file_suggestions_for(input, self.composer.cursor(), &self.file_paths))
         {
             self.command_suggestions.clamp(view.items.len());
         }
@@ -752,6 +817,50 @@ mod tests {
     }
 
     #[test]
+    fn large_paste_collapses_but_submits_full_text() {
+        let mut state = TuiState::new();
+        let pasted = (0..10)
+            .map(|index| format!("line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert_eq!(state.handle_paste(&pasted), TuiAction::None);
+        assert!(state.input().contains("pasted 10 lines"));
+        assert!(!state.input().contains("line 9"));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SubmitPrompt(pasted)
+        );
+    }
+
+    #[test]
+    fn ctrl_o_e_expands_collapsed_paste_at_cursor() {
+        let mut state = TuiState::new();
+        let pasted = (0..8)
+            .map(|index| format!("line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert_eq!(state.handle_paste(&pasted), TuiAction::None);
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char('e'))), TuiAction::None);
+        assert_eq!(state.input(), pasted);
+    }
+
+    #[test]
+    fn oversized_paste_is_rejected() {
+        let mut state = TuiState::new();
+        let pasted = "x".repeat(MAX_PASTE_CHARS + 1);
+
+        assert_eq!(state.handle_paste(&pasted), TuiAction::None);
+        assert_eq!(state.input(), "");
+        assert!(state.status.contains("Paste rejected"));
+    }
+
+    #[test]
     fn ctrl_o_s_opens_settings_overlay() {
         let mut state = TuiState::new();
         assert_eq!(
@@ -853,13 +962,29 @@ mod tests {
     }
 
     #[test]
-    fn escape_dismisses_command_suggestions_before_quitting() {
+    fn escape_dismisses_command_suggestions_without_quitting() {
         let mut state = TuiState::new();
         assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
         assert!(state.command_suggestions_view().is_some());
         assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
         assert!(state.command_suggestions_view().is_none());
-        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::Quit);
+        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
+        assert!(state.status.contains("Esc ignored"));
+    }
+
+    #[test]
+    fn ctrl_c_requires_two_presses_to_quit() {
+        let mut state = TuiState::new();
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(state.handle_key(ctrl_c), TuiAction::None);
+        assert_eq!(state.handle_key(ctrl_c), TuiAction::Quit);
+    }
+
+    #[test]
+    fn escape_aborts_when_working() {
+        let mut state = TuiState::new();
+        state.set_working(true);
+        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::AbortPrompt);
     }
 
     #[test]
@@ -889,6 +1014,26 @@ mod tests {
             state.settings.chat_style,
             crate::settings::ChatStyle::Minimal
         );
+    }
+
+    #[test]
+    fn at_file_suggestions_tab_insert_relative_path() {
+        let mut state = TuiState::new();
+        state.set_file_paths(vec![
+            "README.md".into(),
+            "crates/oino-tui/src/app.rs".into(),
+            "crates/oino-app/src/main.rs".into(),
+        ]);
+        for ch in "check @tui/app".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        let suggestions = state
+            .command_suggestions_view()
+            .unwrap_or_else(|| panic!("missing file suggestions"));
+        assert_eq!(suggestions.title, "Files");
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(state.input(), "check @crates/oino-tui/src/app.rs ");
     }
 
     #[test]

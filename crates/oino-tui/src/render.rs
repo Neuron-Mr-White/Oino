@@ -29,6 +29,21 @@ const MAX_COMPOSER_HEIGHT: u16 = 9;
 const INPUT_PROMPT: &str = "› ";
 const TINY_MESSAGE: &str = "Oino needs at least 20x8";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalClickTargetKind {
+    Url,
+    Image,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalClickTarget {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub target: String,
+    pub kind: TerminalClickTargetKind,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalUrlOverlay {
     pub x: u16,
@@ -136,6 +151,23 @@ pub fn transcript_url_overlays(
     width: u16,
     height: u16,
 ) -> Vec<TerminalUrlOverlay> {
+    transcript_click_targets(state, width, height)
+        .into_iter()
+        .filter(|target| target.kind == TerminalClickTargetKind::Url)
+        .map(|target| TerminalUrlOverlay {
+            x: target.x,
+            y: target.y,
+            text: target.target.clone(),
+            url: target.target,
+        })
+        .collect()
+}
+
+pub fn transcript_click_targets(
+    state: &TuiState,
+    width: u16,
+    height: u16,
+) -> Vec<TerminalClickTarget> {
     if width < 20
         || height < 8
         || state.overlay.is_some()
@@ -173,25 +205,29 @@ pub fn transcript_url_overlays(
         .transcript_scroll
         .visible_start(lines.len(), inner_height);
 
-    let mut overlays = Vec::new();
+    let mut targets = Vec::new();
     for (visible_index, line) in lines.into_iter().skip(start).take(inner_height).enumerate() {
         let plain = plain_line(&line);
-        for (column, url) in url_ranges(&plain) {
-            if column.saturating_add(url.width()) > content_width {
+        for line_target in line_click_targets(&plain) {
+            if line_target.column.saturating_add(line_target.width) > content_width {
                 continue;
             }
-            overlays.push(TerminalUrlOverlay {
-                x: area.x.saturating_add(1).saturating_add(column as u16),
+            targets.push(TerminalClickTarget {
+                x: area
+                    .x
+                    .saturating_add(1)
+                    .saturating_add(line_target.column as u16),
                 y: area
                     .y
                     .saturating_add(1)
                     .saturating_add(visible_index as u16),
-                text: url.clone(),
-                url,
+                width: u16::try_from(line_target.width).unwrap_or(u16::MAX),
+                target: line_target.target,
+                kind: line_target.kind,
             });
         }
     }
-    overlays
+    targets
 }
 
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -270,6 +306,37 @@ fn plain_line(line: &Line<'_>) -> String {
         .collect::<String>()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LineClickTarget {
+    column: usize,
+    width: usize,
+    target: String,
+    kind: TerminalClickTargetKind,
+}
+
+fn line_click_targets(text: &str) -> Vec<LineClickTarget> {
+    let mut targets = url_ranges(text)
+        .into_iter()
+        .map(|(column, url)| LineClickTarget {
+            column,
+            width: url.width(),
+            target: url,
+            kind: TerminalClickTargetKind::Url,
+        })
+        .collect::<Vec<_>>();
+    targets.extend(
+        image_ranges(text)
+            .into_iter()
+            .map(|(column, width, target)| LineClickTarget {
+                column,
+                width,
+                target,
+                kind: TerminalClickTargetKind::Image,
+            }),
+    );
+    targets
+}
+
 fn url_ranges(text: &str) -> Vec<(usize, String)> {
     let mut ranges = Vec::new();
     let mut search_start = 0usize;
@@ -292,6 +359,32 @@ fn url_ranges(text: &str) -> Vec<(usize, String)> {
             ranges.push((text[..start].width(), url));
         }
         search_start = end.max(start.saturating_add(1));
+    }
+    ranges
+}
+
+fn image_ranges(text: &str) -> Vec<(usize, usize, String)> {
+    let mut ranges = Vec::new();
+    let mut search_start = 0usize;
+    while search_start < text.len() {
+        let Some(relative_start) = text[search_start..].find("[image:") else {
+            break;
+        };
+        let start = search_start + relative_start;
+        let Some(label_end_relative) = text[start..].find("] (") else {
+            break;
+        };
+        let target_start = start + label_end_relative + "] (".len();
+        let Some(target_end_relative) = text[target_start..].find(')') else {
+            break;
+        };
+        let target_end = target_start + target_end_relative;
+        let full_end = target_end + 1;
+        let target = text[target_start..target_end].trim().to_string();
+        if !target.is_empty() {
+            ranges.push((text[..start].width(), text[start..full_end].width(), target));
+        }
+        search_start = full_end;
     }
     ranges
 }
@@ -457,10 +550,10 @@ fn render_command_suggestions(
 }
 
 fn command_suggestion_max_rows(suggestions: &CommandSuggestionsView) -> usize {
-    if suggestions.title == "Models" {
-        5
-    } else {
-        4
+    match suggestions.title.as_str() {
+        "Files" => 10,
+        "Models" => 5,
+        _ => 4,
     }
 }
 
@@ -786,7 +879,7 @@ fn render_settings_footer(
             "type to search • arrows move matches • Enter keep search • Esc clear search"
         }
         SettingsPage::Models => "arrows/jk move • / search • Enter apply • Esc/← back",
-        SettingsPage::Thinking => "arrows/jk move • Enter apply • Esc/← back • Ctrl-C quit",
+        SettingsPage::Thinking => "arrows/jk move • Enter apply • Esc/← back • Ctrl-C twice quit",
         SettingsPage::Collapse => "arrows/jk move • Enter/→ cycle • Esc/← back",
         SettingsPage::ChatStyle => "arrows/jk move • Enter apply • Esc/← back",
     };
@@ -1166,6 +1259,29 @@ mod tests {
         assert_eq!(overlays[0].url, "https://example.invalid/docs");
         assert!(overlays[0].x > 0);
         assert!(overlays[0].y > 0);
+    }
+
+    #[test]
+    fn transcript_click_targets_include_image_placeholders() {
+        let mut state = TuiState::new();
+        state.settings.chat_style = ChatStyle::Minimal;
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "assistant".into(),
+            title: Some("test/model".into()),
+            content: "![diagram](assets/diagram.png)".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        });
+
+        let targets = transcript_click_targets(&state, 80, 20);
+
+        assert!(targets.iter().any(|target| {
+            target.kind == TerminalClickTargetKind::Image && target.target == "assets/diagram.png"
+        }));
     }
 
     #[test]

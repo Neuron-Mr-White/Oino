@@ -3,12 +3,23 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub const INPUT_PLACEHOLDER: &str = "Ask Oino or type / for commands";
+pub(crate) const COLLAPSED_PASTE_MIN_LINES: usize = 8;
+pub(crate) const COLLAPSED_PASTE_MIN_CHARS: usize = 1200;
+pub(crate) const MAX_PASTE_CHARS: usize = 200_000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PasteBlock {
+    token: String,
+    text: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComposerState {
     text: String,
     cursor: usize,
     enabled: bool,
+    paste_blocks: Vec<PasteBlock>,
+    next_paste_block_id: u64,
 }
 
 impl Default for ComposerState {
@@ -17,6 +28,8 @@ impl Default for ComposerState {
             text: String::new(),
             cursor: 0,
             enabled: true,
+            paste_blocks: Vec::new(),
+            next_paste_block_id: 1,
         }
     }
 }
@@ -54,11 +67,13 @@ impl ComposerState {
     pub fn clear(&mut self) {
         self.text.clear();
         self.cursor = 0;
+        self.paste_blocks.clear();
     }
 
     pub fn replace_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
         self.cursor = char_count(&self.text);
+        self.paste_blocks.clear();
     }
 
     pub fn insert_text(&mut self, text: &str) -> bool {
@@ -68,7 +83,7 @@ impl ComposerState {
         if text.is_empty() {
             return true;
         }
-        let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+        let normalized = normalize_paste_text(text);
         let cursor = self.cursor.min(char_count(&self.text));
         let byte_index = byte_index_at_char(&self.text, cursor);
         self.text.insert_str(byte_index, &normalized);
@@ -84,6 +99,51 @@ impl ComposerState {
         let end_byte = byte_index_at_char(&self.text, end);
         self.text.replace_range(start_byte..end_byte, replacement);
         self.cursor = start + char_count(replacement);
+        self.retain_existing_paste_blocks();
+    }
+
+    pub fn insert_collapsed_paste(&mut self, text: &str) -> Option<String> {
+        if !self.enabled || text.is_empty() {
+            return None;
+        }
+        let normalized = normalize_paste_text(text);
+        let id = self.next_paste_block_id;
+        self.next_paste_block_id = self.next_paste_block_id.saturating_add(1);
+        let token = collapsed_paste_token(id, &normalized);
+        if !self.insert_text(&token) {
+            return None;
+        }
+        self.paste_blocks.push(PasteBlock {
+            token: token.clone(),
+            text: normalized,
+        });
+        Some(token)
+    }
+
+    pub fn expand_collapsed_paste_at_cursor(&mut self) -> bool {
+        let Some(index) = self.paste_block_index_at_cursor() else {
+            return false;
+        };
+        let block = self.paste_blocks.remove(index);
+        let Some((start, end)) = char_range_of(&self.text, &block.token) else {
+            return false;
+        };
+        self.replace_char_range(start, end, &block.text);
+        true
+    }
+
+    #[must_use]
+    pub fn expanded_text(&self) -> String {
+        let mut expanded = self.text.clone();
+        for block in &self.paste_blocks {
+            expanded = expanded.replace(&block.token, &block.text);
+        }
+        expanded
+    }
+
+    #[must_use]
+    pub fn has_collapsed_paste_blocks(&self) -> bool {
+        !self.paste_blocks.is_empty()
     }
 
     #[must_use]
@@ -91,7 +151,7 @@ impl ComposerState {
         if !self.enabled {
             return None;
         }
-        let prompt = self.text.trim().to_string();
+        let prompt = self.expanded_text().trim().to_string();
         if prompt.is_empty() {
             return None;
         }
@@ -184,6 +244,7 @@ impl ComposerState {
         let byte_index = byte_index_at_char(&self.text, cursor);
         self.text.insert(byte_index, ch);
         self.cursor = cursor + 1;
+        self.retain_existing_paste_blocks();
     }
 
     fn delete_char(&mut self) {
@@ -193,12 +254,14 @@ impl ComposerState {
         let target = self.cursor.saturating_sub(1);
         if remove_char_at(&mut self.text, target) {
             self.cursor = target;
+            self.retain_existing_paste_blocks();
         }
     }
 
     fn delete_char_forward(&mut self) {
         if remove_char_at(&mut self.text, self.cursor) {
             self.cursor = self.cursor.min(char_count(&self.text));
+            self.retain_existing_paste_blocks();
         }
     }
 
@@ -229,6 +292,7 @@ impl ComposerState {
         if word_start < cursor_byte {
             self.text.replace_range(word_start..cursor_byte, "");
             self.cursor = char_count(&self.text[..word_start]);
+            self.retain_existing_paste_blocks();
         }
     }
 
@@ -329,6 +393,19 @@ impl ComposerState {
         let target_col = col.min(next_line_len);
         self.cursor = char_count(&self.text[..next_line_start]) + target_col;
     }
+
+    fn paste_block_index_at_cursor(&self) -> Option<usize> {
+        self.paste_blocks.iter().position(|block| {
+            char_range_of(&self.text, &block.token).is_some_and(|(start, end)| {
+                self.cursor >= start.saturating_sub(1) && self.cursor <= end.saturating_add(1)
+            })
+        })
+    }
+
+    fn retain_existing_paste_blocks(&mut self) {
+        self.paste_blocks
+            .retain(|block| self.text.contains(&block.token));
+    }
 }
 
 #[must_use]
@@ -348,6 +425,45 @@ pub fn is_newline_key(key: KeyEvent) -> bool {
         }
         _ => false,
     }
+}
+
+#[must_use]
+pub(crate) fn normalize_paste_text(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+#[must_use]
+pub(crate) fn should_collapse_paste(text: &str) -> bool {
+    let lines = text.lines().count();
+    lines >= COLLAPSED_PASTE_MIN_LINES || char_count(text) >= COLLAPSED_PASTE_MIN_CHARS
+}
+
+#[must_use]
+pub(crate) fn collapsed_paste_summary(text: &str) -> String {
+    let lines = text.lines().count().max(1);
+    let chars = char_count(text);
+    format!("pasted {lines} lines · {}", human_char_count(chars))
+}
+
+fn collapsed_paste_token(id: u64, text: &str) -> String {
+    format!(
+        "⟦{} · #{id} · Ctrl-O e expand⟧",
+        collapsed_paste_summary(text)
+    )
+}
+
+fn human_char_count(chars: usize) -> String {
+    if chars >= 1000 {
+        format!("{:.1}k chars", chars as f64 / 1000.0)
+    } else {
+        format!("{chars} chars")
+    }
+}
+
+fn char_range_of(text: &str, needle: &str) -> Option<(usize, usize)> {
+    let byte_start = text.find(needle)?;
+    let start = char_count(&text[..byte_start]);
+    Some((start, start + char_count(needle)))
 }
 
 #[must_use]

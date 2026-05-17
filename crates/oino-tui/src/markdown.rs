@@ -37,7 +37,7 @@ impl MarkdownStyles {
         Self {
             base,
             heading: base
-                .fg(theme.focused_border)
+                .fg(theme.user_border)
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED),
             heading_secondary: base.fg(theme.focused_border).add_modifier(Modifier::BOLD),
@@ -388,12 +388,7 @@ impl MarkdownRenderer {
                     .push(Line::styled("─".repeat(width), self.styles.muted));
                 self.push_blank();
             }
-            Event::TaskListMarker(checked) => {
-                self.push_span(
-                    if checked { "[x] " } else { "[ ] " },
-                    self.styles.list_marker,
-                );
-            }
+            Event::TaskListMarker(checked) => self.apply_task_list_marker(checked),
             Event::FootnoteReference(label) => {
                 self.push_span(format!("[{label}]"), self.styles.muted);
             }
@@ -471,6 +466,20 @@ impl MarkdownRenderer {
             continuation,
             marker_pending: true,
         });
+    }
+
+    fn apply_task_list_marker(&mut self, checked: bool) {
+        let marker = if checked { "☑ " } else { "☐ " };
+        if let Some(item) = self
+            .item_stack
+            .last_mut()
+            .filter(|item| item.marker_pending)
+        {
+            item.marker = marker.to_string();
+            item.continuation = " ".repeat(marker.width());
+        } else {
+            self.push_span(marker, self.styles.list_marker);
+        }
     }
 
     fn flush_current_line(&mut self) {
@@ -1526,6 +1535,21 @@ mod tests {
         assert!(plain_lines.iter().any(|line| line.contains("fn main() {}")));
         assert!(!plain_lines.iter().any(|line| line.contains("**Bold**")));
         assert!(!plain_lines.iter().any(|line| line.contains("`code`")));
+    }
+
+    #[test]
+    fn renders_task_lists_as_checkbox_items() {
+        let lines = render_markdown_lines(
+            "- [x] completed\n- [ ] incomplete",
+            80,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert!(plain_lines.contains(&"☑ completed".to_string()));
+        assert!(plain_lines.contains(&"☐ incomplete".to_string()));
+        assert!(!plain_lines.iter().any(|line| line.contains("• [")));
     }
 
     #[test]
