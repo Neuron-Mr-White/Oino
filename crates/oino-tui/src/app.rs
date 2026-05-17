@@ -11,7 +11,7 @@ use crate::{
         ComposerState, MAX_PASTE_CHARS,
     },
     fuzzy::{fuzzy_indices, FuzzyMode},
-    help::HELP_ENTRY_COUNT,
+    help::{help_entry_match_text, HELP_ENTRIES},
     message::{project_content_blocks, project_message, project_messages, MessageView},
     settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
@@ -162,6 +162,9 @@ pub struct TuiState {
     pub send_panel: SendPanelState,
     pub sessions: SessionsState,
     pub help_scroll: usize,
+    pub help_search: String,
+    pub help_search_active: bool,
+    pub filtered_help_indices: Vec<usize>,
     pub steer_items: Vec<String>,
     pub queued_items: Vec<String>,
     pub draft_items: Vec<String>,
@@ -187,6 +190,9 @@ impl Default for TuiState {
             send_panel: SendPanelState::default(),
             sessions: SessionsState::default(),
             help_scroll: 0,
+            help_search: String::new(),
+            help_search_active: false,
+            filtered_help_indices: (0..HELP_ENTRIES.len()).collect(),
             steer_items: Vec::new(),
             queued_items: Vec::new(),
             draft_items: Vec::new(),
@@ -292,6 +298,11 @@ impl TuiState {
     #[must_use]
     pub fn filtered_session_indices(&self) -> &[usize] {
         &self.sessions.filtered_indices
+    }
+
+    #[must_use]
+    pub fn filtered_help_indices(&self) -> &[usize] {
+        &self.filtered_help_indices
     }
 
     #[must_use]
@@ -899,11 +910,21 @@ impl TuiState {
     }
 
     fn handle_help_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.help_search_active {
+            return self.handle_help_search_key(key);
+        }
+
         let page = self.transcript_page_lines.max(5);
         match key.code {
             KeyCode::Esc | KeyCode::Char('q' | 'Q') if key.modifiers.is_empty() => {
                 self.overlay = None;
                 self.status = HELP_STATUS.into();
+            }
+            KeyCode::Char('/') if key.modifiers.is_empty() => {
+                self.help_search_active = true;
+                self.help_search.clear();
+                self.refresh_help_filter();
+                self.status = "Help search active".into();
             }
             KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
                 self.scroll_help_up(1);
@@ -921,11 +942,63 @@ impl TuiState {
                 self.help_scroll = 0;
             }
             KeyCode::End if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
-                self.help_scroll = HELP_ENTRY_COUNT.saturating_sub(1);
+                self.help_scroll = self.filtered_help_indices.len().saturating_sub(1);
             }
             _ => {}
         }
         TuiAction::None
+    }
+
+    fn handle_help_search_key(&mut self, key: KeyEvent) -> TuiAction {
+        let page = self.transcript_page_lines.max(5);
+        match key.code {
+            KeyCode::Esc => {
+                self.help_search_active = false;
+                self.help_search.clear();
+                self.refresh_help_filter();
+                self.status = "Help search cleared".into();
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => {
+                self.help_search_active = false;
+            }
+            KeyCode::Backspace => {
+                self.help_search.pop();
+                self.refresh_help_filter();
+                self.status = help_search_status(&self.help_search);
+            }
+            KeyCode::Up => self.scroll_help_up(1),
+            KeyCode::Down => self.scroll_help_down(1),
+            KeyCode::PageUp if key.modifiers.is_empty() => self.scroll_help_up(page),
+            KeyCode::PageDown if key.modifiers.is_empty() => self.scroll_help_down(page),
+            KeyCode::Home if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
+                self.help_scroll = 0;
+            }
+            KeyCode::End if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
+                self.help_scroll = self.filtered_help_indices.len().saturating_sub(1);
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
+            {
+                self.help_search.push(ch);
+                self.refresh_help_filter();
+                self.status = help_search_status(&self.help_search);
+            }
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn refresh_help_filter(&mut self) {
+        self.filtered_help_indices = fuzzy_indices(
+            HELP_ENTRIES,
+            self.help_search.trim(),
+            FuzzyMode::Text,
+            None,
+            help_entry_match_text,
+        );
+        self.help_scroll = self
+            .help_scroll
+            .min(self.filtered_help_indices.len().saturating_sub(1));
     }
 
     fn scroll_help_up(&mut self, lines: usize) {
@@ -936,7 +1009,7 @@ impl TuiState {
         self.help_scroll = self
             .help_scroll
             .saturating_add(lines.max(1))
-            .min(HELP_ENTRY_COUNT.saturating_sub(1));
+            .min(self.filtered_help_indices.len().saturating_sub(1));
     }
 
     fn handle_send_panel_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -1257,6 +1330,9 @@ impl TuiState {
         self.transcript_scroll.jump_bottom();
         self.send_panel = SendPanelState::default();
         self.help_scroll = 0;
+        self.help_search.clear();
+        self.help_search_active = false;
+        self.refresh_help_filter();
         self.steer_items.clear();
         self.queued_items.clear();
         self.draft_items.clear();
@@ -1289,6 +1365,9 @@ impl TuiState {
         self.clear_error();
         self.overlay = Some(OverlayKind::Help);
         self.help_scroll = 0;
+        self.help_search.clear();
+        self.help_search_active = false;
+        self.refresh_help_filter();
         self.status = "Help".into();
     }
 
@@ -1372,6 +1451,14 @@ fn session_search_status(query: &str) -> String {
         "Session search active".into()
     } else {
         format!("Searching sessions for `{query}`")
+    }
+}
+
+fn help_search_status(query: &str) -> String {
+    if query.is_empty() {
+        "Help search active".into()
+    } else {
+        format!("Searching help for `{query}`")
     }
 }
 
@@ -1759,6 +1846,31 @@ mod tests {
         assert_eq!(state.help_scroll, 1);
         assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
         assert_eq!(state.overlay, None);
+    }
+
+    #[test]
+    fn help_overlay_supports_slash_fuzzy_search() {
+        let mut state = TuiState::new();
+        state.open_help();
+        assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
+        assert!(state.help_search_active);
+        for ch in "queue".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.help_search, "queue");
+        assert!(!state.filtered_help_indices().is_empty());
+        assert!(state
+            .filtered_help_indices()
+            .iter()
+            .all(|index| !matches!(HELP_ENTRIES[*index], crate::help::HelpEntry::Blank)));
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert!(!state.help_search_active);
+        assert_eq!(state.help_search, "queue");
+        assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
+        assert!(state.help_search_active);
+        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
+        assert_eq!(state.help_search, "");
+        assert!(!state.help_search_active);
     }
 
     #[test]

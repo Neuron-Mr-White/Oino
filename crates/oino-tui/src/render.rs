@@ -646,21 +646,54 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
 
     let content_height = list_content_height(sections[0]);
     let content_width = sections[0].width.saturating_sub(2) as usize;
-    let max_scroll = HELP_ENTRIES.len().saturating_sub(content_height);
+    let mut lines = vec![help_search_line(state, theme), Line::from("")];
+    let entries_height = content_height.saturating_sub(lines.len()).max(1);
+    let filtered_indices = state.filtered_help_indices();
+    let max_scroll = filtered_indices.len().saturating_sub(entries_height);
     let start = state.help_scroll.min(max_scroll);
-    let end = start.saturating_add(content_height).min(HELP_ENTRIES.len());
-    let lines = HELP_ENTRIES[start..end]
-        .iter()
-        .map(|entry| help_entry_line(*entry, content_width, theme))
-        .collect::<Vec<_>>();
-    let title = if max_scroll == 0 {
-        " Oino Help ".to_string()
+    let end = start
+        .saturating_add(entries_height)
+        .min(filtered_indices.len());
+    if filtered_indices.is_empty() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!("No help topics match `{}`", state.help_search),
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+    } else {
+        lines.extend(
+            filtered_indices[start..end]
+                .iter()
+                .filter_map(|entry_index| {
+                    HELP_ENTRIES
+                        .get(*entry_index)
+                        .map(|entry| help_entry_line(*entry, content_width, theme))
+                }),
+        );
+    }
+    let title = if state.help_search.trim().is_empty() {
+        if max_scroll == 0 {
+            " Oino Help ".to_string()
+        } else {
+            format!(
+                " Oino Help {}-{} / {} ",
+                start.saturating_add(1),
+                end,
+                filtered_indices.len()
+            )
+        }
     } else {
         format!(
-            " Oino Help {}-{} / {} ",
-            start.saturating_add(1),
-            end,
-            HELP_ENTRIES.len()
+            " Oino Help {} match{} for `{}` ",
+            filtered_indices.len(),
+            if filtered_indices.len() == 1 {
+                ""
+            } else {
+                "es"
+            },
+            state.help_search
         )
     };
     frame.render_widget(
@@ -675,15 +708,35 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
         sections[0],
     );
 
-    let controls = if max_scroll == 0 {
-        "Esc/q close"
+    let controls = if state.help_search_active {
+        "type to fuzzy search • ↑/↓ scroll • Enter keep results • Esc clear search"
+    } else if max_scroll == 0 {
+        "Press / to search • Esc/q close"
     } else {
-        "↑/↓ or j/k scroll • PgUp/PgDn page • Home/End jump • Esc/q close"
+        "↑/↓ or j/k scroll • / search • PgUp/PgDn page • Home/End jump • Esc/q close"
     };
     frame.render_widget(
         Paragraph::new(truncate_to_width(controls, sections[1].width as usize)).style(theme.footer),
         sections[1],
     );
+}
+
+fn help_search_line(state: &TuiState, theme: &Theme) -> Line<'static> {
+    if state.help_search_active {
+        return Line::from(vec![
+            Span::styled("Search: ", Style::default().fg(theme.focused_border)),
+            Span::raw(state.help_search.clone()),
+            Span::styled("█", Style::default().fg(theme.focused_border)),
+        ]);
+    }
+    if state.help_search.is_empty() {
+        Line::styled("Press / to search help", Style::default().fg(theme.muted))
+    } else {
+        Line::from(vec![
+            Span::styled("Search: ", Style::default().fg(theme.muted)),
+            Span::raw(state.help_search.clone()),
+        ])
+    }
 }
 
 fn help_entry_line(entry: HelpEntry, width: usize, theme: &Theme) -> Line<'static> {
@@ -1600,6 +1653,7 @@ mod tests {
         app::{OverlayKind, SessionListItem, TuiState},
         message::{MessageView, ToolCallView},
         settings::CollapseMode,
+        TuiAction,
     };
     use ratatui::{backend::TestBackend, Terminal};
     use serde_json::json;
@@ -2020,7 +2074,41 @@ mod tests {
         assert!(text.contains("/help"));
         assert!(text.contains("@"));
         assert!(text.contains("file paths"));
+        assert!(text.contains("Press / to search help"));
+        assert!(text.contains("/ search"));
         assert!(text.contains("Esc/q close"));
+    }
+
+    #[test]
+    fn render_help_overlay_filters_search_results() {
+        let mut state = TuiState::new();
+        state.open_help();
+        assert_eq!(
+            state.handle_key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Char('/'),
+                crossterm::event::KeyModifiers::NONE,
+            )),
+            TuiAction::None
+        );
+        for ch in "queue".chars() {
+            assert_eq!(
+                state.handle_key(crossterm::event::KeyEvent::new(
+                    crossterm::event::KeyCode::Char(ch),
+                    crossterm::event::KeyModifiers::NONE,
+                )),
+                TuiAction::None
+            );
+        }
+        let buffer = draw_state(90, 28, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Search: queue"));
+        assert!(text.contains("match"));
+        assert!(text.contains("Send panel q"));
+        assert!(text.contains("type to fuzzy search"));
     }
 
     #[test]

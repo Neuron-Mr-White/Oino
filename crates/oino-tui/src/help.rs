@@ -85,4 +85,11 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
     HelpEntry::Item("Ctrl-C twice", "quit Oino"),
 ];
 
-pub(crate) const HELP_ENTRY_COUNT: usize = HELP_ENTRIES.len();
+#[must_use]
+pub(crate) fn help_entry_match_text(entry: &HelpEntry) -> String {
+    match entry {
+        HelpEntry::Heading(text) | HelpEntry::Text(text) => (*text).to_string(),
+        HelpEntry::Item(key, description) => format!("{key} {description}"),
+        HelpEntry::Blank => String::new(),
+    }
+}
