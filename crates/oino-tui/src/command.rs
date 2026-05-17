@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
-use crate::settings::{CollapseMode, CollapseTarget, ModelOption};
+use crate::settings::{
+    chat_style_value as settings_chat_style_value, parse_chat_style as settings_parse_chat_style,
+    ChatStyle, CollapseMode, CollapseTarget, ModelOption,
+};
 use oino_types::{Model, ThinkingLevel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,12 +46,14 @@ pub enum SettingsCommand {
     Open,
     OpenModelSelection,
     OpenThinkingLevel,
+    OpenChatStyle,
     SetModel(Model),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode {
         target: CollapseTarget,
         mode: CollapseMode,
     },
+    SetChatStyle(ChatStyle),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -148,6 +153,11 @@ pub fn command_suggestions_for(
         {
             collapse_mode_suggestions(context)
         }
+        [settings, subject]
+            if settings == "/settings" && (subject == "chat-style" || subject == "chat_style") =>
+        {
+            chat_style_suggestions(context)
+        }
         _ => None,
     }
 }
@@ -169,6 +179,9 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/settings"] => Some(ParsedCommand::Settings(SettingsCommand::Open)),
         ["/model"] => Some(ParsedCommand::Settings(SettingsCommand::OpenModelSelection)),
         ["/thinking"] => Some(ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel)),
+        ["/settings", "chat-style"] | ["/settings", "chat_style"] => {
+            Some(ParsedCommand::Settings(SettingsCommand::OpenChatStyle))
+        }
         ["/settings", "model", model] | ["/model", model] => Model::from_identifier(model)
             .map(SettingsCommand::SetModel)
             .map(ParsedCommand::Settings),
@@ -182,6 +195,11 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
                 target,
                 mode,
             }))
+        }
+        ["/settings", "chat-style", style] | ["/settings", "chat_style", style] => {
+            settings_parse_chat_style(style)
+                .map(SettingsCommand::SetChatStyle)
+                .map(ParsedCommand::Settings)
         }
         _ => None,
     }
@@ -248,6 +266,16 @@ pub fn collapse_mode_value(mode: CollapseMode) -> &'static str {
     }
 }
 
+#[must_use]
+pub fn chat_style_value(style: ChatStyle) -> &'static str {
+    settings_chat_style_value(style)
+}
+
+#[must_use]
+pub fn parse_chat_style(value: &str) -> Option<ChatStyle> {
+    settings_parse_chat_style(value)
+}
+
 fn root_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     let items = COMMANDS
         .iter()
@@ -269,6 +297,7 @@ fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSug
         ("model", "Set selected model"),
         ("thinking", "Set thinking level"),
         ("collapse", "Set thinking/tool collapse mode"),
+        ("chat-style", "Set transcript rendering style"),
     ];
     let items = subjects
         .into_iter()
@@ -359,6 +388,30 @@ fn collapse_mode_suggestions(context: SuggestionContext) -> Option<CommandSugges
         })
         .collect::<Vec<_>>();
     Some(view("Collapse Mode", context.active_prefix, items))
+}
+
+fn chat_style_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    let styles = [
+        (ChatStyle::Chat, "Current bubble-style transcript"),
+        (ChatStyle::Agentic, "Codex-like agent activity transcript"),
+        (ChatStyle::Minimal, "jcode-like compact transcript"),
+    ];
+    let items = styles
+        .into_iter()
+        .filter(|(style, _)| chat_style_value(*style).starts_with(context.active_prefix.as_str()))
+        .map(|(style, summary)| {
+            let value = chat_style_value(style);
+            CommandSuggestionItem {
+                label: value.into(),
+                summary: summary.into(),
+                replacement: value.into(),
+                replace_start: context.replace_start,
+                replace_end: context.replace_end,
+                complete_on_enter: true,
+            }
+        })
+        .collect::<Vec<_>>();
+    Some(view("Chat Style", context.active_prefix, items))
 }
 
 fn incomplete_item(
@@ -576,6 +629,11 @@ mod tests {
         let view = command_suggestions_for("/settings collapse thinking t", 29, &models())
             .unwrap_or_else(|| panic!("missing mode suggestions"));
         assert_eq!(view.items[0].label, "truncate");
+
+        let view = command_suggestions_for("/settings chat-style a", 22, &models())
+            .unwrap_or_else(|| panic!("missing chat style suggestions"));
+        assert_eq!(view.title, "Chat Style");
+        assert_eq!(view.items[0].label, "agentic");
     }
 
     #[test]
@@ -645,6 +703,12 @@ mod tests {
                 target: CollapseTarget::Tool,
                 mode: CollapseMode::Truncate,
             }))
+        );
+        assert_eq!(
+            parse_command("/settings chat-style agentic"),
+            Some(ParsedCommand::Settings(SettingsCommand::SetChatStyle(
+                ChatStyle::Agentic
+            )))
         );
         assert!(parse_command("/settings model xai/glm-5.1").is_none());
         assert!(parse_command("/set").is_none());

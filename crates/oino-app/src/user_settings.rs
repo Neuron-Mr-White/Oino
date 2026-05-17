@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use oino_tui::CollapseMode;
+use oino_tui::{ChatStyle, CollapseMode};
 use oino_types::ThinkingLevel;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,6 +16,7 @@ pub struct UserSettings {
     pub thinking_level: Option<ThinkingLevel>,
     pub thinking_collapse_mode: Option<CollapseMode>,
     pub tool_collapse_mode: Option<CollapseMode>,
+    pub chat_style: Option<ChatStyle>,
 }
 
 impl UserSettings {
@@ -25,12 +26,14 @@ impl UserSettings {
         thinking_level: ThinkingLevel,
         thinking_collapse_mode: CollapseMode,
         tool_collapse_mode: CollapseMode,
+        chat_style: ChatStyle,
     ) -> Self {
         Self {
             model: Some(model.into()),
             thinking_level: Some(thinking_level),
             thinking_collapse_mode: Some(thinking_collapse_mode),
             tool_collapse_mode: Some(tool_collapse_mode),
+            chat_style: Some(chat_style),
         }
     }
 
@@ -84,6 +87,7 @@ mod tests {
             ThinkingLevel::High,
             CollapseMode::Truncate,
             CollapseMode::Collapse,
+            ChatStyle::Agentic,
         );
         if let Err(err) = save_to_path(&settings, &path).await {
             panic!("save settings failed: {err}");

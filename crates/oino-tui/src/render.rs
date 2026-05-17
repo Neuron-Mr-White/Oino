@@ -4,9 +4,13 @@ use crate::{
     app::{ChordState, OverlayKind, TuiFocus, TuiState},
     command::CommandSuggestionsView,
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
-    message::MessageView,
-    settings::{collapse_mode_label, thinking_label, CollapseMode, SettingsPage, SettingsState},
+    settings::{
+        chat_style_label, chat_style_value, collapse_mode_label, thinking_label, ChatStyle,
+        SettingsPage, SettingsState,
+    },
+    text::{truncate_to_width, wrap_text},
     theme::Theme,
+    transcript::transcript_lines,
 };
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
@@ -16,7 +20,7 @@ use ratatui::{
     Frame,
 };
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 const FOOTER_HEIGHT: u16 = 1;
 const MIN_TRANSCRIPT_HEIGHT: u16 = 3;
@@ -93,6 +97,7 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
         inner_width,
         state.settings.thinking_collapse_mode,
         state.settings.tool_collapse_mode,
+        state.settings.chat_style,
         theme,
     );
 
@@ -281,6 +286,7 @@ fn render_settings_overlay(
         SettingsPage::Models => render_model_settings(frame, sections[0], settings, theme),
         SettingsPage::Thinking => render_thinking_settings(frame, sections[0], settings, theme),
         SettingsPage::Collapse => render_collapse_settings(frame, sections[0], settings, theme),
+        SettingsPage::ChatStyle => render_chat_style_settings(frame, sections[0], settings, theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
 }
@@ -311,6 +317,9 @@ fn render_settings_menu(
                 collapse_mode_label(settings.thinking_collapse_mode),
                 collapse_mode_label(settings.tool_collapse_mode)
             ),
+            SettingsPage::ChatStyle => {
+                format!("current: {}", chat_style_label(settings.chat_style))
+            }
             SettingsPage::Menu => String::new(),
         };
         let text = format!("{marker} {}  {}", item.label(), detail);
@@ -489,6 +498,53 @@ fn render_collapse_settings(
     );
 }
 
+fn render_chat_style_settings(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let descriptions = [
+        (ChatStyle::Chat, "current rounded chat bubbles"),
+        (ChatStyle::Agentic, "Codex-like activity transcript"),
+        (ChatStyle::Minimal, "jcode-like compact transcript"),
+    ];
+    let mut lines = vec![Line::styled(
+        "Changing style re-renders the current transcript immediately.",
+        Style::default().fg(theme.muted),
+    )];
+    lines.push(Line::from(""));
+    lines.extend(
+        descriptions
+            .iter()
+            .enumerate()
+            .map(|(index, (style, description))| {
+                let active = index == settings.chat_style_cursor;
+                let selected = *style == settings.chat_style;
+                let marker = selection_marker(active, selected);
+                Line::styled(
+                    format!(
+                        "{marker} {} ({}) — {description}",
+                        chat_style_label(*style),
+                        chat_style_value(*style)
+                    ),
+                    item_style(active, selected, theme),
+                )
+            }),
+    );
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Chat Style ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
 fn render_settings_footer(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -503,6 +559,7 @@ fn render_settings_footer(
         SettingsPage::Models => "arrows/jk move • / search • Enter apply • Esc/← back",
         SettingsPage::Thinking => "arrows/jk move • Enter apply • Esc/← back • Ctrl-C quit",
         SettingsPage::Collapse => "arrows/jk move • Enter/→ cycle • Esc/← back",
+        SettingsPage::ChatStyle => "arrows/jk move • Enter apply • Esc/← back",
     };
     let status = format!("{} • {controls}", settings.status);
     frame.render_widget(
@@ -579,250 +636,6 @@ fn item_style(active: bool, selected: bool, theme: &Theme) -> Style {
     } else {
         style
     }
-}
-
-fn transcript_lines(
-    messages: &[MessageView],
-    error: Option<&str>,
-    width: usize,
-    thinking_mode: CollapseMode,
-    tool_mode: CollapseMode,
-    theme: &Theme,
-) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    for message in messages {
-        if !lines.is_empty() {
-            lines.push(Line::from(""));
-        }
-        lines.extend(bubble_lines(
-            message,
-            width,
-            thinking_mode,
-            tool_mode,
-            theme,
-        ));
-    }
-    if let Some(error) = error {
-        if !lines.is_empty() {
-            lines.push(Line::from(""));
-        }
-        let error_message = MessageView {
-            id: oino_types::OinoId::nil(),
-            role: "error".into(),
-            title: None,
-            content: error.into(),
-            thinking: None,
-            thinking_redacted: false,
-            is_error: true,
-        };
-        lines.extend(bubble_lines(
-            &error_message,
-            width,
-            thinking_mode,
-            tool_mode,
-            theme,
-        ));
-    }
-    lines
-}
-
-fn bubble_lines(
-    message: &MessageView,
-    available_width: usize,
-    thinking_mode: CollapseMode,
-    tool_mode: CollapseMode,
-    theme: &Theme,
-) -> Vec<Line<'static>> {
-    if is_empty_assistant_message(message) {
-        return Vec::new();
-    }
-    if available_width < 16 {
-        return vec![Line::styled(
-            format!("{}: {}", message.role, message.content),
-            theme.bubble_border_for_role(&message.role, message.is_error),
-        )];
-    }
-
-    let max_bubble_width = available_width.clamp(16, 80).min(available_width);
-    let content_width = max_bubble_width.saturating_sub(4).max(1);
-    let message_content = display_message_content(message, tool_mode);
-    let wrapped = wrap_text(&message_content, content_width);
-    let thinking_text = thinking_display_text(message, thinking_mode);
-    let thinking_wrapped = thinking_text
-        .as_deref()
-        .map(|thinking| wrap_text(thinking, content_width.saturating_sub(2).max(1)))
-        .unwrap_or_default();
-    let role_label = message
-        .title
-        .as_ref()
-        .filter(|title| !title.trim().is_empty())
-        .cloned()
-        .unwrap_or_else(|| {
-            if message.role.is_empty() {
-                "message".to_string()
-            } else {
-                message.role.clone()
-            }
-        });
-    let content_max = wrapped
-        .iter()
-        .map(|line| UnicodeWidthStr::width(line.as_str()))
-        .chain(
-            thinking_wrapped
-                .iter()
-                .map(|line| UnicodeWidthStr::width(line.as_str()).saturating_add(2)),
-        )
-        .max()
-        .unwrap_or(0);
-    let thinking_label_width = if thinking_wrapped.is_empty() {
-        0
-    } else {
-        UnicodeWidthStr::width("◌")
-    };
-    let label_width = UnicodeWidthStr::width(role_label.as_str()).saturating_add(2);
-    let inner_width = content_width.min(
-        content_max
-            .max(thinking_label_width)
-            .max(label_width)
-            .max(1),
-    );
-    let bubble_width = inner_width.saturating_add(4);
-    let left_pad = if message.is_user() {
-        available_width.saturating_sub(bubble_width)
-    } else {
-        0
-    };
-    let border_style = theme.bubble_border_for_role(&message.role, message.is_error);
-
-    let mut lines = Vec::new();
-    lines.push(Line::styled(
-        format!(
-            "{}{}",
-            " ".repeat(left_pad),
-            top_border(&role_label, inner_width)
-        ),
-        border_style,
-    ));
-    if !thinking_wrapped.is_empty() {
-        lines.push(bubble_content_line(
-            left_pad,
-            inner_width,
-            border_style,
-            vec![Span::styled("◌", Style::default().fg(theme.muted))],
-        ));
-        for line in wrap_text(
-            thinking_text.as_deref().unwrap_or_default(),
-            inner_width.saturating_sub(2).max(1),
-        ) {
-            let text = format!("  {line}");
-            lines.push(bubble_content_line(
-                left_pad,
-                inner_width,
-                border_style,
-                vec![Span::styled(text, Style::default().fg(theme.muted))],
-            ));
-        }
-        if message_content != "<empty>" {
-            lines.push(bubble_content_line(
-                left_pad,
-                inner_width,
-                border_style,
-                vec![],
-            ));
-        }
-    }
-    if message_content != "<empty>" || thinking_wrapped.is_empty() {
-        for line in wrapped {
-            lines.push(bubble_content_line(
-                left_pad,
-                inner_width,
-                border_style,
-                vec![Span::raw(line)],
-            ));
-        }
-    }
-    lines.push(Line::styled(
-        format!("{}╰{}╯", " ".repeat(left_pad), "─".repeat(inner_width + 2)),
-        border_style,
-    ));
-    lines
-}
-
-fn bubble_content_line(
-    left_pad: usize,
-    inner_width: usize,
-    border_style: Style,
-    mut content: Vec<Span<'static>>,
-) -> Line<'static> {
-    let content_width = content
-        .iter()
-        .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
-        .sum::<usize>();
-    if content_width < inner_width {
-        content.push(Span::raw(" ".repeat(inner_width - content_width)));
-    }
-    let mut spans = vec![
-        Span::raw(" ".repeat(left_pad)),
-        Span::styled("│ ", border_style),
-    ];
-    spans.extend(content);
-    spans.push(Span::styled(" │", border_style));
-    Line::from(spans)
-}
-
-fn is_empty_assistant_message(message: &MessageView) -> bool {
-    message.is_assistant()
-        && message.content == "<empty>"
-        && message
-            .thinking
-            .as_ref()
-            .is_none_or(|thinking| thinking.trim().is_empty())
-        && !message.thinking_redacted
-}
-
-fn display_message_content(message: &MessageView, tool_mode: CollapseMode) -> String {
-    if message.role.starts_with("tool:") {
-        match tool_mode {
-            CollapseMode::Full => message.content.clone(),
-            CollapseMode::Truncate => truncate_display(&message.content),
-            CollapseMode::Collapse => "[collapsed]".into(),
-        }
-    } else {
-        message.content.clone()
-    }
-}
-
-fn thinking_display_text(message: &MessageView, thinking_mode: CollapseMode) -> Option<String> {
-    let text = if message.thinking_redacted {
-        "[redacted]".to_string()
-    } else {
-        message
-            .thinking
-            .as_ref()
-            .filter(|thinking| !thinking.trim().is_empty())?
-            .clone()
-    };
-    Some(match thinking_mode {
-        CollapseMode::Full => text,
-        CollapseMode::Truncate => truncate_display(&text),
-        CollapseMode::Collapse => "[collapsed]".into(),
-    })
-}
-
-fn truncate_display(text: &str) -> String {
-    const MAX_CHARS: usize = 240;
-    let mut truncated = text.chars().take(MAX_CHARS).collect::<String>();
-    if text.chars().count() > MAX_CHARS {
-        truncated.push('…');
-    }
-    truncated
-}
-
-fn top_border(label: &str, inner_width: usize) -> String {
-    let label = truncate_to_width(label, inner_width.saturating_sub(1));
-    let used = UnicodeWidthStr::width(label.as_str()).saturating_add(2);
-    let rest = inner_width.saturating_add(2).saturating_sub(used);
-    format!("╭ {label} {}╮", "─".repeat(rest))
 }
 
 fn composer_lines(area: Rect, composer: &ComposerState, theme: &Theme) -> Vec<Line<'static>> {
@@ -977,56 +790,6 @@ fn cursor_row_col(input: &str, cursor: usize, width: usize) -> (usize, usize) {
     (row, col)
 }
 
-fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    let width = width.max(1);
-    if text.is_empty() {
-        return vec![String::new()];
-    }
-
-    let mut lines = Vec::new();
-    for raw in text.split('\n') {
-        if raw.is_empty() {
-            lines.push(String::new());
-            continue;
-        }
-        let mut current = String::new();
-        let mut current_width = 0usize;
-        for grapheme in raw.graphemes(true) {
-            let grapheme_width = grapheme.width();
-            if current_width + grapheme_width > width && current_width != 0 {
-                lines.push(current);
-                current = String::new();
-                current_width = 0;
-            }
-            current.push_str(grapheme);
-            current_width += grapheme_width;
-            if current_width >= width {
-                lines.push(current);
-                current = String::new();
-                current_width = 0;
-            }
-        }
-        if !current.is_empty() {
-            lines.push(current);
-        }
-    }
-    lines
-}
-
-fn truncate_to_width(text: &str, max_width: usize) -> String {
-    let mut out = String::new();
-    let mut width = 0usize;
-    for ch in text.chars() {
-        let ch_width = ch.width().unwrap_or(0);
-        if width + ch_width > max_width {
-            break;
-        }
-        out.push(ch);
-        width += ch_width;
-    }
-    out
-}
-
 #[allow(dead_code)]
 fn cursor_byte(input: &str, cursor: usize) -> usize {
     byte_index_at_char(input, cursor.min(char_count(input)))
@@ -1035,8 +798,13 @@ fn cursor_byte(input: &str, cursor: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{app::TuiState, message::MessageView};
+    use crate::{
+        app::TuiState,
+        message::{MessageView, ToolCallView},
+        settings::CollapseMode,
+    };
     use ratatui::{backend::TestBackend, Terminal};
+    use serde_json::json;
 
     fn draw_state(width: u16, height: u16, state: &TuiState) -> ratatui::buffer::Buffer {
         let backend = TestBackend::new(width, height);
@@ -1072,6 +840,8 @@ mod tests {
             content: "hello".into(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         });
         let buffer = draw_state(80, 20, &state);
@@ -1097,6 +867,8 @@ mod tests {
             content: "final answer".into(),
             thinking: Some("secret internal reasoning".into()),
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         });
         state.messages.push(MessageView {
@@ -1106,6 +878,8 @@ mod tests {
             content: "long tool output".into(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         });
         let buffer = draw_state(80, 24, &state);
@@ -1130,6 +904,8 @@ mod tests {
             content: "<empty>".into(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         });
         state.messages.push(MessageView {
@@ -1139,6 +915,8 @@ mod tests {
             content: "Successfully wrote file".into(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         });
         let buffer = draw_state(100, 24, &state);
@@ -1154,6 +932,88 @@ mod tests {
     }
 
     #[test]
+    fn agentic_style_renders_unresolved_tool_call_as_running_activity() {
+        let mut state = TuiState::new();
+        state.settings.chat_style = ChatStyle::Agentic;
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "assistant".into(),
+            title: Some("test/model".into()),
+            content: "<empty>".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: vec![ToolCallView {
+                id: oino_types::OinoId::nil(),
+                name: "bash".into(),
+                arguments: json!({ "command": "cargo test" }),
+            }],
+            is_error: false,
+        });
+        let buffer = draw_state(90, 20, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Running Bash cargo test"));
+        assert!(!text.contains("test/model"));
+    }
+
+    #[test]
+    fn minimal_style_renders_numbered_prompt_and_compact_tool_row() {
+        let mut state = TuiState::new();
+        state.settings.chat_style = ChatStyle::Minimal;
+        let call_id = oino_types::OinoId::nil();
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "user".into(),
+            title: None,
+            content: "run tests".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        });
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "assistant".into(),
+            title: Some("test/model".into()),
+            content: "<empty>".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: vec![ToolCallView {
+                id: call_id,
+                name: "bash".into(),
+                arguments: json!({ "command": "cargo test" }),
+            }],
+            is_error: false,
+        });
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "tool:bash".into(),
+            title: None,
+            content: "ok".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: Some(call_id),
+            tool_calls: Vec::new(),
+            is_error: false,
+        });
+        let buffer = draw_state(90, 24, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("1› run tests"));
+        assert!(text.contains("✓ Bash cargo test"));
+        assert!(!text.contains("running"));
+    }
+
+    #[test]
     fn render_thinking_as_section_not_inline_plain_text() {
         let mut state = TuiState::new();
         state.messages.push(MessageView {
@@ -1163,6 +1023,8 @@ mod tests {
             content: "final answer".into(),
             thinking: Some("internal reasoning".into()),
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         });
         let buffer = draw_state(80, 20, &state);

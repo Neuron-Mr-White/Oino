@@ -106,7 +106,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /settings\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /settings\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
 }
 
 #[derive(Debug, Error)]
@@ -133,6 +133,7 @@ struct AppConfig {
     thinking_level: ThinkingLevel,
     thinking_collapse_mode: CollapseMode,
     tool_collapse_mode: CollapseMode,
+    chat_style: oino_tui::ChatStyle,
     referer: Option<String>,
     title: Option<String>,
 }
@@ -143,6 +144,7 @@ struct TuiLaunchConfig {
     initial_thinking_level: ThinkingLevel,
     initial_thinking_collapse_mode: CollapseMode,
     initial_tool_collapse_mode: CollapseMode,
+    initial_chat_style: oino_tui::ChatStyle,
     provider_config: OpenRouterConfig,
     session_path: PathBuf,
     open_settings: bool,
@@ -176,6 +178,7 @@ impl AppConfig {
             thinking_level: saved_settings.thinking_level.unwrap_or_default(),
             thinking_collapse_mode: saved_settings.thinking_collapse_mode.unwrap_or_default(),
             tool_collapse_mode: saved_settings.tool_collapse_mode.unwrap_or_default(),
+            chat_style: saved_settings.chat_style.unwrap_or_default(),
             referer,
             title,
         }
@@ -271,6 +274,7 @@ async fn main() -> Result<(), AppError> {
             initial_thinking_level: config.thinking_level,
             initial_thinking_collapse_mode: config.thinking_collapse_mode,
             initial_tool_collapse_mode: config.tool_collapse_mode,
+            initial_chat_style: config.chat_style,
             provider_config,
             session_path,
             open_settings: false,
@@ -338,6 +342,7 @@ async fn run_tui(
         initial_thinking_level,
         initial_thinking_collapse_mode,
         initial_tool_collapse_mode,
+        initial_chat_style,
         provider_config,
         session_path,
         open_settings,
@@ -347,6 +352,7 @@ async fn run_tui(
     state
         .settings
         .set_collapse_modes(initial_thinking_collapse_mode, initial_tool_collapse_mode);
+    state.settings.set_chat_style(initial_chat_style);
     if let Ok(messages) = harness.build_context().await {
         state.set_messages_from_oino(&messages);
     }
@@ -409,7 +415,7 @@ async fn run_tui(
                     save_tui_session(&mut state, &harness, &session_path).await;
                 }
             }
-            TuiAction::SetCollapseMode(_, _) => {
+            TuiAction::SetCollapseMode(_, _) | TuiAction::SetChatStyle(_) => {
                 persist_current_settings(&mut state).await;
                 save_tui_session(&mut state, &harness, &session_path).await;
             }
@@ -473,6 +479,7 @@ async fn run_non_interactive(
                 initial_thinking_level: config.thinking_level,
                 initial_thinking_collapse_mode: config.thinking_collapse_mode,
                 initial_tool_collapse_mode: config.tool_collapse_mode,
+                initial_chat_style: config.chat_style,
                 provider_config: OpenRouterConfig {
                     referer: config.referer,
                     title: config.title,
@@ -521,7 +528,8 @@ async fn execute_runtime_command(
         ParsedCommand::Settings(
             SettingsCommand::Open
             | SettingsCommand::OpenModelSelection
-            | SettingsCommand::OpenThinkingLevel,
+            | SettingsCommand::OpenThinkingLevel
+            | SettingsCommand::OpenChatStyle,
         ) => {
             return Err(AppError::InvalidArguments(
                 "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model openrouter:xai/glm-5.1` or `/thinking high`".into(),
@@ -549,12 +557,17 @@ async fn execute_runtime_command(
                 collapse_mode_value(mode)
             )
         }
+        ParsedCommand::Settings(SettingsCommand::SetChatStyle(style)) => {
+            config.chat_style = style;
+            format!("Chat style set to {}", oino_tui::chat_style_label(style))
+        }
     };
     UserSettings::from_current(
         config.model.clone(),
         config.thinking_level,
         config.thinking_collapse_mode,
         config.tool_collapse_mode,
+        config.chat_style,
     )
     .save_default()
     .await?;
@@ -603,6 +616,7 @@ async fn persist_current_settings(state: &mut TuiState) {
         state.settings.selected_thinking_level,
         state.settings.thinking_collapse_mode,
         state.settings.tool_collapse_mode,
+        state.settings.chat_style,
     );
     if let Err(err) = settings.save_default().await {
         state.set_error(format!("Settings save failed: {err}"));
@@ -811,6 +825,7 @@ mod tests {
                 thinking_level: Some(ThinkingLevel::High),
                 thinking_collapse_mode: Some(CollapseMode::Truncate),
                 tool_collapse_mode: Some(CollapseMode::Collapse),
+                chat_style: Some(oino_tui::ChatStyle::Minimal),
             },
             None,
             None,
@@ -820,6 +835,7 @@ mod tests {
         assert_eq!(config.thinking_level, ThinkingLevel::High);
         assert_eq!(config.thinking_collapse_mode, CollapseMode::Truncate);
         assert_eq!(config.tool_collapse_mode, CollapseMode::Collapse);
+        assert_eq!(config.chat_style, oino_tui::ChatStyle::Minimal);
     }
 
     #[tokio::test]

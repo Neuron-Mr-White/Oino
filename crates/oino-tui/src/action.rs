@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::settings::{CollapseMode, CollapseTarget};
+use crate::settings::{ChatStyle, CollapseMode, CollapseTarget};
 use oino_types::ThinkingLevel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,5 +10,6 @@ pub enum TuiAction {
     SetModel(String),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),
+    SetChatStyle(ChatStyle),
     Quit,
 }

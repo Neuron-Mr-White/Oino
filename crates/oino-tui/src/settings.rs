@@ -40,6 +40,7 @@ pub enum SettingsPage {
     Models,
     Thinking,
     Collapse,
+    ChatStyle,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -62,6 +63,22 @@ impl CollapseMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatStyle {
+    #[default]
+    Chat,
+    Agentic,
+    Minimal,
+}
+
+impl ChatStyle {
+    #[must_use]
+    pub fn all() -> [Self; 3] {
+        [Self::Chat, Self::Agentic, Self::Minimal]
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollapseTarget {
     Thinking,
@@ -73,6 +90,7 @@ pub enum SettingsMenuItem {
     ModelSelection,
     ThinkingLevel,
     CollapseMode,
+    ChatStyle,
 }
 
 impl SettingsMenuItem {
@@ -82,6 +100,7 @@ impl SettingsMenuItem {
             Self::ModelSelection => "Model Selection",
             Self::ThinkingLevel => "Thinking Level",
             Self::CollapseMode => "Collapse Mode",
+            Self::ChatStyle => "Chat Style",
         }
     }
 
@@ -91,6 +110,7 @@ impl SettingsMenuItem {
             Self::ModelSelection => SettingsPage::Models,
             Self::ThinkingLevel => SettingsPage::Thinking,
             Self::CollapseMode => SettingsPage::Collapse,
+            Self::ChatStyle => SettingsPage::ChatStyle,
         }
     }
 }
@@ -102,6 +122,7 @@ pub enum SettingsAction {
     SetModel(String),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),
+    SetChatStyle(ChatStyle),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,8 +135,10 @@ pub struct SettingsState {
     pub model_cursor: usize,
     pub thinking_cursor: usize,
     pub collapse_cursor: usize,
+    pub chat_style_cursor: usize,
     pub thinking_collapse_mode: CollapseMode,
     pub tool_collapse_mode: CollapseMode,
+    pub chat_style: ChatStyle,
     pub model_search: String,
     pub model_search_active: bool,
     pub status: String,
@@ -134,8 +157,10 @@ impl SettingsState {
             model_cursor: 0,
             thinking_cursor: thinking_index(thinking_level, &all_thinking_levels()),
             collapse_cursor: 0,
+            chat_style_cursor: 0,
             thinking_collapse_mode: CollapseMode::Full,
             tool_collapse_mode: CollapseMode::Full,
+            chat_style: ChatStyle::Chat,
             model_search: String::new(),
             model_search_active: false,
             status: "Model catalog not loaded yet".into(),
@@ -187,6 +212,16 @@ impl SettingsState {
         }
     }
 
+    pub fn set_chat_style(&mut self, style: ChatStyle) {
+        self.chat_style = style;
+        self.chat_style_cursor = chat_style_index(style);
+    }
+
+    pub fn open_chat_style(&mut self) {
+        self.page = SettingsPage::ChatStyle;
+        self.chat_style_cursor = chat_style_index(self.chat_style);
+    }
+
     pub fn select_model_identifier(&mut self, model: &str) {
         self.selected_model = model.to_string();
         if let Some(index) = self.models.iter().position(|option| option.id == model) {
@@ -201,11 +236,12 @@ impl SettingsState {
     }
 
     #[must_use]
-    pub fn menu_items(&self) -> [SettingsMenuItem; 3] {
+    pub fn menu_items(&self) -> [SettingsMenuItem; 4] {
         [
             SettingsMenuItem::ModelSelection,
             SettingsMenuItem::ThinkingLevel,
             SettingsMenuItem::CollapseMode,
+            SettingsMenuItem::ChatStyle,
         ]
     }
 
@@ -375,6 +411,7 @@ impl SettingsState {
             SettingsPage::Models => self.apply_model(),
             SettingsPage::Thinking => self.apply_thinking_level(),
             SettingsPage::Collapse => self.apply_collapse_mode(),
+            SettingsPage::ChatStyle => self.apply_chat_style(),
         }
     }
 
@@ -392,6 +429,10 @@ impl SettingsState {
             }
             SettingsPage::Collapse => {
                 self.collapse_cursor = move_index(self.collapse_cursor, 2, delta);
+            }
+            SettingsPage::ChatStyle => {
+                self.chat_style_cursor =
+                    move_index(self.chat_style_cursor, ChatStyle::all().len(), delta);
             }
         }
     }
@@ -462,6 +503,18 @@ impl SettingsState {
         }
     }
 
+    fn apply_chat_style(&mut self) -> SettingsAction {
+        let style = ChatStyle::all()
+            .get(self.chat_style_cursor)
+            .copied()
+            .unwrap_or(ChatStyle::Chat);
+        if self.chat_style == style {
+            return SettingsAction::None;
+        }
+        self.chat_style = style;
+        SettingsAction::SetChatStyle(style)
+    }
+
     fn clamp_thinking_to_selected_model(&mut self) {
         let levels = self.thinking_levels();
         if !levels.contains(&self.selected_thinking_level) {
@@ -492,6 +545,34 @@ pub fn collapse_mode_label(mode: CollapseMode) -> &'static str {
     }
 }
 
+#[must_use]
+pub fn chat_style_label(style: ChatStyle) -> &'static str {
+    match style {
+        ChatStyle::Chat => "Chat",
+        ChatStyle::Agentic => "Agentic",
+        ChatStyle::Minimal => "Minimal",
+    }
+}
+
+#[must_use]
+pub fn chat_style_value(style: ChatStyle) -> &'static str {
+    match style {
+        ChatStyle::Chat => "chat",
+        ChatStyle::Agentic => "agentic",
+        ChatStyle::Minimal => "minimal",
+    }
+}
+
+#[must_use]
+pub fn parse_chat_style(value: &str) -> Option<ChatStyle> {
+    match value {
+        "chat" => Some(ChatStyle::Chat),
+        "agentic" => Some(ChatStyle::Agentic),
+        "minimal" => Some(ChatStyle::Minimal),
+        _ => None,
+    }
+}
+
 pub fn thinking_label(level: ThinkingLevel) -> &'static str {
     match level {
         ThinkingLevel::Off => "Off",
@@ -516,6 +597,13 @@ fn normalize_thinking_levels(mut levels: Vec<ThinkingLevel>) -> Vec<ThinkingLeve
 
 fn thinking_index(level: ThinkingLevel, levels: &[ThinkingLevel]) -> usize {
     levels.iter().position(|item| *item == level).unwrap_or(0)
+}
+
+fn chat_style_index(style: ChatStyle) -> usize {
+    ChatStyle::all()
+        .iter()
+        .position(|item| *item == style)
+        .unwrap_or(0)
 }
 
 fn move_index(current: usize, len: usize, delta: isize) -> usize {
@@ -625,6 +713,26 @@ mod tests {
             settings.handle_key(key(KeyCode::Enter)),
             SettingsAction::SetCollapseMode(CollapseTarget::Tool, CollapseMode::Truncate)
         );
+    }
+
+    #[test]
+    fn chat_style_selection_uses_nested_page() {
+        let mut settings = SettingsState::new("a", ThinkingLevel::Off);
+        for _ in 0..3 {
+            settings.handle_key(key(KeyCode::Down));
+        }
+        assert_eq!(settings.current_menu_item(), SettingsMenuItem::ChatStyle);
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::None
+        );
+        assert_eq!(settings.page, SettingsPage::ChatStyle);
+        settings.handle_key(key(KeyCode::Down));
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::SetChatStyle(ChatStyle::Agentic)
+        );
+        assert_eq!(settings.chat_style, ChatStyle::Agentic);
     }
 
     #[test]

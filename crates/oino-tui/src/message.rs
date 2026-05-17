@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
 
 use oino_types::{ContentBlock, Message, OinoId};
+use serde_json::Value;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolCallView {
+    pub id: OinoId,
+    pub name: String,
+    pub arguments: Value,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageView {
@@ -10,6 +18,8 @@ pub struct MessageView {
     pub content: String,
     pub thinking: Option<String>,
     pub thinking_redacted: bool,
+    pub tool_call_id: Option<OinoId>,
+    pub tool_calls: Vec<ToolCallView>,
     pub is_error: bool,
 }
 
@@ -42,6 +52,8 @@ pub fn project_message(message: &Message) -> MessageView {
                 content: summary.content,
                 thinking: summary.thinking,
                 thinking_redacted: summary.thinking_redacted,
+                tool_call_id: None,
+                tool_calls: summary.tool_calls,
                 is_error: false,
             }
         }
@@ -62,6 +74,8 @@ pub fn project_message(message: &Message) -> MessageView {
                 content: summary.content,
                 thinking: summary.thinking,
                 thinking_redacted: summary.thinking_redacted,
+                tool_call_id: None,
+                tool_calls: summary.tool_calls,
                 is_error: false,
             }
         }
@@ -70,6 +84,7 @@ pub fn project_message(message: &Message) -> MessageView {
             tool_name,
             content,
             is_error,
+            tool_call_id,
             ..
         } => {
             let summary = summarize_content(content);
@@ -80,6 +95,8 @@ pub fn project_message(message: &Message) -> MessageView {
                 content: summary.content,
                 thinking: summary.thinking,
                 thinking_redacted: summary.thinking_redacted,
+                tool_call_id: Some(*tool_call_id),
+                tool_calls: summary.tool_calls,
                 is_error: *is_error,
             }
         }
@@ -90,6 +107,8 @@ pub fn project_message(message: &Message) -> MessageView {
             content: "<custom>".into(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         },
         Message::CompactionSummary { id, summary } => MessageView {
@@ -99,6 +118,8 @@ pub fn project_message(message: &Message) -> MessageView {
             content: summary.clone(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         },
         Message::BranchSummary { id, summary } => MessageView {
@@ -108,6 +129,8 @@ pub fn project_message(message: &Message) -> MessageView {
             content: summary.clone(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         },
     }
@@ -118,6 +141,7 @@ pub struct ContentSummary {
     pub content: String,
     pub thinking: Option<String>,
     pub thinking_redacted: bool,
+    pub tool_calls: Vec<ToolCallView>,
 }
 
 #[must_use]
@@ -129,6 +153,7 @@ fn summarize_content(content: &[ContentBlock]) -> ContentSummary {
     let mut parts = Vec::new();
     let mut thinking_parts = Vec::new();
     let mut thinking_redacted = false;
+    let mut tool_calls = Vec::new();
     for block in content {
         match block {
             ContentBlock::Text { text } => parts.push(text.clone()),
@@ -137,7 +162,15 @@ fn summarize_content(content: &[ContentBlock]) -> ContentSummary {
                 thinking_parts.push(text.clone());
                 thinking_redacted |= *redacted;
             }
-            ContentBlock::ToolCall { .. } => {}
+            ContentBlock::ToolCall {
+                id,
+                name,
+                arguments,
+            } => tool_calls.push(ToolCallView {
+                id: *id,
+                name: name.clone(),
+                arguments: arguments.clone(),
+            }),
         }
     }
     ContentSummary {
@@ -152,6 +185,7 @@ fn summarize_content(content: &[ContentBlock]) -> ContentSummary {
             Some(thinking_parts.join("\n"))
         },
         thinking_redacted,
+        tool_calls,
     }
 }
 

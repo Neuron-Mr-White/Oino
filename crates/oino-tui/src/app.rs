@@ -8,7 +8,7 @@ use crate::{
     },
     composer::ComposerState,
     message::{project_content_blocks, project_message, project_messages, MessageView},
-    settings::{collapse_mode_label, ModelOption, SettingsAction, SettingsState},
+    settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
@@ -128,6 +128,8 @@ impl TuiState {
             content: String::new(),
             thinking: None,
             thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
             is_error: false,
         });
     }
@@ -138,6 +140,7 @@ impl TuiState {
             message.content = projected.content;
             message.thinking = projected.thinking;
             message.thinking_redacted = projected.thinking_redacted;
+            message.tool_calls = projected.tool_calls;
         } else {
             self.messages.push(MessageView {
                 id,
@@ -146,6 +149,8 @@ impl TuiState {
                 content: projected.content,
                 thinking: projected.thinking,
                 thinking_redacted: projected.thinking_redacted,
+                tool_call_id: None,
+                tool_calls: projected.tool_calls,
                 is_error: false,
             });
         }
@@ -367,6 +372,10 @@ impl TuiState {
                 self.status = format!("Collapse mode set to {}", collapse_mode_label(mode));
                 TuiAction::SetCollapseMode(target, mode)
             }
+            SettingsAction::SetChatStyle(style) => {
+                self.status = format!("Chat style set to {}", chat_style_label(style));
+                TuiAction::SetChatStyle(style)
+            }
         }
     }
 
@@ -406,6 +415,10 @@ impl TuiState {
                 self.open_thinking_level_overlay();
                 TuiAction::None
             }
+            ParsedCommand::Settings(SettingsCommand::OpenChatStyle) => {
+                self.open_chat_style_overlay();
+                TuiAction::None
+            }
             ParsedCommand::Settings(SettingsCommand::SetModel(model)) => {
                 let identifier = model.identifier();
                 self.settings.select_model_identifier(&identifier);
@@ -428,6 +441,12 @@ impl TuiState {
                 self.clear_error();
                 TuiAction::SetCollapseMode(target, mode)
             }
+            ParsedCommand::Settings(SettingsCommand::SetChatStyle(style)) => {
+                self.settings.set_chat_style(style);
+                self.status = format!("Chat style set to {}", chat_style_label(style));
+                self.clear_error();
+                TuiAction::SetChatStyle(style)
+            }
         }
     }
 
@@ -447,6 +466,13 @@ impl TuiState {
         self.settings.open_thinking_level();
         self.overlay = Some(OverlayKind::Settings);
         self.status = "Thinking Level: arrows/jk move • Enter apply • Esc back".into();
+    }
+
+    fn open_chat_style_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_chat_style();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status = "Chat Style: arrows/jk move • Enter apply • Esc back".into();
     }
 
     fn open_settings_overlay(&mut self) {
@@ -620,6 +646,22 @@ mod tests {
             TuiAction::SetModel("openrouter:xai/glm-5.1".into())
         );
         assert_eq!(state.settings.selected_model, "openrouter:xai/glm-5.1");
+    }
+
+    #[test]
+    fn settings_chat_style_command_applies_immediately() {
+        let mut state = TuiState::new();
+        for ch in "/settings chat-style minimal".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SetChatStyle(crate::settings::ChatStyle::Minimal)
+        );
+        assert_eq!(
+            state.settings.chat_style,
+            crate::settings::ChatStyle::Minimal
+        );
     }
 
     #[test]

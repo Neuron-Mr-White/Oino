@@ -914,6 +914,7 @@ dependencies = [
  "oino-types",
  "ratatui",
  "serde",
+ "serde_json",
  "unicode-segmentation",
  "unicode-width 0.2.0",
 ]

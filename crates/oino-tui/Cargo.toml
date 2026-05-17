@@ -9,6 +9,7 @@ crossterm.workspace = true
 oino-types = { path = "../oino-types" }
 ratatui.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
 
