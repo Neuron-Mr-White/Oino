@@ -5,6 +5,7 @@ pub mod action;
 pub mod app;
 pub mod command;
 pub mod composer;
+mod markdown;
 pub mod message;
 pub mod render;
 pub mod settings;

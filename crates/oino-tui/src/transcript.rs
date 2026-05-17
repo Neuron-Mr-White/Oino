@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{
+    markdown::{prefixed_markdown_lines, render_markdown_lines},
     message::{MessageView, ToolCallView},
     settings::{ChatStyle, CollapseMode},
     text::{truncate_to_width, wrap_text},
@@ -106,7 +107,7 @@ fn minimal_transcript_lines(
     error: Option<&str>,
     width: usize,
     thinking_mode: CollapseMode,
-    tool_mode: CollapseMode,
+    _tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
@@ -124,7 +125,6 @@ fn minimal_transcript_lines(
                 user_index,
                 width,
                 thinking_mode,
-                tool_mode,
                 theme,
             ),
             &message.role,
@@ -141,7 +141,6 @@ fn minimal_transcript_lines(
                 user_index,
                 width,
                 thinking_mode,
-                tool_mode,
                 theme,
             ),
             &error_message.role,
@@ -262,12 +261,13 @@ fn agentic_assistant_lines(
         ));
     }
     if message.content != "<empty>" {
-        lines.extend(prefixed_text_lines(
+        lines.extend(prefixed_markdown_lines(
             &message.content,
             width,
             Line::from(Span::styled("• ", Style::default().fg(theme.muted))),
             Line::from("  "),
             Style::default().fg(theme.fg),
+            theme,
         ));
     }
     for call in &message.tool_calls {
@@ -394,7 +394,6 @@ fn minimal_message_lines(
     user_index: usize,
     width: usize,
     thinking_mode: CollapseMode,
-    tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     if message.is_user() {
@@ -417,7 +416,7 @@ fn minimal_message_lines(
         return minimal_assistant_lines(message, messages, index, width, thinking_mode, theme);
     }
     if message.role.starts_with("tool:") {
-        return minimal_tool_result_lines(message, messages, width, tool_mode, theme);
+        return minimal_tool_result_lines(message, messages, theme);
     }
     if message.is_error {
         return prefixed_text_lines(
@@ -456,11 +455,12 @@ fn minimal_assistant_lines(
         ));
     }
     if message.content != "<empty>" {
-        lines.extend(
-            wrap_text(&message.content, width)
-                .into_iter()
-                .map(Line::from),
-        );
+        lines.extend(render_markdown_lines(
+            &message.content,
+            width,
+            Style::default().fg(theme.fg),
+            theme,
+        ));
     }
     for call in &message.tool_calls {
         if has_later_tool_result(messages, index, call.id) {
@@ -481,8 +481,6 @@ fn minimal_assistant_lines(
 fn minimal_tool_result_lines(
     message: &MessageView,
     messages: &[MessageView],
-    _width: usize,
-    _tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let tool_name = tool_name_from_role(&message.role);
@@ -724,6 +722,26 @@ fn concise_error_summary(content: &str) -> Option<String> {
     (!summary.is_empty()).then(|| truncate_to_width(summary, 80))
 }
 
+fn message_content_lines(
+    message: &MessageView,
+    content: &str,
+    width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    if message.is_assistant() && content != "<empty>" {
+        render_markdown_lines(content, width, Style::default().fg(theme.fg), theme)
+    } else {
+        plain_wrapped_lines(content, width, Style::default().fg(theme.fg))
+    }
+}
+
+fn plain_wrapped_lines(text: &str, width: usize, style: Style) -> Vec<Line<'static>> {
+    wrap_text(text, width)
+        .into_iter()
+        .map(|line| Line::from(Span::styled(line, style)))
+        .collect()
+}
+
 fn content_metric(content: &str) -> String {
     if content == "<empty>" || content.trim().is_empty() {
         return "no output".into();
@@ -757,7 +775,7 @@ fn bubble_lines(
     let max_bubble_width = available_width.clamp(16, 80).min(available_width);
     let content_width = max_bubble_width.saturating_sub(4).max(1);
     let message_content = display_message_content(message, tool_mode);
-    let wrapped = wrap_text(&message_content, content_width);
+    let content_lines = message_content_lines(message, &message_content, content_width, theme);
     let thinking_text = thinking_display_text(message, thinking_mode);
     let thinking_wrapped = thinking_text
         .as_deref()
@@ -775,9 +793,9 @@ fn bubble_lines(
                 message.role.clone()
             }
         });
-    let content_max = wrapped
+    let content_max = content_lines
         .iter()
-        .map(|line| UnicodeWidthStr::width(line.as_str()))
+        .map(line_width)
         .chain(
             thinking_wrapped
                 .iter()
@@ -843,12 +861,12 @@ fn bubble_lines(
         }
     }
     if message_content != "<empty>" || thinking_wrapped.is_empty() {
-        for line in wrapped {
+        for line in content_lines {
             lines.push(bubble_content_line(
                 left_pad,
                 inner_width,
                 border_style,
-                vec![Span::raw(line)],
+                line.spans,
             ));
         }
     }
@@ -962,6 +980,20 @@ mod tests {
         }
     }
 
+    fn assistant_text(content: &str) -> MessageView {
+        MessageView {
+            id: oino_types::OinoId::from_u128(11),
+            role: "assistant".into(),
+            title: Some("test/model".into()),
+            content: content.into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        }
+    }
+
     fn tool_result(
         id: u128,
         call_id: u128,
@@ -979,6 +1011,45 @@ mod tests {
             tool_call_id: Some(oino_types::OinoId::from_u128(call_id)),
             tool_calls: Vec::new(),
             is_error,
+        }
+    }
+
+    #[test]
+    fn assistant_markdown_is_rendered_in_all_chat_styles() {
+        let messages = vec![assistant_text(
+            "## Title\n\n- **Bold** item with `code`\n- [Link](https://example.invalid)",
+        )];
+
+        for style in [ChatStyle::Chat, ChatStyle::Agentic, ChatStyle::Minimal] {
+            let lines = transcript_lines(
+                &messages,
+                None,
+                120,
+                CollapseMode::Full,
+                CollapseMode::Full,
+                style,
+                &Theme::default(),
+            );
+            let rendered = lines.iter().map(plain).collect::<Vec<_>>().join("\n");
+
+            assert!(rendered.contains("Title"), "style {style:?}: {rendered}");
+            assert!(
+                rendered.contains("• Bold item with code"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("Link (https://example.invalid)"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                !rendered.contains("## Title"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                !rendered.contains("**Bold**"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(!rendered.contains("`code`"), "style {style:?}: {rendered}");
         }
     }
 
