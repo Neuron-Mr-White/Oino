@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use crate::fuzzy::{fuzzy_indices, FuzzyMode};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::ThinkingLevel;
 
@@ -141,6 +142,7 @@ pub struct SettingsState {
     pub chat_style: ChatStyle,
     pub model_search: String,
     pub model_search_active: bool,
+    pub filtered_model_indices: Vec<usize>,
     pub status: String,
     pub refreshing: bool,
 }
@@ -163,6 +165,7 @@ impl SettingsState {
             chat_style: ChatStyle::Chat,
             model_search: String::new(),
             model_search_active: false,
+            filtered_model_indices: Vec::new(),
             status: "Model catalog not loaded yet".into(),
             refreshing: false,
         }
@@ -177,6 +180,7 @@ impl SettingsState {
         self.page = SettingsPage::Models;
         self.model_search_active = false;
         self.model_search.clear();
+        self.refresh_model_filter();
     }
 
     pub fn open_thinking_level(&mut self) {
@@ -194,6 +198,7 @@ impl SettingsState {
             .position(|model| model.id == self.selected_model)
             .unwrap_or_else(|| self.model_cursor.min(self.models.len().saturating_sub(1)));
         self.clamp_thinking_to_selected_model();
+        self.refresh_model_filter();
     }
 
     pub fn set_refreshing(&mut self, refreshing: bool) {
@@ -274,29 +279,13 @@ impl SettingsState {
     }
 
     #[must_use]
-    pub fn filtered_model_indices(&self) -> Vec<usize> {
-        let query = self.model_search.trim().to_lowercase();
-        if query.is_empty() {
-            return (0..self.models.len()).collect();
-        }
-        self.models
-            .iter()
-            .enumerate()
-            .filter_map(|(index, model)| {
-                let id = model.id.to_lowercase();
-                let display_name = model.display_name.to_lowercase();
-                if id.contains(&query) || display_name.contains(&query) {
-                    Some(index)
-                } else {
-                    None
-                }
-            })
-            .collect()
+    pub fn filtered_model_indices(&self) -> &[usize] {
+        &self.filtered_model_indices
     }
 
     #[must_use]
     pub fn model_cursor_filtered_position(&self) -> usize {
-        self.filtered_model_indices()
+        self.filtered_model_indices
             .iter()
             .position(|index| *index == self.model_cursor)
             .unwrap_or(0)
@@ -318,6 +307,7 @@ impl SettingsState {
             KeyCode::Char('/') if self.page == SettingsPage::Models && key.modifiers.is_empty() => {
                 self.model_search_active = true;
                 self.model_search.clear();
+                self.refresh_model_filter();
                 SettingsAction::None
             }
             KeyCode::Up => {
@@ -354,6 +344,7 @@ impl SettingsState {
             KeyCode::Esc => {
                 self.model_search_active = false;
                 self.model_search.clear();
+                self.refresh_model_filter();
                 self.model_cursor = self
                     .models
                     .iter()
@@ -367,7 +358,7 @@ impl SettingsState {
             }
             KeyCode::Backspace => {
                 self.model_search.pop();
-                self.sync_model_cursor_to_filter();
+                self.refresh_model_filter();
                 SettingsAction::None
             }
             KeyCode::Up => {
@@ -382,7 +373,7 @@ impl SettingsState {
                 if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
             {
                 self.model_search.push(ch);
-                self.sync_model_cursor_to_filter();
+                self.refresh_model_filter();
                 SettingsAction::None
             }
             _ => SettingsAction::None,
@@ -395,6 +386,7 @@ impl SettingsState {
         } else {
             self.model_search_active = false;
             self.model_search.clear();
+            self.refresh_model_filter();
             self.page = SettingsPage::Menu;
             SettingsAction::None
         }
@@ -438,7 +430,7 @@ impl SettingsState {
     }
 
     fn move_model_cursor_filtered(&mut self, delta: isize) {
-        let indices = self.filtered_model_indices();
+        let indices = &self.filtered_model_indices;
         if indices.is_empty() {
             return;
         }
@@ -450,8 +442,19 @@ impl SettingsState {
         self.model_cursor = indices[next];
     }
 
+    fn refresh_model_filter(&mut self) {
+        self.filtered_model_indices = fuzzy_indices(
+            &self.models,
+            self.model_search.trim(),
+            FuzzyMode::Text,
+            None,
+            |model| format!("{} {}", model.id, model.display_name),
+        );
+        self.sync_model_cursor_to_filter();
+    }
+
     fn sync_model_cursor_to_filter(&mut self) {
-        let indices = self.filtered_model_indices();
+        let indices = &self.filtered_model_indices;
         if let Some(index) = indices.first().copied() {
             if !indices.contains(&self.model_cursor) {
                 self.model_cursor = index;
@@ -757,7 +760,9 @@ mod tests {
             SettingsAction::None
         );
         assert_eq!(settings.model_search, "g");
-        assert_eq!(settings.filtered_model_indices(), vec![1, 2]);
+        assert_eq!(settings.filtered_model_indices().len(), 2);
+        assert!(settings.filtered_model_indices().contains(&1));
+        assert!(settings.filtered_model_indices().contains(&2));
         assert!(matches!(settings.model_cursor, 1 | 2));
         assert_eq!(settings.handle_key(key(KeyCode::Esc)), SettingsAction::None);
         assert!(!settings.model_search_active);

@@ -1896,6 +1896,7 @@ mod tests {
     fn render_command_suggestions_above_composer() {
         let mut state = TuiState::new();
         state.composer.replace_text("/");
+        state.refresh_command_suggestions();
         let buffer = draw_state(80, 20, &state);
         let text = buffer
             .content()

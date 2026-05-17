@@ -10,16 +10,12 @@ use crate::{
         char_count, collapsed_paste_summary, normalize_paste_text, should_collapse_paste,
         ComposerState, MAX_PASTE_CHARS,
     },
+    fuzzy::{fuzzy_indices, FuzzyMode},
     message::{project_content_blocks, project_message, project_messages, MessageView},
     settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nucleo::{
-    pattern::{CaseMatching, Normalization},
-    Config, Nucleo, Utf32String,
-};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
-use std::sync::Arc;
 
 pub const HELP_STATUS: &str =
     "Enter send/steer • PgUp/PgDn scroll • type / or @file • Ctrl-O s send panel • Ctrl-O e expand paste • Ctrl-C twice quit";
@@ -328,6 +324,7 @@ impl TuiState {
 
     pub fn set_file_paths(&mut self, paths: Vec<String>) {
         self.file_paths = paths;
+        self.refresh_command_suggestions();
     }
 
     pub fn scroll_transcript_up(&mut self, lines: usize) {
@@ -473,26 +470,38 @@ impl TuiState {
 
     #[must_use]
     pub fn command_suggestions_view(&self) -> Option<CommandSuggestionsView> {
-        if self.overlay.is_some() || self.focus != TuiFocus::Composer || !self.composer.is_enabled()
-        {
+        if !self.can_show_command_suggestions() {
             return None;
         }
         let input = self.composer.text();
         if self.command_suggestions.is_dismissed_for(input) {
             return None;
         }
-        let mut view =
-            command_suggestions_for(input, self.composer.cursor(), &self.settings.models).or_else(
-                || file_suggestions_for(input, self.composer.cursor(), &self.file_paths),
-            )?;
-        view.selected = if view.items.is_empty() {
-            0
-        } else {
-            self.command_suggestions
-                .selected
-                .min(view.items.len().saturating_sub(1))
-        };
-        Some(view)
+        self.command_suggestions
+            .cached_view(input, self.composer.cursor())
+    }
+
+    fn can_show_command_suggestions(&self) -> bool {
+        self.overlay.is_none() && self.focus == TuiFocus::Composer && self.composer.is_enabled()
+    }
+
+    fn build_command_suggestions(&self) -> Option<CommandSuggestionsView> {
+        let input = self.composer.text();
+        let cursor = self.composer.cursor();
+        command_suggestions_for(input, cursor, &self.settings.models)
+            .or_else(|| file_suggestions_for(input, cursor, &self.file_paths))
+    }
+
+    pub(crate) fn refresh_command_suggestions(&mut self) {
+        let input = self.composer.text().to_string();
+        let cursor = self.composer.cursor();
+        if !self.can_show_command_suggestions() || self.command_suggestions.is_dismissed_for(&input)
+        {
+            self.command_suggestions.clear_cache();
+            return;
+        }
+        let view = self.build_command_suggestions();
+        self.command_suggestions.cache_view(&input, cursor, view);
     }
 
     pub fn set_messages_from_oino(&mut self, messages: &[Message]) {
@@ -587,6 +596,7 @@ impl TuiState {
 
     pub fn set_model_catalog(&mut self, models: Vec<ModelOption>, status: impl Into<String>) {
         self.settings.set_models(models, status);
+        self.refresh_command_suggestions();
     }
 
     pub fn set_model_catalog_refreshing(&mut self, refreshing: bool) {
@@ -857,6 +867,8 @@ impl TuiState {
             .replace_char_range(item.replace_start, item.replace_end, &replacement);
         if should_submit {
             self.command_suggestions.dismiss_for(self.composer.text());
+        } else {
+            self.refresh_command_suggestions();
         }
         should_submit
     }
@@ -867,12 +879,7 @@ impl TuiState {
             self.command_suggestions
                 .clear_dismissal_if_input_changed(input);
         }
-        if let Some(view) =
-            command_suggestions_for(input, self.composer.cursor(), &self.settings.models)
-                .or_else(|| file_suggestions_for(input, self.composer.cursor(), &self.file_paths))
-        {
-            self.command_suggestions.clamp(view.items.len());
-        }
+        self.refresh_command_suggestions();
     }
 
     fn handle_send_panel_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -1277,29 +1284,7 @@ fn move_index(current: usize, len: usize, delta: isize) -> usize {
 }
 
 fn filtered_session_indices(items: &[SessionListItem], query: &str) -> Vec<usize> {
-    if query.is_empty() {
-        return (0..items.len()).collect();
-    }
-
-    let mut nucleo = Nucleo::new(Config::DEFAULT.match_paths(), Arc::new(|| ()), Some(1), 1);
-    let injector = nucleo.injector();
-    for (index, session) in items.iter().enumerate() {
-        let haystack = session_match_text(session);
-        injector.push(index, move |_, columns| {
-            columns[0] = Utf32String::from(haystack);
-        });
-    }
-    drop(injector);
-
-    nucleo
-        .pattern
-        .reparse(0, query, CaseMatching::Ignore, Normalization::Smart, false);
-    while nucleo.tick(10).running {}
-    nucleo
-        .snapshot()
-        .matched_items(..)
-        .map(|item| *item.data)
-        .collect()
+    fuzzy_indices(items, query, FuzzyMode::Path, None, session_match_text)
 }
 
 fn session_match_text(session: &SessionListItem) -> String {

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use crate::fuzzy::{fuzzy_indices, FuzzyMode};
 use crate::settings::{
     chat_style_value as settings_chat_style_value, parse_chat_style as settings_parse_chat_style,
     ChatStyle, CollapseMode, CollapseTarget, ModelOption,
@@ -73,6 +74,14 @@ pub enum SettingsCommand {
 pub struct CommandSuggestionsState {
     pub selected: usize,
     dismissed_input: Option<String>,
+    cached: Option<CachedCommandSuggestions>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CachedCommandSuggestions {
+    input: String,
+    cursor: usize,
+    view: CommandSuggestionsView,
 }
 
 impl CommandSuggestionsState {
@@ -83,6 +92,7 @@ impl CommandSuggestionsState {
 
     pub fn move_selection(&mut self, delta: isize, len: usize) {
         self.selected = move_index(self.selected, len, delta);
+        self.sync_cached_selection();
     }
 
     pub fn clamp(&mut self, len: usize) {
@@ -91,10 +101,12 @@ impl CommandSuggestionsState {
         } else {
             self.selected = self.selected.min(len.saturating_sub(1));
         }
+        self.sync_cached_selection();
     }
 
     pub fn dismiss_for(&mut self, input: &str) {
         self.dismissed_input = Some(input.to_string());
+        self.cached = None;
     }
 
     #[must_use]
@@ -109,6 +121,55 @@ impl CommandSuggestionsState {
             .is_some_and(|dismissed| dismissed != input)
         {
             self.dismissed_input = None;
+        }
+    }
+
+    pub fn cache_view(&mut self, input: &str, cursor: usize, view: Option<CommandSuggestionsView>) {
+        self.cached = view.map(|mut view| {
+            self.clamp_selection_to(view.items.len());
+            view.selected = self.selected;
+            CachedCommandSuggestions {
+                input: input.to_string(),
+                cursor,
+                view,
+            }
+        });
+    }
+
+    pub fn clear_cache(&mut self) {
+        self.cached = None;
+    }
+
+    #[must_use]
+    pub fn cached_view(&self, input: &str, cursor: usize) -> Option<CommandSuggestionsView> {
+        let cached = self.cached.as_ref()?;
+        if cached.input != input || cached.cursor != cursor {
+            return None;
+        }
+        let mut view = cached.view.clone();
+        view.selected = if view.items.is_empty() {
+            0
+        } else {
+            self.selected.min(view.items.len().saturating_sub(1))
+        };
+        Some(view)
+    }
+
+    fn clamp_selection_to(&mut self, len: usize) {
+        if len == 0 {
+            self.selected = 0;
+        } else {
+            self.selected = self.selected.min(len.saturating_sub(1));
+        }
+    }
+
+    fn sync_cached_selection(&mut self) {
+        let Some(len) = self.cached.as_ref().map(|cached| cached.view.items.len()) else {
+            return;
+        };
+        self.clamp_selection_to(len);
+        if let Some(cached) = &mut self.cached {
+            cached.view.selected = self.selected;
         }
     }
 }
@@ -182,29 +243,26 @@ pub fn file_suggestions_for(
     files: &[String],
 ) -> Option<CommandSuggestionsView> {
     let context = file_suggestion_context(input, cursor)?;
-    let query = context.query.to_lowercase();
-    let mut scored = files
-        .iter()
-        .filter_map(|file| fuzzy_file_score(file, &query).map(|score| (score, file)))
-        .collect::<Vec<_>>();
-    scored.sort_by(|(left_score, left), (right_score, right)| {
-        right_score
-            .cmp(left_score)
-            .then_with(|| left.len().cmp(&right.len()))
-            .then_with(|| left.cmp(right))
-    });
-    let items = scored
-        .into_iter()
-        .take(10)
-        .map(|(_, file)| CommandSuggestionItem {
+    let items = fuzzy_indices(
+        files,
+        &context.query,
+        FuzzyMode::Path,
+        Some(10),
+        Clone::clone,
+    )
+    .into_iter()
+    .map(|index| {
+        let file = &files[index];
+        CommandSuggestionItem {
             label: file.clone(),
             summary: "file".into(),
             replacement: format!("@{file}"),
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: false,
-        })
-        .collect::<Vec<_>>();
+        }
+    })
+    .collect::<Vec<_>>();
     Some(view("Files", context.query, items))
 }
 
@@ -325,18 +383,23 @@ pub fn parse_chat_style(value: &str) -> Option<ChatStyle> {
 }
 
 fn root_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
-    let items = COMMANDS
-        .iter()
-        .filter(|command| command.name.starts_with(context.active_prefix.as_str()))
-        .map(|command| CommandSuggestionItem {
+    let query = context.active_prefix.trim_start_matches('/');
+    let items = fuzzy_indices(COMMANDS, query, FuzzyMode::Text, None, |command| {
+        command.name.trim_start_matches('/').to_string()
+    })
+    .into_iter()
+    .map(|index| {
+        let command = &COMMANDS[index];
+        CommandSuggestionItem {
             label: command.name.into(),
             summary: command.summary.into(),
             replacement: command.name.into(),
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
-        })
-        .collect::<Vec<_>>();
+        }
+    })
+    .collect::<Vec<_>>();
     Some(view("Commands", context.active_prefix, items))
 }
 
@@ -347,11 +410,19 @@ fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSug
         ("collapse", "Set thinking/tool collapse mode"),
         ("chat-style", "Set transcript rendering style"),
     ];
-    let items = subjects
-        .into_iter()
-        .filter(|(subject, _)| subject.starts_with(context.active_prefix.as_str()))
-        .map(|(subject, summary)| incomplete_item(subject, summary, &context))
-        .collect::<Vec<_>>();
+    let items = fuzzy_indices(
+        &subjects,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (subject, summary) = subjects[index];
+        incomplete_item(subject, summary, &context)
+    })
+    .collect::<Vec<_>>();
     Some(view("Settings", context.active_prefix, items))
 }
 
@@ -359,37 +430,48 @@ fn model_suggestions(
     context: SuggestionContext,
     models: &[ModelOption],
 ) -> Option<CommandSuggestionsView> {
-    let query = context.active_prefix.to_lowercase();
-    let items = models
-        .iter()
-        .filter(|model| {
-            model.id.to_lowercase().contains(&query)
-                || model.display_name.to_lowercase().contains(&query)
-        })
-        .map(|model| CommandSuggestionItem {
+    let items = fuzzy_indices(
+        models,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |model| format!("{} {}", model.id, model.display_name),
+    )
+    .into_iter()
+    .map(|index| {
+        let model = &models[index];
+        CommandSuggestionItem {
             label: model.id.clone(),
             summary: model.display_name.clone(),
             replacement: model.id.clone(),
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
-        })
-        .collect::<Vec<_>>();
+        }
+    })
+    .collect::<Vec<_>>();
     Some(view("Models", context.active_prefix, items))
 }
 
 fn thinking_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
-    let items = [
+    let levels = [
         (ThinkingLevel::Off, "Disable provider reasoning"),
         (ThinkingLevel::Minimal, "Minimal reasoning"),
         (ThinkingLevel::Low, "Low reasoning"),
         (ThinkingLevel::Medium, "Medium reasoning"),
         (ThinkingLevel::High, "High reasoning"),
         (ThinkingLevel::XHigh, "Extra-high reasoning"),
-    ]
+    ];
+    let items = fuzzy_indices(
+        &levels,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", thinking_level_value(entry.0), entry.1),
+    )
     .into_iter()
-    .filter(|(level, _)| thinking_level_value(*level).starts_with(context.active_prefix.as_str()))
-    .map(|(level, summary)| {
+    .map(|index| {
+        let (level, summary) = levels[index];
         let value = thinking_level_value(level);
         CommandSuggestionItem {
             label: value.into(),
@@ -409,11 +491,19 @@ fn collapse_target_suggestions(context: SuggestionContext) -> Option<CommandSugg
         ("thinking", "Thinking section"),
         ("tool", "Tool result bubbles"),
     ];
-    let items = targets
-        .into_iter()
-        .filter(|(target, _)| target.starts_with(context.active_prefix.as_str()))
-        .map(|(target, summary)| incomplete_item(target, summary, &context))
-        .collect::<Vec<_>>();
+    let items = fuzzy_indices(
+        &targets,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (target, summary) = targets[index];
+        incomplete_item(target, summary, &context)
+    })
+    .collect::<Vec<_>>();
     Some(view("Collapse Target", context.active_prefix, items))
 }
 
@@ -423,18 +513,26 @@ fn collapse_mode_suggestions(context: SuggestionContext) -> Option<CommandSugges
         ("truncate", "Show short preview"),
         ("collapse", "Hide content behind placeholder"),
     ];
-    let items = modes
-        .into_iter()
-        .filter(|(mode, _)| mode.starts_with(context.active_prefix.as_str()))
-        .map(|(mode, summary)| CommandSuggestionItem {
+    let items = fuzzy_indices(
+        &modes,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (mode, summary) = modes[index];
+        CommandSuggestionItem {
             label: mode.into(),
             summary: summary.into(),
             replacement: mode.into(),
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
-        })
-        .collect::<Vec<_>>();
+        }
+    })
+    .collect::<Vec<_>>();
     Some(view("Collapse Mode", context.active_prefix, items))
 }
 
@@ -444,21 +542,27 @@ fn chat_style_suggestions(context: SuggestionContext) -> Option<CommandSuggestio
         (ChatStyle::Agentic, "Codex-like agent activity transcript"),
         (ChatStyle::Minimal, "jcode-like compact transcript"),
     ];
-    let items = styles
-        .into_iter()
-        .filter(|(style, _)| chat_style_value(*style).starts_with(context.active_prefix.as_str()))
-        .map(|(style, summary)| {
-            let value = chat_style_value(style);
-            CommandSuggestionItem {
-                label: value.into(),
-                summary: summary.into(),
-                replacement: value.into(),
-                replace_start: context.replace_start,
-                replace_end: context.replace_end,
-                complete_on_enter: true,
-            }
-        })
-        .collect::<Vec<_>>();
+    let items = fuzzy_indices(
+        &styles,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", chat_style_value(entry.0), entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (style, summary) = styles[index];
+        let value = chat_style_value(style);
+        CommandSuggestionItem {
+            label: value.into(),
+            summary: summary.into(),
+            replacement: value.into(),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: true,
+        }
+    })
+    .collect::<Vec<_>>();
     Some(view("Chat Style", context.active_prefix, items))
 }
 
@@ -580,33 +684,6 @@ fn file_suggestion_context(input: &str, cursor: usize) -> Option<FileSuggestionC
         replace_start: token.start,
         replace_end: token.end,
     })
-}
-
-fn fuzzy_file_score(file: &str, query: &str) -> Option<usize> {
-    if query.is_empty() {
-        return Some(1);
-    }
-    let lower = file.to_lowercase();
-    if lower == query {
-        return Some(10_000);
-    }
-    if lower.starts_with(query) {
-        return Some(8_000usize.saturating_sub(file.len()));
-    }
-    if lower.contains(query) {
-        return Some(6_000usize.saturating_sub(file.len()));
-    }
-
-    let mut score = 0usize;
-    let mut search_start = 0usize;
-    for ch in query.chars() {
-        let found = lower[search_start..].find(ch)?;
-        score = score.saturating_add(100).saturating_sub(found);
-        search_start = search_start
-            .saturating_add(found)
-            .saturating_add(ch.len_utf8());
-    }
-    Some(score)
 }
 
 fn tokens_with_ranges(input: &str) -> Vec<Token> {
