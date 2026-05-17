@@ -581,13 +581,13 @@ impl Default for DemoTheme {
             fg: Style::default().fg(Color::Reset),
             muted: Style::default().fg(Color::DarkGray),
             h1: Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
             h2: Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
             h3: Style::default()
-                .fg(Color::Green)
+                .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
             marker: Style::default()
                 .fg(Color::Cyan)
@@ -623,7 +623,7 @@ fn blank(lines: &mut Vec<Line<'static>>) {
 }
 
 fn push_h1(lines: &mut Vec<Line<'static>>, title: &str, width: usize, theme: &DemoTheme) {
-    lines.push(Line::styled(border_line('╭', '╮', " # ", width), theme.h1));
+    lines.push(Line::styled(border_line('╭', '╮', "", width), theme.h1));
     lines.push(Line::from(vec![
         Span::styled("│ ", theme.h1),
         Span::styled(pad_to_width(title, width.saturating_sub(4)), theme.h1),
@@ -642,7 +642,7 @@ fn push_h2(lines: &mut Vec<Line<'static>>, title: &str, width: usize, theme: &De
 
 fn push_h3(lines: &mut Vec<Line<'static>>, title: &str, _width: usize, theme: &DemoTheme) {
     lines.push(Line::from(vec![
-        Span::styled("◆ ", theme.h3),
+        Span::styled("▌ ", theme.h3),
         Span::styled(title.to_string(), theme.h3),
     ]));
 }

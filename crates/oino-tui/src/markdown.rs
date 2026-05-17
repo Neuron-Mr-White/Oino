@@ -38,8 +38,12 @@ impl MarkdownStyles {
     fn new(base: Style, theme: &Theme) -> Self {
         Self {
             base,
-            heading: base.fg(theme.focused_border).add_modifier(Modifier::BOLD),
-            heading_secondary: base.fg(theme.focused_border).add_modifier(Modifier::BOLD),
+            heading: Style::default()
+                .fg(theme.tool_border)
+                .add_modifier(Modifier::BOLD),
+            heading_secondary: Style::default()
+                .fg(theme.tool_border)
+                .add_modifier(Modifier::BOLD),
             emphasis: Style::default().add_modifier(Modifier::ITALIC),
             strong: Style::default().add_modifier(Modifier::BOLD),
             strike: Style::default().add_modifier(Modifier::CROSSED_OUT),
@@ -561,8 +565,8 @@ impl MarkdownRenderer {
         match level {
             HeadingLevel::H1 => self.render_h1(&title),
             HeadingLevel::H2 => self.render_h2(&title),
-            HeadingLevel::H3 => self.render_h3(&title, "◆"),
-            _ => self.render_h3(&title, "▸"),
+            HeadingLevel::H3 => self.render_h3(&title),
+            _ => self.render_h3(&title),
         }
     }
 
@@ -571,7 +575,7 @@ impl MarkdownRenderer {
         let available = self.width.saturating_sub(line_width(&initial)).max(1);
         let title_width = available.saturating_sub(4).max(1);
         let visible_title = truncate_to_width(title, title_width);
-        let top = heading_border_line('╭', '╮', " # ", available);
+        let top = heading_border_line('╭', '╮', "", available);
         let middle = format!(
             "│ {} │",
             pad_to_width(&visible_title, available.saturating_sub(4).max(1))
@@ -608,9 +612,9 @@ impl MarkdownRenderer {
         ));
     }
 
-    fn render_h3(&mut self, title: &str, marker: &str) {
+    fn render_h3(&mut self, title: &str) {
         let (mut initial, subsequent) = self.current_prefixes();
-        initial.push_span(Span::styled(format!("{marker} "), self.styles.list_marker));
+        initial.push_span(Span::styled("▌ ", self.styles.heading_secondary));
         push_wrapped_line(
             &mut self.lines,
             Line::styled(title.to_string(), self.styles.heading_secondary),
@@ -875,8 +879,15 @@ fn heading_border_line(left: char, right: char, label: &str, width: usize) -> St
 
 fn prefixed_line(mut line: Line<'static>, prefix: Line<'static>) -> Line<'static> {
     let mut out = prefix;
+    apply_line_style_to_spans(&mut line);
     out.spans.append(&mut line.spans);
     out
+}
+
+fn apply_line_style_to_spans(line: &mut Line<'static>) {
+    for span in &mut line.spans {
+        span.style = line.style.patch(span.style);
+    }
 }
 
 fn pad_to_width(text: &str, width: usize) -> String {
@@ -1539,8 +1550,9 @@ fn push_wrapped_line(
     let mut current_width = line_width(&current);
     let mut has_content = false;
     let mut prefix_width = current_width;
+    let line_style = line.style;
     for span in line.spans {
-        let style = span.style;
+        let style = line_style.patch(span.style);
         for grapheme in span.content.as_ref().graphemes(true) {
             let grapheme_width = grapheme.width();
             if current_width.saturating_add(grapheme_width) > width && has_content {
@@ -1616,20 +1628,30 @@ mod tests {
     }
 
     #[test]
-    fn h1_uses_same_heading_color_family_as_h2_h3() {
-        let styles = MarkdownStyles::new(Style::default(), &Theme::default());
+    fn headings_use_yellow_bold_render_test_style() {
+        let theme = Theme::default();
+        let styles = MarkdownStyles::new(Style::default(), &theme);
 
-        assert_eq!(styles.heading.fg, styles.heading_secondary.fg);
+        assert_eq!(styles.heading.fg, Some(theme.tool_border));
+        assert_eq!(styles.heading_secondary.fg, Some(theme.tool_border));
         assert!(styles.heading.add_modifier.contains(Modifier::BOLD));
+        assert!(styles
+            .heading_secondary
+            .add_modifier
+            .contains(Modifier::BOLD));
         assert!(!styles.heading.add_modifier.contains(Modifier::UNDERLINED));
+        assert!(!styles
+            .heading_secondary
+            .add_modifier
+            .contains(Modifier::UNDERLINED));
     }
 
     #[test]
-    fn h1_banner_does_not_repeat_title_in_border_label() {
+    fn h1_banner_does_not_repeat_title_or_show_hash_badge() {
         let lines = render_markdown_lines("# H1 heading", 40, Style::default(), &Theme::default());
         let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
 
-        assert!(plain_lines[0].contains("#"));
+        assert!(!plain_lines[0].contains('#'));
         assert!(!plain_lines[0].contains("H1 heading"));
         assert_eq!(
             plain_lines
@@ -1638,6 +1660,40 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn h2_and_h3_use_yellow_left_rail_not_bullets() {
+        let theme = Theme::default();
+        let lines = render_markdown_lines(
+            "## H2 heading\n\n### H3 heading",
+            80,
+            Style::default(),
+            &theme,
+        );
+        let Some(h2) = lines.iter().find(|line| plain(line).contains("H2 heading")) else {
+            panic!("h2 line");
+        };
+        let Some(h3) = lines.iter().find(|line| plain(line).contains("H3 heading")) else {
+            panic!("h3 line");
+        };
+
+        for line in [h2, h3] {
+            let text = plain(line);
+            assert!(text.starts_with("▌ "));
+            assert!(!text.starts_with("◆ "));
+            assert!(!text.starts_with("• "));
+            assert!(line.spans.iter().any(|span| {
+                span.content.as_ref().contains('▌')
+                    && span.style.fg == Some(theme.tool_border)
+                    && span.style.add_modifier.contains(Modifier::BOLD)
+            }));
+            assert!(line.spans.iter().any(|span| {
+                span.content.as_ref().contains("heading")
+                    && span.style.fg == Some(theme.tool_border)
+                    && span.style.add_modifier.contains(Modifier::BOLD)
+            }));
+        }
     }
 
     #[test]
