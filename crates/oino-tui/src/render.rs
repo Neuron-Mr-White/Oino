@@ -40,6 +40,7 @@ pub struct TerminalClickTarget {
     pub x: u16,
     pub y: u16,
     pub width: u16,
+    pub text: String,
     pub target: String,
     pub kind: TerminalClickTargetKind,
 }
@@ -157,7 +158,7 @@ pub fn transcript_url_overlays(
         .map(|target| TerminalUrlOverlay {
             x: target.x,
             y: target.y,
-            text: target.target.clone(),
+            text: target.text,
             url: target.target,
         })
         .collect()
@@ -222,6 +223,7 @@ pub fn transcript_click_targets(
                     .saturating_add(1)
                     .saturating_add(visible_index as u16),
                 width: u16::try_from(line_target.width).unwrap_or(u16::MAX),
+                text: line_target.text,
                 target: line_target.target,
                 kind: line_target.kind,
             });
@@ -310,6 +312,7 @@ fn plain_line(line: &Line<'_>) -> String {
 struct LineClickTarget {
     column: usize,
     width: usize,
+    text: String,
     target: String,
     kind: TerminalClickTargetKind,
 }
@@ -317,9 +320,10 @@ struct LineClickTarget {
 fn line_click_targets(text: &str) -> Vec<LineClickTarget> {
     let mut targets = url_ranges(text)
         .into_iter()
-        .map(|(column, url)| LineClickTarget {
+        .map(|(column, width, text, url)| LineClickTarget {
             column,
-            width: url.width(),
+            width,
+            text,
             target: url,
             kind: TerminalClickTargetKind::Url,
         })
@@ -330,6 +334,7 @@ fn line_click_targets(text: &str) -> Vec<LineClickTarget> {
             .map(|(column, width, target)| LineClickTarget {
                 column,
                 width,
+                text: target.clone(),
                 target,
                 kind: TerminalClickTargetKind::Image,
             }),
@@ -337,7 +342,7 @@ fn line_click_targets(text: &str) -> Vec<LineClickTarget> {
     targets
 }
 
-fn url_ranges(text: &str) -> Vec<(usize, String)> {
+fn url_ranges(text: &str) -> Vec<(usize, usize, String, String)> {
     let mut ranges = Vec::new();
     let mut search_start = 0usize;
     while search_start < text.len() {
@@ -356,11 +361,42 @@ fn url_ranges(text: &str) -> Vec<(usize, String)> {
         let mut url = text[start..end].to_string();
         trim_url_trailing_punctuation(&mut url);
         if !url.is_empty() {
-            ranges.push((text[..start].width(), url));
+            let visible_end = start + url.len();
+            let visible_start = rendered_link_start(text, start).unwrap_or(start);
+            let visible = text[visible_start..visible_end].to_string();
+            ranges.push((text[..visible_start].width(), visible.width(), visible, url));
         }
         search_start = end.max(start.saturating_add(1));
     }
     ranges
+}
+
+fn rendered_link_start(text: &str, url_start: usize) -> Option<usize> {
+    let arrow = " ↗ ";
+    let prefix = text.get(..url_start)?;
+    if !prefix.ends_with(arrow) {
+        return None;
+    }
+    let arrow_start = url_start.saturating_sub(arrow.len());
+    let before_arrow = text.get(..arrow_start)?;
+    let delimiters = ["• ", "✓ ", "○ ", "☑ ", "☐ ", ": ", "│ ", "| "];
+    let start = delimiters
+        .iter()
+        .filter_map(|delimiter| {
+            before_arrow
+                .rfind(delimiter)
+                .map(|index| index + delimiter.len())
+        })
+        .max()
+        .or_else(|| {
+            before_arrow
+                .char_indices()
+                .rev()
+                .find(|(_, ch)| ch.is_whitespace())
+                .map(|(index, ch)| index + ch.len_utf8())
+        })
+        .unwrap_or(0);
+    Some(start)
 }
 
 fn image_ranges(text: &str) -> Vec<(usize, usize, String)> {
@@ -1255,7 +1291,7 @@ mod tests {
         let overlays = transcript_url_overlays(&state, 80, 20);
 
         assert_eq!(overlays.len(), 1);
-        assert_eq!(overlays[0].text, "https://example.invalid/docs");
+        assert_eq!(overlays[0].text, "Oino ↗ https://example.invalid/docs");
         assert_eq!(overlays[0].url, "https://example.invalid/docs");
         assert!(overlays[0].x > 0);
         assert!(overlays[0].y > 0);

@@ -29,6 +29,8 @@ struct MarkdownStyles {
     muted: Style,
     quote: Style,
     list_marker: Style,
+    task_done_marker: Style,
+    task_pending_marker: Style,
     table_border: Style,
 }
 
@@ -37,7 +39,7 @@ impl MarkdownStyles {
         Self {
             base,
             heading: base
-                .fg(theme.user_border)
+                .fg(theme.focused_border)
                 .add_modifier(Modifier::BOLD)
                 .add_modifier(Modifier::UNDERLINED),
             heading_secondary: base.fg(theme.focused_border).add_modifier(Modifier::BOLD),
@@ -63,6 +65,12 @@ impl MarkdownStyles {
                 .fg(theme.muted)
                 .add_modifier(Modifier::ITALIC),
             list_marker: Style::default().fg(theme.focused_border),
+            task_done_marker: Style::default()
+                .fg(theme.assistant_border)
+                .add_modifier(Modifier::BOLD),
+            task_pending_marker: Style::default()
+                .fg(theme.tool_border)
+                .add_modifier(Modifier::BOLD),
             table_border: Style::default()
                 .fg(theme.focused_border)
                 .add_modifier(Modifier::BOLD),
@@ -86,6 +94,7 @@ struct ListState {
 #[derive(Debug, Clone)]
 struct ItemContext {
     marker: String,
+    marker_style: Style,
     continuation: String,
     marker_pending: bool,
 }
@@ -463,22 +472,28 @@ impl MarkdownRenderer {
         let continuation = " ".repeat(marker.width());
         self.item_stack.push(ItemContext {
             marker,
+            marker_style: self.styles.list_marker,
             continuation,
             marker_pending: true,
         });
     }
 
     fn apply_task_list_marker(&mut self, checked: bool) {
-        let marker = if checked { "☑ " } else { "☐ " };
+        let (marker, style) = if checked {
+            ("✓ ", self.styles.task_done_marker)
+        } else {
+            ("○ ", self.styles.task_pending_marker)
+        };
         if let Some(item) = self
             .item_stack
             .last_mut()
             .filter(|item| item.marker_pending)
         {
             item.marker = marker.to_string();
+            item.marker_style = style;
             item.continuation = " ".repeat(marker.width());
         } else {
-            self.push_span(marker, self.styles.list_marker);
+            self.push_span(marker, style);
         }
     }
 
@@ -507,7 +522,7 @@ impl MarkdownRenderer {
         }
         for item in &mut self.item_stack {
             if item.marker_pending {
-                initial.push_span(Span::styled(item.marker.clone(), self.styles.list_marker));
+                initial.push_span(Span::styled(item.marker.clone(), item.marker_style));
                 subsequent.push_span(Span::raw(item.continuation.clone()));
                 item.marker_pending = false;
             } else {
@@ -892,6 +907,11 @@ fn highlight_code_line(line: &str, lang: &str, styles: MarkdownStyles) -> Vec<Sp
             | "zsh"
             | "python"
             | "py"
+            | "html"
+            | "htm"
+            | "xml"
+            | "svg"
+            | "css"
     ) {
         return vec![Span::styled(line.to_string(), styles.code)];
     }
@@ -919,6 +939,12 @@ fn highlight_code_line(line: &str, lang: &str, styles: MarkdownStyles) -> Vec<Sp
 fn comment_start(line: &str, lang: &str) -> Option<usize> {
     if matches!(lang, "sh" | "bash" | "zsh" | "python" | "py") {
         return line.find('#');
+    }
+    if matches!(lang, "html" | "htm" | "xml" | "svg") {
+        return line.find("<!--");
+    }
+    if lang == "css" {
+        return line.find("/*");
     }
     line.find("//")
 }
@@ -1083,6 +1109,61 @@ fn is_code_keyword(token: &str, lang: &str) -> bool {
                 | "try"
                 | "while"
                 | "with"
+        ),
+        "html" | "htm" | "xml" | "svg" => matches!(
+            token,
+            "a" | "article"
+                | "aside"
+                | "body"
+                | "button"
+                | "class"
+                | "div"
+                | "footer"
+                | "form"
+                | "h1"
+                | "h2"
+                | "h3"
+                | "head"
+                | "header"
+                | "href"
+                | "html"
+                | "id"
+                | "img"
+                | "input"
+                | "li"
+                | "link"
+                | "main"
+                | "meta"
+                | "nav"
+                | "p"
+                | "script"
+                | "section"
+                | "span"
+                | "src"
+                | "style"
+                | "title"
+                | "ul"
+        ),
+        "css" => matches!(
+            token,
+            "align"
+                | "background"
+                | "border"
+                | "box"
+                | "color"
+                | "display"
+                | "flex"
+                | "font"
+                | "gap"
+                | "grid"
+                | "height"
+                | "justify"
+                | "margin"
+                | "padding"
+                | "position"
+                | "radius"
+                | "template"
+                | "width"
         ),
         _ => false,
     }
@@ -1538,7 +1619,38 @@ mod tests {
     }
 
     #[test]
-    fn renders_task_lists_as_checkbox_items() {
+    fn h1_uses_same_heading_color_family_as_h2_h3() {
+        let styles = MarkdownStyles::new(Style::default(), &Theme::default());
+
+        assert_eq!(styles.heading.fg, styles.heading_secondary.fg);
+    }
+
+    #[test]
+    fn html_and_css_code_lines_get_lightweight_highlighting() {
+        let styles = MarkdownStyles::new(Style::default(), &Theme::default());
+        let html = highlight_code_line("<div class=\"card\">hello</div>", "html", styles);
+        let css = highlight_code_line(
+            ".card { background-color: #fff; } /* theme */",
+            "css",
+            styles,
+        );
+
+        assert!(html
+            .iter()
+            .any(|span| { span.content.as_ref() == "div" && span.style == styles.code_keyword }));
+        assert!(html.iter().any(|span| {
+            span.content.as_ref() == "\"card\"" && span.style == styles.code_string
+        }));
+        assert!(css.iter().any(|span| {
+            span.content.as_ref() == "background" && span.style == styles.code_keyword
+        }));
+        assert!(css.iter().any(|span| {
+            span.content.as_ref() == "/* theme */" && span.style == styles.code_comment
+        }));
+    }
+
+    #[test]
+    fn renders_task_lists_as_colored_status_markers() {
         let lines = render_markdown_lines(
             "- [x] completed\n- [ ] incomplete",
             80,
@@ -1547,8 +1659,10 @@ mod tests {
         );
         let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
 
-        assert!(plain_lines.contains(&"☑ completed".to_string()));
-        assert!(plain_lines.contains(&"☐ incomplete".to_string()));
+        assert!(plain_lines.contains(&"✓ completed".to_string()));
+        assert!(plain_lines.contains(&"○ incomplete".to_string()));
+        assert!(!plain_lines.iter().any(|line| line.contains("☑")));
+        assert!(!plain_lines.iter().any(|line| line.contains("☐")));
         assert!(!plain_lines.iter().any(|line| line.contains("• [")));
     }
 

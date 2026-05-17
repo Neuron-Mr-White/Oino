@@ -440,8 +440,8 @@ fn showcase_lines(width: usize) -> Showcase {
         width,
         &theme,
     );
-    push_list_item(&mut lines, "☑", "Completed task item", width, &theme);
-    push_list_item(&mut lines, "☐", "Incomplete task item", width, &theme);
+    push_list_item(&mut lines, "✓", "Completed task item", width, &theme);
+    push_list_item(&mut lines, "○", "Incomplete task item", width, &theme);
     blank(&mut lines);
 
     push_h2(&mut lines, "Block quote, note, and rule", width, &theme);

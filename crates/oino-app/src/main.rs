@@ -499,9 +499,13 @@ fn handle_mouse_event(
     width: u16,
     height: u16,
 ) {
-    if !mouse.modifiers.contains(KeyModifiers::CONTROL)
-        || !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
-    {
+    if !matches!(
+        mouse.kind,
+        MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+    ) {
+        return;
+    }
+    if !mouse.modifiers.is_empty() && !mouse.modifiers.contains(KeyModifiers::CONTROL) {
         return;
     }
     let targets = transcript_click_targets(state, width, height);
