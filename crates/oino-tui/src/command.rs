@@ -46,10 +46,16 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "Browse saved sessions",
         kind: CommandKind::Session,
     },
+    CommandSpec {
+        name: "/help",
+        summary: "Open keyboard and command help",
+        kind: CommandKind::Settings,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedCommand {
+    Help,
     NewSession,
     Sessions,
     Settings(SettingsCommand),
@@ -280,6 +286,7 @@ pub fn command_query(input: &str, cursor: usize) -> Option<String> {
 pub fn parse_command(input: &str) -> Option<ParsedCommand> {
     let tokens = input.split_whitespace().collect::<Vec<_>>();
     match tokens.as_slice() {
+        ["/help"] => Some(ParsedCommand::Help),
         ["/new"] => Some(ParsedCommand::NewSession),
         ["/sessions"] => Some(ParsedCommand::Sessions),
         ["/settings"] => Some(ParsedCommand::Settings(SettingsCommand::Open)),
@@ -849,6 +856,7 @@ mod tests {
             .unwrap_or_else(|| panic!("missing root view"));
         assert!(view.items.iter().any(|item| item.label == "/new"));
         assert!(view.items.iter().any(|item| item.label == "/sessions"));
+        assert!(view.items.iter().any(|item| item.label == "/help"));
         assert!(view.items.iter().any(|item| item.label == "/model"));
         assert!(view.items.iter().any(|item| item.label == "/thinking"));
         let view = command_suggestions_for("/nope", 5, &models())
@@ -858,6 +866,7 @@ mod tests {
 
     #[test]
     fn parses_settings_commands() {
+        assert_eq!(parse_command("/help"), Some(ParsedCommand::Help));
         assert_eq!(parse_command("/new"), Some(ParsedCommand::NewSession));
         assert_eq!(parse_command("/sessions"), Some(ParsedCommand::Sessions));
         assert_eq!(

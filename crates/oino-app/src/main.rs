@@ -924,6 +924,9 @@ async fn execute_runtime_command(
     session_path: &std::path::Path,
 ) -> Result<String, AppError> {
     let message = match command {
+        ParsedCommand::Help => {
+            return Ok("Oino help is available in the TUI with `/help`. Common commands: /sessions, /new, /settings, /model, /thinking. In the composer, use @ to fuzzy-search file paths.".into());
+        }
         ParsedCommand::NewSession => {
             return Err(AppError::InvalidArguments(
                 "`/new` opens a fresh session in the TUI; start `oino` without `--session` to create a new non-interactive session".into(),

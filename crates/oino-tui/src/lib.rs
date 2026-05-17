@@ -6,6 +6,7 @@ pub mod app;
 pub mod command;
 pub mod composer;
 mod fuzzy;
+mod help;
 mod markdown;
 pub mod message;
 pub mod render;

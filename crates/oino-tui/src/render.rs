@@ -7,6 +7,7 @@ use crate::{
     },
     command::CommandSuggestionsView,
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
+    help::{HelpEntry, HELP_ENTRIES},
     settings::{
         chat_style_label, chat_style_value, collapse_mode_label, thinking_label, ChatStyle,
         SettingsPage, SettingsState,
@@ -25,7 +26,6 @@ use ratatui::{
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-const FOOTER_HEIGHT: u16 = 1;
 const MIN_TRANSCRIPT_HEIGHT: u16 = 3;
 const MIN_COMPOSER_ROWS: usize = 3;
 const MAX_COMPOSER_HEIGHT: u16 = 9;
@@ -73,13 +73,11 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         .constraints([
             Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
             Constraint::Length(composer_height),
-            Constraint::Length(FOOTER_HEIGHT),
         ])
         .split(area);
 
     render_transcript(frame, chunks[0], state, theme);
     render_composer(frame, chunks[1], state, theme);
-    render_footer(frame, chunks[2], state, theme);
 
     if state.overlay.is_none() {
         if let Some(suggestions) = state.command_suggestions_view() {
@@ -88,6 +86,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
     }
 
     match state.overlay {
+        Some(OverlayKind::Help) => render_help_overlay(frame, area, state, theme),
         Some(OverlayKind::Settings) => render_settings_overlay(frame, area, &state.settings, theme),
         Some(OverlayKind::SendPanel) => render_send_panel_overlay(frame, area, state, theme),
         Some(OverlayKind::Sessions) => render_sessions_overlay(frame, area, state, theme),
@@ -127,7 +126,6 @@ pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> us
     let composer_height = composer_height(state.composer.text(), width, height);
     height
         .saturating_sub(composer_height)
-        .saturating_sub(FOOTER_HEIGHT)
         .saturating_sub(2)
         .max(1) as usize
 }
@@ -143,7 +141,6 @@ pub fn terminal_cursor_position(state: &TuiState, width: u16, height: u16) -> Op
         .constraints([
             Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
             Constraint::Length(composer_height),
-            Constraint::Length(FOOTER_HEIGHT),
         ])
         .split(Rect {
             x: 0,
@@ -191,9 +188,7 @@ pub fn transcript_click_targets(
         x: 0,
         y: 0,
         width,
-        height: height
-            .saturating_sub(composer_height)
-            .saturating_sub(FOOTER_HEIGHT),
+        height: height.saturating_sub(composer_height),
     };
     let inner_height = area.height.saturating_sub(2) as usize;
     if inner_height == 0 {
@@ -306,6 +301,14 @@ fn transcript_lines_for_width(state: &TuiState, width: usize, theme: &Theme) -> 
         lines.push(Line::from(vec![
             Span::styled("● ", theme.working.add_modifier(Modifier::BOLD)),
             Span::styled(status, theme.working),
+        ]));
+    } else if let Some(status) = state.notice_status() {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(vec![
+            Span::styled("• ", Style::default().fg(theme.muted)),
+            Span::styled(status, theme.footer),
         ]));
     }
 
@@ -519,17 +522,6 @@ fn render_composer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &
     }
 }
 
-fn render_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
-    let style = if state.error.is_some() {
-        theme.error
-    } else if state.working {
-        theme.working
-    } else {
-        theme.footer
-    };
-    frame.render_widget(Paragraph::new(state.status.clone()).style(style), area);
-}
-
 fn render_command_suggestions(
     frame: &mut Frame<'_>,
     full_area: Rect,
@@ -630,6 +622,92 @@ fn command_suggestion_title(
         )
     } else {
         suggestions.title.clone()
+    }
+}
+
+fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 86, 78);
+    frame.render_widget(Clear, overlay);
+
+    let block = Block::default()
+        .title(Span::styled(" Help ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border));
+    frame.render_widget(block, overlay);
+
+    let inner = overlay.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(6), Constraint::Length(1)])
+        .split(inner);
+
+    let content_height = list_content_height(sections[0]);
+    let content_width = sections[0].width.saturating_sub(2) as usize;
+    let max_scroll = HELP_ENTRIES.len().saturating_sub(content_height);
+    let start = state.help_scroll.min(max_scroll);
+    let end = start.saturating_add(content_height).min(HELP_ENTRIES.len());
+    let lines = HELP_ENTRIES[start..end]
+        .iter()
+        .map(|entry| help_entry_line(*entry, content_width, theme))
+        .collect::<Vec<_>>();
+    let title = if max_scroll == 0 {
+        " Oino Help ".to_string()
+    } else {
+        format!(
+            " Oino Help {}-{} / {} ",
+            start.saturating_add(1),
+            end,
+            HELP_ENTRIES.len()
+        )
+    };
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        sections[0],
+    );
+
+    let controls = if max_scroll == 0 {
+        "Esc/q close"
+    } else {
+        "↑/↓ or j/k scroll • PgUp/PgDn page • Home/End jump • Esc/q close"
+    };
+    frame.render_widget(
+        Paragraph::new(truncate_to_width(controls, sections[1].width as usize)).style(theme.footer),
+        sections[1],
+    );
+}
+
+fn help_entry_line(entry: HelpEntry, width: usize, theme: &Theme) -> Line<'static> {
+    match entry {
+        HelpEntry::Heading(text) => Line::styled(
+            truncate_with_ellipsis(text, width),
+            theme.title.add_modifier(Modifier::BOLD),
+        ),
+        HelpEntry::Item(key, description) => {
+            let separator = " — ";
+            let prefix = format!("{key}{separator}");
+            let prefix_width = UnicodeWidthStr::width(prefix.as_str());
+            let description =
+                truncate_with_ellipsis(description, width.saturating_sub(prefix_width));
+            Line::from(vec![
+                Span::styled(prefix, Style::default().fg(theme.focused_border)),
+                Span::styled(description, Style::default().fg(theme.fg)),
+            ])
+        }
+        HelpEntry::Text(text) => Line::styled(
+            truncate_with_ellipsis(text, width),
+            Style::default().fg(theme.muted),
+        ),
+        HelpEntry::Blank => Line::from(""),
     }
 }
 
@@ -1413,10 +1491,7 @@ fn composer_cursor_position(area: Rect, composer: &ComposerState) -> Position {
 }
 
 fn composer_height(input: &str, width: u16, total_height: u16) -> u16 {
-    let available_height = total_height
-        .saturating_sub(FOOTER_HEIGHT)
-        .saturating_sub(MIN_TRANSCRIPT_HEIGHT)
-        .max(3);
+    let available_height = total_height.saturating_sub(MIN_TRANSCRIPT_HEIGHT).max(3);
     let content_width = composer_content_width_for_width(width);
     let line_count = wrap_text(input, content_width).len().max(MIN_COMPOSER_ROWS);
     let desired = line_count.saturating_add(2);
@@ -1576,6 +1651,7 @@ mod tests {
         assert!(text.contains("test/model"));
         assert!(text.contains("hello"));
         assert!(text.contains(INPUT_PLACEHOLDER));
+        assert!(!text.contains(crate::app::HELP_STATUS));
     }
 
     #[test]
@@ -1874,7 +1950,7 @@ mod tests {
     fn composer_height_grows_but_keeps_transcript_space() {
         assert_eq!(composer_height("", 80, 24), 5);
         assert!(composer_height("a\nb\nc\nd\ne\nf", 80, 24) > 5);
-        assert!(composer_height("a\n".repeat(20).as_str(), 80, 10) <= 6);
+        assert!(composer_height("a\n".repeat(20).as_str(), 80, 10) <= 7);
     }
 
     #[test]
@@ -1928,6 +2004,23 @@ mod tests {
         assert!(text.contains("Models 40/60"));
         assert!(text.contains("› openrouter:model-39"));
         assert!(!text.contains("openrouter:model-0"));
+    }
+
+    #[test]
+    fn render_help_overlay_shows_command_and_file_attach_guidance() {
+        let mut state = TuiState::new();
+        state.open_help();
+        let buffer = draw_state(90, 28, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Oino Help"));
+        assert!(text.contains("/help"));
+        assert!(text.contains("@"));
+        assert!(text.contains("file paths"));
+        assert!(text.contains("Esc/q close"));
     }
 
     #[test]

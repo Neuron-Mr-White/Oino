@@ -11,20 +11,21 @@ use crate::{
         ComposerState, MAX_PASTE_CHARS,
     },
     fuzzy::{fuzzy_indices, FuzzyMode},
+    help::HELP_ENTRY_COUNT,
     message::{project_content_blocks, project_message, project_messages, MessageView},
     settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
 
-pub const HELP_STATUS: &str =
-    "Enter send/steer • PgUp/PgDn scroll • type / or @file • Ctrl-O s send panel • Ctrl-O e expand paste • Ctrl-C twice quit";
+pub const HELP_STATUS: &str = "Type /help for shortcuts and commands";
 
 const DEFAULT_TRANSCRIPT_PAGE_LINES: usize = 10;
 const TRANSCRIPT_SCROLL_LINE_STEP: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayKind {
+    Help,
     Settings,
     SendPanel,
     Sessions,
@@ -160,6 +161,7 @@ pub struct TuiState {
     pub transcript_scroll: TranscriptScroll,
     pub send_panel: SendPanelState,
     pub sessions: SessionsState,
+    pub help_scroll: usize,
     pub steer_items: Vec<String>,
     pub queued_items: Vec<String>,
     pub draft_items: Vec<String>,
@@ -184,6 +186,7 @@ impl Default for TuiState {
             transcript_scroll: TranscriptScroll::default(),
             send_panel: SendPanelState::default(),
             sessions: SessionsState::default(),
+            help_scroll: 0,
             steer_items: Vec::new(),
             queued_items: Vec::new(),
             draft_items: Vec::new(),
@@ -316,6 +319,18 @@ impl TuiState {
         self.working
             .then(|| self.status.clone())
             .filter(|status| !status.trim().is_empty())
+    }
+
+    pub fn notice_status(&self) -> Option<String> {
+        if self.working || self.overlay.is_some() || self.error.is_some() {
+            return None;
+        }
+        let status = self.status.trim();
+        if status.is_empty() || status == HELP_STATUS {
+            None
+        } else {
+            Some(self.status.clone())
+        }
     }
 
     pub fn set_transcript_page_lines(&mut self, lines: usize) {
@@ -680,6 +695,7 @@ impl TuiState {
         }
 
         match self.overlay {
+            Some(OverlayKind::Help) => return self.handle_help_key(key),
             Some(OverlayKind::Settings) => return self.handle_settings_key(key),
             Some(OverlayKind::SendPanel) => return self.handle_send_panel_key(key),
             Some(OverlayKind::Sessions) => return self.handle_sessions_key(key),
@@ -880,6 +896,47 @@ impl TuiState {
                 .clear_dismissal_if_input_changed(input);
         }
         self.refresh_command_suggestions();
+    }
+
+    fn handle_help_key(&mut self, key: KeyEvent) -> TuiAction {
+        let page = self.transcript_page_lines.max(5);
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q' | 'Q') if key.modifiers.is_empty() => {
+                self.overlay = None;
+                self.status = HELP_STATUS.into();
+            }
+            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
+                self.scroll_help_up(1);
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
+                self.scroll_help_down(1);
+            }
+            KeyCode::PageUp if key.modifiers.is_empty() => {
+                self.scroll_help_up(page);
+            }
+            KeyCode::PageDown if key.modifiers.is_empty() => {
+                self.scroll_help_down(page);
+            }
+            KeyCode::Home if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
+                self.help_scroll = 0;
+            }
+            KeyCode::End if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
+                self.help_scroll = HELP_ENTRY_COUNT.saturating_sub(1);
+            }
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn scroll_help_up(&mut self, lines: usize) {
+        self.help_scroll = self.help_scroll.saturating_sub(lines.max(1));
+    }
+
+    fn scroll_help_down(&mut self, lines: usize) {
+        self.help_scroll = self
+            .help_scroll
+            .saturating_add(lines.max(1))
+            .min(HELP_ENTRY_COUNT.saturating_sub(1));
     }
 
     fn handle_send_panel_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -1113,6 +1170,10 @@ impl TuiState {
 
     fn execute_command(&mut self, command: ParsedCommand) -> TuiAction {
         match command {
+            ParsedCommand::Help => {
+                self.open_help_overlay();
+                TuiAction::None
+            }
             ParsedCommand::NewSession => {
                 self.clear_error();
                 self.status = "Starting new session…".into();
@@ -1195,6 +1256,7 @@ impl TuiState {
         self.chord = ChordState::None;
         self.transcript_scroll.jump_bottom();
         self.send_panel = SendPanelState::default();
+        self.help_scroll = 0;
         self.steer_items.clear();
         self.queued_items.clear();
         self.draft_items.clear();
@@ -1217,6 +1279,17 @@ impl TuiState {
         self.sessions.search.clear();
         self.refresh_session_filter();
         self.status = "Loading sessions…".into();
+    }
+
+    pub fn open_help(&mut self) {
+        self.open_help_overlay();
+    }
+
+    fn open_help_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Help);
+        self.help_scroll = 0;
+        self.status = "Help".into();
     }
 
     fn open_model_selection_overlay(&mut self) {
@@ -1670,6 +1743,22 @@ mod tests {
         assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
         assert_eq!(state.overlay, Some(OverlayKind::Settings));
         assert_eq!(state.input(), "");
+    }
+
+    #[test]
+    fn help_command_opens_help_overlay_and_escape_closes() {
+        let mut state = TuiState::new();
+        for ch in "/help".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Help));
+        assert_eq!(state.input(), "");
+
+        assert_eq!(state.handle_key(key(KeyCode::Down)), TuiAction::None);
+        assert_eq!(state.help_scroll, 1);
+        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
+        assert_eq!(state.overlay, None);
     }
 
     #[test]
