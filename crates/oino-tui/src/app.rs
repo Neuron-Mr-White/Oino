@@ -14,11 +14,12 @@ use crate::{
     settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nucleo_matcher::{
-    pattern::{CaseMatching, Normalization, Pattern},
-    Config, Matcher, Utf32Str,
+use nucleo::{
+    pattern::{CaseMatching, Normalization},
+    Config, Nucleo, Utf32String,
 };
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
+use std::sync::Arc;
 
 pub const HELP_STATUS: &str =
     "Enter send/steer • PgUp/PgDn scroll • type / or @file • Ctrl-O s send panel • Ctrl-O e expand paste • Ctrl-C twice quit";
@@ -79,6 +80,7 @@ pub struct SessionsState {
     pub cursor: usize,
     pub loading: bool,
     pub items: Vec<SessionListItem>,
+    pub filtered_indices: Vec<usize>,
     pub search: String,
     pub search_active: bool,
 }
@@ -281,41 +283,22 @@ impl TuiState {
 
     #[must_use]
     pub fn selected_session_item(&self) -> Option<&SessionListItem> {
-        self.filtered_session_indices()
+        self.sessions
+            .filtered_indices
             .contains(&self.sessions.cursor)
             .then(|| self.sessions.items.get(self.sessions.cursor))
             .flatten()
     }
 
     #[must_use]
-    pub fn filtered_session_indices(&self) -> Vec<usize> {
-        let query = self.sessions.search.trim();
-        if query.is_empty() {
-            return (0..self.sessions.items.len()).collect();
-        }
-
-        let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
-        let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
-        let mut buf = Vec::new();
-        let mut scored = self
-            .sessions
-            .items
-            .iter()
-            .enumerate()
-            .filter_map(|(index, session)| {
-                let haystack = session_match_text(session);
-                pattern
-                    .score(Utf32Str::new(&haystack, &mut buf), &mut matcher)
-                    .map(|score| (score, index))
-            })
-            .collect::<Vec<_>>();
-        scored.sort_by(|(left_score, _), (right_score, _)| right_score.cmp(left_score));
-        scored.into_iter().map(|(_, index)| index).collect()
+    pub fn filtered_session_indices(&self) -> &[usize] {
+        &self.sessions.filtered_indices
     }
 
     #[must_use]
     pub fn session_cursor_filtered_position(&self) -> usize {
-        self.filtered_session_indices()
+        self.sessions
+            .filtered_indices
             .iter()
             .position(|index| *index == self.sessions.cursor)
             .unwrap_or(0)
@@ -324,8 +307,7 @@ impl TuiState {
     pub fn set_sessions(&mut self, sessions: Vec<SessionListItem>) {
         self.sessions.items = sessions;
         self.sessions.loading = false;
-        self.clamp_sessions_cursor();
-        self.sync_session_cursor_to_filter();
+        self.refresh_session_filter();
         self.status = if self.sessions.items.is_empty() {
             "No saved sessions yet".into()
         } else {
@@ -399,7 +381,7 @@ impl TuiState {
     }
 
     fn move_sessions_cursor(&mut self, delta: isize) {
-        let indices = self.filtered_session_indices();
+        let indices = &self.sessions.filtered_indices;
         if indices.is_empty() {
             self.sessions.cursor = 0;
             return;
@@ -412,9 +394,15 @@ impl TuiState {
         self.sessions.cursor = indices[next];
     }
 
+    fn refresh_session_filter(&mut self) {
+        self.sessions.filtered_indices =
+            filtered_session_indices(&self.sessions.items, self.sessions.search.trim());
+        self.sync_session_cursor_to_filter();
+    }
+
     fn sync_session_cursor_to_filter(&mut self) {
         self.clamp_sessions_cursor();
-        let indices = self.filtered_session_indices();
+        let indices = &self.sessions.filtered_indices;
         if let Some(first) = indices.first().copied() {
             if !indices.contains(&self.sessions.cursor) {
                 self.sessions.cursor = first;
@@ -996,7 +984,7 @@ impl TuiState {
             KeyCode::Char('/') if key.modifiers.is_empty() => {
                 self.sessions.search_active = true;
                 self.sessions.search.clear();
-                self.sync_session_cursor_to_filter();
+                self.refresh_session_filter();
                 self.status = "Session search active".into();
                 TuiAction::None
             }
@@ -1015,14 +1003,14 @@ impl TuiState {
             KeyCode::Esc => {
                 self.sessions.search_active = false;
                 self.sessions.search.clear();
-                self.sync_session_cursor_to_filter();
+                self.refresh_session_filter();
                 self.status = "Session search cleared".into();
                 TuiAction::None
             }
             KeyCode::Enter if key.modifiers.is_empty() => self.open_selected_session_action(),
             KeyCode::Backspace => {
                 self.sessions.search.pop();
-                self.sync_session_cursor_to_filter();
+                self.refresh_session_filter();
                 self.status = session_search_status(&self.sessions.search);
                 TuiAction::None
             }
@@ -1038,7 +1026,7 @@ impl TuiState {
                 if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
             {
                 self.sessions.search.push(ch);
-                self.sync_session_cursor_to_filter();
+                self.refresh_session_filter();
                 self.status = session_search_status(&self.sessions.search);
                 TuiAction::None
             }
@@ -1220,7 +1208,7 @@ impl TuiState {
         self.sessions.loading = true;
         self.sessions.search_active = false;
         self.sessions.search.clear();
-        self.clamp_sessions_cursor();
+        self.refresh_session_filter();
         self.status = "Loading sessions…".into();
     }
 
@@ -1286,6 +1274,32 @@ fn move_index(current: usize, len: usize, delta: isize) -> usize {
     } else {
         current.saturating_add(delta as usize).min(last)
     }
+}
+
+fn filtered_session_indices(items: &[SessionListItem], query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return (0..items.len()).collect();
+    }
+
+    let mut nucleo = Nucleo::new(Config::DEFAULT.match_paths(), Arc::new(|| ()), Some(1), 1);
+    let injector = nucleo.injector();
+    for (index, session) in items.iter().enumerate() {
+        let haystack = session_match_text(session);
+        injector.push(index, move |_, columns| {
+            columns[0] = Utf32String::from(haystack);
+        });
+    }
+    drop(injector);
+
+    nucleo
+        .pattern
+        .reparse(0, query, CaseMatching::Ignore, Normalization::Smart, false);
+    while nucleo.tick(10).running {}
+    nucleo
+        .snapshot()
+        .matched_items(..)
+        .map(|item| *item.data)
+        .collect()
 }
 
 fn session_match_text(session: &SessionListItem) -> String {
