@@ -3,10 +3,16 @@
 use crate::{text::truncate_to_width, theme::Theme};
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::{
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::OnceLock};
+use syntect::{
+    easy::HighlightLines,
+    highlighting::{FontStyle, Style as SyntectStyle, Theme as SyntectTheme},
+    parsing::{SyntaxReference, SyntaxSet},
+};
+use syntect_assets::assets::HighlightingAssets;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -20,10 +26,6 @@ struct MarkdownStyles {
     strike: Style,
     code: Style,
     code_border: Style,
-    code_keyword: Style,
-    code_string: Style,
-    code_comment: Style,
-    code_number: Style,
     code_line_number: Style,
     link: Style,
     muted: Style,
@@ -51,12 +53,6 @@ impl MarkdownStyles {
             code_border: Style::default()
                 .fg(theme.focused_border)
                 .add_modifier(Modifier::BOLD),
-            code_keyword: base.fg(theme.tool_border).add_modifier(Modifier::BOLD),
-            code_string: base.fg(theme.assistant_border),
-            code_comment: Style::default()
-                .fg(theme.muted)
-                .add_modifier(Modifier::ITALIC),
-            code_number: base.fg(theme.user_border),
             code_line_number: Style::default().fg(theme.muted),
             link: base
                 .fg(theme.focused_border)
@@ -642,6 +638,7 @@ impl MarkdownRenderer {
             .unwrap_or("code")
             .to_string();
         self.push_code_block_border(Some(&label), true, &mut consumed_block_prefix);
+        let mut code_highlighter = CodeHighlighter::new(&label);
         let number_width = parts.len().to_string().width().max(1);
         for (index, part) in parts.into_iter().enumerate() {
             let line_number = (index + 1).to_string();
@@ -664,7 +661,7 @@ impl MarkdownRenderer {
             subsequent.push_span(Span::styled(" │ ", self.styles.code_border));
             push_wrapped_line(
                 &mut self.lines,
-                Line::from(highlight_code_line(part, &label, self.styles)),
+                Line::from(code_highlighter.highlight_line(part, self.styles)),
                 self.width,
                 initial,
                 subsequent,
@@ -899,282 +896,125 @@ fn pad_to_width(text: &str, width: usize) -> String {
     }
 }
 
-fn highlight_code_line(line: &str, lang: &str, styles: MarkdownStyles) -> Vec<Span<'static>> {
-    let normalized_lang = lang.trim().to_ascii_lowercase();
-    if !matches!(
-        normalized_lang.as_str(),
-        "rs" | "rust"
-            | "js"
-            | "javascript"
-            | "ts"
-            | "typescript"
-            | "tsx"
-            | "jsx"
-            | "sh"
-            | "bash"
-            | "zsh"
-            | "python"
-            | "py"
-            | "html"
-            | "htm"
-            | "xml"
-            | "svg"
-            | "css"
-    ) {
-        return vec![Span::styled(line.to_string(), styles.code)];
-    }
-
-    let mut spans = Vec::new();
-    let mut rest = line;
-    while !rest.is_empty() {
-        if let Some(comment_start) = comment_start(rest, &normalized_lang) {
-            let (before, comment) = rest.split_at(comment_start);
-            if !before.is_empty() {
-                spans.extend(highlight_code_tokens(before, &normalized_lang, styles));
-            }
-            spans.push(Span::styled(comment.to_string(), styles.code_comment));
-            return spans;
-        }
-        spans.extend(highlight_code_tokens(rest, &normalized_lang, styles));
-        rest = "";
-    }
-    if spans.is_empty() {
-        spans.push(Span::styled(String::new(), styles.code));
-    }
-    spans
+#[derive(Debug)]
+struct SyntectAssets {
+    syntaxes: SyntaxSet,
+    theme: SyntectTheme,
 }
 
-fn comment_start(line: &str, lang: &str) -> Option<usize> {
-    if matches!(lang, "sh" | "bash" | "zsh" | "python" | "py") {
-        return line.find('#');
-    }
-    if matches!(lang, "html" | "htm" | "xml" | "svg") {
-        return line.find("<!--");
-    }
-    if lang == "css" {
-        return line.find("/*");
-    }
-    line.find("//")
+static SYNTECT_ASSETS: OnceLock<SyntectAssets> = OnceLock::new();
+
+fn syntect_assets() -> &'static SyntectAssets {
+    SYNTECT_ASSETS.get_or_init(|| {
+        let assets = HighlightingAssets::from_binary();
+        let syntaxes = assets
+            .get_syntax_set()
+            .map_or_else(|_| SyntaxSet::load_defaults_newlines(), Clone::clone);
+        let theme = assets
+            .get_theme(HighlightingAssets::default_theme())
+            .clone();
+
+        SyntectAssets { syntaxes, theme }
+    })
 }
 
-fn highlight_code_tokens(part: &str, lang: &str, styles: MarkdownStyles) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    let mut chars = part.char_indices().peekable();
-    while let Some((start, ch)) = chars.next() {
-        if matches!(ch, '\"' | '\'') {
-            let quote = ch;
-            let mut end = start + ch.len_utf8();
-            let mut escaped = false;
-            for (idx, next) in chars.by_ref() {
-                end = idx + next.len_utf8();
-                if next == quote && !escaped {
-                    break;
-                }
-                escaped = next == '\\' && !escaped;
-                if next != '\\' {
-                    escaped = false;
-                }
-            }
-            spans.push(Span::styled(
-                part[start..end].to_string(),
-                styles.code_string,
-            ));
-        } else if ch.is_ascii_alphabetic() || ch == '_' {
-            let mut end = start + ch.len_utf8();
-            while let Some((idx, next)) = chars.peek().copied() {
-                if next.is_ascii_alphanumeric() || next == '_' {
-                    end = idx + next.len_utf8();
-                    let _ = chars.next();
-                } else {
-                    break;
-                }
-            }
-            let token = &part[start..end];
-            let style = if is_code_keyword(token, lang) {
-                styles.code_keyword
-            } else {
-                styles.code
-            };
-            spans.push(Span::styled(token.to_string(), style));
-        } else if ch.is_ascii_digit() {
-            let mut end = start + ch.len_utf8();
-            while let Some((idx, next)) = chars.peek().copied() {
-                if next.is_ascii_digit() {
-                    end = idx + next.len_utf8();
-                    let _ = chars.next();
-                } else {
-                    break;
-                }
-            }
-            spans.push(Span::styled(
-                part[start..end].to_string(),
-                styles.code_number,
-            ));
-        } else {
-            spans.push(Span::styled(ch.to_string(), styles.code));
+fn syntect_syntax_set() -> &'static SyntaxSet {
+    &syntect_assets().syntaxes
+}
+
+fn syntect_theme() -> &'static SyntectTheme {
+    &syntect_assets().theme
+}
+
+struct CodeHighlighter {
+    highlighter: HighlightLines<'static>,
+}
+
+impl CodeHighlighter {
+    fn new(lang: &str) -> Self {
+        let syntaxes = syntect_syntax_set();
+        let syntax = syntax_for(syntaxes, lang);
+        Self {
+            highlighter: HighlightLines::new(syntax, syntect_theme()),
         }
     }
-    spans
+
+    fn highlight_line(&mut self, line: &str, styles: MarkdownStyles) -> Vec<Span<'static>> {
+        match self.highlighter.highlight_line(line, syntect_syntax_set()) {
+            Ok(ranges) => syntect_ranges_to_spans(ranges, styles),
+            Err(_) => vec![Span::styled(line.to_string(), styles.code)],
+        }
+    }
 }
 
-fn is_code_keyword(token: &str, lang: &str) -> bool {
-    match lang {
-        "rs" | "rust" => matches!(
-            token,
-            "as" | "async"
-                | "await"
-                | "break"
-                | "const"
-                | "continue"
-                | "crate"
-                | "else"
-                | "enum"
-                | "fn"
-                | "for"
-                | "if"
-                | "impl"
-                | "in"
-                | "let"
-                | "match"
-                | "mod"
-                | "mut"
-                | "pub"
-                | "return"
-                | "self"
-                | "Self"
-                | "static"
-                | "struct"
-                | "trait"
-                | "type"
-                | "use"
-                | "where"
-                | "while"
-        ),
-        "js" | "javascript" | "ts" | "typescript" | "tsx" | "jsx" => matches!(
-            token,
-            "async"
-                | "await"
-                | "break"
-                | "class"
-                | "const"
-                | "continue"
-                | "else"
-                | "export"
-                | "for"
-                | "from"
-                | "function"
-                | "if"
-                | "import"
-                | "let"
-                | "new"
-                | "return"
-                | "type"
-                | "interface"
-                | "while"
-        ),
-        "sh" | "bash" | "zsh" => matches!(
-            token,
-            "case"
-                | "do"
-                | "done"
-                | "echo"
-                | "elif"
-                | "else"
-                | "esac"
-                | "fi"
-                | "for"
-                | "function"
-                | "if"
-                | "in"
-                | "then"
-                | "while"
-        ),
-        "python" | "py" => matches!(
-            token,
-            "and"
-                | "as"
-                | "async"
-                | "await"
-                | "break"
-                | "class"
-                | "continue"
-                | "def"
-                | "elif"
-                | "else"
-                | "except"
-                | "for"
-                | "from"
-                | "if"
-                | "import"
-                | "in"
-                | "is"
-                | "lambda"
-                | "None"
-                | "not"
-                | "or"
-                | "pass"
-                | "return"
-                | "try"
-                | "while"
-                | "with"
-        ),
-        "html" | "htm" | "xml" | "svg" => matches!(
-            token,
-            "a" | "article"
-                | "aside"
-                | "body"
-                | "button"
-                | "class"
-                | "div"
-                | "footer"
-                | "form"
-                | "h1"
-                | "h2"
-                | "h3"
-                | "head"
-                | "header"
-                | "href"
-                | "html"
-                | "id"
-                | "img"
-                | "input"
-                | "li"
-                | "link"
-                | "main"
-                | "meta"
-                | "nav"
-                | "p"
-                | "script"
-                | "section"
-                | "span"
-                | "src"
-                | "style"
-                | "title"
-                | "ul"
-        ),
-        "css" => matches!(
-            token,
-            "align"
-                | "background"
-                | "border"
-                | "box"
-                | "color"
-                | "display"
-                | "flex"
-                | "font"
-                | "gap"
-                | "grid"
-                | "height"
-                | "justify"
-                | "margin"
-                | "padding"
-                | "position"
-                | "radius"
-                | "template"
-                | "width"
-        ),
-        _ => false,
+fn syntax_for<'a>(syntax_set: &'a SyntaxSet, lang: &str) -> &'a SyntaxReference {
+    let lang = lang.trim().trim_start_matches('.');
+    if lang.is_empty() {
+        return syntax_set.find_syntax_plain_text();
     }
+
+    syntax_set
+        .find_syntax_by_token(lang)
+        .or_else(|| syntax_set.find_syntax_by_extension(lang))
+        .or_else(|| syntax_for_common_alias(syntax_set, lang))
+        .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+}
+
+fn syntax_for_common_alias<'a>(
+    syntax_set: &'a SyntaxSet,
+    lang: &str,
+) -> Option<&'a SyntaxReference> {
+    let extension = match lang.to_ascii_lowercase().as_str() {
+        "c++" => "cpp",
+        "c#" => "cs",
+        "dockerfile" => "Dockerfile",
+        "golang" => "go",
+        "js" | "node" => "js",
+        "jsx" | "react" => "jsx",
+        "md" | "mdx" => "md",
+        "py" => "py",
+        "shell" => "sh",
+        "typescriptreact" => "tsx",
+        "yml" => "yaml",
+        _ => return None,
+    };
+    syntax_set
+        .find_syntax_by_extension(extension)
+        .or_else(|| syntax_set.find_syntax_by_token(extension))
+}
+
+fn syntect_ranges_to_spans(
+    ranges: Vec<(SyntectStyle, &str)>,
+    styles: MarkdownStyles,
+) -> Vec<Span<'static>> {
+    if ranges.is_empty() {
+        return vec![Span::styled(String::new(), styles.code)];
+    }
+
+    ranges
+        .into_iter()
+        .map(|(style, text)| {
+            Span::styled(
+                text.to_string(),
+                ratatui_style_from_syntect(style, styles.code),
+            )
+        })
+        .collect()
+}
+
+fn ratatui_style_from_syntect(style: SyntectStyle, fallback: Style) -> Style {
+    let color = style.foreground;
+    let mut out = fallback.fg(Color::Rgb(color.r, color.g, color.b));
+    if style.font_style.contains(FontStyle::BOLD) {
+        out = out.add_modifier(Modifier::BOLD);
+    }
+    if style.font_style.contains(FontStyle::ITALIC) {
+        out = out.add_modifier(Modifier::ITALIC);
+    }
+    if style.font_style.contains(FontStyle::UNDERLINE) {
+        out = out.add_modifier(Modifier::UNDERLINED);
+    }
+    out
 }
 
 fn unwrap_markdown_table_fences(markdown: &str) -> Cow<'_, str> {
@@ -1697,27 +1537,40 @@ mod tests {
     }
 
     #[test]
-    fn html_and_css_code_lines_get_lightweight_highlighting() {
+    fn syntect_highlights_common_languages_beyond_old_manual_set() {
         let styles = MarkdownStyles::new(Style::default(), &Theme::default());
-        let html = highlight_code_line("<div class=\"card\">hello</div>", "html", styles);
-        let css = highlight_code_line(
-            ".card { background-color: #fff; } /* theme */",
-            "css",
-            styles,
-        );
+        let assets = syntect_assets();
+        let samples = [
+            ("json", "{ \"name\": true }"),
+            ("toml", "name = \"oino\""),
+            ("yaml", "name: oino"),
+            ("sql", "select * from sessions where id = 1"),
+            ("go", "func main() { fmt.Println(\"hi\") }"),
+        ];
 
-        assert!(html
-            .iter()
-            .any(|span| { span.content.as_ref() == "div" && span.style == styles.code_keyword }));
-        assert!(html.iter().any(|span| {
-            span.content.as_ref() == "\"card\"" && span.style == styles.code_string
-        }));
-        assert!(css.iter().any(|span| {
-            span.content.as_ref() == "background" && span.style == styles.code_keyword
-        }));
-        assert!(css.iter().any(|span| {
-            span.content.as_ref() == "/* theme */" && span.style == styles.code_comment
-        }));
+        for (lang, sample) in samples {
+            let syntax = syntax_for(&assets.syntaxes, lang);
+            assert_ne!(
+                syntax.name, "Plain Text",
+                "{lang} should resolve via syntect"
+            );
+
+            let mut highlighter = CodeHighlighter::new(lang);
+            let spans = highlighter.highlight_line(sample, styles);
+            assert_eq!(
+                spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>(),
+                sample
+            );
+            assert!(
+                spans.iter().any(|span| {
+                    !span.content.as_ref().trim().is_empty() && span.style.fg != styles.code.fg
+                }),
+                "{lang} should produce colored spans: {spans:?}"
+            );
+        }
     }
 
     #[test]
