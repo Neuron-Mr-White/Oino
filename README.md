@@ -16,6 +16,12 @@ Equivalent Cargo command:
 OPENROUTER_API_KEY=sk-or-... cargo run -p oino-app --bin oino
 ```
 
+Standalone markdown rendering proof-of-concept:
+
+```bash
+mise run tui:render-test
+```
+
 Optional configuration:
 
 ```bash

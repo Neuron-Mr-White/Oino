@@ -2,6 +2,10 @@
 description = "Run the Oino TUI app"
 run = "cargo run -p oino-app --bin oino"
 
+[tasks."tui:render-test"]
+description = "Run the Ratatui markdown rendering proof-of-concept"
+run = "cargo run -p oino-tui --bin render-test"
+
 [tasks.check]
 description = "Check the full Rust workspace"
 run = "cargo check --workspace"
