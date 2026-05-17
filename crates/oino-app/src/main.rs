@@ -4,11 +4,16 @@ mod model_catalog;
 mod user_settings;
 
 use crossterm::{
+    cursor::MoveTo,
     event::{
         self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind,
         KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
-    execute,
+    execute, queue,
+    style::{
+        Attribute as CAttribute, Color as CColor, Print, ResetColor, SetAttribute,
+        SetForegroundColor,
+    },
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use model_catalog::ModelCatalogUpdate;
@@ -18,13 +23,14 @@ use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, Notificat
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
 use oino_session::{SessionManager, SessionRepository};
 use oino_tui::{
-    collapse_mode_value, collapse_target_value, parse_command, render, transcript_visible_lines,
-    CollapseMode, ParsedCommand, SettingsCommand, TuiAction, TuiState, HELP_STATUS,
+    collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
+    transcript_url_overlays, transcript_visible_lines, CollapseMode, ParsedCommand,
+    SettingsCommand, TerminalUrlOverlay, TuiAction, TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
-    io::{self, Stdout},
+    io::{self, Stdout, Write},
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -761,6 +767,32 @@ struct TerminalGuard {
     terminal: Terminal<CrosstermBackend<Stdout>>,
 }
 
+fn paint_url_overlays(
+    backend: &mut CrosstermBackend<Stdout>,
+    overlays: &[TerminalUrlOverlay],
+    restore_cursor: Option<(u16, u16)>,
+) -> io::Result<()> {
+    for overlay in overlays {
+        queue!(
+            backend,
+            MoveTo(overlay.x, overlay.y),
+            SetForegroundColor(CColor::Blue),
+            SetAttribute(CAttribute::Underlined),
+            Print(osc8_link(&overlay.text, &overlay.url)),
+            SetAttribute(CAttribute::NoUnderline),
+            ResetColor
+        )?;
+    }
+    if let Some((x, y)) = restore_cursor.filter(|_| !overlays.is_empty()) {
+        queue!(backend, MoveTo(x, y))?;
+    }
+    backend.flush()
+}
+
+fn osc8_link(label: &str, url: &str) -> String {
+    format!("\x1b]8;;{url}\x1b\\{label}\x1b]8;;\x1b\\")
+}
+
 impl TerminalGuard {
     fn enter() -> Result<Self, AppError> {
         enable_raw_mode()?;
@@ -777,7 +809,11 @@ impl TerminalGuard {
     }
 
     fn draw(&mut self, state: &TuiState) -> Result<(), AppError> {
+        let size = self.terminal.size()?;
+        let overlays = transcript_url_overlays(state, size.width, size.height);
+        let cursor = terminal_cursor_position(state, size.width, size.height);
         self.terminal.draw(|frame| render(frame, state))?;
+        paint_url_overlays(self.terminal.backend_mut(), &overlays, cursor)?;
         Ok(())
     }
 

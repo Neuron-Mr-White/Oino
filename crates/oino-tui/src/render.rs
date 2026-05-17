@@ -29,6 +29,14 @@ const MAX_COMPOSER_HEIGHT: u16 = 9;
 const INPUT_PROMPT: &str = "› ";
 const TINY_MESSAGE: &str = "Oino needs at least 20x8";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalUrlOverlay {
+    pub x: u16,
+    pub y: u16,
+    pub text: String,
+    pub url: String,
+}
+
 pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
     render_with_theme(frame, state, &Theme::default());
 }
@@ -100,6 +108,92 @@ pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> us
         .max(1) as usize
 }
 
+pub fn terminal_cursor_position(state: &TuiState, width: u16, height: u16) -> Option<(u16, u16)> {
+    if width < 20 || height < 8 || state.focus != TuiFocus::Composer || !state.composer.is_enabled()
+    {
+        return None;
+    }
+    let composer_height = composer_height(state.composer.text(), width, height);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
+            Constraint::Length(composer_height),
+            Constraint::Length(FOOTER_HEIGHT),
+        ])
+        .split(Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        });
+    let position = composer_cursor_position(chunks[1], &state.composer);
+    Some((position.x, position.y))
+}
+
+pub fn transcript_url_overlays(
+    state: &TuiState,
+    width: u16,
+    height: u16,
+) -> Vec<TerminalUrlOverlay> {
+    if width < 20
+        || height < 8
+        || state.overlay.is_some()
+        || state.chord != ChordState::None
+        || state.command_suggestions_view().is_some()
+    {
+        return Vec::new();
+    }
+
+    let composer_height = composer_height(state.composer.text(), width, height);
+    let area = Rect {
+        x: 0,
+        y: 0,
+        width,
+        height: height
+            .saturating_sub(composer_height)
+            .saturating_sub(FOOTER_HEIGHT),
+    };
+    let inner_height = area.height.saturating_sub(2) as usize;
+    if inner_height == 0 {
+        return Vec::new();
+    }
+
+    let theme = Theme::default();
+    let full_inner_width = area.width.saturating_sub(2) as usize;
+    let mut lines = transcript_lines_for_width(state, full_inner_width, &theme);
+    let mut has_scrollbar = lines.len() > inner_height && area.width > 4 && inner_height > 1;
+    if has_scrollbar {
+        lines =
+            transcript_lines_for_width(state, full_inner_width.saturating_sub(1).max(1), &theme);
+        has_scrollbar = lines.len() > inner_height;
+    }
+    let content_width = full_inner_width.saturating_sub(usize::from(has_scrollbar));
+    let start = state
+        .transcript_scroll
+        .visible_start(lines.len(), inner_height);
+
+    let mut overlays = Vec::new();
+    for (visible_index, line) in lines.into_iter().skip(start).take(inner_height).enumerate() {
+        let plain = plain_line(&line);
+        for (column, url) in url_ranges(&plain) {
+            if column.saturating_add(url.width()) > content_width {
+                continue;
+            }
+            overlays.push(TerminalUrlOverlay {
+                x: area.x.saturating_add(1).saturating_add(column as u16),
+                y: area
+                    .y
+                    .saturating_add(1)
+                    .saturating_add(visible_index as u16),
+                text: url.clone(),
+                url,
+            });
+        }
+    }
+    overlays
+}
+
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
     let inner_height = area.height.saturating_sub(2) as usize;
     let full_inner_width = area.width.saturating_sub(2) as usize;
@@ -167,6 +261,56 @@ fn transcript_lines_for_width(state: &TuiState, width: usize, theme: &Theme) -> 
     }
 
     lines
+}
+
+fn plain_line(line: &Line<'_>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>()
+}
+
+fn url_ranges(text: &str) -> Vec<(usize, String)> {
+    let mut ranges = Vec::new();
+    let mut search_start = 0usize;
+    while search_start < text.len() {
+        let rest = &text[search_start..];
+        let Some(relative_start) = next_url_start(rest) else {
+            break;
+        };
+        let start = search_start + relative_start;
+        let mut end = text.len();
+        for (offset, ch) in text[start..].char_indices() {
+            if ch.is_whitespace() || matches!(ch, '<' | '>' | '"') {
+                end = start + offset;
+                break;
+            }
+        }
+        let mut url = text[start..end].to_string();
+        trim_url_trailing_punctuation(&mut url);
+        if !url.is_empty() {
+            ranges.push((text[..start].width(), url));
+        }
+        search_start = end.max(start.saturating_add(1));
+    }
+    ranges
+}
+
+fn next_url_start(text: &str) -> Option<usize> {
+    [text.find("https://"), text.find("http://")]
+        .into_iter()
+        .flatten()
+        .min()
+}
+
+fn trim_url_trailing_punctuation(url: &mut String) {
+    while url
+        .chars()
+        .last()
+        .is_some_and(|ch| matches!(ch, '.' | ',' | ';' | ':' | ')' | ']' | '}'))
+    {
+        url.pop();
+    }
 }
 
 fn render_transcript_scrollbar(
@@ -997,6 +1141,31 @@ mod tests {
             top.contains("┃"),
             "scrolled transcript should keep scrollbar visible"
         );
+    }
+
+    #[test]
+    fn transcript_url_overlays_target_visible_urls() {
+        let mut state = TuiState::new();
+        state.settings.chat_style = ChatStyle::Minimal;
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "assistant".into(),
+            title: Some("test/model".into()),
+            content: "See [Oino](https://example.invalid/docs).".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        });
+
+        let overlays = transcript_url_overlays(&state, 80, 20);
+
+        assert_eq!(overlays.len(), 1);
+        assert_eq!(overlays[0].text, "https://example.invalid/docs");
+        assert_eq!(overlays[0].url, "https://example.invalid/docs");
+        assert!(overlays[0].x > 0);
+        assert!(overlays[0].y > 0);
     }
 
     #[test]

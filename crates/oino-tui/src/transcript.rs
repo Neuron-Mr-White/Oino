@@ -1038,7 +1038,7 @@ mod tests {
                 "style {style:?}: {rendered}"
             );
             assert!(
-                rendered.contains("Link (https://example.invalid)"),
+                rendered.contains("Link ↗ https://example.invalid"),
                 "style {style:?}: {rendered}"
             );
             assert!(

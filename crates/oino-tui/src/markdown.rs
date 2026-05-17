@@ -20,6 +20,11 @@ struct MarkdownStyles {
     strike: Style,
     code: Style,
     code_border: Style,
+    code_keyword: Style,
+    code_string: Style,
+    code_comment: Style,
+    code_number: Style,
+    code_line_number: Style,
     link: Style,
     muted: Style,
     quote: Style,
@@ -39,10 +44,17 @@ impl MarkdownStyles {
             emphasis: Style::default().add_modifier(Modifier::ITALIC),
             strong: Style::default().add_modifier(Modifier::BOLD),
             strike: Style::default().add_modifier(Modifier::CROSSED_OUT),
-            code: base.fg(theme.tool_border),
+            code: base.fg(theme.fg),
             code_border: Style::default()
-                .fg(theme.panel_border)
+                .fg(theme.focused_border)
                 .add_modifier(Modifier::BOLD),
+            code_keyword: base.fg(theme.tool_border).add_modifier(Modifier::BOLD),
+            code_string: base.fg(theme.assistant_border),
+            code_comment: Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
+            code_number: base.fg(theme.user_border),
+            code_line_number: Style::default().fg(theme.muted),
             link: base
                 .fg(theme.focused_border)
                 .add_modifier(Modifier::UNDERLINED),
@@ -106,6 +118,7 @@ struct MarkdownRenderer {
     list_stack: Vec<ListState>,
     item_stack: Vec<ItemContext>,
     blockquote_depth: usize,
+    heading_level: Option<HeadingLevel>,
     in_code_block: bool,
     code_block_lang: Option<String>,
     code_block_content: String,
@@ -170,6 +183,7 @@ impl MarkdownRenderer {
             list_stack: Vec::new(),
             item_stack: Vec::new(),
             blockquote_depth: 0,
+            heading_level: None,
             in_code_block: false,
             code_block_lang: None,
             code_block_content: String::new(),
@@ -292,10 +306,12 @@ impl MarkdownRenderer {
             }
             Event::Start(Tag::Heading { level, .. }) => {
                 self.flush_current_line();
+                self.heading_level = Some(level);
                 self.style_stack.push(self.styles.heading_for(level));
             }
-            Event::End(TagEnd::Heading(_)) => {
-                self.flush_current_line();
+            Event::End(TagEnd::Heading(level)) => {
+                self.render_heading(level);
+                self.heading_level = None;
                 self.pop_style();
                 self.push_blank();
             }
@@ -314,7 +330,8 @@ impl MarkdownRenderer {
                 if let Some(url) = self.link_targets.pop() {
                     if !url.trim().is_empty() {
                         self.current_spans
-                            .push(Span::styled(format!(" ({url})"), self.styles.muted));
+                            .push(Span::styled(" ↗ ", self.styles.muted));
+                        self.current_spans.push(Span::styled(url, self.styles.link));
                     }
                 }
             }
@@ -506,6 +523,82 @@ impl MarkdownRenderer {
         (initial, subsequent)
     }
 
+    fn render_heading(&mut self, level: HeadingLevel) {
+        if self.current_spans.is_empty() {
+            return;
+        }
+        let spans = std::mem::take(&mut self.current_spans);
+        let title = spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
+            .trim()
+            .to_string();
+        if title.is_empty() {
+            return;
+        }
+        match level {
+            HeadingLevel::H1 => self.render_h1(&title),
+            HeadingLevel::H2 => self.render_h2(&title),
+            HeadingLevel::H3 => self.render_h3(&title, "◆"),
+            _ => self.render_h3(&title, "▸"),
+        }
+    }
+
+    fn render_h1(&mut self, title: &str) {
+        let (initial, subsequent) = self.current_prefixes();
+        let available = self.width.saturating_sub(line_width(&initial)).max(1);
+        let title_width = available.saturating_sub(4).max(1);
+        let visible_title = truncate_to_width(title, title_width);
+        let top = heading_border_line('╭', '╮', &format!(" # {visible_title} "), available);
+        let middle = format!(
+            "│ {} │",
+            pad_to_width(&visible_title, available.saturating_sub(4).max(1))
+        );
+        let bottom = heading_border_line('╰', '╯', "", available);
+        self.lines.push(prefixed_line(
+            Line::styled(top, self.styles.heading),
+            initial,
+        ));
+        self.lines.push(prefixed_line(
+            Line::styled(middle, self.styles.heading),
+            subsequent.clone(),
+        ));
+        self.lines.push(prefixed_line(
+            Line::styled(bottom, self.styles.heading),
+            subsequent,
+        ));
+    }
+
+    fn render_h2(&mut self, title: &str) {
+        let (mut initial, subsequent) = self.current_prefixes();
+        initial.push_span(Span::styled("▌ ", self.styles.heading_secondary));
+        push_wrapped_line(
+            &mut self.lines,
+            Line::styled(title.to_string(), self.styles.heading_secondary),
+            self.width,
+            initial,
+            subsequent.clone(),
+        );
+        let available = self.width.saturating_sub(line_width(&subsequent)).max(1);
+        self.lines.push(prefixed_line(
+            Line::styled("─".repeat(available.min(80)), self.styles.muted),
+            subsequent,
+        ));
+    }
+
+    fn render_h3(&mut self, title: &str, marker: &str) {
+        let (mut initial, subsequent) = self.current_prefixes();
+        initial.push_span(Span::styled(format!("{marker} "), self.styles.list_marker));
+        push_wrapped_line(
+            &mut self.lines,
+            Line::styled(title.to_string(), self.styles.heading_secondary),
+            self.width,
+            initial,
+            subsequent,
+        );
+    }
+
     fn render_code_block(&mut self) {
         let code = self.code_block_content.clone();
         let mut parts = code.split('\n').collect::<Vec<_>>();
@@ -524,13 +617,29 @@ impl MarkdownRenderer {
             .unwrap_or("code")
             .to_string();
         self.push_code_block_border(Some(&label), true, &mut consumed_block_prefix);
-        for part in parts {
+        let number_width = parts.len().to_string().width().max(1);
+        for (index, part) in parts.into_iter().enumerate() {
+            let line_number = (index + 1).to_string();
             let (mut initial, mut subsequent) = self.block_prefixes(&mut consumed_block_prefix);
             initial.push_span(Span::styled("│ ", self.styles.code_border));
+            initial.push_span(Span::styled(
+                format!(
+                    "{}{}",
+                    " ".repeat(number_width.saturating_sub(line_number.width())),
+                    line_number
+                ),
+                self.styles.code_line_number,
+            ));
+            initial.push_span(Span::styled(" │ ", self.styles.code_border));
             subsequent.push_span(Span::styled("│ ", self.styles.code_border));
+            subsequent.push_span(Span::styled(
+                " ".repeat(number_width),
+                self.styles.code_line_number,
+            ));
+            subsequent.push_span(Span::styled(" │ ", self.styles.code_border));
             push_wrapped_line(
                 &mut self.lines,
-                Line::styled(part.to_string(), self.styles.code),
+                Line::from(highlight_code_line(part, &label, self.styles)),
                 self.width,
                 initial,
                 subsequent,
@@ -724,6 +833,249 @@ fn code_block_border_text(label: Option<&str>, top: bool, width: usize) -> Strin
         border
     } else {
         truncate_to_width(&border, width)
+    }
+}
+
+fn heading_border_line(left: char, right: char, label: &str, width: usize) -> String {
+    let width = width.max(2);
+    let mut line = String::new();
+    line.push(left);
+    if !label.is_empty() && width > 4 {
+        line.push('─');
+        line.push_str(&truncate_to_width(label, width.saturating_sub(4)));
+    }
+    let used = line.width();
+    if used < width.saturating_sub(1) {
+        line.push_str(&"─".repeat(width.saturating_sub(1) - used));
+    }
+    line.push(right);
+    truncate_to_width(&line, width)
+}
+
+fn prefixed_line(mut line: Line<'static>, prefix: Line<'static>) -> Line<'static> {
+    let mut out = prefix;
+    out.spans.append(&mut line.spans);
+    out
+}
+
+fn pad_to_width(text: &str, width: usize) -> String {
+    let used = text.width();
+    if used >= width {
+        text.to_string()
+    } else {
+        format!("{text}{}", " ".repeat(width - used))
+    }
+}
+
+fn highlight_code_line(line: &str, lang: &str, styles: MarkdownStyles) -> Vec<Span<'static>> {
+    let normalized_lang = lang.trim().to_ascii_lowercase();
+    if !matches!(
+        normalized_lang.as_str(),
+        "rs" | "rust"
+            | "js"
+            | "javascript"
+            | "ts"
+            | "typescript"
+            | "tsx"
+            | "jsx"
+            | "sh"
+            | "bash"
+            | "zsh"
+            | "python"
+            | "py"
+    ) {
+        return vec![Span::styled(line.to_string(), styles.code)];
+    }
+
+    let mut spans = Vec::new();
+    let mut rest = line;
+    while !rest.is_empty() {
+        if let Some(comment_start) = comment_start(rest, &normalized_lang) {
+            let (before, comment) = rest.split_at(comment_start);
+            if !before.is_empty() {
+                spans.extend(highlight_code_tokens(before, &normalized_lang, styles));
+            }
+            spans.push(Span::styled(comment.to_string(), styles.code_comment));
+            return spans;
+        }
+        spans.extend(highlight_code_tokens(rest, &normalized_lang, styles));
+        rest = "";
+    }
+    if spans.is_empty() {
+        spans.push(Span::styled(String::new(), styles.code));
+    }
+    spans
+}
+
+fn comment_start(line: &str, lang: &str) -> Option<usize> {
+    if matches!(lang, "sh" | "bash" | "zsh" | "python" | "py") {
+        return line.find('#');
+    }
+    line.find("//")
+}
+
+fn highlight_code_tokens(part: &str, lang: &str, styles: MarkdownStyles) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut chars = part.char_indices().peekable();
+    while let Some((start, ch)) = chars.next() {
+        if matches!(ch, '\"' | '\'') {
+            let quote = ch;
+            let mut end = start + ch.len_utf8();
+            let mut escaped = false;
+            for (idx, next) in chars.by_ref() {
+                end = idx + next.len_utf8();
+                if next == quote && !escaped {
+                    break;
+                }
+                escaped = next == '\\' && !escaped;
+                if next != '\\' {
+                    escaped = false;
+                }
+            }
+            spans.push(Span::styled(
+                part[start..end].to_string(),
+                styles.code_string,
+            ));
+        } else if ch.is_ascii_alphabetic() || ch == '_' {
+            let mut end = start + ch.len_utf8();
+            while let Some((idx, next)) = chars.peek().copied() {
+                if next.is_ascii_alphanumeric() || next == '_' {
+                    end = idx + next.len_utf8();
+                    let _ = chars.next();
+                } else {
+                    break;
+                }
+            }
+            let token = &part[start..end];
+            let style = if is_code_keyword(token, lang) {
+                styles.code_keyword
+            } else {
+                styles.code
+            };
+            spans.push(Span::styled(token.to_string(), style));
+        } else if ch.is_ascii_digit() {
+            let mut end = start + ch.len_utf8();
+            while let Some((idx, next)) = chars.peek().copied() {
+                if next.is_ascii_digit() {
+                    end = idx + next.len_utf8();
+                    let _ = chars.next();
+                } else {
+                    break;
+                }
+            }
+            spans.push(Span::styled(
+                part[start..end].to_string(),
+                styles.code_number,
+            ));
+        } else {
+            spans.push(Span::styled(ch.to_string(), styles.code));
+        }
+    }
+    spans
+}
+
+fn is_code_keyword(token: &str, lang: &str) -> bool {
+    match lang {
+        "rs" | "rust" => matches!(
+            token,
+            "as" | "async"
+                | "await"
+                | "break"
+                | "const"
+                | "continue"
+                | "crate"
+                | "else"
+                | "enum"
+                | "fn"
+                | "for"
+                | "if"
+                | "impl"
+                | "in"
+                | "let"
+                | "match"
+                | "mod"
+                | "mut"
+                | "pub"
+                | "return"
+                | "self"
+                | "Self"
+                | "static"
+                | "struct"
+                | "trait"
+                | "type"
+                | "use"
+                | "where"
+                | "while"
+        ),
+        "js" | "javascript" | "ts" | "typescript" | "tsx" | "jsx" => matches!(
+            token,
+            "async"
+                | "await"
+                | "break"
+                | "class"
+                | "const"
+                | "continue"
+                | "else"
+                | "export"
+                | "for"
+                | "from"
+                | "function"
+                | "if"
+                | "import"
+                | "let"
+                | "new"
+                | "return"
+                | "type"
+                | "interface"
+                | "while"
+        ),
+        "sh" | "bash" | "zsh" => matches!(
+            token,
+            "case"
+                | "do"
+                | "done"
+                | "echo"
+                | "elif"
+                | "else"
+                | "esac"
+                | "fi"
+                | "for"
+                | "function"
+                | "if"
+                | "in"
+                | "then"
+                | "while"
+        ),
+        "python" | "py" => matches!(
+            token,
+            "and"
+                | "as"
+                | "async"
+                | "await"
+                | "break"
+                | "class"
+                | "continue"
+                | "def"
+                | "elif"
+                | "else"
+                | "except"
+                | "for"
+                | "from"
+                | "if"
+                | "import"
+                | "in"
+                | "is"
+                | "lambda"
+                | "None"
+                | "not"
+                | "or"
+                | "pass"
+                | "return"
+                | "try"
+                | "while"
+                | "with"
+        ),
+        _ => false,
     }
 }
 
@@ -1166,11 +1518,11 @@ mod tests {
         );
         let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
 
-        assert!(plain_lines.contains(&"Title".to_string()));
+        assert!(plain_lines.iter().any(|line| line.contains("Title")));
         assert!(plain_lines.contains(&"• Bold item with code".to_string()));
         assert!(plain_lines
             .iter()
-            .any(|line| line.contains("Oino (https://example.invalid)")));
+            .any(|line| line.contains("Oino ↗ https://example.invalid")));
         assert!(plain_lines.iter().any(|line| line.contains("fn main() {}")));
         assert!(!plain_lines.iter().any(|line| line.contains("**Bold**")));
         assert!(!plain_lines.iter().any(|line| line.contains("`code`")));
@@ -1243,7 +1595,7 @@ mod tests {
         assert!(plain_lines
             .first()
             .is_some_and(|line| line.starts_with("╭─ rust")));
-        assert!(plain_lines.iter().any(|line| line == "│ fn main() {}"));
+        assert!(plain_lines.iter().any(|line| line == "│ 1 │ fn main() {}"));
         assert!(plain_lines.iter().any(|line| line.starts_with('╰')));
         assert!(plain_lines.iter().all(|line| line.width() <= 32));
     }
