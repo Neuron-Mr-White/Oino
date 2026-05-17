@@ -38,10 +38,7 @@ impl MarkdownStyles {
     fn new(base: Style, theme: &Theme) -> Self {
         Self {
             base,
-            heading: base
-                .fg(theme.focused_border)
-                .add_modifier(Modifier::BOLD)
-                .add_modifier(Modifier::UNDERLINED),
+            heading: base.fg(theme.focused_border).add_modifier(Modifier::BOLD),
             heading_secondary: base.fg(theme.focused_border).add_modifier(Modifier::BOLD),
             emphasis: Style::default().add_modifier(Modifier::ITALIC),
             strong: Style::default().add_modifier(Modifier::BOLD),
@@ -574,7 +571,7 @@ impl MarkdownRenderer {
         let available = self.width.saturating_sub(line_width(&initial)).max(1);
         let title_width = available.saturating_sub(4).max(1);
         let visible_title = truncate_to_width(title, title_width);
-        let top = heading_border_line('╭', '╮', &format!(" # {visible_title} "), available);
+        let top = heading_border_line('╭', '╮', " # ", available);
         let middle = format!(
             "│ {} │",
             pad_to_width(&visible_title, available.saturating_sub(4).max(1))
@@ -1623,6 +1620,24 @@ mod tests {
         let styles = MarkdownStyles::new(Style::default(), &Theme::default());
 
         assert_eq!(styles.heading.fg, styles.heading_secondary.fg);
+        assert!(styles.heading.add_modifier.contains(Modifier::BOLD));
+        assert!(!styles.heading.add_modifier.contains(Modifier::UNDERLINED));
+    }
+
+    #[test]
+    fn h1_banner_does_not_repeat_title_in_border_label() {
+        let lines = render_markdown_lines("# H1 heading", 40, Style::default(), &Theme::default());
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert!(plain_lines[0].contains("#"));
+        assert!(!plain_lines[0].contains("H1 heading"));
+        assert_eq!(
+            plain_lines
+                .iter()
+                .filter(|line| line.contains("H1 heading"))
+                .count(),
+            1
+        );
     }
 
     #[test]

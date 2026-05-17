@@ -623,8 +623,7 @@ fn blank(lines: &mut Vec<Line<'static>>) {
 }
 
 fn push_h1(lines: &mut Vec<Line<'static>>, title: &str, width: usize, theme: &DemoTheme) {
-    let label = format!(" # {title} ");
-    lines.push(Line::styled(border_line('╭', '╮', &label, width), theme.h1));
+    lines.push(Line::styled(border_line('╭', '╮', " # ", width), theme.h1));
     lines.push(Line::from(vec![
         Span::styled("│ ", theme.h1),
         Span::styled(pad_to_width(title, width.saturating_sub(4)), theme.h1),
