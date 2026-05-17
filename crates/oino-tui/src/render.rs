@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    app::{ChordState, OverlayKind, SendPanelItem, SendPanelSection, TuiFocus, TuiState},
+    app::{
+        ChordState, OverlayKind, SendPanelItem, SendPanelSection, SessionListItem, TuiFocus,
+        TuiState,
+    },
     command::CommandSuggestionsView,
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
     settings::{
@@ -87,6 +90,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
     match state.overlay {
         Some(OverlayKind::Settings) => render_settings_overlay(frame, area, &state.settings, theme),
         Some(OverlayKind::SendPanel) => render_send_panel_overlay(frame, area, state, theme),
+        Some(OverlayKind::Sessions) => render_sessions_overlay(frame, area, state, theme),
         None => {}
     }
 
@@ -790,6 +794,129 @@ fn send_panel_selected_line(items: &[SendPanelItem], cursor: usize) -> Option<us
 fn panel_preview(text: &str, width: usize) -> String {
     let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
     truncate_to_width(&compact, width.max(1))
+}
+
+fn render_sessions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 86, 72);
+    frame.render_widget(Clear, overlay);
+
+    let block = Block::default()
+        .title(Span::styled(" Sessions ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border));
+    frame.render_widget(block, overlay);
+
+    let inner = overlay.inner(ratatui::layout::Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(2)])
+        .split(inner);
+
+    let content_height = list_content_height(sections[0]);
+    let content_width = sections[0].width.saturating_sub(2) as usize;
+    let lines = sessions_lines(state, content_width, content_height, theme);
+    let title = if state.sessions.loading || state.sessions.items.is_empty() {
+        " Saved Sessions ".to_string()
+    } else {
+        format!(
+            " Saved Sessions {}/{} ",
+            state
+                .sessions
+                .cursor
+                .saturating_add(1)
+                .min(state.sessions.items.len()),
+            state.sessions.items.len()
+        )
+    };
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(section_border_style(true, theme)),
+        ),
+        sections[0],
+    );
+
+    let controls = "↑/↓ select • Enter continue • r reload • Esc close";
+    let status = format!("{} • {controls}", state.status);
+    frame.render_widget(
+        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
+        sections[1],
+    );
+}
+
+fn sessions_lines(
+    state: &TuiState,
+    content_width: usize,
+    content_height: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    if state.sessions.loading {
+        return vec![Line::styled(
+            "Loading saved sessions…",
+            Style::default().fg(theme.muted),
+        )];
+    }
+    if state.sessions.items.is_empty() {
+        return vec![
+            Line::styled("No saved sessions yet.", Style::default().fg(theme.muted)),
+            Line::styled(
+                "Send a prompt to create one, or use /new when you explicitly want a fresh session.",
+                Style::default().fg(theme.muted),
+            ),
+        ];
+    }
+
+    let range = visible_range(
+        state.sessions.cursor,
+        state.sessions.items.len(),
+        content_height,
+    );
+    let start = range.start;
+    state.sessions.items[range]
+        .iter()
+        .enumerate()
+        .map(|(offset, item)| {
+            let index = start + offset;
+            let active = index == state.sessions.cursor;
+            sessions_item_line(index, item, active, content_width, theme)
+        })
+        .collect()
+}
+
+fn sessions_item_line(
+    index: usize,
+    item: &SessionListItem,
+    active: bool,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let marker = arrow_marker(active);
+    let current = if item.current { "●" } else { " " };
+    let short_id = item.id.chars().take(8).collect::<String>();
+    let count = match item.message_count {
+        1 => "1 message".to_string(),
+        count => format!("{count} messages"),
+    };
+    let prefix = format!(
+        "{marker} {current} {}. {} [{short_id}] {count} — ",
+        index.saturating_add(1),
+        item.name
+    );
+    let detail = if item.preview.trim().is_empty() {
+        item.cwd.clone()
+    } else {
+        format!("{} • {}", item.preview, item.cwd)
+    };
+    let detail = truncate_to_width(&detail, width.saturating_sub(prefix.width()).max(1));
+    Line::from(vec![
+        Span::styled(prefix, item_style(active, item.current, theme)),
+        Span::styled(detail, item_style(active, false, theme)),
+    ])
 }
 
 fn render_settings_overlay(

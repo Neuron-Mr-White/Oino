@@ -451,7 +451,17 @@ impl Harness {
     }
 
     pub async fn replace_session(&self, session: SessionManager) {
-        self.agent.reset().await;
+        let context = session.build_session_context().ok();
+        let messages = context
+            .as_ref()
+            .map_or_else(Vec::new, |context| context.messages.clone());
+        self.agent.replace_messages(messages).await;
+        if let Some(model) = context.as_ref().and_then(|context| context.model.clone()) {
+            self.agent.set_model(model).await;
+        }
+        if let Some(thinking_level) = context.as_ref().and_then(|context| context.thinking_level) {
+            self.agent.set_thinking_level(thinking_level).await;
+        }
         *self.session.lock().await = session;
     }
 
@@ -689,16 +699,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_session_clears_agent_and_session_context() {
+    async fn replace_session_updates_agent_and_session_context() {
         let h = harness();
         let result = h.prompt(Message::user_text("hi")).await;
         assert!(result.is_ok());
         assert!(!h.build_context().await.unwrap_or_default().is_empty());
 
-        let replacement = SessionManager::new(SessionHeader::new("new", PathBuf::from("/tmp")));
+        let mut replacement = SessionManager::new(SessionHeader::new("new", PathBuf::from("/tmp")));
+        replacement.append_model(Model::new("test", "replacement"));
+        replacement.append_thinking_level(ThinkingLevel::High);
+        let loaded_message = Message::user_text("loaded");
+        replacement.append_message(loaded_message.clone());
         h.replace_session(replacement).await;
 
-        assert!(h.build_context().await.unwrap_or_default().is_empty());
-        assert!(h.agent.messages().await.is_empty());
+        let context = h.build_context().await.unwrap_or_default();
+        assert_eq!(context, vec![loaded_message]);
+        let agent_state = h.agent.state().await;
+        assert_eq!(agent_state.messages, context);
+        assert_eq!(agent_state.model, Model::new("test", "replacement"));
+        assert_eq!(agent_state.thinking_level, ThinkingLevel::High);
     }
 }

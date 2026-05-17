@@ -25,12 +25,12 @@ use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
-use oino_session::{SessionManager, SessionRepository};
+use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
     transcript_click_targets, transcript_url_overlays, transcript_visible_lines, CollapseMode,
-    ParsedCommand, SettingsCommand, TerminalClickTarget, TerminalUrlOverlay, TuiAction, TuiState,
-    HELP_STATUS,
+    ParsedCommand, SessionListItem, SettingsCommand, TerminalClickTarget, TerminalUrlOverlay,
+    TuiAction, TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -117,7 +117,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /settings\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
 }
 
 #[derive(Debug, Error)]
@@ -211,13 +211,16 @@ async fn load_or_create_session(
     session_id: Option<OinoId>,
     cwd: PathBuf,
 ) -> Result<(PathBuf, SessionManager), AppError> {
-    let repository = SessionRepository::new(default_session_root()?);
+    let root = default_session_root()?;
+    let repository = SessionRepository::new(root.clone());
     if let Some(session_id) = session_id {
-        let path = default_session_root()?.join(format!("{session_id}.jsonl"));
+        let path = root.join(format!("{session_id}.jsonl"));
         let session = repository.open(&path).await?;
         return Ok((path, session));
     }
-    Ok(repository.create("oino", cwd).await?)
+    let session = SessionManager::new(SessionHeader::new("oino", cwd));
+    let path = root.join(format!("{}.jsonl", session.header().session_id));
+    Ok((path, session))
 }
 
 fn default_session_root() -> Result<PathBuf, AppError> {
@@ -521,6 +524,18 @@ async fn run_tui(
                     start_new_tui_session(&mut state, &harness, &mut session_path).await;
                 }
             }
+            TuiAction::ListSessions => {
+                load_tui_sessions(&mut state, &session_path).await;
+            }
+            TuiAction::OpenSession(session_id) => {
+                if prompt_in_flight {
+                    state.set_error("Cannot switch sessions while a prompt is running");
+                } else if let Some(thinking_level) =
+                    open_tui_session(&mut state, &harness, &mut session_path, &session_id).await
+                {
+                    applied_thinking_level = thinking_level;
+                }
+            }
         }
     }
     Ok(())
@@ -548,6 +563,63 @@ async fn start_new_tui_session(
             state.reset_for_new_session(&session_id);
         }
         Err(err) => state.set_error(format!("New session failed: {err}")),
+    }
+}
+
+async fn load_tui_sessions(state: &mut TuiState, current_session_path: &Path) {
+    match session_list_items(
+        current_session_path
+            .file_stem()
+            .and_then(|value| value.to_str()),
+    )
+    .await
+    {
+        Ok(sessions) => state.set_sessions(sessions),
+        Err(err) => state.set_error(format!("Sessions load failed: {err}")),
+    }
+}
+
+async fn open_tui_session(
+    state: &mut TuiState,
+    harness: &Arc<Harness>,
+    session_path: &mut PathBuf,
+    session_id: &str,
+) -> Option<ThinkingLevel> {
+    let root = match default_session_root() {
+        Ok(root) => root,
+        Err(err) => {
+            state.set_error(format!("Open session failed: {err}"));
+            return None;
+        }
+    };
+    let path = root.join(format!("{session_id}.jsonl"));
+    let repository = SessionRepository::new(root);
+    match repository.open(&path).await {
+        Ok(session) => {
+            let context = match session.build_session_context() {
+                Ok(context) => context,
+                Err(err) => {
+                    state.set_error(format!("Open session failed: {err}"));
+                    return None;
+                }
+            };
+            let model = context.model.as_ref().map(Model::identifier);
+            let thinking_level = context.thinking_level;
+            harness.replace_session(session).await;
+            *session_path = path;
+            if let Some(model) = model {
+                state.settings.select_model_identifier(&model);
+            }
+            if let Some(level) = thinking_level {
+                state.settings.select_thinking_level(level);
+            }
+            state.switch_to_session(session_id, &context.messages);
+            thinking_level
+        }
+        Err(err) => {
+            state.set_error(format!("Open session failed: {err}"));
+            None
+        }
     }
 }
 
@@ -857,6 +929,10 @@ async fn execute_runtime_command(
                 "`/new` opens a fresh session in the TUI; start `oino` without `--session` to create a new non-interactive session".into(),
             ));
         }
+        ParsedCommand::Sessions => {
+            let sessions = session_list_items(None).await?;
+            return Ok(format_session_list(&sessions));
+        }
         ParsedCommand::Settings(
             SettingsCommand::Open
             | SettingsCommand::OpenModelSelection
@@ -933,6 +1009,117 @@ fn session_id_from_path(path: &std::path::Path) -> String {
         .and_then(|value| value.to_str())
         .unwrap_or("unknown")
         .to_string()
+}
+
+async fn session_list_items(
+    current_session_id: Option<&str>,
+) -> Result<Vec<SessionListItem>, AppError> {
+    let root = default_session_root()?;
+    session_list_items_from_root(root, current_session_id).await
+}
+
+async fn session_list_items_from_root(
+    root: PathBuf,
+    current_session_id: Option<&str>,
+) -> Result<Vec<SessionListItem>, AppError> {
+    let repository = SessionRepository::new(root);
+    let paths = repository.list().await?;
+    let mut rows = Vec::new();
+    for path in paths {
+        let id = session_id_from_path(&path);
+        let modified = tokio::fs::metadata(&path)
+            .await
+            .and_then(|metadata| metadata.modified())
+            .ok();
+        let Ok(session) = repository.open(&path).await else {
+            continue;
+        };
+        let Ok(context) = session.build_session_context() else {
+            continue;
+        };
+        let message_count = context.messages.len();
+        if message_count == 0 {
+            continue;
+        }
+        let preview = context
+            .messages
+            .iter()
+            .rev()
+            .find_map(message_preview)
+            .unwrap_or_else(|| "(no preview)".into());
+        rows.push((
+            modified,
+            SessionListItem {
+                current: current_session_id == Some(id.as_str()),
+                id,
+                name: session.get_session_name(),
+                cwd: path_to_string(&session.header().cwd),
+                message_count,
+                preview,
+            },
+        ));
+    }
+    rows.sort_by(|(left_modified, left), (right_modified, right)| {
+        right_modified
+            .cmp(left_modified)
+            .then_with(|| right.id.cmp(&left.id))
+    });
+    Ok(rows.into_iter().map(|(_, item)| item).collect())
+}
+
+fn message_preview(message: &Message) -> Option<String> {
+    match message {
+        Message::User { content, .. } | Message::Assistant { content, .. } => {
+            content_text_preview(content)
+        }
+        Message::ToolResult {
+            tool_name,
+            is_error,
+            content,
+            ..
+        } => {
+            let prefix = if *is_error { "tool error" } else { "tool" };
+            content_text_preview(content).map(|text| format!("{prefix} {tool_name}: {text}"))
+        }
+        Message::CompactionSummary { summary, .. } | Message::BranchSummary { summary, .. } => {
+            Some(summary.clone())
+        }
+        Message::Custom { name, .. } => Some(format!("custom: {name}")),
+    }
+}
+
+fn content_text_preview(content: &[ContentBlock]) -> Option<String> {
+    let joined = content
+        .iter()
+        .map(|block| match block {
+            ContentBlock::Text { text } | ContentBlock::Thinking { text, .. } => text.as_str(),
+            ContentBlock::ToolCall { name, .. } => name.as_str(),
+            ContentBlock::Image { .. } => "image",
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let text = joined.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn format_session_list(sessions: &[SessionListItem]) -> String {
+    if sessions.is_empty() {
+        return "No saved sessions".into();
+    }
+    sessions
+        .iter()
+        .map(|session| {
+            format!(
+                "{}  {} messages  {}  {}",
+                session.id, session.message_count, session.name, session.preview
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Debug)]

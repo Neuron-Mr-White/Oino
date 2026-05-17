@@ -327,6 +327,13 @@ impl SessionManager {
     }
 
     pub async fn save_jsonl(&self, path: impl AsRef<Path>) -> SessionResult<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent).await?;
+        }
         let mut file = fs::File::create(path).await?;
         let header = JsonlRecord::Header {
             header: self.header.clone(),
@@ -407,7 +414,11 @@ impl SessionRepository {
     }
     pub async fn list(&self) -> SessionResult<Vec<PathBuf>> {
         let mut out = Vec::new();
-        let mut dir = fs::read_dir(&self.root).await?;
+        let mut dir = match fs::read_dir(&self.root).await {
+            Ok(dir) => dir,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(err) => return Err(err.into()),
+        };
         while let Some(entry) = dir.next_entry().await? {
             let path = entry.path();
             if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl") {
@@ -482,5 +493,24 @@ mod tests {
         };
         assert_eq!(loaded.labels(), vec!["important".to_string()]);
         assert_eq!(loaded.get_entries().len(), session.get_entries().len());
+    }
+
+    #[tokio::test]
+    async fn save_creates_parent_directory_and_missing_list_is_empty() {
+        let dir = match tempfile::tempdir() {
+            Ok(dir) => dir,
+            Err(err) => panic!("tempdir failed: {err}"),
+        };
+        let missing_root = dir.path().join("missing");
+        let repository = SessionRepository::new(&missing_root);
+        let listed = repository.list().await;
+        assert!(matches!(listed, Ok(items) if items.is_empty()));
+
+        let path = missing_root.join("nested").join("session.jsonl");
+        let mut session = manager();
+        session.append_message(Message::user_text("persist"));
+        let saved = session.save_jsonl(&path).await;
+        assert!(saved.is_ok());
+        assert!(path.exists());
     }
 }

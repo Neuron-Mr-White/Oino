@@ -26,6 +26,7 @@ const TRANSCRIPT_SCROLL_LINE_STEP: usize = 1;
 pub enum OverlayKind {
     Settings,
     SendPanel,
+    Sessions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +58,23 @@ pub struct SendPanelItem {
 pub struct SendPanelState {
     pub cursor: usize,
     pub confirm_delete: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionListItem {
+    pub id: String,
+    pub name: String,
+    pub cwd: String,
+    pub message_count: usize,
+    pub preview: String,
+    pub current: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionsState {
+    pub cursor: usize,
+    pub loading: bool,
+    pub items: Vec<SessionListItem>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +155,7 @@ pub struct TuiState {
     pub chord: ChordState,
     pub transcript_scroll: TranscriptScroll,
     pub send_panel: SendPanelState,
+    pub sessions: SessionsState,
     pub steer_items: Vec<String>,
     pub queued_items: Vec<String>,
     pub draft_items: Vec<String>,
@@ -160,6 +179,7 @@ impl Default for TuiState {
             chord: ChordState::None,
             transcript_scroll: TranscriptScroll::default(),
             send_panel: SendPanelState::default(),
+            sessions: SessionsState::default(),
             steer_items: Vec::new(),
             queued_items: Vec::new(),
             draft_items: Vec::new(),
@@ -254,6 +274,22 @@ impl TuiState {
     }
 
     #[must_use]
+    pub fn selected_session_item(&self) -> Option<&SessionListItem> {
+        self.sessions.items.get(self.sessions.cursor)
+    }
+
+    pub fn set_sessions(&mut self, sessions: Vec<SessionListItem>) {
+        self.sessions.items = sessions;
+        self.sessions.loading = false;
+        self.clamp_sessions_cursor();
+        self.status = if self.sessions.items.is_empty() {
+            "No saved sessions yet".into()
+        } else {
+            format!("Loaded {} saved sessions", self.sessions.items.len())
+        };
+    }
+
+    #[must_use]
     pub fn activity_status(&self) -> Option<String> {
         self.working
             .then(|| self.status.clone())
@@ -305,6 +341,26 @@ impl TuiState {
         }
         let max = len.saturating_sub(1) as isize;
         self.send_panel.cursor = (self.send_panel.cursor as isize + delta).clamp(0, max) as usize;
+    }
+
+    fn clamp_sessions_cursor(&mut self) {
+        if self.sessions.items.is_empty() {
+            self.sessions.cursor = 0;
+        } else {
+            self.sessions.cursor = self
+                .sessions
+                .cursor
+                .min(self.sessions.items.len().saturating_sub(1));
+        }
+    }
+
+    fn move_sessions_cursor(&mut self, delta: isize) {
+        if self.sessions.items.is_empty() {
+            self.sessions.cursor = 0;
+            return;
+        }
+        let max = self.sessions.items.len().saturating_sub(1) as isize;
+        self.sessions.cursor = (self.sessions.cursor as isize + delta).clamp(0, max) as usize;
     }
 
     fn enqueue_prompt(&mut self, prompt: String) {
@@ -569,6 +625,7 @@ impl TuiState {
         match self.overlay {
             Some(OverlayKind::Settings) => return self.handle_settings_key(key),
             Some(OverlayKind::SendPanel) => return self.handle_send_panel_key(key),
+            Some(OverlayKind::Sessions) => return self.handle_sessions_key(key),
             None => {}
         }
 
@@ -857,6 +914,42 @@ impl TuiState {
         }
     }
 
+    fn handle_sessions_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.overlay = None;
+                self.sessions.loading = false;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
+                self.move_sessions_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
+                self.move_sessions_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => {
+                self.sessions.loading = true;
+                self.status = "Loading sessions…".into();
+                TuiAction::ListSessions
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => {
+                let Some(session_id) = self
+                    .selected_session_item()
+                    .map(|session| session.id.clone())
+                else {
+                    self.status = "No saved session selected".into();
+                    return TuiAction::None;
+                };
+                self.status = format!("Opening session {session_id}…");
+                TuiAction::OpenSession(session_id)
+            }
+            _ => TuiAction::None,
+        }
+    }
+
     fn handle_settings_key(&mut self, key: KeyEvent) -> TuiAction {
         match self.settings.handle_key(key) {
             SettingsAction::None => TuiAction::None,
@@ -922,6 +1015,10 @@ impl TuiState {
                 self.status = "Starting new session…".into();
                 TuiAction::NewSession
             }
+            ParsedCommand::Sessions => {
+                self.open_sessions_overlay();
+                TuiAction::ListSessions
+            }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();
                 TuiAction::None
@@ -975,6 +1072,17 @@ impl TuiState {
 
     pub fn reset_for_new_session(&mut self, session_id: &str) {
         self.messages.clear();
+        self.clear_session_runtime_state();
+        self.status = format!("Started new session {session_id}");
+    }
+
+    pub fn switch_to_session(&mut self, session_id: &str, messages: &[Message]) {
+        self.set_messages_from_oino(messages);
+        self.clear_session_runtime_state();
+        self.status = format!("Continuing session {session_id}");
+    }
+
+    fn clear_session_runtime_state(&mut self) {
         self.composer.clear();
         self.focus = TuiFocus::Composer;
         self.working = false;
@@ -988,7 +1096,6 @@ impl TuiState {
         self.queued_items.clear();
         self.draft_items.clear();
         self.quit_pending = false;
-        self.status = format!("Started new session {session_id}");
     }
 
     pub fn open_send_panel(&mut self) {
@@ -997,6 +1104,14 @@ impl TuiState {
         self.send_panel.confirm_delete = false;
         self.clamp_send_panel_cursor();
         self.status = "Send panel: ↑/↓ select • q queue input • Enter load • d draft input • x delete • Esc close".into();
+    }
+
+    fn open_sessions_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Sessions);
+        self.sessions.loading = true;
+        self.clamp_sessions_cursor();
+        self.status = "Loading sessions…".into();
     }
 
     fn open_model_selection_overlay(&mut self) {
@@ -1352,6 +1467,34 @@ mod tests {
         assert!(state.queued_items.is_empty());
         assert_eq!(state.input(), "");
         assert!(state.status.contains("abc"));
+    }
+
+    #[test]
+    fn sessions_command_opens_browser_and_enter_selects_session() {
+        let mut state = TuiState::new();
+        for ch in "/sessions".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::ListSessions
+        );
+        assert_eq!(state.overlay, Some(OverlayKind::Sessions));
+        assert!(state.sessions.loading);
+
+        state.set_sessions(vec![SessionListItem {
+            id: "abc".into(),
+            name: "oino".into(),
+            cwd: "/tmp".into(),
+            message_count: 2,
+            preview: "hello".into(),
+            current: false,
+        }]);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::OpenSession("abc".into())
+        );
     }
 
     #[test]

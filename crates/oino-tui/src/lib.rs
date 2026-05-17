@@ -14,7 +14,9 @@ pub mod theme;
 mod transcript;
 
 pub use action::TuiAction;
-pub use app::{ChordState, OverlayKind, TuiFocus, TuiState, HELP_STATUS};
+pub use app::{
+    ChordState, OverlayKind, SessionListItem, SessionsState, TuiFocus, TuiState, HELP_STATUS,
+};
 pub use command::{
     chat_style_value, collapse_mode_value, collapse_target_value, command_query,
     command_suggestions_for, parse_chat_style, parse_collapse_mode, parse_collapse_target,

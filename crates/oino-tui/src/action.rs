@@ -10,6 +10,8 @@ pub enum TuiAction {
     SteerPrompt(String),
     QueuePrompt(String),
     NewSession,
+    ListSessions,
+    OpenSession(String),
     SetModel(String),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),

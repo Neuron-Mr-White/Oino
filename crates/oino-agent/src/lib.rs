@@ -127,7 +127,11 @@ impl Agent {
     }
 
     pub async fn reset(&self) {
-        self.state.lock().await.messages.clear();
+        self.replace_messages(Vec::new()).await;
+    }
+
+    pub async fn replace_messages(&self, messages: Vec<Message>) {
+        self.state.lock().await.messages = messages;
         self.steering.lock().await.clear();
         self.follow_up.lock().await.clear();
     }
