@@ -13,6 +13,7 @@ use crate::{
     fuzzy::{fuzzy_indices, FuzzyMode},
     help::{help_entry_match_text, HELP_ENTRIES},
     message::{project_content_blocks, project_message, project_messages, MessageView},
+    resource::{PromptResource, ResourceBrowserState, SkillResource},
     settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -29,6 +30,8 @@ pub enum OverlayKind {
     Settings,
     SendPanel,
     Sessions,
+    Prompts,
+    Skills,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +164,11 @@ pub struct TuiState {
     pub transcript_scroll: TranscriptScroll,
     pub send_panel: SendPanelState,
     pub sessions: SessionsState,
+    pub prompts: ResourceBrowserState,
+    pub skills: ResourceBrowserState,
+    pub prompt_resources: Vec<PromptResource>,
+    pub skill_resources: Vec<SkillResource>,
+    pub resource_diagnostics: Vec<String>,
     pub help_scroll: usize,
     pub help_search: String,
     pub help_search_active: bool,
@@ -189,6 +197,11 @@ impl Default for TuiState {
             transcript_scroll: TranscriptScroll::default(),
             send_panel: SendPanelState::default(),
             sessions: SessionsState::default(),
+            prompts: ResourceBrowserState::default(),
+            skills: ResourceBrowserState::default(),
+            prompt_resources: Vec::new(),
+            skill_resources: Vec::new(),
+            resource_diagnostics: Vec::new(),
             help_scroll: 0,
             help_search: String::new(),
             help_search_active: false,
@@ -333,6 +346,73 @@ impl TuiState {
         };
     }
 
+    pub fn set_resources(
+        &mut self,
+        prompts: Vec<PromptResource>,
+        skills: Vec<SkillResource>,
+        diagnostics: Vec<String>,
+    ) {
+        self.prompt_resources = prompts;
+        self.skill_resources = skills;
+        self.resource_diagnostics = diagnostics;
+        self.prompts.loading = false;
+        self.skills.loading = false;
+        self.refresh_prompt_filter();
+        self.refresh_skill_filter();
+        self.refresh_command_suggestions();
+        self.status = format!(
+            "Loaded {} prompts and {} skills",
+            self.prompt_resources.len(),
+            self.skill_resources.len()
+        );
+    }
+
+    #[must_use]
+    pub fn selected_prompt_item(&self) -> Option<&PromptResource> {
+        self.prompts
+            .filtered_indices
+            .contains(&self.prompts.cursor)
+            .then(|| self.prompt_resources.get(self.prompts.cursor))
+            .flatten()
+    }
+
+    #[must_use]
+    pub fn selected_skill_item(&self) -> Option<&SkillResource> {
+        self.skills
+            .filtered_indices
+            .contains(&self.skills.cursor)
+            .then(|| self.skill_resources.get(self.skills.cursor))
+            .flatten()
+    }
+
+    #[must_use]
+    pub fn filtered_prompt_indices(&self) -> &[usize] {
+        &self.prompts.filtered_indices
+    }
+
+    #[must_use]
+    pub fn filtered_skill_indices(&self) -> &[usize] {
+        &self.skills.filtered_indices
+    }
+
+    #[must_use]
+    pub fn prompt_cursor_filtered_position(&self) -> usize {
+        self.prompts
+            .filtered_indices
+            .iter()
+            .position(|index| *index == self.prompts.cursor)
+            .unwrap_or(0)
+    }
+
+    #[must_use]
+    pub fn skill_cursor_filtered_position(&self) -> usize {
+        self.skills
+            .filtered_indices
+            .iter()
+            .position(|index| *index == self.skills.cursor)
+            .unwrap_or(0)
+    }
+
     #[must_use]
     pub fn activity_status(&self) -> Option<String> {
         self.working
@@ -441,6 +521,88 @@ impl TuiState {
         }
     }
 
+    fn clamp_prompt_cursor(&mut self) {
+        if self.prompt_resources.is_empty() {
+            self.prompts.cursor = 0;
+        } else {
+            self.prompts.cursor = self
+                .prompts
+                .cursor
+                .min(self.prompt_resources.len().saturating_sub(1));
+        }
+    }
+
+    fn move_prompt_cursor(&mut self, delta: isize) {
+        let indices = &self.prompts.filtered_indices;
+        if indices.is_empty() {
+            self.prompts.cursor = 0;
+            return;
+        }
+        let current = indices
+            .iter()
+            .position(|index| *index == self.prompts.cursor)
+            .unwrap_or(0);
+        let next = move_index(current, indices.len(), delta);
+        self.prompts.cursor = indices[next];
+    }
+
+    fn refresh_prompt_filter(&mut self) {
+        self.prompts.filtered_indices =
+            filtered_prompt_indices(&self.prompt_resources, self.prompts.search.trim());
+        self.sync_prompt_cursor_to_filter();
+    }
+
+    fn sync_prompt_cursor_to_filter(&mut self) {
+        self.clamp_prompt_cursor();
+        let indices = &self.prompts.filtered_indices;
+        if let Some(first) = indices.first().copied() {
+            if !indices.contains(&self.prompts.cursor) {
+                self.prompts.cursor = first;
+            }
+        }
+    }
+
+    fn clamp_skill_cursor(&mut self) {
+        if self.skill_resources.is_empty() {
+            self.skills.cursor = 0;
+        } else {
+            self.skills.cursor = self
+                .skills
+                .cursor
+                .min(self.skill_resources.len().saturating_sub(1));
+        }
+    }
+
+    fn move_skill_cursor(&mut self, delta: isize) {
+        let indices = &self.skills.filtered_indices;
+        if indices.is_empty() {
+            self.skills.cursor = 0;
+            return;
+        }
+        let current = indices
+            .iter()
+            .position(|index| *index == self.skills.cursor)
+            .unwrap_or(0);
+        let next = move_index(current, indices.len(), delta);
+        self.skills.cursor = indices[next];
+    }
+
+    fn refresh_skill_filter(&mut self) {
+        self.skills.filtered_indices =
+            filtered_skill_indices(&self.skill_resources, self.skills.search.trim());
+        self.sync_skill_cursor_to_filter();
+    }
+
+    fn sync_skill_cursor_to_filter(&mut self) {
+        self.clamp_skill_cursor();
+        let indices = &self.skills.filtered_indices;
+        if let Some(first) = indices.first().copied() {
+            if !indices.contains(&self.skills.cursor) {
+                self.skills.cursor = first;
+            }
+        }
+    }
+
     fn enqueue_prompt(&mut self, prompt: String) {
         self.queued_items.push(prompt);
         self.clamp_send_panel_cursor();
@@ -522,8 +684,14 @@ impl TuiState {
     fn build_command_suggestions(&self) -> Option<CommandSuggestionsView> {
         let input = self.composer.text();
         let cursor = self.composer.cursor();
-        command_suggestions_for(input, cursor, &self.settings.models)
-            .or_else(|| file_suggestions_for(input, cursor, &self.file_paths))
+        command_suggestions_for(
+            input,
+            cursor,
+            &self.settings.models,
+            &self.prompt_resources,
+            &self.skill_resources,
+        )
+        .or_else(|| file_suggestions_for(input, cursor, &self.file_paths))
     }
 
     pub(crate) fn refresh_command_suggestions(&mut self) {
@@ -718,6 +886,8 @@ impl TuiState {
             Some(OverlayKind::Settings) => return self.handle_settings_key(key),
             Some(OverlayKind::SendPanel) => return self.handle_send_panel_key(key),
             Some(OverlayKind::Sessions) => return self.handle_sessions_key(key),
+            Some(OverlayKind::Prompts) => return self.handle_prompts_key(key),
+            Some(OverlayKind::Skills) => return self.handle_skills_key(key),
             None => {}
         }
 
@@ -1179,6 +1349,210 @@ impl TuiState {
         }
     }
 
+    fn handle_prompts_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.prompts.search_active {
+            return self.handle_prompts_search_key(key);
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                self.overlay = None;
+                self.prompts.loading = false;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
+                self.move_prompt_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
+                self.move_prompt_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char('/') if key.modifiers.is_empty() => {
+                self.prompts.search_active = true;
+                self.prompts.search.clear();
+                self.refresh_prompt_filter();
+                self.status = "Prompt search active".into();
+                TuiAction::None
+            }
+            KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => {
+                self.prompts.loading = true;
+                self.status = "Reloading resources…".into();
+                TuiAction::ReloadResources
+            }
+            KeyCode::Tab if key.modifiers.is_empty() => {
+                self.complete_selected_prompt_command();
+                TuiAction::None
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => self.expand_selected_prompt_action(),
+            _ => TuiAction::None,
+        }
+    }
+
+    fn handle_prompts_search_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.prompts.search_active = false;
+                self.prompts.search.clear();
+                self.refresh_prompt_filter();
+                self.status = "Prompt search cleared".into();
+                TuiAction::None
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => self.expand_selected_prompt_action(),
+            KeyCode::Tab if key.modifiers.is_empty() => {
+                self.complete_selected_prompt_command();
+                TuiAction::None
+            }
+            KeyCode::Backspace => {
+                self.prompts.search.pop();
+                self.refresh_prompt_filter();
+                self.status = prompt_search_status(&self.prompts.search);
+                TuiAction::None
+            }
+            KeyCode::Up => {
+                self.move_prompt_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down => {
+                self.move_prompt_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
+            {
+                self.prompts.search.push(ch);
+                self.refresh_prompt_filter();
+                self.status = prompt_search_status(&self.prompts.search);
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn handle_skills_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.skills.search_active {
+            return self.handle_skills_search_key(key);
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                self.overlay = None;
+                self.skills.loading = false;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
+                self.move_skill_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
+                self.move_skill_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char('/') if key.modifiers.is_empty() => {
+                self.skills.search_active = true;
+                self.skills.search.clear();
+                self.refresh_skill_filter();
+                self.status = "Skill search active".into();
+                TuiAction::None
+            }
+            KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => {
+                self.skills.loading = true;
+                self.status = "Reloading resources…".into();
+                TuiAction::ReloadResources
+            }
+            KeyCode::Tab if key.modifiers.is_empty() => {
+                self.complete_selected_skill_command();
+                TuiAction::None
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => self.run_selected_skill_action(),
+            _ => TuiAction::None,
+        }
+    }
+
+    fn handle_skills_search_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.skills.search_active = false;
+                self.skills.search.clear();
+                self.refresh_skill_filter();
+                self.status = "Skill search cleared".into();
+                TuiAction::None
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => self.run_selected_skill_action(),
+            KeyCode::Tab if key.modifiers.is_empty() => {
+                self.complete_selected_skill_command();
+                TuiAction::None
+            }
+            KeyCode::Backspace => {
+                self.skills.search.pop();
+                self.refresh_skill_filter();
+                self.status = skill_search_status(&self.skills.search);
+                TuiAction::None
+            }
+            KeyCode::Up => {
+                self.move_skill_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down => {
+                self.move_skill_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
+            {
+                self.skills.search.push(ch);
+                self.refresh_skill_filter();
+                self.status = skill_search_status(&self.skills.search);
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn complete_selected_prompt_command(&mut self) {
+        let Some(command) = self.selected_prompt_item().map(PromptResource::command) else {
+            self.status = "No prompt selected".into();
+            return;
+        };
+        self.overlay = None;
+        self.composer.replace_text(format!("{command} "));
+        self.focus = TuiFocus::Composer;
+        self.status = format!("Completed {command}");
+        self.refresh_command_suggestions();
+    }
+
+    fn expand_selected_prompt_action(&mut self) -> TuiAction {
+        let Some(prompt) = self.selected_prompt_item().cloned() else {
+            self.status = "No prompt selected".into();
+            return TuiAction::None;
+        };
+        self.overlay = None;
+        self.expand_prompt_resource(&prompt, "")
+    }
+
+    fn complete_selected_skill_command(&mut self) {
+        let Some(command) = self.selected_skill_item().map(SkillResource::command) else {
+            self.status = "No skill selected".into();
+            return;
+        };
+        self.overlay = None;
+        self.composer.replace_text(format!("{command} "));
+        self.focus = TuiFocus::Composer;
+        self.status = format!("Completed {command}");
+        self.refresh_command_suggestions();
+    }
+
+    fn run_selected_skill_action(&mut self) -> TuiAction {
+        let Some(skill) = self.selected_skill_item().cloned() else {
+            self.status = "No skill selected".into();
+            return TuiAction::None;
+        };
+        self.overlay = None;
+        self.run_skill_resource(&skill, "")
+    }
+
     fn open_selected_session_action(&mut self) -> TuiAction {
         let Some(session_id) = self
             .selected_session_item()
@@ -1238,6 +1612,28 @@ impl TuiState {
             return self.execute_command(command);
         }
 
+        if let Some((name, args)) = parse_skill_invocation(&prompt) {
+            if let Some(skill) = self
+                .skill_resources
+                .iter()
+                .find(|skill| skill.name == name)
+                .cloned()
+            {
+                return self.run_skill_resource(&skill, args);
+            }
+        }
+
+        if let Some((name, args)) = parse_prompt_invocation(&prompt) {
+            if let Some(prompt_resource) = self
+                .prompt_resources
+                .iter()
+                .find(|resource| resource.name == name)
+                .cloned()
+            {
+                return self.expand_prompt_resource(&prompt_resource, args);
+            }
+        }
+
         if prompt.starts_with('/') {
             self.set_error(format!("Unknown command `{prompt}`"));
             self.status = HELP_STATUS.into();
@@ -1246,6 +1642,24 @@ impl TuiState {
 
         self.clear_error();
         self.transcript_scroll.jump_bottom();
+        TuiAction::SubmitPrompt(prompt)
+    }
+
+    fn expand_prompt_resource(&mut self, prompt: &PromptResource, args: &str) -> TuiAction {
+        let expanded = prompt.expand(args);
+        self.composer.replace_text(expanded);
+        self.focus = TuiFocus::Composer;
+        self.clear_error();
+        self.status = format!("Expanded prompt {}", prompt.command());
+        self.refresh_command_suggestions();
+        TuiAction::None
+    }
+
+    fn run_skill_resource(&mut self, skill: &SkillResource, args: &str) -> TuiAction {
+        let prompt = skill.invocation_prompt(args);
+        self.clear_error();
+        self.transcript_scroll.jump_bottom();
+        self.status = format!("Running skill {}", skill.command());
         TuiAction::SubmitPrompt(prompt)
     }
 
@@ -1267,6 +1681,20 @@ impl TuiState {
             ParsedCommand::Sessions => {
                 self.open_sessions_overlay();
                 TuiAction::ListSessions
+            }
+            ParsedCommand::Prompts => {
+                self.open_prompts_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Skills => {
+                self.open_skills_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::ReloadResources => {
+                self.prompts.loading = true;
+                self.skills.loading = true;
+                self.status = "Reloading resources…".into();
+                TuiAction::ReloadResources
             }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();
@@ -1341,6 +1769,10 @@ impl TuiState {
         self.chord = ChordState::None;
         self.transcript_scroll.jump_bottom();
         self.send_panel = SendPanelState::default();
+        self.prompts = ResourceBrowserState::default();
+        self.skills = ResourceBrowserState::default();
+        self.refresh_prompt_filter();
+        self.refresh_skill_filter();
         self.help_scroll = 0;
         self.help_search.clear();
         self.help_search_active = false;
@@ -1367,6 +1799,26 @@ impl TuiState {
         self.sessions.search.clear();
         self.refresh_session_filter();
         self.status = "Loading sessions…".into();
+    }
+
+    fn open_prompts_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Prompts);
+        self.prompts.loading = false;
+        self.prompts.search_active = false;
+        self.prompts.search.clear();
+        self.refresh_prompt_filter();
+        self.status = "Prompts".into();
+    }
+
+    fn open_skills_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Skills);
+        self.skills.loading = false;
+        self.skills.search_active = false;
+        self.skills.search.clear();
+        self.refresh_skill_filter();
+        self.status = "Skills".into();
     }
 
     pub fn open_help(&mut self) {
@@ -1451,10 +1903,32 @@ fn filtered_session_indices(items: &[SessionListItem], query: &str) -> Vec<usize
     fuzzy_indices(items, query, FuzzyMode::Path, None, session_match_text)
 }
 
+fn filtered_prompt_indices(items: &[PromptResource], query: &str) -> Vec<usize> {
+    fuzzy_indices(items, query, FuzzyMode::Text, None, prompt_match_text)
+}
+
+fn filtered_skill_indices(items: &[SkillResource], query: &str) -> Vec<usize> {
+    fuzzy_indices(items, query, FuzzyMode::Text, None, skill_match_text)
+}
+
 fn session_match_text(session: &SessionListItem) -> String {
     format!(
         "{} {} {} {}",
         session.name, session.id, session.preview, session.cwd
+    )
+}
+
+fn prompt_match_text(prompt: &PromptResource) -> String {
+    format!(
+        "{} {} {} {}",
+        prompt.name, prompt.description, prompt.source, prompt.scope
+    )
+}
+
+fn skill_match_text(skill: &SkillResource) -> String {
+    format!(
+        "{} {} {} {}",
+        skill.name, skill.description, skill.source, skill.scope
     )
 }
 
@@ -1466,12 +1940,59 @@ fn session_search_status(query: &str) -> String {
     }
 }
 
+fn prompt_search_status(query: &str) -> String {
+    if query.is_empty() {
+        "Prompt search active".into()
+    } else {
+        format!("Searching prompts for `{query}`")
+    }
+}
+
+fn skill_search_status(query: &str) -> String {
+    if query.is_empty() {
+        "Skill search active".into()
+    } else {
+        format!("Searching skills for `{query}`")
+    }
+}
+
 fn help_search_status(query: &str) -> String {
     if query.is_empty() {
         "Help search active".into()
     } else {
         format!("Searching help for `{query}`")
     }
+}
+
+fn parse_prompt_invocation(input: &str) -> Option<(&str, &str)> {
+    let trimmed = input.trim();
+    let rest = trimmed.strip_prefix('/')?;
+    if rest.is_empty() || rest.starts_with('/') || rest.starts_with("skill:") {
+        return None;
+    }
+    let (name, args) = split_name_args(rest);
+    if name.is_empty() {
+        None
+    } else {
+        Some((name, args.trim()))
+    }
+}
+
+fn parse_skill_invocation(input: &str) -> Option<(&str, &str)> {
+    let rest = input.trim().strip_prefix("/skill:")?;
+    let (name, args) = split_name_args(rest);
+    if name.is_empty() {
+        None
+    } else {
+        Some((name, args.trim()))
+    }
+}
+
+fn split_name_args(value: &str) -> (&str, &str) {
+    let trimmed = value.trim_start();
+    let split_at = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
+    let (name, args) = trimmed.split_at(split_at);
+    (name, args.trim())
 }
 
 fn provider_label(model: &str) -> String {
@@ -1513,6 +2034,27 @@ mod tests {
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn add_test_resources(state: &mut TuiState) {
+        state.set_resources(
+            vec![PromptResource {
+                name: "review".into(),
+                description: "Review current changes".into(),
+                argument_hint: Some("[focus]".into()),
+                source: ".oino/prompts/review.md".into(),
+                scope: "project".into(),
+                content: "Review $ARGUMENTS".into(),
+            }],
+            vec![SkillResource {
+                name: "debug".into(),
+                description: "Investigate bugs".into(),
+                source: ".oino/skills/debug/SKILL.md".into(),
+                scope: "project".into(),
+                content: "# Debug Skill".into(),
+            }],
+            Vec::new(),
+        );
     }
 
     #[test]
@@ -1841,6 +2383,65 @@ mod tests {
         assert_eq!(
             state.handle_key(key(KeyCode::Enter)),
             TuiAction::OpenSession("beta".into())
+        );
+    }
+
+    #[test]
+    fn prompts_and_skills_commands_use_resource_state() {
+        let mut state = TuiState::new();
+        add_test_resources(&mut state);
+
+        for ch in "/review bugs".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.input(), "Review bugs");
+
+        state.composer.clear();
+        for ch in "/skill:debug crash".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        match state.handle_key(key(KeyCode::Enter)) {
+            TuiAction::SubmitPrompt(prompt) => {
+                assert!(prompt.contains("Use the `debug` skill"));
+                assert!(prompt.contains("crash"));
+                assert!(prompt.contains("# Debug Skill"));
+            }
+            other => panic!("expected skill submit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resource_browsers_search_complete_and_reload() {
+        let mut state = TuiState::new();
+        add_test_resources(&mut state);
+
+        for ch in "/prompts".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Prompts));
+        assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
+        assert!(state.prompts.search_active);
+        for ch in "rev".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.selected_prompt_item().map(|item| item.name.as_str()),
+            Some("review")
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(state.input(), "/review ");
+
+        state.composer.clear();
+        for ch in "/skills".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Skills));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('r'))),
+            TuiAction::ReloadResources
         );
     }
 

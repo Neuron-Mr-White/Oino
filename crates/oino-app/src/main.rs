@@ -30,8 +30,8 @@ use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
     transcript_click_targets, transcript_url_overlays, transcript_visible_lines, CollapseMode,
-    ParsedCommand, SessionListItem, SettingsCommand, TerminalClickTarget, TerminalUrlOverlay,
-    TuiAction, TuiState, HELP_STATUS,
+    ParsedCommand, PromptResource, SessionListItem, SettingsCommand, SkillResource,
+    TerminalClickTarget, TerminalUrlOverlay, TuiAction, TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -406,13 +406,14 @@ async fn run_tui(
         initial_chat_style,
         provider_config,
         mut session_path,
-        resource_paths: _resource_paths,
-        resource_catalog: _resource_catalog,
+        resource_paths,
+        resource_catalog,
         open_settings,
     } = launch;
     let mut terminal = TerminalGuard::enter()?;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
+    apply_resource_catalog_to_state(&mut state, &resource_catalog);
     state.set_file_paths(scan_project_files(&cwd));
     state
         .settings
@@ -585,6 +586,9 @@ async fn run_tui(
                     applied_thinking_level = thinking_level;
                 }
             }
+            TuiAction::ReloadResources => {
+                reload_tui_resources(&mut state, &harness, &resource_paths, &cwd).await;
+            }
         }
     }
     Ok(())
@@ -614,6 +618,58 @@ fn new_tui_session(root: PathBuf, cwd: PathBuf) -> (PathBuf, SessionManager) {
     let session = SessionManager::new(SessionHeader::new("oino", cwd));
     let path = root.join(format!("{}.jsonl", session.header().session_id));
     (path, session)
+}
+
+fn apply_resource_catalog_to_state(state: &mut TuiState, catalog: &ResourceCatalog) {
+    let prompts = catalog
+        .prompts
+        .iter()
+        .map(|prompt| PromptResource {
+            name: prompt.name.clone(),
+            description: prompt.description.clone(),
+            argument_hint: prompt.argument_hint.clone(),
+            source: path_to_string(&prompt.path),
+            scope: prompt.scope.label().into(),
+            content: prompt.content.clone(),
+        })
+        .collect::<Vec<_>>();
+    let skills = catalog
+        .skills
+        .iter()
+        .map(|skill| SkillResource {
+            name: skill.name.clone(),
+            description: skill.description.clone(),
+            source: path_to_string(&skill.path),
+            scope: skill.scope.label().into(),
+            content: skill.content.clone(),
+        })
+        .collect::<Vec<_>>();
+    let diagnostics = catalog
+        .diagnostics
+        .iter()
+        .map(oino_resource::ResourceDiagnostic::message)
+        .collect::<Vec<_>>();
+    state.set_resources(prompts, skills, diagnostics);
+}
+
+async fn reload_tui_resources(
+    state: &mut TuiState,
+    harness: &Harness,
+    resource_paths: &ResourcePaths,
+    cwd: &Path,
+) {
+    match load_resource_catalog(resource_paths) {
+        Ok(catalog) => {
+            harness
+                .set_system_prompt(Some(default_system_prompt(cwd, &catalog)))
+                .await;
+            apply_resource_catalog_to_state(state, &catalog);
+            if let Some(summary) = catalog.diagnostics_summary() {
+                state.set_error(format!("Resource warnings: {summary}"));
+            }
+        }
+        Err(err) => state.set_error(format!("Resource reload failed: {err}")),
+    }
 }
 
 async fn load_tui_sessions(state: &mut TuiState, current_session_path: &Path) {
@@ -914,8 +970,14 @@ async fn run_non_interactive(
     if let Some(model) = cli.model.clone() {
         let command =
             ParsedCommand::Settings(SettingsCommand::SetModel(ensure_model_identifier(&model)?));
-        let message =
-            execute_runtime_command(command, &harness, &mut config, &session_path).await?;
+        let message = execute_runtime_command(
+            command,
+            &harness,
+            &mut config,
+            &session_path,
+            &resource_catalog,
+        )
+        .await?;
         if cli.input.is_none() {
             println!("{message}");
             return Ok(());
@@ -952,8 +1014,14 @@ async fn run_non_interactive(
     if input.trim_start().starts_with('/') {
         let command = parse_command(&input)
             .ok_or_else(|| AppError::InvalidArguments(format!("unknown command `{input}`")))?;
-        let message =
-            execute_runtime_command(command, &harness, &mut config, &session_path).await?;
+        let message = execute_runtime_command(
+            command,
+            &harness,
+            &mut config,
+            &session_path,
+            &resource_catalog,
+        )
+        .await?;
         println!("{message}");
         return Ok(());
     }
@@ -975,6 +1043,7 @@ async fn execute_runtime_command(
     harness: &Harness,
     config: &mut AppConfig,
     session_path: &std::path::Path,
+    resource_catalog: &ResourceCatalog,
 ) -> Result<String, AppError> {
     let message = match command {
         ParsedCommand::Help => {
@@ -988,6 +1057,22 @@ async fn execute_runtime_command(
         ParsedCommand::Sessions => {
             let sessions = session_list_items(None).await?;
             return Ok(format_session_list(&sessions));
+        }
+        ParsedCommand::Prompts => return Ok(format_prompt_list(resource_catalog)),
+        ParsedCommand::Skills => return Ok(format_skill_list(resource_catalog)),
+        ParsedCommand::ReloadResources => {
+            let catalog = load_resource_catalog(&resource_catalog.paths)?;
+            harness
+                .set_system_prompt(Some(default_system_prompt(
+                    &catalog.paths.project_root,
+                    &catalog,
+                )))
+                .await;
+            return Ok(format!(
+                "Reloaded {} prompts and {} skills",
+                catalog.prompts.len(),
+                catalog.skills.len()
+            ));
         }
         ParsedCommand::Settings(
             SettingsCommand::Open
@@ -1172,6 +1257,48 @@ fn format_session_list(sessions: &[SessionListItem]) -> String {
             format!(
                 "{}  {} messages  {}  {}",
                 session.id, session.message_count, session.name, session.preview
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn format_prompt_list(catalog: &ResourceCatalog) -> String {
+    if catalog.prompts.is_empty() {
+        return "No prompt templates found".into();
+    }
+    catalog
+        .prompts
+        .iter()
+        .map(|prompt| {
+            let hint = prompt.argument_hint.as_deref().unwrap_or("");
+            format!(
+                "/{} {}  [{}]  {}  {}",
+                prompt.name,
+                hint,
+                prompt.scope.label(),
+                prompt.description,
+                prompt.path.display()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn format_skill_list(catalog: &ResourceCatalog) -> String {
+    if catalog.skills.is_empty() {
+        return "No skills found".into();
+    }
+    catalog
+        .skills
+        .iter()
+        .map(|skill| {
+            format!(
+                "/skill:{}  [{}]  {}  {}",
+                skill.name,
+                skill.scope.label(),
+                skill.description,
+                skill.path.display()
             )
         })
         .collect::<Vec<_>>()

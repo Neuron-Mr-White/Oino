@@ -12,6 +12,7 @@ pub enum TuiAction {
     NewSession,
     ListSessions,
     OpenSession(String),
+    ReloadResources,
     SetModel(String),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),

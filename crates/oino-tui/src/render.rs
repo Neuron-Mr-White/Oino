@@ -5,7 +5,7 @@ use crate::{
         ChordState, OverlayKind, SendPanelItem, SendPanelSection, SessionListItem, TuiFocus,
         TuiState,
     },
-    command::CommandSuggestionsView,
+    command::{CommandSuggestionCategory, CommandSuggestionsView},
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
     help::{HelpEntry, HELP_ENTRIES},
     settings::{
@@ -18,7 +18,7 @@ use crate::{
 };
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
     Frame,
@@ -90,6 +90,8 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         Some(OverlayKind::Settings) => render_settings_overlay(frame, area, &state.settings, theme),
         Some(OverlayKind::SendPanel) => render_send_panel_overlay(frame, area, state, theme),
         Some(OverlayKind::Sessions) => render_sessions_overlay(frame, area, state, theme),
+        Some(OverlayKind::Prompts) => render_prompts_overlay(frame, area, state, theme),
+        Some(OverlayKind::Skills) => render_skills_overlay(frame, area, state, theme),
         None => {}
     }
 
@@ -570,13 +572,20 @@ fn render_command_suggestions(
                 let active = index == suggestions.selected;
                 let marker = arrow_marker(active);
                 let style = item_style(active, false, theme);
-                Line::from(vec![
-                    Span::styled(format!("{marker} {}", item.label), style),
-                    Span::styled(
-                        format!("  {}", item.summary),
-                        Style::default().fg(theme.muted),
-                    ),
-                ])
+                let mut spans = vec![Span::styled(marker.to_string(), style)];
+                if let Some(label) = item.category.label() {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled(
+                        label,
+                        command_category_style(item.category, theme),
+                    ));
+                }
+                spans.push(Span::styled(format!(" {}", item.label), style));
+                spans.push(Span::styled(
+                    format!("  {}", item.summary),
+                    Style::default().fg(theme.muted),
+                ));
+                Line::from(spans)
             })
             .collect()
     };
@@ -600,6 +609,20 @@ fn command_suggestion_max_rows(suggestions: &CommandSuggestionsView) -> usize {
         "Files" => 10,
         "Models" => 5,
         _ => 4,
+    }
+}
+
+fn command_category_style(category: CommandSuggestionCategory, theme: &Theme) -> Style {
+    match category {
+        CommandSuggestionCategory::System | CommandSuggestionCategory::Skill => Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+        CommandSuggestionCategory::Prompt => Style::default()
+            .fg(Color::Blue)
+            .add_modifier(Modifier::BOLD),
+        CommandSuggestionCategory::Model
+        | CommandSuggestionCategory::File
+        | CommandSuggestionCategory::Value => Style::default().fg(theme.muted),
     }
 }
 
@@ -1109,6 +1132,321 @@ fn sessions_item_line(
     };
     let text = truncate_with_ellipsis(&format!("{prefix}{detail}"), width.max(1));
     Line::styled(text, item_style(active, item.current, theme))
+}
+
+fn render_prompts_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 86, 72);
+    frame.render_widget(Clear, overlay);
+    let block = Block::default()
+        .title(Span::styled(" Prompts ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border));
+    frame.render_widget(block, overlay);
+    let inner = overlay.inner(ratatui::layout::Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(2)])
+        .split(inner);
+    let content_height = list_content_height(sections[0]);
+    let content_width = sections[0].width.saturating_sub(2) as usize;
+    let lines = prompts_lines(state, content_width, content_height, theme);
+    let filtered_indices = state.filtered_prompt_indices();
+    let title = resource_title(
+        "Prompt Templates",
+        state.prompts.loading,
+        state.prompt_resources.len(),
+        filtered_indices.len(),
+        state.prompt_cursor_filtered_position(),
+        state.prompts.search.trim().is_empty(),
+    );
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(section_border_style(true, theme)),
+        ),
+        sections[0],
+    );
+    let controls = if state.prompts.search_active {
+        "type to fuzzy search • ↑/↓ move • Enter expand • Tab complete • Esc clear search"
+    } else {
+        "↑/↓ select • / search • Enter expand • Tab complete • r reload • Esc close"
+    };
+    let status = format!("{} • {controls}", state.status);
+    frame.render_widget(
+        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
+        sections[1],
+    );
+}
+
+fn render_skills_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 86, 72);
+    frame.render_widget(Clear, overlay);
+    let block = Block::default()
+        .title(Span::styled(" Skills ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border));
+    frame.render_widget(block, overlay);
+    let inner = overlay.inner(ratatui::layout::Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(2)])
+        .split(inner);
+    let content_height = list_content_height(sections[0]);
+    let content_width = sections[0].width.saturating_sub(2) as usize;
+    let lines = skills_lines(state, content_width, content_height, theme);
+    let filtered_indices = state.filtered_skill_indices();
+    let title = resource_title(
+        "Skills",
+        state.skills.loading,
+        state.skill_resources.len(),
+        filtered_indices.len(),
+        state.skill_cursor_filtered_position(),
+        state.skills.search.trim().is_empty(),
+    );
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(section_border_style(true, theme)),
+        ),
+        sections[0],
+    );
+    let controls = if state.skills.search_active {
+        "type to fuzzy search • ↑/↓ move • Enter run • Tab complete • Esc clear search"
+    } else {
+        "↑/↓ select • / search • Enter run • Tab complete • r reload • Esc close"
+    };
+    let status = format!("{} • {controls}", state.status);
+    frame.render_widget(
+        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
+        sections[1],
+    );
+}
+
+fn resource_title(
+    label: &str,
+    loading: bool,
+    total: usize,
+    filtered: usize,
+    filtered_position: usize,
+    search_empty: bool,
+) -> String {
+    if loading || total == 0 {
+        format!(" {label} ")
+    } else if filtered == 0 {
+        format!(" {label} 0/{total} ")
+    } else if search_empty {
+        format!(
+            " {label} {}/{} ",
+            filtered_position.saturating_add(1).min(total),
+            total
+        )
+    } else {
+        format!(
+            " {label} {}/{} ({} total) ",
+            filtered_position.saturating_add(1).min(filtered),
+            filtered,
+            total
+        )
+    }
+}
+
+fn prompts_lines(
+    state: &TuiState,
+    content_width: usize,
+    content_height: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        resource_search_line(
+            state.prompts.search_active,
+            &state.prompts.search,
+            "Press / to search prompts",
+            theme,
+        ),
+        Line::from(""),
+    ];
+    let remaining_height = content_height.saturating_sub(lines.len()).max(1);
+    if state.prompts.loading {
+        lines.push(Line::styled(
+            "Reloading resources…",
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    if state.prompt_resources.is_empty() {
+        lines.push(Line::styled(
+            "No prompt templates found.",
+            Style::default().fg(theme.muted),
+        ));
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                "Add Markdown files under <project>/.oino/prompts/.",
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let filtered_indices = state.filtered_prompt_indices();
+    if filtered_indices.is_empty() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!("No prompts match `{}`", state.prompts.search),
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let filtered_position = state.prompt_cursor_filtered_position();
+    let range = visible_range(filtered_position, filtered_indices.len(), remaining_height);
+    lines.extend(
+        filtered_indices[range.clone()]
+            .iter()
+            .enumerate()
+            .filter_map(|(offset, item_index)| {
+                let item = state.prompt_resources.get(*item_index)?;
+                let display_index = range.start + offset;
+                let active = *item_index == state.prompts.cursor;
+                Some(resource_item_line(
+                    display_index,
+                    &item.display_name(),
+                    &item.description,
+                    &item.scope,
+                    &item.source,
+                    active,
+                    content_width,
+                    theme,
+                ))
+            }),
+    );
+    lines
+}
+
+fn skills_lines(
+    state: &TuiState,
+    content_width: usize,
+    content_height: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        resource_search_line(
+            state.skills.search_active,
+            &state.skills.search,
+            "Press / to search skills",
+            theme,
+        ),
+        Line::from(""),
+    ];
+    let remaining_height = content_height.saturating_sub(lines.len()).max(1);
+    if state.skills.loading {
+        lines.push(Line::styled(
+            "Reloading resources…",
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    if state.skill_resources.is_empty() {
+        lines.push(Line::styled(
+            "No skills found.",
+            Style::default().fg(theme.muted),
+        ));
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                "Add skills under ~/.oino/skills/ or <project>/.oino/skills/.",
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let filtered_indices = state.filtered_skill_indices();
+    if filtered_indices.is_empty() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!("No skills match `{}`", state.skills.search),
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let filtered_position = state.skill_cursor_filtered_position();
+    let range = visible_range(filtered_position, filtered_indices.len(), remaining_height);
+    lines.extend(
+        filtered_indices[range.clone()]
+            .iter()
+            .enumerate()
+            .filter_map(|(offset, item_index)| {
+                let item = state.skill_resources.get(*item_index)?;
+                let display_index = range.start + offset;
+                let active = *item_index == state.skills.cursor;
+                Some(resource_item_line(
+                    display_index,
+                    &item.command(),
+                    &item.description,
+                    &item.scope,
+                    &item.source,
+                    active,
+                    content_width,
+                    theme,
+                ))
+            }),
+    );
+    lines
+}
+
+fn resource_search_line(
+    active: bool,
+    search: &str,
+    empty_hint: &str,
+    theme: &Theme,
+) -> Line<'static> {
+    if active {
+        return Line::from(vec![
+            Span::styled("Search: ", Style::default().fg(theme.focused_border)),
+            Span::raw(search.to_string()),
+            Span::styled("█", Style::default().fg(theme.focused_border)),
+        ]);
+    }
+    if search.is_empty() {
+        Line::styled(empty_hint.to_string(), Style::default().fg(theme.muted))
+    } else {
+        Line::from(vec![
+            Span::styled("Search: ", Style::default().fg(theme.muted)),
+            Span::raw(search.to_string()),
+        ])
+    }
+}
+
+fn resource_item_line(
+    index: usize,
+    command: &str,
+    description: &str,
+    scope: &str,
+    source: &str,
+    active: bool,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let marker = arrow_marker(active);
+    let prefix = format!(
+        "{marker} {}. {command} [{scope}] — ",
+        index.saturating_add(1)
+    );
+    let detail = format!("{description} • {source}");
+    let text = truncate_with_ellipsis(&format!("{prefix}{detail}"), width.max(1));
+    Line::styled(text, item_style(active, false, theme))
 }
 
 fn render_settings_overlay(

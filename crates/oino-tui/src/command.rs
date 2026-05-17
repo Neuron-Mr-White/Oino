@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use crate::fuzzy::{fuzzy_indices, FuzzyMode};
+use crate::resource::{PromptResource, SkillResource};
 use crate::settings::{
     chat_style_value as settings_chat_style_value, parse_chat_style as settings_parse_chat_style,
     ChatStyle, CollapseMode, CollapseTarget, ModelOption,
@@ -11,6 +12,7 @@ use oino_types::{Model, ThinkingLevel};
 pub enum CommandKind {
     Session,
     Settings,
+    Resource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +53,21 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "Open keyboard and command help",
         kind: CommandKind::Settings,
     },
+    CommandSpec {
+        name: "/prompts",
+        summary: "Browse prompt templates",
+        kind: CommandKind::Resource,
+    },
+    CommandSpec {
+        name: "/skills",
+        summary: "Browse skills",
+        kind: CommandKind::Resource,
+    },
+    CommandSpec {
+        name: "/reload",
+        summary: "Reload Oino resources",
+        kind: CommandKind::Resource,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +75,9 @@ pub enum ParsedCommand {
     Help,
     NewSession,
     Sessions,
+    Prompts,
+    Skills,
+    ReloadResources,
     Settings(SettingsCommand),
 }
 
@@ -188,6 +208,29 @@ pub struct CommandSuggestionItem {
     pub replace_start: usize,
     pub replace_end: usize,
     pub complete_on_enter: bool,
+    pub category: CommandSuggestionCategory,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandSuggestionCategory {
+    System,
+    Prompt,
+    Skill,
+    Model,
+    File,
+    Value,
+}
+
+impl CommandSuggestionCategory {
+    #[must_use]
+    pub const fn label(self) -> Option<&'static str> {
+        match self {
+            Self::System => Some("[SYS]"),
+            Self::Prompt => Some("[PROMPT]"),
+            Self::Skill => Some("[SKILL]"),
+            Self::Model | Self::File | Self::Value => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -210,10 +253,18 @@ pub fn command_suggestions_for(
     input: &str,
     cursor: usize,
     models: &[ModelOption],
+    prompts: &[PromptResource],
+    skills: &[SkillResource],
 ) -> Option<CommandSuggestionsView> {
     let context = suggestion_context(input, cursor)?;
+    if context.completed.is_empty() && context.active_prefix.starts_with("/P:") {
+        return prompt_suggestions(context, prompts, ScopedSuggestion::PromptPrefix);
+    }
+    if context.completed.is_empty() && context.active_prefix.starts_with("/S:") {
+        return skill_suggestions(context, skills, ScopedSuggestion::SkillPrefix);
+    }
     match context.completed.as_slice() {
-        [] => root_suggestions(context),
+        [] => root_suggestions(context, prompts, skills),
         [settings] if settings == "/settings" => settings_subject_suggestions(context),
         [settings, subject] if settings == "/settings" && subject == "model" => {
             model_suggestions(context, models)
@@ -266,6 +317,7 @@ pub fn file_suggestions_for(
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: false,
+            category: CommandSuggestionCategory::File,
         }
     })
     .collect::<Vec<_>>();
@@ -289,6 +341,9 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/help"] => Some(ParsedCommand::Help),
         ["/new"] => Some(ParsedCommand::NewSession),
         ["/sessions"] => Some(ParsedCommand::Sessions),
+        ["/prompts"] => Some(ParsedCommand::Prompts),
+        ["/skills"] => Some(ParsedCommand::Skills),
+        ["/reload"] => Some(ParsedCommand::ReloadResources),
         ["/settings"] => Some(ParsedCommand::Settings(SettingsCommand::Open)),
         ["/model"] => Some(ParsedCommand::Settings(SettingsCommand::OpenModelSelection)),
         ["/thinking"] => Some(ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel)),
@@ -389,25 +444,160 @@ pub fn parse_chat_style(value: &str) -> Option<ChatStyle> {
     settings_parse_chat_style(value)
 }
 
-fn root_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+fn root_suggestions(
+    context: SuggestionContext,
+    prompts: &[PromptResource],
+    skills: &[SkillResource],
+) -> Option<CommandSuggestionsView> {
     let query = context.active_prefix.trim_start_matches('/');
-    let items = fuzzy_indices(COMMANDS, query, FuzzyMode::Text, None, |command| {
-        command.name.trim_start_matches('/').to_string()
-    })
-    .into_iter()
-    .map(|index| {
-        let command = &COMMANDS[index];
-        CommandSuggestionItem {
+    let mut candidates = COMMANDS
+        .iter()
+        .map(|command| CommandSuggestionItem {
             label: command.name.into(),
             summary: command.summary.into(),
             replacement: command.name.into(),
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
-        }
-    })
+            category: CommandSuggestionCategory::System,
+        })
+        .collect::<Vec<_>>();
+    candidates.extend(prompt_items(
+        prompts,
+        query,
+        context.replace_start,
+        context.replace_end,
+        ScopedSuggestion::Root,
+    ));
+    candidates.extend(skill_items(
+        skills,
+        query,
+        context.replace_start,
+        context.replace_end,
+        ScopedSuggestion::Root,
+    ));
+    let items = fuzzy_indices(
+        &candidates,
+        query,
+        FuzzyMode::Text,
+        None,
+        suggestion_match_text,
+    )
+    .into_iter()
+    .map(|index| candidates[index].clone())
     .collect::<Vec<_>>();
     Some(view("Commands", context.active_prefix, items))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScopedSuggestion {
+    Root,
+    PromptPrefix,
+    SkillPrefix,
+}
+
+fn prompt_suggestions(
+    context: SuggestionContext,
+    prompts: &[PromptResource],
+    scope: ScopedSuggestion,
+) -> Option<CommandSuggestionsView> {
+    let query = match scope {
+        ScopedSuggestion::PromptPrefix => context.active_prefix.trim_start_matches("/P:"),
+        ScopedSuggestion::Root | ScopedSuggestion::SkillPrefix => context.active_prefix.as_str(),
+    };
+    let items = prompt_items(
+        prompts,
+        query,
+        context.replace_start,
+        context.replace_end,
+        scope,
+    );
+    Some(view("Prompts", query.to_string(), items))
+}
+
+fn skill_suggestions(
+    context: SuggestionContext,
+    skills: &[SkillResource],
+    scope: ScopedSuggestion,
+) -> Option<CommandSuggestionsView> {
+    let query = match scope {
+        ScopedSuggestion::SkillPrefix => context.active_prefix.trim_start_matches("/S:"),
+        ScopedSuggestion::Root | ScopedSuggestion::PromptPrefix => context.active_prefix.as_str(),
+    };
+    let items = skill_items(
+        skills,
+        query,
+        context.replace_start,
+        context.replace_end,
+        scope,
+    );
+    Some(view("Skills", query.to_string(), items))
+}
+
+fn prompt_items(
+    prompts: &[PromptResource],
+    query: &str,
+    replace_start: usize,
+    replace_end: usize,
+    _scope: ScopedSuggestion,
+) -> Vec<CommandSuggestionItem> {
+    let candidates = prompts
+        .iter()
+        .map(|prompt| CommandSuggestionItem {
+            label: prompt.command(),
+            summary: prompt.description.clone(),
+            replacement: prompt.command(),
+            replace_start,
+            replace_end,
+            complete_on_enter: true,
+            category: CommandSuggestionCategory::Prompt,
+        })
+        .collect::<Vec<_>>();
+    fuzzy_indices(
+        &candidates,
+        query,
+        FuzzyMode::Text,
+        None,
+        suggestion_match_text,
+    )
+    .into_iter()
+    .map(|index| candidates[index].clone())
+    .collect()
+}
+
+fn skill_items(
+    skills: &[SkillResource],
+    query: &str,
+    replace_start: usize,
+    replace_end: usize,
+    _scope: ScopedSuggestion,
+) -> Vec<CommandSuggestionItem> {
+    let candidates = skills
+        .iter()
+        .map(|skill| CommandSuggestionItem {
+            label: skill.command(),
+            summary: skill.description.clone(),
+            replacement: skill.command(),
+            replace_start,
+            replace_end,
+            complete_on_enter: true,
+            category: CommandSuggestionCategory::Skill,
+        })
+        .collect::<Vec<_>>();
+    fuzzy_indices(
+        &candidates,
+        query,
+        FuzzyMode::Text,
+        None,
+        suggestion_match_text,
+    )
+    .into_iter()
+    .map(|index| candidates[index].clone())
+    .collect()
+}
+
+fn suggestion_match_text(item: &CommandSuggestionItem) -> String {
+    format!("{} {}", item.label.trim_start_matches('/'), item.summary)
 }
 
 fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
@@ -454,6 +644,7 @@ fn model_suggestions(
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
+            category: CommandSuggestionCategory::Model,
         }
     })
     .collect::<Vec<_>>();
@@ -487,6 +678,7 @@ fn thinking_suggestions(context: SuggestionContext) -> Option<CommandSuggestions
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
+            category: CommandSuggestionCategory::Value,
         }
     })
     .collect::<Vec<_>>();
@@ -537,6 +729,7 @@ fn collapse_mode_suggestions(context: SuggestionContext) -> Option<CommandSugges
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
+            category: CommandSuggestionCategory::Value,
         }
     })
     .collect::<Vec<_>>();
@@ -567,6 +760,7 @@ fn chat_style_suggestions(context: SuggestionContext) -> Option<CommandSuggestio
             replace_start: context.replace_start,
             replace_end: context.replace_end,
             complete_on_enter: true,
+            category: CommandSuggestionCategory::Value,
         }
     })
     .collect::<Vec<_>>();
@@ -585,6 +779,7 @@ fn incomplete_item(
         replace_start: context.replace_start,
         replace_end: context.replace_end,
         complete_on_enter: false,
+        category: CommandSuggestionCategory::Value,
     }
 }
 
@@ -766,13 +961,37 @@ mod tests {
         ]
     }
 
+    fn prompts() -> Vec<PromptResource> {
+        vec![PromptResource {
+            name: "review".into(),
+            description: "Review current changes".into(),
+            argument_hint: Some("[focus]".into()),
+            source: ".oino/prompts/review.md".into(),
+            scope: "project".into(),
+            content: "Review $ARGUMENTS".into(),
+        }]
+    }
+
+    fn skills() -> Vec<SkillResource> {
+        vec![SkillResource {
+            name: "debug".into(),
+            description: "Investigate a bug".into(),
+            source: ".oino/skills/debug/SKILL.md".into(),
+            scope: "project".into(),
+            content: "# Debug".into(),
+        }]
+    }
+
+    fn suggestions(input: &str, cursor: usize) -> Option<CommandSuggestionsView> {
+        command_suggestions_for(input, cursor, &models(), &prompts(), &skills())
+    }
+
     #[test]
     fn suggestions_progress_through_settings_model_command() {
-        let view = command_suggestions_for("/settings ", 10, &models())
-            .unwrap_or_else(|| panic!("missing view"));
+        let view = suggestions("/settings ", 10).unwrap_or_else(|| panic!("missing view"));
         assert!(view.items.iter().any(|item| item.label == "model"));
 
-        let view = command_suggestions_for("/settings model openrouter:xai", 30, &models())
+        let view = suggestions("/settings model openrouter:xai", 30)
             .unwrap_or_else(|| panic!("missing model suggestions"));
         assert_eq!(view.title, "Models");
         assert_eq!(view.items[0].label, "openrouter:xai/glm-5.1");
@@ -781,12 +1000,12 @@ mod tests {
 
     #[test]
     fn model_and_thinking_aliases_suggest_direct_values() {
-        let view = command_suggestions_for("/model openrouter:xai", 21, &models())
+        let view = suggestions("/model openrouter:xai", 21)
             .unwrap_or_else(|| panic!("missing model alias suggestions"));
         assert_eq!(view.title, "Models");
         assert_eq!(view.items[0].label, "openrouter:xai/glm-5.1");
 
-        let view = command_suggestions_for("/thinking h", 11, &models())
+        let view = suggestions("/thinking h", 11)
             .unwrap_or_else(|| panic!("missing thinking alias suggestions"));
         assert_eq!(view.title, "Thinking");
         assert_eq!(view.items[0].label, "high");
@@ -797,26 +1016,26 @@ mod tests {
         let many_models = (0..60)
             .map(|index| ModelOption::new(format!("openrouter:model-{index}")))
             .collect::<Vec<_>>();
-        let view = command_suggestions_for("/settings model ", 16, &many_models)
+        let view = command_suggestions_for("/settings model ", 16, &many_models, &[], &[])
             .unwrap_or_else(|| panic!("missing model suggestions"));
         assert_eq!(view.items.len(), 60);
     }
 
     #[test]
     fn suggestions_cover_nested_settings_values() {
-        let view = command_suggestions_for("/settings thinking h", 20, &models())
+        let view = suggestions("/settings thinking h", 20)
             .unwrap_or_else(|| panic!("missing thinking suggestions"));
         assert_eq!(view.items[0].label, "high");
 
-        let view = command_suggestions_for("/settings collapse ", 19, &models())
+        let view = suggestions("/settings collapse ", 19)
             .unwrap_or_else(|| panic!("missing target suggestions"));
         assert!(view.items.iter().any(|item| item.label == "thinking"));
 
-        let view = command_suggestions_for("/settings collapse thinking t", 29, &models())
+        let view = suggestions("/settings collapse thinking t", 29)
             .unwrap_or_else(|| panic!("missing mode suggestions"));
         assert_eq!(view.items[0].label, "truncate");
 
-        let view = command_suggestions_for("/settings chat-style a", 22, &models())
+        let view = suggestions("/settings chat-style a", 22)
             .unwrap_or_else(|| panic!("missing chat style suggestions"));
         assert_eq!(view.title, "Chat Style");
         assert_eq!(view.items[0].label, "agentic");
@@ -840,28 +1059,48 @@ mod tests {
 
     #[test]
     fn suggestions_stay_at_first_slash_command() {
-        assert!(command_suggestions_for("/", 1, &models()).is_some());
-        assert!(command_suggestions_for("/set", 4, &models()).is_some());
-        assert!(command_suggestions_for("hello /", 7, &models()).is_none());
-        assert!(command_suggestions_for("/settings model x extra", 17, &models()).is_none());
+        assert!(suggestions("/", 1).is_some());
+        assert!(suggestions("/set", 4).is_some());
+        assert!(suggestions("hello /", 7).is_none());
+        assert!(suggestions("/settings model x extra", 17).is_none());
     }
 
     #[test]
     fn filters_commands_by_prefix() {
-        let view =
-            command_suggestions_for("/set", 4, &models()).unwrap_or_else(|| panic!("missing view"));
-        assert_eq!(view.items.len(), 1);
-        assert_eq!(view.items[0].label, "/settings");
-        let view = command_suggestions_for("/", 1, &models())
-            .unwrap_or_else(|| panic!("missing root view"));
+        let view = suggestions("/set", 4).unwrap_or_else(|| panic!("missing view"));
+        assert!(view.items.iter().any(|item| item.label == "/settings"));
+        let view = suggestions("/", 1).unwrap_or_else(|| panic!("missing root view"));
         assert!(view.items.iter().any(|item| item.label == "/new"));
         assert!(view.items.iter().any(|item| item.label == "/sessions"));
         assert!(view.items.iter().any(|item| item.label == "/help"));
         assert!(view.items.iter().any(|item| item.label == "/model"));
         assert!(view.items.iter().any(|item| item.label == "/thinking"));
-        let view = command_suggestions_for("/nope", 5, &models())
-            .unwrap_or_else(|| panic!("missing view"));
+        assert!(view.items.iter().any(|item| item.label == "/prompts"));
+        assert!(view.items.iter().any(|item| item.label == "/skills"));
+        assert!(view.items.iter().any(|item| item.label == "/reload"));
+        let view = suggestions("/zzzz", 5).unwrap_or_else(|| panic!("missing view"));
         assert!(view.items.is_empty());
+    }
+
+    #[test]
+    fn resource_suggestions_support_labels_and_scoped_search() {
+        let view = suggestions("/rev", 4).unwrap_or_else(|| panic!("missing prompt view"));
+        let prompt = view
+            .items
+            .iter()
+            .find(|item| item.label == "/review")
+            .unwrap_or_else(|| panic!("missing review prompt"));
+        assert_eq!(prompt.category, CommandSuggestionCategory::Prompt);
+        assert_eq!(prompt.category.label(), Some("[PROMPT]"));
+
+        let view = suggestions("/P:rev", 6).unwrap_or_else(|| panic!("missing scoped prompts"));
+        assert_eq!(view.title, "Prompts");
+        assert_eq!(view.items[0].replacement, "/review");
+
+        let view = suggestions("/S:bug", 6).unwrap_or_else(|| panic!("missing scoped skills"));
+        assert_eq!(view.title, "Skills");
+        assert_eq!(view.items[0].replacement, "/skill:debug");
+        assert_eq!(view.items[0].category.label(), Some("[SKILL]"));
     }
 
     #[test]
@@ -869,6 +1108,12 @@ mod tests {
         assert_eq!(parse_command("/help"), Some(ParsedCommand::Help));
         assert_eq!(parse_command("/new"), Some(ParsedCommand::NewSession));
         assert_eq!(parse_command("/sessions"), Some(ParsedCommand::Sessions));
+        assert_eq!(parse_command("/prompts"), Some(ParsedCommand::Prompts));
+        assert_eq!(parse_command("/skills"), Some(ParsedCommand::Skills));
+        assert_eq!(
+            parse_command("/reload"),
+            Some(ParsedCommand::ReloadResources)
+        );
         assert_eq!(
             parse_command("/settings"),
             Some(ParsedCommand::Settings(SettingsCommand::Open))
