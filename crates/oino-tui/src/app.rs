@@ -14,6 +14,10 @@ use crate::{
     settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use nucleo_matcher::{
+    pattern::{CaseMatching, Normalization, Pattern},
+    Config, Matcher, Utf32Str,
+};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
 
 pub const HELP_STATUS: &str =
@@ -75,6 +79,8 @@ pub struct SessionsState {
     pub cursor: usize,
     pub loading: bool,
     pub items: Vec<SessionListItem>,
+    pub search: String,
+    pub search_active: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,13 +281,51 @@ impl TuiState {
 
     #[must_use]
     pub fn selected_session_item(&self) -> Option<&SessionListItem> {
-        self.sessions.items.get(self.sessions.cursor)
+        self.filtered_session_indices()
+            .contains(&self.sessions.cursor)
+            .then(|| self.sessions.items.get(self.sessions.cursor))
+            .flatten()
+    }
+
+    #[must_use]
+    pub fn filtered_session_indices(&self) -> Vec<usize> {
+        let query = self.sessions.search.trim();
+        if query.is_empty() {
+            return (0..self.sessions.items.len()).collect();
+        }
+
+        let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+        let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+        let mut buf = Vec::new();
+        let mut scored = self
+            .sessions
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, session)| {
+                let haystack = session_match_text(session);
+                pattern
+                    .score(Utf32Str::new(&haystack, &mut buf), &mut matcher)
+                    .map(|score| (score, index))
+            })
+            .collect::<Vec<_>>();
+        scored.sort_by(|(left_score, _), (right_score, _)| right_score.cmp(left_score));
+        scored.into_iter().map(|(_, index)| index).collect()
+    }
+
+    #[must_use]
+    pub fn session_cursor_filtered_position(&self) -> usize {
+        self.filtered_session_indices()
+            .iter()
+            .position(|index| *index == self.sessions.cursor)
+            .unwrap_or(0)
     }
 
     pub fn set_sessions(&mut self, sessions: Vec<SessionListItem>) {
         self.sessions.items = sessions;
         self.sessions.loading = false;
         self.clamp_sessions_cursor();
+        self.sync_session_cursor_to_filter();
         self.status = if self.sessions.items.is_empty() {
             "No saved sessions yet".into()
         } else {
@@ -355,12 +399,27 @@ impl TuiState {
     }
 
     fn move_sessions_cursor(&mut self, delta: isize) {
-        if self.sessions.items.is_empty() {
+        let indices = self.filtered_session_indices();
+        if indices.is_empty() {
             self.sessions.cursor = 0;
             return;
         }
-        let max = self.sessions.items.len().saturating_sub(1) as isize;
-        self.sessions.cursor = (self.sessions.cursor as isize + delta).clamp(0, max) as usize;
+        let current = indices
+            .iter()
+            .position(|index| *index == self.sessions.cursor)
+            .unwrap_or(0);
+        let next = move_index(current, indices.len(), delta);
+        self.sessions.cursor = indices[next];
+    }
+
+    fn sync_session_cursor_to_filter(&mut self) {
+        self.clamp_sessions_cursor();
+        let indices = self.filtered_session_indices();
+        if let Some(first) = indices.first().copied() {
+            if !indices.contains(&self.sessions.cursor) {
+                self.sessions.cursor = first;
+            }
+        }
     }
 
     fn enqueue_prompt(&mut self, prompt: String) {
@@ -915,6 +974,10 @@ impl TuiState {
     }
 
     fn handle_sessions_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.sessions.search_active {
+            return self.handle_sessions_search_key(key);
+        }
+
         match key.code {
             KeyCode::Esc => {
                 self.overlay = None;
@@ -930,24 +993,69 @@ impl TuiState {
                 self.move_sessions_cursor(1);
                 TuiAction::None
             }
+            KeyCode::Char('/') if key.modifiers.is_empty() => {
+                self.sessions.search_active = true;
+                self.sessions.search.clear();
+                self.sync_session_cursor_to_filter();
+                self.status = "Session search active".into();
+                TuiAction::None
+            }
             KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => {
                 self.sessions.loading = true;
                 self.status = "Loading sessions…".into();
                 TuiAction::ListSessions
             }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                let Some(session_id) = self
-                    .selected_session_item()
-                    .map(|session| session.id.clone())
-                else {
-                    self.status = "No saved session selected".into();
-                    return TuiAction::None;
-                };
-                self.status = format!("Opening session {session_id}…");
-                TuiAction::OpenSession(session_id)
+            KeyCode::Enter if key.modifiers.is_empty() => self.open_selected_session_action(),
+            _ => TuiAction::None,
+        }
+    }
+
+    fn handle_sessions_search_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.sessions.search_active = false;
+                self.sessions.search.clear();
+                self.sync_session_cursor_to_filter();
+                self.status = "Session search cleared".into();
+                TuiAction::None
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => self.open_selected_session_action(),
+            KeyCode::Backspace => {
+                self.sessions.search.pop();
+                self.sync_session_cursor_to_filter();
+                self.status = session_search_status(&self.sessions.search);
+                TuiAction::None
+            }
+            KeyCode::Up => {
+                self.move_sessions_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down => {
+                self.move_sessions_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char(ch)
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
+            {
+                self.sessions.search.push(ch);
+                self.sync_session_cursor_to_filter();
+                self.status = session_search_status(&self.sessions.search);
+                TuiAction::None
             }
             _ => TuiAction::None,
         }
+    }
+
+    fn open_selected_session_action(&mut self) -> TuiAction {
+        let Some(session_id) = self
+            .selected_session_item()
+            .map(|session| session.id.clone())
+        else {
+            self.status = "No saved session selected".into();
+            return TuiAction::None;
+        };
+        self.status = format!("Opening session {session_id}…");
+        TuiAction::OpenSession(session_id)
     }
 
     fn handle_settings_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -1110,6 +1218,8 @@ impl TuiState {
         self.clear_error();
         self.overlay = Some(OverlayKind::Sessions);
         self.sessions.loading = true;
+        self.sessions.search_active = false;
+        self.sessions.search.clear();
         self.clamp_sessions_cursor();
         self.status = "Loading sessions…".into();
     }
@@ -1164,6 +1274,33 @@ fn is_force_quit_key(key: KeyEvent) -> bool {
 
 fn is_ctrl_o_key(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('o') | KeyCode::Char('O') if key.modifiers.contains(KeyModifiers::CONTROL))
+}
+
+fn move_index(current: usize, len: usize, delta: isize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let last = len.saturating_sub(1);
+    if delta.is_negative() {
+        current.saturating_sub(delta.unsigned_abs()).min(last)
+    } else {
+        current.saturating_add(delta as usize).min(last)
+    }
+}
+
+fn session_match_text(session: &SessionListItem) -> String {
+    format!(
+        "{} {} {} {}",
+        session.name, session.id, session.preview, session.cwd
+    )
+}
+
+fn session_search_status(query: &str) -> String {
+    if query.is_empty() {
+        "Session search active".into()
+    } else {
+        format!("Searching sessions for `{query}`")
+    }
 }
 
 fn provider_label(model: &str) -> String {
@@ -1483,17 +1620,43 @@ mod tests {
         assert_eq!(state.overlay, Some(OverlayKind::Sessions));
         assert!(state.sessions.loading);
 
-        state.set_sessions(vec![SessionListItem {
-            id: "abc".into(),
-            name: "oino".into(),
-            cwd: "/tmp".into(),
-            message_count: 2,
-            preview: "hello".into(),
-            current: false,
-        }]);
+        state.set_sessions(vec![
+            SessionListItem {
+                id: "alpha".into(),
+                name: "first".into(),
+                cwd: "/tmp/alpha".into(),
+                message_count: 2,
+                preview: "hello world".into(),
+                current: false,
+            },
+            SessionListItem {
+                id: "beta".into(),
+                name: "design".into(),
+                cwd: "/tmp/beta".into(),
+                message_count: 4,
+                preview: "markdown rendering".into(),
+                current: false,
+            },
+        ]);
         assert_eq!(
             state.handle_key(key(KeyCode::Enter)),
-            TuiAction::OpenSession("abc".into())
+            TuiAction::OpenSession("alpha".into())
+        );
+
+        state.open_sessions_overlay();
+        state.set_sessions(state.sessions.items.clone());
+        assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
+        assert!(state.sessions.search_active);
+        for ch in "md render".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.selected_session_item().map(|item| item.id.as_str()),
+            Some("beta")
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::OpenSession("beta".into())
         );
     }
 

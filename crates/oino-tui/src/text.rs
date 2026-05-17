@@ -52,3 +52,32 @@ pub(crate) fn truncate_to_width(text: &str, max_width: usize) -> String {
     }
     out
 }
+
+pub(crate) fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
+    if text.width() <= max_width {
+        return text.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let ellipsis = '…';
+    let ellipsis_width = ellipsis.width().unwrap_or(1);
+    if max_width <= ellipsis_width {
+        return ellipsis.to_string();
+    }
+
+    let target_width = max_width.saturating_sub(ellipsis_width);
+    let mut out = String::new();
+    let mut width = 0usize;
+    for ch in text.chars() {
+        let ch_width = ch.width().unwrap_or(0);
+        if width + ch_width > target_width {
+            break;
+        }
+        out.push(ch);
+        width += ch_width;
+    }
+    out.push(ellipsis);
+    out
+}

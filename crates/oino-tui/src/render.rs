@@ -11,7 +11,7 @@ use crate::{
         chat_style_label, chat_style_value, collapse_mode_label, thinking_label, ChatStyle,
         SettingsPage, SettingsState,
     },
-    text::{truncate_to_width, wrap_text},
+    text::{truncate_to_width, truncate_with_ellipsis, wrap_text},
     theme::Theme,
     transcript::transcript_lines,
 };
@@ -818,9 +818,12 @@ fn render_sessions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
     let content_height = list_content_height(sections[0]);
     let content_width = sections[0].width.saturating_sub(2) as usize;
     let lines = sessions_lines(state, content_width, content_height, theme);
+    let filtered_indices = state.filtered_session_indices();
     let title = if state.sessions.loading || state.sessions.items.is_empty() {
         " Saved Sessions ".to_string()
-    } else {
+    } else if filtered_indices.is_empty() {
+        format!(" Saved Sessions 0/{} ", state.sessions.items.len())
+    } else if state.sessions.search.trim().is_empty() {
         format!(
             " Saved Sessions {}/{} ",
             state
@@ -828,6 +831,16 @@ fn render_sessions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
                 .cursor
                 .saturating_add(1)
                 .min(state.sessions.items.len()),
+            state.sessions.items.len()
+        )
+    } else {
+        format!(
+            " Saved Sessions {}/{} ({} total) ",
+            state
+                .session_cursor_filtered_position()
+                .saturating_add(1)
+                .min(filtered_indices.len()),
+            filtered_indices.len(),
             state.sessions.items.len()
         )
     };
@@ -841,7 +854,11 @@ fn render_sessions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
         sections[0],
     );
 
-    let controls = "↑/↓ select • Enter continue • r reload • Esc close";
+    let controls = if state.sessions.search_active {
+        "type to fuzzy search • ↑/↓ move • Enter continue • Esc clear search"
+    } else {
+        "↑/↓ select • / search • Enter continue • r reload • Esc close"
+    };
     let status = format!("{} • {controls}", state.status);
     frame.render_widget(
         Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
@@ -855,37 +872,84 @@ fn sessions_lines(
     content_height: usize,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
+    let mut lines = vec![sessions_search_line(state, theme), Line::from("")];
+    let remaining_height = content_height.saturating_sub(lines.len()).max(1);
+
     if state.sessions.loading {
-        return vec![Line::styled(
+        lines.push(Line::styled(
             "Loading saved sessions…",
             Style::default().fg(theme.muted),
-        )];
+        ));
+        return lines;
     }
     if state.sessions.items.is_empty() {
-        return vec![
-            Line::styled("No saved sessions yet.", Style::default().fg(theme.muted)),
-            Line::styled(
+        lines.push(Line::styled(
+            "No saved sessions yet.",
+            Style::default().fg(theme.muted),
+        ));
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
                 "Send a prompt to create one, or use /new when you explicitly want a fresh session.",
-                Style::default().fg(theme.muted),
+                content_width,
             ),
-        ];
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
     }
 
-    let range = visible_range(
-        state.sessions.cursor,
-        state.sessions.items.len(),
-        content_height,
+    let filtered_indices = state.filtered_session_indices();
+    if filtered_indices.is_empty() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!("No sessions match `{}`", state.sessions.search),
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+
+    let filtered_position = state.session_cursor_filtered_position();
+    let range = visible_range(filtered_position, filtered_indices.len(), remaining_height);
+    lines.extend(
+        filtered_indices[range.clone()]
+            .iter()
+            .enumerate()
+            .filter_map(|(offset, item_index)| {
+                let item = state.sessions.items.get(*item_index)?;
+                let display_index = range.start + offset;
+                let active = *item_index == state.sessions.cursor;
+                Some(sessions_item_line(
+                    display_index,
+                    item,
+                    active,
+                    content_width,
+                    theme,
+                ))
+            }),
     );
-    let start = range.start;
-    state.sessions.items[range]
-        .iter()
-        .enumerate()
-        .map(|(offset, item)| {
-            let index = start + offset;
-            let active = index == state.sessions.cursor;
-            sessions_item_line(index, item, active, content_width, theme)
-        })
-        .collect()
+    lines
+}
+
+fn sessions_search_line(state: &TuiState, theme: &Theme) -> Line<'static> {
+    if state.sessions.search_active {
+        return Line::from(vec![
+            Span::styled("Search: ", Style::default().fg(theme.focused_border)),
+            Span::raw(state.sessions.search.clone()),
+            Span::styled("█", Style::default().fg(theme.focused_border)),
+        ]);
+    }
+    if state.sessions.search.is_empty() {
+        Line::styled(
+            "Press / to search sessions",
+            Style::default().fg(theme.muted),
+        )
+    } else {
+        Line::from(vec![
+            Span::styled("Search: ", Style::default().fg(theme.muted)),
+            Span::raw(state.sessions.search.clone()),
+        ])
+    }
 }
 
 fn sessions_item_line(
@@ -912,11 +976,8 @@ fn sessions_item_line(
     } else {
         format!("{} • {}", item.preview, item.cwd)
     };
-    let detail = truncate_to_width(&detail, width.saturating_sub(prefix.width()).max(1));
-    Line::from(vec![
-        Span::styled(prefix, item_style(active, item.current, theme)),
-        Span::styled(detail, item_style(active, false, theme)),
-    ])
+    let text = truncate_with_ellipsis(&format!("{prefix}{detail}"), width.max(1));
+    Line::styled(text, item_style(active, item.current, theme))
 }
 
 fn render_settings_overlay(
@@ -1461,7 +1522,7 @@ fn cursor_byte(input: &str, cursor: usize) -> usize {
 mod tests {
     use super::*;
     use crate::{
-        app::TuiState,
+        app::{OverlayKind, SessionListItem, TuiState},
         message::{MessageView, ToolCallView},
         settings::CollapseMode,
     };
@@ -1866,6 +1927,30 @@ mod tests {
         assert!(text.contains("Models 40/60"));
         assert!(text.contains("› openrouter:model-39"));
         assert!(!text.contains("openrouter:model-0"));
+    }
+
+    #[test]
+    fn render_sessions_overlay_ellipsizes_long_rows() {
+        let mut state = TuiState::new();
+        state.overlay = Some(OverlayKind::Sessions);
+        state.set_sessions(vec![SessionListItem {
+            id: "12345678-1234-1234-1234-123456789abc".into(),
+            name: "very long saved session title that would otherwise run off the edge".into(),
+            cwd: "/tmp/a/very/deep/project/path/that/keeps/going".into(),
+            message_count: 42,
+            preview: "this is a long preview with enough text to exceed the panel width".into(),
+            current: false,
+        }]);
+
+        let buffer = draw_state(56, 18, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(text.contains("Press / to search sessions"));
+        assert!(text.contains("…"));
     }
 
     #[test]

@@ -10,6 +10,7 @@ path = "src/bin/render_test.rs"
 
 [dependencies]
 crossterm.workspace = true
+nucleo-matcher.workspace = true
 oino-types = { path = "../oino-types" }
 pulldown-cmark.workspace = true
 ratatui.workspace = true
