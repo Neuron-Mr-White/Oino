@@ -398,6 +398,14 @@ impl Harness {
         Ok(output.messages)
     }
 
+    pub async fn steer(&self, message: Message) -> HarnessResult<()> {
+        self.agent
+            .steer(message)
+            .await
+            .map_err(oino_agent::AgentError::Loop)?;
+        Ok(())
+    }
+
     pub async fn abort(&self) {
         self.agent.abort().await;
     }

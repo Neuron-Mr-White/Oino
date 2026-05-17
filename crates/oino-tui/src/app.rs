@@ -17,7 +17,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
 
 pub const HELP_STATUS: &str =
-    "Enter send • PgUp/PgDn scroll transcript • type / or @file • Ctrl-O s settings • Ctrl-O e expand paste • Ctrl-C twice quit";
+    "Enter send/steer • PgUp/PgDn scroll • type / or @file • Ctrl-O s send panel • Ctrl-O e expand paste • Ctrl-C twice quit";
 
 const DEFAULT_TRANSCRIPT_PAGE_LINES: usize = 10;
 const TRANSCRIPT_SCROLL_LINE_STEP: usize = 1;
@@ -25,6 +25,38 @@ const TRANSCRIPT_SCROLL_LINE_STEP: usize = 1;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayKind {
     Settings,
+    SendPanel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendPanelSection {
+    Steer,
+    Queue,
+    Draft,
+}
+
+impl SendPanelSection {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Steer => "Steer",
+            Self::Queue => "Queue",
+            Self::Draft => "Draft",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendPanelItem {
+    pub section: SendPanelSection,
+    pub index: usize,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SendPanelState {
+    pub cursor: usize,
+    pub confirm_delete: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +136,10 @@ pub struct TuiState {
     pub command_suggestions: CommandSuggestionsState,
     pub chord: ChordState,
     pub transcript_scroll: TranscriptScroll,
+    pub send_panel: SendPanelState,
+    pub steer_items: Vec<String>,
+    pub queued_items: Vec<String>,
+    pub draft_items: Vec<String>,
     transcript_page_lines: usize,
     quit_pending: bool,
     file_paths: Vec<String>,
@@ -123,6 +159,10 @@ impl Default for TuiState {
             command_suggestions: CommandSuggestionsState::new(),
             chord: ChordState::None,
             transcript_scroll: TranscriptScroll::default(),
+            send_panel: SendPanelState::default(),
+            steer_items: Vec::new(),
+            queued_items: Vec::new(),
+            draft_items: Vec::new(),
             transcript_page_lines: DEFAULT_TRANSCRIPT_PAGE_LINES,
             quit_pending: false,
             file_paths: Vec::new(),
@@ -154,6 +194,72 @@ impl TuiState {
         self.composer.cursor()
     }
 
+    #[must_use]
+    pub fn has_queued_prompts(&self) -> bool {
+        !self.queued_items.is_empty()
+    }
+
+    #[must_use]
+    pub fn next_queued_prompt(&self) -> Option<&str> {
+        self.queued_items.first().map(String::as_str)
+    }
+
+    pub fn pop_next_queued_prompt(&mut self) -> Option<String> {
+        if self.queued_items.is_empty() {
+            None
+        } else {
+            Some(self.queued_items.remove(0))
+        }
+    }
+
+    #[must_use]
+    pub fn send_panel_items(&self) -> Vec<SendPanelItem> {
+        let mut items = Vec::new();
+        items.extend(
+            self.steer_items
+                .iter()
+                .enumerate()
+                .map(|(index, text)| SendPanelItem {
+                    section: SendPanelSection::Steer,
+                    index,
+                    text: text.clone(),
+                }),
+        );
+        items.extend(
+            self.queued_items
+                .iter()
+                .enumerate()
+                .map(|(index, text)| SendPanelItem {
+                    section: SendPanelSection::Queue,
+                    index,
+                    text: text.clone(),
+                }),
+        );
+        items.extend(
+            self.draft_items
+                .iter()
+                .enumerate()
+                .map(|(index, text)| SendPanelItem {
+                    section: SendPanelSection::Draft,
+                    index,
+                    text: text.clone(),
+                }),
+        );
+        items
+    }
+
+    #[must_use]
+    pub fn selected_send_panel_item(&self) -> Option<SendPanelItem> {
+        self.send_panel_items().get(self.send_panel.cursor).cloned()
+    }
+
+    #[must_use]
+    pub fn activity_status(&self) -> Option<String> {
+        self.working
+            .then(|| self.status.clone())
+            .filter(|status| !status.trim().is_empty())
+    }
+
     pub fn set_transcript_page_lines(&mut self, lines: usize) {
         self.transcript_page_lines = lines.max(1);
     }
@@ -180,6 +286,77 @@ impl TuiState {
     pub fn scroll_transcript_to_bottom(&mut self) {
         self.transcript_scroll.jump_bottom();
         self.status = HELP_STATUS.into();
+    }
+
+    fn clamp_send_panel_cursor(&mut self) {
+        let len = self.send_panel_items().len();
+        if len == 0 {
+            self.send_panel.cursor = 0;
+        } else {
+            self.send_panel.cursor = self.send_panel.cursor.min(len.saturating_sub(1));
+        }
+    }
+
+    fn move_send_panel_cursor(&mut self, delta: isize) {
+        let len = self.send_panel_items().len();
+        if len == 0 {
+            self.send_panel.cursor = 0;
+            return;
+        }
+        let max = len.saturating_sub(1) as isize;
+        self.send_panel.cursor = (self.send_panel.cursor as isize + delta).clamp(0, max) as usize;
+    }
+
+    fn enqueue_prompt(&mut self, prompt: String) {
+        self.queued_items.push(prompt);
+        self.clamp_send_panel_cursor();
+    }
+
+    fn record_steer(&mut self, prompt: String) {
+        self.steer_items.push(prompt);
+        self.clamp_send_panel_cursor();
+    }
+
+    fn draft_current_input(&mut self) -> bool {
+        let Some(text) = self.take_composer_text() else {
+            return false;
+        };
+        self.draft_items.push(text);
+        self.clamp_send_panel_cursor();
+        true
+    }
+
+    fn take_composer_text(&mut self) -> Option<String> {
+        let text = self.composer.expanded_text().trim().to_string();
+        if text.is_empty() {
+            return None;
+        }
+        self.composer.clear();
+        Some(text)
+    }
+
+    fn delete_send_panel_item(&mut self, item: &SendPanelItem) -> Option<String> {
+        let list = match item.section {
+            SendPanelSection::Steer => &mut self.steer_items,
+            SendPanelSection::Queue => &mut self.queued_items,
+            SendPanelSection::Draft => &mut self.draft_items,
+        };
+        if item.index >= list.len() {
+            self.clamp_send_panel_cursor();
+            return None;
+        }
+        let removed = list.remove(item.index);
+        self.clamp_send_panel_cursor();
+        Some(removed)
+    }
+
+    fn remove_or_copy_send_panel_item_for_input(&mut self, item: &SendPanelItem) -> String {
+        match item.section {
+            SendPanelSection::Steer => item.text.clone(),
+            SendPanelSection::Queue | SendPanelSection::Draft => self
+                .delete_send_panel_item(item)
+                .unwrap_or_else(|| item.text.clone()),
+        }
     }
 
     fn transcript_scroll_status(&self) -> String {
@@ -290,12 +467,19 @@ impl TuiState {
 
     pub fn set_working(&mut self, working: bool) {
         self.working = working;
-        self.composer.set_enabled(!working);
-        self.status = if working {
-            "● Generating… input paused".into()
+        self.composer.set_enabled(true);
+        if working {
+            self.set_calling_status();
         } else {
-            HELP_STATUS.into()
-        };
+            self.status = HELP_STATUS.into();
+        }
+    }
+
+    pub fn set_calling_status(&mut self) {
+        self.status = format!(
+            "Calling {}… type and Enter to steer • Ctrl-O s queue/drafts",
+            provider_label(self.settings.selected_model_label())
+        );
     }
 
     pub fn set_model_catalog(&mut self, models: Vec<ModelOption>, status: impl Into<String>) {
@@ -377,12 +561,15 @@ impl TuiState {
 
         if is_ctrl_o_key(key) {
             self.chord = ChordState::CtrlO;
-            self.status = "Ctrl-O chord: s settings • t transcript • Esc cancel".into();
+            self.status =
+                "Ctrl-O chord: s send panel • t transcript • e expand paste • Esc cancel".into();
             return TuiAction::None;
         }
 
-        if matches!(self.overlay, Some(OverlayKind::Settings)) {
-            return self.handle_settings_key(key);
+        match self.overlay {
+            Some(OverlayKind::Settings) => return self.handle_settings_key(key),
+            Some(OverlayKind::SendPanel) => return self.handle_send_panel_key(key),
+            None => {}
         }
 
         if self.command_suggestions_view().is_some() {
@@ -423,7 +610,7 @@ impl TuiState {
         self.chord = ChordState::None;
         match (chord, key.code) {
             (ChordState::CtrlO, KeyCode::Char('s' | 'S')) if key.modifiers.is_empty() => {
-                self.open_settings_overlay();
+                self.open_send_panel();
                 TuiAction::None
             }
             (ChordState::CtrlO, KeyCode::Char('t' | 'T')) if key.modifiers.is_empty() => {
@@ -584,6 +771,92 @@ impl TuiState {
         }
     }
 
+    fn handle_send_panel_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.send_panel.confirm_delete {
+            match key.code {
+                KeyCode::Char('y' | 'Y' | 'd' | 'D') if key.modifiers.is_empty() => {
+                    let deleted = self
+                        .selected_send_panel_item()
+                        .and_then(|item| self.delete_send_panel_item(&item));
+                    self.send_panel.confirm_delete = false;
+                    self.status = deleted.map_or_else(
+                        || "Nothing selected to delete".into(),
+                        |text| format!("Deleted {}", summarize_panel_text(&text)),
+                    );
+                }
+                KeyCode::Char('n' | 'N') | KeyCode::Esc if key.modifiers.is_empty() => {
+                    self.send_panel.confirm_delete = false;
+                    self.status = "Delete canceled".into();
+                }
+                _ => {
+                    self.status = "Delete selected? y/d delete • n cancel".into();
+                }
+            }
+            return TuiAction::None;
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                self.overlay = None;
+                if self.working {
+                    self.set_calling_status();
+                } else {
+                    self.status = HELP_STATUS.into();
+                }
+                TuiAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
+                self.move_send_panel_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
+                self.move_send_panel_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char('q' | 'Q') if key.modifiers.is_empty() => {
+                let Some(prompt) = self.take_composer_text() else {
+                    self.status = "No input to queue".into();
+                    return TuiAction::None;
+                };
+                self.enqueue_prompt(prompt.clone());
+                self.status = format!("Queued {}", summarize_panel_text(&prompt));
+                TuiAction::QueuePrompt(prompt)
+            }
+            KeyCode::Char('d' | 'D') if key.modifiers.is_empty() => {
+                if self.draft_current_input() {
+                    self.status = "Moved current input to Draft".into();
+                } else {
+                    self.status = "No input to draft".into();
+                }
+                TuiAction::None
+            }
+            KeyCode::Char('x' | 'X') if key.modifiers.is_empty() => {
+                if self.selected_send_panel_item().is_some() {
+                    self.send_panel.confirm_delete = true;
+                    self.status = "Delete selected? y/d delete • n cancel".into();
+                } else {
+                    self.status = "Nothing selected to delete".into();
+                }
+                TuiAction::None
+            }
+            KeyCode::Enter if key.modifiers.is_empty() => {
+                let Some(item) = self.selected_send_panel_item() else {
+                    self.status = "Nothing selected to load".into();
+                    return TuiAction::None;
+                };
+                if self.draft_current_input() {
+                    self.status = "Moved current input to Draft and loaded selection".into();
+                } else {
+                    self.status = "Loaded selection into input".into();
+                }
+                let text = self.remove_or_copy_send_panel_item_for_input(&item);
+                self.composer.replace_text(text);
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
     fn handle_settings_key(&mut self, key: KeyEvent) -> TuiAction {
         match self.settings.handle_key(key) {
             SettingsAction::None => TuiAction::None,
@@ -616,6 +889,11 @@ impl TuiState {
 
     fn submit_input(&mut self) -> TuiAction {
         match self.composer.submit() {
+            Some(prompt) if self.working => {
+                self.record_steer(prompt.clone());
+                self.status = "Steering current response…".into();
+                TuiAction::SteerPrompt(prompt)
+            }
             Some(prompt) => self.submit_text(prompt),
             None => TuiAction::None,
         }
@@ -690,6 +968,14 @@ impl TuiState {
         self.open_settings_overlay();
     }
 
+    pub fn open_send_panel(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::SendPanel);
+        self.send_panel.confirm_delete = false;
+        self.clamp_send_panel_cursor();
+        self.status = "Send panel: ↑/↓ select • q queue input • Enter load • d draft input • x delete • Esc close".into();
+    }
+
     fn open_model_selection_overlay(&mut self) {
         self.clear_error();
         self.settings.open_model_selection();
@@ -740,6 +1026,39 @@ fn is_force_quit_key(key: KeyEvent) -> bool {
 
 fn is_ctrl_o_key(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('o') | KeyCode::Char('O') if key.modifiers.contains(KeyModifiers::CONTROL))
+}
+
+fn provider_label(model: &str) -> String {
+    let provider = model
+        .split_once(':')
+        .map_or(model, |(provider, _)| provider);
+    match provider.to_ascii_lowercase().as_str() {
+        "openrouter" => "OpenRouter".into(),
+        "openai" => "OpenAI".into(),
+        "" => "model".into(),
+        other => {
+            let mut chars = other.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => "model".into(),
+            }
+        }
+    }
+}
+
+fn summarize_panel_text(text: &str) -> String {
+    let first_line = text.lines().next().unwrap_or_default().trim();
+    let summary = if first_line.is_empty() {
+        text.trim()
+    } else {
+        first_line
+    };
+    let chars = summary.chars().collect::<Vec<_>>();
+    if chars.len() <= 48 {
+        format!("`{summary}`")
+    } else {
+        format!("`{}…`", chars.into_iter().take(47).collect::<String>())
+    }
 }
 
 #[cfg(test)]
@@ -794,15 +1113,20 @@ mod tests {
     }
 
     #[test]
-    fn working_state_pauses_input() {
-        let mut state = TuiState::new();
+    fn working_state_accepts_input_and_enter_steers() {
+        let mut state = TuiState::with_settings("openrouter:test/model", ThinkingLevel::Off);
         state.set_working(true);
         assert_eq!(state.handle_key(key(KeyCode::Char('x'))), TuiAction::None);
+        assert_eq!(state.input(), "x");
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SteerPrompt("x".into())
+        );
         assert_eq!(state.input(), "");
-        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.steer_items, vec!["x".to_string()]);
         assert_eq!(state.handle_paste("pasted"), TuiAction::None);
-        assert_eq!(state.input(), "");
-        assert!(state.status.contains("Generating"));
+        assert_eq!(state.input(), "pasted");
+        assert!(state.status.contains("Steering") || state.status.contains("Calling"));
     }
 
     #[test]
@@ -861,7 +1185,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_o_s_opens_settings_overlay() {
+    fn ctrl_o_s_opens_send_panel() {
         let mut state = TuiState::new();
         assert_eq!(
             state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
@@ -869,8 +1193,48 @@ mod tests {
         );
         assert_eq!(state.chord, ChordState::CtrlO);
         assert_eq!(state.handle_key(key(KeyCode::Char('s'))), TuiAction::None);
-        assert_eq!(state.overlay, Some(OverlayKind::Settings));
+        assert_eq!(state.overlay, Some(OverlayKind::SendPanel));
         assert_eq!(state.chord, ChordState::None);
+    }
+
+    #[test]
+    fn send_panel_q_queues_current_input() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("next task");
+        state.open_send_panel();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('q'))),
+            TuiAction::QueuePrompt("next task".into())
+        );
+        assert_eq!(state.input(), "");
+        assert_eq!(state.queued_items, vec!["next task".to_string()]);
+    }
+
+    #[test]
+    fn send_panel_drafts_current_input_and_enter_loads_selection() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("draft me");
+        state.open_send_panel();
+        assert_eq!(state.handle_key(key(KeyCode::Char('d'))), TuiAction::None);
+        assert_eq!(state.input(), "");
+        assert_eq!(state.draft_items, vec!["draft me".to_string()]);
+
+        state.composer.replace_text("keep this safe");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.input(), "draft me");
+        assert_eq!(state.draft_items, vec!["keep this safe".to_string()]);
+    }
+
+    #[test]
+    fn send_panel_x_confirms_delete_with_d() {
+        let mut state = TuiState::new();
+        state.draft_items.push("old draft".into());
+        state.open_send_panel();
+        assert_eq!(state.handle_key(key(KeyCode::Char('x'))), TuiAction::None);
+        assert!(state.send_panel.confirm_delete);
+        assert_eq!(state.handle_key(key(KeyCode::Char('d'))), TuiAction::None);
+        assert!(!state.send_panel.confirm_delete);
+        assert!(state.draft_items.is_empty());
     }
 
     #[test]

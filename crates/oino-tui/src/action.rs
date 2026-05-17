@@ -7,6 +7,8 @@ use oino_types::ThinkingLevel;
 pub enum TuiAction {
     None,
     SubmitPrompt(String),
+    SteerPrompt(String),
+    QueuePrompt(String),
     SetModel(String),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),

@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    app::{ChordState, OverlayKind, TuiFocus, TuiState},
+    app::{ChordState, OverlayKind, SendPanelItem, SendPanelSection, TuiFocus, TuiState},
     command::CommandSuggestionsView,
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
     settings::{
@@ -84,8 +84,10 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         }
     }
 
-    if matches!(state.overlay, Some(OverlayKind::Settings)) {
-        render_settings_overlay(frame, area, &state.settings, theme);
+    match state.overlay {
+        Some(OverlayKind::Settings) => render_settings_overlay(frame, area, &state.settings, theme),
+        Some(OverlayKind::SendPanel) => render_send_panel_overlay(frame, area, state, theme),
+        None => {}
     }
 
     if state.chord != ChordState::None {
@@ -95,7 +97,9 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
 
 fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, chord: ChordState, theme: &Theme) {
     let title = match chord {
-        ChordState::CtrlO => " Ctrl-O chord: s settings • t transcript • Esc cancel ",
+        ChordState::CtrlO => {
+            " Ctrl-O chord: s send panel • t transcript • e expand paste • Esc cancel "
+        }
         ChordState::None => return,
     };
     frame.render_widget(
@@ -291,6 +295,16 @@ fn transcript_lines_for_width(state: &TuiState, width: usize, theme: &Theme) -> 
         theme,
     );
 
+    if let Some(status) = state.activity_status() {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(vec![
+            Span::styled("● ", theme.working.add_modifier(Modifier::BOLD)),
+            Span::styled(status, theme.working),
+        ]));
+    }
+
     if lines.is_empty() {
         lines.push(Line::from(vec![Span::styled(
             "No messages yet. Send a task to start.",
@@ -480,7 +494,7 @@ fn render_transcript_scrollbar(
 
 fn render_composer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
     let title = if state.working {
-        " Task • Generating… "
+        " Task • steer while streaming "
     } else {
         " Task "
     };
@@ -613,6 +627,169 @@ fn command_suggestion_title(
     } else {
         suggestions.title.clone()
     }
+}
+
+fn render_send_panel_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 86, 70);
+    frame.render_widget(Clear, overlay);
+
+    let block = Block::default()
+        .title(Span::styled(" Send Panel ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border));
+    frame.render_widget(block, overlay);
+
+    let inner = overlay.inner(ratatui::layout::Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(2)])
+        .split(inner);
+
+    let content_width = sections[0].width.saturating_sub(2) as usize;
+    let content_height = sections[0].height.saturating_sub(2).max(1) as usize;
+    let lines = send_panel_lines(state, content_width, content_height, theme);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Steer / Queue / Draft ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        sections[0],
+    );
+
+    let controls = if state.send_panel.confirm_delete {
+        "Delete selected? y/d delete • n/Esc cancel"
+    } else {
+        "↑/↓ select • Enter load • q queue input • d draft input • x delete • Esc close"
+    };
+    let status = format!("{} • {controls}", state.status);
+    frame.render_widget(
+        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
+        sections[1],
+    );
+}
+
+fn send_panel_lines(
+    state: &TuiState,
+    content_width: usize,
+    content_height: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let items = state.send_panel_items();
+    let mut lines = vec![Line::from(vec![
+        Span::styled("Input: ", Style::default().fg(theme.muted)),
+        if state.input().trim().is_empty() {
+            Span::styled("empty", theme.placeholder)
+        } else {
+            Span::styled(
+                panel_preview(state.input(), content_width.saturating_sub(7)),
+                Style::default().fg(theme.fg),
+            )
+        },
+    ])];
+    lines.push(Line::from(""));
+
+    for section in [
+        SendPanelSection::Steer,
+        SendPanelSection::Queue,
+        SendPanelSection::Draft,
+    ] {
+        let count = items.iter().filter(|item| item.section == section).count();
+        let heading = match section {
+            SendPanelSection::Steer => format!("Steer ({count}) — Enter while streaming"),
+            SendPanelSection::Queue => format!("Queue ({count}) — q sends current input here"),
+            SendPanelSection::Draft => format!("Draft ({count}) — d parks current input"),
+        };
+        lines.push(Line::styled(
+            heading,
+            Style::default()
+                .fg(theme.tool_border)
+                .add_modifier(Modifier::BOLD),
+        ));
+
+        let mut section_has_items = false;
+        for (flat_index, item) in items.iter().enumerate() {
+            if item.section != section {
+                continue;
+            }
+            section_has_items = true;
+            let active = flat_index == state.send_panel.cursor;
+            lines.push(send_panel_item_line(item, active, content_width, theme));
+        }
+        if !section_has_items {
+            lines.push(Line::styled("  (empty)", Style::default().fg(theme.muted)));
+        }
+        lines.push(Line::from(""));
+    }
+
+    if lines.last().is_some_and(|line| plain_line(line).is_empty()) {
+        lines.pop();
+    }
+
+    if lines.len() > content_height {
+        let selected_line = send_panel_selected_line(&items, state.send_panel.cursor).unwrap_or(0);
+        let range = visible_range(selected_line, lines.len(), content_height);
+        return lines[range].to_vec();
+    }
+
+    lines
+}
+
+fn send_panel_item_line(
+    item: &SendPanelItem,
+    active: bool,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let marker = arrow_marker(active);
+    let label = format!("{marker} {}. ", item.index.saturating_add(1));
+    let preview_width = width.saturating_sub(label.width());
+    Line::from(vec![
+        Span::styled(label, item_style(active, false, theme)),
+        Span::styled(
+            panel_preview(&item.text, preview_width),
+            item_style(active, false, theme),
+        ),
+    ])
+}
+
+fn send_panel_selected_line(items: &[SendPanelItem], cursor: usize) -> Option<usize> {
+    let selected = items.get(cursor)?;
+    let mut line = 2usize;
+    for section in [
+        SendPanelSection::Steer,
+        SendPanelSection::Queue,
+        SendPanelSection::Draft,
+    ] {
+        line = line.saturating_add(1);
+        let mut section_has_items = false;
+        for (flat_index, item) in items.iter().enumerate() {
+            if item.section != section {
+                continue;
+            }
+            section_has_items = true;
+            if item.section == selected.section && flat_index == cursor {
+                return Some(line);
+            }
+            line = line.saturating_add(1);
+        }
+        if !section_has_items {
+            line = line.saturating_add(1);
+        }
+        line = line.saturating_add(1);
+    }
+    None
+}
+
+fn panel_preview(text: &str, width: usize) -> String {
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    truncate_to_width(&compact, width.max(1))
 }
 
 fn render_settings_overlay(
@@ -1223,8 +1400,8 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect::<String>();
-        assert!(text.contains("Generating"));
-        assert!(text.contains("input paused"));
+        assert!(text.contains("Calling"));
+        assert!(text.contains("steer"));
     }
 
     #[test]
@@ -1523,7 +1700,7 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(text.contains("Ctrl-O chord"));
-        assert!(text.contains("s settings"));
+        assert!(text.contains("s send panel"));
         assert!(text.contains("Esc cancel"));
     }
 

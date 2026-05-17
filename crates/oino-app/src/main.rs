@@ -379,8 +379,23 @@ async fn run_tui(
     spawn_model_catalog_task(tx.clone(), provider_config);
     let mut prompt_in_flight = false;
     loop {
+        let mut prompt_finished = false;
         while let Ok(event) = rx.try_recv() {
+            if matches!(event, TuiRuntimeEvent::PromptFinished(_)) {
+                prompt_finished = true;
+            }
             apply_tui_runtime_event(&mut state, event, &mut prompt_in_flight);
+        }
+        if prompt_finished {
+            start_next_queued_prompt_if_idle(
+                &mut state,
+                &auth,
+                &harness,
+                &tx,
+                &session_path,
+                &mut prompt_in_flight,
+            )
+            .await;
         }
         if applied_thinking_level != state.settings.selected_thinking_level {
             applied_thinking_level = state.settings.selected_thinking_level;
@@ -458,38 +473,118 @@ async fn run_tui(
                 }
             }
             TuiAction::SubmitPrompt(prompt) => {
+                start_prompt(
+                    &mut state,
+                    &auth,
+                    &harness,
+                    &tx,
+                    &session_path,
+                    &mut prompt_in_flight,
+                    prompt,
+                )
+                .await;
+            }
+            TuiAction::SteerPrompt(prompt) => {
                 if prompt_in_flight {
-                    state.set_error("A prompt is already running.");
-                    state.status = "● Generating… input paused".into();
-                    continue;
+                    match harness.steer(Message::user_text(prompt)).await {
+                        Ok(()) => state.status = "Steered current response".into(),
+                        Err(err) => state.set_error(user_facing_error(&err)),
+                    }
+                } else {
+                    start_prompt(
+                        &mut state,
+                        &auth,
+                        &harness,
+                        &tx,
+                        &session_path,
+                        &mut prompt_in_flight,
+                        prompt,
+                    )
+                    .await;
                 }
-                if let Err(message) = preflight_openrouter_credentials(&auth).await {
-                    state.set_error(message);
-                    state.status = HELP_STATUS.into();
-                    continue;
-                }
-                state.set_working(true);
-                prompt_in_flight = true;
-                let prompt_message = Message::user_text(prompt);
-                let task_harness = Arc::clone(&harness);
-                let task_tx = tx.clone();
-                let task_session_path = session_path.clone();
-                tokio::spawn(async move {
-                    let result = match task_harness.prompt(prompt_message).await {
-                        Ok(messages) => {
-                            match task_harness.save_session_jsonl(&task_session_path).await {
-                                Ok(()) => Ok(messages),
-                                Err(err) => Err(err.to_string()),
-                            }
-                        }
-                        Err(err) => Err(user_facing_error(&err)),
-                    };
-                    let _ = task_tx.send(TuiRuntimeEvent::PromptFinished(result));
-                });
+            }
+            TuiAction::QueuePrompt(_) => {
+                start_next_queued_prompt_if_idle(
+                    &mut state,
+                    &auth,
+                    &harness,
+                    &tx,
+                    &session_path,
+                    &mut prompt_in_flight,
+                )
+                .await;
             }
         }
     }
     Ok(())
+}
+
+async fn start_next_queued_prompt_if_idle(
+    state: &mut TuiState,
+    auth: &AuthStorage,
+    harness: &Arc<Harness>,
+    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
+    session_path: &Path,
+    prompt_in_flight: &mut bool,
+) {
+    if *prompt_in_flight {
+        return;
+    }
+    let Some(prompt) = state.next_queued_prompt().map(ToOwned::to_owned) else {
+        return;
+    };
+    if start_prompt(
+        state,
+        auth,
+        harness,
+        tx,
+        session_path,
+        prompt_in_flight,
+        prompt,
+    )
+    .await
+    {
+        let _ = state.pop_next_queued_prompt();
+    }
+}
+
+async fn start_prompt(
+    state: &mut TuiState,
+    auth: &AuthStorage,
+    harness: &Arc<Harness>,
+    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
+    session_path: &Path,
+    prompt_in_flight: &mut bool,
+    prompt: String,
+) -> bool {
+    if *prompt_in_flight {
+        state.set_error(
+            "A prompt is already running. Use Enter to steer or Ctrl-O s then q to queue.",
+        );
+        return false;
+    }
+    if let Err(message) = preflight_openrouter_credentials(auth).await {
+        state.set_error(message);
+        state.status = HELP_STATUS.into();
+        return false;
+    }
+    state.set_working(true);
+    *prompt_in_flight = true;
+    let prompt_message = Message::user_text(prompt);
+    let task_harness = Arc::clone(harness);
+    let task_tx = tx.clone();
+    let task_session_path = session_path.to_path_buf();
+    tokio::spawn(async move {
+        let result = match task_harness.prompt(prompt_message).await {
+            Ok(messages) => match task_harness.save_session_jsonl(&task_session_path).await {
+                Ok(()) => Ok(messages),
+                Err(err) => Err(err.to_string()),
+            },
+            Err(err) => Err(user_facing_error(&err)),
+        };
+        let _ = task_tx.send(TuiRuntimeEvent::PromptFinished(result));
+    });
+    true
 }
 
 fn handle_mouse_event(
@@ -863,10 +958,14 @@ fn spawn_model_catalog_task(
 
 async fn register_tui_stream_hooks(harness: &Harness, tx: mpsc::UnboundedSender<TuiRuntimeEvent>) {
     for hook in [
+        NotificationHook::AgentStart,
         NotificationHook::MessageStart,
         NotificationHook::MessageUpdate,
         NotificationHook::MessageEnd,
+        NotificationHook::ToolExecutionStart,
+        NotificationHook::ToolExecutionEnd,
         NotificationHook::AgentEnd,
+        NotificationHook::QueueUpdate,
         NotificationHook::Settled,
     ] {
         let tx = tx.clone();
@@ -891,6 +990,11 @@ fn apply_tui_runtime_event(
     prompt_in_flight: &mut bool,
 ) {
     match event {
+        TuiRuntimeEvent::Agent(AgentEvent::AgentStart { .. }) => {
+            if state.working {
+                state.set_calling_status();
+            }
+        }
         TuiRuntimeEvent::Agent(AgentEvent::MessageStart { message_id, role }) => {
             state.start_message(message_id, role);
         }
@@ -903,8 +1007,23 @@ fn apply_tui_runtime_event(
         TuiRuntimeEvent::Agent(AgentEvent::MessageEnd { message }) => {
             state.finish_message(&message);
         }
+        TuiRuntimeEvent::Agent(AgentEvent::ToolExecutionStart { call }) => {
+            state.status = format!("Running tool `{}`…", call.name);
+        }
+        TuiRuntimeEvent::Agent(AgentEvent::ToolExecutionEnd { .. }) => {
+            if state.working {
+                state.set_calling_status();
+            }
+        }
+        TuiRuntimeEvent::Agent(AgentEvent::QueueUpdate { queue, pending }) => {
+            state.status = format!("{queue} queue: {pending} pending");
+        }
         TuiRuntimeEvent::Agent(AgentEvent::Settled) => {
-            state.status = HELP_STATUS.into();
+            state.status = if state.working {
+                "Saving…".into()
+            } else {
+                HELP_STATUS.into()
+            };
         }
         TuiRuntimeEvent::Agent(AgentEvent::AgentEnd { .. }) => {
             state.status = "Saving…".into();
