@@ -2,7 +2,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-pub const INPUT_PLACEHOLDER: &str = "Ask Oino or type / for commands";
+pub const INPUT_PLACEHOLDER: &str = "Ask Oino • / commands • @ file paths";
 pub(crate) const COLLAPSED_PASTE_MIN_LINES: usize = 8;
 pub(crate) const COLLAPSED_PASTE_MIN_CHARS: usize = 1200;
 pub(crate) const MAX_PASTE_CHARS: usize = 200_000;
