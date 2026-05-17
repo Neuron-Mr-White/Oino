@@ -450,6 +450,11 @@ impl Harness {
         Ok(())
     }
 
+    pub async fn replace_session(&self, session: SessionManager) {
+        self.agent.reset().await;
+        *self.session.lock().await = session;
+    }
+
     pub async fn set_model(&self, model: Model) -> HarnessResult<()> {
         self.agent.set_model(model.clone()).await;
         self.session
@@ -681,5 +686,19 @@ mod tests {
         let result = h.prompt(Message::user_text("hi")).await;
         assert!(result.is_ok());
         assert!(!h.build_context().await.unwrap_or_default().is_empty());
+    }
+
+    #[tokio::test]
+    async fn replace_session_clears_agent_and_session_context() {
+        let h = harness();
+        let result = h.prompt(Message::user_text("hi")).await;
+        assert!(result.is_ok());
+        assert!(!h.build_context().await.unwrap_or_default().is_empty());
+
+        let replacement = SessionManager::new(SessionHeader::new("new", PathBuf::from("/tmp")));
+        h.replace_session(replacement).await;
+
+        assert!(h.build_context().await.unwrap_or_default().is_empty());
+        assert!(h.agent.messages().await.is_empty());
     }
 }

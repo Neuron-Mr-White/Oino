@@ -9,6 +9,7 @@ pub enum TuiAction {
     SubmitPrompt(String),
     SteerPrompt(String),
     QueuePrompt(String),
+    NewSession,
     SetModel(String),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),

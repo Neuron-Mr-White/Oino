@@ -8,6 +8,7 @@ use oino_types::{Model, ThinkingLevel};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
+    Session,
     Settings,
 }
 
@@ -34,10 +35,16 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "Open or change thinking level",
         kind: CommandKind::Settings,
     },
+    CommandSpec {
+        name: "/new",
+        summary: "Start a new session",
+        kind: CommandKind::Session,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedCommand {
+    NewSession,
     Settings(SettingsCommand),
 }
 
@@ -209,6 +216,7 @@ pub fn command_query(input: &str, cursor: usize) -> Option<String> {
 pub fn parse_command(input: &str) -> Option<ParsedCommand> {
     let tokens = input.split_whitespace().collect::<Vec<_>>();
     match tokens.as_slice() {
+        ["/new"] => Some(ParsedCommand::NewSession),
         ["/settings"] => Some(ParsedCommand::Settings(SettingsCommand::Open)),
         ["/model"] => Some(ParsedCommand::Settings(SettingsCommand::OpenModelSelection)),
         ["/thinking"] => Some(ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel)),
@@ -755,6 +763,7 @@ mod tests {
         assert_eq!(view.items[0].label, "/settings");
         let view = command_suggestions_for("/", 1, &models())
             .unwrap_or_else(|| panic!("missing root view"));
+        assert!(view.items.iter().any(|item| item.label == "/new"));
         assert!(view.items.iter().any(|item| item.label == "/model"));
         assert!(view.items.iter().any(|item| item.label == "/thinking"));
         let view = command_suggestions_for("/nope", 5, &models())
@@ -764,6 +773,7 @@ mod tests {
 
     #[test]
     fn parses_settings_commands() {
+        assert_eq!(parse_command("/new"), Some(ParsedCommand::NewSession));
         assert_eq!(
             parse_command("/settings"),
             Some(ParsedCommand::Settings(SettingsCommand::Open))

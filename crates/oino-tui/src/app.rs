@@ -917,6 +917,11 @@ impl TuiState {
 
     fn execute_command(&mut self, command: ParsedCommand) -> TuiAction {
         match command {
+            ParsedCommand::NewSession => {
+                self.clear_error();
+                self.status = "Starting new session…".into();
+                TuiAction::NewSession
+            }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();
                 TuiAction::None
@@ -966,6 +971,24 @@ impl TuiState {
 
     pub fn open_settings(&mut self) {
         self.open_settings_overlay();
+    }
+
+    pub fn reset_for_new_session(&mut self, session_id: &str) {
+        self.messages.clear();
+        self.composer.clear();
+        self.focus = TuiFocus::Composer;
+        self.working = false;
+        self.error = None;
+        self.overlay = None;
+        self.command_suggestions = CommandSuggestionsState::new();
+        self.chord = ChordState::None;
+        self.transcript_scroll.jump_bottom();
+        self.send_panel = SendPanelState::default();
+        self.steer_items.clear();
+        self.queued_items.clear();
+        self.draft_items.clear();
+        self.quit_pending = false;
+        self.status = format!("Started new session {session_id}");
     }
 
     pub fn open_send_panel(&mut self) {
@@ -1301,6 +1324,34 @@ mod tests {
         assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
         assert_eq!(state.overlay, Some(OverlayKind::Settings));
         assert_eq!(state.input(), "");
+    }
+
+    #[test]
+    fn new_command_emits_new_session_action_and_reset_clears_state() {
+        let mut state = TuiState::new();
+        state.messages.push(crate::message::MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "assistant".into(),
+            title: None,
+            content: "old".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        });
+        state.queued_items.push("queued".into());
+        for ch in "/new".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::NewSession);
+        state.reset_for_new_session("abc");
+
+        assert!(state.messages.is_empty());
+        assert!(state.queued_items.is_empty());
+        assert_eq!(state.input(), "");
+        assert!(state.status.contains("abc"));
     }
 
     #[test]

@@ -117,7 +117,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /settings\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /settings\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
 }
 
 #[derive(Debug, Error)]
@@ -355,7 +355,7 @@ async fn run_tui(
         initial_tool_collapse_mode,
         initial_chat_style,
         provider_config,
-        session_path,
+        mut session_path,
         open_settings,
     } = launch;
     let mut terminal = TerminalGuard::enter()?;
@@ -514,9 +514,41 @@ async fn run_tui(
                 )
                 .await;
             }
+            TuiAction::NewSession => {
+                if prompt_in_flight {
+                    state.set_error("Cannot start a new session while a prompt is running");
+                } else {
+                    start_new_tui_session(&mut state, &harness, &mut session_path).await;
+                }
+            }
         }
     }
     Ok(())
+}
+
+async fn start_new_tui_session(
+    state: &mut TuiState,
+    harness: &Arc<Harness>,
+    session_path: &mut PathBuf,
+) {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let root = match default_session_root() {
+        Ok(root) => root,
+        Err(err) => {
+            state.set_error(format!("New session failed: {err}"));
+            return;
+        }
+    };
+    let repository = SessionRepository::new(root);
+    match repository.create("oino", cwd).await {
+        Ok((path, session)) => {
+            harness.replace_session(session).await;
+            *session_path = path;
+            let session_id = session_id_from_path(session_path);
+            state.reset_for_new_session(&session_id);
+        }
+        Err(err) => state.set_error(format!("New session failed: {err}")),
+    }
 }
 
 async fn start_next_queued_prompt_if_idle(
@@ -820,6 +852,11 @@ async fn execute_runtime_command(
     session_path: &std::path::Path,
 ) -> Result<String, AppError> {
     let message = match command {
+        ParsedCommand::NewSession => {
+            return Err(AppError::InvalidArguments(
+                "`/new` opens a fresh session in the TUI; start `oino` without `--session` to create a new non-interactive session".into(),
+            ));
+        }
         ParsedCommand::Settings(
             SettingsCommand::Open
             | SettingsCommand::OpenModelSelection
