@@ -13,8 +13,10 @@ pub mod theme;
 pub use action::TuiAction;
 pub use app::{ChordState, OverlayKind, TuiFocus, TuiState, HELP_STATUS};
 pub use command::{
-    command_query, command_suggestions_for, parse_command, CommandKind, CommandSpec,
-    CommandSuggestionsState, CommandSuggestionsView, COMMANDS,
+    collapse_mode_value, collapse_target_value, command_query, command_suggestions_for,
+    parse_collapse_mode, parse_collapse_target, parse_command, parse_thinking_level,
+    thinking_level_value, CommandKind, CommandSpec, CommandSuggestionItem, CommandSuggestionsState,
+    CommandSuggestionsView, ParsedCommand, SettingsCommand, COMMANDS,
 };
 pub use composer::{is_newline_key, is_word_cursor_modifier, ComposerState, INPUT_PLACEHOLDER};
 pub use message::{project_message, project_messages, MessageView};

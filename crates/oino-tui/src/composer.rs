@@ -61,6 +61,16 @@ impl ComposerState {
         self.cursor = char_count(&self.text);
     }
 
+    pub fn replace_char_range(&mut self, start: usize, end: usize, replacement: &str) {
+        let len = char_count(&self.text);
+        let start = start.min(len);
+        let end = end.min(len).max(start);
+        let start_byte = byte_index_at_char(&self.text, start);
+        let end_byte = byte_index_at_char(&self.text, end);
+        self.text.replace_range(start_byte..end_byte, replacement);
+        self.cursor = start + char_count(replacement);
+    }
+
     #[must_use]
     pub fn submit(&mut self) -> Option<String> {
         if !self.enabled {
@@ -369,6 +379,15 @@ mod tests {
         assert_eq!(composer.submit(), Some("hi\nt".into()));
         assert_eq!(composer.text(), "");
         assert_eq!(composer.cursor(), 0);
+    }
+
+    #[test]
+    fn replace_char_range_updates_text_and_cursor() {
+        let mut composer = ComposerState::new();
+        composer.replace_text("/settings mo");
+        composer.replace_char_range(10, 12, "model ");
+        assert_eq!(composer.text(), "/settings model ");
+        assert_eq!(composer.cursor(), 16);
     }
 
     #[test]

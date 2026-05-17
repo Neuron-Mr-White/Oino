@@ -2,7 +2,7 @@
 
 use oino_provider_openrouter::{list_models, OpenRouterConfig, OpenRouterModelInfo};
 use oino_tui::{all_thinking_levels, ModelOption};
-use oino_types::ThinkingLevel;
+use oino_types::{Model, ThinkingLevel};
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
@@ -99,7 +99,7 @@ fn openrouter_to_cached(model: OpenRouterModelInfo) -> CachedModel {
 }
 
 fn cached_to_option(model: CachedModel) -> ModelOption {
-    ModelOption::new(model.id)
+    ModelOption::new(Model::new("openrouter", model.id).identifier())
         .with_display_name(model.display_name)
         .with_thinking_levels(thinking_levels_for_supported_parameters(
             &model.supported_parameters,

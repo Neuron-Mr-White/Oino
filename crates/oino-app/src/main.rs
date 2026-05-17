@@ -16,9 +16,12 @@ use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
-use oino_session::{SessionHeader, SessionManager};
-use oino_tui::{render, CollapseMode, TuiAction, TuiState, HELP_STATUS};
-use oino_types::{Message, Model, ThinkingLevel};
+use oino_session::{SessionManager, SessionRepository};
+use oino_tui::{
+    collapse_mode_value, collapse_target_value, parse_command, render, CollapseMode, ParsedCommand,
+    SettingsCommand, TuiAction, TuiState, HELP_STATUS,
+};
+use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io::{self, Stdout},
@@ -30,9 +33,81 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use user_settings::UserSettings;
 
-const DEFAULT_OPENROUTER_MODEL: &str = "openai/gpt-4o-mini";
+const DEFAULT_OPENROUTER_MODEL: &str = "openrouter:openai/gpt-4o-mini";
 const MISSING_OPENROUTER_API_KEY_MESSAGE: &str =
     "Missing OpenRouter API key. Set OPENROUTER_API_KEY or add ~/.oino/auth.json.";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CliArgs {
+    show_help: bool,
+    settings: bool,
+    model: Option<String>,
+    session: Option<OinoId>,
+    input: Option<String>,
+}
+
+impl CliArgs {
+    fn parse_from<I, S>(args: I) -> Result<Self, AppError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let mut args = args.into_iter().map(Into::into).peekable();
+        let mut parsed = Self {
+            show_help: false,
+            settings: false,
+            model: None,
+            session: None,
+            input: None,
+        };
+        let mut input_parts = Vec::new();
+        while let Some(arg) = args.next() {
+            if !input_parts.is_empty() {
+                input_parts.push(arg);
+                continue;
+            }
+            match arg.as_str() {
+                "--help" | "-h" => parsed.show_help = true,
+                "--settings" => parsed.settings = true,
+                "--model" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "--model requires a value".into(),
+                        ));
+                    };
+                    parsed.model = Some(value);
+                }
+                "--session" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "--session requires a uuid".into(),
+                        ));
+                    };
+                    parsed.session = Some(value.parse().map_err(|_| {
+                        AppError::InvalidArguments(format!("invalid session uuid `{value}`"))
+                    })?);
+                }
+                value if value.starts_with('-') => {
+                    return Err(AppError::InvalidArguments(format!(
+                        "unknown flag `{value}`"
+                    )));
+                }
+                value => input_parts.push(value.to_string()),
+            }
+        }
+        if !input_parts.is_empty() {
+            parsed.input = Some(input_parts.join(" "));
+        }
+        if parsed.model.is_some() {
+            parsed.settings = true;
+        }
+        Ok(parsed)
+    }
+}
+
+fn usage() -> &'static str {
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /settings\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>"
+}
 
 #[derive(Debug, Error)]
 enum AppError {
@@ -42,6 +117,12 @@ enum AppError {
     Provider(#[from] oino_provider_openrouter::OpenRouterError),
     #[error(transparent)]
     Harness(#[from] HarnessError),
+    #[error(transparent)]
+    Session(#[from] oino_session::SessionError),
+    #[error("invalid arguments: {0}")]
+    InvalidArguments(String),
+    #[error("invalid model identifier `{0}`; expected provider:model-id")]
+    InvalidModelIdentifier(String),
     #[error(transparent)]
     Io(#[from] io::Error),
 }
@@ -54,6 +135,17 @@ struct AppConfig {
     tool_collapse_mode: CollapseMode,
     referer: Option<String>,
     title: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct TuiLaunchConfig {
+    initial_model: String,
+    initial_thinking_level: ThinkingLevel,
+    initial_thinking_collapse_mode: CollapseMode,
+    initial_tool_collapse_mode: CollapseMode,
+    provider_config: OpenRouterConfig,
+    session_path: PathBuf,
+    open_settings: bool,
 }
 
 impl AppConfig {
@@ -97,10 +189,59 @@ fn non_empty_env(name: &str) -> Option<String> {
     }
 }
 
+fn ensure_model_identifier(value: &str) -> Result<Model, AppError> {
+    Model::from_identifier(value).ok_or_else(|| AppError::InvalidModelIdentifier(value.into()))
+}
+
+async fn load_or_create_session(
+    session_id: Option<OinoId>,
+    cwd: PathBuf,
+) -> Result<(PathBuf, SessionManager), AppError> {
+    let repository = SessionRepository::new(default_session_root()?);
+    if let Some(session_id) = session_id {
+        let path = default_session_root()?.join(format!("{session_id}.jsonl"));
+        let session = repository.open(&path).await?;
+        return Ok((path, session));
+    }
+    Ok(repository.create("oino", cwd).await?)
+}
+
+fn default_session_root() -> Result<PathBuf, AppError> {
+    let Some(home) = dirs::home_dir() else {
+        return Err(AppError::InvalidArguments(
+            "home directory unavailable for session storage".into(),
+        ));
+    };
+    Ok(home.join(".oino").join("sessions"))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
-    let config = AppConfig::load().await;
+    let cli = CliArgs::parse_from(std::env::args().skip(1))?;
+    if cli.show_help {
+        println!("{}", usage());
+        return Ok(());
+    }
+
+    let mut config = AppConfig::load().await;
+    if let Some(model) = cli.model.clone() {
+        ensure_model_identifier(&model)?;
+        config.model = model;
+    }
+
     let auth = AuthStorage::default_file()?;
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let (session_path, session) = load_or_create_session(cli.session, cwd.clone()).await?;
+    let session_context = session.build_session_context()?;
+    if cli.model.is_none() {
+        if let Some(model) = session_context.model {
+            config.model = model.identifier();
+        }
+    }
+    if let Some(thinking_level) = session_context.thinking_level {
+        config.thinking_level = thinking_level;
+    }
+
     let provider_config = OpenRouterConfig {
         referer: config.referer.clone(),
         title: config.title.clone(),
@@ -115,15 +256,25 @@ async fn main() -> Result<(), AppError> {
         config.thinking_level,
         provider,
         auth.clone(),
+        session,
     )?;
+
+    if cli.settings || cli.input.is_some() {
+        return run_non_interactive(cli, harness, auth, config, session_path).await;
+    }
+
     run_tui(
         harness,
         auth,
-        config.model,
-        config.thinking_level,
-        config.thinking_collapse_mode,
-        config.tool_collapse_mode,
-        provider_config,
+        TuiLaunchConfig {
+            initial_model: config.model,
+            initial_thinking_level: config.thinking_level,
+            initial_thinking_collapse_mode: config.thinking_collapse_mode,
+            initial_tool_collapse_mode: config.tool_collapse_mode,
+            provider_config,
+            session_path,
+            open_settings: false,
+        },
     )
     .await
 }
@@ -153,14 +304,16 @@ fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
 }
 
 fn build_harness(
-    model_name: String,
+    model_identifier: String,
     thinking_level: ThinkingLevel,
     provider: Arc<dyn StreamProvider>,
     auth: AuthStorage,
+    session: SessionManager,
 ) -> Result<Harness, AppError> {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let session = SessionManager::new(SessionHeader::new("oino", cwd.clone()));
-    let mut config = HarnessConfig::new(Model::new("openrouter", model_name), provider, session);
+    let cwd = session.header().cwd.clone();
+    let model = Model::from_identifier(&model_identifier)
+        .ok_or_else(|| AppError::InvalidModelIdentifier(model_identifier.clone()))?;
+    let mut config = HarnessConfig::new(model, provider, session);
     config.tools = oino_tools::default_tools(Arc::clone(&config.env), cwd.clone());
     config.system_prompt = Some(default_system_prompt(&cwd));
     config.thinking_level = thinking_level;
@@ -178,17 +331,28 @@ fn default_system_prompt(cwd: &std::path::Path) -> String {
 async fn run_tui(
     harness: Harness,
     auth: AuthStorage,
-    initial_model: String,
-    initial_thinking_level: ThinkingLevel,
-    initial_thinking_collapse_mode: CollapseMode,
-    initial_tool_collapse_mode: CollapseMode,
-    provider_config: OpenRouterConfig,
+    launch: TuiLaunchConfig,
 ) -> Result<(), AppError> {
+    let TuiLaunchConfig {
+        initial_model,
+        initial_thinking_level,
+        initial_thinking_collapse_mode,
+        initial_tool_collapse_mode,
+        provider_config,
+        session_path,
+        open_settings,
+    } = launch;
     let mut terminal = TerminalGuard::enter()?;
     let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
     state
         .settings
         .set_collapse_modes(initial_thinking_collapse_mode, initial_tool_collapse_mode);
+    if let Ok(messages) = harness.build_context().await {
+        state.set_messages_from_oino(&messages);
+    }
+    if open_settings {
+        state.open_settings();
+    }
     let mut applied_thinking_level = initial_thinking_level;
     let harness = Arc::new(harness);
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -220,13 +384,20 @@ async fn run_tui(
             TuiAction::Quit => break,
             TuiAction::SetModel(model) => {
                 let thinking_level = state.settings.selected_thinking_level;
-                if let Err(err) = harness.set_model(Model::new("openrouter", model)).await {
+                let Some(parsed_model) = Model::from_identifier(&model) else {
+                    state.set_error(format!(
+                        "Invalid model identifier `{model}`; expected provider:model-id"
+                    ));
+                    continue;
+                };
+                if let Err(err) = harness.set_model(parsed_model).await {
                     state.set_error(err.to_string());
                 } else if let Err(err) = harness.set_thinking_level(thinking_level).await {
                     state.set_error(err.to_string());
                 } else {
                     applied_thinking_level = thinking_level;
                     persist_current_settings(&mut state).await;
+                    save_tui_session(&mut state, &harness, &session_path).await;
                 }
             }
             TuiAction::SetThinkingLevel(level) => {
@@ -235,10 +406,12 @@ async fn run_tui(
                 } else {
                     applied_thinking_level = level;
                     persist_current_settings(&mut state).await;
+                    save_tui_session(&mut state, &harness, &session_path).await;
                 }
             }
             TuiAction::SetCollapseMode(_, _) => {
                 persist_current_settings(&mut state).await;
+                save_tui_session(&mut state, &harness, &session_path).await;
             }
             TuiAction::SubmitPrompt(prompt) => {
                 if prompt_in_flight {
@@ -256,17 +429,165 @@ async fn run_tui(
                 let prompt_message = Message::user_text(prompt);
                 let task_harness = Arc::clone(&harness);
                 let task_tx = tx.clone();
+                let task_session_path = session_path.clone();
                 tokio::spawn(async move {
-                    let result = task_harness
-                        .prompt(prompt_message)
-                        .await
-                        .map_err(|err| user_facing_error(&err));
+                    let result = match task_harness.prompt(prompt_message).await {
+                        Ok(messages) => {
+                            match task_harness.save_session_jsonl(&task_session_path).await {
+                                Ok(()) => Ok(messages),
+                                Err(err) => Err(err.to_string()),
+                            }
+                        }
+                        Err(err) => Err(user_facing_error(&err)),
+                    };
                     let _ = task_tx.send(TuiRuntimeEvent::PromptFinished(result));
                 });
             }
         }
     }
     Ok(())
+}
+
+async fn run_non_interactive(
+    cli: CliArgs,
+    harness: Harness,
+    auth: AuthStorage,
+    mut config: AppConfig,
+    session_path: PathBuf,
+) -> Result<(), AppError> {
+    if let Some(model) = cli.model.clone() {
+        let command =
+            ParsedCommand::Settings(SettingsCommand::SetModel(ensure_model_identifier(&model)?));
+        let message =
+            execute_runtime_command(command, &harness, &mut config, &session_path).await?;
+        if cli.input.is_none() {
+            println!("{message}");
+            return Ok(());
+        }
+    } else if cli.settings && cli.input.is_none() {
+        run_tui(
+            harness,
+            auth,
+            TuiLaunchConfig {
+                initial_model: config.model,
+                initial_thinking_level: config.thinking_level,
+                initial_thinking_collapse_mode: config.thinking_collapse_mode,
+                initial_tool_collapse_mode: config.tool_collapse_mode,
+                provider_config: OpenRouterConfig {
+                    referer: config.referer,
+                    title: config.title,
+                    ..OpenRouterConfig::default()
+                },
+                session_path,
+                open_settings: true,
+            },
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let Some(input) = cli.input else {
+        return Ok(());
+    };
+
+    if input.trim_start().starts_with('/') {
+        let command = parse_command(&input)
+            .ok_or_else(|| AppError::InvalidArguments(format!("unknown command `{input}`")))?;
+        let message =
+            execute_runtime_command(command, &harness, &mut config, &session_path).await?;
+        println!("{message}");
+        return Ok(());
+    }
+
+    preflight_openrouter_credentials(&auth)
+        .await
+        .map_err(AppError::InvalidArguments)?;
+    let messages = harness.prompt(Message::user_text(input)).await?;
+    harness.save_session_jsonl(&session_path).await?;
+    if let Some(text) = last_assistant_text(&messages) {
+        println!("{text}");
+    }
+    eprintln!("session: {}", session_id_from_path(&session_path));
+    Ok(())
+}
+
+async fn execute_runtime_command(
+    command: ParsedCommand,
+    harness: &Harness,
+    config: &mut AppConfig,
+    session_path: &std::path::Path,
+) -> Result<String, AppError> {
+    let message = match command {
+        ParsedCommand::Settings(
+            SettingsCommand::Open
+            | SettingsCommand::OpenModelSelection
+            | SettingsCommand::OpenThinkingLevel,
+        ) => {
+            return Err(AppError::InvalidArguments(
+                "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model openrouter:xai/glm-5.1` or `/thinking high`".into(),
+            ));
+        }
+        ParsedCommand::Settings(SettingsCommand::SetModel(model)) => {
+            let identifier = model.identifier();
+            harness.set_model(model).await?;
+            config.model = identifier.clone();
+            format!("Model set to {identifier}")
+        }
+        ParsedCommand::Settings(SettingsCommand::SetThinkingLevel(level)) => {
+            harness.set_thinking_level(level).await?;
+            config.thinking_level = level;
+            format!("Thinking level set to {}", oino_tui::thinking_label(level))
+        }
+        ParsedCommand::Settings(SettingsCommand::SetCollapseMode { target, mode }) => {
+            match target {
+                oino_tui::CollapseTarget::Thinking => config.thinking_collapse_mode = mode,
+                oino_tui::CollapseTarget::Tool => config.tool_collapse_mode = mode,
+            }
+            format!(
+                "{} collapse mode set to {}",
+                collapse_target_value(target),
+                collapse_mode_value(mode)
+            )
+        }
+    };
+    UserSettings::from_current(
+        config.model.clone(),
+        config.thinking_level,
+        config.thinking_collapse_mode,
+        config.tool_collapse_mode,
+    )
+    .save_default()
+    .await?;
+    harness.save_session_jsonl(session_path).await?;
+    Ok(message)
+}
+
+fn last_assistant_text(messages: &[Message]) -> Option<String> {
+    messages.iter().rev().find_map(|message| {
+        let Message::Assistant { content, .. } = message else {
+            return None;
+        };
+        let text = content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        if text.trim().is_empty() {
+            None
+        } else {
+            Some(text)
+        }
+    })
+}
+
+fn session_id_from_path(path: &std::path::Path) -> String {
+    path.file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("unknown")
+        .to_string()
 }
 
 #[derive(Debug)]
@@ -285,6 +606,13 @@ async fn persist_current_settings(state: &mut TuiState) {
     );
     if let Err(err) = settings.save_default().await {
         state.set_error(format!("Settings save failed: {err}"));
+        state.status = HELP_STATUS.into();
+    }
+}
+
+async fn save_tui_session(state: &mut TuiState, harness: &Harness, path: &std::path::Path) {
+    if let Err(err) = harness.save_session_jsonl(path).await {
+        state.set_error(format!("Session save failed: {err}"));
         state.status = HELP_STATUS.into();
     }
 }
@@ -449,18 +777,37 @@ mod tests {
     use super::*;
     use oino_agent_loop::FauxStream;
     use oino_auth::AuthConfig;
+    use oino_session::SessionHeader;
     use oino_types::{AssistantStreamEvent, StopReason};
 
     #[test]
     fn default_model_is_openrouter_model() {
-        assert_eq!(DEFAULT_OPENROUTER_MODEL, "openai/gpt-4o-mini");
+        assert_eq!(DEFAULT_OPENROUTER_MODEL, "openrouter:openai/gpt-4o-mini");
+    }
+
+    #[test]
+    fn cli_parses_session_and_command_input() {
+        let session_id = OinoId::nil();
+        let cli = CliArgs::parse_from([
+            "--session",
+            "00000000-0000-0000-0000-000000000000",
+            "/settings",
+            "model",
+            "openrouter:xai/glm-5.1",
+        ])
+        .unwrap_or_else(|err| panic!("parse failed: {err}"));
+        assert_eq!(cli.session, Some(session_id));
+        assert_eq!(
+            cli.input.as_deref(),
+            Some("/settings model openrouter:xai/glm-5.1")
+        );
     }
 
     #[test]
     fn app_config_uses_saved_model_and_thinking_level() {
         let config = AppConfig::from_sources(
             UserSettings {
-                model: Some("anthropic/claude-3.5-sonnet".into()),
+                model: Some("openrouter:anthropic/claude-3.5-sonnet".into()),
                 thinking_level: Some(ThinkingLevel::High),
                 thinking_collapse_mode: Some(CollapseMode::Truncate),
                 tool_collapse_mode: Some(CollapseMode::Collapse),
@@ -469,7 +816,7 @@ mod tests {
             None,
             None,
         );
-        assert_eq!(config.model, "anthropic/claude-3.5-sonnet");
+        assert_eq!(config.model, "openrouter:anthropic/claude-3.5-sonnet");
         assert_eq!(config.thinking_level, ThinkingLevel::High);
         assert_eq!(config.thinking_collapse_mode, CollapseMode::Truncate);
         assert_eq!(config.tool_collapse_mode, CollapseMode::Collapse);
@@ -489,7 +836,14 @@ mod tests {
                 provider: None,
             },
         ])) as Arc<dyn StreamProvider>;
-        let harness = match build_harness("test/model".into(), ThinkingLevel::Off, stream, auth) {
+        let session = SessionManager::new(SessionHeader::new("test", PathBuf::from("/tmp")));
+        let harness = match build_harness(
+            "openrouter:test/model".into(),
+            ThinkingLevel::Off,
+            stream,
+            auth,
+            session,
+        ) {
             Ok(harness) => harness,
             Err(err) => panic!("harness build failed: {err}"),
         };

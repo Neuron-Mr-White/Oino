@@ -148,6 +148,18 @@ impl SettingsState {
         self.menu_cursor = 0;
     }
 
+    pub fn open_model_selection(&mut self) {
+        self.page = SettingsPage::Models;
+        self.model_search_active = false;
+        self.model_search.clear();
+    }
+
+    pub fn open_thinking_level(&mut self) {
+        self.page = SettingsPage::Thinking;
+        self.thinking_cursor =
+            thinking_index(self.selected_thinking_level, &self.thinking_levels());
+    }
+
     pub fn set_models(&mut self, models: Vec<ModelOption>, status: impl Into<String>) {
         self.models = models;
         self.status = status.into();
@@ -166,6 +178,26 @@ impl SettingsState {
     pub fn set_collapse_modes(&mut self, thinking: CollapseMode, tool: CollapseMode) {
         self.thinking_collapse_mode = thinking;
         self.tool_collapse_mode = tool;
+    }
+
+    pub fn set_collapse_mode(&mut self, target: CollapseTarget, mode: CollapseMode) {
+        match target {
+            CollapseTarget::Thinking => self.thinking_collapse_mode = mode,
+            CollapseTarget::Tool => self.tool_collapse_mode = mode,
+        }
+    }
+
+    pub fn select_model_identifier(&mut self, model: &str) {
+        self.selected_model = model.to_string();
+        if let Some(index) = self.models.iter().position(|option| option.id == model) {
+            self.model_cursor = index;
+        }
+        self.clamp_thinking_to_selected_model();
+    }
+
+    pub fn select_thinking_level(&mut self, level: ThinkingLevel) {
+        self.selected_thinking_level = level;
+        self.clamp_thinking_to_selected_model();
     }
 
     #[must_use]

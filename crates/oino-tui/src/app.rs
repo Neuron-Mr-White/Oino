@@ -3,8 +3,8 @@
 use crate::{
     action::TuiAction,
     command::{
-        command_suggestions_for, parse_command, CommandKind, CommandSuggestionsState,
-        CommandSuggestionsView,
+        command_suggestions_for, parse_command, CommandSuggestionsState, CommandSuggestionsView,
+        ParsedCommand, SettingsCommand,
     },
     composer::ComposerState,
     message::{project_content_blocks, project_message, project_messages, MessageView},
@@ -99,7 +99,8 @@ impl TuiState {
         if self.command_suggestions.is_dismissed_for(input) {
             return None;
         }
-        let mut view = command_suggestions_for(input, self.composer.cursor())?;
+        let mut view =
+            command_suggestions_for(input, self.composer.cursor(), &self.settings.models)?;
         view.selected = if view.items.is_empty() {
             0
         } else {
@@ -293,25 +294,41 @@ impl TuiState {
                 CommandSuggestionKeyResult::Handled(TuiAction::None)
             }
             KeyCode::Enter if key.modifiers.is_empty() => {
-                self.accept_command_suggestion(true);
-                CommandSuggestionKeyResult::Handled(self.submit_input())
+                if self
+                    .command_suggestions_view()
+                    .and_then(|view| view.selected_item().cloned())
+                    .is_none()
+                {
+                    CommandSuggestionKeyResult::Unhandled
+                } else if self.accept_command_suggestion(true) {
+                    CommandSuggestionKeyResult::Handled(self.submit_input())
+                } else {
+                    CommandSuggestionKeyResult::Handled(TuiAction::None)
+                }
             }
             _ => CommandSuggestionKeyResult::Unhandled,
         }
     }
 
     fn accept_command_suggestion(&mut self, submit_ready: bool) -> bool {
-        let Some(command) = self
+        let Some(item) = self
             .command_suggestions_view()
-            .and_then(|view| view.selected_command())
+            .and_then(|view| view.selected_item().cloned())
         else {
             return false;
         };
-        self.composer.replace_text(command.name);
-        if submit_ready {
-            self.command_suggestions.dismiss_for(command.name);
+        let should_submit = submit_ready && item.complete_on_enter;
+        let replacement = if should_submit {
+            item.replacement.clone()
+        } else {
+            format!("{} ", item.replacement.trim_end())
+        };
+        self.composer
+            .replace_char_range(item.replace_start, item.replace_end, &replacement);
+        if should_submit {
+            self.command_suggestions.dismiss_for(self.composer.text());
         }
-        true
+        should_submit
     }
 
     fn after_composer_edit(&mut self, before: &str) {
@@ -320,7 +337,9 @@ impl TuiState {
             self.command_suggestions
                 .clear_dismissal_if_input_changed(input);
         }
-        if let Some(view) = command_suggestions_for(input, self.composer.cursor()) {
+        if let Some(view) =
+            command_suggestions_for(input, self.composer.cursor(), &self.settings.models)
+        {
             self.command_suggestions.clamp(view.items.len());
         }
     }
@@ -360,12 +379,7 @@ impl TuiState {
 
     fn submit_text(&mut self, prompt: String) -> TuiAction {
         if let Some(command) = parse_command(&prompt) {
-            match command.kind {
-                CommandKind::Settings => {
-                    self.open_settings_overlay();
-                    return TuiAction::None;
-                }
-            }
+            return self.execute_command(command);
         }
 
         if prompt.starts_with('/') {
@@ -376,6 +390,63 @@ impl TuiState {
 
         self.clear_error();
         TuiAction::SubmitPrompt(prompt)
+    }
+
+    fn execute_command(&mut self, command: ParsedCommand) -> TuiAction {
+        match command {
+            ParsedCommand::Settings(SettingsCommand::Open) => {
+                self.open_settings_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::OpenModelSelection) => {
+                self.open_model_selection_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel) => {
+                self.open_thinking_level_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::SetModel(model)) => {
+                let identifier = model.identifier();
+                self.settings.select_model_identifier(&identifier);
+                self.status = format!("Model set to {identifier}");
+                self.clear_error();
+                TuiAction::SetModel(identifier)
+            }
+            ParsedCommand::Settings(SettingsCommand::SetThinkingLevel(level)) => {
+                self.settings.select_thinking_level(level);
+                self.status = format!(
+                    "Thinking level set to {}",
+                    crate::settings::thinking_label(level)
+                );
+                self.clear_error();
+                TuiAction::SetThinkingLevel(level)
+            }
+            ParsedCommand::Settings(SettingsCommand::SetCollapseMode { target, mode }) => {
+                self.settings.set_collapse_mode(target, mode);
+                self.status = format!("Collapse mode set to {}", collapse_mode_label(mode));
+                self.clear_error();
+                TuiAction::SetCollapseMode(target, mode)
+            }
+        }
+    }
+
+    pub fn open_settings(&mut self) {
+        self.open_settings_overlay();
+    }
+
+    fn open_model_selection_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_model_selection();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status = "Model Selection: arrows/jk move • Enter apply • Esc back".into();
+    }
+
+    fn open_thinking_level_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_thinking_level();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status = "Thinking Level: arrows/jk move • Enter apply • Esc back".into();
     }
 
     fn open_settings_overlay(&mut self) {
@@ -513,7 +584,7 @@ mod tests {
         let suggestions = state
             .command_suggestions_view()
             .unwrap_or_else(|| panic!("missing command suggestions"));
-        assert_eq!(suggestions.items[0].name, "/settings");
+        assert_eq!(suggestions.items[0].label, "/settings");
         assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
         assert_eq!(state.overlay, Some(OverlayKind::Settings));
         assert_eq!(state.input(), "");
@@ -524,7 +595,7 @@ mod tests {
         let mut state = TuiState::new();
         assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
         assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
-        assert_eq!(state.input(), "/settings");
+        assert_eq!(state.input(), "/settings ");
         assert_eq!(state.overlay, None);
     }
 
@@ -536,6 +607,52 @@ mod tests {
         assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
         assert!(state.command_suggestions_view().is_none());
         assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::Quit);
+    }
+
+    #[test]
+    fn settings_model_command_emits_model_change() {
+        let mut state = TuiState::new();
+        for ch in "/settings model openrouter:xai/glm-5.1".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SetModel("openrouter:xai/glm-5.1".into())
+        );
+        assert_eq!(state.settings.selected_model, "openrouter:xai/glm-5.1");
+    }
+
+    #[test]
+    fn model_and_thinking_alias_commands_work() {
+        let mut state = TuiState::new();
+        for ch in "/model openrouter:xai/glm-5.1".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SetModel("openrouter:xai/glm-5.1".into())
+        );
+
+        let mut state = TuiState::new();
+        for ch in "/thinking high".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SetThinkingLevel(ThinkingLevel::High)
+        );
+    }
+
+    #[test]
+    fn bare_model_alias_opens_model_settings_page() {
+        let mut state = TuiState::new();
+        for ch in "/model".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        state.command_suggestions.dismiss_for("/model");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Settings));
+        assert_eq!(state.settings.page, crate::settings::SettingsPage::Models);
     }
 
     #[test]

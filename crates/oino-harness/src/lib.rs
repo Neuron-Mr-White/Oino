@@ -316,6 +316,18 @@ pub struct Harness {
 impl Harness {
     #[must_use]
     pub fn new(config: HarnessConfig) -> Self {
+        let session_context = config.session.build_session_context().ok();
+        let initial_messages = session_context
+            .as_ref()
+            .map_or_else(Vec::new, |context| context.messages.clone());
+        let initial_model = session_context
+            .as_ref()
+            .and_then(|context| context.model.clone())
+            .unwrap_or(config.model);
+        let initial_thinking_level = session_context
+            .as_ref()
+            .and_then(|context| context.thinking_level)
+            .unwrap_or(config.thinking_level);
         let hooks = HookRegistry::new();
         let context_hooks = hooks.clone();
         let before_hooks = hooks.clone();
@@ -324,8 +336,8 @@ impl Harness {
             inner: Arc::clone(&config.stream),
             hooks: hooks.clone(),
         }) as Arc<dyn StreamProvider>;
-        let mut loop_config = AgentLoopConfig::new(config.model, stream);
-        loop_config.thinking_level = config.thinking_level;
+        let mut loop_config = AgentLoopConfig::new(initial_model, stream);
+        loop_config.thinking_level = initial_thinking_level;
         loop_config.system_prompt = config.system_prompt;
         loop_config.tools = config.tools.clone();
         loop_config.event_sink = Arc::new(HookEventSink {
@@ -351,7 +363,7 @@ impl Harness {
             fut
         }) as AfterToolCall);
         Self {
-            agent: Agent::new(loop_config),
+            agent: Agent::new_with_messages(loop_config, initial_messages),
             session: Arc::new(Mutex::new(config.session)),
             hooks,
             env: config.env,
@@ -463,6 +475,10 @@ impl Harness {
     }
     pub async fn build_context(&self) -> HarnessResult<Vec<Message>> {
         Ok(self.session.lock().await.build_session_context()?.messages)
+    }
+    pub async fn save_session_jsonl(&self, path: impl AsRef<std::path::Path>) -> HarnessResult<()> {
+        self.session.lock().await.save_jsonl(path).await?;
+        Ok(())
     }
     pub async fn get_system_prompt(&self) -> Option<String> {
         self.agent.state().await.system_prompt

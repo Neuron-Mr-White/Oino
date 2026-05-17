@@ -137,7 +137,7 @@ fn summarize_content(content: &[ContentBlock]) -> ContentSummary {
                 thinking_parts.push(text.clone());
                 thinking_redacted |= *redacted;
             }
-            ContentBlock::ToolCall { name, .. } => parts.push(format!("<tool-call:{name}>")),
+            ContentBlock::ToolCall { .. } => {}
         }
     }
     ContentSummary {
@@ -178,6 +178,24 @@ mod tests {
         let view = project_message(&message);
         assert_eq!(view.role, "assistant");
         assert_eq!(view.title.as_deref(), Some("test/model"));
+    }
+
+    #[test]
+    fn tool_calls_are_not_projected_as_visible_text() {
+        let message = Message::Assistant {
+            id: OinoId::nil(),
+            content: vec![ContentBlock::ToolCall {
+                id: OinoId::nil(),
+                name: "write".into(),
+                arguments: Default::default(),
+            }],
+            stop_reason: Some(StopReason::ToolUse),
+            usage: None,
+            provider: None,
+        };
+        let view = project_message(&message);
+        assert_eq!(view.content, "<empty>");
+        assert!(!view.content.contains("<tool-call:"));
     }
 
     #[test]

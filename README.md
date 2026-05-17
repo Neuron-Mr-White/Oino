@@ -19,18 +19,18 @@ OPENROUTER_API_KEY=sk-or-... cargo run -p oino-app --bin oino
 Optional configuration:
 
 ```bash
-OINO_MODEL=openai/gpt-4o-mini \
+OINO_MODEL=openrouter:openai/gpt-4o-mini \
 OINO_OPENROUTER_REFERER=https://example.invalid \
 OINO_OPENROUTER_TITLE=Oino \
 OPENROUTER_API_KEY=sk-or-... \
 mise run dev
 ```
 
-Default model: `openai/gpt-4o-mini`.
+Default model: `openrouter:openai/gpt-4o-mini`.
 
-The TUI opens a bubble-style transcript and bottom composer. Type a prompt, press Enter to submit, use Ctrl-J, Alt-Enter, or Shift-Enter for a newline, use Up/Down to move through multi-line input, watch the assistant response stream into the transcript, and exit with Esc or Ctrl-C. The app starts with Pi-like default coding tools: `read`, `bash`, `edit`, and `write`. Type `/` at the start of the composer to open command suggestions; arrows choose, Tab completes, Enter runs the highlighted command, and Esc dismisses suggestions before quitting. Type `/settings` or the `Ctrl-O s` chord to open the reusable settings overlay: the first page is a settings menu with arrow-marked choices, Enter opens dedicated child pages such as Model Selection, Thinking Level, or Collapse Mode, and `/` inside Model Selection opens an inline model search box that Esc clears back to the normal list UX. Collapse Mode cycles thinking and tool display through Full, Truncate, and Collapse. The composer expands as drafts grow, input pauses while a prompt is running, and tiny terminals get a safe fallback message.
+The TUI opens a bubble-style transcript and bottom composer. Type a prompt, press Enter to submit, use Ctrl-J, Alt-Enter, or Shift-Enter for a newline, use Up/Down to move through multi-line input, watch the assistant response stream into the transcript, and exit with Esc or Ctrl-C. The app starts with Pi-like default coding tools: `read`, `bash`, `edit`, and `write`. Type `/` at the start of the composer to open command suggestions; arrows choose, Tab completes, Enter runs the highlighted command, and Esc dismisses suggestions before quitting. Type `/settings` or the `Ctrl-O s` chord to open the reusable settings overlay, or use command paths such as `/model openrouter:xai/glm-5.1`, `/thinking high`, `/settings model openrouter:xai/glm-5.1`, and `/settings collapse thinking truncate`. The first settings page is a menu with arrow-marked choices, Enter opens dedicated child pages such as Model Selection, Thinking Level, or Collapse Mode, and `/` inside Model Selection opens an inline model search box that Esc clears back to the normal list UX. Collapse Mode cycles thinking and tool display through Full, Truncate, and Collapse. The composer expands as drafts grow, input pauses while a prompt is running, and tiny terminals get a safe fallback message.
 
-OpenRouter model names are cached at `~/.oino/openrouter-models.json`. The app loads that cache immediately, refreshes the full model list in the background on an interval, and uses each model's supported parameters to limit available thinking levels. Thinking `Off` is sent to OpenRouter explicitly as reasoning `none` with reasoning excluded, rather than relying on provider defaults. User-selected settings persist at `~/.oino/settings.json`; `OINO_MODEL` remains an environment override for the startup model.
+OpenRouter model names are cached at `~/.oino/openrouter-models.json`. The app loads that cache immediately, refreshes the full model list in the background on an interval, and uses each model's supported parameters to limit available thinking levels. Model identifiers use the single `provider:model-id` format, for example `openrouter:xai/glm-5.1`. Thinking `Off` is sent to OpenRouter explicitly as reasoning `none` with reasoning excluded, rather than relying on provider defaults. User-selected settings persist at `~/.oino/settings.json`; `OINO_MODEL` remains an environment override for the startup model. Sessions persist as JSONL under `~/.oino/sessions`; non-interactive continuation uses `oino --session <uuid> <message-or-command>`.
 
 ## Auth file
 
@@ -76,4 +76,4 @@ Provider code is intentionally separate from auth: auth answers “what credenti
 
 ## Current limitations
 
-The first shell supports token-by-token transcript updates for provider text/thinking deltas, local coding tool calls, and a `/settings` model/thinking overlay. It does not yet include `/login`, persisted session browser, markdown rendering, MCP, plugins, memory DB, or permissions UI.
+The first shell supports token-by-token transcript updates for provider text/thinking deltas, local coding tool calls, persisted JSONL sessions, non-interactive `--session <uuid>` continuation, and `/settings`/`/model`/`/thinking` settings commands. It does not yet include `/login`, a persisted session browser, markdown rendering, MCP, plugins, memory DB, or permissions UI.

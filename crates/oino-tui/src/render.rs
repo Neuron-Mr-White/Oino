@@ -156,14 +156,16 @@ fn render_command_suggestions(
     suggestions: &CommandSuggestionsView,
     theme: &Theme,
 ) {
-    let content_len = suggestions.items.len().max(1);
-    let height = u16::try_from(content_len.saturating_add(2))
+    let available_height = composer_area.y.saturating_sub(full_area.y).max(1);
+    let max_content_rows = command_suggestion_max_rows(suggestions);
+    let desired_content_rows = suggestions.items.len().max(1).min(max_content_rows);
+    let height = u16::try_from(desired_content_rows.saturating_add(2))
         .unwrap_or(u16::MAX)
-        .min(6)
-        .min(composer_area.y.saturating_sub(full_area.y).max(1));
+        .min(available_height);
     if height < 3 {
         return;
     }
+    let content_capacity = height.saturating_sub(2).max(1) as usize;
     let width = full_area.width.saturating_sub(4).clamp(24, 72);
     let x = full_area.x + full_area.width.saturating_sub(width) / 2;
     let y = composer_area.y.saturating_sub(height);
@@ -177,22 +179,28 @@ fn render_command_suggestions(
 
     let lines = if suggestions.items.is_empty() {
         vec![Line::styled(
-            format!("No command matches `{}`", suggestions.query),
+            format!("No suggestion matches `{}`", suggestions.query),
             Style::default().fg(theme.muted),
         )]
     } else {
-        suggestions
-            .items
+        let range = visible_range(
+            suggestions.selected,
+            suggestions.items.len(),
+            content_capacity,
+        );
+        let start = range.start;
+        suggestions.items[range]
             .iter()
             .enumerate()
-            .map(|(index, command)| {
+            .map(|(offset, item)| {
+                let index = start + offset;
                 let active = index == suggestions.selected;
                 let marker = arrow_marker(active);
                 let style = item_style(active, false, theme);
                 Line::from(vec![
-                    Span::styled(format!("{marker} {}", command.name), style),
+                    Span::styled(format!("{marker} {}", item.label), style),
                     Span::styled(
-                        format!("  {}", command.summary),
+                        format!("  {}", item.summary),
                         Style::default().fg(theme.muted),
                     ),
                 ])
@@ -203,12 +211,45 @@ fn render_command_suggestions(
     frame.render_widget(
         Paragraph::new(lines).block(
             Block::default()
-                .title(" Commands ")
+                .title(format!(
+                    " {} ",
+                    command_suggestion_title(suggestions, content_capacity)
+                ))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.focused_border)),
         ),
         area,
     );
+}
+
+fn command_suggestion_max_rows(suggestions: &CommandSuggestionsView) -> usize {
+    if suggestions.title == "Models" {
+        5
+    } else {
+        4
+    }
+}
+
+fn command_suggestion_title(
+    suggestions: &CommandSuggestionsView,
+    content_capacity: usize,
+) -> String {
+    if suggestions.items.is_empty() {
+        return suggestions.title.clone();
+    }
+    if suggestions.title == "Models" || suggestions.items.len() > content_capacity {
+        format!(
+            "{} {}/{}",
+            suggestions.title,
+            suggestions
+                .selected
+                .saturating_add(1)
+                .min(suggestions.items.len()),
+            suggestions.items.len()
+        )
+    } else {
+        suggestions.title.clone()
+    }
 }
 
 fn render_settings_overlay(
@@ -592,6 +633,9 @@ fn bubble_lines(
     tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
+    if is_empty_assistant_message(message) {
+        return Vec::new();
+    }
     if available_width < 16 {
         return vec![Line::styled(
             format!("{}: {}", message.role, message.content),
@@ -724,6 +768,16 @@ fn bubble_content_line(
     spans.extend(content);
     spans.push(Span::styled(" │", border_style));
     Line::from(spans)
+}
+
+fn is_empty_assistant_message(message: &MessageView) -> bool {
+    message.is_assistant()
+        && message.content == "<empty>"
+        && message
+            .thinking
+            .as_ref()
+            .is_none_or(|thinking| thinking.trim().is_empty())
+        && !message.thinking_redacted
 }
 
 fn display_message_content(message: &MessageView, tool_mode: CollapseMode) -> String {
@@ -1067,6 +1121,39 @@ mod tests {
     }
 
     #[test]
+    fn render_skips_assistant_tool_call_only_bubble() {
+        let mut state = TuiState::new();
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "assistant".into(),
+            title: Some("openrouter:test/model".into()),
+            content: "<empty>".into(),
+            thinking: None,
+            thinking_redacted: false,
+            is_error: false,
+        });
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "tool:write".into(),
+            title: None,
+            content: "Successfully wrote file".into(),
+            thinking: None,
+            thinking_redacted: false,
+            is_error: false,
+        });
+        let buffer = draw_state(100, 24, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(!text.contains("<tool-call:write>"));
+        assert!(!text.contains("openrouter:test/model"));
+        assert!(text.contains("tool:write"));
+        assert!(text.contains("Successfully wrote file"));
+    }
+
+    #[test]
     fn render_thinking_as_section_not_inline_plain_text() {
         let mut state = TuiState::new();
         state.messages.push(MessageView {
@@ -1125,7 +1212,29 @@ mod tests {
             .collect::<String>();
         assert!(text.contains("Commands"));
         assert!(text.contains("/settings"));
-        assert!(text.contains("Open model and thinking settings"));
+        assert!(text.contains("Open or change settings"));
+    }
+
+    #[test]
+    fn render_model_command_suggestions_scroll_to_selected_item() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("/settings model ");
+        state.set_model_catalog(
+            (0..60)
+                .map(|index| crate::settings::ModelOption::new(format!("openrouter:model-{index}")))
+                .collect::<Vec<_>>(),
+            "loaded",
+        );
+        state.command_suggestions.selected = 39;
+        let buffer = draw_state(100, 30, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Models 40/60"));
+        assert!(text.contains("› openrouter:model-39"));
+        assert!(!text.contains("openrouter:model-0"));
     }
 
     #[test]

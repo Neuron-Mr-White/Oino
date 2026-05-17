@@ -33,6 +33,27 @@ impl Model {
             metadata: BTreeMap::new(),
         }
     }
+
+    #[must_use]
+    pub fn identifier(&self) -> String {
+        format!("{}:{}", self.provider, self.name)
+    }
+
+    #[must_use]
+    pub fn from_identifier(identifier: &str) -> Option<Self> {
+        let (provider, name) = identifier.split_once(':')?;
+        let provider = provider.trim();
+        let name = name.trim();
+        if provider.is_empty()
+            || name.is_empty()
+            || provider.chars().any(char::is_whitespace)
+            || name.chars().any(char::is_whitespace)
+            || name.contains(':')
+        {
+            return None;
+        }
+        Some(Self::new(provider, name))
+    }
 }
 
 /// Thinking/reasoning effort requested from a model adapter.
@@ -232,6 +253,19 @@ mod tests {
             Ok(decoded) => decoded,
             Err(err) => panic!("deserialize failed: {err}"),
         }
+    }
+
+    #[test]
+    fn model_identifier_uses_provider_colon_name() {
+        let model = Model::new("openrouter", "xai/glm-5.1");
+        assert_eq!(model.identifier(), "openrouter:xai/glm-5.1");
+        assert_eq!(
+            Model::from_identifier("openrouter:xai/glm-5.1"),
+            Some(model)
+        );
+        assert_eq!(Model::from_identifier("xai/glm-5.1"), None);
+        assert_eq!(Model::from_identifier("openrouter:"), None);
+        assert_eq!(Model::from_identifier("openrouter:xai/glm 5.1"), None);
     }
 
     #[test]

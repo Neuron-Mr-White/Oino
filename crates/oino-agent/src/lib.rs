@@ -57,8 +57,13 @@ pub struct Agent {
 impl Agent {
     #[must_use]
     pub fn new(config: AgentLoopConfig) -> Self {
+        Self::new_with_messages(config, Vec::new())
+    }
+
+    #[must_use]
+    pub fn new_with_messages(config: AgentLoopConfig, messages: Vec<Message>) -> Self {
         let state = AgentState {
-            messages: Vec::new(),
+            messages,
             model: config.model.clone(),
             thinking_level: config.thinking_level,
             system_prompt: config.system_prompt.clone(),
