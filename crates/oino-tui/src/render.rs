@@ -71,7 +71,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
 
 fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, chord: ChordState, theme: &Theme) {
     let title = match chord {
-        ChordState::CtrlO => " Ctrl-O chord: s settings • Esc cancel ",
+        ChordState::CtrlO => " Ctrl-O chord: s settings • t transcript • Esc cancel ",
         ChordState::None => return,
     };
     frame.render_widget(
@@ -86,6 +86,18 @@ fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, chord: ChordState, theme
 fn render_tiny(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
     let paragraph = Paragraph::new(TINY_MESSAGE).style(theme.warning);
     frame.render_widget(paragraph, area);
+}
+
+pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> usize {
+    if width < 20 || height < 8 {
+        return 1;
+    }
+    let composer_height = composer_height(state.composer.text(), width, height);
+    height
+        .saturating_sub(composer_height)
+        .saturating_sub(FOOTER_HEIGHT)
+        .saturating_sub(2)
+        .max(1) as usize
 }
 
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -108,15 +120,31 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
         )]));
     }
 
-    if lines.len() > inner_height {
-        let skip = lines.len().saturating_sub(inner_height);
-        lines = lines.into_iter().skip(skip).collect();
+    let total_lines = lines.len();
+    let scrolled_offset = state
+        .transcript_scroll
+        .resolved_offset_from_bottom(total_lines, inner_height);
+    if total_lines > inner_height {
+        let start = state
+            .transcript_scroll
+            .visible_start(total_lines, inner_height);
+        lines = lines.into_iter().skip(start).take(inner_height).collect();
     }
 
+    let title = if scrolled_offset == 0 {
+        " Oino ".to_string()
+    } else {
+        format!(" Oino ↑{scrolled_offset} ")
+    };
+    let border_style = if state.focus == TuiFocus::Transcript {
+        Style::default().fg(theme.focused_border)
+    } else {
+        Style::default().fg(theme.panel_border)
+    };
     let block = Block::default()
-        .title(Span::styled(" Oino ", theme.title))
+        .title(Span::styled(title, theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.panel_border));
+        .border_style(border_style);
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
@@ -853,6 +881,43 @@ mod tests {
         assert!(text.contains("test/model"));
         assert!(text.contains("hello"));
         assert!(text.contains(INPUT_PLACEHOLDER));
+    }
+
+    #[test]
+    fn render_transcript_respects_scroll_offset() {
+        let mut state = TuiState::new();
+        state.settings.chat_style = ChatStyle::Minimal;
+        for index in 0..20 {
+            state.messages.push(MessageView {
+                id: oino_types::OinoId::from_u128(index),
+                role: "assistant".into(),
+                title: Some("test/model".into()),
+                content: format!("message {index:02}"),
+                thinking: None,
+                thinking_redacted: false,
+                tool_call_id: None,
+                tool_calls: Vec::new(),
+                is_error: false,
+            });
+        }
+
+        let tail = draw_state(80, 18, &state)
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(tail.contains("message 19"));
+        assert!(!tail.contains("message 00"));
+
+        state.scroll_transcript_to_top();
+        let top = draw_state(80, 18, &state)
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(top.contains("message 00"));
+        assert!(!top.contains("message 19"));
+        assert!(top.contains("Oino ↑"));
     }
 
     #[test]

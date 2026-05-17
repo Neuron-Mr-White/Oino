@@ -24,7 +24,7 @@ pub use command::{
 };
 pub use composer::{is_newline_key, is_word_cursor_modifier, ComposerState, INPUT_PLACEHOLDER};
 pub use message::{project_message, project_messages, MessageView, ToolCallView};
-pub use render::render;
+pub use render::{render, transcript_visible_lines};
 pub use settings::{
     all_thinking_levels, chat_style_label, collapse_mode_label, thinking_label, ChatStyle,
     CollapseMode, CollapseTarget, ModelOption, SettingsAction, SettingsMenuItem, SettingsPage,

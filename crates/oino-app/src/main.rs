@@ -18,8 +18,8 @@ use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, Notificat
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
 use oino_session::{SessionManager, SessionRepository};
 use oino_tui::{
-    collapse_mode_value, collapse_target_value, parse_command, render, CollapseMode, ParsedCommand,
-    SettingsCommand, TuiAction, TuiState, HELP_STATUS,
+    collapse_mode_value, collapse_target_value, parse_command, render, transcript_visible_lines,
+    CollapseMode, ParsedCommand, SettingsCommand, TuiAction, TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -376,6 +376,9 @@ async fn run_tui(
             }
         }
         terminal.draw(&state)?;
+        if let Ok((width, height)) = terminal.size() {
+            state.set_transcript_page_lines(transcript_visible_lines(&state, width, height));
+        }
         if !event::poll(Duration::from_millis(50))? {
             continue;
         }
@@ -771,6 +774,10 @@ impl TerminalGuard {
     fn draw(&mut self, state: &TuiState) -> Result<(), AppError> {
         self.terminal.draw(|frame| render(frame, state))?;
         Ok(())
+    }
+
+    fn size(&self) -> io::Result<(u16, u16)> {
+        self.terminal.size().map(|size| (size.width, size.height))
     }
 }
 

@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::{text::truncate_to_width, theme::Theme};
+use crate::theme::Theme;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::{
     style::{Modifier, Style},
@@ -547,57 +547,87 @@ impl MarkdownRenderer {
         if column_count == 0 {
             return;
         }
-        let mut widths = vec![1usize; column_count];
-        for row in &rows {
-            for (index, cell) in row.iter().enumerate() {
-                let width = cell.width().max(1);
-                if let Some(slot) = widths.get_mut(index) {
-                    *slot = (*slot).max(width);
-                }
-            }
+
+        let rows = normalize_table_rows(&rows, column_count);
+        let widths = table_column_widths(&rows, self.width);
+        if widths.is_empty() {
+            return;
         }
-        shrink_table_widths(&mut widths, self.width);
 
         let mut consumed_block_prefix = false;
+        self.push_table_border(&widths, "┌", "┬", "┐", &mut consumed_block_prefix);
         for (row_index, row) in rows.iter().enumerate() {
-            self.push_table_row(row, &widths, false, &mut consumed_block_prefix);
+            self.push_table_row(row, &widths, row_index == 0, &mut consumed_block_prefix);
             if row_index == 0 && rows.len() > 1 {
-                let separator = widths
-                    .iter()
-                    .map(|width| "─".repeat(*width))
-                    .collect::<Vec<_>>();
-                self.push_table_row(&separator, &widths, true, &mut consumed_block_prefix);
+                self.push_table_border(&widths, "├", "┼", "┤", &mut consumed_block_prefix);
             }
         }
+        self.push_table_border(&widths, "└", "┴", "┘", &mut consumed_block_prefix);
+    }
+
+    fn push_table_border(
+        &mut self,
+        widths: &[usize],
+        left: &str,
+        mid: &str,
+        right: &str,
+        consumed_block_prefix: &mut bool,
+    ) {
+        let mut border = String::from(left);
+        for (index, width) in widths.iter().enumerate() {
+            border.push_str(&"─".repeat(width.saturating_add(2)));
+            if index + 1 < widths.len() {
+                border.push_str(mid);
+            }
+        }
+        border.push_str(right);
+        let (initial, subsequent) = self.block_prefixes(consumed_block_prefix);
+        push_wrapped_line(
+            &mut self.lines,
+            Line::styled(border, self.styles.muted),
+            self.width,
+            initial,
+            subsequent,
+        );
     }
 
     fn push_table_row(
         &mut self,
         row: &[String],
         widths: &[usize],
-        separator: bool,
+        is_header: bool,
         consumed_block_prefix: &mut bool,
     ) {
-        let mut line = Line::default();
-        line.push_span(Span::styled("│ ", self.styles.muted));
-        for (index, width) in widths.iter().enumerate() {
-            if index > 0 {
-                line.push_span(Span::styled(" │ ", self.styles.muted));
+        let wrapped = row
+            .iter()
+            .zip(widths.iter().copied())
+            .map(|(cell, width)| wrap_table_cell(cell, width))
+            .collect::<Vec<_>>();
+        let height = wrapped.iter().map(Vec::len).max().unwrap_or(1).max(1);
+        let cell_style = if is_header {
+            self.styles.base.add_modifier(Modifier::BOLD)
+        } else {
+            self.styles.base
+        };
+
+        for visual_row in 0..height {
+            let mut line = Line::default();
+            line.push_span(Span::styled("│ ", self.styles.muted));
+            for (index, width) in widths.iter().enumerate() {
+                if index > 0 {
+                    line.push_span(Span::styled(" │ ", self.styles.muted));
+                }
+                let segment = wrapped
+                    .get(index)
+                    .and_then(|segments| segments.get(visual_row))
+                    .map(String::as_str)
+                    .unwrap_or("");
+                line.push_span(Span::styled(pad_to_width(segment, *width), cell_style));
             }
-            let cell = row.get(index).map(String::as_str).unwrap_or("");
-            let fitted = pad_to_width(&truncate_to_width(cell, *width), *width);
-            let style = if separator {
-                self.styles.muted
-            } else if index == 0 {
-                self.styles.base.add_modifier(Modifier::BOLD)
-            } else {
-                self.styles.base
-            };
-            line.push_span(Span::styled(fitted, style));
+            line.push_span(Span::styled(" │", self.styles.muted));
+            let (initial, subsequent) = self.block_prefixes(consumed_block_prefix);
+            push_wrapped_line(&mut self.lines, line, self.width, initial, subsequent);
         }
-        line.push_span(Span::styled(" │", self.styles.muted));
-        let (initial, subsequent) = self.block_prefixes(consumed_block_prefix);
-        push_wrapped_line(&mut self.lines, line, self.width, initial, subsequent);
     }
 
     fn push_blank(&mut self) {
@@ -618,10 +648,40 @@ fn code_block_language(kind: CodeBlockKind<'_>) -> Option<String> {
     }
 }
 
-fn shrink_table_widths(widths: &mut [usize], max_width: usize) {
-    let chrome = widths.len().saturating_mul(3).saturating_add(1);
-    let min_width = 3usize;
-    while widths.iter().sum::<usize>().saturating_add(chrome) > max_width {
+fn normalize_table_rows(rows: &[Vec<String>], column_count: usize) -> Vec<Vec<String>> {
+    rows.iter()
+        .map(|row| {
+            let mut normalized = row.iter().take(column_count).cloned().collect::<Vec<_>>();
+            normalized.resize(column_count, String::new());
+            normalized
+        })
+        .collect()
+}
+
+fn table_column_widths(rows: &[Vec<String>], max_width: usize) -> Vec<usize> {
+    let column_count = rows.iter().map(Vec::len).max().unwrap_or(0);
+    if column_count == 0 {
+        return Vec::new();
+    }
+
+    let chrome = column_count.saturating_mul(3).saturating_add(1);
+    let available = max_width.saturating_sub(chrome).max(column_count);
+    let min_width = if available >= column_count.saturating_mul(4) {
+        4
+    } else {
+        1
+    };
+    let mut widths = vec![min_width; column_count];
+    for row in rows {
+        for (index, cell) in row.iter().enumerate() {
+            let desired = cell.width().max(longest_word_width(cell)).max(min_width);
+            if let Some(width) = widths.get_mut(index) {
+                *width = (*width).max(desired);
+            }
+        }
+    }
+
+    while widths.iter().sum::<usize>() > available {
         let Some((index, width)) = widths
             .iter()
             .enumerate()
@@ -631,6 +691,89 @@ fn shrink_table_widths(widths: &mut [usize], max_width: usize) {
             break;
         };
         widths[index] = width.saturating_sub(1);
+    }
+
+    if widths.iter().sum::<usize>() > available {
+        let base = (available / column_count).max(1);
+        let mut remainder = available.saturating_sub(base.saturating_mul(column_count));
+        for width in &mut widths {
+            *width = base;
+            if remainder > 0 {
+                *width = width.saturating_add(1);
+                remainder = remainder.saturating_sub(1);
+            }
+        }
+    }
+
+    widths
+}
+
+fn longest_word_width(text: &str) -> usize {
+    text.split_whitespace()
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0)
+}
+
+fn wrap_table_cell(cell: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    if cell.trim().is_empty() {
+        return vec![String::new()];
+    }
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0usize;
+
+    for word in cell.split_whitespace() {
+        let word_width = word.width();
+        if current_width == 0 {
+            if word_width > width {
+                push_wrapped_table_word(word, width, &mut current, &mut current_width, &mut lines);
+            } else {
+                current.push_str(word);
+                current_width = word_width;
+            }
+        } else if current_width.saturating_add(1).saturating_add(word_width) <= width {
+            current.push(' ');
+            current.push_str(word);
+            current_width = current_width.saturating_add(1).saturating_add(word_width);
+        } else {
+            lines.push(std::mem::take(&mut current));
+            current_width = 0;
+            if word_width > width {
+                push_wrapped_table_word(word, width, &mut current, &mut current_width, &mut lines);
+            } else {
+                current.push_str(word);
+                current_width = word_width;
+            }
+        }
+    }
+
+    if !current.is_empty() || lines.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+fn push_wrapped_table_word(
+    word: &str,
+    width: usize,
+    current: &mut String,
+    current_width: &mut usize,
+    lines: &mut Vec<String>,
+) {
+    for grapheme in word.graphemes(true) {
+        let grapheme_width = grapheme.width();
+        if current_width.saturating_add(grapheme_width) > width && !current.is_empty() {
+            lines.push(std::mem::take(current));
+            *current_width = 0;
+        }
+        current.push_str(grapheme);
+        *current_width = current_width.saturating_add(grapheme_width);
+        if *current_width >= width {
+            lines.push(std::mem::take(current));
+            *current_width = 0;
+        }
     }
 }
 
@@ -747,6 +890,29 @@ mod tests {
         assert!(plain_lines[0].starts_with("• "));
         assert!(plain_lines[1].starts_with("  "));
         assert!(plain_lines.iter().all(|line| line.width() <= 26));
+    }
+
+    #[test]
+    fn renders_tables_as_wrapped_box_grid() {
+        let lines = render_markdown_lines(
+            "| Name | Notes |\n| --- | --- |\n| Alpha | This is a longer table cell that should wrap instead of being truncated. |\n| Beta | short |",
+            54,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+        let joined = plain_lines.join("\n");
+
+        assert!(plain_lines
+            .first()
+            .is_some_and(|line| line.starts_with('┌')));
+        assert!(plain_lines.iter().any(|line| line.starts_with('├')));
+        assert!(plain_lines.last().is_some_and(|line| line.starts_with('└')));
+        assert!(joined.contains("Alpha"));
+        assert!(joined.contains("instead of being"));
+        assert!(joined.contains("truncated"));
+        assert!(!joined.contains('…'));
+        assert!(plain_lines.iter().all(|line| line.width() <= 54));
     }
 
     #[test]

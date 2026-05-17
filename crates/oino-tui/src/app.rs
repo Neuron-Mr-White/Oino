@@ -14,7 +14,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
 
 pub const HELP_STATUS: &str =
-    "Enter send • type / or Ctrl-O s settings • Ctrl-J/Alt-Enter/Shift-Enter newline • Ctrl-W delete word • Esc/Ctrl-C quit";
+    "Enter send • PgUp/PgDn scroll transcript • type / or Ctrl-O s settings • Ctrl-J/Alt-Enter newline • Esc/Ctrl-C quit";
+
+const DEFAULT_TRANSCRIPT_PAGE_LINES: usize = 10;
+const TRANSCRIPT_SCROLL_LINE_STEP: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayKind {
@@ -34,6 +37,57 @@ pub enum ChordState {
     CtrlO,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TranscriptScroll {
+    offset_from_bottom: usize,
+}
+
+impl TranscriptScroll {
+    #[must_use]
+    pub const fn is_at_bottom(self) -> bool {
+        self.offset_from_bottom == 0
+    }
+
+    #[must_use]
+    pub const fn offset_from_bottom(self) -> usize {
+        self.offset_from_bottom
+    }
+
+    #[must_use]
+    pub fn visible_start(self, total_lines: usize, visible_lines: usize) -> usize {
+        if total_lines <= visible_lines {
+            return 0;
+        }
+        let max_start = total_lines.saturating_sub(visible_lines);
+        max_start.saturating_sub(self.offset_from_bottom.min(max_start))
+    }
+
+    #[must_use]
+    pub fn resolved_offset_from_bottom(self, total_lines: usize, visible_lines: usize) -> usize {
+        if total_lines <= visible_lines {
+            return 0;
+        }
+        let max_start = total_lines.saturating_sub(visible_lines);
+        self.offset_from_bottom.min(max_start)
+    }
+
+    pub fn scroll_up(&mut self, lines: usize) {
+        self.offset_from_bottom = self.offset_from_bottom.saturating_add(lines.max(1));
+    }
+
+    pub fn scroll_down(&mut self, lines: usize) {
+        self.offset_from_bottom = self.offset_from_bottom.saturating_sub(lines.max(1));
+    }
+
+    pub fn jump_top(&mut self) {
+        self.offset_from_bottom = usize::MAX;
+    }
+
+    pub fn jump_bottom(&mut self) {
+        self.offset_from_bottom = 0;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TuiState {
     pub messages: Vec<MessageView>,
@@ -46,6 +100,8 @@ pub struct TuiState {
     pub settings: SettingsState,
     pub command_suggestions: CommandSuggestionsState,
     pub chord: ChordState,
+    pub transcript_scroll: TranscriptScroll,
+    transcript_page_lines: usize,
 }
 
 impl Default for TuiState {
@@ -61,6 +117,8 @@ impl Default for TuiState {
             settings: SettingsState::new("", ThinkingLevel::Off),
             command_suggestions: CommandSuggestionsState::new(),
             chord: ChordState::None,
+            transcript_scroll: TranscriptScroll::default(),
+            transcript_page_lines: DEFAULT_TRANSCRIPT_PAGE_LINES,
         }
     }
 }
@@ -87,6 +145,39 @@ impl TuiState {
     #[must_use]
     pub fn cursor_position(&self) -> usize {
         self.composer.cursor()
+    }
+
+    pub fn set_transcript_page_lines(&mut self, lines: usize) {
+        self.transcript_page_lines = lines.max(1);
+    }
+
+    pub fn scroll_transcript_up(&mut self, lines: usize) {
+        self.transcript_scroll.scroll_up(lines);
+        self.status = self.transcript_scroll_status();
+    }
+
+    pub fn scroll_transcript_down(&mut self, lines: usize) {
+        self.transcript_scroll.scroll_down(lines);
+        self.status = self.transcript_scroll_status();
+    }
+
+    pub fn scroll_transcript_to_top(&mut self) {
+        self.transcript_scroll.jump_top();
+        self.status = self.transcript_scroll_status();
+    }
+
+    pub fn scroll_transcript_to_bottom(&mut self) {
+        self.transcript_scroll.jump_bottom();
+        self.status = HELP_STATUS.into();
+    }
+
+    fn transcript_scroll_status(&self) -> String {
+        if self.transcript_scroll.is_at_bottom() {
+            HELP_STATUS.into()
+        } else {
+            "Transcript scrolled • PgUp/PgDn page • Alt-↑/↓ line • Ctrl-Home top • End bottom"
+                .into()
+        }
     }
 
     #[must_use]
@@ -223,7 +314,7 @@ impl TuiState {
 
         if is_ctrl_o_key(key) {
             self.chord = ChordState::CtrlO;
-            self.status = "Ctrl-O chord: s settings • Esc cancel".into();
+            self.status = "Ctrl-O chord: s settings • t transcript • Esc cancel".into();
             return TuiAction::None;
         }
 
@@ -236,6 +327,10 @@ impl TuiState {
             if handled != CommandSuggestionKeyResult::Unhandled {
                 return handled.into_action();
             }
+        }
+
+        if self.handle_transcript_scroll_key(key) {
+            return TuiAction::None;
         }
 
         if matches!(key.code, KeyCode::Esc) {
@@ -263,6 +358,11 @@ impl TuiState {
                 self.open_settings_overlay();
                 TuiAction::None
             }
+            (ChordState::CtrlO, KeyCode::Char('t' | 'T')) if key.modifiers.is_empty() => {
+                self.focus = TuiFocus::Transcript;
+                self.status = "Transcript focus • ↑/↓ or j/k line • PgUp/PgDn page • Home/End top/bottom • Esc composer".into();
+                TuiAction::None
+            }
             (_, KeyCode::Esc) => {
                 self.status = HELP_STATUS.into();
                 TuiAction::None
@@ -271,6 +371,64 @@ impl TuiState {
                 self.status = "Unknown Ctrl-O chord".into();
                 TuiAction::None
             }
+        }
+    }
+
+    fn handle_transcript_scroll_key(&mut self, key: KeyEvent) -> bool {
+        let page_lines = self.transcript_page_lines.saturating_sub(1).max(1);
+        let no_mods = key.modifiers.is_empty();
+        let alt = key.modifiers == KeyModifiers::ALT;
+        let ctrl = key.modifiers == KeyModifiers::CONTROL;
+        let composer_empty = self.focus == TuiFocus::Composer && self.composer.is_empty();
+        let transcript_focus = self.focus == TuiFocus::Transcript;
+
+        match key.code {
+            KeyCode::Esc if transcript_focus => {
+                self.focus = TuiFocus::Composer;
+                self.status = self.transcript_scroll_status();
+                true
+            }
+            KeyCode::PageUp if no_mods => {
+                self.scroll_transcript_up(page_lines);
+                true
+            }
+            KeyCode::PageDown if no_mods => {
+                self.scroll_transcript_down(page_lines);
+                true
+            }
+            KeyCode::Up if alt || (no_mods && (transcript_focus || composer_empty)) => {
+                self.scroll_transcript_up(TRANSCRIPT_SCROLL_LINE_STEP);
+                true
+            }
+            KeyCode::Down if alt || (no_mods && (transcript_focus || composer_empty)) => {
+                self.scroll_transcript_down(TRANSCRIPT_SCROLL_LINE_STEP);
+                true
+            }
+            KeyCode::Char('k' | 'K') if no_mods && transcript_focus => {
+                self.scroll_transcript_up(TRANSCRIPT_SCROLL_LINE_STEP);
+                true
+            }
+            KeyCode::Char('j' | 'J') if no_mods && transcript_focus => {
+                self.scroll_transcript_down(TRANSCRIPT_SCROLL_LINE_STEP);
+                true
+            }
+            KeyCode::Home if ctrl || (no_mods && (transcript_focus || composer_empty)) => {
+                self.scroll_transcript_to_top();
+                true
+            }
+            KeyCode::Char('g') if no_mods && transcript_focus => {
+                self.scroll_transcript_to_top();
+                true
+            }
+            KeyCode::End if ctrl || (no_mods && (transcript_focus || composer_empty)) => {
+                self.scroll_transcript_to_bottom();
+                true
+            }
+            KeyCode::Char('G') if no_mods && transcript_focus => {
+                self.scroll_transcript_to_bottom();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -398,6 +556,7 @@ impl TuiState {
         }
 
         self.clear_error();
+        self.transcript_scroll.jump_bottom();
         TuiAction::SubmitPrompt(prompt)
     }
 
@@ -590,6 +749,48 @@ mod tests {
         assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
         assert_eq!(state.chord, ChordState::None);
         assert_eq!(state.overlay, None);
+    }
+
+    #[test]
+    fn transcript_scroll_keys_do_not_edit_composer() {
+        let mut state = TuiState::new();
+        state.set_transcript_page_lines(6);
+
+        assert_eq!(state.handle_key(key(KeyCode::PageUp)), TuiAction::None);
+        assert_eq!(state.transcript_scroll.offset_from_bottom(), 5);
+        assert_eq!(state.input(), "");
+
+        assert_eq!(state.handle_key(key(KeyCode::PageDown)), TuiAction::None);
+        assert_eq!(state.transcript_scroll.offset_from_bottom(), 0);
+
+        state.composer.replace_text("draft");
+        assert_eq!(state.handle_key(key(KeyCode::PageUp)), TuiAction::None);
+        assert_eq!(state.transcript_scroll.offset_from_bottom(), 5);
+        assert_eq!(state.input(), "draft");
+    }
+
+    #[test]
+    fn empty_composer_arrows_scroll_transcript_like_deepseek() {
+        let mut state = TuiState::new();
+        assert_eq!(state.handle_key(key(KeyCode::Up)), TuiAction::None);
+        assert_eq!(state.transcript_scroll.offset_from_bottom(), 1);
+        assert_eq!(state.handle_key(key(KeyCode::Down)), TuiAction::None);
+        assert_eq!(state.transcript_scroll.offset_from_bottom(), 0);
+    }
+
+    #[test]
+    fn ctrl_o_t_focuses_transcript_and_escape_returns_to_composer() {
+        let mut state = TuiState::new();
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char('t'))), TuiAction::None);
+        assert_eq!(state.focus, TuiFocus::Transcript);
+        assert_eq!(state.handle_key(key(KeyCode::Char('k'))), TuiAction::None);
+        assert_eq!(state.transcript_scroll.offset_from_bottom(), 1);
+        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
+        assert_eq!(state.focus, TuiFocus::Composer);
     }
 
     #[test]
