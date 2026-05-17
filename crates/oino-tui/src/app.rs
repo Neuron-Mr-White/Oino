@@ -306,6 +306,14 @@ impl TuiState {
     }
 
     #[must_use]
+    pub fn has_session_content(&self) -> bool {
+        !self.messages.is_empty()
+            || !self.steer_items.is_empty()
+            || !self.queued_items.is_empty()
+            || !self.draft_items.is_empty()
+    }
+
+    #[must_use]
     pub fn session_cursor_filtered_position(&self) -> usize {
         self.sessions
             .filtered_indices
@@ -1249,6 +1257,10 @@ impl TuiState {
             }
             ParsedCommand::NewSession => {
                 self.clear_error();
+                if !self.has_session_content() {
+                    self.status = "Already in a blank session".into();
+                    return TuiAction::None;
+                }
                 self.status = "Starting new session…".into();
                 TuiAction::NewSession
             }
@@ -1763,6 +1775,19 @@ mod tests {
         assert!(state.queued_items.is_empty());
         assert_eq!(state.input(), "");
         assert!(state.status.contains("abc"));
+    }
+
+    #[test]
+    fn new_command_is_noop_in_blank_session() {
+        let mut state = TuiState::new();
+        for ch in "/new".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, None);
+        assert_eq!(state.input(), "");
+        assert!(state.status.contains("blank session"));
     }
 
     #[test]

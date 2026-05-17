@@ -554,16 +554,17 @@ async fn start_new_tui_session(
             return;
         }
     };
-    let repository = SessionRepository::new(root);
-    match repository.create("oino", cwd).await {
-        Ok((path, session)) => {
-            harness.replace_session(session).await;
-            *session_path = path;
-            let session_id = session_id_from_path(session_path);
-            state.reset_for_new_session(&session_id);
-        }
-        Err(err) => state.set_error(format!("New session failed: {err}")),
-    }
+    let (path, session) = new_tui_session(root, cwd);
+    harness.replace_session(session).await;
+    *session_path = path;
+    let session_id = session_id_from_path(session_path);
+    state.reset_for_new_session(&session_id);
+}
+
+fn new_tui_session(root: PathBuf, cwd: PathBuf) -> (PathBuf, SessionManager) {
+    let session = SessionManager::new(SessionHeader::new("oino", cwd));
+    let path = root.join(format!("{}.jsonl", session.header().session_id));
+    (path, session)
 }
 
 async fn load_tui_sessions(state: &mut TuiState, current_session_path: &Path) {
@@ -1422,6 +1423,19 @@ mod tests {
         assert_eq!(config.thinking_collapse_mode, CollapseMode::Truncate);
         assert_eq!(config.tool_collapse_mode, CollapseMode::Collapse);
         assert_eq!(config.chat_style, oino_tui::ChatStyle::Minimal);
+    }
+
+    #[test]
+    fn new_tui_session_is_lazy_until_saved() {
+        let temp = match tempfile::tempdir() {
+            Ok(temp) => temp,
+            Err(err) => panic!("tempdir failed: {err}"),
+        };
+        let (path, session) = new_tui_session(temp.path().to_path_buf(), PathBuf::from("/tmp"));
+
+        assert_eq!(path.parent(), Some(temp.path()));
+        assert_eq!(session.get_entries().len(), 0);
+        assert!(!path.exists());
     }
 
     #[tokio::test]

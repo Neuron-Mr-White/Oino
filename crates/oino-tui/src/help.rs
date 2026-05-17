@@ -33,7 +33,7 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
     HelpEntry::Blank,
     HelpEntry::Heading("Commands"),
     HelpEntry::Item("/help", "open this help overlay"),
-    HelpEntry::Item("/new", "start a fresh local session"),
+    HelpEntry::Item("/new", "start a fresh session after this one has messages"),
     HelpEntry::Item(
         "/sessions",
         "browse saved sessions; press Enter to continue one",

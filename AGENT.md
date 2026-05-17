@@ -33,7 +33,7 @@ From today onwards, keep all conventions we know so far in this file so future a
 
 - Local sessions live under `~/.oino/sessions/<uuid>.jsonl`.
 - Session files are append-only JSONL: header first, then message/model/thinking/compaction/etc. entries.
-- `/new` must create/switch to a fresh session and clear transient TUI state.
+- `/new` must be a no-op in a blank/no-input session; after the current session has content, it switches to a fresh lazy session, clears transient TUI state, and should not persist an empty session file until real content is saved.
 - `/sessions` must let users browse saved sessions and press Enter to continue one.
 - Running `/sessions` from a blank startup state must not create a new empty session file.
 
