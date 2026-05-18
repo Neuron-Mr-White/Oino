@@ -38,6 +38,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io::{self, Stdout, Write},
     path::{Path, PathBuf},
+    process::{Command, Stdio},
     sync::Arc,
     time::Duration,
 };
@@ -784,13 +785,7 @@ fn handle_mouse_event(
     width: u16,
     height: u16,
 ) {
-    if !matches!(
-        mouse.kind,
-        MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
-    ) {
-        return;
-    }
-    if !mouse.modifiers.is_empty() && !mouse.modifiers.contains(KeyModifiers::CONTROL) {
+    if !is_external_open_mouse_event(&mouse) {
         return;
     }
     let targets = transcript_click_targets(state, width, height);
@@ -811,33 +806,159 @@ fn click_hits_target(column: u16, row: u16, target: &TerminalClickTarget) -> boo
     row == target.y && column >= target.x && column < target.x.saturating_add(target.width)
 }
 
+fn is_external_open_mouse_event(mouse: &MouseEvent) -> bool {
+    matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+        && mouse.modifiers.contains(KeyModifiers::CONTROL)
+}
+
 fn open_external_target(target: &str, cwd: &Path) -> io::Result<()> {
-    let target = if is_external_url(target) || target.starts_with("file://") {
-        target.to_string()
-    } else {
-        let path = PathBuf::from(target);
-        if path.is_absolute() {
-            path_to_string(&path)
-        } else {
-            path_to_string(&cwd.join(path))
-        }
-    };
+    let target = resolve_external_target(target, cwd);
+    let browser_env = std::env::var("BROWSER").ok();
+    open_resolved_target(&target, browser_env.as_deref())
+}
 
-    let status = if cfg!(target_os = "macos") {
-        std::process::Command::new("open").arg(&target).status()
-    } else if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &target])
-            .status()
-    } else {
-        std::process::Command::new("xdg-open").arg(&target).status()
-    }?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!("opener exited with {status}")))
+fn resolve_external_target(target: &str, cwd: &Path) -> String {
+    if is_external_url(target) || target.starts_with("file://") {
+        return target.to_string();
     }
+    let path = PathBuf::from(target);
+    if path.is_absolute() {
+        path_to_string(&path)
+    } else {
+        path_to_string(&cwd.join(path))
+    }
+}
+
+fn open_resolved_target(target: &str, browser_env: Option<&str>) -> io::Result<()> {
+    let candidates = opener_candidates(target, browser_env);
+    let mut failures = Vec::new();
+
+    for candidate in candidates {
+        match candidate.status() {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(status) => failures.push(format!("{} exited with {status}", candidate.display())),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                failures.push(format!("{} not found", candidate.program))
+            }
+            Err(err) => failures.push(format!("{} failed: {err}", candidate.display())),
+        }
+    }
+
+    let detail = if failures.is_empty() {
+        "no opener candidates configured".to_string()
+    } else {
+        format!("tried {}", failures.join("; "))
+    };
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("no system opener succeeded for {target}; {detail}"),
+    ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OpenCommand {
+    program: String,
+    args: Vec<String>,
+}
+
+impl OpenCommand {
+    fn new<I, S>(program: &str, args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            program: program.into(),
+            args: args.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    fn with_target(program: &str, target: &str) -> Self {
+        Self::new(program, [target])
+    }
+
+    fn status(&self) -> io::Result<std::process::ExitStatus> {
+        Command::new(&self.program)
+            .args(&self.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+    }
+
+    fn display(&self) -> String {
+        std::iter::once(self.program.as_str())
+            .chain(self.args.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+fn opener_candidates(target: &str, browser_env: Option<&str>) -> Vec<OpenCommand> {
+    let mut candidates = browser_env_candidates(target, browser_env);
+
+    #[cfg(target_os = "macos")]
+    {
+        candidates.push(OpenCommand::with_target("open", target));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        candidates.push(OpenCommand::new(
+            "rundll32",
+            ["url.dll,FileProtocolHandler", target],
+        ));
+        candidates.push(OpenCommand::new("cmd", ["/C", "start", "", target]));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        candidates.push(OpenCommand::with_target("xdg-open", target));
+        candidates.push(OpenCommand::new("gio", ["open", target]));
+        candidates.push(OpenCommand::with_target("kde-open", target));
+        candidates.push(OpenCommand::with_target("kde-open5", target));
+        candidates.push(OpenCommand::with_target("gnome-open", target));
+        candidates.push(OpenCommand::with_target("sensible-browser", target));
+        candidates.push(OpenCommand::with_target("wslview", target));
+    }
+
+    candidates
+}
+
+fn browser_env_candidates(target: &str, browser_env: Option<&str>) -> Vec<OpenCommand> {
+    let separator = if cfg!(target_os = "windows") {
+        ';'
+    } else {
+        ':'
+    };
+    browser_env
+        .into_iter()
+        .flat_map(|env| env.split(separator))
+        .filter_map(|spec| browser_env_candidate(target, spec))
+        .collect()
+}
+
+fn browser_env_candidate(target: &str, spec: &str) -> Option<OpenCommand> {
+    let mut parts = spec.split_whitespace();
+    let program = parts.next()?.trim();
+    if program.is_empty() {
+        return None;
+    }
+
+    let mut args = Vec::new();
+    let mut inserted_target = false;
+    for part in parts {
+        if part.contains("%s") || part.contains("%u") {
+            args.push(part.replace("%s", target).replace("%u", target));
+            inserted_target = true;
+        } else {
+            args.push(part.to_string());
+        }
+    }
+    if !inserted_target {
+        args.push(target.to_string());
+    }
+    Some(OpenCommand::new(program, args))
 }
 
 fn is_external_url(value: &str) -> bool {
@@ -1757,6 +1878,80 @@ mod tests {
     #[test]
     fn default_model_is_openrouter_model() {
         assert_eq!(DEFAULT_OPENROUTER_MODEL, "openrouter:openai/gpt-4o-mini");
+    }
+
+    #[test]
+    fn ctrl_left_down_is_required_for_external_mouse_open() {
+        assert!(is_external_open_mouse_event(&MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::CONTROL,
+        }));
+        assert!(!is_external_open_mouse_event(&MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        }));
+        assert!(!is_external_open_mouse_event(&MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::CONTROL,
+        }));
+    }
+
+    #[test]
+    fn resolves_external_targets_before_opening() {
+        let cwd = Path::new("/tmp/oino-project");
+
+        assert_eq!(
+            resolve_external_target("https://example.com", cwd),
+            "https://example.com"
+        );
+        assert_eq!(
+            resolve_external_target("file:///tmp/image.png", cwd),
+            "file:///tmp/image.png"
+        );
+        assert_eq!(
+            resolve_external_target("assets/image.png", cwd),
+            "/tmp/oino-project/assets/image.png"
+        );
+    }
+
+    #[test]
+    fn browser_env_candidate_replaces_url_placeholders() {
+        let candidate = browser_env_candidate("https://example.com", "firefox --new-tab %s")
+            .unwrap_or_else(|| panic!("browser candidate should parse"));
+
+        assert_eq!(
+            candidate,
+            OpenCommand::new("firefox", ["--new-tab", "https://example.com"])
+        );
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn linux_openers_fallback_beyond_xdg_open() {
+        let candidates = opener_candidates("https://example.com", Some("firefox --new-tab %s"));
+
+        assert_eq!(
+            candidates.first(),
+            Some(&OpenCommand::new(
+                "firefox",
+                ["--new-tab", "https://example.com"]
+            ))
+        );
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate
+                == &OpenCommand::with_target("xdg-open", "https://example.com")));
+        assert!(candidates.iter().any(
+            |candidate| candidate == &OpenCommand::new("gio", ["open", "https://example.com"])
+        ));
+        assert!(candidates.iter().any(|candidate| candidate
+            == &OpenCommand::with_target("sensible-browser", "https://example.com")));
     }
 
     #[test]
