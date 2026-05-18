@@ -74,9 +74,11 @@ pub struct ResourcePaths {
     pub global_skills_dir: PathBuf,
     pub project_root: PathBuf,
     pub project_dir: PathBuf,
+    pub project_settings: PathBuf,
     pub project_agent: PathBuf,
     pub project_prompts_dir: PathBuf,
     pub project_skills_dir: PathBuf,
+    pub project_exports_dir: PathBuf,
 }
 
 impl ResourcePaths {
@@ -99,9 +101,11 @@ impl ResourcePaths {
             global_system_prompt: global_dir.join("SYSTEM.md"),
             global_settings: global_dir.join("settings.json"),
             global_skills_dir: global_dir.join("skills"),
+            project_settings: project_dir.join("settings.json"),
             project_agent: project_dir.join("AGENT.md"),
             project_prompts_dir: project_dir.join("prompts"),
             project_skills_dir: project_dir.join("skills"),
+            project_exports_dir: project_dir.join("exports"),
             home_dir,
             global_dir,
             project_root,
@@ -115,8 +119,14 @@ impl ResourcePaths {
         create_dir(&self.project_dir)?;
         create_dir(&self.project_prompts_dir)?;
         create_dir(&self.project_skills_dir)?;
+        create_dir(&self.project_exports_dir)?;
         write_if_missing(&self.global_system_prompt, SYSTEM_DEFAULT)?;
         write_if_missing(&self.global_settings, SETTINGS_DEFAULT)?;
+        write_if_missing_inheriting(
+            &self.project_settings,
+            &self.global_settings,
+            SETTINGS_DEFAULT,
+        )?;
         write_if_missing(&self.project_agent, AGENT_DEFAULT)?;
         Ok(())
     }
@@ -338,6 +348,22 @@ fn write_if_missing(path: &Path, content: &str) -> ResourceResult<()> {
     if path.exists() {
         return Ok(());
     }
+    write_file(path, content)
+}
+
+fn write_if_missing_inheriting(
+    path: &Path,
+    source_path: &Path,
+    fallback: &str,
+) -> ResourceResult<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(source_path).unwrap_or_else(|_| fallback.to_string());
+    write_file(path, &content)
+}
+
+fn write_file(path: &Path, content: &str) -> ResourceResult<()> {
     if let Some(parent) = path.parent() {
         create_dir(parent)?;
     }
@@ -664,13 +690,40 @@ mod tests {
         assert!(paths.global_system_prompt.is_file());
         assert!(paths.global_settings.is_file());
         assert!(paths.global_skills_dir.is_dir());
+        assert!(paths.project_settings.is_file());
         assert!(paths.project_agent.is_file());
         assert!(paths.project_prompts_dir.is_dir());
         assert!(paths.project_skills_dir.is_dir());
+        assert!(paths.project_exports_dir.is_dir());
 
         fs::write(&paths.global_system_prompt, "custom")?;
         paths.ensure_skeleton()?;
         assert_eq!(fs::read_to_string(&paths.global_system_prompt)?, "custom");
+        Ok(())
+    }
+
+    #[test]
+    fn new_project_settings_inherit_global_settings() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let home = temp.path().join("home");
+        let first_project = temp.path().join("first");
+        fs::create_dir_all(&first_project)?;
+        let first_paths = ResourcePaths::from_home_and_cwd(&home, &first_project)?;
+        first_paths.ensure_skeleton()?;
+        fs::write(
+            &first_paths.global_settings,
+            "{\n  \"tools\": {\n    \"bash\": false\n  }\n}\n",
+        )?;
+
+        let second_project = temp.path().join("second");
+        fs::create_dir_all(&second_project)?;
+        let second_paths = ResourcePaths::from_home_and_cwd(&home, &second_project)?;
+        second_paths.ensure_skeleton()?;
+
+        assert_eq!(
+            fs::read_to_string(&second_paths.project_settings)?,
+            fs::read_to_string(&first_paths.global_settings)?
+        );
         Ok(())
     }
 

@@ -39,6 +39,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Settings,
     },
     CommandSpec {
+        name: "/title",
+        summary: "Set the current session title",
+        kind: CommandKind::Session,
+    },
+    CommandSpec {
         name: "/new",
         summary: "Start a new session",
         kind: CommandKind::Session,
@@ -51,6 +56,11 @@ pub const COMMANDS: &[CommandSpec] = &[
     CommandSpec {
         name: "/help",
         summary: "Open keyboard and command help",
+        kind: CommandKind::Settings,
+    },
+    CommandSpec {
+        name: "/inspect",
+        summary: "Inspect debug runtime state",
         kind: CommandKind::Settings,
     },
     CommandSpec {
@@ -91,6 +101,8 @@ pub enum ParsedCommand {
     Prompts,
     Skills,
     ReloadResources,
+    Inspect,
+    SetSessionTitle(String),
     Settings(SettingsCommand),
 }
 
@@ -100,6 +112,7 @@ pub enum SettingsCommand {
     OpenModelSelection,
     OpenThinkingLevel,
     OpenChatStyle,
+    OpenTools,
     SetModel(Model),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode {
@@ -307,6 +320,7 @@ pub fn command_suggestions_for(
         {
             chat_style_suggestions(context)
         }
+        [settings, subject] if settings == "/settings" && subject == "tools" => None,
         _ => None,
     }
 }
@@ -354,6 +368,13 @@ pub fn command_query(input: &str, cursor: usize) -> Option<String> {
 
 #[must_use]
 pub fn parse_command(input: &str) -> Option<ParsedCommand> {
+    let input = input.trim();
+    if let Some(title) = input.strip_prefix("/title ") {
+        let title = title.trim();
+        if !title.is_empty() {
+            return Some(ParsedCommand::SetSessionTitle(title.to_string()));
+        }
+    }
     let tokens = input.split_whitespace().collect::<Vec<_>>();
     match tokens.as_slice() {
         ["/help"] => Some(ParsedCommand::Help),
@@ -362,12 +383,14 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/prompts"] => Some(ParsedCommand::Prompts),
         ["/skills"] => Some(ParsedCommand::Skills),
         ["/reload"] => Some(ParsedCommand::ReloadResources),
+        ["/inspect"] => Some(ParsedCommand::Inspect),
         ["/settings"] => Some(ParsedCommand::Settings(SettingsCommand::Open)),
         ["/model"] => Some(ParsedCommand::Settings(SettingsCommand::OpenModelSelection)),
         ["/thinking"] => Some(ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel)),
         ["/settings", "chat-style"] | ["/settings", "chat_style"] => {
             Some(ParsedCommand::Settings(SettingsCommand::OpenChatStyle))
         }
+        ["/settings", "tools"] => Some(ParsedCommand::Settings(SettingsCommand::OpenTools)),
         ["/settings", "model", model] | ["/model", model] => Model::from_identifier(model)
             .map(SettingsCommand::SetModel)
             .map(ParsedCommand::Settings),
@@ -644,10 +667,11 @@ fn suggestion_match_text(item: &CommandSuggestionItem) -> String {
 
 fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     let subjects = [
-        ("model", "Set selected model"),
-        ("thinking", "Set thinking level"),
-        ("collapse", "Set thinking/tool collapse mode"),
-        ("chat-style", "Set transcript rendering style"),
+        ("model", "Set selected model", false),
+        ("thinking", "Set thinking level", false),
+        ("collapse", "Set thinking/tool collapse mode", false),
+        ("chat-style", "Set transcript rendering style", true),
+        ("tools", "Show registered agent tools by scope", true),
     ];
     let items = fuzzy_indices(
         &subjects,
@@ -658,8 +682,10 @@ fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSug
     )
     .into_iter()
     .map(|index| {
-        let (subject, summary) = subjects[index];
-        incomplete_item(subject, summary, &context)
+        let (subject, summary, complete_on_exact) = subjects[index];
+        let mut item = incomplete_item(subject, summary, &context);
+        item.complete_on_enter = complete_on_exact && context.active_prefix == subject;
+        item
     })
     .collect::<Vec<_>>();
     Some(view("Settings", context.active_prefix, items))
@@ -1123,6 +1149,10 @@ mod tests {
             .unwrap_or_else(|| panic!("missing chat style suggestions"));
         assert_eq!(view.title, "Chat Style");
         assert_eq!(view.items[0].label, "agentic");
+
+        let view = suggestions("/settings too", 13)
+            .unwrap_or_else(|| panic!("missing tools settings suggestion"));
+        assert!(view.items.iter().any(|item| item.label == "tools"));
     }
 
     #[test]
@@ -1226,6 +1256,7 @@ mod tests {
             parse_command("/reload"),
             Some(ParsedCommand::ReloadResources)
         );
+        assert_eq!(parse_command("/inspect"), Some(ParsedCommand::Inspect));
         assert_eq!(
             parse_command("/settings"),
             Some(ParsedCommand::Settings(SettingsCommand::Open))
@@ -1261,6 +1292,14 @@ mod tests {
             Some(ParsedCommand::Settings(SettingsCommand::SetThinkingLevel(
                 ThinkingLevel::High
             )))
+        );
+        assert_eq!(
+            parse_command("/title Design polish pass"),
+            Some(ParsedCommand::SetSessionTitle("Design polish pass".into()))
+        );
+        assert_eq!(
+            parse_command("/settings tools"),
+            Some(ParsedCommand::Settings(SettingsCommand::OpenTools))
         );
         assert_eq!(
             parse_command("/settings collapse tool truncate"),

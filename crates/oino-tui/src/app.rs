@@ -15,7 +15,10 @@ use crate::{
     help::{help_entry_match_text, HELP_ENTRIES},
     message::{project_content_blocks, project_message, project_messages, MessageView},
     resource::{PromptResource, ResourceBrowserState, SkillResource},
-    settings::{chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState},
+    settings::{
+        chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState,
+        ToolSettingsItem,
+    },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
@@ -33,6 +36,7 @@ pub enum OverlayKind {
     Sessions,
     Prompts,
     Skills,
+    Inspect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +88,15 @@ pub struct SessionsState {
     pub filtered_indices: Vec<usize>,
     pub search: String,
     pub search_active: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InspectState {
+    pub full_prompt: String,
+    pub token_count: usize,
+    pub loading: bool,
+    pub scroll: usize,
+    pub export_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,6 +166,7 @@ impl TranscriptScroll {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TuiState {
     pub messages: Vec<MessageView>,
+    pub session_title: String,
     pub composer: ComposerState,
     pub focus: TuiFocus,
     pub status: String,
@@ -165,6 +179,7 @@ pub struct TuiState {
     pub transcript_scroll: TranscriptScroll,
     pub send_panel: SendPanelState,
     pub sessions: SessionsState,
+    pub inspect: InspectState,
     pub prompts: ResourceBrowserState,
     pub skills: ResourceBrowserState,
     pub prompt_resources: Vec<PromptResource>,
@@ -187,6 +202,7 @@ impl Default for TuiState {
     fn default() -> Self {
         Self {
             messages: Vec::new(),
+            session_title: String::new(),
             composer: ComposerState::new(),
             focus: TuiFocus::Composer,
             status: HELP_STATUS.into(),
@@ -199,6 +215,7 @@ impl Default for TuiState {
             transcript_scroll: TranscriptScroll::default(),
             send_panel: SendPanelState::default(),
             sessions: SessionsState::default(),
+            inspect: InspectState::default(),
             prompts: ResourceBrowserState::default(),
             skills: ResourceBrowserState::default(),
             prompt_resources: Vec::new(),
@@ -843,6 +860,14 @@ impl TuiState {
         self.refresh_command_suggestions();
     }
 
+    pub fn set_tool_settings(&mut self, tools: Vec<ToolSettingsItem>) {
+        self.settings.set_tools(tools);
+    }
+
+    pub fn set_session_title(&mut self, title: impl Into<String>) {
+        self.session_title = title.into();
+    }
+
     pub fn set_model_catalog_refreshing(&mut self, refreshing: bool) {
         self.settings.set_refreshing(refreshing);
     }
@@ -930,6 +955,7 @@ impl TuiState {
             Some(OverlayKind::Sessions) => return self.handle_sessions_key(key),
             Some(OverlayKind::Prompts) => return self.handle_prompts_key(key),
             Some(OverlayKind::Skills) => return self.handle_skills_key(key),
+            Some(OverlayKind::Inspect) => return self.handle_inspect_key(key),
             None => {}
         }
 
@@ -1303,6 +1329,38 @@ impl TuiState {
             .help_scroll
             .saturating_add(lines.max(1))
             .min(self.filtered_help_indices.len().saturating_sub(1));
+    }
+
+    fn handle_inspect_key(&mut self, key: KeyEvent) -> TuiAction {
+        let page = self.transcript_page_lines.max(5);
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q' | 'Q') if key.modifiers.is_empty() => {
+                self.overlay = None;
+                self.inspect.loading = false;
+                self.status = HELP_STATUS.into();
+            }
+            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
+                self.inspect.scroll = self.inspect.scroll.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
+                self.inspect.scroll = self.inspect.scroll.saturating_add(1);
+            }
+            KeyCode::PageUp if key.modifiers.is_empty() => {
+                self.inspect.scroll = self.inspect.scroll.saturating_sub(page);
+            }
+            KeyCode::PageDown if key.modifiers.is_empty() => {
+                self.inspect.scroll = self.inspect.scroll.saturating_add(page);
+            }
+            KeyCode::Home if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
+                self.inspect.scroll = 0;
+            }
+            KeyCode::Char('e' | 'E') if key.modifiers.is_empty() => {
+                self.status = "Exporting chat…".into();
+                return TuiAction::ExportChatHtml;
+            }
+            _ => {}
+        }
+        TuiAction::None
     }
 
     fn handle_send_panel_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -1701,6 +1759,19 @@ impl TuiState {
                 self.status = format!("Chat style set to {}", chat_style_label(style));
                 TuiAction::SetChatStyle(style)
             }
+            SettingsAction::SetToolEnabled {
+                name,
+                scope,
+                enabled,
+            } => {
+                let status = if enabled { "ON" } else { "OFF" };
+                self.status = format!("{} tool `{name}` set {status}", scope.label());
+                TuiAction::SetToolEnabled {
+                    name,
+                    scope,
+                    enabled,
+                }
+            }
         }
     }
 
@@ -1826,6 +1897,10 @@ impl TuiState {
                 self.status = "Reloading resources…".into();
                 TuiAction::ReloadResources
             }
+            ParsedCommand::Inspect => {
+                self.open_inspect_overlay();
+                TuiAction::OpenInspect
+            }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();
                 TuiAction::None
@@ -1841,6 +1916,16 @@ impl TuiState {
             ParsedCommand::Settings(SettingsCommand::OpenChatStyle) => {
                 self.open_chat_style_overlay();
                 TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::OpenTools) => {
+                self.open_tools_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::SetSessionTitle(title) => {
+                self.set_session_title(title.clone());
+                self.status = format!("Session title set to {title}");
+                self.clear_error();
+                TuiAction::SetSessionTitle(title)
             }
             ParsedCommand::Settings(SettingsCommand::SetModel(model)) => {
                 let identifier = model.identifier();
@@ -1881,6 +1966,7 @@ impl TuiState {
         self.messages.clear();
         self.mark_transcript_changed();
         self.clear_session_runtime_state();
+        self.session_title.clear();
         self.status = format!("Started new session {session_id}");
     }
 
@@ -1900,6 +1986,7 @@ impl TuiState {
         self.chord = ChordState::None;
         self.transcript_scroll.jump_bottom();
         self.send_panel = SendPanelState::default();
+        self.inspect = InspectState::default();
         self.prompts = ResourceBrowserState::default();
         self.skills = ResourceBrowserState::default();
         self.refresh_prompt_filter();
@@ -1952,6 +2039,31 @@ impl TuiState {
         self.status = "Skills".into();
     }
 
+    fn open_inspect_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Inspect);
+        self.inspect.loading = true;
+        self.inspect.scroll = 0;
+        self.inspect.full_prompt.clear();
+        self.inspect.token_count = 0;
+        self.inspect.export_message = None;
+        self.status = "Inspect: loading full prompt…".into();
+    }
+
+    pub fn set_inspect_full_prompt(&mut self, content: impl Into<String>, token_count: usize) {
+        self.inspect.full_prompt = content.into();
+        self.inspect.token_count = token_count;
+        self.inspect.loading = false;
+        self.inspect.scroll = 0;
+        self.status = "Inspect: full prompt".into();
+    }
+
+    pub fn set_inspect_export_message(&mut self, message: impl Into<String>) {
+        let message = message.into();
+        self.inspect.export_message = Some(message.clone());
+        self.status = message;
+    }
+
     pub fn open_help(&mut self) {
         self.open_help_overlay();
     }
@@ -1985,6 +2097,13 @@ impl TuiState {
         self.settings.open_chat_style();
         self.overlay = Some(OverlayKind::Settings);
         self.status = "Chat Style: arrows/jk move • Enter apply • Esc back".into();
+    }
+
+    fn open_tools_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_tools();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status = "Tools: arrows/jk move • g global • p/Enter project • Esc back".into();
     }
 
     fn open_settings_overlay(&mut self) {
@@ -2371,6 +2490,45 @@ mod tests {
             TuiAction::SubmitPrompt("hi".into())
         );
         assert_eq!(state.input(), "");
+    }
+
+    #[test]
+    fn inspect_command_opens_loading_overlay() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("/inspect");
+
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::OpenInspect
+        );
+        assert_eq!(state.overlay, Some(OverlayKind::Inspect));
+        assert!(state.inspect.loading);
+    }
+
+    #[test]
+    fn inspect_panel_e_exports_chat_html() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("/inspect");
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::OpenInspect
+        );
+
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('e'))),
+            TuiAction::ExportChatHtml
+        );
+        assert_eq!(state.status, "Exporting chat…");
+    }
+
+    #[test]
+    fn inspect_snapshot_updates_full_prompt_and_token_count() {
+        let mut state = TuiState::new();
+        state.set_inspect_full_prompt("# Full\nPrompt", 2);
+
+        assert!(!state.inspect.loading);
+        assert_eq!(state.inspect.token_count, 2);
+        assert_eq!(state.inspect.full_prompt, "# Full\nPrompt");
     }
 
     #[test]
@@ -3007,6 +3165,31 @@ mod tests {
             TuiAction::SetModel("openrouter:xai/glm-5.1".into())
         );
         assert_eq!(state.settings.selected_model, "openrouter:xai/glm-5.1");
+    }
+
+    #[test]
+    fn title_command_updates_session_title() {
+        let mut state = TuiState::new();
+        for ch in "/title Design polish".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SetSessionTitle("Design polish".into())
+        );
+        assert_eq!(state.session_title, "Design polish");
+    }
+
+    #[test]
+    fn settings_tools_command_opens_tools_page() {
+        let mut state = TuiState::new();
+        state.set_tool_settings(vec![ToolSettingsItem::global("bash")]);
+        for ch in "/settings tools".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Settings));
+        assert_eq!(state.settings.page, crate::settings::SettingsPage::Tools);
     }
 
     #[test]

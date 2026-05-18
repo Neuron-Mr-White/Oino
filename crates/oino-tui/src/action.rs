@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::settings::{ChatStyle, CollapseMode, CollapseTarget};
+use crate::settings::{ChatStyle, CollapseMode, CollapseTarget, ToolSettingsScope};
 use oino_types::ThinkingLevel;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,10 +13,18 @@ pub enum TuiAction {
     ListSessions,
     OpenSession(String),
     ReloadResources,
+    OpenInspect,
+    ExportChatHtml,
     SetModel(String),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),
     SetChatStyle(ChatStyle),
+    SetToolEnabled {
+        name: String,
+        scope: ToolSettingsScope,
+        enabled: bool,
+    },
+    SetSessionTitle(String),
     AbortPrompt,
     Quit,
 }

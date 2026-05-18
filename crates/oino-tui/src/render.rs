@@ -20,7 +20,9 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{
+        Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    },
     Frame,
 };
 use std::{
@@ -36,6 +38,7 @@ const MIN_COMPOSER_ROWS: usize = 3;
 const MAX_COMPOSER_HEIGHT: u16 = 9;
 const INPUT_PROMPT: &str = "› ";
 const TINY_MESSAGE: &str = "Oino needs at least 20x8";
+const TRANSCRIPT_LEFT_PADDING: u16 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalClickTargetKind {
@@ -213,6 +216,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         Some(OverlayKind::Sessions) => render_sessions_overlay(frame, area, state, theme),
         Some(OverlayKind::Prompts) => render_prompts_overlay(frame, area, state, theme),
         Some(OverlayKind::Skills) => render_skills_overlay(frame, area, state, theme),
+        Some(OverlayKind::Inspect) => render_inspect_overlay(frame, area, state, theme),
         None => {}
     }
 
@@ -319,7 +323,7 @@ pub fn transcript_click_targets(
     }
 
     let theme = Theme::default();
-    let full_inner_width = area.width.saturating_sub(2) as usize;
+    let full_inner_width = transcript_full_content_width(area.width);
     let mut transcript = prepared_transcript_for_width(state, full_inner_width, &theme);
     let mut has_scrollbar =
         transcript.total_lines() > inner_height && area.width > 4 && inner_height > 1;
@@ -343,10 +347,7 @@ pub fn transcript_click_targets(
                 continue;
             }
             targets.push(TerminalClickTarget {
-                x: area
-                    .x
-                    .saturating_add(1)
-                    .saturating_add(line_target.column as u16),
+                x: transcript_content_x(area).saturating_add(line_target.column as u16),
                 y: area
                     .y
                     .saturating_add(1)
@@ -361,9 +362,21 @@ pub fn transcript_click_targets(
     targets
 }
 
+fn transcript_full_content_width(area_width: u16) -> usize {
+    area_width
+        .saturating_sub(2)
+        .saturating_sub(TRANSCRIPT_LEFT_PADDING) as usize
+}
+
+fn transcript_content_x(area: Rect) -> u16 {
+    area.x
+        .saturating_add(1)
+        .saturating_add(TRANSCRIPT_LEFT_PADDING)
+}
+
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
     let inner_height = area.height.saturating_sub(2) as usize;
-    let full_inner_width = area.width.saturating_sub(2) as usize;
+    let full_inner_width = transcript_full_content_width(area.width);
     let mut transcript = prepared_transcript_for_width(state, full_inner_width, theme);
     let mut has_scrollbar =
         transcript.total_lines() > inner_height && area.width > 4 && inner_height > 1;
@@ -383,10 +396,10 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     let lines = transcript.materialize_line_slice(start, start.saturating_add(inner_height));
 
     let title = match (state.working, scrolled_offset) {
-        (true, 0) => " Oino • Generating… ".to_string(),
-        (true, offset) => format!(" Oino • Generating… ↑{offset} "),
-        (false, 0) => " Oino ".to_string(),
-        (false, offset) => format!(" Oino ↑{offset} "),
+        (true, 0) => transcript_title_with_status(state, "Generating…", None),
+        (true, offset) => transcript_title_with_status(state, "Generating…", Some(offset)),
+        (false, 0) => transcript_title(state, None),
+        (false, offset) => transcript_title(state, Some(offset)),
     };
     let border_style = if state.focus == TuiFocus::Transcript {
         Style::default().fg(theme.focused_border)
@@ -401,11 +414,38 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     let block = Block::default()
         .title(Span::styled(title, title_style))
         .borders(Borders::ALL)
-        .border_style(border_style);
+        .border_style(border_style)
+        .padding(Padding::left(TRANSCRIPT_LEFT_PADDING));
     frame.render_widget(Paragraph::new(lines).block(block), area);
 
     if has_scrollbar {
         render_transcript_scrollbar(frame, area, start, inner_height, total_lines, theme);
+    }
+}
+
+fn transcript_title(state: &TuiState, offset: Option<usize>) -> String {
+    let title = state.session_title.trim();
+    let base = if title.is_empty() {
+        "Oino".to_string()
+    } else {
+        format!("Oino • {title}")
+    };
+    match offset {
+        Some(offset) => format!(" {base} ↑{offset} "),
+        None => format!(" {base} "),
+    }
+}
+
+fn transcript_title_with_status(state: &TuiState, status: &str, offset: Option<usize>) -> String {
+    let title = state.session_title.trim();
+    let base = if title.is_empty() {
+        format!("Oino • {status}")
+    } else {
+        format!("Oino • {title} • {status}")
+    };
+    match offset {
+        Some(offset) => format!(" {base} ↑{offset} "),
+        None => format!(" {base} "),
     }
 }
 
@@ -866,6 +906,113 @@ fn command_suggestion_title(
     } else {
         suggestions.title.clone()
     }
+}
+
+fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 88, 82);
+    frame.render_widget(Clear, overlay);
+
+    let block = Block::default()
+        .title(Span::styled(" Inspect ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border));
+    frame.render_widget(block, overlay);
+
+    let inner = overlay.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    if inner.height == 0 || inner.width == 0 {
+        return;
+    }
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let option = if state.inspect.loading {
+        Line::from(vec![
+            Span::styled("› ", Style::default().fg(theme.focused_border)),
+            Span::styled(
+                "Full prompt",
+                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" • loading…", Style::default().fg(theme.muted)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled("› ", Style::default().fg(theme.focused_border)),
+            Span::styled(
+                "Full prompt",
+                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" • {} tokens", state.inspect.token_count),
+                Style::default().fg(theme.muted),
+            ),
+        ])
+    };
+    let export_hint = state.inspect.export_message.as_deref().map_or_else(
+        || {
+            Line::styled(
+                "Press e to export chat as HTML",
+                Style::default().fg(theme.muted),
+            )
+        },
+        |message| Line::styled(message.to_string(), Style::default().fg(theme.muted)),
+    );
+    frame.render_widget(Paragraph::new(vec![option, export_hint]), sections[0]);
+
+    let content_width = sections[1].width as usize;
+    let content_lines = if state.inspect.loading {
+        vec![Line::styled(
+            "Loading inspect snapshot…",
+            Style::default().fg(theme.muted),
+        )]
+    } else if state.inspect.full_prompt.trim().is_empty() {
+        vec![Line::styled(
+            "No prompt snapshot available.",
+            Style::default().fg(theme.muted),
+        )]
+    } else {
+        state
+            .inspect
+            .full_prompt
+            .lines()
+            .flat_map(|line| {
+                wrap_text(line, content_width.max(1))
+                    .into_iter()
+                    .map(Line::from)
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    };
+    let visible = sections[1].height as usize;
+    let max_start = content_lines.len().saturating_sub(visible);
+    let start = state.inspect.scroll.min(max_start);
+    let end = start.saturating_add(visible).min(content_lines.len());
+    frame.render_widget(
+        Paragraph::new(content_lines[start..end].to_vec()),
+        sections[1],
+    );
+
+    let footer = if content_lines.len() > visible {
+        format!(
+            "↑/↓ scroll • PgUp/PgDn page • e export • q/Esc close • {}/{}",
+            start.saturating_add(1).min(content_lines.len()),
+            content_lines.len()
+        )
+    } else {
+        "e export • q/Esc close".into()
+    };
+    frame.render_widget(
+        Paragraph::new(Line::styled(footer, Style::default().fg(theme.muted))),
+        sections[2],
+    );
 }
 
 fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -1339,23 +1486,38 @@ fn sessions_item_line(
 ) -> Line<'static> {
     let marker = arrow_marker(active);
     let current = if item.current { "●" } else { " " };
-    let short_id = item.id.chars().take(8).collect::<String>();
-    let count = match item.message_count {
-        1 => "1 message".to_string(),
-        count => format!("{count} messages"),
-    };
-    let prefix = format!(
-        "{marker} {current} {}. {} [{short_id}] {count} — ",
-        index.saturating_add(1),
-        item.name
-    );
-    let detail = if item.preview.trim().is_empty() {
+    let prefix = format!("{marker} {current} {}. ", index.saturating_add(1));
+    let description = if item.preview.trim().is_empty() {
         item.cwd.clone()
     } else {
-        format!("{} • {}", item.preview, item.cwd)
+        item.preview.clone()
     };
-    let text = truncate_with_ellipsis(&format!("{prefix}{detail}"), width.max(1));
-    Line::styled(text, item_style(active, item.current, theme))
+    let separator = " - ";
+    let reserved = prefix.width().saturating_add(separator.width());
+    let available = width.saturating_sub(reserved).max(1);
+    let title_width = if available < 8 {
+        available
+    } else {
+        (available / 3).clamp(8, available)
+    };
+    let title = truncate_with_ellipsis(&item.name, title_width);
+    let used = reserved.saturating_add(title.width());
+    let description_width = width.saturating_sub(used).max(1);
+    let description = truncate_with_ellipsis(&description, description_width);
+    let row_style = item_style(active, item.current, theme);
+    let title_style = if active {
+        row_style.add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(theme.focused_border)
+            .add_modifier(Modifier::BOLD)
+    };
+    Line::from(vec![
+        Span::styled(prefix, row_style),
+        Span::styled(title, title_style),
+        Span::styled(separator, Style::default().fg(theme.muted)),
+        Span::styled(description, Style::default().fg(theme.muted)),
+    ])
 }
 
 fn render_prompts_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -1713,6 +1875,7 @@ fn render_settings_overlay(
         SettingsPage::Thinking => render_thinking_settings(frame, sections[0], settings, theme),
         SettingsPage::Collapse => render_collapse_settings(frame, sections[0], settings, theme),
         SettingsPage::ChatStyle => render_chat_style_settings(frame, sections[0], settings, theme),
+        SettingsPage::Tools => render_tools_settings(frame, sections[0], settings, theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
 }
@@ -1746,6 +1909,7 @@ fn render_settings_menu(
             SettingsPage::ChatStyle => {
                 format!("current: {}", chat_style_label(settings.chat_style))
             }
+            SettingsPage::Tools => format!("{} registered", settings.tools.len()),
             SettingsPage::Menu => String::new(),
         };
         let text = format!("{marker} {}  {}", item.label(), detail);
@@ -1971,6 +2135,67 @@ fn render_chat_style_settings(
     );
 }
 
+fn render_tools_settings(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let title = if settings.tools.is_empty() {
+        " Tools ".to_string()
+    } else {
+        format!(
+            " Tools {}/{} ",
+            settings
+                .tool_cursor
+                .saturating_add(1)
+                .min(settings.tools.len()),
+            settings.tools.len()
+        )
+    };
+    let mut lines = vec![Line::styled(
+        "Project controls this workspace. Global is the default copied into new projects.",
+        Style::default().fg(theme.muted),
+    )];
+    lines.push(Line::from(""));
+    if settings.tools.is_empty() {
+        lines.push(Line::styled(
+            "No tools registered.",
+            Style::default().fg(theme.muted),
+        ));
+    } else {
+        let visible_height = list_content_height(area).saturating_sub(2).max(1);
+        let range = visible_range(settings.tool_cursor, settings.tools.len(), visible_height);
+        lines.extend(
+            settings
+                .tools
+                .iter()
+                .enumerate()
+                .skip(range.start)
+                .take(range.end.saturating_sub(range.start))
+                .map(|(index, tool)| {
+                    let active = index == settings.tool_cursor;
+                    let marker = arrow_marker(active);
+                    Line::styled(
+                        format!("{marker} {}", tool.label()),
+                        item_style(active, tool.global_enabled || tool.project_enabled, theme),
+                    )
+                }),
+        );
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
 fn render_settings_footer(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -1986,8 +2211,15 @@ fn render_settings_footer(
         SettingsPage::Thinking => "arrows/jk move • Enter apply • Esc/← back • Ctrl-C twice quit",
         SettingsPage::Collapse => "arrows/jk move • Enter/→ cycle • Esc/← back",
         SettingsPage::ChatStyle => "arrows/jk move • Enter apply • Esc/← back",
+        SettingsPage::Tools => {
+            "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
+        }
     };
-    let status = format!("{} • {controls}", settings.status);
+    let status = if settings.page == SettingsPage::Tools {
+        format!("Project controls this workspace; Global seeds new projects • {controls}")
+    } else {
+        format!("{} • {controls}", settings.status)
+    };
     frame.render_widget(
         Paragraph::new(truncate_to_width(&status, area.width as usize)).style(theme.footer),
         area,
@@ -2278,6 +2510,30 @@ mod tests {
         assert!(text.contains("hello"));
         assert!(text.contains(INPUT_PLACEHOLDER));
         assert!(!text.contains(crate::app::HELP_STATUS));
+    }
+
+    #[test]
+    fn transcript_container_has_left_padding() {
+        let mut state = TuiState::new();
+        state.settings.chat_style = ChatStyle::Minimal;
+        state.messages.push(MessageView {
+            id: oino_types::OinoId::nil(),
+            role: "user".into(),
+            title: None,
+            content: "hello".into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        });
+
+        let width = 40usize;
+        let buffer = draw_state(width as u16, 12, &state);
+        let symbol = |x: usize, y: usize| buffer.content()[y * width + x].symbol();
+
+        assert_eq!(symbol(1, 1), " ");
+        assert_eq!(symbol(2, 1), "1");
     }
 
     #[test]
@@ -2728,6 +2984,40 @@ mod tests {
 
         assert!(text.contains("Press / to search sessions"));
         assert!(text.contains("…"));
+    }
+
+    #[test]
+    fn render_transcript_title_includes_session_title() {
+        let mut state = TuiState::new();
+        state.set_session_title("Design Review");
+        let buffer = draw_state(80, 20, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Oino • Design Review"));
+    }
+
+    #[test]
+    fn render_settings_tools_page_lists_scope_statuses() {
+        let mut state = TuiState::new();
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+        state.settings.open_tools();
+        state.set_tool_settings(vec![
+            crate::settings::ToolSettingsItem::global("bash"),
+            crate::settings::ToolSettingsItem::global("set_session_title")
+                .with_scopes(false, false),
+        ]);
+        let buffer = draw_state(100, 30, &state);
+        let text = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Tools 1/2"));
+        assert!(text.contains("Bash - [Global - ON] [Project - OFF]"));
+        assert!(text.contains("Set Session Title - [Global - OFF] [Project - OFF]"));
     }
 
     #[test]

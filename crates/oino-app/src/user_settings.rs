@@ -4,6 +4,7 @@ use oino_tui::{ChatStyle, CollapseMode};
 use oino_types::ThinkingLevel;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     io,
     path::{Path, PathBuf},
 };
@@ -17,6 +18,7 @@ pub struct UserSettings {
     pub thinking_collapse_mode: Option<CollapseMode>,
     pub tool_collapse_mode: Option<CollapseMode>,
     pub chat_style: Option<ChatStyle>,
+    pub tools: BTreeMap<String, bool>,
 }
 
 impl UserSettings {
@@ -34,7 +36,29 @@ impl UserSettings {
             thinking_collapse_mode: Some(thinking_collapse_mode),
             tool_collapse_mode: Some(tool_collapse_mode),
             chat_style: Some(chat_style),
+            tools: BTreeMap::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_tools(mut self, tools: BTreeMap<String, bool>) -> Self {
+        self.tools = tools;
+        self
+    }
+
+    pub fn apply_current(
+        &mut self,
+        model: impl Into<String>,
+        thinking_level: ThinkingLevel,
+        thinking_collapse_mode: CollapseMode,
+        tool_collapse_mode: CollapseMode,
+        chat_style: ChatStyle,
+    ) {
+        self.model = Some(model.into());
+        self.thinking_level = Some(thinking_level);
+        self.thinking_collapse_mode = Some(thinking_collapse_mode);
+        self.tool_collapse_mode = Some(tool_collapse_mode);
+        self.chat_style = Some(chat_style);
     }
 
     pub async fn load_default() -> io::Result<Self> {

@@ -60,6 +60,10 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
     ),
     HelpEntry::Item("/reload", "reload SYSTEM.md, AGENT.md, prompts, and skills"),
     HelpEntry::Item(
+        "/inspect",
+        "inspect full prompt; press e there to export chat HTML",
+    ),
+    HelpEntry::Item(
         "/skill:<name>",
         "include a skill explicitly; repeat tokens to combine resources",
     ),
@@ -70,6 +74,14 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
     HelpEntry::Item(
         "/thinking <level>",
         "set reasoning level: off, minimal, low, medium, high, xhigh",
+    ),
+    HelpEntry::Item(
+        "/title <text>",
+        "set the title shown in the transcript and sessions list",
+    ),
+    HelpEntry::Item(
+        "/settings tools",
+        "show registered agent tools by global/project scope",
     ),
     HelpEntry::Blank,
     HelpEntry::Heading("Transcript"),

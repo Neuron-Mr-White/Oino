@@ -21,7 +21,7 @@ use crossterm::{
     },
 };
 use model_catalog::ModelCatalogUpdate;
-use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider};
+use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider, Tool};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
@@ -30,17 +30,20 @@ use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
     transcript_click_targets, transcript_url_overlays, transcript_visible_lines, CollapseMode,
-    ParsedCommand, PromptResource, SessionListItem, SettingsCommand, SkillResource,
-    TerminalClickTarget, TerminalUrlOverlay, TuiAction, TuiState, HELP_STATUS,
+    MessageView, ParsedCommand, PromptResource, SessionListItem, SettingsCommand, SkillResource,
+    TerminalClickTarget, TerminalUrlOverlay, ToolSettingsItem, ToolSettingsScope, TuiAction,
+    TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
     io::{self, Stdout, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -119,7 +122,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /prompts\n  /skills\n  /reload\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools"
 }
 
 #[derive(Debug, Error)]
@@ -165,6 +168,12 @@ struct TuiLaunchConfig {
     resource_paths: ResourcePaths,
     resource_catalog: ResourceCatalog,
     open_settings: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ToolSettingsSnapshot {
+    global: UserSettings,
+    project: UserSettings,
 }
 
 impl AppConfig {
@@ -284,6 +293,8 @@ async fn main() -> Result<(), AppError> {
         session,
         &resource_catalog,
     )?;
+    let tool_settings = load_tool_settings(&resource_paths).await;
+    apply_tool_settings_to_harness(&harness, &tool_settings, &cwd).await;
 
     if cli.settings || cli.input.is_some() {
         return run_non_interactive(cli, harness, auth, config, session_path, resource_catalog)
@@ -352,9 +363,261 @@ fn build_harness(
     Ok(Harness::new(config))
 }
 
+const BUILT_IN_TOOL_NAMES: &[&str] = &["bash", "edit", "read", "write"];
+
+async fn load_tool_settings(paths: &ResourcePaths) -> ToolSettingsSnapshot {
+    ToolSettingsSnapshot {
+        global: user_settings::load_from_path(&paths.global_settings)
+            .await
+            .unwrap_or_default(),
+        project: user_settings::load_from_path(&paths.project_settings)
+            .await
+            .unwrap_or_default(),
+    }
+}
+
+fn known_tool_names(settings: &ToolSettingsSnapshot) -> BTreeSet<String> {
+    let mut names = BUILT_IN_TOOL_NAMES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect::<BTreeSet<_>>();
+    names.insert(oino_tools::SESSION_TITLE_TOOL_NAME.into());
+    names.extend(settings.global.tools.keys().cloned());
+    names.extend(settings.project.tools.keys().cloned());
+    names
+}
+
+fn default_tool_enabled(name: &str) -> bool {
+    name != oino_tools::SESSION_TITLE_TOOL_NAME
+}
+
+fn global_tool_enabled(settings: &ToolSettingsSnapshot, name: &str) -> bool {
+    settings
+        .global
+        .tools
+        .get(name)
+        .copied()
+        .unwrap_or_else(|| default_tool_enabled(name))
+}
+
+fn project_tool_enabled(settings: &ToolSettingsSnapshot, name: &str) -> bool {
+    settings
+        .project
+        .tools
+        .get(name)
+        .copied()
+        .unwrap_or_else(|| global_tool_enabled(settings, name))
+}
+
+fn tool_settings_items(settings: &ToolSettingsSnapshot) -> Vec<ToolSettingsItem> {
+    known_tool_names(settings)
+        .into_iter()
+        .map(|name| {
+            ToolSettingsItem::global(name.clone()).with_scopes(
+                global_tool_enabled(settings, &name),
+                project_tool_enabled(settings, &name),
+            )
+        })
+        .collect()
+}
+
+fn tool_map_from_state(state: &TuiState, scope: ToolSettingsScope) -> BTreeMap<String, bool> {
+    state
+        .settings
+        .tools
+        .iter()
+        .map(|tool| {
+            let enabled = match scope {
+                ToolSettingsScope::Global => tool.global_enabled,
+                ToolSettingsScope::Project => tool.project_enabled,
+            };
+            (tool.name.clone(), enabled)
+        })
+        .collect()
+}
+
+fn set_tool_enabled(
+    settings: &mut ToolSettingsSnapshot,
+    scope: ToolSettingsScope,
+    name: String,
+    enabled: bool,
+) {
+    match scope {
+        ToolSettingsScope::Global => settings.global.tools.insert(name, enabled),
+        ToolSettingsScope::Project => settings.project.tools.insert(name, enabled),
+    };
+}
+
+async fn save_tool_settings(
+    settings: &ToolSettingsSnapshot,
+    paths: &ResourcePaths,
+    scope: ToolSettingsScope,
+    state: &mut TuiState,
+) {
+    let result = match scope {
+        ToolSettingsScope::Global => {
+            user_settings::save_to_path(&settings.global, &paths.global_settings).await
+        }
+        ToolSettingsScope::Project => {
+            user_settings::save_to_path(&settings.project, &paths.project_settings).await
+        }
+    };
+    if let Err(err) = result {
+        state.set_error(format!("Tool settings save failed: {err}"));
+        state.status = HELP_STATUS.into();
+    }
+}
+
+async fn apply_tool_settings_to_harness(
+    harness: &Harness,
+    settings: &ToolSettingsSnapshot,
+    cwd: &Path,
+) {
+    let mut available = oino_tools::default_tools(harness.env(), cwd.to_path_buf());
+    available.insert(
+        oino_tools::SESSION_TITLE_TOOL_NAME.into(),
+        oino_tools::session_title_tool(harness.session_title_setter()),
+    );
+    let tools = available
+        .into_iter()
+        .filter(|(name, _)| project_tool_enabled(settings, name))
+        .collect::<BTreeMap<String, Arc<dyn Tool>>>();
+    harness.set_tools(tools).await;
+}
+
 fn load_resource_catalog(paths: &ResourcePaths) -> Result<ResourceCatalog, AppError> {
     paths.ensure_skeleton()?;
     Ok(paths.load_catalog())
+}
+
+fn export_chat_html(state: &TuiState, exports_dir: &Path) -> io::Result<PathBuf> {
+    fs::create_dir_all(exports_dir)?;
+    let path = unique_export_path(exports_dir);
+    fs::write(&path, render_chat_export_html(state))?;
+    Ok(path)
+}
+
+fn unique_export_path(exports_dir: &Path) -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis());
+    let stem = format!("chat-{timestamp}");
+    for index in 0..1000usize {
+        let file_name = if index == 0 {
+            format!("{stem}.html")
+        } else {
+            format!("{stem}-{index}.html")
+        };
+        let path = exports_dir.join(file_name);
+        if !path.exists() {
+            return path;
+        }
+    }
+    exports_dir.join(format!("{stem}-{}.html", std::process::id()))
+}
+
+fn render_chat_export_html(state: &TuiState) -> String {
+    let title = if state.session_title.trim().is_empty() {
+        "Oino Chat Export"
+    } else {
+        state.session_title.trim()
+    };
+    let mut html = String::new();
+    html.push_str("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
+    html.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+    html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
+    html.push_str(
+        "<style>\n:root{color-scheme:dark light;font-family:Inter,ui-sans-serif,system-ui,sans-serif;}\nbody{margin:0;padding:2rem;background:#0b1020;color:#e6edf3;}\nmain{max-width:920px;margin:0 auto;}\nh1{margin:0 0 .25rem;font-size:1.8rem;}\n.meta{color:#8b949e;margin:0 0 1.5rem;}\n.message{border:1px solid #30363d;border-radius:12px;padding:1rem;margin:1rem 0;background:#111827;}\n.message.user{background:#102a43;}\n.message.assistant{background:#1f2937;}\n.message.tool{background:#261f12;}\n.header{display:flex;gap:.75rem;align-items:baseline;margin-bottom:.75rem;}\n.role{font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:.78rem;color:#58a6ff;}\n.title{color:#8b949e;font-size:.85rem;}\npre{white-space:pre-wrap;word-break:break-word;margin:.5rem 0 0;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}\ndetails{margin:.75rem 0;color:#c9d1d9;}\nsummary{cursor:pointer;color:#d29922;}\n.empty{color:#8b949e;}\n</style>\n</head>\n<body>\n<main>\n",
+    );
+    html.push_str(&format!("<h1>{}</h1>\n", html_escape(title)));
+    html.push_str(&format!(
+        "<p class=\"meta\">Exported from Oino • {} message{}</p>\n",
+        state.messages.len(),
+        if state.messages.len() == 1 { "" } else { "s" }
+    ));
+    if state.messages.is_empty() {
+        html.push_str("<p class=\"empty\">No messages.</p>\n");
+    } else {
+        for message in &state.messages {
+            html.push_str(&render_message_export_html(message));
+        }
+    }
+    html.push_str("</main>\n</body>\n</html>\n");
+    html
+}
+
+fn render_message_export_html(message: &MessageView) -> String {
+    let class = message_role_class(&message.role);
+    let mut html = String::new();
+    html.push_str(&format!(
+        "<section class=\"message {}\" data-message-id=\"{}\">\n<div class=\"header\"><span class=\"role\">{}</span>",
+        class,
+        html_escape(&message.id.to_string()),
+        html_escape(&message.role)
+    ));
+    if let Some(title) = message.title.as_deref().filter(|title| !title.is_empty()) {
+        html.push_str(&format!(
+            "<span class=\"title\">{}</span>",
+            html_escape(title)
+        ));
+    }
+    html.push_str("</div>\n");
+    if let Some(thinking) = message.thinking.as_deref() {
+        let label = if message.thinking_redacted {
+            "Thinking (redacted)"
+        } else {
+            "Thinking"
+        };
+        html.push_str(&format!(
+            "<details><summary>{}</summary><pre>{}</pre></details>\n",
+            label,
+            html_escape(thinking)
+        ));
+    }
+    if !message.content.trim().is_empty() {
+        html.push_str(&format!("<pre>{}</pre>\n", html_escape(&message.content)));
+    }
+    for call in &message.tool_calls {
+        let arguments = serde_json::to_string_pretty(&call.arguments)
+            .unwrap_or_else(|_| call.arguments.to_string());
+        html.push_str(&format!(
+            "<details><summary>Tool call: {}</summary><pre>{}</pre></details>\n",
+            html_escape(&call.name),
+            html_escape(&arguments)
+        ));
+    }
+    html.push_str("</section>\n");
+    html
+}
+
+fn message_role_class(role: &str) -> String {
+    if role.starts_with("tool:") {
+        return "tool".into();
+    }
+    role.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn html_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn default_system_prompt(cwd: &std::path::Path, catalog: &ResourceCatalog) -> String {
@@ -393,7 +656,11 @@ async fn run_tui(
     } = launch;
     let mut terminal = TerminalGuard::enter()?;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut tool_settings = load_tool_settings(&resource_paths).await;
+    apply_tool_settings_to_harness(&harness, &tool_settings, &cwd).await;
     let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
+    state.set_session_title(harness.session_title().await);
+    state.set_tool_settings(tool_settings_items(&tool_settings));
     apply_resource_catalog_to_state(&mut state, &resource_catalog);
     state.set_file_paths(scan_project_files(&cwd));
     state
@@ -469,6 +736,30 @@ async fn run_tui(
         match action {
             TuiAction::None => {}
             TuiAction::Quit => break,
+            TuiAction::OpenInspect => match harness.inspect_full_prompt().await {
+                Ok(snapshot) => {
+                    state.set_inspect_full_prompt(snapshot.content, snapshot.token_count)
+                }
+                Err(err) => {
+                    state.inspect.loading = false;
+                    state.set_error(format!("Inspect failed: {err}"));
+                }
+            },
+            TuiAction::ExportChatHtml => {
+                match export_chat_html(&state, &resource_paths.project_exports_dir) {
+                    Ok(path) => {
+                        let display = path
+                            .strip_prefix(&resource_paths.project_root)
+                            .unwrap_or(path.as_path())
+                            .display();
+                        state.set_inspect_export_message(format!("Exported chat to {display}"));
+                    }
+                    Err(err) => {
+                        state.set_inspect_export_message(format!("Chat export failed: {err}"));
+                        state.set_error(format!("Chat export failed: {err}"));
+                    }
+                }
+            }
             TuiAction::SetModel(model) => {
                 let thinking_level = state.settings.selected_thinking_level;
                 let Some(parsed_model) = Model::from_identifier(&model) else {
@@ -499,6 +790,24 @@ async fn run_tui(
             TuiAction::SetCollapseMode(_, _) | TuiAction::SetChatStyle(_) => {
                 persist_current_settings(&mut state).await;
                 save_tui_session(&mut state, &harness, &session_path).await;
+            }
+            TuiAction::SetToolEnabled {
+                name,
+                scope,
+                enabled,
+            } => {
+                set_tool_enabled(&mut tool_settings, scope, name, enabled);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                apply_tool_settings_to_harness(&harness, &tool_settings, &cwd).await;
+                state.set_tool_settings(tool_settings_items(&tool_settings));
+            }
+            TuiAction::SetSessionTitle(title) => {
+                if let Err(err) = harness.set_session_title(title.clone()).await {
+                    state.set_error(err.to_string());
+                } else {
+                    state.set_session_title(title);
+                    save_tui_session(&mut state, &harness, &session_path).await;
+                }
             }
             TuiAction::AbortPrompt => {
                 if prompt_in_flight {
@@ -593,6 +902,7 @@ async fn start_new_tui_session(
     *session_path = path;
     let session_id = session_id_from_path(session_path);
     state.reset_for_new_session(&session_id);
+    state.set_session_title(harness.session_title().await);
 }
 
 fn new_tui_session(root: PathBuf, cwd: PathBuf) -> (PathBuf, SessionManager) {
@@ -692,8 +1002,10 @@ async fn open_tui_session(
             };
             let model = context.model.as_ref().map(Model::identifier);
             let thinking_level = context.thinking_level;
+            let session_title = session.get_session_name();
             harness.replace_session(session).await;
             *session_path = path;
+            state.set_session_title(session_title);
             if let Some(model) = model {
                 state.settings.select_model_identifier(&model);
             }
@@ -772,6 +1084,11 @@ async fn start_prompt(
             },
             Err(err) => Err(user_facing_error(&err)),
         };
+        if result.is_ok() {
+            let _ = task_tx.send(TuiRuntimeEvent::SessionTitle(
+                task_harness.session_title().await,
+            ));
+        }
         let _ = task_tx.send(TuiRuntimeEvent::PromptFinished(result));
     });
     true
@@ -1429,7 +1746,7 @@ async fn execute_runtime_command(
 ) -> Result<String, AppError> {
     let message = match command {
         ParsedCommand::Help => {
-            return Ok("Oino help is available in the TUI with `/help`. Common commands: /sessions, /new, /settings, /model, /thinking. In the composer, use @ to fuzzy-search file paths.".into());
+            return Ok("Oino help is available in the TUI with `/help`. Common commands: /sessions, /new, /settings, /model, /thinking, /title. In the composer, use @ to fuzzy-search file paths.".into());
         }
         ParsedCommand::NewSession => {
             return Err(AppError::InvalidArguments(
@@ -1442,6 +1759,15 @@ async fn execute_runtime_command(
         }
         ParsedCommand::Prompts => return Ok(format_prompt_list(resource_catalog)),
         ParsedCommand::Skills => return Ok(format_skill_list(resource_catalog)),
+        ParsedCommand::Inspect => {
+            let snapshot = harness.inspect_full_prompt().await?;
+            return Ok(snapshot.content);
+        }
+        ParsedCommand::SetSessionTitle(title) => {
+            harness.set_session_title(title.clone()).await?;
+            harness.save_session_jsonl(session_path).await?;
+            return Ok(format!("Session title set to {title}"));
+        }
         ParsedCommand::ReloadResources => {
             let catalog = load_resource_catalog(&resource_catalog.paths)?;
             harness
@@ -1460,7 +1786,8 @@ async fn execute_runtime_command(
             SettingsCommand::Open
             | SettingsCommand::OpenModelSelection
             | SettingsCommand::OpenThinkingLevel
-            | SettingsCommand::OpenChatStyle,
+            | SettingsCommand::OpenChatStyle
+            | SettingsCommand::OpenTools,
         ) => {
             return Err(AppError::InvalidArguments(
                 "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model openrouter:xai/glm-5.1` or `/thinking high`".into(),
@@ -1493,15 +1820,17 @@ async fn execute_runtime_command(
             format!("Chat style set to {}", oino_tui::chat_style_label(style))
         }
     };
-    UserSettings::from_current(
+    let mut settings = user_settings::load_from_path(&resource_catalog.paths.global_settings)
+        .await
+        .unwrap_or_default();
+    settings.apply_current(
         config.model.clone(),
         config.thinking_level,
         config.thinking_collapse_mode,
         config.tool_collapse_mode,
         config.chat_style,
-    )
-    .save_default()
-    .await?;
+    );
+    user_settings::save_to_path(&settings, &resource_catalog.paths.global_settings).await?;
     harness.save_session_jsonl(session_path).await?;
     Ok(message)
 }
@@ -1635,12 +1964,7 @@ fn format_session_list(sessions: &[SessionListItem]) -> String {
     }
     sessions
         .iter()
-        .map(|session| {
-            format!(
-                "{}  {} messages  {}  {}",
-                session.id, session.message_count, session.name, session.preview
-            )
-        })
+        .map(|session| format!("{}  {} - {}", session.id, session.name, session.preview))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -1691,6 +2015,7 @@ fn format_skill_list(catalog: &ResourceCatalog) -> String {
 enum TuiRuntimeEvent {
     Agent(AgentEvent),
     PromptFinished(Result<Vec<Message>, String>),
+    SessionTitle(String),
     ModelCatalog(ModelCatalogUpdate),
 }
 
@@ -1701,7 +2026,8 @@ async fn persist_current_settings(state: &mut TuiState) {
         state.settings.thinking_collapse_mode,
         state.settings.tool_collapse_mode,
         state.settings.chat_style,
-    );
+    )
+    .with_tools(tool_map_from_state(state, ToolSettingsScope::Global));
     if let Err(err) = settings.save_default().await {
         state.set_error(format!("Settings save failed: {err}"));
         state.status = HELP_STATUS.into();
@@ -1818,6 +2144,9 @@ fn apply_tui_runtime_event(
             state.status = "Saving…".into();
         }
         TuiRuntimeEvent::Agent(_) => {}
+        TuiRuntimeEvent::SessionTitle(title) => {
+            state.set_session_title(title);
+        }
         TuiRuntimeEvent::ModelCatalog(update) => {
             if update.models.is_empty() {
                 state.settings.status = update.status;
@@ -2060,6 +2389,29 @@ mod tests {
     }
 
     #[test]
+    fn tool_settings_inherit_global_values_and_keep_title_tool_off_by_default() {
+        let mut settings = ToolSettingsSnapshot::default();
+        settings.global.tools.insert("bash".into(), false);
+
+        let items = tool_settings_items(&settings);
+        let bash = items
+            .iter()
+            .find(|item| item.name == "bash")
+            .unwrap_or_else(|| panic!("missing bash"));
+        assert!(!bash.global_enabled);
+        assert!(!bash.project_enabled);
+        let title = items
+            .iter()
+            .find(|item| item.name == oino_tools::SESSION_TITLE_TOOL_NAME)
+            .unwrap_or_else(|| panic!("missing title tool"));
+        assert!(!title.global_enabled);
+        assert!(!title.project_enabled);
+
+        settings.project.tools.insert("bash".into(), true);
+        assert!(project_tool_enabled(&settings, "bash"));
+    }
+
+    #[test]
     fn app_config_uses_saved_model_and_thinking_level() {
         let config = AppConfig::from_sources(
             UserSettings {
@@ -2068,6 +2420,7 @@ mod tests {
                 thinking_collapse_mode: Some(CollapseMode::Truncate),
                 tool_collapse_mode: Some(CollapseMode::Collapse),
                 chat_style: Some(oino_tui::ChatStyle::Minimal),
+                tools: BTreeMap::new(),
             },
             None,
             None,
@@ -2091,6 +2444,29 @@ mod tests {
         assert_eq!(path.parent(), Some(temp.path()));
         assert_eq!(session.get_entries().len(), 0);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn export_chat_html_writes_escaped_transcript() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let exports = temp.path().join(".oino/exports");
+        let mut state = TuiState::new();
+        state.set_session_title("Demo <Chat>");
+        state.set_messages_from_oino(&[
+            Message::user_text("hello <world>"),
+            Message::assistant_text("ok & done", StopReason::EndTurn),
+        ]);
+
+        let path =
+            export_chat_html(&state, &exports).unwrap_or_else(|err| panic!("export failed: {err}"));
+        let html =
+            fs::read_to_string(&path).unwrap_or_else(|err| panic!("read export failed: {err}"));
+
+        assert_eq!(path.parent(), Some(exports.as_path()));
+        assert!(html.contains("Demo &lt;Chat&gt;"));
+        assert!(html.contains("hello &lt;world&gt;"));
+        assert!(html.contains("ok &amp; done"));
+        assert!(!html.contains("hello <world>"));
     }
 
     #[tokio::test]

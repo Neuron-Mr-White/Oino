@@ -36,12 +36,88 @@ impl ModelOption {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolSettingsScope {
+    Global,
+    Project,
+}
+
+impl ToolSettingsScope {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Global => "Global",
+            Self::Project => "Project",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolSettingsItem {
+    pub name: String,
+    pub display_name: String,
+    pub global_enabled: bool,
+    pub project_enabled: bool,
+}
+
+impl ToolSettingsItem {
+    #[must_use]
+    pub fn global(name: impl Into<String>) -> Self {
+        let name = name.into();
+        Self {
+            display_name: display_tool_name(&name),
+            name,
+            global_enabled: true,
+            project_enabled: false,
+        }
+    }
+
+    #[must_use]
+    pub fn with_display_name(mut self, display_name: impl Into<String>) -> Self {
+        self.display_name = display_name.into();
+        self
+    }
+
+    #[must_use]
+    pub fn with_scopes(mut self, global_enabled: bool, project_enabled: bool) -> Self {
+        self.global_enabled = global_enabled;
+        self.project_enabled = project_enabled;
+        self
+    }
+
+    pub fn set_enabled(&mut self, scope: ToolSettingsScope, enabled: bool) {
+        match scope {
+            ToolSettingsScope::Global => self.global_enabled = enabled,
+            ToolSettingsScope::Project => self.project_enabled = enabled,
+        }
+    }
+
+    #[must_use]
+    pub fn enabled(&self, scope: ToolSettingsScope) -> bool {
+        match scope {
+            ToolSettingsScope::Global => self.global_enabled,
+            ToolSettingsScope::Project => self.project_enabled,
+        }
+    }
+
+    #[must_use]
+    pub fn label(&self) -> String {
+        format!(
+            "{} - [Global - {}] [Project - {}]",
+            self.display_name,
+            on_off(self.global_enabled),
+            on_off(self.project_enabled)
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsPage {
     Menu,
     Models,
     Thinking,
     Collapse,
     ChatStyle,
+    Tools,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -92,6 +168,7 @@ pub enum SettingsMenuItem {
     ThinkingLevel,
     CollapseMode,
     ChatStyle,
+    Tools,
 }
 
 impl SettingsMenuItem {
@@ -102,6 +179,7 @@ impl SettingsMenuItem {
             Self::ThinkingLevel => "Thinking Level",
             Self::CollapseMode => "Collapse Mode",
             Self::ChatStyle => "Chat Style",
+            Self::Tools => "Tools",
         }
     }
 
@@ -112,6 +190,7 @@ impl SettingsMenuItem {
             Self::ThinkingLevel => SettingsPage::Thinking,
             Self::CollapseMode => SettingsPage::Collapse,
             Self::ChatStyle => SettingsPage::ChatStyle,
+            Self::Tools => SettingsPage::Tools,
         }
     }
 }
@@ -124,6 +203,11 @@ pub enum SettingsAction {
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),
     SetChatStyle(ChatStyle),
+    SetToolEnabled {
+        name: String,
+        scope: ToolSettingsScope,
+        enabled: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,9 +221,11 @@ pub struct SettingsState {
     pub thinking_cursor: usize,
     pub collapse_cursor: usize,
     pub chat_style_cursor: usize,
+    pub tool_cursor: usize,
     pub thinking_collapse_mode: CollapseMode,
     pub tool_collapse_mode: CollapseMode,
     pub chat_style: ChatStyle,
+    pub tools: Vec<ToolSettingsItem>,
     pub model_search: String,
     pub model_search_active: bool,
     pub filtered_model_indices: Vec<usize>,
@@ -160,9 +246,11 @@ impl SettingsState {
             thinking_cursor: thinking_index(thinking_level, &all_thinking_levels()),
             collapse_cursor: 0,
             chat_style_cursor: 0,
+            tool_cursor: 0,
             thinking_collapse_mode: CollapseMode::Full,
             tool_collapse_mode: CollapseMode::Full,
             chat_style: ChatStyle::Chat,
+            tools: Vec::new(),
             model_search: String::new(),
             model_search_active: false,
             filtered_model_indices: Vec::new(),
@@ -222,9 +310,19 @@ impl SettingsState {
         self.chat_style_cursor = chat_style_index(style);
     }
 
+    pub fn set_tools(&mut self, tools: Vec<ToolSettingsItem>) {
+        self.tools = tools;
+        self.tool_cursor = self.tool_cursor.min(self.tools.len().saturating_sub(1));
+    }
+
     pub fn open_chat_style(&mut self) {
         self.page = SettingsPage::ChatStyle;
         self.chat_style_cursor = chat_style_index(self.chat_style);
+    }
+
+    pub fn open_tools(&mut self) {
+        self.page = SettingsPage::Tools;
+        self.tool_cursor = self.tool_cursor.min(self.tools.len().saturating_sub(1));
     }
 
     pub fn select_model_identifier(&mut self, model: &str) {
@@ -241,12 +339,13 @@ impl SettingsState {
     }
 
     #[must_use]
-    pub fn menu_items(&self) -> [SettingsMenuItem; 4] {
+    pub fn menu_items(&self) -> [SettingsMenuItem; 5] {
         [
             SettingsMenuItem::ModelSelection,
             SettingsMenuItem::ThinkingLevel,
             SettingsMenuItem::CollapseMode,
             SettingsMenuItem::ChatStyle,
+            SettingsMenuItem::Tools,
         ]
     }
 
@@ -304,6 +403,19 @@ impl SettingsState {
             }
             KeyCode::Right if self.page == SettingsPage::Menu => self.open_current_menu_item(),
             KeyCode::Right if self.page == SettingsPage::Collapse => self.apply_collapse_mode(),
+            KeyCode::Right if self.page == SettingsPage::Tools => {
+                self.toggle_tool(ToolSettingsScope::Project)
+            }
+            KeyCode::Char('g' | 'G')
+                if self.page == SettingsPage::Tools && key.modifiers.is_empty() =>
+            {
+                self.toggle_tool(ToolSettingsScope::Global)
+            }
+            KeyCode::Char('p' | 'P' | ' ')
+                if self.page == SettingsPage::Tools && key.modifiers.is_empty() =>
+            {
+                self.toggle_tool(ToolSettingsScope::Project)
+            }
             KeyCode::Char('/') if self.page == SettingsPage::Models && key.modifiers.is_empty() => {
                 self.model_search_active = true;
                 self.model_search.clear();
@@ -404,6 +516,7 @@ impl SettingsState {
             SettingsPage::Thinking => self.apply_thinking_level(),
             SettingsPage::Collapse => self.apply_collapse_mode(),
             SettingsPage::ChatStyle => self.apply_chat_style(),
+            SettingsPage::Tools => self.toggle_tool(ToolSettingsScope::Project),
         }
     }
 
@@ -425,6 +538,9 @@ impl SettingsState {
             SettingsPage::ChatStyle => {
                 self.chat_style_cursor =
                     move_index(self.chat_style_cursor, ChatStyle::all().len(), delta);
+            }
+            SettingsPage::Tools => {
+                self.tool_cursor = move_index(self.tool_cursor, self.tools.len(), delta);
             }
         }
     }
@@ -518,6 +634,19 @@ impl SettingsState {
         SettingsAction::SetChatStyle(style)
     }
 
+    fn toggle_tool(&mut self, scope: ToolSettingsScope) -> SettingsAction {
+        let Some(tool) = self.tools.get_mut(self.tool_cursor) else {
+            return SettingsAction::None;
+        };
+        let enabled = !tool.enabled(scope);
+        tool.set_enabled(scope, enabled);
+        SettingsAction::SetToolEnabled {
+            name: tool.name.clone(),
+            scope,
+            enabled,
+        }
+    }
+
     fn clamp_thinking_to_selected_model(&mut self) {
         let levels = self.thinking_levels();
         if !levels.contains(&self.selected_thinking_level) {
@@ -607,6 +736,27 @@ fn chat_style_index(style: ChatStyle) -> usize {
         .iter()
         .position(|item| *item == style)
         .unwrap_or(0)
+}
+
+fn on_off(value: bool) -> &'static str {
+    if value {
+        "ON"
+    } else {
+        "OFF"
+    }
+}
+
+fn display_tool_name(name: &str) -> String {
+    name.split(['_', '-'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars.next().map_or_else(String::new, |first| {
+                format!("{}{}", first.to_uppercase(), chars.as_str())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn move_index(current: usize, len: usize, delta: isize) -> usize {
@@ -736,6 +886,52 @@ mod tests {
             SettingsAction::SetChatStyle(ChatStyle::Agentic)
         );
         assert_eq!(settings.chat_style, ChatStyle::Agentic);
+    }
+
+    #[test]
+    fn tools_page_lists_registered_tools_and_toggles_each_scope() {
+        let mut settings = SettingsState::new("a", ThinkingLevel::Off);
+        settings.set_tools(vec![
+            ToolSettingsItem::global("bash"),
+            ToolSettingsItem::global("set_session_title").with_scopes(false, false),
+        ]);
+        for _ in 0..4 {
+            settings.handle_key(key(KeyCode::Down));
+        }
+        assert_eq!(settings.current_menu_item(), SettingsMenuItem::Tools);
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::None
+        );
+        assert_eq!(settings.page, SettingsPage::Tools);
+        assert_eq!(
+            settings.tools[0].label(),
+            "Bash - [Global - ON] [Project - OFF]"
+        );
+        assert_eq!(
+            settings.tools[1].label(),
+            "Set Session Title - [Global - OFF] [Project - OFF]"
+        );
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Char('g'))),
+            SettingsAction::SetToolEnabled {
+                name: "bash".into(),
+                scope: ToolSettingsScope::Global,
+                enabled: false,
+            }
+        );
+        assert!(!settings.tools[0].global_enabled);
+        settings.handle_key(key(KeyCode::Down));
+        assert_eq!(settings.tool_cursor, 1);
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::SetToolEnabled {
+                name: "set_session_title".into(),
+                scope: ToolSettingsScope::Project,
+                enabled: true,
+            }
+        );
+        assert!(settings.tools[1].project_enabled);
     }
 
     #[test]

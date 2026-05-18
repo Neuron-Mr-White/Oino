@@ -37,6 +37,6 @@ pub use resource::{PromptResource, ResourceBrowserState, SkillResource};
 pub use settings::{
     all_thinking_levels, chat_style_label, collapse_mode_label, thinking_label, ChatStyle,
     CollapseMode, CollapseTarget, ModelOption, SettingsAction, SettingsMenuItem, SettingsPage,
-    SettingsState,
+    SettingsState, ToolSettingsItem, ToolSettingsScope,
 };
 pub use theme::Theme;

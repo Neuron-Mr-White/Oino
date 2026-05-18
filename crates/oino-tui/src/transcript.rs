@@ -177,7 +177,6 @@ fn minimal_transcript_blocks(
                 theme_hash,
                 relation_hash,
             ),
-            &message.role,
         );
     }
     if let Some(error) = error {
@@ -195,7 +194,6 @@ fn minimal_transcript_blocks(
                 theme_hash,
                 relation_hash,
             ),
-            &error_message.role,
         );
     }
     blocks
@@ -211,17 +209,9 @@ fn append_spaced_block(blocks: &mut Vec<Arc<Vec<Line<'static>>>>, block: Arc<Vec
     blocks.push(block);
 }
 
-fn append_minimal_block(
-    blocks: &mut Vec<Arc<Vec<Line<'static>>>>,
-    block: Arc<Vec<Line<'static>>>,
-    role: &str,
-) {
+fn append_minimal_block(blocks: &mut Vec<Arc<Vec<Line<'static>>>>, block: Arc<Vec<Line<'static>>>) {
     if block.is_empty() {
         return;
-    }
-    let compact_continuation = role.starts_with("tool:") || matches!(role, "compaction" | "branch");
-    if !blocks.is_empty() && !compact_continuation {
-        blocks.push(blank_line_block());
     }
     blocks.push(block);
 }
@@ -925,12 +915,14 @@ fn minimal_assistant_lines(
         ));
     }
     if message.content != "<empty>" {
+        lines.push(Line::from(""));
         lines.extend(render_markdown_lines(
             &message.content,
             width,
             Style::default().fg(theme.fg),
             theme,
         ));
+        lines.push(Line::from(""));
     }
     for call in &message.tool_calls {
         if has_later_tool_result(messages, index, call.id) {
@@ -1950,6 +1942,83 @@ mod tests {
         assert_eq!(chat_plain, vec!["✓ Bash · 2 chars"]);
         assert!(chat_plain.iter().all(|line| !line.contains("[collapsed]")));
         assert!(chat_plain.iter().all(|line| !line.contains("ok")));
+    }
+
+    #[test]
+    fn minimal_reply_has_top_and_bottom_padding() {
+        let messages = vec![MessageView {
+            id: oino_types::OinoId::from_u128(32),
+            role: "assistant".into(),
+            title: Some("test/model".into()),
+            content: "final answer".into(),
+            thinking: Some("Need answer clearly".into()),
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        }];
+
+        let lines = transcript_lines(
+            &messages,
+            None,
+            120,
+            CollapseMode::Full,
+            CollapseMode::Full,
+            ChatStyle::Minimal,
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert_eq!(
+            plain_lines,
+            vec![
+                "  ◌ Need answer clearly".to_string(),
+                String::new(),
+                "final answer".to_string(),
+                String::new(),
+            ]
+        );
+    }
+
+    #[test]
+    fn minimal_thinking_and_tool_results_have_no_padding() {
+        let messages = vec![
+            MessageView {
+                id: oino_types::OinoId::from_u128(31),
+                role: "assistant".into(),
+                title: Some("test/model".into()),
+                content: "<empty>".into(),
+                thinking: Some("Need inspect file".into()),
+                thinking_redacted: false,
+                tool_call_id: None,
+                tool_calls: vec![ToolCallView {
+                    id: oino_types::OinoId::from_u128(1),
+                    name: "read".into(),
+                    arguments: json!({ "path": "README.md" }),
+                }],
+                is_error: false,
+            },
+            tool_result(20, 1, "read", "one\ntwo", false),
+        ];
+
+        let lines = transcript_lines(
+            &messages,
+            None,
+            120,
+            CollapseMode::Full,
+            CollapseMode::Collapse,
+            ChatStyle::Minimal,
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert_eq!(
+            plain_lines,
+            vec![
+                "  ◌ Need inspect file".to_string(),
+                "  ✓ Read README.md · 2 lines".to_string(),
+            ]
+        );
     }
 
     #[test]

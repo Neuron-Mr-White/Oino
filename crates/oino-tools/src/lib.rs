@@ -8,8 +8,8 @@ sandboxed or remote runtimes can reuse the same model-visible surface.
 
 use async_trait::async_trait;
 use oino_agent_loop::{
-    AbortSignal, LoopError, LoopResult, Tool, ToolCall, ToolDefinition, ToolExecutionMode,
-    ToolResult, ToolUpdateCallback,
+    AbortSignal, BoxFuture, LoopError, LoopResult, Tool, ToolCall, ToolDefinition,
+    ToolExecutionMode, ToolResult, ToolUpdateCallback,
 };
 use oino_env::{CommandOptions, EnvError, ExecutionEnv};
 use oino_types::ContentBlock;
@@ -24,6 +24,10 @@ use thiserror::Error;
 
 const MAX_TEXT_LINES: usize = 2_000;
 const MAX_TEXT_BYTES: usize = 50 * 1024;
+
+pub const SESSION_TITLE_TOOL_NAME: &str = "set_session_title";
+pub type SessionTitleSetter =
+    Arc<dyn Fn(String, bool) -> BoxFuture<'static, LoopResult<()>> + Send + Sync>;
 
 #[derive(Debug, Error)]
 enum ToolInputError {
@@ -62,6 +66,86 @@ pub fn default_tools(
         tools.insert(tool.definition().name, tool);
     }
     tools
+}
+
+#[must_use]
+pub fn session_title_tool(setter: SessionTitleSetter) -> Arc<dyn Tool> {
+    Arc::new(SessionTitleTool { setter })
+}
+
+#[derive(Clone)]
+pub struct SessionTitleTool {
+    setter: SessionTitleSetter,
+}
+
+#[derive(Debug, Deserialize)]
+struct SessionTitleArgs {
+    title: String,
+}
+
+#[async_trait]
+impl Tool for SessionTitleTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: SESSION_TITLE_TOOL_NAME.into(),
+            description: "Set a concise session title for the user when you have grasped their intent. If a session title already exists, this tool returns an error unless you pass `override: true` to override it.".into(),
+            input_schema: json!({
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["title"],
+                "properties": {
+                    "title": {"type": "string", "description": "New concise session title"},
+                    "override": {
+                        "description": "Use override:true to replace an existing session title.",
+                        "oneOf": [
+                            {"type": "boolean"},
+                            {"type": "string", "enum": ["true", "false"]}
+                        ]
+                    }
+                }
+            }),
+        }
+    }
+
+    fn execution_mode(&self) -> ToolExecutionMode {
+        ToolExecutionMode::Sequential
+    }
+
+    async fn execute(
+        &self,
+        call: ToolCall,
+        _updates: ToolUpdateCallback,
+        signal: AbortSignal,
+    ) -> LoopResult<ToolResult> {
+        abort_if_needed(&signal)?;
+        let override_existing = boolish_arg(&call.arguments, "override");
+        let mut arguments = call.arguments.clone();
+        if let Some(object) = arguments.as_object_mut() {
+            object.remove("override");
+        }
+        let args: SessionTitleArgs = serde_json::from_value(arguments)
+            .map_err(|_| LoopError::Tool(ToolInputError::InvalidArgument("title").to_string()))?;
+        let title = args.title.trim();
+        if title.is_empty() {
+            return Err(LoopError::Tool(
+                ToolInputError::InvalidArgument("title").to_string(),
+            ));
+        }
+        (self.setter)(title.to_string(), override_existing).await?;
+        abort_if_needed(&signal)?;
+        Ok(ToolResult::text(
+            &call,
+            format!("Session title set to {title}"),
+        ))
+    }
+}
+
+fn boolish_arg(arguments: &Value, key: &str) -> bool {
+    match arguments.get(key) {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::String(value)) => value.eq_ignore_ascii_case("true"),
+        _ => false,
+    }
 }
 
 #[derive(Clone)]
@@ -694,6 +778,33 @@ mod tests {
             name: name.into(),
             arguments,
         }
+    }
+
+    #[tokio::test]
+    async fn session_title_tool_calls_setter() {
+        let seen = Arc::new(tokio::sync::Mutex::new((String::new(), false)));
+        let tool_seen = Arc::clone(&seen);
+        let tool = session_title_tool(Arc::new(move |title, override_existing| {
+            let seen = Arc::clone(&tool_seen);
+            Box::pin(async move {
+                *seen.lock().await = (title, override_existing);
+                Ok(())
+            })
+        }));
+        let result = tool
+            .execute(
+                call(
+                    SESSION_TITLE_TOOL_NAME,
+                    json!({"title":"Design Review", "override":"true"}),
+                ),
+                ToolUpdateCallback::new(Arc::new(oino_agent_loop::NoopEventSink), Uuid::new_v4()),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("title tool failed: {err}"));
+        assert_eq!(*seen.lock().await, ("Design Review".into(), true));
+        assert_eq!(result.tool_name, SESSION_TITLE_TOOL_NAME);
+        assert!(!result.is_error);
     }
 
     #[tokio::test]

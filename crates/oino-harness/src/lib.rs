@@ -9,12 +9,12 @@ real providers, MCP, memory databases, and dynamic plugin ABIs belong in later l
 use oino_agent::Agent;
 use oino_agent_loop::{
     AbortSignal, AfterToolCall, AgentEvent, AgentLoopConfig, BeforeToolCall, BeforeToolCallResult,
-    BoxFuture, EventSink, LoopResult, StreamEventSink, StreamProvider, StreamRequest, Tool,
-    ToolCall, ToolResult, TransformContext,
+    BoxFuture, EventSink, LoopError, LoopResult, StreamEventSink, StreamProvider, StreamRequest,
+    Tool, ToolCall, ToolResult, TransformContext,
 };
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
 use oino_session::{SessionEntryKind, SessionManager};
-use oino_types::{AssistantStreamEvent, Message, Model, ThinkingLevel};
+use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, ThinkingLevel};
 use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -203,6 +203,30 @@ async fn run_string_hooks(
     Ok(value)
 }
 
+async fn append_session_title(session: &Arc<Mutex<SessionManager>>, title: String) {
+    session.lock().await.append(SessionEntryKind::SessionInfo {
+        name: Some(title),
+        cwd: None,
+    });
+}
+
+fn has_explicit_session_title(session: &SessionManager) -> bool {
+    session
+        .get_branch(session.get_leaf_id())
+        .ok()
+        .is_some_and(|branch| {
+            branch.iter().any(|entry| {
+                matches!(
+                    &entry.kind,
+                    SessionEntryKind::SessionInfo {
+                        name: Some(name),
+                        ..
+                    } if !name.trim().is_empty()
+                )
+            })
+        })
+}
+
 fn hook_for_event(event: &AgentEvent) -> Option<NotificationHook> {
     match event {
         AgentEvent::AgentStart { .. } => Some(NotificationHook::AgentStart),
@@ -301,6 +325,12 @@ impl HarnessConfig {
             auth_resolver: None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FullPromptInspect {
+    pub content: String,
+    pub token_count: usize,
 }
 
 pub struct Harness {
@@ -487,6 +517,42 @@ impl Harness {
         self.agent.set_system_prompt(system_prompt).await;
     }
 
+    pub async fn set_session_title(&self, title: impl Into<String>) -> HarnessResult<()> {
+        append_session_title(&self.session, title.into()).await;
+        Ok(())
+    }
+
+    pub fn session_title_setter(
+        &self,
+    ) -> Arc<dyn Fn(String, bool) -> BoxFuture<'static, LoopResult<()>> + Send + Sync> {
+        let session = Arc::clone(&self.session);
+        Arc::new(move |title, override_existing| {
+            let session = Arc::clone(&session);
+            Box::pin(async move {
+                let mut session = session.lock().await;
+                if has_explicit_session_title(&session) && !override_existing {
+                    return Err(LoopError::Tool(
+                        "session title has already been set; pass `override: true` to set it again"
+                            .into(),
+                    ));
+                }
+                session.append(SessionEntryKind::SessionInfo {
+                    name: Some(title),
+                    cwd: None,
+                });
+                Ok(())
+            })
+        })
+    }
+
+    pub async fn session_title(&self) -> String {
+        self.session.lock().await.get_session_name()
+    }
+
+    pub async fn tool_names(&self) -> Vec<String> {
+        self.tools.lock().await.keys().cloned().collect()
+    }
+
     pub async fn set_tools(&self, tools: BTreeMap<String, Arc<dyn Tool>>) {
         self.agent.set_tools(tools.clone()).await;
         *self.tools.lock().await = tools;
@@ -515,6 +581,55 @@ impl Harness {
         self.agent.state().await.system_prompt
     }
 
+    pub async fn inspect_full_prompt(&self) -> HarnessResult<FullPromptInspect> {
+        let state = self.agent.state().await;
+        let mut messages = state.messages.clone();
+        messages.push(Message::user_text("<next user message>"));
+        let messages = self
+            .hooks
+            .run_context(messages)
+            .await
+            .map_err(oino_agent::AgentError::Loop)?;
+        let mut content = String::new();
+        content.push_str("# Provider Request Preview\n\n");
+        content.push_str(&format!("Model: {}\n", state.model.identifier()));
+        content.push_str(&format!("Thinking: {:?}\n", state.thinking_level));
+        content.push_str("\n# System Prompt\n\n");
+        content.push_str(
+            state
+                .system_prompt
+                .as_deref()
+                .filter(|prompt| !prompt.trim().is_empty())
+                .unwrap_or("<none>"),
+        );
+        content.push_str("\n\n# Messages\n");
+        for (index, message) in messages.iter().enumerate() {
+            content.push('\n');
+            content.push_str(&format_message_for_inspect(index, message));
+        }
+        content.push_str("\n# Tools\n");
+        if state.tools.is_empty() {
+            content.push_str("\n<none>\n");
+        } else {
+            for tool in &state.tools {
+                content.push('\n');
+                content.push_str(&format!("## {}\n\n", tool.name));
+                content.push_str(&tool.description);
+                content.push_str("\n\nInput schema:\n\n```json\n");
+                content.push_str(
+                    &serde_json::to_string_pretty(&tool.input_schema)
+                        .unwrap_or_else(|_| tool.input_schema.to_string()),
+                );
+                content.push_str("\n```\n");
+            }
+        }
+        let token_count = inspect_token_count(&content);
+        Ok(FullPromptInspect {
+            content,
+            token_count,
+        })
+    }
+
     async fn persist_messages(&self, messages: &[Message]) {
         let mut session = self.session.lock().await;
         let existing = session
@@ -528,10 +643,85 @@ impl Harness {
     }
 }
 
+fn format_message_for_inspect(index: usize, message: &Message) -> String {
+    match message {
+        Message::User { content, .. } => format!(
+            "## Message {}: user\n\n{}\n",
+            index.saturating_add(1),
+            format_content_blocks_for_inspect(content)
+        ),
+        Message::Assistant { content, .. } => format!(
+            "## Message {}: assistant\n\n{}\n",
+            index.saturating_add(1),
+            format_content_blocks_for_inspect(content)
+        ),
+        Message::ToolResult {
+            tool_name, content, ..
+        } => format!(
+            "## Message {}: tool:{tool_name}\n\n{}\n",
+            index.saturating_add(1),
+            format_content_blocks_for_inspect(content)
+        ),
+        Message::Custom { name, payload, .. } => format!(
+            "## Message {}: custom:{name}\n\n```json\n{}\n```\n",
+            index.saturating_add(1),
+            serde_json::to_string_pretty(payload).unwrap_or_else(|_| payload.to_string())
+        ),
+        Message::CompactionSummary { summary, .. } => format!(
+            "## Message {}: compaction\n\n{}\n",
+            index.saturating_add(1),
+            summary
+        ),
+        Message::BranchSummary { summary, .. } => format!(
+            "## Message {}: branch\n\n{}\n",
+            index.saturating_add(1),
+            summary
+        ),
+    }
+}
+
+fn format_content_blocks_for_inspect(blocks: &[ContentBlock]) -> String {
+    if blocks.is_empty() {
+        return "<empty>".into();
+    }
+    blocks
+        .iter()
+        .map(|block| match block {
+            ContentBlock::Text { text } => text.clone(),
+            ContentBlock::Image { media_type, data } => {
+                format!("<image:{media_type}; {} bytes>", data.len())
+            }
+            ContentBlock::Thinking { text, redacted } => {
+                if *redacted {
+                    format!("<thinking redacted; {} chars>", text.chars().count())
+                } else {
+                    format!("<thinking>\n{text}")
+                }
+            }
+            ContentBlock::ToolCall {
+                id,
+                name,
+                arguments,
+            } => format!(
+                "<tool-call:{name} id={id}>\n```json\n{}\n```",
+                serde_json::to_string_pretty(arguments).unwrap_or_else(|_| arguments.to_string())
+            ),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn inspect_token_count(content: &str) -> usize {
+    content.split_whitespace().count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oino_agent_loop::{FauxStream, VecEventSink};
+    use oino_agent_loop::{
+        AbortSignal, FauxStream, ToolCall, ToolDefinition, ToolResult, ToolUpdateCallback,
+        VecEventSink,
+    };
     use oino_session::SessionHeader;
     use oino_types::{AssistantStreamEvent, StopReason};
     use std::path::PathBuf;
@@ -550,6 +740,76 @@ mod tests {
             stream,
             session,
         ))
+    }
+
+    struct InspectTool;
+
+    #[async_trait::async_trait]
+    impl Tool for InspectTool {
+        fn definition(&self) -> ToolDefinition {
+            ToolDefinition {
+                name: "inspect_tool".into(),
+                description: "Tool visible in inspect snapshots".into(),
+                input_schema: serde_json::json!({"type": "object"}),
+            }
+        }
+
+        async fn execute(
+            &self,
+            call: ToolCall,
+            _updates: ToolUpdateCallback,
+            _signal: AbortSignal,
+        ) -> LoopResult<ToolResult> {
+            Ok(ToolResult::text(&call, "ok"))
+        }
+    }
+
+    #[tokio::test]
+    async fn inspect_full_prompt_includes_system_placeholder_and_tools() {
+        let session = SessionManager::new(SessionHeader::new("h", PathBuf::from("/tmp")));
+        let stream = Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            provider: None,
+        }]));
+        let mut cfg = HarnessConfig::new(Model::new("test", "faux"), stream, session);
+        cfg.system_prompt = Some("system prelude".into());
+        cfg.tools
+            .insert("inspect_tool".into(), Arc::new(InspectTool));
+        let h = Harness::new(cfg);
+
+        let snapshot = match h.inspect_full_prompt().await {
+            Ok(snapshot) => snapshot,
+            Err(err) => panic!("inspect prompt failed: {err}"),
+        };
+
+        assert!(snapshot.content.contains("system prelude"));
+        assert!(snapshot.content.contains("<next user message>"));
+        assert!(snapshot.content.contains("## inspect_tool"));
+        assert!(snapshot
+            .content
+            .contains("Tool visible in inspect snapshots"));
+        assert_eq!(
+            snapshot.token_count,
+            snapshot.content.split_whitespace().count()
+        );
+    }
+
+    #[tokio::test]
+    async fn session_title_tool_setter_requires_override_after_first_title() {
+        let h = harness();
+        let setter = h.session_title_setter();
+
+        let first = setter("Design Review".into(), false).await;
+        assert!(first.is_ok());
+        assert_eq!(h.session_title().await, "Design Review");
+
+        let second = setter("Renamed".into(), false).await;
+        assert!(matches!(second, Err(LoopError::Tool(message)) if message.contains("override")));
+        assert_eq!(h.session_title().await, "Design Review");
+
+        let third = setter("Renamed".into(), true).await;
+        assert!(third.is_ok());
+        assert_eq!(h.session_title().await, "Renamed");
     }
 
     #[tokio::test]
