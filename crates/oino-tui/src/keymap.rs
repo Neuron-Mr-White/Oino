@@ -52,6 +52,7 @@ impl ShortcutKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KeyContext {
+    Common,
     Global,
     Composer,
     CommandSuggestions,
@@ -77,6 +78,7 @@ impl KeyContext {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Common => "Common",
             Self::Global => "Global",
             Self::Composer => "Composer",
             Self::CommandSuggestions => "Suggestions",
@@ -103,6 +105,20 @@ impl KeyContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyAction {
+    CommonClose,
+    CommonBack,
+    CommonUp,
+    CommonDown,
+    CommonPageUp,
+    CommonPageDown,
+    CommonTop,
+    CommonBottom,
+    CommonConfirm,
+    CommonSearch,
+    CommonRefresh,
+    CommonBackspace,
+    CommonNext,
+    CommonPrevious,
     AppQuit,
     HelpOpen,
     SettingsOpen,
@@ -211,6 +227,20 @@ impl KeyAction {
     #[must_use]
     pub fn id(self) -> &'static str {
         match self {
+            Self::CommonClose => "common.close",
+            Self::CommonBack => "common.back",
+            Self::CommonUp => "common.up",
+            Self::CommonDown => "common.down",
+            Self::CommonPageUp => "common.page_up",
+            Self::CommonPageDown => "common.page_down",
+            Self::CommonTop => "common.top",
+            Self::CommonBottom => "common.bottom",
+            Self::CommonConfirm => "common.confirm",
+            Self::CommonSearch => "common.search",
+            Self::CommonRefresh => "common.refresh",
+            Self::CommonBackspace => "common.backspace",
+            Self::CommonNext => "common.next",
+            Self::CommonPrevious => "common.previous",
             Self::AppQuit => "app.quit",
             Self::HelpOpen => "help.open",
             Self::SettingsOpen => "settings.open",
@@ -304,6 +334,90 @@ impl fmt::Display for KeyAction {
 }
 
 pub const ACTION_INFOS: &[KeyActionInfo] = &[
+    info(
+        KeyAction::CommonClose,
+        KeyContext::Common,
+        "Close / Cancel",
+        "close the current overlay, cancel search, or return from transient focus",
+    ),
+    info(
+        KeyAction::CommonBack,
+        KeyContext::Common,
+        "Back",
+        "return to the previous page inside an overlay",
+    ),
+    info(
+        KeyAction::CommonUp,
+        KeyContext::Common,
+        "Move Up",
+        "move the active list or document up",
+    ),
+    info(
+        KeyAction::CommonDown,
+        KeyContext::Common,
+        "Move Down",
+        "move the active list or document down",
+    ),
+    info(
+        KeyAction::CommonPageUp,
+        KeyContext::Common,
+        "Page Up",
+        "page the active list or document up",
+    ),
+    info(
+        KeyAction::CommonPageDown,
+        KeyContext::Common,
+        "Page Down",
+        "page the active list or document down",
+    ),
+    info(
+        KeyAction::CommonTop,
+        KeyContext::Common,
+        "Jump Top",
+        "jump the active list or document to top",
+    ),
+    info(
+        KeyAction::CommonBottom,
+        KeyContext::Common,
+        "Jump Bottom",
+        "jump the active list or document to bottom",
+    ),
+    info(
+        KeyAction::CommonConfirm,
+        KeyContext::Common,
+        "Confirm / Open",
+        "confirm the active selection",
+    ),
+    info(
+        KeyAction::CommonSearch,
+        KeyContext::Common,
+        "Search",
+        "start search in the active overlay",
+    ),
+    info(
+        KeyAction::CommonRefresh,
+        KeyContext::Common,
+        "Refresh",
+        "refresh the active browser",
+    ),
+    info(
+        KeyAction::CommonBackspace,
+        KeyContext::Common,
+        "Backspace",
+        "delete one character in active search input",
+    ),
+    info(
+        KeyAction::CommonNext,
+        KeyContext::Common,
+        "Next",
+        "move to the next focusable/settings item",
+    ),
+    info(
+        KeyAction::CommonPrevious,
+        KeyContext::Common,
+        "Previous",
+        "move to the previous focusable/settings item",
+    ),
     info(
         KeyAction::AppQuit,
         KeyContext::Global,
@@ -1143,7 +1257,7 @@ impl KeymapConfig {
     pub fn for_preset(preset: KeymapPreset) -> Self {
         let chord_key = default_chord_key();
         let mut bindings = BTreeMap::new();
-        for info in ACTION_INFOS {
+        for info in key_action_rows() {
             bindings.insert(
                 info.action,
                 default_bindings(info.action, preset, chord_key),
@@ -1158,10 +1272,11 @@ impl KeymapConfig {
 
     #[must_use]
     pub fn bindings_for(&self, action: KeyAction) -> Vec<KeySequence> {
+        let canonical = canonical_action(action);
         self.bindings
-            .get(&action)
+            .get(&canonical)
             .cloned()
-            .unwrap_or_else(|| default_bindings(action, self.preset, self.chord_key))
+            .unwrap_or_else(|| default_bindings(canonical, self.preset, self.chord_key))
     }
 
     #[must_use]
@@ -1186,13 +1301,14 @@ impl KeymapConfig {
     }
 
     pub fn set_bindings(&mut self, action: KeyAction, bindings: Vec<KeySequence>) {
-        self.bindings.insert(action, bindings);
+        self.bindings.insert(canonical_action(action), bindings);
     }
 
     pub fn reset_action(&mut self, action: KeyAction) {
+        let canonical = canonical_action(action);
         self.bindings.insert(
-            action,
-            default_bindings(action, self.preset, self.chord_key),
+            canonical,
+            default_bindings(canonical, self.preset, self.chord_key),
         );
     }
 
@@ -1213,7 +1329,7 @@ impl KeymapConfig {
 
     #[must_use]
     pub fn chord_key_conflict(&self, candidate: KeyStroke) -> Option<KeyAction> {
-        for info in ACTION_INFOS {
+        for info in key_action_rows() {
             if self.bindings_for(info.action).iter().any(|binding| {
                 binding.len() == 1 && binding.strokes().first().copied() == Some(candidate)
             }) {
@@ -1230,9 +1346,10 @@ impl KeymapConfig {
         replacement_index: Option<usize>,
         candidate: &KeySequence,
     ) -> Option<KeyAction> {
-        let context = action.info().context;
+        let canonical = canonical_action(action);
+        let contexts = effective_contexts(canonical);
         for info in ACTION_INFOS {
-            if info.context != context || info.action == action {
+            if !contexts.contains(&info.context) || canonical_action(info.action) == canonical {
                 continue;
             }
             if self.bindings_for(info.action).iter().any(|binding| {
@@ -1243,7 +1360,7 @@ impl KeymapConfig {
                 return Some(info.action);
             }
         }
-        self.bindings_for(action)
+        self.bindings_for(canonical)
             .iter()
             .enumerate()
             .find(|(index, binding)| {
@@ -1252,7 +1369,7 @@ impl KeymapConfig {
                         || binding.starts_with(candidate.strokes())
                         || candidate.starts_with(binding.strokes()))
             })
-            .map(|_| action)
+            .map(|_| canonical)
     }
 
     #[must_use]
@@ -1289,8 +1406,76 @@ pub enum KeymapMatch {
 }
 
 #[must_use]
-pub fn key_action_rows() -> &'static [KeyActionInfo] {
+pub fn key_action_rows() -> Vec<KeyActionInfo> {
     ACTION_INFOS
+        .iter()
+        .copied()
+        .filter(|info| canonical_action(info.action) == info.action)
+        .collect()
+}
+
+#[must_use]
+pub const fn canonical_action(action: KeyAction) -> KeyAction {
+    match action {
+        KeyAction::SuggestionsClose
+        | KeyAction::TranscriptUnfocus
+        | KeyAction::HelpClose
+        | KeyAction::SearchClose
+        | KeyAction::SendPanelClose
+        | KeyAction::SessionsClose
+        | KeyAction::ResourceClose
+        | KeyAction::InspectClose
+        | KeyAction::SettingsClose => KeyAction::CommonClose,
+        KeyAction::SettingsBack => KeyAction::CommonBack,
+        KeyAction::TranscriptLineUp
+        | KeyAction::HelpUp
+        | KeyAction::SendPanelUp
+        | KeyAction::SessionsUp
+        | KeyAction::ResourceUp
+        | KeyAction::InspectUp
+        | KeyAction::SettingsUp => KeyAction::CommonUp,
+        KeyAction::TranscriptLineDown
+        | KeyAction::HelpDown
+        | KeyAction::SendPanelDown
+        | KeyAction::SessionsDown
+        | KeyAction::ResourceDown
+        | KeyAction::InspectDown
+        | KeyAction::SettingsDown => KeyAction::CommonDown,
+        KeyAction::TranscriptPageUp
+        | KeyAction::HelpPageUp
+        | KeyAction::SearchPageUp
+        | KeyAction::InspectPageUp => KeyAction::CommonPageUp,
+        KeyAction::TranscriptPageDown
+        | KeyAction::HelpPageDown
+        | KeyAction::SearchPageDown
+        | KeyAction::InspectPageDown => KeyAction::CommonPageDown,
+        KeyAction::TranscriptTop
+        | KeyAction::HelpTop
+        | KeyAction::SearchTop
+        | KeyAction::InspectTop => KeyAction::CommonTop,
+        KeyAction::TranscriptBottom | KeyAction::HelpBottom | KeyAction::SearchBottom => {
+            KeyAction::CommonBottom
+        }
+        KeyAction::SendPanelLoad | KeyAction::SessionsOpen | KeyAction::SettingsApply => {
+            KeyAction::CommonConfirm
+        }
+        KeyAction::HelpSearch
+        | KeyAction::SessionsSearch
+        | KeyAction::ResourceSearch
+        | KeyAction::SettingsSearch => KeyAction::CommonSearch,
+        KeyAction::SessionsRefresh | KeyAction::ResourceRefresh => KeyAction::CommonRefresh,
+        KeyAction::SearchBackspace => KeyAction::CommonBackspace,
+        KeyAction::SettingsNext => KeyAction::CommonNext,
+        KeyAction::SettingsPrevious => KeyAction::CommonPrevious,
+        _ => action,
+    }
+}
+
+fn effective_contexts(action: KeyAction) -> Vec<KeyContext> {
+    ACTION_INFOS
+        .iter()
+        .filter_map(|info| (canonical_action(info.action) == action).then_some(info.context))
+        .collect()
 }
 
 fn default_bindings(
@@ -1299,6 +1484,20 @@ fn default_bindings(
     chord_key: KeyStroke,
 ) -> Vec<KeySequence> {
     let values: &[&str] = match (preset, action) {
+        (_, KeyAction::CommonClose) => &["esc"],
+        (_, KeyAction::CommonBack) => &["left", "backspace"],
+        (_, KeyAction::CommonUp) => &["up", "k", "K"],
+        (_, KeyAction::CommonDown) => &["down", "j", "J"],
+        (_, KeyAction::CommonPageUp) => &["pageup"],
+        (_, KeyAction::CommonPageDown) => &["pagedown"],
+        (_, KeyAction::CommonTop) => &["home", "ctrl-home"],
+        (_, KeyAction::CommonBottom) => &["end", "ctrl-end"],
+        (_, KeyAction::CommonConfirm) => &["enter"],
+        (_, KeyAction::CommonSearch) => &["/"],
+        (_, KeyAction::CommonRefresh) => &["r", "R"],
+        (_, KeyAction::CommonBackspace) => &["backspace"],
+        (_, KeyAction::CommonNext) => &["tab"],
+        (_, KeyAction::CommonPrevious) => &["shift-tab"],
         (_, KeyAction::AppQuit) => &["ctrl-c"],
         (KeymapPreset::Chord, KeyAction::HelpOpen) => return chord_defaults(chord_key, &["h"]),
         (KeymapPreset::Combination, KeyAction::HelpOpen) => &["f1"],

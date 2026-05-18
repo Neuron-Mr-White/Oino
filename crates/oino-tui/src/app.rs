@@ -1121,6 +1121,20 @@ impl TuiState {
 
     fn execute_key_action(&mut self, action: KeyAction) -> TuiAction {
         match action {
+            KeyAction::CommonClose
+            | KeyAction::CommonBack
+            | KeyAction::CommonUp
+            | KeyAction::CommonDown
+            | KeyAction::CommonPageUp
+            | KeyAction::CommonPageDown
+            | KeyAction::CommonTop
+            | KeyAction::CommonBottom
+            | KeyAction::CommonConfirm
+            | KeyAction::CommonSearch
+            | KeyAction::CommonRefresh
+            | KeyAction::CommonBackspace
+            | KeyAction::CommonNext
+            | KeyAction::CommonPrevious => TuiAction::None,
             KeyAction::AppQuit => self.arm_or_quit(),
             KeyAction::HelpOpen => {
                 self.open_help_overlay();
