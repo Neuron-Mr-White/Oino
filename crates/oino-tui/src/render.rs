@@ -831,11 +831,14 @@ fn command_suggestion_max_rows(suggestions: &CommandSuggestionsView) -> usize {
 
 fn command_category_style(category: CommandSuggestionCategory, theme: &Theme) -> Style {
     match category {
-        CommandSuggestionCategory::System | CommandSuggestionCategory::Skill => Style::default()
+        CommandSuggestionCategory::System => Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
         CommandSuggestionCategory::Prompt => Style::default()
             .fg(Color::Blue)
+            .add_modifier(Modifier::BOLD),
+        CommandSuggestionCategory::Skill => Style::default()
+            .fg(Color::Magenta)
             .add_modifier(Modifier::BOLD),
         CommandSuggestionCategory::Model
         | CommandSuggestionCategory::File
@@ -2590,6 +2593,27 @@ mod tests {
         assert!(text.contains("s settings"));
         assert!(text.contains("q send panel"));
         assert!(text.contains("Esc cancel"));
+    }
+
+    #[test]
+    fn command_skill_label_uses_distinct_color() {
+        let theme = Theme::default();
+        let skill = command_category_style(CommandSuggestionCategory::Skill, &theme);
+
+        assert_eq!(
+            skill,
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD)
+        );
+        assert_ne!(
+            skill,
+            command_category_style(CommandSuggestionCategory::System, &theme)
+        );
+        assert_ne!(
+            skill,
+            command_category_style(CommandSuggestionCategory::Prompt, &theme)
+        );
     }
 
     #[test]
