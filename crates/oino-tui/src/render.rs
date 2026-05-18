@@ -14,7 +14,7 @@ use crate::{
     },
     text::{truncate_to_width, truncate_with_ellipsis, wrap_text},
     theme::Theme,
-    transcript::transcript_lines,
+    transcript::transcript_line_blocks,
 };
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect},
@@ -22,6 +22,11 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
     Frame,
+};
+use std::{
+    collections::{HashMap, VecDeque},
+    hash::{Hash, Hasher},
+    sync::{Arc, Mutex, OnceLock},
 };
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -54,6 +59,122 @@ pub struct TerminalUrlOverlay {
     pub y: u16,
     pub text: String,
     pub url: String,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedTranscriptBlock {
+    start: usize,
+    lines: Arc<Vec<Line<'static>>>,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedTranscript {
+    blocks: Vec<PreparedTranscriptBlock>,
+    total_lines: usize,
+}
+
+impl PreparedTranscript {
+    fn from_blocks(blocks: Vec<Arc<Vec<Line<'static>>>>) -> Self {
+        let mut prepared_blocks = Vec::new();
+        let mut total_lines = 0usize;
+        for lines in blocks {
+            if lines.is_empty() {
+                continue;
+            }
+            let len = lines.len();
+            prepared_blocks.push(PreparedTranscriptBlock {
+                start: total_lines,
+                lines,
+            });
+            total_lines = total_lines.saturating_add(len);
+        }
+        Self {
+            blocks: prepared_blocks,
+            total_lines,
+        }
+    }
+
+    const fn total_lines(&self) -> usize {
+        self.total_lines
+    }
+
+    fn materialize_line_slice(&self, start: usize, end: usize) -> Vec<Line<'static>> {
+        let end = end.min(self.total_lines);
+        if start >= end {
+            return Vec::new();
+        }
+        let mut out = Vec::with_capacity(end - start);
+        for block in &self.blocks {
+            let block_start = block.start;
+            let block_end = block_start.saturating_add(block.lines.len());
+            let overlap_start = start.max(block_start);
+            let overlap_end = end.min(block_end);
+            if overlap_start >= overlap_end {
+                continue;
+            }
+            let local_start = overlap_start - block_start;
+            let local_end = overlap_end - block_start;
+            out.extend_from_slice(&block.lines[local_start..local_end]);
+        }
+        out
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TranscriptCacheKey {
+    width: usize,
+    transcript_version: u64,
+    message_count: usize,
+    thinking_mode: u8,
+    tool_mode: u8,
+    chat_style: u8,
+    status_kind: u8,
+    status_text: Option<String>,
+    error: Option<String>,
+    theme_hash: u64,
+}
+
+#[derive(Default)]
+struct TranscriptCacheState {
+    entries: HashMap<TranscriptCacheKey, Arc<PreparedTranscript>>,
+    order: VecDeque<TranscriptCacheKey>,
+}
+
+impl TranscriptCacheState {
+    fn get(&mut self, key: &TranscriptCacheKey) -> Option<Arc<PreparedTranscript>> {
+        let prepared = self.entries.get(key)?.clone();
+        if let Some(position) = self.order.iter().position(|entry| entry == key) {
+            if let Some(entry) = self.order.remove(position) {
+                self.order.push_back(entry);
+            }
+        }
+        Some(prepared)
+    }
+
+    fn insert(&mut self, key: TranscriptCacheKey, prepared: Arc<PreparedTranscript>) {
+        if self.entries.contains_key(&key) {
+            self.entries.insert(key.clone(), prepared);
+            if let Some(position) = self.order.iter().position(|entry| entry == &key) {
+                let _ = self.order.remove(position);
+            }
+            self.order.push_back(key);
+            return;
+        }
+        self.entries.insert(key.clone(), prepared);
+        self.order.push_back(key);
+        while self.order.len() > TRANSCRIPT_CACHE_LIMIT {
+            if let Some(oldest) = self.order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+}
+
+const TRANSCRIPT_CACHE_LIMIT: usize = 12;
+static TRANSCRIPT_CACHE: OnceLock<Mutex<TranscriptCacheState>> = OnceLock::new();
+
+fn transcript_cache() -> &'static Mutex<TranscriptCacheState> {
+    TRANSCRIPT_CACHE.get_or_init(|| Mutex::new(TranscriptCacheState::default()))
 }
 
 pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
@@ -199,21 +320,24 @@ pub fn transcript_click_targets(
 
     let theme = Theme::default();
     let full_inner_width = area.width.saturating_sub(2) as usize;
-    let mut lines = transcript_lines_for_width(state, full_inner_width, &theme);
-    let mut has_scrollbar = lines.len() > inner_height && area.width > 4 && inner_height > 1;
+    let mut transcript = prepared_transcript_for_width(state, full_inner_width, &theme);
+    let mut has_scrollbar =
+        transcript.total_lines() > inner_height && area.width > 4 && inner_height > 1;
     if has_scrollbar {
-        lines =
-            transcript_lines_for_width(state, full_inner_width.saturating_sub(1).max(1), &theme);
-        has_scrollbar = lines.len() > inner_height;
+        transcript =
+            prepared_transcript_for_width(state, full_inner_width.saturating_sub(1).max(1), &theme);
+        has_scrollbar = transcript.total_lines() > inner_height;
     }
     let content_width = full_inner_width.saturating_sub(usize::from(has_scrollbar));
     let start = state
         .transcript_scroll
-        .visible_start(lines.len(), inner_height);
+        .visible_start(transcript.total_lines(), inner_height);
+    let visible_lines =
+        transcript.materialize_line_slice(start, start.saturating_add(inner_height));
 
     let mut targets = Vec::new();
-    for (visible_index, line) in lines.into_iter().skip(start).take(inner_height).enumerate() {
-        let plain = plain_line(&line);
+    for (visible_index, line) in visible_lines.iter().enumerate() {
+        let plain = plain_line(line);
         for line_target in line_click_targets(&plain) {
             if line_target.column.saturating_add(line_target.width) > content_width {
                 continue;
@@ -240,23 +364,23 @@ pub fn transcript_click_targets(
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
     let inner_height = area.height.saturating_sub(2) as usize;
     let full_inner_width = area.width.saturating_sub(2) as usize;
-    let mut lines = transcript_lines_for_width(state, full_inner_width, theme);
-    let mut has_scrollbar = lines.len() > inner_height && area.width > 4 && inner_height > 1;
+    let mut transcript = prepared_transcript_for_width(state, full_inner_width, theme);
+    let mut has_scrollbar =
+        transcript.total_lines() > inner_height && area.width > 4 && inner_height > 1;
     if has_scrollbar {
-        lines = transcript_lines_for_width(state, full_inner_width.saturating_sub(1).max(1), theme);
-        has_scrollbar = lines.len() > inner_height;
+        transcript =
+            prepared_transcript_for_width(state, full_inner_width.saturating_sub(1).max(1), theme);
+        has_scrollbar = transcript.total_lines() > inner_height;
     }
 
-    let total_lines = lines.len();
+    let total_lines = transcript.total_lines();
     let start = state
         .transcript_scroll
         .visible_start(total_lines, inner_height);
     let scrolled_offset = state
         .transcript_scroll
         .resolved_offset_from_bottom(total_lines, inner_height);
-    if total_lines > inner_height {
-        lines = lines.into_iter().skip(start).take(inner_height).collect();
-    }
+    let lines = transcript.materialize_line_slice(start, start.saturating_add(inner_height));
 
     let title = match (state.working, scrolled_offset) {
         (true, 0) => " Oino • Generating… ".to_string(),
@@ -285,8 +409,61 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     }
 }
 
-fn transcript_lines_for_width(state: &TuiState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = transcript_lines(
+fn prepared_transcript_for_width(
+    state: &TuiState,
+    width: usize,
+    theme: &Theme,
+) -> Arc<PreparedTranscript> {
+    let (status_kind, status_text) = transcript_status(state);
+    let key = TranscriptCacheKey {
+        width,
+        transcript_version: state.transcript_version(),
+        message_count: state.messages.len(),
+        thinking_mode: collapse_mode_key(state.settings.thinking_collapse_mode),
+        tool_mode: collapse_mode_key(state.settings.tool_collapse_mode),
+        chat_style: chat_style_key(state.settings.chat_style),
+        status_kind,
+        status_text: status_text.clone(),
+        error: state.error.clone(),
+        theme_hash: theme_cache_hash(theme),
+    };
+
+    if !cfg!(test) {
+        let mut cache = match transcript_cache().lock() {
+            Ok(cache) => cache,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if let Some(prepared) = cache.get(&key) {
+            return prepared;
+        }
+        drop(cache);
+    }
+
+    let prepared = Arc::new(build_prepared_transcript(
+        state,
+        width,
+        theme,
+        status_kind,
+        status_text,
+    ));
+
+    if !cfg!(test) {
+        if let Ok(mut cache) = transcript_cache().lock() {
+            cache.insert(key, prepared.clone());
+        }
+    }
+
+    prepared
+}
+
+fn build_prepared_transcript(
+    state: &TuiState,
+    width: usize,
+    theme: &Theme,
+    status_kind: u8,
+    status_text: Option<String>,
+) -> PreparedTranscript {
+    let mut blocks = transcript_line_blocks(
         &state.messages,
         state.error.as_deref(),
         width,
@@ -296,32 +473,72 @@ fn transcript_lines_for_width(state: &TuiState, width: usize, theme: &Theme) -> 
         theme,
     );
 
-    if let Some(status) = state.activity_status() {
-        if !lines.is_empty() {
-            lines.push(Line::from(""));
+    if let Some(status) = status_text {
+        if blocks.iter().any(|block| !block.is_empty()) {
+            blocks.push(Arc::new(vec![Line::from("")]));
         }
-        lines.push(Line::from(vec![
-            Span::styled("● ", theme.working.add_modifier(Modifier::BOLD)),
-            Span::styled(status, theme.working),
-        ]));
-    } else if let Some(status) = state.notice_status() {
-        if !lines.is_empty() {
-            lines.push(Line::from(""));
-        }
-        lines.push(Line::from(vec![
-            Span::styled("• ", Style::default().fg(theme.muted)),
-            Span::styled(status, theme.footer),
-        ]));
+        blocks.push(status_line_block(status_kind, status, theme));
     }
 
-    if lines.is_empty() {
-        lines.push(Line::from(vec![Span::styled(
+    if !blocks.iter().any(|block| !block.is_empty()) {
+        blocks.push(Arc::new(vec![Line::from(vec![Span::styled(
             "No messages yet. Send a task to start.",
             Style::default().fg(theme.muted),
-        )]));
+        )])]));
     }
 
-    lines
+    PreparedTranscript::from_blocks(blocks)
+}
+
+fn status_line_block(status_kind: u8, status: String, theme: &Theme) -> Arc<Vec<Line<'static>>> {
+    let line = if status_kind == TRANSCRIPT_STATUS_ACTIVITY {
+        Line::from(vec![
+            Span::styled("● ", theme.working.add_modifier(Modifier::BOLD)),
+            Span::styled(status, theme.working),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled("• ", Style::default().fg(theme.muted)),
+            Span::styled(status, theme.footer),
+        ])
+    };
+    Arc::new(vec![line])
+}
+
+const TRANSCRIPT_STATUS_NONE: u8 = 0;
+const TRANSCRIPT_STATUS_ACTIVITY: u8 = 1;
+const TRANSCRIPT_STATUS_NOTICE: u8 = 2;
+
+fn transcript_status(state: &TuiState) -> (u8, Option<String>) {
+    if let Some(status) = state.activity_status() {
+        (TRANSCRIPT_STATUS_ACTIVITY, Some(status))
+    } else if let Some(status) = state.notice_status() {
+        (TRANSCRIPT_STATUS_NOTICE, Some(status))
+    } else {
+        (TRANSCRIPT_STATUS_NONE, None)
+    }
+}
+
+fn theme_cache_hash(theme: &Theme) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    format!("{theme:?}").hash(&mut hasher);
+    hasher.finish()
+}
+
+const fn collapse_mode_key(mode: crate::settings::CollapseMode) -> u8 {
+    match mode {
+        crate::settings::CollapseMode::Full => 0,
+        crate::settings::CollapseMode::Truncate => 1,
+        crate::settings::CollapseMode::Collapse => 2,
+    }
+}
+
+const fn chat_style_key(style: ChatStyle) -> u8 {
+    match style {
+        ChatStyle::Chat => 0,
+        ChatStyle::Agentic => 1,
+        ChatStyle::Minimal => 2,
+    }
 }
 
 fn plain_line(line: &Line<'_>) -> String {

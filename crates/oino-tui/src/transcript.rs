@@ -12,8 +12,14 @@ use ratatui::{
     text::{Line, Span},
 };
 use serde_json::Value;
+use std::{
+    collections::{HashMap, VecDeque},
+    hash::{Hash, Hasher},
+    sync::{Arc, Mutex, OnceLock},
+};
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(test)]
 pub(crate) fn transcript_lines(
     messages: &[MessageView],
     error: Option<&str>,
@@ -23,57 +29,93 @@ pub(crate) fn transcript_lines(
     chat_style: ChatStyle,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
+    let blocks = transcript_line_blocks(
+        messages,
+        error,
+        width,
+        thinking_mode,
+        tool_mode,
+        chat_style,
+        theme,
+    );
+    let total_lines = blocks.iter().map(|block| block.len()).sum();
+    let mut lines = Vec::with_capacity(total_lines);
+    for block in blocks {
+        lines.extend(block.iter().cloned());
+    }
+    lines
+}
+
+pub(crate) fn transcript_line_blocks(
+    messages: &[MessageView],
+    error: Option<&str>,
+    width: usize,
+    thinking_mode: CollapseMode,
+    tool_mode: CollapseMode,
+    chat_style: ChatStyle,
+    theme: &Theme,
+) -> Vec<Arc<Vec<Line<'static>>>> {
     match chat_style {
         ChatStyle::Chat => {
-            chat_transcript_lines(messages, error, width, thinking_mode, tool_mode, theme)
+            chat_transcript_blocks(messages, error, width, thinking_mode, tool_mode, theme)
         }
         ChatStyle::Agentic => {
-            agentic_transcript_lines(messages, error, width, thinking_mode, tool_mode, theme)
+            agentic_transcript_blocks(messages, error, width, thinking_mode, tool_mode, theme)
         }
         ChatStyle::Minimal => {
-            minimal_transcript_lines(messages, error, width, thinking_mode, tool_mode, theme)
+            minimal_transcript_blocks(messages, error, width, thinking_mode, tool_mode, theme)
         }
     }
 }
 
-fn chat_transcript_lines(
+fn chat_transcript_blocks(
     messages: &[MessageView],
     error: Option<&str>,
     width: usize,
     thinking_mode: CollapseMode,
     tool_mode: CollapseMode,
     theme: &Theme,
-) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
+) -> Vec<Arc<Vec<Line<'static>>>> {
+    let mut blocks = Vec::new();
+    let theme_hash = theme_cache_hash(theme);
     for message in messages {
         append_spaced_block(
-            &mut lines,
-            bubble_lines(message, width, thinking_mode, tool_mode, theme),
+            &mut blocks,
+            cached_chat_message_lines(message, width, thinking_mode, tool_mode, theme, theme_hash),
         );
     }
     if let Some(error) = error {
         let error_message = synthetic_error_message(error);
         append_spaced_block(
-            &mut lines,
-            bubble_lines(&error_message, width, thinking_mode, tool_mode, theme),
+            &mut blocks,
+            cached_chat_message_lines(
+                &error_message,
+                width,
+                thinking_mode,
+                tool_mode,
+                theme,
+                theme_hash,
+            ),
         );
     }
-    lines
+    blocks
 }
 
-fn agentic_transcript_lines(
+fn agentic_transcript_blocks(
     messages: &[MessageView],
     error: Option<&str>,
     width: usize,
     thinking_mode: CollapseMode,
     tool_mode: CollapseMode,
     theme: &Theme,
-) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
+) -> Vec<Arc<Vec<Line<'static>>>> {
+    let mut blocks = Vec::new();
+    let theme_hash = theme_cache_hash(theme);
+    let relation_hash = message_relation_hash(messages);
     for (index, message) in messages.iter().enumerate() {
         append_spaced_block(
-            &mut lines,
-            agentic_message_lines(
+            &mut blocks,
+            cached_agentic_message_lines(
                 message,
                 messages,
                 index,
@@ -81,14 +123,16 @@ fn agentic_transcript_lines(
                 thinking_mode,
                 tool_mode,
                 theme,
+                theme_hash,
+                relation_hash,
             ),
         );
     }
     if let Some(error) = error {
         let error_message = synthetic_error_message(error);
         append_spaced_block(
-            &mut lines,
-            agentic_message_lines(
+            &mut blocks,
+            cached_agentic_message_lines(
                 &error_message,
                 messages,
                 messages.len(),
@@ -96,29 +140,33 @@ fn agentic_transcript_lines(
                 thinking_mode,
                 tool_mode,
                 theme,
+                theme_hash,
+                relation_hash,
             ),
         );
     }
-    lines
+    blocks
 }
 
-fn minimal_transcript_lines(
+fn minimal_transcript_blocks(
     messages: &[MessageView],
     error: Option<&str>,
     width: usize,
     thinking_mode: CollapseMode,
     _tool_mode: CollapseMode,
     theme: &Theme,
-) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
+) -> Vec<Arc<Vec<Line<'static>>>> {
+    let mut blocks = Vec::new();
+    let theme_hash = theme_cache_hash(theme);
+    let relation_hash = message_relation_hash(messages);
     let mut user_index = 0usize;
     for (index, message) in messages.iter().enumerate() {
         if message.is_user() {
             user_index = user_index.saturating_add(1);
         }
         append_minimal_block(
-            &mut lines,
-            minimal_message_lines(
+            &mut blocks,
+            cached_minimal_message_lines(
                 message,
                 messages,
                 index,
@@ -126,6 +174,8 @@ fn minimal_transcript_lines(
                 width,
                 thinking_mode,
                 theme,
+                theme_hash,
+                relation_hash,
             ),
             &message.role,
         );
@@ -133,8 +183,8 @@ fn minimal_transcript_lines(
     if let Some(error) = error {
         let error_message = synthetic_error_message(error);
         append_minimal_block(
-            &mut lines,
-            minimal_message_lines(
+            &mut blocks,
+            cached_minimal_message_lines(
                 &error_message,
                 messages,
                 messages.len(),
@@ -142,32 +192,319 @@ fn minimal_transcript_lines(
                 width,
                 thinking_mode,
                 theme,
+                theme_hash,
+                relation_hash,
             ),
             &error_message.role,
         );
     }
-    lines
+    blocks
 }
 
-fn append_spaced_block(lines: &mut Vec<Line<'static>>, block: Vec<Line<'static>>) {
+fn append_spaced_block(blocks: &mut Vec<Arc<Vec<Line<'static>>>>, block: Arc<Vec<Line<'static>>>) {
     if block.is_empty() {
         return;
     }
-    if !lines.is_empty() {
-        lines.push(Line::from(""));
+    if !blocks.is_empty() {
+        blocks.push(blank_line_block());
     }
-    lines.extend(block);
+    blocks.push(block);
 }
 
-fn append_minimal_block(lines: &mut Vec<Line<'static>>, block: Vec<Line<'static>>, role: &str) {
+fn append_minimal_block(
+    blocks: &mut Vec<Arc<Vec<Line<'static>>>>,
+    block: Arc<Vec<Line<'static>>>,
+    role: &str,
+) {
     if block.is_empty() {
         return;
     }
     let compact_continuation = role.starts_with("tool:") || matches!(role, "compaction" | "branch");
-    if !lines.is_empty() && !compact_continuation {
-        lines.push(Line::from(""));
+    if !blocks.is_empty() && !compact_continuation {
+        blocks.push(blank_line_block());
     }
-    lines.extend(block);
+    blocks.push(block);
+}
+
+static BLANK_LINE_BLOCK: OnceLock<Arc<Vec<Line<'static>>>> = OnceLock::new();
+
+fn blank_line_block() -> Arc<Vec<Line<'static>>> {
+    BLANK_LINE_BLOCK
+        .get_or_init(|| Arc::new(vec![Line::from("")]))
+        .clone()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct MessageLineCacheKey {
+    style: u8,
+    width: usize,
+    thinking_mode: u8,
+    tool_mode: u8,
+    message_hash: u64,
+    context_hash: u64,
+    theme_hash: u64,
+}
+
+#[derive(Default)]
+struct MessageLineCacheState {
+    entries: HashMap<MessageLineCacheKey, Arc<Vec<Line<'static>>>>,
+    order: VecDeque<MessageLineCacheKey>,
+}
+
+impl MessageLineCacheState {
+    fn get(&mut self, key: &MessageLineCacheKey) -> Option<Arc<Vec<Line<'static>>>> {
+        let lines = self.entries.get(key)?.clone();
+        if let Some(position) = self.order.iter().position(|entry| entry == key) {
+            if let Some(entry) = self.order.remove(position) {
+                self.order.push_back(entry);
+            }
+        }
+        Some(lines)
+    }
+
+    fn insert(&mut self, key: MessageLineCacheKey, lines: Arc<Vec<Line<'static>>>) {
+        if self.entries.contains_key(&key) {
+            self.entries.insert(key.clone(), lines);
+            if let Some(position) = self.order.iter().position(|entry| entry == &key) {
+                let _ = self.order.remove(position);
+            }
+            self.order.push_back(key);
+            return;
+        }
+
+        self.entries.insert(key.clone(), lines);
+        self.order.push_back(key);
+        while self.order.len() > MESSAGE_LINE_CACHE_LIMIT {
+            if let Some(oldest) = self.order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+}
+
+const MESSAGE_LINE_CACHE_LIMIT: usize = 4096;
+static MESSAGE_LINE_CACHE: OnceLock<Mutex<MessageLineCacheState>> = OnceLock::new();
+
+fn message_line_cache() -> &'static Mutex<MessageLineCacheState> {
+    MESSAGE_LINE_CACHE.get_or_init(|| Mutex::new(MessageLineCacheState::default()))
+}
+
+fn cached_message_lines(
+    key: MessageLineCacheKey,
+    render: impl FnOnce() -> Vec<Line<'static>>,
+) -> Arc<Vec<Line<'static>>> {
+    if cfg!(test) {
+        return Arc::new(render());
+    }
+
+    let mut cache = match message_line_cache().lock() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if let Some(lines) = cache.get(&key) {
+        return lines;
+    }
+    drop(cache);
+
+    let lines = Arc::new(render());
+    if let Ok(mut cache) = message_line_cache().lock() {
+        cache.insert(key, lines.clone());
+    }
+    lines
+}
+
+fn cached_chat_message_lines(
+    message: &MessageView,
+    width: usize,
+    thinking_mode: CollapseMode,
+    tool_mode: CollapseMode,
+    theme: &Theme,
+    theme_hash: u64,
+) -> Arc<Vec<Line<'static>>> {
+    let key = MessageLineCacheKey {
+        style: chat_style_key(ChatStyle::Chat),
+        width,
+        thinking_mode: collapse_mode_key(thinking_mode),
+        tool_mode: collapse_mode_key(tool_mode),
+        message_hash: message_cache_hash(message),
+        context_hash: 0,
+        theme_hash,
+    };
+    cached_message_lines(key, || {
+        bubble_lines(message, width, thinking_mode, tool_mode, theme)
+    })
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "message rendering depends on transcript context and display settings"
+)]
+fn cached_agentic_message_lines(
+    message: &MessageView,
+    messages: &[MessageView],
+    index: usize,
+    width: usize,
+    thinking_mode: CollapseMode,
+    tool_mode: CollapseMode,
+    theme: &Theme,
+    theme_hash: u64,
+    relation_hash: u64,
+) -> Arc<Vec<Line<'static>>> {
+    let key = MessageLineCacheKey {
+        style: chat_style_key(ChatStyle::Agentic),
+        width,
+        thinking_mode: collapse_mode_key(thinking_mode),
+        tool_mode: collapse_mode_key(tool_mode),
+        message_hash: message_cache_hash(message),
+        context_hash: relation_hash,
+        theme_hash,
+    };
+    cached_message_lines(key, || {
+        agentic_message_lines(
+            message,
+            messages,
+            index,
+            width,
+            thinking_mode,
+            tool_mode,
+            theme,
+        )
+    })
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "message rendering depends on transcript context and display settings"
+)]
+fn cached_minimal_message_lines(
+    message: &MessageView,
+    messages: &[MessageView],
+    index: usize,
+    user_index: usize,
+    width: usize,
+    thinking_mode: CollapseMode,
+    theme: &Theme,
+    theme_hash: u64,
+    relation_hash: u64,
+) -> Arc<Vec<Line<'static>>> {
+    let context_hash = if message.is_user() {
+        user_index as u64
+    } else {
+        relation_hash
+    };
+    let key = MessageLineCacheKey {
+        style: chat_style_key(ChatStyle::Minimal),
+        width,
+        thinking_mode: collapse_mode_key(thinking_mode),
+        tool_mode: 0,
+        message_hash: message_cache_hash(message),
+        context_hash,
+        theme_hash,
+    };
+    cached_message_lines(key, || {
+        minimal_message_lines(
+            message,
+            messages,
+            index,
+            user_index,
+            width,
+            thinking_mode,
+            theme,
+        )
+    })
+}
+
+fn theme_cache_hash(theme: &Theme) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    format!("{theme:?}").hash(&mut hasher);
+    hasher.finish()
+}
+
+const fn collapse_mode_key(mode: CollapseMode) -> u8 {
+    match mode {
+        CollapseMode::Full => 0,
+        CollapseMode::Truncate => 1,
+        CollapseMode::Collapse => 2,
+    }
+}
+
+const fn chat_style_key(style: ChatStyle) -> u8 {
+    match style {
+        ChatStyle::Chat => 0,
+        ChatStyle::Agentic => 1,
+        ChatStyle::Minimal => 2,
+    }
+}
+
+fn message_relation_hash(messages: &[MessageView]) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for message in messages {
+        for call in &message.tool_calls {
+            hash_tool_call(call, &mut hasher);
+        }
+        if message.role.starts_with("tool:") {
+            message.tool_call_id.hash(&mut hasher);
+            message.role.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+fn message_cache_hash(message: &MessageView) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    message.id.hash(&mut hasher);
+    message.role.hash(&mut hasher);
+    message.title.hash(&mut hasher);
+    message.content.hash(&mut hasher);
+    message.thinking.hash(&mut hasher);
+    message.thinking_redacted.hash(&mut hasher);
+    message.tool_call_id.hash(&mut hasher);
+    message.is_error.hash(&mut hasher);
+    for call in &message.tool_calls {
+        hash_tool_call(call, &mut hasher);
+    }
+    hasher.finish()
+}
+
+fn hash_tool_call(call: &ToolCallView, hasher: &mut impl Hasher) {
+    call.id.hash(hasher);
+    call.name.hash(hasher);
+    hash_json_value(&call.arguments, hasher);
+}
+
+fn hash_json_value(value: &Value, hasher: &mut impl Hasher) {
+    match value {
+        Value::Null => 0u8.hash(hasher),
+        Value::Bool(value) => {
+            1u8.hash(hasher);
+            value.hash(hasher);
+        }
+        Value::Number(value) => {
+            2u8.hash(hasher);
+            value.to_string().hash(hasher);
+        }
+        Value::String(value) => {
+            3u8.hash(hasher);
+            value.hash(hasher);
+        }
+        Value::Array(values) => {
+            4u8.hash(hasher);
+            values.len().hash(hasher);
+            for value in values {
+                hash_json_value(value, hasher);
+            }
+        }
+        Value::Object(values) => {
+            5u8.hash(hasher);
+            values.len().hash(hasher);
+            let mut entries = values.iter().collect::<Vec<_>>();
+            entries.sort_by(|left, right| left.0.cmp(right.0));
+            for (key, value) in entries {
+                key.hash(hasher);
+                hash_json_value(value, hasher);
+            }
+        }
+    }
 }
 
 fn synthetic_error_message(error: &str) -> MessageView {

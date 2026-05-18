@@ -2404,6 +2404,37 @@ mod tests {
     }
 
     #[test]
+    fn transcript_version_tracks_message_changes() {
+        let mut state = TuiState::new();
+        let initial = state.transcript_version();
+        let id = oino_types::OinoId::nil();
+
+        state.start_message(id, "assistant");
+        assert!(state.transcript_version() > initial);
+        let after_start = state.transcript_version();
+
+        state.update_message(
+            id,
+            &[ContentBlock::Text {
+                text: "answer".into(),
+            }],
+        );
+        assert!(state.transcript_version() > after_start);
+        let after_update = state.transcript_version();
+
+        state.update_message(
+            id,
+            &[ContentBlock::Text {
+                text: "answer".into(),
+            }],
+        );
+        assert_eq!(state.transcript_version(), after_update);
+
+        state.reset_for_new_session("next");
+        assert!(state.transcript_version() > after_update);
+    }
+
+    #[test]
     fn working_state_accepts_input_and_enter_steers() {
         let mut state = TuiState::with_settings("openrouter:test/model", ThinkingLevel::Off);
         state.set_working(true);
