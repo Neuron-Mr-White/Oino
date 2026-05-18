@@ -1,0 +1,35 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        curl \
+        git \
+        jq \
+        less \
+        ncurses-term \
+        procps \
+        ripgrep \
+        rsync \
+        tmux \
+        vim-tiny \
+        xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN printf '%s\n' \
+        '#!/usr/bin/env bash' \
+        'set -euo pipefail' \
+        'exec "/opt/oino-bin/${OINO_PODMAN_BINARY_NAME:-oino}" "$@"' \
+        > /usr/local/bin/oino \
+    && chmod +x /usr/local/bin/oino
+
+ENV HOME=/root \
+    TERM=xterm-256color \
+    COLORTERM=truecolor \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    LC_CTYPE=C.UTF-8
+
+WORKDIR /workspace
+CMD ["sleep", "infinity"]

@@ -6,6 +6,42 @@ run = "cargo run -p oino-app --bin oino"
 description = "Run the Ratatui markdown rendering proof-of-concept"
 run = "cargo run -p oino-tui --bin render-test"
 
+[tasks."podman:up"]
+description = "Build Oino, start/reuse the disposable Podman tmux sandbox, and attach"
+run = "./scripts/podman-test.sh up"
+
+[tasks."podman:start"]
+description = "Start/reuse the disposable Podman sandbox without attaching"
+run = "./scripts/podman-test.sh start"
+
+[tasks."podman:attach"]
+description = "Attach to the sandbox tmux session, creating the sandbox if needed"
+run = "./scripts/podman-test.sh attach"
+
+[tasks."podman:shell"]
+description = "Open a bash shell in the disposable Podman sandbox"
+run = "./scripts/podman-test.sh shell"
+
+[tasks."podman:reset"]
+description = "Clear and reinitialize the sandbox /workspace project"
+run = "./scripts/podman-test.sh reset"
+
+[tasks."podman:binary"]
+description = "Build the Oino binary mounted into the Podman sandbox"
+run = "./scripts/podman-test.sh binary"
+
+[tasks."podman:image"]
+description = "Build the Podman sandbox image with tmux and test utilities"
+run = "./scripts/podman-test.sh image"
+
+[tasks."podman:status"]
+description = "Show disposable Podman sandbox status"
+run = "./scripts/podman-test.sh status"
+
+[tasks."podman:clean"]
+description = "Remove the disposable Podman sandbox container, volumes, and image"
+run = "./scripts/podman-test.sh clean"
+
 [tasks.check]
 description = "Check the full Rust workspace"
 run = "cargo check --workspace"
