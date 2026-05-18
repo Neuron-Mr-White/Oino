@@ -813,8 +813,29 @@ fn is_external_open_mouse_event(mouse: &MouseEvent) -> bool {
 
 fn open_external_target(target: &str, cwd: &Path) -> io::Result<()> {
     let target = resolve_external_target(target, cwd);
+    if is_external_url(&target) {
+        return open_external_url(&target);
+    }
+
     let browser_env = std::env::var("BROWSER").ok();
     open_resolved_target(&target, browser_env.as_deref())
+}
+
+fn open_external_url(target: &str) -> io::Result<()> {
+    match webbrowser::open(target) {
+        Ok(()) => Ok(()),
+        Err(webbrowser_err) => {
+            let browser_env = std::env::var("BROWSER").ok();
+            open_resolved_target(target, browser_env.as_deref()).map_err(|fallback_err| {
+                io::Error::new(
+                    fallback_err.kind(),
+                    format!(
+                        "webbrowser failed for {target}: {webbrowser_err}; fallback failed: {fallback_err}"
+                    ),
+                )
+            })
+        }
+    }
 }
 
 fn resolve_external_target(target: &str, cwd: &Path) -> String {
