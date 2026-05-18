@@ -144,6 +144,14 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
             keymap.label_for(KeyAction::ComposerSubmit),
             "while streaming, steer the current response with the current input",
         ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::ComposerQueuePrompt),
+            "queue current input for the next turn without opening the send panel",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::ComposerDraftPrompt),
+            "move current input to Draft without opening the send panel",
+        ),
         HelpEntry::item(keymap.label_for(KeyAction::SettingsOpen), "open settings"),
         HelpEntry::item(
             keymap.label_for(KeyAction::SendPanelOpen),

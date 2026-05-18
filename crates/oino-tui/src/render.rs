@@ -222,17 +222,19 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
     }
 
     if state.chord != ChordState::None {
-        render_chord_hint(frame, area, state.chord, theme);
+        render_chord_hint(frame, area, state, theme);
     }
 }
 
-fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, chord: ChordState, theme: &Theme) {
-    let title = match chord {
-        ChordState::CtrlO => {
-            " Ctrl-O: s settings • q send panel • t transcript • e expand • Esc cancel "
-        }
-        ChordState::None => return,
-    };
+fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    if state.chord == ChordState::None {
+        return;
+    }
+    let keymap = &state.settings.keymap;
+    let title = format!(
+        " {}: Enter queue • / draft • s settings • q send panel • Esc cancel ",
+        keymap.chord_key
+    );
     frame.render_widget(
         Block::default()
             .title(Span::styled(title, theme.error))

@@ -127,6 +127,8 @@ pub enum KeyAction {
     ComposerExpandReference,
     ComposerSubmit,
     ComposerNewline,
+    ComposerQueuePrompt,
+    ComposerDraftPrompt,
     SuggestionsClose,
     SuggestionsUp,
     SuggestionsDown,
@@ -249,6 +251,8 @@ impl KeyAction {
             Self::ComposerExpandReference => "composer.expand_reference",
             Self::ComposerSubmit => "composer.submit",
             Self::ComposerNewline => "composer.newline",
+            Self::ComposerQueuePrompt => "composer.queue_prompt",
+            Self::ComposerDraftPrompt => "composer.draft_prompt",
             Self::SuggestionsClose => "suggestions.close",
             Self::SuggestionsUp => "suggestions.up",
             Self::SuggestionsDown => "suggestions.down",
@@ -465,6 +469,18 @@ pub const ACTION_INFOS: &[KeyActionInfo] = &[
         KeyContext::Composer,
         "Insert Newline",
         "insert a composer newline",
+    ),
+    info(
+        KeyAction::ComposerQueuePrompt,
+        KeyContext::Composer,
+        "Queue Composer",
+        "queue the current composer input for the next turn",
+    ),
+    info(
+        KeyAction::ComposerDraftPrompt,
+        KeyContext::Composer,
+        "Draft Composer",
+        "move the current composer input to Draft",
     ),
     info(
         KeyAction::SuggestionsClose,
@@ -1042,6 +1058,9 @@ impl fmt::Display for KeyStroke {
             parts.push("Super".to_string());
         }
         parts.push(match self.code {
+            StrokeCode::Char(ch) if !self.modifiers.is_empty() && ch.is_ascii_alphabetic() => {
+                ch.to_ascii_uppercase().to_string()
+            }
             StrokeCode::Char(ch) => ch.to_string(),
             StrokeCode::Enter => "Enter".into(),
             StrokeCode::Esc => "Esc".into(),
@@ -1517,6 +1536,8 @@ fn default_bindings(
         (KeymapPreset::Combination, KeyAction::ComposerExpandReference) => &["f5"],
         (_, KeyAction::ComposerSubmit) => &["enter"],
         (_, KeyAction::ComposerNewline) => &["ctrl-j", "alt-enter", "shift-enter"],
+        (_, KeyAction::ComposerQueuePrompt) => return chord_defaults(chord_key, &["enter"]),
+        (_, KeyAction::ComposerDraftPrompt) => return chord_defaults(chord_key, &["/"]),
         (_, KeyAction::SuggestionsClose) => &["esc"],
         (_, KeyAction::SuggestionsUp) => &["up"],
         (_, KeyAction::SuggestionsDown) => &["down"],
@@ -1624,7 +1645,7 @@ mod tests {
             Ok(seq) => seq,
             Err(err) => panic!("parse chord failed: {err}"),
         };
-        assert_eq!(seq.to_string(), "Ctrl-o s");
+        assert_eq!(seq.to_string(), "Ctrl-O s");
         assert_eq!(seq.len(), 2);
     }
 

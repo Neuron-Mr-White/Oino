@@ -1164,6 +1164,15 @@ impl TuiState {
                 self.after_composer_edit(&before);
                 TuiAction::None
             }
+            KeyAction::ComposerQueuePrompt => self.queue_composer_input(),
+            KeyAction::ComposerDraftPrompt => {
+                if self.draft_current_input() {
+                    self.status = "Moved current input to Draft".into();
+                } else {
+                    self.status = "No input to draft".into();
+                }
+                TuiAction::None
+            }
             KeyAction::SuggestionsClose
             | KeyAction::SuggestionsUp
             | KeyAction::SuggestionsDown
@@ -1248,6 +1257,16 @@ impl TuiState {
             self.status = "Press quit again to exit • Esc stops a running response".into();
             TuiAction::None
         }
+    }
+
+    fn queue_composer_input(&mut self) -> TuiAction {
+        let Some(prompt) = self.take_composer_text() else {
+            self.status = "No input to queue".into();
+            return TuiAction::None;
+        };
+        self.enqueue_prompt(prompt.clone());
+        self.status = format!("Queued {}", summarize_panel_text(&prompt));
+        TuiAction::QueuePrompt(prompt)
     }
 
     fn expand_reference_action(&mut self) {
@@ -1436,15 +1455,7 @@ impl TuiState {
                 self.move_send_panel_cursor(1);
                 TuiAction::None
             }
-            KeyAction::SendPanelQueue => {
-                let Some(prompt) = self.take_composer_text() else {
-                    self.status = "No input to queue".into();
-                    return TuiAction::None;
-                };
-                self.enqueue_prompt(prompt.clone());
-                self.status = format!("Queued {}", summarize_panel_text(&prompt));
-                TuiAction::QueuePrompt(prompt)
-            }
+            KeyAction::SendPanelQueue => self.queue_composer_input(),
             KeyAction::SendPanelDraft => {
                 if self.draft_current_input() {
                     self.status = "Moved current input to Draft".into();
@@ -2960,6 +2971,31 @@ mod tests {
         assert_eq!(state.handle_key(key(KeyCode::Char('q'))), TuiAction::None);
         assert_eq!(state.overlay, Some(OverlayKind::SendPanel));
         assert_eq!(state.chord, ChordState::None);
+    }
+
+    #[test]
+    fn chord_enter_queues_and_chord_slash_drafts_composer_input() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("next task");
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::QueuePrompt("next task".into())
+        );
+        assert_eq!(state.input(), "");
+        assert_eq!(state.queued_items, vec!["next task".to_string()]);
+
+        state.composer.replace_text("draft this");
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
+        assert_eq!(state.input(), "");
+        assert_eq!(state.draft_items, vec!["draft this".to_string()]);
     }
 
     #[test]
