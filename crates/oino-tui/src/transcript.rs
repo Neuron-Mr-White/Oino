@@ -679,6 +679,7 @@ fn agentic_tool_result_lines(
     let call = message
         .tool_call_id
         .and_then(|id| find_tool_call(messages, id));
+    let is_exploration = is_exploration_tool(tool_name, call);
     let bullet_style = if message.is_error {
         theme.error
     } else {
@@ -686,7 +687,19 @@ fn agentic_tool_result_lines(
             .fg(theme.assistant_border)
             .add_modifier(Modifier::BOLD)
     };
-    let mut lines = if is_exploration_tool(tool_name, call) {
+    if tool_mode == CollapseMode::Collapse {
+        return vec![agentic_collapsed_tool_result_line(
+            message,
+            tool_name,
+            call,
+            is_exploration,
+            width,
+            bullet_style,
+            theme,
+        )];
+    }
+
+    let mut lines = if is_exploration {
         let mut lines = vec![Line::from(vec![
             Span::styled("• ", bullet_style),
             Span::styled(
@@ -733,6 +746,104 @@ fn agentic_tool_result_lines(
         ));
     }
     lines
+}
+
+fn agentic_collapsed_tool_result_line(
+    message: &MessageView,
+    tool_name: &str,
+    call: Option<&ToolCallView>,
+    is_exploration: bool,
+    width: usize,
+    bullet_style: Style,
+    theme: &Theme,
+) -> Line<'static> {
+    let title = if message.is_error {
+        "Failed"
+    } else if is_exploration {
+        "Explored"
+    } else {
+        "Ran"
+    };
+    let mut line = Line::from(vec![
+        Span::styled("• ", bullet_style),
+        Span::styled(
+            format!("{title} "),
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ),
+    ]);
+    let summary_width = width.saturating_sub(line_width(&line)).max(1);
+    line.push_span(Span::styled(
+        truncate_to_width(
+            &collapsed_tool_summary(message, tool_name, call, true),
+            summary_width,
+        ),
+        if message.is_error {
+            theme.error
+        } else {
+            Style::default().fg(theme.fg)
+        },
+    ));
+    line
+}
+
+fn chat_collapsed_tool_result_line(
+    message: &MessageView,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let tool_name = tool_name_from_role(&message.role);
+    let icon = if message.is_error { "✗" } else { "✓" };
+    let icon_style = if message.is_error {
+        theme.error
+    } else {
+        Style::default().fg(theme.assistant_border)
+    };
+    let display_name = display_tool_name(tool_name);
+    let mut line = Line::from(vec![
+        Span::styled(format!("{icon} "), icon_style),
+        Span::styled(display_name, Style::default().fg(theme.tool_border)),
+    ]);
+    let detail = collapsed_tool_detail(message);
+    if !detail.is_empty() {
+        line.push_span(Span::styled(" · ", Style::default().fg(theme.muted)));
+        let detail_width = width.saturating_sub(line_width(&line)).max(1);
+        line.push_span(Span::styled(
+            truncate_to_width(&detail, detail_width),
+            if message.is_error {
+                theme.error
+            } else {
+                Style::default().fg(theme.muted)
+            },
+        ));
+    }
+    line
+}
+
+fn collapsed_tool_summary(
+    message: &MessageView,
+    tool_name: &str,
+    call: Option<&ToolCallView>,
+    include_arguments: bool,
+) -> String {
+    let action = if include_arguments {
+        tool_action_summary(tool_name, call)
+    } else {
+        display_tool_name(tool_name)
+    };
+    let detail = collapsed_tool_detail(message);
+    if detail.is_empty() {
+        action
+    } else {
+        format!("{action} · {detail}")
+    }
+}
+
+fn collapsed_tool_detail(message: &MessageView) -> String {
+    if message.is_error {
+        concise_error_summary(&message.content).unwrap_or_else(|| content_metric(&message.content))
+    } else {
+        content_metric(&message.content)
+    }
 }
 
 fn minimal_message_lines(
@@ -1055,14 +1166,15 @@ fn display_tool_name(name: &str) -> String {
 }
 
 fn tool_output_for_display(message: &MessageView, tool_mode: CollapseMode) -> Option<String> {
-    if message.content == "<empty>" {
+    if message.content == "<empty>" || tool_mode == CollapseMode::Collapse {
         return None;
     }
     Some(match tool_mode {
         CollapseMode::Full => message.content.clone(),
         CollapseMode::Truncate => truncate_display(&message.content),
-        CollapseMode::Collapse if message.is_error => truncate_display(&message.content),
-        CollapseMode::Collapse => "[collapsed]".into(),
+        CollapseMode::Collapse => {
+            unreachable!("collapsed tool output is rendered as a summary line")
+        }
     })
 }
 
@@ -1371,8 +1483,15 @@ fn bubble_lines(
     tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    if is_empty_assistant_message(message) {
+    if is_empty_assistant_message(message, thinking_mode) {
         return Vec::new();
+    }
+    if message.role.starts_with("tool:") && tool_mode == CollapseMode::Collapse {
+        return vec![chat_collapsed_tool_result_line(
+            message,
+            available_width,
+            theme,
+        )];
     }
     if available_width < 16 {
         return vec![Line::styled(
@@ -1512,14 +1631,19 @@ fn bubble_content_line(
     Line::from(spans)
 }
 
-fn is_empty_assistant_message(message: &MessageView) -> bool {
+fn is_empty_assistant_message(message: &MessageView, thinking_mode: CollapseMode) -> bool {
     message.is_assistant()
         && message.content == "<empty>"
-        && message
-            .thinking
-            .as_ref()
-            .is_none_or(|thinking| thinking.trim().is_empty())
-        && !message.thinking_redacted
+        && !has_displayable_thinking(message, thinking_mode)
+}
+
+fn has_displayable_thinking(message: &MessageView, thinking_mode: CollapseMode) -> bool {
+    thinking_mode != CollapseMode::Collapse
+        && (message.thinking_redacted
+            || message
+                .thinking
+                .as_ref()
+                .is_some_and(|thinking| !thinking.trim().is_empty()))
 }
 
 fn display_message_content(message: &MessageView, tool_mode: CollapseMode) -> String {
@@ -1527,7 +1651,9 @@ fn display_message_content(message: &MessageView, tool_mode: CollapseMode) -> St
         match tool_mode {
             CollapseMode::Full => message.content.clone(),
             CollapseMode::Truncate => truncate_display(&message.content),
-            CollapseMode::Collapse => "[collapsed]".into(),
+            CollapseMode::Collapse => {
+                collapsed_tool_summary(message, tool_name_from_role(&message.role), None, false)
+            }
         }
     } else {
         message.content.clone()
@@ -1535,6 +1661,9 @@ fn display_message_content(message: &MessageView, tool_mode: CollapseMode) -> St
 }
 
 fn thinking_display_text(message: &MessageView, thinking_mode: CollapseMode) -> Option<String> {
+    if thinking_mode == CollapseMode::Collapse {
+        return None;
+    }
     let text = if message.thinking_redacted {
         "[redacted]".to_string()
     } else {
@@ -1547,7 +1676,7 @@ fn thinking_display_text(message: &MessageView, thinking_mode: CollapseMode) -> 
     Some(match thinking_mode {
         CollapseMode::Full => text,
         CollapseMode::Truncate => truncate_display(&text),
-        CollapseMode::Collapse => "[collapsed]".into(),
+        CollapseMode::Collapse => unreachable!("collapsed thinking is hidden"),
     })
 }
 
@@ -1735,6 +1864,92 @@ mod tests {
             assert!(!rendered.contains("# First Skill"));
             assert!(!rendered.contains("````markdown"));
         }
+    }
+
+    #[test]
+    fn collapsed_thinking_is_hidden_without_placeholder_in_all_chat_styles() {
+        let messages = vec![MessageView {
+            id: oino_types::OinoId::from_u128(30),
+            role: "assistant".into(),
+            title: Some("test/model".into()),
+            content: "final answer".into(),
+            thinking: Some("secret internal reasoning".into()),
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        }];
+
+        for style in [ChatStyle::Chat, ChatStyle::Agentic, ChatStyle::Minimal] {
+            let lines = transcript_lines(
+                &messages,
+                None,
+                120,
+                CollapseMode::Collapse,
+                CollapseMode::Full,
+                style,
+                &Theme::default(),
+            );
+            let rendered = lines.iter().map(plain).collect::<Vec<_>>().join("\n");
+
+            assert!(
+                rendered.contains("final answer"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                !rendered.contains("secret internal reasoning"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                !rendered.contains("[collapsed]"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(!rendered.contains("◌"), "style {style:?}: {rendered}");
+        }
+    }
+
+    #[test]
+    fn collapsed_tool_results_are_single_line_summaries() {
+        let messages = vec![
+            assistant_tool_calls(vec![ToolCallView {
+                id: oino_types::OinoId::from_u128(3),
+                name: "bash".into(),
+                arguments: json!({ "command": "cargo test" }),
+            }]),
+            tool_result(23, 3, "bash", "ok", false),
+        ];
+
+        let agentic_lines = transcript_lines(
+            &messages,
+            None,
+            120,
+            CollapseMode::Full,
+            CollapseMode::Collapse,
+            ChatStyle::Agentic,
+            &Theme::default(),
+        );
+        let agentic_plain = agentic_lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert_eq!(agentic_plain, vec!["• Ran Bash cargo test · 2 chars"]);
+        assert!(agentic_plain
+            .iter()
+            .all(|line| !line.contains("[collapsed]")));
+        assert!(agentic_plain.iter().all(|line| !line.contains("ok")));
+
+        let chat_lines = transcript_lines(
+            &messages,
+            None,
+            120,
+            CollapseMode::Full,
+            CollapseMode::Collapse,
+            ChatStyle::Chat,
+            &Theme::default(),
+        );
+        let chat_plain = chat_lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert_eq!(chat_plain, vec!["✓ Bash · 2 chars"]);
+        assert!(chat_plain.iter().all(|line| !line.contains("[collapsed]")));
+        assert!(chat_plain.iter().all(|line| !line.contains("ok")));
     }
 
     #[test]

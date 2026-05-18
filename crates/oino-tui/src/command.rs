@@ -752,7 +752,7 @@ fn collapse_mode_suggestions(context: SuggestionContext) -> Option<CommandSugges
     let modes = [
         ("full", "Show full content"),
         ("truncate", "Show short preview"),
-        ("collapse", "Hide content behind placeholder"),
+        ("collapse", "Hide detailed content"),
     ];
     let items = fuzzy_indices(
         &modes,

@@ -2420,7 +2420,8 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect::<String>();
-        assert!(text.contains("[collapsed]"));
+        assert!(!text.contains("[collapsed]"));
+        assert!(text.contains("✓ Bash"));
         assert!(!text.contains("secret internal reasoning"));
         assert!(!text.contains("long tool output"));
         assert!(text.contains("final answer"));
