@@ -25,7 +25,7 @@ use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
-use oino_resource::{ResourceCatalog, ResourcePaths};
+use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
@@ -118,7 +118,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /prompts\n  /skills\n  /reload\n  /skill:<name> [args]\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /prompts\n  /skills\n  /reload\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>"
 }
 
 #[derive(Debug, Error)]
@@ -366,29 +366,9 @@ fn default_system_prompt(cwd: &std::path::Path, catalog: &ResourceCatalog) -> St
             section.content
         ));
     }
-    let visible_skills = catalog
-        .skills
-        .iter()
-        .filter(|skill| !skill.disable_model_invocation)
-        .collect::<Vec<_>>();
-    if !visible_skills.is_empty() {
-        let mut skills = String::from("<available_skills>\n");
-        for skill in visible_skills {
-            skills.push_str("  <skill>\n");
-            skills.push_str(&format!("    <name>{}</name>\n", skill.name));
-            skills.push_str(&format!(
-                "    <description>{}</description>\n",
-                skill.description
-            ));
-            skills.push_str(&format!(
-                "    <location>{}</location>\n",
-                skill.path.display()
-            ));
-            skills.push_str("  </skill>\n");
-        }
-        skills.push_str("</available_skills>\n\nWhen a task matches a skill, read its SKILL.md from the listed location before using it.");
-        sections.push(skills);
-    }
+    sections.push(
+        "# Oino Resource Inclusion Policy\n\nPrompt templates and skills are explicit composer resources. Only use prompt or skill content when it has been included in the user message via `/prompt:<name>` or `/skill:<name>`. Do not auto-load skills from discovery metadata.".into(),
+    );
     sections.push(format!("Current working directory: {}", cwd.display()));
     sections.join("\n\n---\n\n")
 }
@@ -1011,7 +991,7 @@ async fn run_non_interactive(
         return Ok(());
     };
 
-    if input.trim_start().starts_with('/') {
+    if input.trim_start().starts_with('/') && !contains_resource_reference(&input) {
         let command = parse_command(&input)
             .ok_or_else(|| AppError::InvalidArguments(format!("unknown command `{input}`")))?;
         let message = execute_runtime_command(
@@ -1026,6 +1006,7 @@ async fn run_non_interactive(
         return Ok(());
     }
 
+    let input = expand_resource_references(&input, &resource_catalog)?;
     preflight_openrouter_credentials(&auth)
         .await
         .map_err(AppError::InvalidArguments)?;
@@ -1036,6 +1017,194 @@ async fn run_non_interactive(
     }
     eprintln!("session: {}", session_id_from_path(&session_path));
     Ok(())
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CliResourceReferences {
+    prompts: Vec<String>,
+    skills: Vec<String>,
+    incomplete: Vec<String>,
+    user_input: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CliResourceReferenceKind {
+    Prompt,
+    Skill,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CliByteToken<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
+}
+
+fn contains_resource_reference(input: &str) -> bool {
+    cli_resource_references(input).is_some()
+}
+
+fn expand_resource_references(input: &str, catalog: &ResourceCatalog) -> Result<String, AppError> {
+    let Some(references) = cli_resource_references(input) else {
+        return Ok(input.to_string());
+    };
+    if let Some(token) = references.incomplete.first() {
+        return Err(AppError::InvalidArguments(format!(
+            "incomplete resource reference `{token}`"
+        )));
+    }
+
+    let mut prompts = Vec::new();
+    for name in &references.prompts {
+        let prompt = catalog.prompt_by_name(name).ok_or_else(|| {
+            AppError::InvalidArguments(format!("unknown prompt `/prompt:{name}`"))
+        })?;
+        prompts.push(prompt);
+    }
+
+    let mut skills = Vec::new();
+    for name in &references.skills {
+        let skill = catalog
+            .skill_by_name(name)
+            .ok_or_else(|| AppError::InvalidArguments(format!("unknown skill `/skill:{name}`")))?;
+        skills.push(skill);
+    }
+
+    Ok(build_cli_resource_augmented_prompt(
+        &prompts,
+        &skills,
+        &references.user_input,
+    ))
+}
+
+fn cli_resource_references(input: &str) -> Option<CliResourceReferences> {
+    let mut references = CliResourceReferences::default();
+    let mut found = false;
+    let mut stripped = String::new();
+    let mut copied_until = 0;
+
+    for token in cli_byte_tokens(input) {
+        let Some((kind, name)) = cli_resource_reference_token(token.text) else {
+            continue;
+        };
+        found = true;
+        stripped.push_str(&input[copied_until..token.start]);
+        copied_until = token.end;
+
+        if name.is_empty() {
+            references.incomplete.push(token.text.to_string());
+            continue;
+        }
+        match kind {
+            CliResourceReferenceKind::Prompt => push_unique_resource(&mut references.prompts, name),
+            CliResourceReferenceKind::Skill => push_unique_resource(&mut references.skills, name),
+        }
+    }
+
+    if !found {
+        return None;
+    }
+
+    stripped.push_str(&input[copied_until..]);
+    references.user_input = clean_cli_resource_user_input(&stripped);
+    Some(references)
+}
+
+fn cli_resource_reference_token(token: &str) -> Option<(CliResourceReferenceKind, String)> {
+    if let Some(name) = token.strip_prefix("/prompt:") {
+        return Some((CliResourceReferenceKind::Prompt, name.to_string()));
+    }
+    token
+        .strip_prefix("/skill:")
+        .map(|name| (CliResourceReferenceKind::Skill, name.to_string()))
+}
+
+fn push_unique_resource(items: &mut Vec<String>, value: String) {
+    if !items.iter().any(|item| item == &value) {
+        items.push(value);
+    }
+}
+
+fn cli_byte_tokens(input: &str) -> Vec<CliByteToken<'_>> {
+    let mut tokens = Vec::new();
+    let mut start = None;
+    for (index, ch) in input.char_indices() {
+        if ch.is_whitespace() {
+            if let Some(token_start) = start.take() {
+                tokens.push(CliByteToken {
+                    text: &input[token_start..index],
+                    start: token_start,
+                    end: index,
+                });
+            }
+        } else if start.is_none() {
+            start = Some(index);
+        }
+    }
+    if let Some(token_start) = start {
+        tokens.push(CliByteToken {
+            text: &input[token_start..],
+            start: token_start,
+            end: input.len(),
+        });
+    }
+    tokens
+}
+
+fn clean_cli_resource_user_input(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn build_cli_resource_augmented_prompt(
+    prompts: &[&PromptTemplate],
+    skills: &[&Skill],
+    user_input: &str,
+) -> String {
+    if skills.is_empty() {
+        return prompts
+            .iter()
+            .map(|prompt| prompt.expand(user_input))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+    }
+
+    let mut output = String::from("Use the following Oino resources for this request.");
+    if !prompts.is_empty() {
+        output.push_str("\n\n<prompt_templates>");
+        for prompt in prompts {
+            output.push_str(&format!(
+                "\n<prompt name=\"{}\" source=\"{}\">\n{}\n</prompt>",
+                prompt.name,
+                prompt.path.display(),
+                prompt.expand(user_input)
+            ));
+        }
+        output.push_str("\n</prompt_templates>");
+    }
+    if !skills.is_empty() {
+        output.push_str("\n\n<skills>");
+        for skill in skills {
+            output.push_str(&format!(
+                "\n<skill name=\"{}\" source=\"{}\">\n{}\n</skill>",
+                skill.name,
+                skill.path.display(),
+                skill.content
+            ));
+        }
+        output.push_str("\n</skills>");
+    }
+    if !user_input.is_empty() {
+        output.push_str(&format!(
+            "\n\n<user_request>\n{user_input}\n</user_request>"
+        ));
+    }
+    output
 }
 
 async fn execute_runtime_command(
@@ -1273,7 +1442,7 @@ fn format_prompt_list(catalog: &ResourceCatalog) -> String {
         .map(|prompt| {
             let hint = prompt.argument_hint.as_deref().unwrap_or("");
             format!(
-                "/{} {}  [{}]  {}  {}",
+                "/prompt:{} {}  [{}]  {}  {}",
                 prompt.name,
                 hint,
                 prompt.scope.label(),
@@ -1662,6 +1831,8 @@ mod tests {
         assert!(system_prompt.contains("bash"));
         assert!(system_prompt.contains("edit"));
         assert!(system_prompt.contains("write"));
+        assert!(system_prompt.contains("Oino Resource Inclusion Policy"));
+        assert!(!system_prompt.contains("<available_skills>"));
         let messages = match harness.prompt(Message::user_text("hi")).await {
             Ok(messages) => messages,
             Err(err) => panic!("prompt failed: {err}"),
@@ -1669,6 +1840,48 @@ mod tests {
         assert!(messages
             .iter()
             .any(|message| matches!(message, Message::Assistant { .. })));
+    }
+
+    #[test]
+    fn cli_resource_references_expand_multiple_resources() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let paths = ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path())
+            .unwrap_or_else(|err| panic!("resource paths failed: {err}"));
+        let catalog = ResourceCatalog {
+            paths,
+            system_prompt: None,
+            project_instructions: None,
+            prompts: vec![PromptTemplate {
+                name: "review".into(),
+                description: "Review".into(),
+                argument_hint: None,
+                path: temp.path().join("review.md"),
+                scope: oino_resource::ResourceScope::Project,
+                content: "Review $ARGUMENTS".into(),
+            }],
+            skills: vec![Skill {
+                name: "debug".into(),
+                description: "Debug".into(),
+                path: temp.path().join("debug/SKILL.md"),
+                base_dir: temp.path().join("debug"),
+                scope: oino_resource::ResourceScope::Project,
+                content: "# Debug Skill".into(),
+                disable_model_invocation: false,
+            }],
+            diagnostics: Vec::new(),
+        };
+
+        assert!(!contains_resource_reference("use /P:debug only for search"));
+        let prompt = expand_resource_references(
+            "fix crash /skill:debug /prompt:review /skill:debug",
+            &catalog,
+        )
+        .unwrap_or_else(|err| panic!("resource expansion failed: {err}"));
+        assert!(prompt.contains("Review fix crash"));
+        assert!(prompt.contains("<skill name=\"debug\""));
+        assert!(prompt.contains("# Debug Skill"));
+        assert!(prompt.contains("<user_request>\nfix crash\n</user_request>"));
+        assert_eq!(prompt.matches("<skill name=\"debug\"").count(), 1);
     }
 
     #[tokio::test]

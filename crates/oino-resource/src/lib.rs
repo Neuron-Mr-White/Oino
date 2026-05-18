@@ -214,7 +214,7 @@ pub struct PromptTemplate {
 impl PromptTemplate {
     #[must_use]
     pub fn command(&self) -> String {
-        format!("/{}", self.name)
+        format!("/prompt:{}", self.name)
     }
 
     #[must_use]

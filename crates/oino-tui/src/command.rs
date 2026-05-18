@@ -256,15 +256,20 @@ pub fn command_suggestions_for(
     prompts: &[PromptResource],
     skills: &[SkillResource],
 ) -> Option<CommandSuggestionsView> {
+    if let Some((context, scope)) = resource_suggestion_context(input, cursor) {
+        return match scope {
+            ResourceSuggestionScope::PromptShort | ResourceSuggestionScope::PromptLong => {
+                prompt_suggestions(context, prompts, scope)
+            }
+            ResourceSuggestionScope::SkillShort | ResourceSuggestionScope::SkillLong => {
+                skill_suggestions(context, skills, scope)
+            }
+        };
+    }
+
     let context = suggestion_context(input, cursor)?;
-    if context.completed.is_empty() && context.active_prefix.starts_with("/P:") {
-        return prompt_suggestions(context, prompts, ScopedSuggestion::PromptPrefix);
-    }
-    if context.completed.is_empty() && context.active_prefix.starts_with("/S:") {
-        return skill_suggestions(context, skills, ScopedSuggestion::SkillPrefix);
-    }
     match context.completed.as_slice() {
-        [] => root_suggestions(context, prompts, skills),
+        [] => root_suggestions(context),
         [settings] if settings == "/settings" => settings_subject_suggestions(context),
         [settings, subject] if settings == "/settings" && subject == "model" => {
             model_suggestions(context, models)
@@ -444,13 +449,9 @@ pub fn parse_chat_style(value: &str) -> Option<ChatStyle> {
     settings_parse_chat_style(value)
 }
 
-fn root_suggestions(
-    context: SuggestionContext,
-    prompts: &[PromptResource],
-    skills: &[SkillResource],
-) -> Option<CommandSuggestionsView> {
+fn root_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     let query = context.active_prefix.trim_start_matches('/');
-    let mut candidates = COMMANDS
+    let candidates = COMMANDS
         .iter()
         .map(|command| CommandSuggestionItem {
             label: command.name.into(),
@@ -462,20 +463,6 @@ fn root_suggestions(
             category: CommandSuggestionCategory::System,
         })
         .collect::<Vec<_>>();
-    candidates.extend(prompt_items(
-        prompts,
-        query,
-        context.replace_start,
-        context.replace_end,
-        ScopedSuggestion::Root,
-    ));
-    candidates.extend(skill_items(
-        skills,
-        query,
-        context.replace_start,
-        context.replace_end,
-        ScopedSuggestion::Root,
-    ));
     let items = fuzzy_indices(
         &candidates,
         query,
@@ -490,27 +477,25 @@ fn root_suggestions(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ScopedSuggestion {
-    Root,
-    PromptPrefix,
-    SkillPrefix,
+enum ResourceSuggestionScope {
+    PromptShort,
+    PromptLong,
+    SkillShort,
+    SkillLong,
 }
 
 fn prompt_suggestions(
     context: SuggestionContext,
     prompts: &[PromptResource],
-    scope: ScopedSuggestion,
+    scope: ResourceSuggestionScope,
 ) -> Option<CommandSuggestionsView> {
-    let query = match scope {
-        ScopedSuggestion::PromptPrefix => context.active_prefix.trim_start_matches("/P:"),
-        ScopedSuggestion::Root | ScopedSuggestion::SkillPrefix => context.active_prefix.as_str(),
-    };
+    let query = resource_query(&context.active_prefix, scope);
     let items = prompt_items(
         prompts,
         query,
+        &context.active_prefix,
         context.replace_start,
         context.replace_end,
-        scope,
     );
     Some(view("Prompts", query.to_string(), items))
 }
@@ -518,28 +503,34 @@ fn prompt_suggestions(
 fn skill_suggestions(
     context: SuggestionContext,
     skills: &[SkillResource],
-    scope: ScopedSuggestion,
+    scope: ResourceSuggestionScope,
 ) -> Option<CommandSuggestionsView> {
-    let query = match scope {
-        ScopedSuggestion::SkillPrefix => context.active_prefix.trim_start_matches("/S:"),
-        ScopedSuggestion::Root | ScopedSuggestion::PromptPrefix => context.active_prefix.as_str(),
-    };
+    let query = resource_query(&context.active_prefix, scope);
     let items = skill_items(
         skills,
         query,
+        &context.active_prefix,
         context.replace_start,
         context.replace_end,
-        scope,
     );
     Some(view("Skills", query.to_string(), items))
+}
+
+fn resource_query(active_prefix: &str, scope: ResourceSuggestionScope) -> &str {
+    match scope {
+        ResourceSuggestionScope::PromptShort => active_prefix.trim_start_matches("/P:"),
+        ResourceSuggestionScope::PromptLong => active_prefix.trim_start_matches("/prompt:"),
+        ResourceSuggestionScope::SkillShort => active_prefix.trim_start_matches("/S:"),
+        ResourceSuggestionScope::SkillLong => active_prefix.trim_start_matches("/skill:"),
+    }
 }
 
 fn prompt_items(
     prompts: &[PromptResource],
     query: &str,
+    active_prefix: &str,
     replace_start: usize,
     replace_end: usize,
-    _scope: ScopedSuggestion,
 ) -> Vec<CommandSuggestionItem> {
     let candidates = prompts
         .iter()
@@ -549,7 +540,7 @@ fn prompt_items(
             replacement: prompt.command(),
             replace_start,
             replace_end,
-            complete_on_enter: true,
+            complete_on_enter: active_prefix == prompt.command(),
             category: CommandSuggestionCategory::Prompt,
         })
         .collect::<Vec<_>>();
@@ -568,9 +559,9 @@ fn prompt_items(
 fn skill_items(
     skills: &[SkillResource],
     query: &str,
+    active_prefix: &str,
     replace_start: usize,
     replace_end: usize,
-    _scope: ScopedSuggestion,
 ) -> Vec<CommandSuggestionItem> {
     let candidates = skills
         .iter()
@@ -580,7 +571,7 @@ fn skill_items(
             replacement: skill.command(),
             replace_start,
             replace_end,
-            complete_on_enter: true,
+            complete_on_enter: active_prefix == skill.command(),
             category: CommandSuggestionCategory::Skill,
         })
         .collect::<Vec<_>>();
@@ -816,6 +807,48 @@ struct Token {
     text: String,
     start: usize,
     end: usize,
+}
+
+fn resource_suggestion_context(
+    input: &str,
+    cursor: usize,
+) -> Option<(SuggestionContext, ResourceSuggestionScope)> {
+    if input.contains('\n') {
+        return None;
+    }
+    let len = char_count(input);
+    let cursor = cursor.min(len);
+    let previous_is_whitespace =
+        cursor > 0 && char_at(input, cursor.saturating_sub(1)).is_some_and(char::is_whitespace);
+    if previous_is_whitespace {
+        return None;
+    }
+
+    let active = tokens_with_ranges(input)
+        .into_iter()
+        .find(|token| token.start <= cursor && cursor <= token.end)?;
+    let active_prefix = char_range(input, active.start, cursor);
+    let scope = if active_prefix.starts_with("/P:") {
+        ResourceSuggestionScope::PromptShort
+    } else if active_prefix.starts_with("/prompt:") {
+        ResourceSuggestionScope::PromptLong
+    } else if active_prefix.starts_with("/S:") {
+        ResourceSuggestionScope::SkillShort
+    } else if active_prefix.starts_with("/skill:") {
+        ResourceSuggestionScope::SkillLong
+    } else {
+        return None;
+    };
+
+    Some((
+        SuggestionContext {
+            completed: Vec::new(),
+            active_prefix,
+            replace_start: active.start,
+            replace_end: active.end,
+        },
+        scope,
+    ))
 }
 
 fn suggestion_context(input: &str, cursor: usize) -> Option<SuggestionContext> {
@@ -1084,23 +1117,37 @@ mod tests {
 
     #[test]
     fn resource_suggestions_support_labels_and_scoped_search() {
-        let view = suggestions("/rev", 4).unwrap_or_else(|| panic!("missing prompt view"));
+        let view = suggestions("/", 1).unwrap_or_else(|| panic!("missing root view"));
+        assert!(view
+            .items
+            .iter()
+            .all(|item| item.category == CommandSuggestionCategory::System));
+
+        let view = suggestions("/prompt:rev", 11)
+            .unwrap_or_else(|| panic!("missing prompt command suggestions"));
         let prompt = view
             .items
             .iter()
-            .find(|item| item.label == "/review")
+            .find(|item| item.label == "/prompt:review")
             .unwrap_or_else(|| panic!("missing review prompt"));
+        assert_eq!(prompt.replacement, "/prompt:review");
+        assert!(!prompt.complete_on_enter);
         assert_eq!(prompt.category, CommandSuggestionCategory::Prompt);
         assert_eq!(prompt.category.label(), Some("[PROMPT]"));
 
-        let view = suggestions("/P:rev", 6).unwrap_or_else(|| panic!("missing scoped prompts"));
+        let view =
+            suggestions("please /P:rev", 13).unwrap_or_else(|| panic!("missing scoped prompts"));
         assert_eq!(view.title, "Prompts");
-        assert_eq!(view.items[0].replacement, "/review");
+        assert_eq!(view.items[0].replacement, "/prompt:review");
 
-        let view = suggestions("/S:bug", 6).unwrap_or_else(|| panic!("missing scoped skills"));
+        let view = suggestions("use /S:bug", 10).unwrap_or_else(|| panic!("missing scoped skills"));
         assert_eq!(view.title, "Skills");
         assert_eq!(view.items[0].replacement, "/skill:debug");
         assert_eq!(view.items[0].category.label(), Some("[SKILL]"));
+
+        let view = suggestions("use /skill:bug", 14)
+            .unwrap_or_else(|| panic!("missing skill command suggestions"));
+        assert_eq!(view.items[0].replacement, "/skill:debug");
     }
 
     #[test]

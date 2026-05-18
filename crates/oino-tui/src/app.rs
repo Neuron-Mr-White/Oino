@@ -1385,7 +1385,10 @@ impl TuiState {
                 self.complete_selected_prompt_command();
                 TuiAction::None
             }
-            KeyCode::Enter if key.modifiers.is_empty() => self.expand_selected_prompt_action(),
+            KeyCode::Enter if key.modifiers.is_empty() => {
+                self.complete_selected_prompt_command();
+                TuiAction::None
+            }
             _ => TuiAction::None,
         }
     }
@@ -1399,7 +1402,10 @@ impl TuiState {
                 self.status = "Prompt search cleared".into();
                 TuiAction::None
             }
-            KeyCode::Enter if key.modifiers.is_empty() => self.expand_selected_prompt_action(),
+            KeyCode::Enter if key.modifiers.is_empty() => {
+                self.complete_selected_prompt_command();
+                TuiAction::None
+            }
             KeyCode::Tab if key.modifiers.is_empty() => {
                 self.complete_selected_prompt_command();
                 TuiAction::None
@@ -1466,7 +1472,10 @@ impl TuiState {
                 self.complete_selected_skill_command();
                 TuiAction::None
             }
-            KeyCode::Enter if key.modifiers.is_empty() => self.run_selected_skill_action(),
+            KeyCode::Enter if key.modifiers.is_empty() => {
+                self.complete_selected_skill_command();
+                TuiAction::None
+            }
             _ => TuiAction::None,
         }
     }
@@ -1480,7 +1489,10 @@ impl TuiState {
                 self.status = "Skill search cleared".into();
                 TuiAction::None
             }
-            KeyCode::Enter if key.modifiers.is_empty() => self.run_selected_skill_action(),
+            KeyCode::Enter if key.modifiers.is_empty() => {
+                self.complete_selected_skill_command();
+                TuiAction::None
+            }
             KeyCode::Tab if key.modifiers.is_empty() => {
                 self.complete_selected_skill_command();
                 TuiAction::None
@@ -1523,15 +1535,6 @@ impl TuiState {
         self.refresh_command_suggestions();
     }
 
-    fn expand_selected_prompt_action(&mut self) -> TuiAction {
-        let Some(prompt) = self.selected_prompt_item().cloned() else {
-            self.status = "No prompt selected".into();
-            return TuiAction::None;
-        };
-        self.overlay = None;
-        self.expand_prompt_resource(&prompt, "")
-    }
-
     fn complete_selected_skill_command(&mut self) {
         let Some(command) = self.selected_skill_item().map(SkillResource::command) else {
             self.status = "No skill selected".into();
@@ -1542,15 +1545,6 @@ impl TuiState {
         self.focus = TuiFocus::Composer;
         self.status = format!("Completed {command}");
         self.refresh_command_suggestions();
-    }
-
-    fn run_selected_skill_action(&mut self) -> TuiAction {
-        let Some(skill) = self.selected_skill_item().cloned() else {
-            self.status = "No skill selected".into();
-            return TuiAction::None;
-        };
-        self.overlay = None;
-        self.run_skill_resource(&skill, "")
     }
 
     fn open_selected_session_action(&mut self) -> TuiAction {
@@ -1612,26 +1606,8 @@ impl TuiState {
             return self.execute_command(command);
         }
 
-        if let Some((name, args)) = parse_skill_invocation(&prompt) {
-            if let Some(skill) = self
-                .skill_resources
-                .iter()
-                .find(|skill| skill.name == name)
-                .cloned()
-            {
-                return self.run_skill_resource(&skill, args);
-            }
-        }
-
-        if let Some((name, args)) = parse_prompt_invocation(&prompt) {
-            if let Some(prompt_resource) = self
-                .prompt_resources
-                .iter()
-                .find(|resource| resource.name == name)
-                .cloned()
-            {
-                return self.expand_prompt_resource(&prompt_resource, args);
-            }
+        if let Some(action) = self.submit_with_resource_references(&prompt) {
+            return action;
         }
 
         if prompt.starts_with('/') {
@@ -1645,22 +1621,49 @@ impl TuiState {
         TuiAction::SubmitPrompt(prompt)
     }
 
-    fn expand_prompt_resource(&mut self, prompt: &PromptResource, args: &str) -> TuiAction {
-        let expanded = prompt.expand(args);
-        self.composer.replace_text(expanded);
-        self.focus = TuiFocus::Composer;
-        self.clear_error();
-        self.status = format!("Expanded prompt {}", prompt.command());
-        self.refresh_command_suggestions();
-        TuiAction::None
-    }
+    fn submit_with_resource_references(&mut self, input: &str) -> Option<TuiAction> {
+        let references = resource_references(input)?;
+        if let Some(token) = references.incomplete.first() {
+            self.set_error(format!("Incomplete resource reference `{token}`"));
+            self.status = HELP_STATUS.into();
+            return Some(TuiAction::None);
+        }
 
-    fn run_skill_resource(&mut self, skill: &SkillResource, args: &str) -> TuiAction {
-        let prompt = skill.invocation_prompt(args);
+        let mut prompts = Vec::new();
+        for name in &references.prompts {
+            let Some(prompt) = self
+                .prompt_resources
+                .iter()
+                .find(|resource| resource.name == *name)
+                .cloned()
+            else {
+                self.set_error(format!("Unknown prompt `/prompt:{name}`"));
+                self.status = HELP_STATUS.into();
+                return Some(TuiAction::None);
+            };
+            prompts.push(prompt);
+        }
+
+        let mut skills = Vec::new();
+        for name in &references.skills {
+            let Some(skill) = self
+                .skill_resources
+                .iter()
+                .find(|resource| resource.name == *name)
+                .cloned()
+            else {
+                self.set_error(format!("Unknown skill `/skill:{name}`"));
+                self.status = HELP_STATUS.into();
+                return Some(TuiAction::None);
+            };
+            skills.push(skill);
+        }
+
+        let prompt = build_resource_augmented_prompt(&prompts, &skills, &references.user_input);
         self.clear_error();
         self.transcript_scroll.jump_bottom();
-        self.status = format!("Running skill {}", skill.command());
-        TuiAction::SubmitPrompt(prompt)
+        self.status = resource_reference_status(prompts.len(), skills.len());
+        Some(TuiAction::SubmitPrompt(prompt))
     }
 
     fn execute_command(&mut self, command: ParsedCommand) -> TuiAction {
@@ -1964,35 +1967,165 @@ fn help_search_status(query: &str) -> String {
     }
 }
 
-fn parse_prompt_invocation(input: &str) -> Option<(&str, &str)> {
-    let trimmed = input.trim();
-    let rest = trimmed.strip_prefix('/')?;
-    if rest.is_empty() || rest.starts_with('/') || rest.starts_with("skill:") {
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ResourceReferences {
+    prompts: Vec<String>,
+    skills: Vec<String>,
+    incomplete: Vec<String>,
+    user_input: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResourceReferenceKind {
+    Prompt,
+    Skill,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ByteToken<'a> {
+    text: &'a str,
+    start: usize,
+    end: usize,
+}
+
+fn resource_references(input: &str) -> Option<ResourceReferences> {
+    let tokens = byte_tokens(input);
+    let mut references = ResourceReferences::default();
+    let mut found = false;
+    let mut stripped = String::new();
+    let mut copied_until = 0;
+
+    for token in tokens {
+        let Some((kind, name)) = resource_reference_token(token.text) else {
+            continue;
+        };
+        found = true;
+        stripped.push_str(&input[copied_until..token.start]);
+        copied_until = token.end;
+
+        if name.is_empty() {
+            references.incomplete.push(token.text.to_string());
+            continue;
+        }
+        match kind {
+            ResourceReferenceKind::Prompt => push_unique(&mut references.prompts, name),
+            ResourceReferenceKind::Skill => push_unique(&mut references.skills, name),
+        }
+    }
+
+    if !found {
         return None;
     }
-    let (name, args) = split_name_args(rest);
-    if name.is_empty() {
-        None
-    } else {
-        Some((name, args.trim()))
+
+    stripped.push_str(&input[copied_until..]);
+    references.user_input = clean_resource_user_input(&stripped);
+    Some(references)
+}
+
+fn resource_reference_token(token: &str) -> Option<(ResourceReferenceKind, String)> {
+    if let Some(name) = token.strip_prefix("/prompt:") {
+        return Some((ResourceReferenceKind::Prompt, name.to_string()));
+    }
+    token
+        .strip_prefix("/skill:")
+        .map(|name| (ResourceReferenceKind::Skill, name.to_string()))
+}
+
+fn push_unique(items: &mut Vec<String>, value: String) {
+    if !items.iter().any(|item| item == &value) {
+        items.push(value);
     }
 }
 
-fn parse_skill_invocation(input: &str) -> Option<(&str, &str)> {
-    let rest = input.trim().strip_prefix("/skill:")?;
-    let (name, args) = split_name_args(rest);
-    if name.is_empty() {
-        None
-    } else {
-        Some((name, args.trim()))
+fn byte_tokens(input: &str) -> Vec<ByteToken<'_>> {
+    let mut tokens = Vec::new();
+    let mut start = None;
+    for (index, ch) in input.char_indices() {
+        if ch.is_whitespace() {
+            if let Some(token_start) = start.take() {
+                tokens.push(ByteToken {
+                    text: &input[token_start..index],
+                    start: token_start,
+                    end: index,
+                });
+            }
+        } else if start.is_none() {
+            start = Some(index);
+        }
     }
+    if let Some(token_start) = start {
+        tokens.push(ByteToken {
+            text: &input[token_start..],
+            start: token_start,
+            end: input.len(),
+        });
+    }
+    tokens
 }
 
-fn split_name_args(value: &str) -> (&str, &str) {
-    let trimmed = value.trim_start();
-    let split_at = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
-    let (name, args) = trimmed.split_at(split_at);
-    (name, args.trim())
+fn clean_resource_user_input(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+fn build_resource_augmented_prompt(
+    prompts: &[PromptResource],
+    skills: &[SkillResource],
+    user_input: &str,
+) -> String {
+    if skills.is_empty() {
+        let expanded = prompts
+            .iter()
+            .map(|prompt| prompt.expand(user_input))
+            .collect::<Vec<_>>();
+        return expanded.join("\n\n");
+    }
+
+    let mut output = String::from("Use the following Oino resources for this request.");
+    if !prompts.is_empty() {
+        output.push_str("\n\n<prompt_templates>");
+        for prompt in prompts {
+            output.push_str(&format!(
+                "\n<prompt name=\"{}\" source=\"{}\">\n{}\n</prompt>",
+                prompt.name,
+                prompt.source,
+                prompt.expand(user_input)
+            ));
+        }
+        output.push_str("\n</prompt_templates>");
+    }
+    if !skills.is_empty() {
+        output.push_str("\n\n<skills>");
+        for skill in skills {
+            output.push_str(&format!(
+                "\n<skill name=\"{}\" source=\"{}\">\n{}\n</skill>",
+                skill.name, skill.source, skill.content
+            ));
+        }
+        output.push_str("\n</skills>");
+    }
+    if !user_input.is_empty() {
+        output.push_str(&format!(
+            "\n\n<user_request>\n{user_input}\n</user_request>"
+        ));
+    }
+    output
+}
+
+fn resource_reference_status(prompt_count: usize, skill_count: usize) -> String {
+    match (prompt_count, skill_count) {
+        (0, 0) => "No Oino resources included".into(),
+        (prompts, 0) => format!("Included {prompts} prompt resource(s)"),
+        (0, skills) => format!("Included {skills} skill resource(s)"),
+        (prompts, skills) => {
+            format!("Included {prompts} prompt resource(s) and {skills} skill resource(s)")
+        }
+    }
 }
 
 fn provider_label(model: &str) -> String {
@@ -2391,21 +2524,25 @@ mod tests {
         let mut state = TuiState::new();
         add_test_resources(&mut state);
 
-        for ch in "/review bugs".chars() {
+        for ch in "/prompt:review bugs".chars() {
             assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
         }
-        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
-        assert_eq!(state.input(), "Review bugs");
+        match state.handle_key(key(KeyCode::Enter)) {
+            TuiAction::SubmitPrompt(prompt) => assert_eq!(prompt, "Review bugs"),
+            other => panic!("expected prompt submit, got {other:?}"),
+        }
 
         state.composer.clear();
-        for ch in "/skill:debug crash".chars() {
+        for ch in "fix crash /skill:debug /skill:debug".chars() {
             assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
         }
         match state.handle_key(key(KeyCode::Enter)) {
             TuiAction::SubmitPrompt(prompt) => {
-                assert!(prompt.contains("Use the `debug` skill"));
-                assert!(prompt.contains("crash"));
+                assert!(prompt.contains("<skills>"));
+                assert!(prompt.contains("name=\"debug\""));
                 assert!(prompt.contains("# Debug Skill"));
+                assert!(prompt.contains("<user_request>\nfix crash\n</user_request>"));
+                assert_eq!(prompt.matches("name=\"debug\"").count(), 1);
             }
             other => panic!("expected skill submit, got {other:?}"),
         }
@@ -2431,7 +2568,7 @@ mod tests {
             Some("review")
         );
         assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
-        assert_eq!(state.input(), "/review ");
+        assert_eq!(state.input(), "/prompt:review ");
 
         state.composer.clear();
         for ch in "/skills".chars() {

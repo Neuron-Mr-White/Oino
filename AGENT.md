@@ -44,7 +44,9 @@ From today onwards, keep all conventions we know so far in this file so future a
 - Resource/config files and directories should be visible and populated even in blank/default state; do not add new hidden files or folders without documenting them first.
 - Prompt templates are one-shot reusable user prompts; skills are on-demand capability folders with `SKILL.md` plus optional scripts/references/assets.
 - Resource command UI should label categories explicitly: `[SYS]` for system commands, `[PROMPT]` for prompt templates, and `[SKILL]` for skills.
-- `/prompts` and `/skills` should open searchable browsers; `/P:<query>` and `/S:<query>` should scope slash suggestions to prompts or skills and support Tab completion.
+- Prompt and skill inclusion is explicit: users include resources with `/prompt:<name>` and `/skill:<name>` tokens, and may repeat tokens to combine multiple resources. Do not reintroduce implicit prompt commands such as `/review` or automatic model skill loading by default.
+- Bare `/` command suggestions should only trigger at the start of the composer and should list system commands; resource suggestions trigger anywhere only for `/prompt:`, `/skill:`, `/P:`, or `/S:` tokens.
+- `/prompts` and `/skills` should open searchable browsers; `/P:<query>` and `/S:<query>` should scope slash suggestions to prompts or skills and complete to `/prompt:<name>` or `/skill:<name>`.
 
 ## Oino session behavior
 
