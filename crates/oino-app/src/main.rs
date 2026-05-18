@@ -1176,35 +1176,60 @@ fn build_cli_resource_augmented_prompt(
 
     let mut output = String::from("Use the following Oino resources for this request.");
     if !prompts.is_empty() {
-        output.push_str("\n\n<prompt_templates>");
+        output.push_str("\n\n# Included Prompt Templates");
         for prompt in prompts {
-            output.push_str(&format!(
-                "\n<prompt name=\"{}\" source=\"{}\">\n{}\n</prompt>",
-                prompt.name,
-                prompt.path.display(),
-                prompt.expand(user_input)
+            output.push_str("\n\n");
+            output.push_str(&markdown_resource_block(
+                "Prompt",
+                &prompt.name,
+                &prompt.path.display().to_string(),
+                &prompt.expand(user_input),
             ));
         }
-        output.push_str("\n</prompt_templates>");
     }
     if !skills.is_empty() {
-        output.push_str("\n\n<skills>");
+        output.push_str("\n\n# Included Skills");
         for skill in skills {
-            output.push_str(&format!(
-                "\n<skill name=\"{}\" source=\"{}\">\n{}\n</skill>",
-                skill.name,
-                skill.path.display(),
-                skill.content
+            output.push_str("\n\n");
+            output.push_str(&markdown_resource_block(
+                "Skill",
+                &skill.name,
+                &skill.path.display().to_string(),
+                &skill.content,
             ));
         }
-        output.push_str("\n</skills>");
     }
     if !user_input.is_empty() {
-        output.push_str(&format!(
-            "\n\n<user_request>\n{user_input}\n</user_request>"
-        ));
+        output.push_str("\n\n# User Request\n\n");
+        output.push_str(user_input);
     }
     output
+}
+
+fn markdown_resource_block(kind: &str, name: &str, source: &str, content: &str) -> String {
+    format!(
+        "## Included {kind}: `{name}`\nSource: `{source}`\n\n{}",
+        fenced_markdown(content)
+    )
+}
+
+fn fenced_markdown(content: &str) -> String {
+    let fence = "`".repeat(longest_backtick_run(content).saturating_add(1).max(4));
+    format!("{fence}markdown\n{}\n{fence}", content.trim_end())
+}
+
+fn longest_backtick_run(content: &str) -> usize {
+    let mut longest = 0;
+    let mut current = 0;
+    for ch in content.chars() {
+        if ch == '`' {
+            current += 1;
+            longest = longest.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    longest
 }
 
 async fn execute_runtime_command(
@@ -1878,10 +1903,12 @@ mod tests {
         )
         .unwrap_or_else(|err| panic!("resource expansion failed: {err}"));
         assert!(prompt.contains("Review fix crash"));
-        assert!(prompt.contains("<skill name=\"debug\""));
-        assert!(prompt.contains("# Debug Skill"));
-        assert!(prompt.contains("<user_request>\nfix crash\n</user_request>"));
-        assert_eq!(prompt.matches("<skill name=\"debug\"").count(), 1);
+        assert!(prompt.contains("# Included Skills"));
+        assert!(prompt.contains("## Included Skill: `debug`"));
+        assert!(prompt.contains("````markdown\n# Debug Skill\n````"));
+        assert!(prompt.contains("# User Request\n\nfix crash"));
+        assert!(!prompt.contains("<skill"));
+        assert_eq!(prompt.matches("## Included Skill: `debug`").count(), 1);
     }
 
     #[tokio::test]
