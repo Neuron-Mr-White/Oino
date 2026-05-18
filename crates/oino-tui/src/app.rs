@@ -1104,6 +1104,7 @@ impl TuiState {
             crate::settings::SettingsPage::Keymaps => match self.settings.keymaps_mode {
                 KeymapsMode::Detail => contexts.push(KeyContext::SettingsKeymapDetail),
                 KeymapsMode::ShortcutType { .. } => contexts.push(KeyContext::SettingsKeymapType),
+                KeymapsMode::ChordKeyCapture => contexts.push(KeyContext::SettingsKeymaps),
                 KeymapsMode::PresetSelect => contexts.push(KeyContext::SettingsKeymapPreset),
                 KeymapsMode::PresetConfirm { .. } => {
                     contexts.push(KeyContext::SettingsKeymapPresetConfirm);
@@ -1216,6 +1217,7 @@ impl TuiState {
             | KeyAction::SettingsSearch
             | KeyAction::SettingsToolToggleGlobal
             | KeyAction::SettingsToolToggleProject
+            | KeyAction::KeymapEditChordKey
             | KeyAction::KeymapAddShortcut
             | KeyAction::KeymapRemoveShortcut
             | KeyAction::KeymapClearShortcuts
@@ -2336,6 +2338,7 @@ fn key_event_for_settings_action(action: KeyAction) -> KeyEvent {
         KeyAction::SettingsToolToggleProject => {
             KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)
         }
+        KeyAction::KeymapEditChordKey => KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE),
         KeyAction::KeymapAddShortcut => KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
         KeyAction::KeymapRemoveShortcut => KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
         KeyAction::KeymapClearShortcuts => KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE),

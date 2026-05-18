@@ -2215,6 +2215,7 @@ fn render_keymap_settings(
         KeymapsMode::Capture { kind, strokes, .. } => {
             render_keymap_capture(frame, area, settings, *kind, strokes, theme);
         }
+        KeymapsMode::ChordKeyCapture => render_chord_key_capture(frame, area, settings, theme),
         KeymapsMode::PresetSelect => render_keymap_preset_select(frame, area, settings, theme),
         KeymapsMode::PresetConfirm { preset } => {
             render_keymap_preset_confirm(frame, area, *preset, theme);
@@ -2228,8 +2229,9 @@ fn render_keymap_list(frame: &mut Frame<'_>, area: Rect, settings: &SettingsStat
     let range = visible_range(settings.keymap_cursor, rows.len(), visible_height);
     let mut lines = vec![Line::styled(
         format!(
-            "Preset: {} • Enter opens an action • p selects a preset",
-            settings.keymap.preset.label()
+            "Preset: {} • Chord key: {} • Enter action • g edit chord key • p preset",
+            settings.keymap.preset.label(),
+            settings.keymap.chord_key
         ),
         Style::default().fg(theme.muted),
     )];
@@ -2326,7 +2328,7 @@ fn render_keymap_shortcut_type(
     lines.extend(ShortcutKind::all().iter().enumerate().map(|(index, kind)| {
         let active = index == settings.keymap_shortcut_kind_cursor;
         let description = match kind {
-            ShortcutKind::Chord => "sequential keys, e.g. Ctrl-O then s",
+            ShortcutKind::Chord => "global chord key plus one suffix key",
             ShortcutKind::Combination => "one key event, e.g. F2 or Ctrl-S",
         };
         Line::styled(
@@ -2372,8 +2374,12 @@ fn render_keymap_capture(
     };
     let prompt = match kind {
         ShortcutKind::Combination => "Press the key combination to assign. Esc cancels.",
-        ShortcutKind::Chord if strokes.is_empty() => "Press the first chord key. Esc cancels.",
-        ShortcutKind::Chord => "Press the final chord key. Esc cancels.",
+        ShortcutKind::Chord if strokes.is_empty() => {
+            "Press the suffix key. The global chord key is prepended. Esc cancels."
+        }
+        ShortcutKind::Chord => {
+            "Press the suffix key. The global chord key is prepended. Esc cancels."
+        }
     };
     let lines = vec![
         Line::styled(
@@ -2396,6 +2402,44 @@ fn render_keymap_capture(
             .block(
                 Block::default()
                     .title(" Listening for Shortcut ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_chord_key_capture(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let lines = vec![
+        Line::styled(
+            "Set the global chord key",
+            Style::default().fg(theme.focused_border),
+        ),
+        Line::styled(
+            format!("Current: {}", settings.keymap.chord_key),
+            Style::default().fg(theme.muted),
+        ),
+        Line::from(""),
+        Line::styled(
+            "Press one key event such as Ctrl-X, Alt-Space, or F12.",
+            Style::default().fg(theme.fg),
+        ),
+        Line::styled(
+            "Plain text keys are disallowed so normal typing still works. Esc cancels.",
+            theme.warning,
+        ),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Global Chord Key ")
                     .borders(Borders::ALL)
                     .border_style(section_border_style(true, theme)),
             )
@@ -2492,12 +2536,15 @@ fn render_settings_footer(
             "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
         }
         SettingsPage::Keymaps => match settings.keymaps_mode {
-            KeymapsMode::List => "arrows/jk move • Enter detail • p preset • Esc/← back",
+            KeymapsMode::List => {
+                "arrows/jk move • Enter detail • g chord key • p preset • Esc/← back"
+            }
             KeymapsMode::Detail => {
                 "arrows/jk move • Enter edit • a add • x remove • c clear • r reset • Esc back"
             }
             KeymapsMode::ShortcutType { .. } => "arrows/jk choose type • Enter listen • Esc back",
             KeymapsMode::Capture { .. } => "press shortcut input • Esc cancel",
+            KeymapsMode::ChordKeyCapture => "press global chord key • Esc cancel",
             KeymapsMode::PresetSelect => "arrows/jk choose preset • Enter confirm • Esc back",
             KeymapsMode::PresetConfirm { .. } => "Y reset all keybinds • N/Esc cancel",
         },

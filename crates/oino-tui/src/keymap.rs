@@ -179,6 +179,7 @@ pub enum KeyAction {
     SettingsSearch,
     SettingsToolToggleGlobal,
     SettingsToolToggleProject,
+    KeymapEditChordKey,
     KeymapAddShortcut,
     KeymapRemoveShortcut,
     KeymapClearShortcuts,
@@ -286,6 +287,7 @@ impl KeyAction {
             Self::SettingsSearch => "settings.search",
             Self::SettingsToolToggleGlobal => "settings.tools.toggle_global",
             Self::SettingsToolToggleProject => "settings.tools.toggle_project",
+            Self::KeymapEditChordKey => "settings.keymaps.edit_chord_key",
             Self::KeymapAddShortcut => "settings.keymaps.add_shortcut",
             Self::KeymapRemoveShortcut => "settings.keymaps.remove_shortcut",
             Self::KeymapClearShortcuts => "settings.keymaps.clear_shortcuts",
@@ -759,6 +761,12 @@ pub const ACTION_INFOS: &[KeyActionInfo] = &[
         "toggle project tool availability",
     ),
     info(
+        KeyAction::KeymapEditChordKey,
+        KeyContext::SettingsKeymaps,
+        "Edit Chord Key",
+        "set the global chord prefix key",
+    ),
+    info(
         KeyAction::KeymapAddShortcut,
         KeyContext::SettingsKeymapDetail,
         "Add Shortcut",
@@ -885,6 +893,11 @@ impl KeyStroke {
     #[must_use]
     pub const fn is_escape(self) -> bool {
         matches!(self.code, StrokeCode::Esc) && self.modifiers.is_empty()
+    }
+
+    #[must_use]
+    pub const fn is_plain_text_key(self) -> bool {
+        self.modifiers.is_empty() && matches!(self.code, StrokeCode::Char(_) | StrokeCode::Space)
     }
 
     #[must_use]
@@ -1022,6 +1035,17 @@ impl KeySequence {
     }
 
     #[must_use]
+    pub fn chord(prefix: KeyStroke, suffix: KeyStroke) -> Self {
+        Self(vec![prefix, suffix])
+    }
+
+    pub fn replace_first(&mut self, old: KeyStroke, new: KeyStroke) {
+        if self.0.first().copied() == Some(old) {
+            self.0[0] = new;
+        }
+    }
+
+    #[must_use]
     pub fn strokes(&self) -> &[KeyStroke] {
         &self.0
     }
@@ -1061,6 +1085,25 @@ impl FromStr for KeySequence {
     }
 }
 
+impl Serialize for KeyStroke {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyStroke {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        value.parse::<Self>().map_err(serde::de::Error::custom)
+    }
+}
+
 impl Serialize for KeySequence {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -1084,6 +1127,8 @@ impl<'de> Deserialize<'de> for KeySequence {
 #[serde(default)]
 pub struct KeymapConfig {
     pub preset: KeymapPreset,
+    #[serde(default = "default_chord_key")]
+    pub chord_key: KeyStroke,
     pub bindings: BTreeMap<KeyAction, Vec<KeySequence>>,
 }
 
@@ -1096,11 +1141,19 @@ impl Default for KeymapConfig {
 impl KeymapConfig {
     #[must_use]
     pub fn for_preset(preset: KeymapPreset) -> Self {
+        let chord_key = default_chord_key();
         let mut bindings = BTreeMap::new();
         for info in ACTION_INFOS {
-            bindings.insert(info.action, default_bindings(info.action, preset));
+            bindings.insert(
+                info.action,
+                default_bindings(info.action, preset, chord_key),
+            );
         }
-        Self { preset, bindings }
+        Self {
+            preset,
+            chord_key,
+            bindings,
+        }
     }
 
     #[must_use]
@@ -1108,7 +1161,7 @@ impl KeymapConfig {
         self.bindings
             .get(&action)
             .cloned()
-            .unwrap_or_else(|| default_bindings(action, self.preset))
+            .unwrap_or_else(|| default_bindings(action, self.preset, self.chord_key))
     }
 
     #[must_use]
@@ -1137,8 +1190,37 @@ impl KeymapConfig {
     }
 
     pub fn reset_action(&mut self, action: KeyAction) {
-        self.bindings
-            .insert(action, default_bindings(action, self.preset));
+        self.bindings.insert(
+            action,
+            default_bindings(action, self.preset, self.chord_key),
+        );
+    }
+
+    pub fn set_chord_key(&mut self, chord_key: KeyStroke) {
+        let old = self.chord_key;
+        if old == chord_key {
+            return;
+        }
+        for bindings in self.bindings.values_mut() {
+            for binding in bindings {
+                if binding.len() > 1 {
+                    binding.replace_first(old, chord_key);
+                }
+            }
+        }
+        self.chord_key = chord_key;
+    }
+
+    #[must_use]
+    pub fn chord_key_conflict(&self, candidate: KeyStroke) -> Option<KeyAction> {
+        for info in ACTION_INFOS {
+            if self.bindings_for(info.action).iter().any(|binding| {
+                binding.len() == 1 && binding.strokes().first().copied() == Some(candidate)
+            }) {
+                return Some(info.action);
+            }
+        }
+        None
     }
 
     #[must_use]
@@ -1211,18 +1293,28 @@ pub fn key_action_rows() -> &'static [KeyActionInfo] {
     ACTION_INFOS
 }
 
-fn default_bindings(action: KeyAction, preset: KeymapPreset) -> Vec<KeySequence> {
+fn default_bindings(
+    action: KeyAction,
+    preset: KeymapPreset,
+    chord_key: KeyStroke,
+) -> Vec<KeySequence> {
     let values: &[&str] = match (preset, action) {
         (_, KeyAction::AppQuit) => &["ctrl-c"],
-        (KeymapPreset::Chord, KeyAction::HelpOpen) => &["ctrl-o h"],
+        (KeymapPreset::Chord, KeyAction::HelpOpen) => return chord_defaults(chord_key, &["h"]),
         (KeymapPreset::Combination, KeyAction::HelpOpen) => &["f1"],
-        (KeymapPreset::Chord, KeyAction::SettingsOpen) => &["ctrl-o s"],
+        (KeymapPreset::Chord, KeyAction::SettingsOpen) => return chord_defaults(chord_key, &["s"]),
         (KeymapPreset::Combination, KeyAction::SettingsOpen) => &["f2"],
-        (KeymapPreset::Chord, KeyAction::SendPanelOpen) => &["ctrl-o q"],
+        (KeymapPreset::Chord, KeyAction::SendPanelOpen) => {
+            return chord_defaults(chord_key, &["q"])
+        }
         (KeymapPreset::Combination, KeyAction::SendPanelOpen) => &["f4"],
-        (KeymapPreset::Chord, KeyAction::TranscriptFocus) => &["ctrl-o t"],
+        (KeymapPreset::Chord, KeyAction::TranscriptFocus) => {
+            return chord_defaults(chord_key, &["t"])
+        }
         (KeymapPreset::Combination, KeyAction::TranscriptFocus) => &["f3"],
-        (KeymapPreset::Chord, KeyAction::ComposerExpandReference) => &["ctrl-o e"],
+        (KeymapPreset::Chord, KeyAction::ComposerExpandReference) => {
+            return chord_defaults(chord_key, &["e"])
+        }
         (KeymapPreset::Combination, KeyAction::ComposerExpandReference) => &["f5"],
         (_, KeyAction::ComposerSubmit) => &["enter"],
         (_, KeyAction::ComposerNewline) => &["ctrl-j", "alt-enter", "shift-enter"],
@@ -1294,6 +1386,7 @@ fn default_bindings(action: KeyAction, preset: KeymapPreset) -> Vec<KeySequence>
         (_, KeyAction::SettingsSearch) => &["/"],
         (_, KeyAction::SettingsToolToggleGlobal) => &["g", "G"],
         (_, KeyAction::SettingsToolToggleProject) => &["p", "P", "space", "enter", "right"],
+        (_, KeyAction::KeymapEditChordKey) => &["g", "G"],
         (_, KeyAction::KeymapAddShortcut) => &["a", "A"],
         (_, KeyAction::KeymapRemoveShortcut) => &["x", "X"],
         (_, KeyAction::KeymapClearShortcuts) => &["c", "C"],
@@ -1303,6 +1396,22 @@ fn default_bindings(action: KeyAction, preset: KeymapPreset) -> Vec<KeySequence>
     values
         .iter()
         .filter_map(|value| value.parse::<KeySequence>().ok())
+        .collect()
+}
+
+#[must_use]
+pub fn default_chord_key() -> KeyStroke {
+    match "ctrl-o".parse::<KeyStroke>() {
+        Ok(stroke) => stroke,
+        Err(_) => unreachable!("default chord key parses"),
+    }
+}
+
+fn chord_defaults(chord_key: KeyStroke, suffixes: &[&str]) -> Vec<KeySequence> {
+    suffixes
+        .iter()
+        .filter_map(|suffix| suffix.parse::<KeyStroke>().ok())
+        .map(|suffix| KeySequence::chord(chord_key, suffix))
         .collect()
 }
 

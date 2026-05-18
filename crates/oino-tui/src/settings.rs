@@ -139,6 +139,7 @@ pub enum KeymapsMode {
         kind: ShortcutKind,
         strokes: Vec<KeyStroke>,
     },
+    ChordKeyCapture,
     PresetSelect,
     PresetConfirm {
         preset: KeymapPreset,
@@ -554,6 +555,7 @@ impl SettingsState {
                 kind,
                 mut strokes,
             } => self.handle_keymap_capture_key(key, edit_index, kind, &mut strokes),
+            KeymapsMode::ChordKeyCapture => self.handle_chord_key_capture_key(key),
             KeymapsMode::PresetSelect => self.handle_keymap_preset_select_key(key),
             KeymapsMode::PresetConfirm { preset } => {
                 self.handle_keymap_preset_confirm_key(key, preset)
@@ -574,6 +576,11 @@ impl SettingsState {
             }
             KeyCode::Down | KeyCode::Char('j') if key.modifiers.is_empty() => {
                 self.keymap_cursor = move_index(self.keymap_cursor, key_action_rows().len(), 1);
+                SettingsAction::None
+            }
+            KeyCode::Char('g' | 'G') if key.modifiers.is_empty() => {
+                self.keymaps_mode = KeymapsMode::ChordKeyCapture;
+                self.status = "Listening for global chord key • Esc cancel".into();
                 SettingsAction::None
             }
             KeyCode::Char('p' | 'P') if key.modifiers.is_empty() => {
@@ -665,7 +672,7 @@ impl SettingsState {
                     ShortcutKind::Combination => {
                         "Listening for one key combination • Esc cancel".into()
                     }
-                    ShortcutKind::Chord => "Listening for first chord key • Esc cancel".into(),
+                    ShortcutKind::Chord => "Listening for chord suffix key • Esc cancel".into(),
                 };
                 SettingsAction::None
             }
@@ -689,25 +696,45 @@ impl SettingsState {
             self.status = "Shortcut capture canceled".into();
             return SettingsAction::None;
         }
-        strokes.push(stroke);
         match kind {
-            ShortcutKind::Combination => self.apply_captured_key_sequence(edit_index, strokes),
-            ShortcutKind::Chord if strokes.len() >= 2 => {
+            ShortcutKind::Combination => {
+                strokes.push(stroke);
                 self.apply_captured_key_sequence(edit_index, strokes)
             }
             ShortcutKind::Chord => {
-                self.status = format!(
-                    "Chord prefix {} captured • press final key • Esc cancel",
-                    stroke
-                );
-                self.keymaps_mode = KeymapsMode::Capture {
-                    edit_index,
-                    kind,
-                    strokes: strokes.clone(),
-                };
-                SettingsAction::None
+                let sequence = KeySequence::chord(self.keymap.chord_key, stroke);
+                self.apply_key_sequence(edit_index, sequence)
             }
         }
+    }
+
+    fn handle_chord_key_capture_key(&mut self, key: KeyEvent) -> SettingsAction {
+        let Some(stroke) = KeyStroke::from_event(key) else {
+            self.status = "Unsupported terminal key event".into();
+            return SettingsAction::None;
+        };
+        if stroke.is_escape() {
+            self.keymaps_mode = KeymapsMode::List;
+            self.status = "Chord key capture canceled".into();
+            return SettingsAction::None;
+        }
+        if stroke.is_plain_text_key() {
+            self.status = "Global chord key cannot be plain text; use Ctrl/Alt/F-key to avoid blocking typing".into();
+            return SettingsAction::None;
+        }
+        if let Some(conflict) = self.keymap.chord_key_conflict(stroke) {
+            self.status = format!(
+                "{} conflicts with {} ({})",
+                stroke,
+                conflict.info().label,
+                conflict.id()
+            );
+            return SettingsAction::None;
+        }
+        self.keymap.set_chord_key(stroke);
+        self.keymaps_mode = KeymapsMode::List;
+        self.status = format!("Global chord key set to {stroke}");
+        SettingsAction::SetKeymap(self.keymap.clone())
     }
 
     fn handle_keymap_preset_select_key(&mut self, key: KeyEvent) -> SettingsAction {
@@ -809,6 +836,14 @@ impl SettingsState {
             self.status = "Shortcut cannot be empty; use Clear to unassign".into();
             return SettingsAction::None;
         };
+        self.apply_key_sequence(edit_index, sequence)
+    }
+
+    fn apply_key_sequence(
+        &mut self,
+        edit_index: Option<usize>,
+        sequence: KeySequence,
+    ) -> SettingsAction {
         let action = self.current_keymap_action();
         if let Some(conflict) = self.keymap.conflict_for(action, edit_index, &sequence) {
             self.status = if conflict == action {
@@ -825,15 +860,7 @@ impl SettingsState {
                     conflict.id()
                 )
             };
-            self.keymaps_mode = KeymapsMode::Capture {
-                edit_index,
-                kind: if strokes.len() > 1 {
-                    ShortcutKind::Chord
-                } else {
-                    ShortcutKind::Combination
-                },
-                strokes: Vec::new(),
-            };
+            self.keymaps_mode = KeymapsMode::ShortcutType { edit_index };
             return SettingsAction::None;
         }
         let mut bindings = self.keymap.bindings_for(action);
