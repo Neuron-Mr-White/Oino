@@ -1,6 +1,12 @@
 #![forbid(unsafe_code)]
 
-use crate::fuzzy::{fuzzy_indices, FuzzyMode};
+use crate::{
+    fuzzy::{fuzzy_indices, FuzzyMode},
+    keymap::{
+        key_action_rows, KeyAction, KeySequence, KeyStroke, KeymapConfig, KeymapPreset,
+        ShortcutKind,
+    },
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::ThinkingLevel;
 
@@ -118,6 +124,25 @@ pub enum SettingsPage {
     Collapse,
     ChatStyle,
     Tools,
+    Keymaps,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeymapsMode {
+    List,
+    Detail,
+    ShortcutType {
+        edit_index: Option<usize>,
+    },
+    Capture {
+        edit_index: Option<usize>,
+        kind: ShortcutKind,
+        strokes: Vec<KeyStroke>,
+    },
+    PresetSelect,
+    PresetConfirm {
+        preset: KeymapPreset,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -169,6 +194,7 @@ pub enum SettingsMenuItem {
     CollapseMode,
     ChatStyle,
     Tools,
+    Keymaps,
 }
 
 impl SettingsMenuItem {
@@ -180,6 +206,7 @@ impl SettingsMenuItem {
             Self::CollapseMode => "Collapse Mode",
             Self::ChatStyle => "Chat Style",
             Self::Tools => "Tools",
+            Self::Keymaps => "Keymaps",
         }
     }
 
@@ -191,6 +218,7 @@ impl SettingsMenuItem {
             Self::CollapseMode => SettingsPage::Collapse,
             Self::ChatStyle => SettingsPage::ChatStyle,
             Self::Tools => SettingsPage::Tools,
+            Self::Keymaps => SettingsPage::Keymaps,
         }
     }
 }
@@ -203,6 +231,7 @@ pub enum SettingsAction {
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode(CollapseTarget, CollapseMode),
     SetChatStyle(ChatStyle),
+    SetKeymap(KeymapConfig),
     SetToolEnabled {
         name: String,
         scope: ToolSettingsScope,
@@ -222,10 +251,16 @@ pub struct SettingsState {
     pub collapse_cursor: usize,
     pub chat_style_cursor: usize,
     pub tool_cursor: usize,
+    pub keymap_cursor: usize,
+    pub keymap_binding_cursor: usize,
+    pub keymap_shortcut_kind_cursor: usize,
+    pub keymap_preset_cursor: usize,
+    pub keymaps_mode: KeymapsMode,
     pub thinking_collapse_mode: CollapseMode,
     pub tool_collapse_mode: CollapseMode,
     pub chat_style: ChatStyle,
     pub tools: Vec<ToolSettingsItem>,
+    pub keymap: KeymapConfig,
     pub model_search: String,
     pub model_search_active: bool,
     pub filtered_model_indices: Vec<usize>,
@@ -247,10 +282,16 @@ impl SettingsState {
             collapse_cursor: 0,
             chat_style_cursor: 0,
             tool_cursor: 0,
+            keymap_cursor: 0,
+            keymap_binding_cursor: 0,
+            keymap_shortcut_kind_cursor: 0,
+            keymap_preset_cursor: 0,
+            keymaps_mode: KeymapsMode::List,
             thinking_collapse_mode: CollapseMode::Full,
             tool_collapse_mode: CollapseMode::Full,
             chat_style: ChatStyle::Chat,
             tools: Vec::new(),
+            keymap: KeymapConfig::default(),
             model_search: String::new(),
             model_search_active: false,
             filtered_model_indices: Vec::new(),
@@ -325,6 +366,24 @@ impl SettingsState {
         self.tool_cursor = self.tool_cursor.min(self.tools.len().saturating_sub(1));
     }
 
+    pub fn open_keymaps(&mut self) {
+        self.page = SettingsPage::Keymaps;
+        self.keymaps_mode = KeymapsMode::List;
+        self.keymap_cursor = self
+            .keymap_cursor
+            .min(key_action_rows().len().saturating_sub(1));
+    }
+
+    pub fn set_keymap(&mut self, keymap: KeymapConfig) {
+        self.keymap = keymap;
+        self.keymap_cursor = self
+            .keymap_cursor
+            .min(key_action_rows().len().saturating_sub(1));
+        self.keymap_binding_cursor = self
+            .keymap_binding_cursor
+            .min(self.current_keymap_bindings().len().saturating_sub(1));
+    }
+
     pub fn select_model_identifier(&mut self, model: &str) {
         self.selected_model = model.to_string();
         if let Some(index) = self.models.iter().position(|option| option.id == model) {
@@ -339,13 +398,14 @@ impl SettingsState {
     }
 
     #[must_use]
-    pub fn menu_items(&self) -> [SettingsMenuItem; 5] {
+    pub fn menu_items(&self) -> [SettingsMenuItem; 6] {
         [
             SettingsMenuItem::ModelSelection,
             SettingsMenuItem::ThinkingLevel,
             SettingsMenuItem::CollapseMode,
             SettingsMenuItem::ChatStyle,
             SettingsMenuItem::Tools,
+            SettingsMenuItem::Keymaps,
         ]
     }
 
@@ -355,6 +415,34 @@ impl SettingsState {
             .get(self.menu_cursor)
             .copied()
             .unwrap_or(SettingsMenuItem::ModelSelection)
+    }
+
+    #[must_use]
+    pub fn current_keymap_action(&self) -> KeyAction {
+        key_action_rows()
+            .get(self.keymap_cursor)
+            .map_or(KeyAction::SettingsOpen, |info| info.action)
+    }
+
+    #[must_use]
+    pub fn current_keymap_bindings(&self) -> Vec<KeySequence> {
+        self.keymap.bindings_for(self.current_keymap_action())
+    }
+
+    #[must_use]
+    pub fn keymap_preset_cursor_preset(&self) -> KeymapPreset {
+        KeymapPreset::all()
+            .get(self.keymap_preset_cursor)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    #[must_use]
+    pub fn shortcut_kind_cursor_kind(&self) -> ShortcutKind {
+        ShortcutKind::all()
+            .get(self.keymap_shortcut_kind_cursor)
+            .copied()
+            .unwrap_or(ShortcutKind::Combination)
     }
 
     #[must_use]
@@ -391,6 +479,9 @@ impl SettingsState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> SettingsAction {
+        if self.page == SettingsPage::Keymaps {
+            return self.handle_keymaps_key(key);
+        }
         if self.page == SettingsPage::Models && self.model_search_active {
             return self.handle_model_search_key(key);
         }
@@ -449,6 +540,314 @@ impl SettingsState {
             KeyCode::Enter => self.apply_or_open(),
             _ => SettingsAction::None,
         }
+    }
+
+    fn handle_keymaps_key(&mut self, key: KeyEvent) -> SettingsAction {
+        match self.keymaps_mode.clone() {
+            KeymapsMode::List => self.handle_keymaps_list_key(key),
+            KeymapsMode::Detail => self.handle_keymaps_detail_key(key),
+            KeymapsMode::ShortcutType { edit_index } => {
+                self.handle_keymap_shortcut_type_key(key, edit_index)
+            }
+            KeymapsMode::Capture {
+                edit_index,
+                kind,
+                mut strokes,
+            } => self.handle_keymap_capture_key(key, edit_index, kind, &mut strokes),
+            KeymapsMode::PresetSelect => self.handle_keymap_preset_select_key(key),
+            KeymapsMode::PresetConfirm { preset } => {
+                self.handle_keymap_preset_confirm_key(key, preset)
+            }
+        }
+    }
+
+    fn handle_keymaps_list_key(&mut self, key: KeyEvent) -> SettingsAction {
+        match key.code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => {
+                self.page = SettingsPage::Menu;
+                self.keymaps_mode = KeymapsMode::List;
+                SettingsAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers.is_empty() => {
+                self.keymap_cursor = move_index(self.keymap_cursor, key_action_rows().len(), -1);
+                SettingsAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers.is_empty() => {
+                self.keymap_cursor = move_index(self.keymap_cursor, key_action_rows().len(), 1);
+                SettingsAction::None
+            }
+            KeyCode::Char('p' | 'P') if key.modifiers.is_empty() => {
+                self.keymap_preset_cursor = KeymapPreset::all()
+                    .iter()
+                    .position(|preset| *preset == self.keymap.preset)
+                    .unwrap_or(0);
+                self.keymaps_mode = KeymapsMode::PresetSelect;
+                SettingsAction::None
+            }
+            KeyCode::Enter | KeyCode::Right => self.open_keymap_detail(),
+            _ => SettingsAction::None,
+        }
+    }
+
+    fn handle_keymaps_detail_key(&mut self, key: KeyEvent) -> SettingsAction {
+        match key.code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => {
+                self.keymaps_mode = KeymapsMode::List;
+                SettingsAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers.is_empty() => {
+                self.keymap_binding_cursor = move_index(
+                    self.keymap_binding_cursor,
+                    self.current_keymap_bindings().len().max(1),
+                    -1,
+                );
+                SettingsAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers.is_empty() => {
+                self.keymap_binding_cursor = move_index(
+                    self.keymap_binding_cursor,
+                    self.current_keymap_bindings().len().max(1),
+                    1,
+                );
+                SettingsAction::None
+            }
+            KeyCode::Enter => {
+                let edit_index = (!self.current_keymap_bindings().is_empty())
+                    .then_some(self.keymap_binding_cursor);
+                self.keymaps_mode = KeymapsMode::ShortcutType { edit_index };
+                SettingsAction::None
+            }
+            KeyCode::Char('a' | 'A') if key.modifiers.is_empty() => {
+                self.keymaps_mode = KeymapsMode::ShortcutType { edit_index: None };
+                SettingsAction::None
+            }
+            KeyCode::Char('x' | 'X') if key.modifiers.is_empty() => self.remove_keymap_binding(),
+            KeyCode::Char('c' | 'C') if key.modifiers.is_empty() => self.clear_keymap_bindings(),
+            KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => self.reset_keymap_action(),
+            _ => SettingsAction::None,
+        }
+    }
+
+    fn handle_keymap_shortcut_type_key(
+        &mut self,
+        key: KeyEvent,
+        edit_index: Option<usize>,
+    ) -> SettingsAction {
+        match key.code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => {
+                self.keymaps_mode = KeymapsMode::Detail;
+                SettingsAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers.is_empty() => {
+                self.keymap_shortcut_kind_cursor = move_index(
+                    self.keymap_shortcut_kind_cursor,
+                    ShortcutKind::all().len(),
+                    -1,
+                );
+                SettingsAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers.is_empty() => {
+                self.keymap_shortcut_kind_cursor = move_index(
+                    self.keymap_shortcut_kind_cursor,
+                    ShortcutKind::all().len(),
+                    1,
+                );
+                SettingsAction::None
+            }
+            KeyCode::Enter | KeyCode::Right => {
+                let kind = self.shortcut_kind_cursor_kind();
+                self.keymaps_mode = KeymapsMode::Capture {
+                    edit_index,
+                    kind,
+                    strokes: Vec::new(),
+                };
+                self.status = match kind {
+                    ShortcutKind::Combination => {
+                        "Listening for one key combination • Esc cancel".into()
+                    }
+                    ShortcutKind::Chord => "Listening for first chord key • Esc cancel".into(),
+                };
+                SettingsAction::None
+            }
+            _ => SettingsAction::None,
+        }
+    }
+
+    fn handle_keymap_capture_key(
+        &mut self,
+        key: KeyEvent,
+        edit_index: Option<usize>,
+        kind: ShortcutKind,
+        strokes: &mut Vec<KeyStroke>,
+    ) -> SettingsAction {
+        let Some(stroke) = KeyStroke::from_event(key) else {
+            self.status = "Unsupported terminal key event".into();
+            return SettingsAction::None;
+        };
+        if stroke.is_escape() {
+            self.keymaps_mode = KeymapsMode::ShortcutType { edit_index };
+            self.status = "Shortcut capture canceled".into();
+            return SettingsAction::None;
+        }
+        strokes.push(stroke);
+        match kind {
+            ShortcutKind::Combination => self.apply_captured_key_sequence(edit_index, strokes),
+            ShortcutKind::Chord if strokes.len() >= 2 => {
+                self.apply_captured_key_sequence(edit_index, strokes)
+            }
+            ShortcutKind::Chord => {
+                self.status = format!(
+                    "Chord prefix {} captured • press final key • Esc cancel",
+                    stroke
+                );
+                self.keymaps_mode = KeymapsMode::Capture {
+                    edit_index,
+                    kind,
+                    strokes: strokes.clone(),
+                };
+                SettingsAction::None
+            }
+        }
+    }
+
+    fn handle_keymap_preset_select_key(&mut self, key: KeyEvent) -> SettingsAction {
+        match key.code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => {
+                self.keymaps_mode = KeymapsMode::List;
+                SettingsAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers.is_empty() => {
+                self.keymap_preset_cursor =
+                    move_index(self.keymap_preset_cursor, KeymapPreset::all().len(), -1);
+                SettingsAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers.is_empty() => {
+                self.keymap_preset_cursor =
+                    move_index(self.keymap_preset_cursor, KeymapPreset::all().len(), 1);
+                SettingsAction::None
+            }
+            KeyCode::Enter | KeyCode::Right => {
+                let preset = self.keymap_preset_cursor_preset();
+                self.keymaps_mode = KeymapsMode::PresetConfirm { preset };
+                SettingsAction::None
+            }
+            _ => SettingsAction::None,
+        }
+    }
+
+    fn handle_keymap_preset_confirm_key(
+        &mut self,
+        key: KeyEvent,
+        preset: KeymapPreset,
+    ) -> SettingsAction {
+        match key.code {
+            KeyCode::Char('y' | 'Y') if key.modifiers.is_empty() => {
+                self.keymap = KeymapConfig::for_preset(preset);
+                self.keymaps_mode = KeymapsMode::List;
+                self.keymap_binding_cursor = 0;
+                self.status = format!("Reset all keybinds to {} preset", preset.label());
+                SettingsAction::SetKeymap(self.keymap.clone())
+            }
+            KeyCode::Char('n' | 'N') | KeyCode::Esc if key.modifiers.is_empty() => {
+                self.keymaps_mode = KeymapsMode::PresetSelect;
+                self.status = "Preset reset canceled".into();
+                SettingsAction::None
+            }
+            _ => SettingsAction::None,
+        }
+    }
+
+    fn open_keymap_detail(&mut self) -> SettingsAction {
+        self.keymaps_mode = KeymapsMode::Detail;
+        self.keymap_binding_cursor = self
+            .keymap_binding_cursor
+            .min(self.current_keymap_bindings().len().saturating_sub(1));
+        SettingsAction::None
+    }
+
+    fn remove_keymap_binding(&mut self) -> SettingsAction {
+        let action = self.current_keymap_action();
+        let mut bindings = self.keymap.bindings_for(action);
+        if bindings.is_empty() {
+            self.status = "No shortcut to remove".into();
+            return SettingsAction::None;
+        }
+        let index = self
+            .keymap_binding_cursor
+            .min(bindings.len().saturating_sub(1));
+        let removed = bindings.remove(index);
+        self.keymap.set_bindings(action, bindings);
+        self.keymap_binding_cursor = self
+            .keymap_binding_cursor
+            .min(self.current_keymap_bindings().len().saturating_sub(1));
+        self.status = format!("Removed {} from {}", removed, action.info().label);
+        SettingsAction::SetKeymap(self.keymap.clone())
+    }
+
+    fn clear_keymap_bindings(&mut self) -> SettingsAction {
+        let action = self.current_keymap_action();
+        self.keymap.set_bindings(action, Vec::new());
+        self.keymap_binding_cursor = 0;
+        self.status = format!("{} is now unassigned", action.info().label);
+        SettingsAction::SetKeymap(self.keymap.clone())
+    }
+
+    fn reset_keymap_action(&mut self) -> SettingsAction {
+        let action = self.current_keymap_action();
+        self.keymap.reset_action(action);
+        self.keymap_binding_cursor = 0;
+        self.status = format!("Reset {} to preset default", action.info().label);
+        SettingsAction::SetKeymap(self.keymap.clone())
+    }
+
+    fn apply_captured_key_sequence(
+        &mut self,
+        edit_index: Option<usize>,
+        strokes: &[KeyStroke],
+    ) -> SettingsAction {
+        let Some(sequence) = KeySequence::new(strokes.to_vec()) else {
+            self.status = "Shortcut cannot be empty; use Clear to unassign".into();
+            return SettingsAction::None;
+        };
+        let action = self.current_keymap_action();
+        if let Some(conflict) = self.keymap.conflict_for(action, edit_index, &sequence) {
+            self.status = if conflict == action {
+                format!(
+                    "{} is already assigned to {}",
+                    sequence,
+                    action.info().label
+                )
+            } else {
+                format!(
+                    "{} conflicts with {} ({})",
+                    sequence,
+                    conflict.info().label,
+                    conflict.id()
+                )
+            };
+            self.keymaps_mode = KeymapsMode::Capture {
+                edit_index,
+                kind: if strokes.len() > 1 {
+                    ShortcutKind::Chord
+                } else {
+                    ShortcutKind::Combination
+                },
+                strokes: Vec::new(),
+            };
+            return SettingsAction::None;
+        }
+        let mut bindings = self.keymap.bindings_for(action);
+        if let Some(index) = edit_index.filter(|index| *index < bindings.len()) {
+            bindings[index] = sequence.clone();
+            self.keymap_binding_cursor = index;
+        } else {
+            bindings.push(sequence.clone());
+            self.keymap_binding_cursor = bindings.len().saturating_sub(1);
+        }
+        self.keymap.set_bindings(action, bindings);
+        self.keymaps_mode = KeymapsMode::Detail;
+        self.status = format!("Set {} to {}", action.info().label, sequence);
+        SettingsAction::SetKeymap(self.keymap.clone())
     }
 
     fn handle_model_search_key(&mut self, key: KeyEvent) -> SettingsAction {
@@ -517,6 +916,7 @@ impl SettingsState {
             SettingsPage::Collapse => self.apply_collapse_mode(),
             SettingsPage::ChatStyle => self.apply_chat_style(),
             SettingsPage::Tools => self.toggle_tool(ToolSettingsScope::Project),
+            SettingsPage::Keymaps => self.open_keymap_detail(),
         }
     }
 
@@ -541,6 +941,12 @@ impl SettingsState {
             }
             SettingsPage::Tools => {
                 self.tool_cursor = move_index(self.tool_cursor, self.tools.len(), delta);
+            }
+            SettingsPage::Keymaps => {
+                self.keymap_cursor = move_index(self.keymap_cursor, key_action_rows().len(), delta);
+                self.keymap_binding_cursor = self
+                    .keymap_binding_cursor
+                    .min(self.current_keymap_bindings().len().saturating_sub(1));
             }
         }
     }

@@ -7,6 +7,7 @@ pub mod command;
 pub mod composer;
 mod fuzzy;
 mod help;
+pub mod keymap;
 mod markdown;
 pub mod message;
 pub mod render;
@@ -28,6 +29,10 @@ pub use command::{
     CommandSuggestionsView, ParsedCommand, SettingsCommand, COMMANDS,
 };
 pub use composer::{is_newline_key, is_word_cursor_modifier, ComposerState, INPUT_PLACEHOLDER};
+pub use keymap::{
+    key_action_rows, KeyAction, KeyActionInfo, KeyContext, KeySequence, KeyStroke, KeymapConfig,
+    KeymapMatch, KeymapPreset, ShortcutKind,
+};
 pub use message::{project_message, project_messages, MessageView, ToolCallView};
 pub use render::{
     render, terminal_cursor_position, transcript_click_targets, transcript_url_overlays,

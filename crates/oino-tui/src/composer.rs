@@ -165,10 +165,6 @@ impl ComposerState {
         }
 
         match key.code {
-            _ if is_newline_key(key) => {
-                self.insert_char('\n');
-                true
-            }
             KeyCode::Backspace => {
                 self.delete_char();
                 true
@@ -504,7 +500,7 @@ mod tests {
         let mut composer = ComposerState::new();
         assert!(composer.handle_edit_key(key(KeyCode::Char('h'))));
         assert!(composer.handle_edit_key(key(KeyCode::Char('i'))));
-        assert!(composer.handle_edit_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)));
+        assert!(composer.insert_text("\n"));
         assert!(composer.handle_edit_key(key(KeyCode::Char('t'))));
         assert_eq!(composer.text(), "hi\nt");
         assert_eq!(composer.submit(), Some("hi\nt".into()));

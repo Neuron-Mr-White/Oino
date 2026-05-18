@@ -7,10 +7,11 @@ use crate::{
     },
     command::{CommandSuggestionCategory, CommandSuggestionsView},
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
-    help::{HelpEntry, HELP_ENTRIES},
+    help::{help_entries, HelpEntry},
+    keymap::{key_action_rows, KeymapPreset, ShortcutKind},
     settings::{
         chat_style_label, chat_style_value, collapse_mode_label, thinking_label, ChatStyle,
-        SettingsPage, SettingsState,
+        KeymapsMode, SettingsPage, SettingsState,
     },
     text::{truncate_to_width, truncate_with_ellipsis, wrap_text},
     theme::Theme,
@@ -1034,6 +1035,7 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
         .constraints([Constraint::Min(6), Constraint::Length(1)])
         .split(inner);
 
+    let entries = help_entries(&state.settings.keymap);
     let content_height = list_content_height(sections[0]);
     let content_width = sections[0].width.saturating_sub(2) as usize;
     let mut lines = vec![help_search_line(state, theme), Line::from("")];
@@ -1057,9 +1059,9 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
             filtered_indices[start..end]
                 .iter()
                 .filter_map(|entry_index| {
-                    HELP_ENTRIES
+                    entries
                         .get(*entry_index)
-                        .map(|entry| help_entry_line(*entry, content_width, theme))
+                        .map(|entry| help_entry_line(entry, content_width, theme))
                 }),
         );
     }
@@ -1129,7 +1131,7 @@ fn help_search_line(state: &TuiState, theme: &Theme) -> Line<'static> {
     }
 }
 
-fn help_entry_line(entry: HelpEntry, width: usize, theme: &Theme) -> Line<'static> {
+fn help_entry_line(entry: &HelpEntry, width: usize, theme: &Theme) -> Line<'static> {
     match entry {
         HelpEntry::Heading(text) => Line::styled(
             truncate_with_ellipsis(text, width),
@@ -1876,6 +1878,7 @@ fn render_settings_overlay(
         SettingsPage::Collapse => render_collapse_settings(frame, sections[0], settings, theme),
         SettingsPage::ChatStyle => render_chat_style_settings(frame, sections[0], settings, theme),
         SettingsPage::Tools => render_tools_settings(frame, sections[0], settings, theme),
+        SettingsPage::Keymaps => render_keymap_settings(frame, sections[0], settings, theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
 }
@@ -1910,6 +1913,7 @@ fn render_settings_menu(
                 format!("current: {}", chat_style_label(settings.chat_style))
             }
             SettingsPage::Tools => format!("{} registered", settings.tools.len()),
+            SettingsPage::Keymaps => format!("preset: {}", settings.keymap.preset.label()),
             SettingsPage::Menu => String::new(),
         };
         let text = format!("{marker} {}  {}", item.label(), detail);
@@ -2196,6 +2200,279 @@ fn render_tools_settings(
     );
 }
 
+fn render_keymap_settings(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    match &settings.keymaps_mode {
+        KeymapsMode::List => render_keymap_list(frame, area, settings, theme),
+        KeymapsMode::Detail => render_keymap_detail(frame, area, settings, theme),
+        KeymapsMode::ShortcutType { .. } => {
+            render_keymap_shortcut_type(frame, area, settings, theme)
+        }
+        KeymapsMode::Capture { kind, strokes, .. } => {
+            render_keymap_capture(frame, area, settings, *kind, strokes, theme);
+        }
+        KeymapsMode::PresetSelect => render_keymap_preset_select(frame, area, settings, theme),
+        KeymapsMode::PresetConfirm { preset } => {
+            render_keymap_preset_confirm(frame, area, *preset, theme);
+        }
+    }
+}
+
+fn render_keymap_list(frame: &mut Frame<'_>, area: Rect, settings: &SettingsState, theme: &Theme) {
+    let rows = key_action_rows();
+    let visible_height = list_content_height(area).saturating_sub(2).max(1);
+    let range = visible_range(settings.keymap_cursor, rows.len(), visible_height);
+    let mut lines = vec![Line::styled(
+        format!(
+            "Preset: {} • Enter opens an action • p selects a preset",
+            settings.keymap.preset.label()
+        ),
+        Style::default().fg(theme.muted),
+    )];
+    lines.push(Line::from(""));
+    lines.extend(
+        rows.iter()
+            .enumerate()
+            .skip(range.start)
+            .take(range.end.saturating_sub(range.start))
+            .map(|(index, info)| {
+                let active = index == settings.keymap_cursor;
+                let marker = arrow_marker(active);
+                let shortcut = settings.keymap.label_for(info.action);
+                let text = format!(
+                    "{marker} [{}] {}  —  {}",
+                    info.context.label(),
+                    info.label,
+                    shortcut
+                );
+                Line::styled(text, item_style(active, false, theme))
+            }),
+    );
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(format!(
+                    " Keymaps {}/{} ",
+                    settings.keymap_cursor.saturating_add(1).min(rows.len()),
+                    rows.len()
+                ))
+                .borders(Borders::ALL)
+                .border_style(section_border_style(true, theme)),
+        ),
+        area,
+    );
+}
+
+fn render_keymap_detail(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let action = settings.current_keymap_action();
+    let info = action.info();
+    let bindings = settings.current_keymap_bindings();
+    let mut lines = vec![
+        Line::styled(
+            format!("{} ({})", info.label, action.id()),
+            Style::default().fg(theme.focused_border),
+        ),
+        Line::styled(info.description, Style::default().fg(theme.muted)),
+        Line::from(""),
+    ];
+    if bindings.is_empty() {
+        lines.push(Line::styled("› Unassigned", theme.warning));
+    } else {
+        lines.extend(bindings.iter().enumerate().map(|(index, binding)| {
+            let active = index == settings.keymap_binding_cursor;
+            let marker = selection_marker(active, false);
+            Line::styled(
+                format!("{marker} {binding}"),
+                item_style(active, false, theme),
+            )
+        }));
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Keymap Action ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_keymap_shortcut_type(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let action = settings.current_keymap_action();
+    let mut lines = vec![
+        Line::styled(
+            format!("Choose shortcut type for {}", action.info().label),
+            Style::default().fg(theme.muted),
+        ),
+        Line::from(""),
+    ];
+    lines.extend(ShortcutKind::all().iter().enumerate().map(|(index, kind)| {
+        let active = index == settings.keymap_shortcut_kind_cursor;
+        let description = match kind {
+            ShortcutKind::Chord => "sequential keys, e.g. Ctrl-O then s",
+            ShortcutKind::Combination => "one key event, e.g. F2 or Ctrl-S",
+        };
+        Line::styled(
+            format!(
+                "{} {} — {}",
+                arrow_marker(active),
+                kind.label(),
+                description
+            ),
+            item_style(active, false, theme),
+        )
+    }));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Shortcut Type ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_keymap_capture(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    kind: ShortcutKind,
+    strokes: &[crate::keymap::KeyStroke],
+    theme: &Theme,
+) {
+    let action = settings.current_keymap_action();
+    let captured = if strokes.is_empty() {
+        "(none yet)".to_string()
+    } else {
+        strokes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let prompt = match kind {
+        ShortcutKind::Combination => "Press the key combination to assign. Esc cancels.",
+        ShortcutKind::Chord if strokes.is_empty() => "Press the first chord key. Esc cancels.",
+        ShortcutKind::Chord => "Press the final chord key. Esc cancels.",
+    };
+    let lines = vec![
+        Line::styled(
+            format!("Assigning {}", action.info().label),
+            Style::default().fg(theme.focused_border),
+        ),
+        Line::styled(
+            format!("Type: {}", kind.label()),
+            Style::default().fg(theme.muted),
+        ),
+        Line::styled(
+            format!("Captured: {captured}"),
+            Style::default().fg(theme.fg),
+        ),
+        Line::from(""),
+        Line::styled(prompt, theme.warning),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Listening for Shortcut ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_keymap_preset_select(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let mut lines = vec![
+        Line::styled(
+            "Select a preset. Applying it resets every keybind after confirmation.",
+            theme.warning,
+        ),
+        Line::from(""),
+    ];
+    lines.extend(
+        KeymapPreset::all()
+            .iter()
+            .enumerate()
+            .map(|(index, preset)| {
+                let active = index == settings.keymap_preset_cursor;
+                let selected = *preset == settings.keymap.preset;
+                Line::styled(
+                    format!("{} {}", selection_marker(active, selected), preset.label()),
+                    item_style(active, selected, theme),
+                )
+            }),
+    );
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Keymap Preset ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_keymap_preset_confirm(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    preset: KeymapPreset,
+    theme: &Theme,
+) {
+    let lines = vec![
+        Line::styled(
+            format!("Reset every keybind to the {} preset?", preset.label()),
+            theme.warning.add_modifier(Modifier::BOLD),
+        ),
+        Line::from(""),
+        Line::styled(
+            "Y confirms • N/Esc cancels",
+            Style::default().fg(theme.muted),
+        ),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Confirm Preset Reset ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Center),
+        area,
+    );
+}
+
 fn render_settings_footer(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -2214,6 +2491,16 @@ fn render_settings_footer(
         SettingsPage::Tools => {
             "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
         }
+        SettingsPage::Keymaps => match settings.keymaps_mode {
+            KeymapsMode::List => "arrows/jk move • Enter detail • p preset • Esc/← back",
+            KeymapsMode::Detail => {
+                "arrows/jk move • Enter edit • a add • x remove • c clear • r reset • Esc back"
+            }
+            KeymapsMode::ShortcutType { .. } => "arrows/jk choose type • Enter listen • Esc back",
+            KeymapsMode::Capture { .. } => "press shortcut input • Esc cancel",
+            KeymapsMode::PresetSelect => "arrows/jk choose preset • Enter confirm • Esc back",
+            KeymapsMode::PresetConfirm { .. } => "Y reset all keybinds • N/Esc cancel",
+        },
     };
     let status = if settings.page == SettingsPage::Tools {
         format!("Project controls this workspace; Global seeds new projects • {controls}")

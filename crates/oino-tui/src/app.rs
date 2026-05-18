@@ -12,12 +12,13 @@ use crate::{
         ComposerState, MAX_PASTE_CHARS,
     },
     fuzzy::{fuzzy_indices, FuzzyMode},
-    help::{help_entry_match_text, HELP_ENTRIES},
+    help::{help_entries, help_entry_match_text},
+    keymap::{KeyAction, KeyContext, KeyStroke, KeymapConfig, KeymapMatch},
     message::{project_content_blocks, project_message, project_messages, MessageView},
     resource::{PromptResource, ResourceBrowserState, SkillResource},
     settings::{
-        chat_style_label, collapse_mode_label, ModelOption, SettingsAction, SettingsState,
-        ToolSettingsItem,
+        chat_style_label, collapse_mode_label, KeymapsMode, ModelOption, SettingsAction,
+        SettingsState, ToolSettingsItem,
     },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -112,6 +113,13 @@ pub enum ChordState {
     CtrlO,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeymapKeyResult {
+    Unhandled,
+    Consumed,
+    Matched(KeyAction),
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TranscriptScroll {
     offset_from_bottom: usize,
@@ -176,6 +184,7 @@ pub struct TuiState {
     pub settings: SettingsState,
     pub command_suggestions: CommandSuggestionsState,
     pub chord: ChordState,
+    key_sequence: Vec<KeyStroke>,
     pub transcript_scroll: TranscriptScroll,
     pub send_panel: SendPanelState,
     pub sessions: SessionsState,
@@ -212,6 +221,7 @@ impl Default for TuiState {
             settings: SettingsState::new("", ThinkingLevel::Off),
             command_suggestions: CommandSuggestionsState::new(),
             chord: ChordState::None,
+            key_sequence: Vec::new(),
             transcript_scroll: TranscriptScroll::default(),
             send_panel: SendPanelState::default(),
             sessions: SessionsState::default(),
@@ -224,7 +234,7 @@ impl Default for TuiState {
             help_scroll: 0,
             help_search: String::new(),
             help_search_active: false,
-            filtered_help_indices: (0..HELP_ENTRIES.len()).collect(),
+            filtered_help_indices: (0..help_entries(&KeymapConfig::default()).len()).collect(),
             steer_items: Vec::new(),
             queued_items: Vec::new(),
             draft_items: Vec::new(),
@@ -864,6 +874,11 @@ impl TuiState {
         self.settings.set_tools(tools);
     }
 
+    pub fn set_keymap(&mut self, keymap: KeymapConfig) {
+        self.settings.set_keymap(keymap);
+        self.refresh_help_filter();
+    }
+
     pub fn set_session_title(&mut self, title: impl Into<String>) {
         self.session_title = title.into();
     }
@@ -937,37 +952,34 @@ impl TuiState {
         }
         self.quit_pending = false;
 
-        if self.chord != ChordState::None {
-            return self.handle_chord_key(key);
+        if self.overlay == Some(OverlayKind::Settings)
+            && matches!(self.settings.keymaps_mode, KeymapsMode::Capture { .. })
+        {
+            return self.handle_settings_key(key);
         }
 
-        if is_ctrl_o_key(key) {
-            self.chord = ChordState::CtrlO;
-            self.status =
-                "Ctrl-O: s settings • q send panel • t transcript • e expand • Esc cancel".into();
-            return TuiAction::None;
+        match self.resolve_keymap_key(key) {
+            KeymapKeyResult::Matched(action) => return self.execute_key_action(action),
+            KeymapKeyResult::Consumed => return TuiAction::None,
+            KeymapKeyResult::Unhandled => {}
         }
 
         match self.overlay {
-            Some(OverlayKind::Help) => return self.handle_help_key(key),
-            Some(OverlayKind::Settings) => return self.handle_settings_key(key),
-            Some(OverlayKind::SendPanel) => return self.handle_send_panel_key(key),
-            Some(OverlayKind::Sessions) => return self.handle_sessions_key(key),
-            Some(OverlayKind::Prompts) => return self.handle_prompts_key(key),
-            Some(OverlayKind::Skills) => return self.handle_skills_key(key),
-            Some(OverlayKind::Inspect) => return self.handle_inspect_key(key),
-            None => {}
-        }
-
-        if self.command_suggestions_view().is_some() {
-            let handled = self.handle_command_suggestion_key(key);
-            if handled != CommandSuggestionKeyResult::Unhandled {
-                return handled.into_action();
+            Some(OverlayKind::Help) if self.help_search_active => {
+                return self.handle_help_search_text_key(key);
             }
-        }
-
-        if self.handle_transcript_scroll_key(key) {
-            return TuiAction::None;
+            Some(OverlayKind::Settings) => return self.handle_settings_text_key(key),
+            Some(OverlayKind::Sessions) if self.sessions.search_active => {
+                return self.handle_sessions_search_text_key(key);
+            }
+            Some(OverlayKind::Prompts) if self.prompts.search_active => {
+                return self.handle_prompts_search_text_key(key);
+            }
+            Some(OverlayKind::Skills) if self.skills.search_active => {
+                return self.handle_skills_search_text_key(key);
+            }
+            Some(_) => return TuiAction::None,
+            None => {}
         }
 
         if matches!(key.code, KeyCode::Esc) {
@@ -979,70 +991,804 @@ impl TuiState {
             return TuiAction::None;
         }
 
-        match key.code {
-            KeyCode::Enter if key.modifiers.is_empty() => self.submit_input(),
-            _ => {
-                if self.focus == TuiFocus::Composer {
-                    let before = self.composer.text().to_string();
-                    self.composer.handle_edit_key(key);
-                    self.after_composer_edit(&before);
+        if self.focus == TuiFocus::Composer {
+            let before = self.composer.text().to_string();
+            self.composer.handle_edit_key(key);
+            self.after_composer_edit(&before);
+        }
+        TuiAction::None
+    }
+
+    fn resolve_keymap_key(&mut self, key: KeyEvent) -> KeymapKeyResult {
+        let Some(stroke) = KeyStroke::from_event(key) else {
+            self.key_sequence.clear();
+            self.chord = ChordState::None;
+            return KeymapKeyResult::Unhandled;
+        };
+        let contexts = self.active_key_contexts();
+        let mut sequence = self.key_sequence.clone();
+        sequence.push(stroke);
+        match self.settings.keymap.resolve(&contexts, &sequence) {
+            KeymapMatch::Matched(action) => {
+                self.key_sequence.clear();
+                self.chord = ChordState::None;
+                KeymapKeyResult::Matched(action)
+            }
+            KeymapMatch::Pending => {
+                self.key_sequence = sequence;
+                self.chord = if self.key_sequence.len() == 1
+                    && self.key_sequence[0]
+                        .to_string()
+                        .eq_ignore_ascii_case("ctrl-o")
+                {
+                    ChordState::CtrlO
+                } else {
+                    ChordState::None
+                };
+                self.status = format!(
+                    "{} prefix active • press next key or Esc cancel",
+                    self.key_sequence
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+                KeymapKeyResult::Consumed
+            }
+            KeymapMatch::None if !self.key_sequence.is_empty() => {
+                self.key_sequence.clear();
+                self.chord = ChordState::None;
+                if stroke.is_escape() {
+                    self.status = HELP_STATUS.into();
+                } else {
+                    self.status = "Unknown key chord".into();
                 }
+                KeymapKeyResult::Consumed
+            }
+            KeymapMatch::None => KeymapKeyResult::Unhandled,
+        }
+    }
+
+    fn active_key_contexts(&self) -> Vec<KeyContext> {
+        let mut contexts = Vec::new();
+        match self.overlay {
+            Some(OverlayKind::Help) if self.help_search_active => contexts.push(KeyContext::Search),
+            Some(OverlayKind::Help) => contexts.push(KeyContext::Help),
+            Some(OverlayKind::Settings) => self.push_settings_key_contexts(&mut contexts),
+            Some(OverlayKind::SendPanel) if self.send_panel.confirm_delete => {
+                contexts.push(KeyContext::SendPanelConfirm);
+            }
+            Some(OverlayKind::SendPanel) => contexts.push(KeyContext::SendPanel),
+            Some(OverlayKind::Sessions) if self.sessions.search_active => {
+                contexts.push(KeyContext::Search);
+            }
+            Some(OverlayKind::Sessions) => contexts.push(KeyContext::Sessions),
+            Some(OverlayKind::Prompts) if self.prompts.search_active => {
+                contexts.push(KeyContext::Search);
+            }
+            Some(OverlayKind::Skills) if self.skills.search_active => {
+                contexts.push(KeyContext::Search);
+            }
+            Some(OverlayKind::Prompts | OverlayKind::Skills) => {
+                contexts.push(KeyContext::ResourceBrowser);
+            }
+            Some(OverlayKind::Inspect) => contexts.push(KeyContext::Inspect),
+            None => {
+                if self.command_suggestions_view().is_some() {
+                    contexts.push(KeyContext::CommandSuggestions);
+                }
+                if self.focus == TuiFocus::Transcript
+                    || (self.focus == TuiFocus::Composer && self.composer.is_empty())
+                {
+                    contexts.push(KeyContext::Transcript);
+                }
+                if self.focus == TuiFocus::Composer {
+                    contexts.push(KeyContext::Composer);
+                }
+            }
+        }
+        if self.overlay.is_none() {
+            contexts.push(KeyContext::Global);
+        }
+        contexts
+    }
+
+    fn push_settings_key_contexts(&self, contexts: &mut Vec<KeyContext>) {
+        if self.settings.page == crate::settings::SettingsPage::Models
+            && self.settings.model_search_active
+        {
+            contexts.push(KeyContext::Search);
+        }
+        match self.settings.page {
+            crate::settings::SettingsPage::Tools => contexts.push(KeyContext::SettingsTools),
+            crate::settings::SettingsPage::Keymaps => match self.settings.keymaps_mode {
+                KeymapsMode::Detail => contexts.push(KeyContext::SettingsKeymapDetail),
+                KeymapsMode::ShortcutType { .. } => contexts.push(KeyContext::SettingsKeymapType),
+                KeymapsMode::PresetSelect => contexts.push(KeyContext::SettingsKeymapPreset),
+                KeymapsMode::PresetConfirm { .. } => {
+                    contexts.push(KeyContext::SettingsKeymapPresetConfirm);
+                    contexts.push(KeyContext::SendPanelConfirm);
+                }
+                KeymapsMode::List | KeymapsMode::Capture { .. } => {
+                    contexts.push(KeyContext::SettingsKeymaps);
+                }
+            },
+            _ => {}
+        }
+        contexts.push(KeyContext::Settings);
+    }
+
+    fn execute_key_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::AppQuit => self.arm_or_quit(),
+            KeyAction::HelpOpen => {
+                self.open_help_overlay();
                 TuiAction::None
+            }
+            KeyAction::SettingsOpen => {
+                self.open_settings_overlay();
+                TuiAction::None
+            }
+            KeyAction::SendPanelOpen => {
+                self.open_send_panel();
+                TuiAction::None
+            }
+            KeyAction::TranscriptFocus => {
+                self.focus = TuiFocus::Transcript;
+                self.status = "Transcript focus".into();
+                TuiAction::None
+            }
+            KeyAction::ComposerExpandReference => {
+                self.expand_reference_action();
+                TuiAction::None
+            }
+            KeyAction::ComposerSubmit => self.submit_input(),
+            KeyAction::ComposerNewline => {
+                let before = self.composer.text().to_string();
+                self.composer.insert_text("\n");
+                self.after_composer_edit(&before);
+                TuiAction::None
+            }
+            KeyAction::SuggestionsClose
+            | KeyAction::SuggestionsUp
+            | KeyAction::SuggestionsDown
+            | KeyAction::SuggestionsAccept
+            | KeyAction::SuggestionsConfirm => self.execute_suggestion_action(action),
+            KeyAction::TranscriptUnfocus
+            | KeyAction::TranscriptPageUp
+            | KeyAction::TranscriptPageDown
+            | KeyAction::TranscriptLineUp
+            | KeyAction::TranscriptLineDown
+            | KeyAction::TranscriptTop
+            | KeyAction::TranscriptBottom => self.execute_transcript_action(action),
+            KeyAction::HelpClose
+            | KeyAction::HelpSearch
+            | KeyAction::HelpUp
+            | KeyAction::HelpDown
+            | KeyAction::HelpPageUp
+            | KeyAction::HelpPageDown
+            | KeyAction::HelpTop
+            | KeyAction::HelpBottom => self.execute_help_action(action),
+            KeyAction::SearchClose
+            | KeyAction::SearchAccept
+            | KeyAction::SearchBackspace
+            | KeyAction::SearchUp
+            | KeyAction::SearchDown
+            | KeyAction::SearchPageUp
+            | KeyAction::SearchPageDown
+            | KeyAction::SearchTop
+            | KeyAction::SearchBottom => self.execute_search_action(action),
+            KeyAction::SendPanelClose
+            | KeyAction::SendPanelUp
+            | KeyAction::SendPanelDown
+            | KeyAction::SendPanelQueue
+            | KeyAction::SendPanelDraft
+            | KeyAction::SendPanelDelete
+            | KeyAction::SendPanelLoad => self.execute_send_panel_action(action),
+            KeyAction::ConfirmYes | KeyAction::ConfirmNo => self.execute_confirm_action(action),
+            KeyAction::SessionsClose
+            | KeyAction::SessionsUp
+            | KeyAction::SessionsDown
+            | KeyAction::SessionsSearch
+            | KeyAction::SessionsRefresh
+            | KeyAction::SessionsOpen => self.execute_sessions_action(action),
+            KeyAction::ResourceClose
+            | KeyAction::ResourceUp
+            | KeyAction::ResourceDown
+            | KeyAction::ResourceSearch
+            | KeyAction::ResourceRefresh
+            | KeyAction::ResourceComplete => self.execute_resource_action(action),
+            KeyAction::InspectClose
+            | KeyAction::InspectUp
+            | KeyAction::InspectDown
+            | KeyAction::InspectPageUp
+            | KeyAction::InspectPageDown
+            | KeyAction::InspectTop
+            | KeyAction::InspectExportHtml => self.execute_inspect_action(action),
+            KeyAction::SettingsClose
+            | KeyAction::SettingsBack
+            | KeyAction::SettingsOpenPage
+            | KeyAction::SettingsUp
+            | KeyAction::SettingsDown
+            | KeyAction::SettingsNext
+            | KeyAction::SettingsPrevious
+            | KeyAction::SettingsApply
+            | KeyAction::SettingsSearch
+            | KeyAction::SettingsToolToggleGlobal
+            | KeyAction::SettingsToolToggleProject
+            | KeyAction::KeymapAddShortcut
+            | KeyAction::KeymapRemoveShortcut
+            | KeyAction::KeymapClearShortcuts
+            | KeyAction::KeymapResetAction
+            | KeyAction::KeymapSelectPreset => self.execute_settings_action(action),
+        }
+    }
+
+    fn arm_or_quit(&mut self) -> TuiAction {
+        if self.quit_pending {
+            TuiAction::Quit
+        } else {
+            self.quit_pending = true;
+            self.status = "Press quit again to exit • Esc stops a running response".into();
+            TuiAction::None
+        }
+    }
+
+    fn expand_reference_action(&mut self) {
+        if self.composer.expand_collapsed_paste_at_cursor() {
+            self.status = "Expanded pasted block".into();
+        } else {
+            match self.expand_prompt_references_in_composer() {
+                PromptReferenceExpansionResult::Expanded(count) => {
+                    let plural = if count == 1 { "" } else { "s" };
+                    self.status = format!("Expanded {count} prompt template{plural}");
+                }
+                PromptReferenceExpansionResult::NoPromptReference => {
+                    self.status = "No collapsed paste block or prompt reference to expand".into();
+                }
+                PromptReferenceExpansionResult::Incomplete(token) => {
+                    self.set_error(format!("Incomplete resource reference `{token}`"));
+                    self.status = HELP_STATUS.into();
+                }
+                PromptReferenceExpansionResult::UnknownPrompt(name) => {
+                    self.set_error(format!("Unknown prompt `/prompt:{name}`"));
+                    self.status = HELP_STATUS.into();
+                }
             }
         }
     }
 
-    fn handle_chord_key(&mut self, key: KeyEvent) -> TuiAction {
-        let chord = self.chord;
-        self.chord = ChordState::None;
-        match (chord, key.code) {
-            (ChordState::CtrlO, KeyCode::Char('s' | 'S')) if key.modifiers.is_empty() => {
-                self.open_settings_overlay();
+    fn execute_suggestion_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SuggestionsClose => {
+                self.command_suggestions.dismiss_for(self.composer.text());
                 TuiAction::None
             }
-            (ChordState::CtrlO, KeyCode::Char('q' | 'Q')) if key.modifiers.is_empty() => {
-                self.open_send_panel();
+            KeyAction::SuggestionsUp => {
+                let len = self
+                    .command_suggestions_view()
+                    .map_or(0, |view| view.items.len());
+                self.command_suggestions.move_selection(-1, len);
                 TuiAction::None
             }
-            (ChordState::CtrlO, KeyCode::Char('t' | 'T')) if key.modifiers.is_empty() => {
-                self.focus = TuiFocus::Transcript;
-                self.status = "Transcript focus • ↑/↓ or j/k line • PgUp/PgDn page • Home/End top/bottom • Esc composer".into();
+            KeyAction::SuggestionsDown => {
+                let len = self
+                    .command_suggestions_view()
+                    .map_or(0, |view| view.items.len());
+                self.command_suggestions.move_selection(1, len);
                 TuiAction::None
             }
-            (ChordState::CtrlO, KeyCode::Char('e' | 'E')) if key.modifiers.is_empty() => {
-                if self.composer.expand_collapsed_paste_at_cursor() {
-                    self.status = "Expanded pasted block".into();
+            KeyAction::SuggestionsAccept => {
+                self.accept_command_suggestion(false);
+                TuiAction::None
+            }
+            KeyAction::SuggestionsConfirm => {
+                let has_selection = self
+                    .command_suggestions_view()
+                    .and_then(|view| view.selected_item().cloned())
+                    .is_some();
+                if !has_selection || self.accept_command_suggestion(true) {
+                    self.submit_input()
                 } else {
-                    match self.expand_prompt_references_in_composer() {
-                        PromptReferenceExpansionResult::Expanded(count) => {
-                            let plural = if count == 1 { "" } else { "s" };
-                            self.status = format!("Expanded {count} prompt template{plural}");
-                        }
-                        PromptReferenceExpansionResult::NoPromptReference => {
-                            self.status =
-                                "No collapsed paste block or prompt reference to expand".into();
-                        }
-                        PromptReferenceExpansionResult::Incomplete(token) => {
-                            self.set_error(format!("Incomplete resource reference `{token}`"));
-                            self.status = HELP_STATUS.into();
-                        }
-                        PromptReferenceExpansionResult::UnknownPrompt(name) => {
-                            self.set_error(format!("Unknown prompt `/prompt:{name}`"));
-                            self.status = HELP_STATUS.into();
-                        }
-                    }
+                    TuiAction::None
+                }
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_transcript_action(&mut self, action: KeyAction) -> TuiAction {
+        let page_lines = self.transcript_page_lines.saturating_sub(1).max(1);
+        match action {
+            KeyAction::TranscriptUnfocus => {
+                if self.focus == TuiFocus::Transcript {
+                    self.focus = TuiFocus::Composer;
+                    self.status = self.transcript_scroll_status();
+                } else if self.working {
+                    self.status = "Stopping response…".into();
+                    return TuiAction::AbortPrompt;
+                } else {
+                    self.status = "Esc ignored • press Ctrl-C twice to quit".into();
+                }
+            }
+            KeyAction::TranscriptPageUp => self.scroll_transcript_up(page_lines),
+            KeyAction::TranscriptPageDown => self.scroll_transcript_down(page_lines),
+            KeyAction::TranscriptLineUp => self.scroll_transcript_up(TRANSCRIPT_SCROLL_LINE_STEP),
+            KeyAction::TranscriptLineDown => {
+                self.scroll_transcript_down(TRANSCRIPT_SCROLL_LINE_STEP);
+            }
+            KeyAction::TranscriptTop => self.scroll_transcript_to_top(),
+            KeyAction::TranscriptBottom => self.scroll_transcript_to_bottom(),
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn execute_help_action(&mut self, action: KeyAction) -> TuiAction {
+        let page = self.transcript_page_lines.max(5);
+        match action {
+            KeyAction::HelpClose => {
+                self.overlay = None;
+                self.status = HELP_STATUS.into();
+            }
+            KeyAction::HelpSearch => {
+                self.help_search_active = true;
+                self.help_search.clear();
+                self.refresh_help_filter();
+                self.status = "Help search active".into();
+            }
+            KeyAction::HelpUp => self.scroll_help_up(1),
+            KeyAction::HelpDown => self.scroll_help_down(1),
+            KeyAction::HelpPageUp => self.scroll_help_up(page),
+            KeyAction::HelpPageDown => self.scroll_help_down(page),
+            KeyAction::HelpTop => self.help_scroll = 0,
+            KeyAction::HelpBottom => {
+                self.help_scroll = self.filtered_help_indices.len().saturating_sub(1);
+            }
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn execute_search_action(&mut self, action: KeyAction) -> TuiAction {
+        match self.overlay {
+            Some(OverlayKind::Help) => self.execute_help_search_action(action),
+            Some(OverlayKind::Sessions) => self.execute_sessions_search_action(action),
+            Some(OverlayKind::Prompts) => self.execute_prompts_search_action(action),
+            Some(OverlayKind::Skills) => self.execute_skills_search_action(action),
+            Some(OverlayKind::Settings) => self.execute_settings_search_action(action),
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_settings_search_action(&mut self, action: KeyAction) -> TuiAction {
+        let key = match action {
+            KeyAction::SearchClose => KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            KeyAction::SearchAccept => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            KeyAction::SearchBackspace => KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+            KeyAction::SearchUp => KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+            KeyAction::SearchDown => KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+            _ => KeyEvent::new(KeyCode::Null, KeyModifiers::NONE),
+        };
+        self.handle_settings_key(key)
+    }
+
+    fn execute_help_search_action(&mut self, action: KeyAction) -> TuiAction {
+        let page = self.transcript_page_lines.max(5);
+        match action {
+            KeyAction::SearchClose => {
+                self.help_search_active = false;
+                self.help_search.clear();
+                self.refresh_help_filter();
+                self.status = "Help search cleared".into();
+            }
+            KeyAction::SearchAccept => self.help_search_active = false,
+            KeyAction::SearchBackspace => {
+                self.help_search.pop();
+                self.refresh_help_filter();
+                self.status = help_search_status(&self.help_search);
+            }
+            KeyAction::SearchUp => self.scroll_help_up(1),
+            KeyAction::SearchDown => self.scroll_help_down(1),
+            KeyAction::SearchPageUp => self.scroll_help_up(page),
+            KeyAction::SearchPageDown => self.scroll_help_down(page),
+            KeyAction::SearchTop => self.help_scroll = 0,
+            KeyAction::SearchBottom => {
+                self.help_scroll = self.filtered_help_indices.len().saturating_sub(1);
+            }
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn execute_send_panel_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SendPanelClose => {
+                self.overlay = None;
+                if self.working {
+                    self.set_calling_status();
+                } else {
+                    self.status = HELP_STATUS.into();
                 }
                 TuiAction::None
             }
-            (_, KeyCode::Esc) => {
+            KeyAction::SendPanelUp => {
+                self.move_send_panel_cursor(-1);
+                TuiAction::None
+            }
+            KeyAction::SendPanelDown => {
+                self.move_send_panel_cursor(1);
+                TuiAction::None
+            }
+            KeyAction::SendPanelQueue => {
+                let Some(prompt) = self.take_composer_text() else {
+                    self.status = "No input to queue".into();
+                    return TuiAction::None;
+                };
+                self.enqueue_prompt(prompt.clone());
+                self.status = format!("Queued {}", summarize_panel_text(&prompt));
+                TuiAction::QueuePrompt(prompt)
+            }
+            KeyAction::SendPanelDraft => {
+                if self.draft_current_input() {
+                    self.status = "Moved current input to Draft".into();
+                } else {
+                    self.status = "No input to draft".into();
+                }
+                TuiAction::None
+            }
+            KeyAction::SendPanelDelete => {
+                if self.selected_send_panel_item().is_some() {
+                    self.send_panel.confirm_delete = true;
+                    self.status = "Press y to confirm deletion • n/Esc cancel".into();
+                } else {
+                    self.status = "Nothing selected to delete".into();
+                }
+                TuiAction::None
+            }
+            KeyAction::SendPanelLoad => {
+                let Some(item) = self.selected_send_panel_item() else {
+                    self.status = "Nothing selected to load".into();
+                    return TuiAction::None;
+                };
+                if self.draft_current_input() {
+                    self.status = "Moved current input to Draft and loaded selection".into();
+                } else {
+                    self.status = "Loaded selection into input".into();
+                }
+                let text = self.remove_or_copy_send_panel_item_for_input(&item);
+                self.composer.replace_text(text);
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_confirm_action(&mut self, action: KeyAction) -> TuiAction {
+        if self.overlay == Some(OverlayKind::Settings)
+            && matches!(
+                self.settings.keymaps_mode,
+                KeymapsMode::PresetConfirm { .. }
+            )
+        {
+            let key = match action {
+                KeyAction::ConfirmYes => KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+                KeyAction::ConfirmNo => KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+                _ => KeyEvent::new(KeyCode::Null, KeyModifiers::NONE),
+            };
+            return self.handle_settings_key(key);
+        }
+        if self.overlay == Some(OverlayKind::SendPanel) && self.send_panel.confirm_delete {
+            match action {
+                KeyAction::ConfirmYes => {
+                    let deleted = self
+                        .selected_send_panel_item()
+                        .and_then(|item| self.delete_send_panel_item(&item));
+                    self.send_panel.confirm_delete = false;
+                    self.status = deleted.map_or_else(
+                        || "Nothing selected to delete".into(),
+                        |text| format!("Deleted {}", summarize_panel_text(&text)),
+                    );
+                }
+                KeyAction::ConfirmNo => {
+                    self.send_panel.confirm_delete = false;
+                    self.status = "Delete canceled".into();
+                }
+                _ => {}
+            }
+        }
+        TuiAction::None
+    }
+
+    fn execute_sessions_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SessionsClose => {
+                self.overlay = None;
+                self.sessions.loading = false;
                 self.status = HELP_STATUS.into();
                 TuiAction::None
             }
-            _ => {
-                self.status = "Unknown Ctrl-O chord".into();
+            KeyAction::SessionsUp => {
+                self.move_sessions_cursor(-1);
                 TuiAction::None
             }
+            KeyAction::SessionsDown => {
+                self.move_sessions_cursor(1);
+                TuiAction::None
+            }
+            KeyAction::SessionsSearch => {
+                self.sessions.search_active = true;
+                self.sessions.search.clear();
+                self.refresh_session_filter();
+                self.status = "Session search active".into();
+                TuiAction::None
+            }
+            KeyAction::SessionsRefresh => {
+                self.sessions.loading = true;
+                self.status = "Loading sessions…".into();
+                TuiAction::ListSessions
+            }
+            KeyAction::SessionsOpen => self.open_selected_session_action(),
+            _ => TuiAction::None,
         }
+    }
+
+    fn execute_sessions_search_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SearchClose => {
+                self.sessions.search_active = false;
+                self.sessions.search.clear();
+                self.refresh_session_filter();
+                self.status = "Session search cleared".into();
+                TuiAction::None
+            }
+            KeyAction::SearchAccept => self.open_selected_session_action(),
+            KeyAction::SearchBackspace => {
+                self.sessions.search.pop();
+                self.refresh_session_filter();
+                self.status = session_search_status(&self.sessions.search);
+                TuiAction::None
+            }
+            KeyAction::SearchUp => {
+                self.move_sessions_cursor(-1);
+                TuiAction::None
+            }
+            KeyAction::SearchDown => {
+                self.move_sessions_cursor(1);
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_resource_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::ResourceClose => {
+                if self.overlay == Some(OverlayKind::Prompts) {
+                    self.prompts.loading = false;
+                } else {
+                    self.skills.loading = false;
+                }
+                self.overlay = None;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyAction::ResourceUp => {
+                if self.overlay == Some(OverlayKind::Prompts) {
+                    self.move_prompt_cursor(-1);
+                } else {
+                    self.move_skill_cursor(-1);
+                }
+                TuiAction::None
+            }
+            KeyAction::ResourceDown => {
+                if self.overlay == Some(OverlayKind::Prompts) {
+                    self.move_prompt_cursor(1);
+                } else {
+                    self.move_skill_cursor(1);
+                }
+                TuiAction::None
+            }
+            KeyAction::ResourceSearch => {
+                if self.overlay == Some(OverlayKind::Prompts) {
+                    self.prompts.search_active = true;
+                    self.prompts.search.clear();
+                    self.refresh_prompt_filter();
+                    self.status = "Prompt search active".into();
+                } else {
+                    self.skills.search_active = true;
+                    self.skills.search.clear();
+                    self.refresh_skill_filter();
+                    self.status = "Skill search active".into();
+                }
+                TuiAction::None
+            }
+            KeyAction::ResourceRefresh => {
+                if self.overlay == Some(OverlayKind::Prompts) {
+                    self.prompts.loading = true;
+                } else {
+                    self.skills.loading = true;
+                }
+                self.status = "Reloading resources…".into();
+                TuiAction::ReloadResources
+            }
+            KeyAction::ResourceComplete => {
+                if self.overlay == Some(OverlayKind::Prompts) {
+                    self.complete_selected_prompt_command();
+                } else {
+                    self.complete_selected_skill_command();
+                }
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_prompts_search_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SearchClose => {
+                self.prompts.search_active = false;
+                self.prompts.search.clear();
+                self.refresh_prompt_filter();
+                self.status = "Prompt search cleared".into();
+            }
+            KeyAction::SearchAccept => self.complete_selected_prompt_command(),
+            KeyAction::SearchBackspace => {
+                self.prompts.search.pop();
+                self.refresh_prompt_filter();
+                self.status = prompt_search_status(&self.prompts.search);
+            }
+            KeyAction::SearchUp => self.move_prompt_cursor(-1),
+            KeyAction::SearchDown => self.move_prompt_cursor(1),
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn execute_skills_search_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SearchClose => {
+                self.skills.search_active = false;
+                self.skills.search.clear();
+                self.refresh_skill_filter();
+                self.status = "Skill search cleared".into();
+            }
+            KeyAction::SearchAccept => self.complete_selected_skill_command(),
+            KeyAction::SearchBackspace => {
+                self.skills.search.pop();
+                self.refresh_skill_filter();
+                self.status = skill_search_status(&self.skills.search);
+            }
+            KeyAction::SearchUp => self.move_skill_cursor(-1),
+            KeyAction::SearchDown => self.move_skill_cursor(1),
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn execute_inspect_action(&mut self, action: KeyAction) -> TuiAction {
+        let page = self.transcript_page_lines.max(5);
+        match action {
+            KeyAction::InspectClose => {
+                self.overlay = None;
+                self.inspect.loading = false;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyAction::InspectUp => {
+                self.inspect.scroll = self.inspect.scroll.saturating_sub(1);
+                TuiAction::None
+            }
+            KeyAction::InspectDown => {
+                self.inspect.scroll = self.inspect.scroll.saturating_add(1);
+                TuiAction::None
+            }
+            KeyAction::InspectPageUp => {
+                self.inspect.scroll = self.inspect.scroll.saturating_sub(page);
+                TuiAction::None
+            }
+            KeyAction::InspectPageDown => {
+                self.inspect.scroll = self.inspect.scroll.saturating_add(page);
+                TuiAction::None
+            }
+            KeyAction::InspectTop => {
+                self.inspect.scroll = 0;
+                TuiAction::None
+            }
+            KeyAction::InspectExportHtml => {
+                self.status = "Exporting chat…".into();
+                TuiAction::ExportChatHtml
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_settings_action(&mut self, action: KeyAction) -> TuiAction {
+        let key = key_event_for_settings_action(action);
+        self.handle_settings_key(key)
+    }
+
+    fn handle_help_search_text_key(&mut self, key: KeyEvent) -> TuiAction {
+        if let KeyCode::Char(ch) = key.code {
+            if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() {
+                self.help_search.push(ch);
+                self.refresh_help_filter();
+                self.status = help_search_status(&self.help_search);
+            }
+        }
+        TuiAction::None
+    }
+
+    fn refresh_help_filter(&mut self) {
+        let entries = help_entries(&self.settings.keymap);
+        self.filtered_help_indices = fuzzy_indices(
+            &entries,
+            self.help_search.trim(),
+            FuzzyMode::Text,
+            None,
+            help_entry_match_text,
+        );
+        self.help_scroll = self
+            .help_scroll
+            .min(self.filtered_help_indices.len().saturating_sub(1));
+    }
+
+    fn scroll_help_up(&mut self, lines: usize) {
+        self.help_scroll = self.help_scroll.saturating_sub(lines.max(1));
+    }
+
+    fn scroll_help_down(&mut self, lines: usize) {
+        self.help_scroll = self
+            .help_scroll
+            .saturating_add(lines.max(1))
+            .min(self.filtered_help_indices.len().saturating_sub(1));
+    }
+
+    fn handle_settings_text_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.settings.page == crate::settings::SettingsPage::Models
+            && self.settings.model_search_active
+        {
+            if let KeyCode::Char(ch) = key.code {
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() {
+                    return self
+                        .handle_settings_key(KeyEvent::new(KeyCode::Char(ch), key.modifiers));
+                }
+            }
+        }
+        TuiAction::None
+    }
+
+    fn handle_sessions_search_text_key(&mut self, key: KeyEvent) -> TuiAction {
+        if let KeyCode::Char(ch) = key.code {
+            if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() {
+                self.sessions.search.push(ch);
+                self.refresh_session_filter();
+                self.status = session_search_status(&self.sessions.search);
+            }
+        }
+        TuiAction::None
+    }
+
+    fn handle_prompts_search_text_key(&mut self, key: KeyEvent) -> TuiAction {
+        if let KeyCode::Char(ch) = key.code {
+            if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() {
+                self.prompts.search.push(ch);
+                self.refresh_prompt_filter();
+                self.status = prompt_search_status(&self.prompts.search);
+            }
+        }
+        TuiAction::None
+    }
+
+    fn handle_skills_search_text_key(&mut self, key: KeyEvent) -> TuiAction {
+        if let KeyCode::Char(ch) = key.code {
+            if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() {
+                self.skills.search.push(ch);
+                self.refresh_skill_filter();
+                self.status = skill_search_status(&self.skills.search);
+            }
+        }
+        TuiAction::None
     }
 
     fn expand_prompt_references_in_composer(&mut self) -> PromptReferenceExpansionResult {
@@ -1097,105 +1843,6 @@ impl TuiState {
         PromptReferenceExpansionResult::Expanded(prompts.len())
     }
 
-    fn handle_transcript_scroll_key(&mut self, key: KeyEvent) -> bool {
-        let page_lines = self.transcript_page_lines.saturating_sub(1).max(1);
-        let no_mods = key.modifiers.is_empty();
-        let alt = key.modifiers == KeyModifiers::ALT;
-        let ctrl = key.modifiers == KeyModifiers::CONTROL;
-        let composer_empty = self.focus == TuiFocus::Composer && self.composer.is_empty();
-        let transcript_focus = self.focus == TuiFocus::Transcript;
-
-        match key.code {
-            KeyCode::Esc if transcript_focus => {
-                self.focus = TuiFocus::Composer;
-                self.status = self.transcript_scroll_status();
-                true
-            }
-            KeyCode::PageUp if no_mods => {
-                self.scroll_transcript_up(page_lines);
-                true
-            }
-            KeyCode::PageDown if no_mods => {
-                self.scroll_transcript_down(page_lines);
-                true
-            }
-            KeyCode::Up if alt || (no_mods && (transcript_focus || composer_empty)) => {
-                self.scroll_transcript_up(TRANSCRIPT_SCROLL_LINE_STEP);
-                true
-            }
-            KeyCode::Down if alt || (no_mods && (transcript_focus || composer_empty)) => {
-                self.scroll_transcript_down(TRANSCRIPT_SCROLL_LINE_STEP);
-                true
-            }
-            KeyCode::Char('k' | 'K') if no_mods && transcript_focus => {
-                self.scroll_transcript_up(TRANSCRIPT_SCROLL_LINE_STEP);
-                true
-            }
-            KeyCode::Char('j' | 'J') if no_mods && transcript_focus => {
-                self.scroll_transcript_down(TRANSCRIPT_SCROLL_LINE_STEP);
-                true
-            }
-            KeyCode::Home if ctrl || (no_mods && (transcript_focus || composer_empty)) => {
-                self.scroll_transcript_to_top();
-                true
-            }
-            KeyCode::Char('g') if no_mods && transcript_focus => {
-                self.scroll_transcript_to_top();
-                true
-            }
-            KeyCode::End if ctrl || (no_mods && (transcript_focus || composer_empty)) => {
-                self.scroll_transcript_to_bottom();
-                true
-            }
-            KeyCode::Char('G') if no_mods && transcript_focus => {
-                self.scroll_transcript_to_bottom();
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn handle_command_suggestion_key(&mut self, key: KeyEvent) -> CommandSuggestionKeyResult {
-        match key.code {
-            KeyCode::Esc => {
-                self.command_suggestions.dismiss_for(self.composer.text());
-                CommandSuggestionKeyResult::Handled(TuiAction::None)
-            }
-            KeyCode::Up => {
-                let len = self
-                    .command_suggestions_view()
-                    .map_or(0, |view| view.items.len());
-                self.command_suggestions.move_selection(-1, len);
-                CommandSuggestionKeyResult::Handled(TuiAction::None)
-            }
-            KeyCode::Down => {
-                let len = self
-                    .command_suggestions_view()
-                    .map_or(0, |view| view.items.len());
-                self.command_suggestions.move_selection(1, len);
-                CommandSuggestionKeyResult::Handled(TuiAction::None)
-            }
-            KeyCode::Tab => {
-                self.accept_command_suggestion(false);
-                CommandSuggestionKeyResult::Handled(TuiAction::None)
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                if self
-                    .command_suggestions_view()
-                    .and_then(|view| view.selected_item().cloned())
-                    .is_none()
-                {
-                    CommandSuggestionKeyResult::Unhandled
-                } else if self.accept_command_suggestion(true) {
-                    CommandSuggestionKeyResult::Handled(self.submit_input())
-                } else {
-                    CommandSuggestionKeyResult::Handled(TuiAction::None)
-                }
-            }
-            _ => CommandSuggestionKeyResult::Unhandled,
-        }
-    }
-
     fn accept_command_suggestion(&mut self, submit_ready: bool) -> bool {
         let Some(item) = self
             .command_suggestions_view()
@@ -1226,474 +1873,6 @@ impl TuiState {
                 .clear_dismissal_if_input_changed(input);
         }
         self.refresh_command_suggestions();
-    }
-
-    fn handle_help_key(&mut self, key: KeyEvent) -> TuiAction {
-        if self.help_search_active {
-            return self.handle_help_search_key(key);
-        }
-
-        let page = self.transcript_page_lines.max(5);
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('q' | 'Q') if key.modifiers.is_empty() => {
-                self.overlay = None;
-                self.status = HELP_STATUS.into();
-            }
-            KeyCode::Char('/') if key.modifiers.is_empty() => {
-                self.help_search_active = true;
-                self.help_search.clear();
-                self.refresh_help_filter();
-                self.status = "Help search active".into();
-            }
-            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
-                self.scroll_help_up(1);
-            }
-            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
-                self.scroll_help_down(1);
-            }
-            KeyCode::PageUp if key.modifiers.is_empty() => {
-                self.scroll_help_up(page);
-            }
-            KeyCode::PageDown if key.modifiers.is_empty() => {
-                self.scroll_help_down(page);
-            }
-            KeyCode::Home if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
-                self.help_scroll = 0;
-            }
-            KeyCode::End if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
-                self.help_scroll = self.filtered_help_indices.len().saturating_sub(1);
-            }
-            _ => {}
-        }
-        TuiAction::None
-    }
-
-    fn handle_help_search_key(&mut self, key: KeyEvent) -> TuiAction {
-        let page = self.transcript_page_lines.max(5);
-        match key.code {
-            KeyCode::Esc => {
-                self.help_search_active = false;
-                self.help_search.clear();
-                self.refresh_help_filter();
-                self.status = "Help search cleared".into();
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                self.help_search_active = false;
-            }
-            KeyCode::Backspace => {
-                self.help_search.pop();
-                self.refresh_help_filter();
-                self.status = help_search_status(&self.help_search);
-            }
-            KeyCode::Up => self.scroll_help_up(1),
-            KeyCode::Down => self.scroll_help_down(1),
-            KeyCode::PageUp if key.modifiers.is_empty() => self.scroll_help_up(page),
-            KeyCode::PageDown if key.modifiers.is_empty() => self.scroll_help_down(page),
-            KeyCode::Home if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
-                self.help_scroll = 0;
-            }
-            KeyCode::End if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
-                self.help_scroll = self.filtered_help_indices.len().saturating_sub(1);
-            }
-            KeyCode::Char(ch)
-                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
-            {
-                self.help_search.push(ch);
-                self.refresh_help_filter();
-                self.status = help_search_status(&self.help_search);
-            }
-            _ => {}
-        }
-        TuiAction::None
-    }
-
-    fn refresh_help_filter(&mut self) {
-        self.filtered_help_indices = fuzzy_indices(
-            HELP_ENTRIES,
-            self.help_search.trim(),
-            FuzzyMode::Text,
-            None,
-            help_entry_match_text,
-        );
-        self.help_scroll = self
-            .help_scroll
-            .min(self.filtered_help_indices.len().saturating_sub(1));
-    }
-
-    fn scroll_help_up(&mut self, lines: usize) {
-        self.help_scroll = self.help_scroll.saturating_sub(lines.max(1));
-    }
-
-    fn scroll_help_down(&mut self, lines: usize) {
-        self.help_scroll = self
-            .help_scroll
-            .saturating_add(lines.max(1))
-            .min(self.filtered_help_indices.len().saturating_sub(1));
-    }
-
-    fn handle_inspect_key(&mut self, key: KeyEvent) -> TuiAction {
-        let page = self.transcript_page_lines.max(5);
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('q' | 'Q') if key.modifiers.is_empty() => {
-                self.overlay = None;
-                self.inspect.loading = false;
-                self.status = HELP_STATUS.into();
-            }
-            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
-                self.inspect.scroll = self.inspect.scroll.saturating_sub(1);
-            }
-            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
-                self.inspect.scroll = self.inspect.scroll.saturating_add(1);
-            }
-            KeyCode::PageUp if key.modifiers.is_empty() => {
-                self.inspect.scroll = self.inspect.scroll.saturating_sub(page);
-            }
-            KeyCode::PageDown if key.modifiers.is_empty() => {
-                self.inspect.scroll = self.inspect.scroll.saturating_add(page);
-            }
-            KeyCode::Home if key.modifiers.is_empty() || key.modifiers == KeyModifiers::CONTROL => {
-                self.inspect.scroll = 0;
-            }
-            KeyCode::Char('e' | 'E') if key.modifiers.is_empty() => {
-                self.status = "Exporting chat…".into();
-                return TuiAction::ExportChatHtml;
-            }
-            _ => {}
-        }
-        TuiAction::None
-    }
-
-    fn handle_send_panel_key(&mut self, key: KeyEvent) -> TuiAction {
-        if self.send_panel.confirm_delete {
-            match key.code {
-                KeyCode::Char('y' | 'Y') if key.modifiers.is_empty() => {
-                    let deleted = self
-                        .selected_send_panel_item()
-                        .and_then(|item| self.delete_send_panel_item(&item));
-                    self.send_panel.confirm_delete = false;
-                    self.status = deleted.map_or_else(
-                        || "Nothing selected to delete".into(),
-                        |text| format!("Deleted {}", summarize_panel_text(&text)),
-                    );
-                }
-                KeyCode::Char('n' | 'N') | KeyCode::Esc if key.modifiers.is_empty() => {
-                    self.send_panel.confirm_delete = false;
-                    self.status = "Delete canceled".into();
-                }
-                _ => {
-                    self.status = "Press y to confirm deletion • n/Esc cancel".into();
-                }
-            }
-            return TuiAction::None;
-        }
-
-        match key.code {
-            KeyCode::Esc => {
-                self.overlay = None;
-                if self.working {
-                    self.set_calling_status();
-                } else {
-                    self.status = HELP_STATUS.into();
-                }
-                TuiAction::None
-            }
-            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
-                self.move_send_panel_cursor(-1);
-                TuiAction::None
-            }
-            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
-                self.move_send_panel_cursor(1);
-                TuiAction::None
-            }
-            KeyCode::Char('q' | 'Q') if key.modifiers.is_empty() => {
-                let Some(prompt) = self.take_composer_text() else {
-                    self.status = "No input to queue".into();
-                    return TuiAction::None;
-                };
-                self.enqueue_prompt(prompt.clone());
-                self.status = format!("Queued {}", summarize_panel_text(&prompt));
-                TuiAction::QueuePrompt(prompt)
-            }
-            KeyCode::Char('d' | 'D') if key.modifiers.is_empty() => {
-                if self.draft_current_input() {
-                    self.status = "Moved current input to Draft".into();
-                } else {
-                    self.status = "No input to draft".into();
-                }
-                TuiAction::None
-            }
-            KeyCode::Char('x' | 'X') if key.modifiers.is_empty() => {
-                if self.selected_send_panel_item().is_some() {
-                    self.send_panel.confirm_delete = true;
-                    self.status = "Press y to confirm deletion • n/Esc cancel".into();
-                } else {
-                    self.status = "Nothing selected to delete".into();
-                }
-                TuiAction::None
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                let Some(item) = self.selected_send_panel_item() else {
-                    self.status = "Nothing selected to load".into();
-                    return TuiAction::None;
-                };
-                if self.draft_current_input() {
-                    self.status = "Moved current input to Draft and loaded selection".into();
-                } else {
-                    self.status = "Loaded selection into input".into();
-                }
-                let text = self.remove_or_copy_send_panel_item_for_input(&item);
-                self.composer.replace_text(text);
-                TuiAction::None
-            }
-            _ => TuiAction::None,
-        }
-    }
-
-    fn handle_sessions_key(&mut self, key: KeyEvent) -> TuiAction {
-        if self.sessions.search_active {
-            return self.handle_sessions_search_key(key);
-        }
-
-        match key.code {
-            KeyCode::Esc => {
-                self.overlay = None;
-                self.sessions.loading = false;
-                self.status = HELP_STATUS.into();
-                TuiAction::None
-            }
-            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
-                self.move_sessions_cursor(-1);
-                TuiAction::None
-            }
-            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
-                self.move_sessions_cursor(1);
-                TuiAction::None
-            }
-            KeyCode::Char('/') if key.modifiers.is_empty() => {
-                self.sessions.search_active = true;
-                self.sessions.search.clear();
-                self.refresh_session_filter();
-                self.status = "Session search active".into();
-                TuiAction::None
-            }
-            KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => {
-                self.sessions.loading = true;
-                self.status = "Loading sessions…".into();
-                TuiAction::ListSessions
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => self.open_selected_session_action(),
-            _ => TuiAction::None,
-        }
-    }
-
-    fn handle_sessions_search_key(&mut self, key: KeyEvent) -> TuiAction {
-        match key.code {
-            KeyCode::Esc => {
-                self.sessions.search_active = false;
-                self.sessions.search.clear();
-                self.refresh_session_filter();
-                self.status = "Session search cleared".into();
-                TuiAction::None
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => self.open_selected_session_action(),
-            KeyCode::Backspace => {
-                self.sessions.search.pop();
-                self.refresh_session_filter();
-                self.status = session_search_status(&self.sessions.search);
-                TuiAction::None
-            }
-            KeyCode::Up => {
-                self.move_sessions_cursor(-1);
-                TuiAction::None
-            }
-            KeyCode::Down => {
-                self.move_sessions_cursor(1);
-                TuiAction::None
-            }
-            KeyCode::Char(ch)
-                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
-            {
-                self.sessions.search.push(ch);
-                self.refresh_session_filter();
-                self.status = session_search_status(&self.sessions.search);
-                TuiAction::None
-            }
-            _ => TuiAction::None,
-        }
-    }
-
-    fn handle_prompts_key(&mut self, key: KeyEvent) -> TuiAction {
-        if self.prompts.search_active {
-            return self.handle_prompts_search_key(key);
-        }
-
-        match key.code {
-            KeyCode::Esc => {
-                self.overlay = None;
-                self.prompts.loading = false;
-                self.status = HELP_STATUS.into();
-                TuiAction::None
-            }
-            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
-                self.move_prompt_cursor(-1);
-                TuiAction::None
-            }
-            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
-                self.move_prompt_cursor(1);
-                TuiAction::None
-            }
-            KeyCode::Char('/') if key.modifiers.is_empty() => {
-                self.prompts.search_active = true;
-                self.prompts.search.clear();
-                self.refresh_prompt_filter();
-                self.status = "Prompt search active".into();
-                TuiAction::None
-            }
-            KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => {
-                self.prompts.loading = true;
-                self.status = "Reloading resources…".into();
-                TuiAction::ReloadResources
-            }
-            KeyCode::Tab if key.modifiers.is_empty() => {
-                self.complete_selected_prompt_command();
-                TuiAction::None
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                self.complete_selected_prompt_command();
-                TuiAction::None
-            }
-            _ => TuiAction::None,
-        }
-    }
-
-    fn handle_prompts_search_key(&mut self, key: KeyEvent) -> TuiAction {
-        match key.code {
-            KeyCode::Esc => {
-                self.prompts.search_active = false;
-                self.prompts.search.clear();
-                self.refresh_prompt_filter();
-                self.status = "Prompt search cleared".into();
-                TuiAction::None
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                self.complete_selected_prompt_command();
-                TuiAction::None
-            }
-            KeyCode::Tab if key.modifiers.is_empty() => {
-                self.complete_selected_prompt_command();
-                TuiAction::None
-            }
-            KeyCode::Backspace => {
-                self.prompts.search.pop();
-                self.refresh_prompt_filter();
-                self.status = prompt_search_status(&self.prompts.search);
-                TuiAction::None
-            }
-            KeyCode::Up => {
-                self.move_prompt_cursor(-1);
-                TuiAction::None
-            }
-            KeyCode::Down => {
-                self.move_prompt_cursor(1);
-                TuiAction::None
-            }
-            KeyCode::Char(ch)
-                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
-            {
-                self.prompts.search.push(ch);
-                self.refresh_prompt_filter();
-                self.status = prompt_search_status(&self.prompts.search);
-                TuiAction::None
-            }
-            _ => TuiAction::None,
-        }
-    }
-
-    fn handle_skills_key(&mut self, key: KeyEvent) -> TuiAction {
-        if self.skills.search_active {
-            return self.handle_skills_search_key(key);
-        }
-
-        match key.code {
-            KeyCode::Esc => {
-                self.overlay = None;
-                self.skills.loading = false;
-                self.status = HELP_STATUS.into();
-                TuiAction::None
-            }
-            KeyCode::Up | KeyCode::Char('k' | 'K') if key.modifiers.is_empty() => {
-                self.move_skill_cursor(-1);
-                TuiAction::None
-            }
-            KeyCode::Down | KeyCode::Char('j' | 'J') if key.modifiers.is_empty() => {
-                self.move_skill_cursor(1);
-                TuiAction::None
-            }
-            KeyCode::Char('/') if key.modifiers.is_empty() => {
-                self.skills.search_active = true;
-                self.skills.search.clear();
-                self.refresh_skill_filter();
-                self.status = "Skill search active".into();
-                TuiAction::None
-            }
-            KeyCode::Char('r' | 'R') if key.modifiers.is_empty() => {
-                self.skills.loading = true;
-                self.status = "Reloading resources…".into();
-                TuiAction::ReloadResources
-            }
-            KeyCode::Tab if key.modifiers.is_empty() => {
-                self.complete_selected_skill_command();
-                TuiAction::None
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                self.complete_selected_skill_command();
-                TuiAction::None
-            }
-            _ => TuiAction::None,
-        }
-    }
-
-    fn handle_skills_search_key(&mut self, key: KeyEvent) -> TuiAction {
-        match key.code {
-            KeyCode::Esc => {
-                self.skills.search_active = false;
-                self.skills.search.clear();
-                self.refresh_skill_filter();
-                self.status = "Skill search cleared".into();
-                TuiAction::None
-            }
-            KeyCode::Enter if key.modifiers.is_empty() => {
-                self.complete_selected_skill_command();
-                TuiAction::None
-            }
-            KeyCode::Tab if key.modifiers.is_empty() => {
-                self.complete_selected_skill_command();
-                TuiAction::None
-            }
-            KeyCode::Backspace => {
-                self.skills.search.pop();
-                self.refresh_skill_filter();
-                self.status = skill_search_status(&self.skills.search);
-                TuiAction::None
-            }
-            KeyCode::Up => {
-                self.move_skill_cursor(-1);
-                TuiAction::None
-            }
-            KeyCode::Down => {
-                self.move_skill_cursor(1);
-                TuiAction::None
-            }
-            KeyCode::Char(ch)
-                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
-            {
-                self.skills.search.push(ch);
-                self.refresh_skill_filter();
-                self.status = skill_search_status(&self.skills.search);
-                TuiAction::None
-            }
-            _ => TuiAction::None,
-        }
     }
 
     fn complete_selected_prompt_command(&mut self) {
@@ -1758,6 +1937,10 @@ impl TuiState {
             SettingsAction::SetChatStyle(style) => {
                 self.status = format!("Chat style set to {}", chat_style_label(style));
                 TuiAction::SetChatStyle(style)
+            }
+            SettingsAction::SetKeymap(keymap) => {
+                self.set_keymap(keymap.clone());
+                TuiAction::SetKeymap(keymap)
             }
             SettingsAction::SetToolEnabled {
                 name,
@@ -1919,6 +2102,10 @@ impl TuiState {
             }
             ParsedCommand::Settings(SettingsCommand::OpenTools) => {
                 self.open_tools_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::OpenKeymaps) => {
+                self.open_keymaps_overlay();
                 TuiAction::None
             }
             ParsedCommand::SetSessionTitle(title) => {
@@ -2106,26 +2293,18 @@ impl TuiState {
         self.status = "Tools: arrows/jk move • g global • p/Enter project • Esc back".into();
     }
 
+    fn open_keymaps_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_keymaps();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status = "Keymaps: Enter detail • a add in detail • p preset • Esc back".into();
+    }
+
     fn open_settings_overlay(&mut self) {
         self.clear_error();
         self.settings.open_menu();
         self.overlay = Some(OverlayKind::Settings);
         self.status = "Settings: arrows/jk move • Enter open • Esc close".into();
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum CommandSuggestionKeyResult {
-    Handled(TuiAction),
-    Unhandled,
-}
-
-impl CommandSuggestionKeyResult {
-    fn into_action(self) -> TuiAction {
-        match self {
-            Self::Handled(action) => action,
-            Self::Unhandled => TuiAction::None,
-        }
     }
 }
 
@@ -2140,8 +2319,30 @@ fn is_force_quit_key(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C') if key.modifiers.contains(KeyModifiers::CONTROL))
 }
 
-fn is_ctrl_o_key(key: KeyEvent) -> bool {
-    matches!(key.code, KeyCode::Char('o') | KeyCode::Char('O') if key.modifiers.contains(KeyModifiers::CONTROL))
+fn key_event_for_settings_action(action: KeyAction) -> KeyEvent {
+    match action {
+        KeyAction::SettingsClose => KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+        KeyAction::SettingsBack => KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+        KeyAction::SettingsOpenPage => KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+        KeyAction::SettingsUp => KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+        KeyAction::SettingsDown => KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+        KeyAction::SettingsNext => KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+        KeyAction::SettingsPrevious => KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT),
+        KeyAction::SettingsApply => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+        KeyAction::SettingsSearch => KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE),
+        KeyAction::SettingsToolToggleGlobal => {
+            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)
+        }
+        KeyAction::SettingsToolToggleProject => {
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)
+        }
+        KeyAction::KeymapAddShortcut => KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+        KeyAction::KeymapRemoveShortcut => KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+        KeyAction::KeymapClearShortcuts => KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE),
+        KeyAction::KeymapResetAction => KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+        KeyAction::KeymapSelectPreset => KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE),
+        _ => KeyEvent::new(KeyCode::Null, KeyModifiers::NONE),
+    }
 }
 
 fn move_index(current: usize, len: usize, delta: isize) -> usize {
@@ -3076,10 +3277,11 @@ mod tests {
         }
         assert_eq!(state.help_search, "queue");
         assert!(!state.filtered_help_indices().is_empty());
+        let entries = help_entries(&state.settings.keymap);
         assert!(state
             .filtered_help_indices()
             .iter()
-            .all(|index| !matches!(HELP_ENTRIES[*index], crate::help::HelpEntry::Blank)));
+            .all(|index| !matches!(entries[*index], crate::help::HelpEntry::Blank)));
         assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
         assert!(!state.help_search_active);
         assert_eq!(state.help_search, "queue");

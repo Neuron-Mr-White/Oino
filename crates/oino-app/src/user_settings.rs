@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use oino_tui::{ChatStyle, CollapseMode};
+use oino_tui::{ChatStyle, CollapseMode, KeymapConfig};
 use oino_types::ThinkingLevel;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -18,6 +18,7 @@ pub struct UserSettings {
     pub thinking_collapse_mode: Option<CollapseMode>,
     pub tool_collapse_mode: Option<CollapseMode>,
     pub chat_style: Option<ChatStyle>,
+    pub keymap: Option<KeymapConfig>,
     pub tools: BTreeMap<String, bool>,
 }
 
@@ -36,6 +37,7 @@ impl UserSettings {
             thinking_collapse_mode: Some(thinking_collapse_mode),
             tool_collapse_mode: Some(tool_collapse_mode),
             chat_style: Some(chat_style),
+            keymap: None,
             tools: BTreeMap::new(),
         }
     }

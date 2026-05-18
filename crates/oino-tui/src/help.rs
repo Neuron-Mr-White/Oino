@@ -1,131 +1,186 @@
 #![forbid(unsafe_code)]
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::keymap::{KeyAction, KeymapConfig};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HelpEntry {
-    Heading(&'static str),
-    Item(&'static str, &'static str),
-    Text(&'static str),
+    Heading(String),
+    Item(String, String),
+    Text(String),
     Blank,
 }
 
-pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
-    HelpEntry::Text("Type /help any time to reopen this guide. Esc or q closes it."),
-    HelpEntry::Blank,
-    HelpEntry::Heading("Composer"),
-    HelpEntry::Item(
-        "Enter",
-        "send a prompt; while the assistant is streaming, send steering text",
-    ),
-    HelpEntry::Item("Ctrl-J / Alt-Enter / Shift-Enter", "insert a newline"),
-    HelpEntry::Item(
-        "/",
-        "open fuzzy command suggestions at the start of the input",
-    ),
-    HelpEntry::Item(
-        "@",
-        "fuzzy search project file paths; Tab inserts the highlighted path",
-    ),
-    HelpEntry::Item(
-        "/prompt:<name> / /skill:<name>",
-        "include prompt templates or skills in the submitted message",
-    ),
-    HelpEntry::Item(
-        "/P:<query> / /S:<query>",
-        "search prompt templates or skills anywhere in the composer",
-    ),
-    HelpEntry::Item(
-        "Paste",
-        "large or multiline pastes collapse visually but still submit in full",
-    ),
-    HelpEntry::Item(
-        "Ctrl-O e",
-        "expand a collapsed pasted block at the cursor or prompt template references",
-    ),
-    HelpEntry::Blank,
-    HelpEntry::Heading("Commands"),
-    HelpEntry::Item("/help", "open this help overlay"),
-    HelpEntry::Item("/new", "start a fresh session after this one has messages"),
-    HelpEntry::Item(
-        "/sessions",
-        "browse saved sessions; press Enter to continue one",
-    ),
-    HelpEntry::Item("/settings", "open settings pages"),
-    HelpEntry::Item(
-        "/prompts",
-        "browse prompt templates from <project>/.oino/prompts/",
-    ),
-    HelpEntry::Item(
-        "/skills",
-        "browse skills from ~/.oino/skills/ and <project>/.oino/skills/",
-    ),
-    HelpEntry::Item("/reload", "reload SYSTEM.md, AGENT.md, prompts, and skills"),
-    HelpEntry::Item(
-        "/inspect",
-        "inspect full prompt; press e there to export chat HTML",
-    ),
-    HelpEntry::Item(
-        "/skill:<name>",
-        "include a skill explicitly; repeat tokens to combine resources",
-    ),
-    HelpEntry::Item(
-        "/model <provider:model>",
-        "change model directly, or /model to open model selection",
-    ),
-    HelpEntry::Item(
-        "/thinking <level>",
-        "set reasoning level: off, minimal, low, medium, high, xhigh",
-    ),
-    HelpEntry::Item(
-        "/title <text>",
-        "set the title shown in the transcript and sessions list",
-    ),
-    HelpEntry::Item(
-        "/settings tools",
-        "show registered agent tools by global/project scope",
-    ),
-    HelpEntry::Blank,
-    HelpEntry::Heading("Transcript"),
-    HelpEntry::Item("PgUp / PgDn", "scroll by page"),
-    HelpEntry::Item("Alt-Up / Alt-Down", "scroll by line"),
-    HelpEntry::Item("Ctrl-Home / Ctrl-End", "jump to top or bottom"),
-    HelpEntry::Item(
-        "Ctrl-O t",
-        "focus transcript; then j/k, Home/End, g/G navigate and Esc returns",
-    ),
-    HelpEntry::Item(
-        "Ctrl-click links/images",
-        "open visible URL or image placeholders when the terminal supports it",
-    ),
-    HelpEntry::Blank,
-    HelpEntry::Heading("Streaming, queue, and drafts"),
-    HelpEntry::Item(
-        "Enter while streaming",
-        "steer the current response with the current input",
-    ),
-    HelpEntry::Item("Ctrl-O s", "open settings"),
-    HelpEntry::Item(
-        "Ctrl-O q",
-        "open the send panel for steering history, queue, and drafts",
-    ),
-    HelpEntry::Item("Send panel q", "queue current input for the next turn"),
-    HelpEntry::Item("Send panel d", "move current input to Draft"),
-    HelpEntry::Item(
-        "Send panel x",
-        "delete selected queued/draft item after confirmation",
-    ),
-    HelpEntry::Blank,
-    HelpEntry::Heading("Overlays and exit"),
-    HelpEntry::Item(
-        "Esc",
-        "close the top overlay, clear search, or stop a running response; it does not quit",
-    ),
-    HelpEntry::Item("Ctrl-C twice", "quit Oino"),
-];
+impl HelpEntry {
+    fn heading(text: impl Into<String>) -> Self {
+        Self::Heading(text.into())
+    }
+
+    fn item(key: impl Into<String>, description: impl Into<String>) -> Self {
+        Self::Item(key.into(), description.into())
+    }
+
+    fn text(text: impl Into<String>) -> Self {
+        Self::Text(text.into())
+    }
+}
+
+#[must_use]
+pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
+    vec![
+        HelpEntry::text(format!(
+            "Type /help any time to reopen this guide. {} or q closes it.",
+            keymap.primary_label(KeyAction::HelpClose)
+        )),
+        HelpEntry::Blank,
+        HelpEntry::heading("Composer"),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::ComposerSubmit),
+            "send a prompt; while the assistant is streaming, send steering text",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::ComposerNewline),
+            "insert a newline",
+        ),
+        HelpEntry::item(
+            "/",
+            "open fuzzy command suggestions at the start of the input",
+        ),
+        HelpEntry::item(
+            "@",
+            "fuzzy search project file paths; Tab inserts the highlighted path",
+        ),
+        HelpEntry::item(
+            "/prompt:<name> / /skill:<name>",
+            "include prompt templates or skills in the submitted message",
+        ),
+        HelpEntry::item(
+            "/P:<query> / /S:<query>",
+            "search prompt templates or skills anywhere in the composer",
+        ),
+        HelpEntry::item(
+            "Paste",
+            "large or multiline pastes collapse visually but still submit in full",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::ComposerExpandReference),
+            "expand a collapsed pasted block at the cursor or prompt template references",
+        ),
+        HelpEntry::Blank,
+        HelpEntry::heading("Commands"),
+        HelpEntry::item("/help", "open this help overlay"),
+        HelpEntry::item("/new", "start a fresh session after this one has messages"),
+        HelpEntry::item(
+            "/sessions",
+            "browse saved sessions; press Enter to continue one",
+        ),
+        HelpEntry::item("/settings", "open settings pages"),
+        HelpEntry::item(
+            "/prompts",
+            "browse prompt templates from <project>/.oino/prompts/",
+        ),
+        HelpEntry::item(
+            "/skills",
+            "browse skills from ~/.oino/skills/ and <project>/.oino/skills/",
+        ),
+        HelpEntry::item("/reload", "reload SYSTEM.md, AGENT.md, prompts, and skills"),
+        HelpEntry::item(
+            "/inspect",
+            "inspect full prompt; press e there to export chat HTML",
+        ),
+        HelpEntry::item(
+            "/skill:<name>",
+            "include a skill explicitly; repeat tokens to combine resources",
+        ),
+        HelpEntry::item(
+            "/model <provider:model>",
+            "change model directly, or /model to open model selection",
+        ),
+        HelpEntry::item(
+            "/thinking <level>",
+            "set reasoning level: off, minimal, low, medium, high, xhigh",
+        ),
+        HelpEntry::item(
+            "/title <text>",
+            "set the title shown in the transcript and sessions list",
+        ),
+        HelpEntry::item(
+            "/settings tools",
+            "show registered agent tools by global/project scope",
+        ),
+        HelpEntry::Blank,
+        HelpEntry::heading("Transcript"),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::TranscriptPageUp),
+            "scroll by page up",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::TranscriptPageDown),
+            "scroll by page down",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::TranscriptLineUp),
+            "scroll by line up",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::TranscriptLineDown),
+            "scroll by line down",
+        ),
+        HelpEntry::item(keymap.label_for(KeyAction::TranscriptTop), "jump to top"),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::TranscriptBottom),
+            "jump to bottom",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::TranscriptFocus),
+            "focus transcript; navigation shortcuts then target transcript first",
+        ),
+        HelpEntry::item(
+            "Ctrl-click links/images",
+            "open visible URL or image placeholders when the terminal supports it",
+        ),
+        HelpEntry::Blank,
+        HelpEntry::heading("Streaming, queue, and drafts"),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::ComposerSubmit),
+            "while streaming, steer the current response with the current input",
+        ),
+        HelpEntry::item(keymap.label_for(KeyAction::SettingsOpen), "open settings"),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::SendPanelOpen),
+            "open the send panel for steering history, queue, and drafts",
+        ),
+        HelpEntry::item(
+            format!("Send panel {}", keymap.label_for(KeyAction::SendPanelQueue)),
+            "queue current input for the next turn",
+        ),
+        HelpEntry::item(
+            format!("Send panel {}", keymap.label_for(KeyAction::SendPanelDraft)),
+            "move current input to Draft",
+        ),
+        HelpEntry::item(
+            format!(
+                "Send panel {}",
+                keymap.label_for(KeyAction::SendPanelDelete)
+            ),
+            "delete selected queued/draft item after confirmation",
+        ),
+        HelpEntry::Blank,
+        HelpEntry::heading("Overlays and exit"),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::HelpClose),
+            "close the top overlay, clear search, or stop a running response; it does not quit",
+        ),
+        HelpEntry::item(
+            keymap.label_for(KeyAction::AppQuit),
+            "press twice to quit Oino; Ctrl-C twice remains a hard safety fallback",
+        ),
+    ]
+}
 
 #[must_use]
 pub(crate) fn help_entry_match_text(entry: &HelpEntry) -> String {
     match entry {
-        HelpEntry::Heading(text) | HelpEntry::Text(text) => (*text).to_string(),
+        HelpEntry::Heading(text) | HelpEntry::Text(text) => text.clone(),
         HelpEntry::Item(key, description) => format!("{key} {description}"),
         HelpEntry::Blank => String::new(),
     }

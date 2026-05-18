@@ -30,9 +30,9 @@ use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
     transcript_click_targets, transcript_url_overlays, transcript_visible_lines, CollapseMode,
-    MessageView, ParsedCommand, PromptResource, SessionListItem, SettingsCommand, SkillResource,
-    TerminalClickTarget, TerminalUrlOverlay, ToolSettingsItem, ToolSettingsScope, TuiAction,
-    TuiState, HELP_STATUS,
+    KeymapConfig, MessageView, ParsedCommand, PromptResource, SessionListItem, SettingsCommand,
+    SkillResource, TerminalClickTarget, TerminalUrlOverlay, ToolSettingsItem, ToolSettingsScope,
+    TuiAction, TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -122,7 +122,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings keymaps"
 }
 
 #[derive(Debug, Error)]
@@ -152,6 +152,7 @@ struct AppConfig {
     thinking_collapse_mode: CollapseMode,
     tool_collapse_mode: CollapseMode,
     chat_style: oino_tui::ChatStyle,
+    keymap: KeymapConfig,
     referer: Option<String>,
     title: Option<String>,
 }
@@ -163,6 +164,7 @@ struct TuiLaunchConfig {
     initial_thinking_collapse_mode: CollapseMode,
     initial_tool_collapse_mode: CollapseMode,
     initial_chat_style: oino_tui::ChatStyle,
+    initial_keymap: KeymapConfig,
     provider_config: OpenRouterConfig,
     session_path: PathBuf,
     resource_paths: ResourcePaths,
@@ -205,6 +207,7 @@ impl AppConfig {
             thinking_collapse_mode: saved_settings.thinking_collapse_mode.unwrap_or_default(),
             tool_collapse_mode: saved_settings.tool_collapse_mode.unwrap_or_default(),
             chat_style: saved_settings.chat_style.unwrap_or_default(),
+            keymap: saved_settings.keymap.unwrap_or_default(),
             referer,
             title,
         }
@@ -310,6 +313,7 @@ async fn main() -> Result<(), AppError> {
             initial_thinking_collapse_mode: config.thinking_collapse_mode,
             initial_tool_collapse_mode: config.tool_collapse_mode,
             initial_chat_style: config.chat_style,
+            initial_keymap: config.keymap,
             provider_config,
             session_path,
             resource_paths,
@@ -648,6 +652,7 @@ async fn run_tui(
         initial_thinking_collapse_mode,
         initial_tool_collapse_mode,
         initial_chat_style,
+        initial_keymap,
         provider_config,
         mut session_path,
         resource_paths,
@@ -667,6 +672,7 @@ async fn run_tui(
         .settings
         .set_collapse_modes(initial_thinking_collapse_mode, initial_tool_collapse_mode);
     state.settings.set_chat_style(initial_chat_style);
+    state.set_keymap(initial_keymap);
     if let Ok(messages) = harness.build_context().await {
         state.set_messages_from_oino(&messages);
     }
@@ -787,7 +793,9 @@ async fn run_tui(
                     save_tui_session(&mut state, &harness, &session_path).await;
                 }
             }
-            TuiAction::SetCollapseMode(_, _) | TuiAction::SetChatStyle(_) => {
+            TuiAction::SetCollapseMode(_, _)
+            | TuiAction::SetChatStyle(_)
+            | TuiAction::SetKeymap(_) => {
                 persist_current_settings(&mut state).await;
                 save_tui_session(&mut state, &harness, &session_path).await;
             }
@@ -1477,6 +1485,7 @@ async fn run_non_interactive(
                 initial_thinking_collapse_mode: config.thinking_collapse_mode,
                 initial_tool_collapse_mode: config.tool_collapse_mode,
                 initial_chat_style: config.chat_style,
+                initial_keymap: config.keymap,
                 provider_config: OpenRouterConfig {
                     referer: config.referer,
                     title: config.title,
@@ -1787,7 +1796,8 @@ async fn execute_runtime_command(
             | SettingsCommand::OpenModelSelection
             | SettingsCommand::OpenThinkingLevel
             | SettingsCommand::OpenChatStyle
-            | SettingsCommand::OpenTools,
+            | SettingsCommand::OpenTools
+            | SettingsCommand::OpenKeymaps,
         ) => {
             return Err(AppError::InvalidArguments(
                 "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model openrouter:xai/glm-5.1` or `/thinking high`".into(),
@@ -2020,7 +2030,7 @@ enum TuiRuntimeEvent {
 }
 
 async fn persist_current_settings(state: &mut TuiState) {
-    let settings = UserSettings::from_current(
+    let mut settings = UserSettings::from_current(
         state.settings.selected_model.clone(),
         state.settings.selected_thinking_level,
         state.settings.thinking_collapse_mode,
@@ -2028,6 +2038,7 @@ async fn persist_current_settings(state: &mut TuiState) {
         state.settings.chat_style,
     )
     .with_tools(tool_map_from_state(state, ToolSettingsScope::Global));
+    settings.keymap = Some(state.settings.keymap.clone());
     if let Err(err) = settings.save_default().await {
         state.set_error(format!("Settings save failed: {err}"));
         state.status = HELP_STATUS.into();
@@ -2420,6 +2431,7 @@ mod tests {
                 thinking_collapse_mode: Some(CollapseMode::Truncate),
                 tool_collapse_mode: Some(CollapseMode::Collapse),
                 chat_style: Some(oino_tui::ChatStyle::Minimal),
+                keymap: None,
                 tools: BTreeMap::new(),
             },
             None,
