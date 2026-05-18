@@ -1044,7 +1044,11 @@ fn bubble_lines(
         )];
     }
 
-    let max_bubble_width = available_width.clamp(16, 80).min(available_width);
+    let max_bubble_width = available_width
+        .saturating_mul(95)
+        .saturating_add(99)
+        .saturating_div(100)
+        .clamp(16, available_width);
     let content_width = max_bubble_width.saturating_sub(4).max(1);
     let message_content = display_message_content(message, tool_mode);
     let content_lines = message_content_lines(message, &message_content, content_width, theme);
@@ -1337,6 +1341,23 @@ mod tests {
             );
             assert!(!rendered.contains("`code`"), "style {style:?}: {rendered}");
         }
+    }
+
+    #[test]
+    fn chat_bubbles_expand_to_ninety_five_percent_for_wide_content() {
+        let messages = vec![assistant_text(&"x".repeat(240))];
+        let lines = transcript_lines(
+            &messages,
+            None,
+            120,
+            CollapseMode::Full,
+            CollapseMode::Full,
+            ChatStyle::Chat,
+            &Theme::default(),
+        );
+        let top_border = plain(&lines[0]);
+
+        assert_eq!(top_border.width(), 114);
     }
 
     #[test]

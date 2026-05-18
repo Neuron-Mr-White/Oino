@@ -102,7 +102,9 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
 
 fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, chord: ChordState, theme: &Theme) {
     let title = match chord {
-        ChordState::CtrlO => " Ctrl-O chord: s send panel • t transcript • e expand • Esc cancel ",
+        ChordState::CtrlO => {
+            " Ctrl-O: s settings • q send panel • t transcript • e expand • Esc cancel "
+        }
         ChordState::None => return,
     };
     frame.render_widget(
@@ -820,11 +822,15 @@ fn render_send_panel_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
     );
 
     let controls = if state.send_panel.confirm_delete {
-        "Delete selected? y/d delete • n/Esc cancel"
+        "Press y to confirm deletion • n/Esc cancel"
     } else {
         "↑/↓ select • Enter load • q queue input • d draft input • x delete • Esc close"
     };
-    let status = format!("{} • {controls}", state.status);
+    let status = if state.send_panel.confirm_delete || state.status.trim().is_empty() {
+        controls.to_string()
+    } else {
+        format!("{} • {controls}", state.status)
+    };
     frame.render_widget(
         Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
         sections[1],
@@ -2363,8 +2369,9 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect::<String>();
-        assert!(text.contains("Ctrl-O chord"));
-        assert!(text.contains("s send panel"));
+        assert!(text.contains("Ctrl-O:"));
+        assert!(text.contains("s settings"));
+        assert!(text.contains("q send panel"));
         assert!(text.contains("Esc cancel"));
     }
 

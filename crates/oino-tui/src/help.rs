@@ -90,8 +90,9 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
         "Enter while streaming",
         "steer the current response with the current input",
     ),
+    HelpEntry::Item("Ctrl-O s", "open settings"),
     HelpEntry::Item(
-        "Ctrl-O s",
+        "Ctrl-O q",
         "open the send panel for steering history, queue, and drafts",
     ),
     HelpEntry::Item("Send panel q", "queue current input for the next turn"),

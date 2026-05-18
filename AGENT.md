@@ -60,7 +60,7 @@ From today onwards, keep all conventions we know so far in this file so future a
 
 - Composer remains editable while the model streams.
 - Enter during streaming sends steering input.
-- `Ctrl-O s` opens the send panel.
+- `Ctrl-O s` opens settings; `Ctrl-O q` opens the send panel.
 - Esc should dismiss transient UI or stop a running response; it should not quit the app.
 - Quit requires two Ctrl-C presses.
 - Long rows in pickers/browsers should truncate with ellipsis instead of clipping.

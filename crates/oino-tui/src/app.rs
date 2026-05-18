@@ -178,6 +178,7 @@ pub struct TuiState {
     pub queued_items: Vec<String>,
     pub draft_items: Vec<String>,
     transcript_page_lines: usize,
+    transcript_version: u64,
     quit_pending: bool,
     file_paths: Vec<String>,
 }
@@ -211,6 +212,7 @@ impl Default for TuiState {
             queued_items: Vec::new(),
             draft_items: Vec::new(),
             transcript_page_lines: DEFAULT_TRANSCRIPT_PAGE_LINES,
+            transcript_version: 0,
             quit_pending: false,
             file_paths: Vec::new(),
         }
@@ -416,6 +418,9 @@ impl TuiState {
 
     #[must_use]
     pub fn activity_status(&self) -> Option<String> {
+        if self.overlay.is_some() {
+            return None;
+        }
         self.working
             .then(|| self.status.clone())
             .filter(|status| !status.trim().is_empty())
@@ -707,8 +712,21 @@ impl TuiState {
         self.command_suggestions.cache_view(&input, cursor, view);
     }
 
+    #[must_use]
+    pub const fn transcript_version(&self) -> u64 {
+        self.transcript_version
+    }
+
+    fn mark_transcript_changed(&mut self) {
+        self.transcript_version = self.transcript_version.wrapping_add(1);
+        if self.transcript_version == 0 {
+            self.transcript_version = 1;
+        }
+    }
+
     pub fn set_messages_from_oino(&mut self, messages: &[Message]) {
         self.messages = project_messages(messages);
+        self.mark_transcript_changed();
     }
 
     pub fn start_message(&mut self, id: OinoId, role: impl Into<String>) {
@@ -728,15 +746,25 @@ impl TuiState {
             tool_calls: Vec::new(),
             is_error: false,
         });
+        self.mark_transcript_changed();
     }
 
     pub fn update_message(&mut self, id: OinoId, content: &[ContentBlock]) {
         let projected = project_content_blocks(content);
-        if let Some(message) = self.messages.iter_mut().find(|message| message.id == id) {
-            message.content = projected.content;
-            message.thinking = projected.thinking;
-            message.thinking_redacted = projected.thinking_redacted;
-            message.tool_calls = projected.tool_calls;
+        let mut changed = false;
+        if let Some(index) = self.messages.iter().position(|message| message.id == id) {
+            let message = &mut self.messages[index];
+            if message.content != projected.content
+                || message.thinking != projected.thinking
+                || message.thinking_redacted != projected.thinking_redacted
+                || message.tool_calls != projected.tool_calls
+            {
+                message.content = projected.content;
+                message.thinking = projected.thinking;
+                message.thinking_redacted = projected.thinking_redacted;
+                message.tool_calls = projected.tool_calls;
+                changed = true;
+            }
         } else {
             self.messages.push(MessageView {
                 id,
@@ -749,26 +777,39 @@ impl TuiState {
                 tool_calls: projected.tool_calls,
                 is_error: false,
             });
+            changed = true;
+        }
+        if changed {
+            self.mark_transcript_changed();
         }
     }
 
     pub fn finish_message(&mut self, message: &Message) {
         let mut view = project_message(message);
         let fallback_title = self.title_for_role(&view.role);
-        if let Some(existing) = self
+        let mut changed = false;
+        if let Some(index) = self
             .messages
-            .iter_mut()
-            .find(|existing| existing.id == view.id)
+            .iter()
+            .position(|existing| existing.id == view.id)
         {
+            let existing = &mut self.messages[index];
             if view.title.is_none() {
                 view.title = existing.title.clone().or(fallback_title);
             }
-            *existing = view;
+            if *existing != view {
+                *existing = view;
+                changed = true;
+            }
         } else {
             if view.title.is_none() {
                 view.title = fallback_title;
             }
             self.messages.push(view);
+            changed = true;
+        }
+        if changed {
+            self.mark_transcript_changed();
         }
     }
 
@@ -792,7 +833,7 @@ impl TuiState {
 
     pub fn set_calling_status(&mut self) {
         self.status = format!(
-            "Calling {}… type and Enter to steer • Ctrl-O s queue/drafts",
+            "Calling {}… type and Enter to steer • Ctrl-O q queue/drafts",
             provider_label(self.settings.selected_model_label())
         );
     }
@@ -878,7 +919,7 @@ impl TuiState {
         if is_ctrl_o_key(key) {
             self.chord = ChordState::CtrlO;
             self.status =
-                "Ctrl-O chord: s send panel • t transcript • e expand • Esc cancel".into();
+                "Ctrl-O: s settings • q send panel • t transcript • e expand • Esc cancel".into();
             return TuiAction::None;
         }
 
@@ -930,6 +971,10 @@ impl TuiState {
         self.chord = ChordState::None;
         match (chord, key.code) {
             (ChordState::CtrlO, KeyCode::Char('s' | 'S')) if key.modifiers.is_empty() => {
+                self.open_settings_overlay();
+                TuiAction::None
+            }
+            (ChordState::CtrlO, KeyCode::Char('q' | 'Q')) if key.modifiers.is_empty() => {
                 self.open_send_panel();
                 TuiAction::None
             }
@@ -1263,7 +1308,7 @@ impl TuiState {
     fn handle_send_panel_key(&mut self, key: KeyEvent) -> TuiAction {
         if self.send_panel.confirm_delete {
             match key.code {
-                KeyCode::Char('y' | 'Y' | 'd' | 'D') if key.modifiers.is_empty() => {
+                KeyCode::Char('y' | 'Y') if key.modifiers.is_empty() => {
                     let deleted = self
                         .selected_send_panel_item()
                         .and_then(|item| self.delete_send_panel_item(&item));
@@ -1278,7 +1323,7 @@ impl TuiState {
                     self.status = "Delete canceled".into();
                 }
                 _ => {
-                    self.status = "Delete selected? y/d delete • n cancel".into();
+                    self.status = "Press y to confirm deletion • n/Esc cancel".into();
                 }
             }
             return TuiAction::None;
@@ -1322,7 +1367,7 @@ impl TuiState {
             KeyCode::Char('x' | 'X') if key.modifiers.is_empty() => {
                 if self.selected_send_panel_item().is_some() {
                     self.send_panel.confirm_delete = true;
-                    self.status = "Delete selected? y/d delete • n cancel".into();
+                    self.status = "Press y to confirm deletion • n/Esc cancel".into();
                 } else {
                     self.status = "Nothing selected to delete".into();
                 }
@@ -1661,14 +1706,26 @@ impl TuiState {
 
     fn submit_input(&mut self) -> TuiAction {
         match self.composer.submit() {
-            Some(prompt) if self.working => {
-                self.record_steer(prompt.clone());
-                self.status = "Steering current response…".into();
-                TuiAction::SteerPrompt(prompt)
-            }
+            Some(prompt) if self.working => self.submit_while_working(prompt),
             Some(prompt) => self.submit_text(prompt),
             None => TuiAction::None,
         }
+    }
+
+    fn submit_while_working(&mut self, prompt: String) -> TuiAction {
+        if let Some(command) = parse_command(&prompt) {
+            return self.execute_command(command);
+        }
+
+        if prompt.trim_start().starts_with('/') {
+            self.error = Some(format!("Unknown command `{prompt}`"));
+            self.set_calling_status();
+            return TuiAction::None;
+        }
+
+        self.record_steer(prompt.clone());
+        self.status = "Steering current response…".into();
+        TuiAction::SteerPrompt(prompt)
     }
 
     fn submit_text(&mut self, prompt: String) -> TuiAction {
@@ -1822,6 +1879,7 @@ impl TuiState {
 
     pub fn reset_for_new_session(&mut self, session_id: &str) {
         self.messages.clear();
+        self.mark_transcript_changed();
         self.clear_session_runtime_state();
         self.status = format!("Started new session {session_id}");
     }
@@ -2363,6 +2421,20 @@ mod tests {
     }
 
     #[test]
+    fn working_state_runs_slash_commands_instead_of_steering_them() {
+        let mut state = TuiState::with_settings("openrouter:test/model", ThinkingLevel::Off);
+        state.set_working(true);
+        for ch in "/settings".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Settings));
+        assert!(state.working);
+        assert!(state.steer_items.is_empty());
+    }
+
+    #[test]
     fn pasted_newlines_insert_without_submitting() {
         let mut state = TuiState::new();
         assert_eq!(state.handle_paste("first\nsecond"), TuiAction::None);
@@ -2462,7 +2534,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_o_s_opens_send_panel() {
+    fn ctrl_o_s_opens_settings_and_ctrl_o_q_opens_send_panel() {
         let mut state = TuiState::new();
         assert_eq!(
             state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
@@ -2470,6 +2542,15 @@ mod tests {
         );
         assert_eq!(state.chord, ChordState::CtrlO);
         assert_eq!(state.handle_key(key(KeyCode::Char('s'))), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Settings));
+        assert_eq!(state.chord, ChordState::None);
+
+        state.overlay = None;
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char('q'))), TuiAction::None);
         assert_eq!(state.overlay, Some(OverlayKind::SendPanel));
         assert_eq!(state.chord, ChordState::None);
     }
@@ -2503,15 +2584,28 @@ mod tests {
     }
 
     #[test]
-    fn send_panel_x_confirms_delete_with_d() {
+    fn send_panel_x_confirms_delete_with_y() {
         let mut state = TuiState::new();
         state.draft_items.push("old draft".into());
         state.open_send_panel();
         assert_eq!(state.handle_key(key(KeyCode::Char('x'))), TuiAction::None);
         assert!(state.send_panel.confirm_delete);
-        assert_eq!(state.handle_key(key(KeyCode::Char('d'))), TuiAction::None);
+        assert!(state.status.contains("Press y"));
+        assert_eq!(state.handle_key(key(KeyCode::Char('y'))), TuiAction::None);
         assert!(!state.send_panel.confirm_delete);
         assert!(state.draft_items.is_empty());
+    }
+
+    #[test]
+    fn overlay_prompts_do_not_leak_into_main_activity_status() {
+        let mut state = TuiState::new();
+        state.set_working(true);
+        state.draft_items.push("old draft".into());
+        state.open_send_panel();
+        assert_eq!(state.handle_key(key(KeyCode::Char('x'))), TuiAction::None);
+
+        assert_eq!(state.activity_status(), None);
+        assert!(state.status.contains("Press y"));
     }
 
     #[test]

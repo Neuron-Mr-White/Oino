@@ -642,30 +642,37 @@ impl MarkdownRenderer {
         let number_width = parts.len().to_string().width().max(1);
         for (index, part) in parts.into_iter().enumerate() {
             let line_number = (index + 1).to_string();
-            let (mut initial, mut subsequent) = self.block_prefixes(&mut consumed_block_prefix);
-            initial.push_span(Span::styled("│ ", self.styles.code_border));
-            initial.push_span(Span::styled(
-                format!(
-                    "{}{}",
-                    " ".repeat(number_width.saturating_sub(line_number.width())),
-                    line_number
-                ),
-                self.styles.code_line_number,
-            ));
-            initial.push_span(Span::styled(" │ ", self.styles.code_border));
-            subsequent.push_span(Span::styled("│ ", self.styles.code_border));
-            subsequent.push_span(Span::styled(
-                " ".repeat(number_width),
-                self.styles.code_line_number,
-            ));
-            subsequent.push_span(Span::styled(" │ ", self.styles.code_border));
-            push_wrapped_line(
-                &mut self.lines,
-                Line::from(code_highlighter.highlight_line(part, self.styles)),
-                self.width,
-                initial,
-                subsequent,
+            let prefix_width = line_width(&self.continuation_prefixes().0);
+            let available = self.width.saturating_sub(prefix_width).max(1);
+            let code_width = available
+                .saturating_sub(number_width.saturating_add(7))
+                .max(1);
+            let wrapped = wrap_spans_to_width(
+                code_highlighter.highlight_line(part, self.styles),
+                code_width,
             );
+            for (visual_index, segment) in wrapped.into_iter().enumerate() {
+                let (mut line, _) = self.block_prefixes(&mut consumed_block_prefix);
+                line.push_span(Span::styled("│ ", self.styles.code_border));
+                let number = if visual_index == 0 {
+                    format!(
+                        "{}{}",
+                        " ".repeat(number_width.saturating_sub(line_number.width())),
+                        line_number
+                    )
+                } else {
+                    " ".repeat(number_width)
+                };
+                line.push_span(Span::styled(number, self.styles.code_line_number));
+                line.push_span(Span::styled(" │ ", self.styles.code_border));
+                let segment_width = line_width(&segment);
+                line.spans.extend(segment.spans);
+                if segment_width < code_width {
+                    line.push_span(Span::raw(" ".repeat(code_width - segment_width)));
+                }
+                line.push_span(Span::styled(" │", self.styles.code_border));
+                self.lines.push(line);
+            }
         }
         self.push_code_block_border(None, false, &mut consumed_block_prefix);
     }
@@ -826,36 +833,32 @@ fn code_block_language(kind: CodeBlockKind<'_>) -> Option<String> {
 }
 
 fn code_block_border_text(label: Option<&str>, top: bool, width: usize) -> String {
-    let width = width.max(1);
-    if !top {
-        return format!("╰{}", "─".repeat(width.saturating_sub(1)));
+    let (left, right) = if top { ('╭', '╮') } else { ('╰', '╯') };
+    if width <= 1 {
+        return left.to_string();
     }
 
-    let mut border = String::from("╭");
-    if width == 1 {
-        return border;
-    }
-    border.push('─');
-
-    if let Some(label) = label.map(str::trim).filter(|label| !label.is_empty()) {
-        let max_label_width = width.saturating_sub(4);
-        if max_label_width > 0 {
-            let label = truncate_to_width(label, max_label_width);
-            border.push(' ');
-            border.push_str(&label);
-            border.push(' ');
+    let inner_width = width.saturating_sub(2);
+    let mut inner = String::new();
+    if top {
+        if let Some(label) = label.map(str::trim).filter(|label| !label.is_empty()) {
+            let max_label_width = inner_width.saturating_sub(4);
+            if max_label_width > 0 {
+                inner.push('─');
+                inner.push(' ');
+                inner.push_str(&truncate_to_width(label, max_label_width));
+                inner.push(' ');
+            }
         }
     }
 
-    let used = border.width();
-    if used < width {
-        border.push_str(&"─".repeat(width - used));
-        border
-    } else if used == width {
-        border
-    } else {
-        truncate_to_width(&border, width)
+    let used = inner.width();
+    if used < inner_width {
+        inner.push_str(&"─".repeat(inner_width - used));
+    } else if used > inner_width {
+        inner = truncate_to_width(&inner, inner_width);
     }
+    format!("{left}{inner}{right}")
 }
 
 fn heading_border_line(left: char, right: char, label: &str, width: usize) -> String {
@@ -1378,6 +1381,35 @@ fn align_to_width(text: &str, width: usize, alignment: Alignment) -> String {
     }
 }
 
+fn wrap_spans_to_width(spans: Vec<Span<'static>>, width: usize) -> Vec<Line<'static>> {
+    let width = width.max(1);
+    let mut out = Vec::new();
+    let mut current = Line::default();
+    let mut current_width = 0usize;
+    let mut has_content = false;
+
+    for span in spans {
+        let style = span.style;
+        for grapheme in span.content.as_ref().graphemes(true) {
+            let grapheme_width = grapheme.width();
+            if current_width.saturating_add(grapheme_width) > width && has_content {
+                out.push(current);
+                current = Line::default();
+                current_width = 0;
+                has_content = false;
+            }
+            push_coalesced_span(&mut current, grapheme, style);
+            current_width = current_width.saturating_add(grapheme_width);
+            has_content = has_content || current_width > 0 || grapheme_width == 0;
+        }
+    }
+
+    if has_content || out.is_empty() {
+        out.push(current);
+    }
+    out
+}
+
 fn push_wrapped_line(
     out: &mut Vec<Line<'static>>,
     line: Line<'static>,
@@ -1465,6 +1497,24 @@ mod tests {
         assert!(plain_lines.iter().any(|line| line.contains("fn main() {}")));
         assert!(!plain_lines.iter().any(|line| line.contains("**Bold**")));
         assert!(!plain_lines.iter().any(|line| line.contains("`code`")));
+    }
+
+    #[test]
+    fn code_blocks_render_closed_right_border() {
+        let lines = render_markdown_lines(
+            "```rust\nfn main() {}\n```",
+            40,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+
+        assert!(plain_lines[0].ends_with('╮'), "{}", plain_lines[0]);
+        assert!(plain_lines
+            .iter()
+            .any(|line| line.contains("fn main") && line.ends_with('│')));
+        assert!(plain_lines.iter().any(|line| line.ends_with('╯')));
+        assert!(plain_lines.iter().all(|line| line.width() <= 40));
     }
 
     #[test]
@@ -1657,8 +1707,12 @@ mod tests {
         assert!(plain_lines
             .first()
             .is_some_and(|line| line.starts_with("╭─ rust")));
-        assert!(plain_lines.iter().any(|line| line == "│ 1 │ fn main() {}"));
-        assert!(plain_lines.iter().any(|line| line.starts_with('╰')));
+        assert!(plain_lines
+            .iter()
+            .any(|line| line.starts_with("│ 1 │ fn main() {}") && line.ends_with('│')));
+        assert!(plain_lines
+            .iter()
+            .any(|line| line.starts_with('╰') && line.ends_with('╯')));
         assert!(plain_lines.iter().all(|line| line.width() <= 32));
     }
 

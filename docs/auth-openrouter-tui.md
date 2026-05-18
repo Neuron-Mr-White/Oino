@@ -80,7 +80,7 @@ Controls:
 - typing `/` as the first composer token opens command suggestions above the composer
 - in command suggestions: arrows choose, Tab completes, Enter runs or advances the highlighted command path, Esc dismisses
 - model identifiers use the single `provider:model-id` form, e.g. `openrouter:xai/glm-5.1`
-- `/settings` or `Ctrl-O s` opens the reusable settings overlay
+- `/settings` or `Ctrl-O s` opens the reusable settings overlay; `Ctrl-O q` opens the send panel
 - command paths such as `/model openrouter:xai/glm-5.1`, `/thinking high`, `/settings model openrouter:xai/glm-5.1`, and `/settings collapse tool truncate` apply settings directly
 - settings starts on a menu page with arrow-marked choices; Enter opens a dedicated Model Selection, Thinking Level, or Collapse Mode page
 - in Model Selection: `/` opens model search, typing filters the model list, arrows move matching models, Esc clears search back to normal list UX

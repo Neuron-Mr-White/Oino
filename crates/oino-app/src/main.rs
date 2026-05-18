@@ -550,7 +550,7 @@ async fn run_tui(
             }
             TuiAction::NewSession => {
                 if prompt_in_flight {
-                    state.set_error("Cannot start a new session while a prompt is running");
+                    state.status = "Cannot start a new session while a prompt is running".into();
                 } else {
                     start_new_tui_session(&mut state, &harness, &mut session_path).await;
                 }
@@ -560,7 +560,7 @@ async fn run_tui(
             }
             TuiAction::OpenSession(session_id) => {
                 if prompt_in_flight {
-                    state.set_error("Cannot switch sessions while a prompt is running");
+                    state.status = "Cannot switch sessions while a prompt is running".into();
                 } else if let Some(thinking_level) =
                     open_tui_session(&mut state, &harness, &mut session_path, &session_id).await
                 {
@@ -749,9 +749,8 @@ async fn start_prompt(
     prompt: String,
 ) -> bool {
     if *prompt_in_flight {
-        state.set_error(
-            "A prompt is already running. Use Enter to steer or Ctrl-O s then q to queue.",
-        );
+        state.status =
+            "A prompt is already running. Use Enter to steer or Ctrl-O q then q to queue.".into();
         return false;
     }
     if let Err(message) = preflight_openrouter_credentials(auth).await {
