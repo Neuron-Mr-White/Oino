@@ -3,8 +3,9 @@
 use crate::{
     action::TuiAction,
     command::{
-        command_suggestions_for, file_suggestions_for, parse_command, CommandSuggestionsState,
-        CommandSuggestionsView, ParsedCommand, SettingsCommand,
+        command_suggestions_for, file_suggestions_for, parse_command, CommandSuggestionCategory,
+        CommandSuggestionItem, CommandSuggestionsState, CommandSuggestionsView, ParsedCommand,
+        SettingsCommand,
     },
     composer::{
         char_count, collapsed_paste_summary, normalize_paste_text, should_collapse_paste,
@@ -1063,7 +1064,7 @@ impl TuiState {
             return false;
         };
         let should_submit = submit_ready && item.complete_on_enter;
-        let replacement = if should_submit {
+        let replacement = if should_submit || resource_suggestion_completes_without_space(&item) {
             item.replacement.clone()
         } else {
             format!("{} ", item.replacement.trim_end())
@@ -1529,7 +1530,7 @@ impl TuiState {
             return;
         };
         self.overlay = None;
-        self.composer.replace_text(format!("{command} "));
+        self.composer.replace_text(command.clone());
         self.focus = TuiFocus::Composer;
         self.status = format!("Completed {command}");
         self.refresh_command_suggestions();
@@ -1541,7 +1542,7 @@ impl TuiState {
             return;
         };
         self.overlay = None;
-        self.composer.replace_text(format!("{command} "));
+        self.composer.replace_text(command.clone());
         self.focus = TuiFocus::Composer;
         self.status = format!("Completed {command}");
         self.refresh_command_suggestions();
@@ -1880,6 +1881,13 @@ impl CommandSuggestionKeyResult {
             Self::Unhandled => TuiAction::None,
         }
     }
+}
+
+fn resource_suggestion_completes_without_space(item: &CommandSuggestionItem) -> bool {
+    matches!(
+        item.category,
+        CommandSuggestionCategory::Prompt | CommandSuggestionCategory::Skill
+    )
 }
 
 fn is_force_quit_key(key: KeyEvent) -> bool {
@@ -2610,7 +2618,7 @@ mod tests {
             Some("review")
         );
         assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
-        assert_eq!(state.input(), "/prompt:review ");
+        assert_eq!(state.input(), "/prompt:review");
 
         state.composer.clear();
         for ch in "/skills".chars() {
@@ -2685,6 +2693,35 @@ mod tests {
         assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
         assert_eq!(state.input(), "/settings ");
         assert_eq!(state.overlay, None);
+    }
+
+    #[test]
+    fn resource_prefix_and_name_completion_do_not_insert_space() {
+        let mut state = TuiState::new();
+        add_test_resources(&mut state);
+
+        for ch in "/sk".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        let suggestions = state
+            .command_suggestions_view()
+            .unwrap_or_else(|| panic!("missing resource prefix suggestions"));
+        assert!(suggestions.items.iter().any(|item| item.label == "/skill:"));
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(state.input(), "/skill:");
+
+        for ch in "deb".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(state.input(), "/skill:debug");
+
+        state.composer.clear();
+        for ch in "please /P:rev".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(state.input(), "please /prompt:review");
     }
 
     #[test]

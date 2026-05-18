@@ -70,6 +70,19 @@ pub const COMMANDS: &[CommandSpec] = &[
     },
 ];
 
+const RESOURCE_PREFIX_SUGGESTIONS: &[(&str, &str, CommandSuggestionCategory)] = &[
+    (
+        "/prompt:",
+        "Include a prompt template by name",
+        CommandSuggestionCategory::Prompt,
+    ),
+    (
+        "/skill:",
+        "Include a skill by name",
+        CommandSuggestionCategory::Skill,
+    ),
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedCommand {
     Help,
@@ -451,7 +464,41 @@ pub fn parse_chat_style(value: &str) -> Option<ChatStyle> {
 
 fn root_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     let query = context.active_prefix.trim_start_matches('/');
-    let candidates = COMMANDS
+    let mut candidates = Vec::new();
+    if query.is_empty() {
+        candidates.extend(root_command_items(&context));
+        candidates.extend(root_resource_prefix_items(&context));
+    } else {
+        candidates.extend(root_resource_prefix_items(&context));
+        candidates.extend(root_command_items(&context));
+    }
+    let mut items = fuzzy_indices(
+        &candidates,
+        query,
+        FuzzyMode::Text,
+        None,
+        suggestion_match_text,
+    )
+    .into_iter()
+    .map(|index| candidates[index].clone())
+    .collect::<Vec<_>>();
+    items.sort_by_key(|item| root_resource_prefix_priority(query, item));
+    Some(view("Commands", context.active_prefix, items))
+}
+
+fn root_resource_prefix_priority(query: &str, item: &CommandSuggestionItem) -> usize {
+    if query.len() >= 2
+        && (("skill:".starts_with(query) && item.label == "/skill:")
+            || ("prompt:".starts_with(query) && item.label == "/prompt:"))
+    {
+        0
+    } else {
+        1
+    }
+}
+
+fn root_command_items(context: &SuggestionContext) -> Vec<CommandSuggestionItem> {
+    COMMANDS
         .iter()
         .map(|command| CommandSuggestionItem {
             label: command.name.into(),
@@ -462,18 +509,22 @@ fn root_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView
             complete_on_enter: true,
             category: CommandSuggestionCategory::System,
         })
-        .collect::<Vec<_>>();
-    let items = fuzzy_indices(
-        &candidates,
-        query,
-        FuzzyMode::Text,
-        None,
-        suggestion_match_text,
-    )
-    .into_iter()
-    .map(|index| candidates[index].clone())
-    .collect::<Vec<_>>();
-    Some(view("Commands", context.active_prefix, items))
+        .collect()
+}
+
+fn root_resource_prefix_items(context: &SuggestionContext) -> Vec<CommandSuggestionItem> {
+    RESOURCE_PREFIX_SUGGESTIONS
+        .iter()
+        .map(|(label, summary, category)| CommandSuggestionItem {
+            label: (*label).into(),
+            summary: (*summary).into(),
+            replacement: (*label).into(),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: false,
+            category: *category,
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1111,6 +1162,8 @@ mod tests {
         assert!(view.items.iter().any(|item| item.label == "/prompts"));
         assert!(view.items.iter().any(|item| item.label == "/skills"));
         assert!(view.items.iter().any(|item| item.label == "/reload"));
+        assert!(view.items.iter().any(|item| item.label == "/prompt:"));
+        assert!(view.items.iter().any(|item| item.label == "/skill:"));
         let view = suggestions("/zzzz", 5).unwrap_or_else(|| panic!("missing view"));
         assert!(view.items.is_empty());
     }
@@ -1118,10 +1171,22 @@ mod tests {
     #[test]
     fn resource_suggestions_support_labels_and_scoped_search() {
         let view = suggestions("/", 1).unwrap_or_else(|| panic!("missing root view"));
-        assert!(view
+        let prompt_prefix = view
             .items
             .iter()
-            .all(|item| item.category == CommandSuggestionCategory::System));
+            .find(|item| item.label == "/prompt:")
+            .unwrap_or_else(|| panic!("missing prompt prefix"));
+        assert_eq!(prompt_prefix.category, CommandSuggestionCategory::Prompt);
+        assert_eq!(prompt_prefix.replacement, "/prompt:");
+        assert!(!prompt_prefix.complete_on_enter);
+        let skill_prefix = view
+            .items
+            .iter()
+            .find(|item| item.label == "/skill:")
+            .unwrap_or_else(|| panic!("missing skill prefix"));
+        assert_eq!(skill_prefix.category, CommandSuggestionCategory::Skill);
+        assert_eq!(skill_prefix.replacement, "/skill:");
+        assert!(!skill_prefix.complete_on_enter);
 
         let view = suggestions("/prompt:rev", 11)
             .unwrap_or_else(|| panic!("missing prompt command suggestions"));
