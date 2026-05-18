@@ -913,6 +913,9 @@ fn opener_candidates(target: &str, browser_env: Option<&str>) -> Vec<OpenCommand
 
     #[cfg(all(unix, not(target_os = "macos")))]
     {
+        if running_under_wsl() {
+            candidates.extend(wsl_interop_candidates(target));
+        }
         candidates.push(OpenCommand::with_target("xdg-open", target));
         candidates.push(OpenCommand::new("gio", ["open", target]));
         candidates.push(OpenCommand::with_target("kde-open", target));
@@ -923,6 +926,50 @@ fn opener_candidates(target: &str, browser_env: Option<&str>) -> Vec<OpenCommand
     }
 
     candidates
+}
+
+fn wsl_interop_candidates(target: &str) -> Vec<OpenCommand> {
+    let target = wsl_host_target(target);
+    vec![
+        OpenCommand::new("cmd.exe", ["/C", "start", "", target.as_str()]),
+        OpenCommand::new(
+            "powershell.exe",
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Process -FilePath $args[0]",
+                target.as_str(),
+            ],
+        ),
+        OpenCommand::with_target("explorer.exe", &target),
+        OpenCommand::new(
+            "rundll32.exe",
+            ["url.dll,FileProtocolHandler", target.as_str()],
+        ),
+    ]
+}
+
+fn wsl_host_target(target: &str) -> String {
+    if is_external_url(target) || target.starts_with("file://") || !target.starts_with('/') {
+        return target.to_string();
+    }
+
+    Command::new("wslpath")
+        .args(["-w", target])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|output| output.trim().to_string())
+        .filter(|output| !output.is_empty())
+        .unwrap_or_else(|| target.to_string())
+}
+
+fn running_under_wsl() -> bool {
+    std::env::var_os("WSL_INTEROP").is_some() || std::env::var_os("WSL_DISTRO_NAME").is_some()
 }
 
 fn browser_env_candidates(target: &str, browser_env: Option<&str>) -> Vec<OpenCommand> {
@@ -1929,6 +1976,26 @@ mod tests {
             candidate,
             OpenCommand::new("firefox", ["--new-tab", "https://example.com"])
         );
+    }
+
+    #[test]
+    fn wsl_interop_candidates_open_urls_with_windows_host() {
+        let candidates = wsl_interop_candidates("https://example.com");
+
+        assert_eq!(
+            candidates.first(),
+            Some(&OpenCommand::new(
+                "cmd.exe",
+                ["/C", "start", "", "https://example.com"]
+            ))
+        );
+        assert!(candidates.iter().any(|candidate| candidate
+            == &OpenCommand::with_target("explorer.exe", "https://example.com")));
+        assert!(candidates.iter().any(|candidate| candidate
+            == &OpenCommand::new(
+                "rundll32.exe",
+                ["url.dll,FileProtocolHandler", "https://example.com"]
+            )));
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
