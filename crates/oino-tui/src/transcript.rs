@@ -197,14 +197,25 @@ fn agentic_message_lines(
         return agentic_assistant_lines(message, messages, index, width, thinking_mode, theme);
     }
     if message.is_user() {
+        let initial_prefix = Line::from(Span::styled(
+            "› ",
+            Style::default().fg(theme.focused_border),
+        ));
+        let subsequent_prefix = Line::from("  ");
+        if let Some(resources) = parse_resource_user_message(&message.content) {
+            return prefixed_resource_user_lines(
+                &resources,
+                width,
+                initial_prefix,
+                subsequent_prefix,
+                theme,
+            );
+        }
         return prefixed_text_lines(
             &message.content,
             width,
-            Line::from(Span::styled(
-                "› ",
-                Style::default().fg(theme.focused_border),
-            )),
-            Line::from("  "),
+            initial_prefix,
+            subsequent_prefix,
             Style::default().fg(theme.fg),
         );
     }
@@ -398,17 +409,28 @@ fn minimal_message_lines(
 ) -> Vec<Line<'static>> {
     if message.is_user() {
         let prefix = format!("{user_index}› ");
+        let initial_prefix = Line::from(vec![
+            Span::styled(
+                user_index.to_string(),
+                Style::default().fg(theme.focused_border),
+            ),
+            Span::styled("› ", Style::default().fg(theme.focused_border)),
+        ]);
+        let subsequent_prefix = Line::from(" ".repeat(prefix.width()));
+        if let Some(resources) = parse_resource_user_message(&message.content) {
+            return prefixed_resource_user_lines(
+                &resources,
+                width,
+                initial_prefix,
+                subsequent_prefix,
+                theme,
+            );
+        }
         return prefixed_text_lines(
             &message.content,
             width,
-            Line::from(vec![
-                Span::styled(
-                    user_index.to_string(),
-                    Style::default().fg(theme.focused_border),
-                ),
-                Span::styled("› ", Style::default().fg(theme.focused_border)),
-            ]),
-            Line::from(" ".repeat(prefix.width())),
+            initial_prefix,
+            subsequent_prefix,
             Style::default().fg(theme.fg),
         );
     }
@@ -722,12 +744,262 @@ fn concise_error_summary(content: &str) -> Option<String> {
     (!summary.is_empty()).then(|| truncate_to_width(summary, 80))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResourceUserMessage {
+    prompts: Vec<ResourceAttachment>,
+    skills: Vec<ResourceAttachment>,
+    user_request: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResourceAttachment {
+    name: String,
+    source: String,
+}
+
+fn parse_resource_user_message(content: &str) -> Option<ResourceUserMessage> {
+    const INTRO: &str = "Use the following Oino resources for this request.";
+    let lines = content.lines().collect::<Vec<_>>();
+    if lines.first().map(|line| line.trim()) != Some(INTRO) {
+        return None;
+    }
+
+    let mut parsed = ResourceUserMessage {
+        prompts: Vec::new(),
+        skills: Vec::new(),
+        user_request: String::new(),
+    };
+    let mut index = 1;
+    while index < lines.len() {
+        let trimmed = lines[index].trim();
+        if trimmed == "# User Request" {
+            parsed.user_request = lines
+                .iter()
+                .skip(index.saturating_add(1))
+                .copied()
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string();
+            break;
+        }
+        if let Some(name) = included_heading_name(trimmed, "## Included Prompt: `") {
+            if let Some((attachment, next_index)) = parse_resource_attachment(name, &lines, index) {
+                parsed.prompts.push(attachment);
+                index = next_index;
+                continue;
+            }
+        }
+        if let Some(name) = included_heading_name(trimmed, "## Included Skill: `") {
+            if let Some((attachment, next_index)) = parse_resource_attachment(name, &lines, index) {
+                parsed.skills.push(attachment);
+                index = next_index;
+                continue;
+            }
+        }
+        index = index.saturating_add(1);
+    }
+
+    (!parsed.prompts.is_empty() || !parsed.skills.is_empty()).then_some(parsed)
+}
+
+fn included_heading_name(line: &str, prefix: &str) -> Option<String> {
+    let rest = line.strip_prefix(prefix)?;
+    let name = rest.strip_suffix('`')?;
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+fn parse_resource_attachment(
+    name: String,
+    lines: &[&str],
+    heading_index: usize,
+) -> Option<(ResourceAttachment, usize)> {
+    let source_line = lines.get(heading_index.saturating_add(1))?.trim();
+    let source = source_line
+        .strip_prefix("Source: `")
+        .and_then(|source| source.strip_suffix('`'))
+        .unwrap_or("")
+        .to_string();
+    let mut index = heading_index.saturating_add(2);
+    while index < lines.len() && lines[index].trim().is_empty() {
+        index = index.saturating_add(1);
+    }
+    let fence = lines.get(index).and_then(|line| fence_closer(line.trim()));
+    if let Some(fence) = fence {
+        let fence = fence.as_str();
+        index = index.saturating_add(1);
+        while index < lines.len() && lines[index].trim() != fence {
+            index = index.saturating_add(1);
+        }
+        if index < lines.len() {
+            index = index.saturating_add(1);
+        }
+    }
+    Some((ResourceAttachment { name, source }, index))
+}
+
+fn fence_closer(line: &str) -> Option<String> {
+    let mut chars = line.chars();
+    let first = chars.next()?;
+    if first != '`' && first != '~' {
+        return None;
+    }
+    let run_len = 1 + chars.take_while(|ch| *ch == first).count();
+    (run_len >= 3).then(|| first.to_string().repeat(run_len))
+}
+
+fn prefixed_resource_user_lines(
+    resources: &ResourceUserMessage,
+    width: usize,
+    initial_prefix: Line<'static>,
+    subsequent_prefix: Line<'static>,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let prefix_width = line_width(&initial_prefix).max(line_width(&subsequent_prefix));
+    let inner_width = width.saturating_sub(prefix_width).max(1);
+    let lines = resource_user_lines(resources, inner_width, theme);
+    prefix_structured_lines(lines, initial_prefix, subsequent_prefix)
+}
+
+fn prefix_structured_lines(
+    lines: Vec<Line<'static>>,
+    initial_prefix: Line<'static>,
+    subsequent_prefix: Line<'static>,
+) -> Vec<Line<'static>> {
+    let mut first = true;
+    lines
+        .into_iter()
+        .map(|line| {
+            let mut prefixed = if first {
+                first = false;
+                initial_prefix.clone()
+            } else {
+                subsequent_prefix.clone()
+            };
+            prefixed.spans.extend(line.spans);
+            prefixed
+        })
+        .collect()
+}
+
+fn resource_user_lines(
+    resources: &ResourceUserMessage,
+    width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let prompt_count = resources.prompts.len();
+    let skill_count = resources.skills.len();
+    lines.push(Line::from(vec![
+        Span::styled(
+            "Attached resources",
+            Style::default()
+                .fg(theme.focused_border)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" · {} prompt(s), {} skill(s)", prompt_count, skill_count),
+            Style::default().fg(theme.muted),
+        ),
+    ]));
+    for prompt in &resources.prompts {
+        lines.extend(resource_attachment_lines(
+            "Prompt",
+            prompt,
+            width,
+            Style::default()
+                .fg(theme.focused_border)
+                .add_modifier(Modifier::BOLD),
+            theme,
+        ));
+    }
+    for skill in &resources.skills {
+        lines.extend(resource_attachment_lines(
+            "Skill",
+            skill,
+            width,
+            Style::default()
+                .fg(theme.tool_border)
+                .add_modifier(Modifier::BOLD),
+            theme,
+        ));
+    }
+    if !resources.user_request.trim().is_empty() {
+        if !lines.is_empty() {
+            lines.push(Line::from(""));
+        }
+        lines.push(Line::from(Span::styled(
+            "Request",
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.extend(plain_wrapped_lines(
+            &resources.user_request,
+            width,
+            Style::default().fg(theme.fg),
+        ));
+    }
+    lines
+}
+
+fn resource_attachment_lines(
+    kind: &str,
+    attachment: &ResourceAttachment,
+    width: usize,
+    kind_style: Style,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let label = format!("◆ {kind} ");
+    let summary_width = label.width().saturating_add(attachment.name.width());
+    let source_prefix = " · ";
+    let source_width = source_prefix
+        .width()
+        .saturating_add(attachment.source.width());
+    if summary_width.saturating_add(source_width) <= width {
+        lines.push(Line::from(vec![
+            Span::styled(label, kind_style),
+            Span::styled(
+                attachment.name.clone(),
+                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(source_prefix, Style::default().fg(theme.muted)),
+            Span::styled(attachment.source.clone(), Style::default().fg(theme.muted)),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled(label, kind_style),
+            Span::styled(
+                attachment.name.clone(),
+                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        let source_indent = "  source ";
+        for segment in wrap_text(
+            &attachment.source,
+            width.saturating_sub(source_indent.width()).max(1),
+        ) {
+            lines.push(Line::from(vec![
+                Span::styled(source_indent, Style::default().fg(theme.muted)),
+                Span::styled(segment, Style::default().fg(theme.muted)),
+            ]));
+        }
+    }
+    lines
+}
+
 fn message_content_lines(
     message: &MessageView,
     content: &str,
     width: usize,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
+    if message.is_user() {
+        if let Some(resources) = parse_resource_user_message(content) {
+            return resource_user_lines(&resources, width, theme);
+        }
+    }
     if message.is_assistant() && content != "<empty>" {
         render_markdown_lines(content, width, Style::default().fg(theme.fg), theme)
     } else {
@@ -994,6 +1266,20 @@ mod tests {
         }
     }
 
+    fn user_text(content: &str) -> MessageView {
+        MessageView {
+            id: oino_types::OinoId::from_u128(12),
+            role: "user".into(),
+            title: None,
+            content: content.into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        }
+    }
+
     fn tool_result(
         id: u128,
         call_id: u128,
@@ -1050,6 +1336,46 @@ mod tests {
                 "style {style:?}: {rendered}"
             );
             assert!(!rendered.contains("`code`"), "style {style:?}: {rendered}");
+        }
+    }
+
+    #[test]
+    fn user_resource_attachments_render_as_cards_in_all_chat_styles() {
+        let content = "Use the following Oino resources for this request.\n\n# Included Skills\n\n## Included Skill: `first-skill`\nSource: `.oino/skills/first-skill/SKILL.md`\n\n````markdown\n# First Skill\n````\n\n## Included Skill: `second-skill`\nSource: `.oino/skills/second-skill/SKILL.md`\n\n````markdown\n# Second Skill\n````\n\n# User Request\n\nfix crash";
+        let messages = vec![user_text(content)];
+
+        for style in [ChatStyle::Chat, ChatStyle::Agentic, ChatStyle::Minimal] {
+            let lines = transcript_lines(
+                &messages,
+                None,
+                120,
+                CollapseMode::Full,
+                CollapseMode::Full,
+                style,
+                &Theme::default(),
+            );
+            let rendered = lines.iter().map(plain).collect::<Vec<_>>().join("\n");
+
+            assert!(
+                rendered.contains("Attached resources · 0 prompt(s), 2 skill(s)"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("Skill first-skill"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("Skill second-skill"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(rendered.contains("Request"), "style {style:?}: {rendered}");
+            assert!(
+                rendered.contains("fix crash"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(!rendered.contains("Use the following Oino resources"));
+            assert!(!rendered.contains("# First Skill"));
+            assert!(!rendered.contains("````markdown"));
         }
     }
 
