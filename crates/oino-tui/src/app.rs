@@ -878,7 +878,7 @@ impl TuiState {
         if is_ctrl_o_key(key) {
             self.chord = ChordState::CtrlO;
             self.status =
-                "Ctrl-O chord: s send panel • t transcript • e expand paste • Esc cancel".into();
+                "Ctrl-O chord: s send panel • t transcript • e expand • Esc cancel".into();
             return TuiAction::None;
         }
 
@@ -942,7 +942,24 @@ impl TuiState {
                 if self.composer.expand_collapsed_paste_at_cursor() {
                     self.status = "Expanded pasted block".into();
                 } else {
-                    self.status = "No collapsed paste block at cursor".into();
+                    match self.expand_prompt_references_in_composer() {
+                        PromptReferenceExpansionResult::Expanded(count) => {
+                            let plural = if count == 1 { "" } else { "s" };
+                            self.status = format!("Expanded {count} prompt template{plural}");
+                        }
+                        PromptReferenceExpansionResult::NoPromptReference => {
+                            self.status =
+                                "No collapsed paste block or prompt reference to expand".into();
+                        }
+                        PromptReferenceExpansionResult::Incomplete(token) => {
+                            self.set_error(format!("Incomplete resource reference `{token}`"));
+                            self.status = HELP_STATUS.into();
+                        }
+                        PromptReferenceExpansionResult::UnknownPrompt(name) => {
+                            self.set_error(format!("Unknown prompt `/prompt:{name}`"));
+                            self.status = HELP_STATUS.into();
+                        }
+                    }
                 }
                 TuiAction::None
             }
@@ -955,6 +972,58 @@ impl TuiState {
                 TuiAction::None
             }
         }
+    }
+
+    fn expand_prompt_references_in_composer(&mut self) -> PromptReferenceExpansionResult {
+        let input = self.composer.expanded_text();
+        let Some(references) = resource_references(&input) else {
+            return PromptReferenceExpansionResult::NoPromptReference;
+        };
+        if references.prompts.is_empty() {
+            return PromptReferenceExpansionResult::NoPromptReference;
+        }
+        if let Some(token) = references.incomplete.first() {
+            return PromptReferenceExpansionResult::Incomplete(token.clone());
+        }
+
+        let mut prompts = Vec::new();
+        for name in &references.prompts {
+            let Some(prompt) = self
+                .prompt_resources
+                .iter()
+                .find(|resource| resource.name == *name)
+                .cloned()
+            else {
+                return PromptReferenceExpansionResult::UnknownPrompt(name.clone());
+            };
+            prompts.push(prompt);
+        }
+
+        let expanded_prompts = prompts
+            .iter()
+            .map(|prompt| prompt.expand(&references.user_input))
+            .collect::<Vec<_>>();
+        let mut expanded = String::new();
+        if !references.skills.is_empty() {
+            expanded.push_str(
+                &references
+                    .skills
+                    .iter()
+                    .map(|name| format!("/skill:{name}"))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+            if !expanded_prompts.is_empty() {
+                expanded.push_str("\n\n");
+            }
+        }
+        expanded.push_str(&expanded_prompts.join("\n\n"));
+
+        self.composer.replace_text(expanded);
+        self.focus = TuiFocus::Composer;
+        self.clear_error();
+        self.refresh_command_suggestions();
+        PromptReferenceExpansionResult::Expanded(prompts.len())
     }
 
     fn handle_transcript_scroll_key(&mut self, key: KeyEvent) -> bool {
@@ -1975,6 +2044,14 @@ fn help_search_status(query: &str) -> String {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PromptReferenceExpansionResult {
+    Expanded(usize),
+    NoPromptReference,
+    Incomplete(String),
+    UnknownPrompt(String),
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 struct ResourceReferences {
     prompts: Vec<String>,
@@ -2328,6 +2405,50 @@ mod tests {
         );
         assert_eq!(state.handle_key(key(KeyCode::Char('e'))), TuiAction::None);
         assert_eq!(state.input(), pasted);
+    }
+
+    #[test]
+    fn ctrl_o_e_expands_prompt_references_in_composer() {
+        let mut state = TuiState::new();
+        add_test_resources(&mut state);
+        for ch in "/prompt:review bugs security".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char('e'))), TuiAction::None);
+        assert_eq!(state.input(), "Review bugs security");
+        assert!(state.status.contains("Expanded 1 prompt template"));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::SubmitPrompt("Review bugs security".into())
+        );
+    }
+
+    #[test]
+    fn ctrl_o_e_preserves_skill_references_when_expanding_prompts() {
+        let mut state = TuiState::new();
+        add_test_resources(&mut state);
+        for ch in "/skill:debug /prompt:review crash".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char('e'))), TuiAction::None);
+        assert_eq!(state.input(), "/skill:debug\n\nReview crash");
+        match state.handle_key(key(KeyCode::Enter)) {
+            TuiAction::SubmitPrompt(prompt) => {
+                assert!(prompt.contains("## Included Skill: `debug`"));
+                assert!(prompt.contains("# User Request\n\nReview crash"));
+            }
+            other => panic!("expected skill submit, got {other:?}"),
+        }
     }
 
     #[test]

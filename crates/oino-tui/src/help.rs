@@ -37,7 +37,10 @@ pub(crate) const HELP_ENTRIES: &[HelpEntry] = &[
         "Paste",
         "large or multiline pastes collapse visually but still submit in full",
     ),
-    HelpEntry::Item("Ctrl-O e", "expand a collapsed pasted block at the cursor"),
+    HelpEntry::Item(
+        "Ctrl-O e",
+        "expand a collapsed pasted block at the cursor or prompt template references",
+    ),
     HelpEntry::Blank,
     HelpEntry::Heading("Commands"),
     HelpEntry::Item("/help", "open this help overlay"),

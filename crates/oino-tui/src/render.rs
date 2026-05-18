@@ -102,9 +102,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
 
 fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, chord: ChordState, theme: &Theme) {
     let title = match chord {
-        ChordState::CtrlO => {
-            " Ctrl-O chord: s send panel • t transcript • e expand paste • Esc cancel "
-        }
+        ChordState::CtrlO => " Ctrl-O chord: s send panel • t transcript • e expand • Esc cancel ",
         ChordState::None => return,
     };
     frame.render_widget(
