@@ -239,13 +239,18 @@ impl SessionManager {
     }
 
     pub fn get_branch(&self, leaf: Option<OinoId>) -> SessionResult<Vec<SessionEntry>> {
+        self.branch_entry_refs(leaf)
+            .map(|entries| entries.into_iter().cloned().collect())
+    }
+
+    fn branch_entry_refs(&self, leaf: Option<OinoId>) -> SessionResult<Vec<&SessionEntry>> {
         let mut out = Vec::new();
         let mut cursor = leaf;
         while let Some(id) = cursor {
             let Some(entry) = self.entries.get(&id) else {
                 return Err(SessionError::EntryNotFound(id));
             };
-            out.push(entry.clone());
+            out.push(entry);
             cursor = entry.parent;
         }
         out.reverse();
@@ -261,17 +266,20 @@ impl SessionManager {
 
     #[must_use]
     pub fn get_session_name(&self) -> String {
-        self.get_branch(self.leaf_id)
-            .ok()
-            .and_then(|branch| {
-                branch.into_iter().rev().find_map(|entry| match entry.kind {
-                    SessionEntryKind::SessionInfo {
-                        name: Some(name), ..
-                    } => Some(name),
-                    _ => None,
-                })
-            })
-            .unwrap_or_else(|| self.header.name.clone())
+        let mut cursor = self.leaf_id;
+        while let Some(id) = cursor {
+            let Some(entry) = self.entries.get(&id) else {
+                break;
+            };
+            if let SessionEntryKind::SessionInfo {
+                name: Some(name), ..
+            } = &entry.kind
+            {
+                return name.clone();
+            }
+            cursor = entry.parent;
+        }
+        self.header.name.clone()
     }
 
     #[must_use]
@@ -286,29 +294,29 @@ impl SessionManager {
     }
 
     pub fn build_session_context(&self) -> SessionResult<SessionContext> {
-        let branch = self.get_branch(self.leaf_id)?;
+        let branch = self.branch_entry_refs(self.leaf_id)?;
         let mut messages = Vec::new();
         let mut model = None;
         let mut thinking_level = None;
         for entry in branch {
-            match entry.kind {
+            match &entry.kind {
                 SessionEntryKind::Message { message }
-                | SessionEntryKind::CustomMessage { message } => messages.push(message),
-                SessionEntryKind::ModelChange { model: changed } => model = Some(changed),
+                | SessionEntryKind::CustomMessage { message } => messages.push(message.clone()),
+                SessionEntryKind::ModelChange { model: changed } => model = Some(changed.clone()),
                 SessionEntryKind::ThinkingLevelChange {
                     thinking_level: changed,
-                } => thinking_level = Some(changed),
+                } => thinking_level = Some(*changed),
                 SessionEntryKind::Compaction { summary, .. } => {
                     messages.clear();
                     messages.push(Message::CompactionSummary {
                         id: entry.id,
-                        summary,
+                        summary: summary.clone(),
                     });
                 }
                 SessionEntryKind::BranchSummary { summary } => {
                     messages.push(Message::BranchSummary {
                         id: entry.id,
-                        summary,
+                        summary: summary.clone(),
                     })
                 }
                 SessionEntryKind::Custom { .. }
