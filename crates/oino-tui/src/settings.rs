@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    fuzzy::{fuzzy_indices, FuzzyMode},
+    fuzzy::{ascii_subsequence_match_parts, fuzzy_indices, FuzzyMode},
     keymap::{
         key_action_rows, KeyAction, KeySequence, KeyStroke, KeymapConfig, KeymapPreset,
         ShortcutKind,
@@ -992,13 +992,19 @@ impl SettingsState {
     }
 
     fn refresh_model_filter(&mut self) {
-        self.filtered_model_indices = fuzzy_indices(
-            &self.models,
-            self.model_search.trim(),
-            FuzzyMode::Text,
-            None,
-            |model| format!("{} {}", model.id, model.display_name),
-        );
+        let query = self.model_search.trim();
+        self.filtered_model_indices = if query.is_empty() {
+            (0..self.models.len()).collect()
+        } else {
+            let candidate_indices = model_filter_candidate_indices(&self.models, query);
+            fuzzy_indices(&candidate_indices, query, FuzzyMode::Text, None, |index| {
+                let model = &self.models[*index];
+                format!("{} {}", model.id, model.display_name)
+            })
+            .into_iter()
+            .map(|candidate_index| candidate_indices[candidate_index])
+            .collect()
+        };
         self.sync_model_cursor_to_filter();
     }
 
@@ -1192,6 +1198,23 @@ fn display_tool_name(name: &str) -> String {
         .join(" ")
 }
 
+fn model_filter_candidate_indices(models: &[ModelOption], query: &str) -> Vec<usize> {
+    if !query.is_ascii() {
+        return (0..models.len()).collect();
+    }
+    models
+        .iter()
+        .enumerate()
+        .filter_map(|(index, model)| {
+            ascii_subsequence_match_parts(
+                [model.id.as_str(), " ", model.display_name.as_str()],
+                query,
+            )
+            .then_some(index)
+        })
+        .collect()
+}
+
 fn move_index(current: usize, len: usize, delta: isize) -> usize {
     if len == 0 {
         return 0;
@@ -1365,6 +1388,20 @@ mod tests {
             }
         );
         assert!(settings.tools[1].project_enabled);
+    }
+
+    #[test]
+    fn model_filter_prefilter_checks_id_and_display_name() {
+        let models = vec![
+            ModelOption::new("openrouter:a/alpha"),
+            ModelOption::new("openrouter:b/bravo").with_display_name("Displayed Model"),
+        ];
+
+        assert_eq!(
+            model_filter_candidate_indices(&models, "displayed"),
+            vec![1]
+        );
+        assert_eq!(model_filter_candidate_indices(&models, "alpha"), vec![0]);
     }
 
     #[test]

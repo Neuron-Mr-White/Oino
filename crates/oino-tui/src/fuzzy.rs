@@ -53,6 +53,36 @@ pub fn fuzzy_indices<T>(
         .collect()
 }
 
+pub(crate) fn ascii_subsequence_match(haystack: &str, needle: &str) -> bool {
+    ascii_subsequence_match_parts([haystack], needle)
+}
+
+pub(crate) fn ascii_subsequence_match_parts<'a>(
+    parts: impl IntoIterator<Item = &'a str>,
+    needle: &str,
+) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let mut needle = needle.bytes().map(|byte| byte.to_ascii_lowercase());
+    let Some(mut wanted) = needle.next() else {
+        return true;
+    };
+    for byte in parts
+        .into_iter()
+        .flat_map(str::bytes)
+        .map(|byte| byte.to_ascii_lowercase())
+    {
+        if byte == wanted {
+            let Some(next) = needle.next() else {
+                return true;
+            };
+            wanted = next;
+        }
+    }
+    false
+}
+
 #[must_use]
 fn config_for_mode(mode: FuzzyMode) -> Config {
     let mut config = match mode {
@@ -84,5 +114,18 @@ mod tests {
         let items = vec!["beta".to_string(), "alpha".to_string(), "gamma".to_string()];
         let matches = fuzzy_indices(&items, "", FuzzyMode::Text, Some(2), Clone::clone);
         assert_eq!(matches, vec![0, 1]);
+    }
+
+    #[test]
+    fn ascii_subsequence_match_is_case_insensitive_across_parts() {
+        assert!(ascii_subsequence_match_parts(
+            ["openrouter:", "Provider", " Model"],
+            "PRO mod"
+        ));
+        assert!(ascii_subsequence_match(
+            "crates/Oino-Tui/src/App.rs",
+            "TUI/App"
+        ));
+        assert!(!ascii_subsequence_match("abc", "acb"));
     }
 }

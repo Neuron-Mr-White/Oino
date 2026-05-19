@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
-use crate::fuzzy::{fuzzy_indices, FuzzyMode};
+use crate::fuzzy::{
+    ascii_subsequence_match, ascii_subsequence_match_parts, fuzzy_indices, FuzzyMode,
+};
 use crate::resource::{PromptResource, SkillResource};
 use crate::settings::{
     chat_style_value as settings_chat_style_value, parse_chat_style as settings_parse_chat_style,
@@ -390,36 +392,6 @@ fn file_suggestion_candidate_indices(files: &[String], query: &str) -> Vec<usize
         .collect()
 }
 
-fn ascii_subsequence_match(haystack: &str, needle: &str) -> bool {
-    ascii_subsequence_match_parts([haystack], needle)
-}
-
-fn ascii_subsequence_match_parts<'a>(
-    parts: impl IntoIterator<Item = &'a str>,
-    needle: &str,
-) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-    let mut needle = needle.bytes().map(|byte| byte.to_ascii_lowercase());
-    let Some(mut wanted) = needle.next() else {
-        return true;
-    };
-    for byte in parts
-        .into_iter()
-        .flat_map(str::bytes)
-        .map(|byte| byte.to_ascii_lowercase())
-    {
-        if byte == wanted {
-            let Some(next) = needle.next() else {
-                return true;
-            };
-            wanted = next;
-        }
-    }
-    false
-}
-
 #[must_use]
 pub fn command_query(input: &str, cursor: usize) -> Option<String> {
     let context = suggestion_context(input, cursor)?;
@@ -673,28 +645,65 @@ fn prompt_items(
     replace_start: usize,
     replace_end: usize,
 ) -> Vec<CommandSuggestionItem> {
-    let candidates = prompts
-        .iter()
-        .map(|prompt| CommandSuggestionItem {
-            label: prompt.command(),
-            summary: prompt.description.clone(),
-            replacement: prompt.command(),
-            replace_start,
-            replace_end,
-            complete_on_enter: active_prefix == prompt.command(),
-            category: CommandSuggestionCategory::Prompt,
-        })
-        .collect::<Vec<_>>();
-    fuzzy_indices(
-        &candidates,
-        query,
-        FuzzyMode::Text,
-        None,
-        suggestion_match_text,
-    )
+    if query.trim().is_empty() {
+        return prompts
+            .iter()
+            .map(|prompt| prompt_suggestion_item(prompt, active_prefix, replace_start, replace_end))
+            .collect();
+    }
+
+    let candidate_indices = prompt_suggestion_candidate_indices(prompts, query);
+    fuzzy_indices(&candidate_indices, query, FuzzyMode::Text, None, |index| {
+        let prompt = &prompts[*index];
+        format!("prompt:{} {}", prompt.name, prompt.description)
+    })
     .into_iter()
-    .map(|index| candidates[index].clone())
+    .map(|candidate_index| {
+        let index = candidate_indices[candidate_index];
+        prompt_suggestion_item(&prompts[index], active_prefix, replace_start, replace_end)
+    })
     .collect()
+}
+
+fn prompt_suggestion_item(
+    prompt: &PromptResource,
+    active_prefix: &str,
+    replace_start: usize,
+    replace_end: usize,
+) -> CommandSuggestionItem {
+    let command = prompt.command();
+    CommandSuggestionItem {
+        label: command.clone(),
+        summary: prompt.description.clone(),
+        replacement: command.clone(),
+        replace_start,
+        replace_end,
+        complete_on_enter: active_prefix == command,
+        category: CommandSuggestionCategory::Prompt,
+    }
+}
+
+fn prompt_suggestion_candidate_indices(prompts: &[PromptResource], query: &str) -> Vec<usize> {
+    let query = query.trim();
+    if query.is_empty() || !query.is_ascii() {
+        return (0..prompts.len()).collect();
+    }
+    prompts
+        .iter()
+        .enumerate()
+        .filter_map(|(index, prompt)| {
+            ascii_subsequence_match_parts(
+                [
+                    "prompt:",
+                    prompt.name.as_str(),
+                    " ",
+                    prompt.description.as_str(),
+                ],
+                query,
+            )
+            .then_some(index)
+        })
+        .collect()
 }
 
 fn skill_items(
@@ -704,28 +713,65 @@ fn skill_items(
     replace_start: usize,
     replace_end: usize,
 ) -> Vec<CommandSuggestionItem> {
-    let candidates = skills
-        .iter()
-        .map(|skill| CommandSuggestionItem {
-            label: skill.command(),
-            summary: skill.description.clone(),
-            replacement: skill.command(),
-            replace_start,
-            replace_end,
-            complete_on_enter: active_prefix == skill.command(),
-            category: CommandSuggestionCategory::Skill,
-        })
-        .collect::<Vec<_>>();
-    fuzzy_indices(
-        &candidates,
-        query,
-        FuzzyMode::Text,
-        None,
-        suggestion_match_text,
-    )
+    if query.trim().is_empty() {
+        return skills
+            .iter()
+            .map(|skill| skill_suggestion_item(skill, active_prefix, replace_start, replace_end))
+            .collect();
+    }
+
+    let candidate_indices = skill_suggestion_candidate_indices(skills, query);
+    fuzzy_indices(&candidate_indices, query, FuzzyMode::Text, None, |index| {
+        let skill = &skills[*index];
+        format!("skill:{} {}", skill.name, skill.description)
+    })
     .into_iter()
-    .map(|index| candidates[index].clone())
+    .map(|candidate_index| {
+        let index = candidate_indices[candidate_index];
+        skill_suggestion_item(&skills[index], active_prefix, replace_start, replace_end)
+    })
     .collect()
+}
+
+fn skill_suggestion_item(
+    skill: &SkillResource,
+    active_prefix: &str,
+    replace_start: usize,
+    replace_end: usize,
+) -> CommandSuggestionItem {
+    let command = skill.command();
+    CommandSuggestionItem {
+        label: command.clone(),
+        summary: skill.description.clone(),
+        replacement: command.clone(),
+        replace_start,
+        replace_end,
+        complete_on_enter: active_prefix == command,
+        category: CommandSuggestionCategory::Skill,
+    }
+}
+
+fn skill_suggestion_candidate_indices(skills: &[SkillResource], query: &str) -> Vec<usize> {
+    let query = query.trim();
+    if query.is_empty() || !query.is_ascii() {
+        return (0..skills.len()).collect();
+    }
+    skills
+        .iter()
+        .enumerate()
+        .filter_map(|(index, skill)| {
+            ascii_subsequence_match_parts(
+                [
+                    "skill:",
+                    skill.name.as_str(),
+                    " ",
+                    skill.description.as_str(),
+                ],
+                query,
+            )
+            .then_some(index)
+        })
+        .collect()
 }
 
 fn suggestion_match_text(item: &CommandSuggestionItem) -> String {
@@ -801,8 +847,11 @@ fn model_suggestion_candidate_indices(models: &[ModelOption], query: &str) -> Ve
         .iter()
         .enumerate()
         .filter_map(|(index, model)| {
-            ascii_subsequence_match_parts([model.id.as_str(), model.display_name.as_str()], query)
-                .then_some(index)
+            ascii_subsequence_match_parts(
+                [model.id.as_str(), " ", model.display_name.as_str()],
+                query,
+            )
+            .then_some(index)
         })
         .collect()
 }
