@@ -9,6 +9,7 @@ use crate::{
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
     help::{help_entries, HelpEntry},
     keymap::{key_action_rows, KeymapPreset, ShortcutKind},
+    message::MessageView,
     settings::{
         chat_style_label, chat_style_value, collapse_mode_label, thinking_label, ChatStyle,
         KeymapsMode, SettingsPage, SettingsState,
@@ -334,14 +335,8 @@ pub fn transcript_click_targets(
 
     let theme = Theme::default();
     let full_inner_width = transcript_full_content_width(area.width);
-    let mut transcript = prepared_transcript_for_width(state, full_inner_width, &theme);
-    let mut has_scrollbar =
-        transcript.total_lines() > inner_height && area.width > 4 && inner_height > 1;
-    if has_scrollbar {
-        transcript =
-            prepared_transcript_for_width(state, full_inner_width.saturating_sub(1).max(1), &theme);
-        has_scrollbar = transcript.total_lines() > inner_height;
-    }
+    let (transcript, has_scrollbar) =
+        prepared_transcript_for_viewport(state, full_inner_width, area.width, inner_height, &theme);
     let content_width = full_inner_width.saturating_sub(usize::from(has_scrollbar));
     let start = state
         .transcript_scroll
@@ -387,14 +382,8 @@ fn transcript_content_x(area: Rect) -> u16 {
 fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
     let inner_height = area.height.saturating_sub(2) as usize;
     let full_inner_width = transcript_full_content_width(area.width);
-    let mut transcript = prepared_transcript_for_width(state, full_inner_width, theme);
-    let mut has_scrollbar =
-        transcript.total_lines() > inner_height && area.width > 4 && inner_height > 1;
-    if has_scrollbar {
-        transcript =
-            prepared_transcript_for_width(state, full_inner_width.saturating_sub(1).max(1), theme);
-        has_scrollbar = transcript.total_lines() > inner_height;
-    }
+    let (transcript, has_scrollbar) =
+        prepared_transcript_for_viewport(state, full_inner_width, area.width, inner_height, theme);
 
     let total_lines = transcript.total_lines();
     let start = state
@@ -457,6 +446,100 @@ fn transcript_title_with_status(state: &TuiState, status: &str, offset: Option<u
         Some(offset) => format!(" {base} ↑{offset} "),
         None => format!(" {base} "),
     }
+}
+
+fn prepared_transcript_for_viewport(
+    state: &TuiState,
+    full_width: usize,
+    area_width: u16,
+    inner_height: usize,
+    theme: &Theme,
+) -> (Arc<PreparedTranscript>, bool) {
+    let can_show_scrollbar = area_width > 4 && inner_height > 1;
+    if can_show_scrollbar && transcript_line_lower_bound(state) > inner_height {
+        let narrowed =
+            prepared_transcript_for_width(state, full_width.saturating_sub(1).max(1), theme);
+        if narrowed.total_lines() > inner_height {
+            return (narrowed, true);
+        }
+    }
+
+    let full = prepared_transcript_for_width(state, full_width, theme);
+    let needs_scrollbar = can_show_scrollbar && full.total_lines() > inner_height;
+    if !needs_scrollbar {
+        return (full, false);
+    }
+
+    let narrowed = prepared_transcript_for_width(state, full_width.saturating_sub(1).max(1), theme);
+    let has_scrollbar = narrowed.total_lines() > inner_height;
+    (narrowed, has_scrollbar)
+}
+
+fn transcript_line_lower_bound(state: &TuiState) -> usize {
+    let mut blocks = 0usize;
+    let mut lines = 0usize;
+    for message in &state.messages {
+        let block_lines = message_line_lower_bound(message, state.settings.thinking_collapse_mode);
+        if block_lines == 0 {
+            continue;
+        }
+        if state.settings.chat_style != ChatStyle::Minimal && blocks > 0 {
+            lines = lines.saturating_add(1);
+        }
+        blocks = blocks.saturating_add(1);
+        lines = lines.saturating_add(block_lines);
+    }
+
+    if state.error.is_some() {
+        if state.settings.chat_style != ChatStyle::Minimal && blocks > 0 {
+            lines = lines.saturating_add(1);
+        }
+        blocks = blocks.saturating_add(1);
+        lines = lines.saturating_add(1);
+    }
+
+    let (_, status_text) = transcript_status(state);
+    if status_text.is_some() {
+        if blocks > 0 {
+            lines = lines.saturating_add(1);
+        }
+        blocks = blocks.saturating_add(1);
+        lines = lines.saturating_add(1);
+    }
+
+    if blocks == 0 {
+        1
+    } else {
+        lines
+    }
+}
+
+fn message_line_lower_bound(
+    message: &MessageView,
+    thinking_mode: crate::settings::CollapseMode,
+) -> usize {
+    if message.is_assistant() {
+        return usize::from(
+            message.content != "<empty>"
+                || has_displayable_thinking_for_scroll(message, thinking_mode),
+        );
+    }
+    if message.is_user() || message.is_error || message.role.starts_with("tool:") {
+        return 1;
+    }
+    1
+}
+
+fn has_displayable_thinking_for_scroll(
+    message: &MessageView,
+    thinking_mode: crate::settings::CollapseMode,
+) -> bool {
+    thinking_mode != crate::settings::CollapseMode::Collapse
+        && (message.thinking_redacted
+            || message
+                .thinking
+                .as_ref()
+                .is_some_and(|thinking| !thinking.trim().is_empty()))
 }
 
 fn prepared_transcript_for_width(
@@ -2834,6 +2917,40 @@ mod tests {
             vec!["b0"]
         );
         assert!(prepared.materialize_line_slice(6, 9).is_empty());
+    }
+
+    #[test]
+    fn transcript_line_lower_bound_is_conservative() {
+        let mut state = TuiState::new();
+        state.settings.chat_style = ChatStyle::Chat;
+        state.messages = vec![
+            MessageView {
+                id: oino_types::OinoId::nil(),
+                role: "user".into(),
+                title: None,
+                content: "hello".into(),
+                thinking: None,
+                thinking_redacted: false,
+                tool_call_id: None,
+                tool_calls: Vec::new(),
+                is_error: false,
+            },
+            MessageView {
+                id: oino_types::OinoId::nil(),
+                role: "assistant".into(),
+                title: None,
+                content: "world".into(),
+                thinking: None,
+                thinking_redacted: false,
+                tool_call_id: None,
+                tool_calls: Vec::new(),
+                is_error: false,
+            },
+        ];
+
+        let lower_bound = transcript_line_lower_bound(&state);
+        let prepared = prepared_transcript_for_width(&state, 40, &Theme::default());
+        assert!(lower_bound <= prepared.total_lines());
     }
 
     #[test]

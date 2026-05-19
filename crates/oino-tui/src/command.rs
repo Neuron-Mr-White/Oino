@@ -337,30 +337,45 @@ pub fn file_suggestions_for(
     files: &[String],
 ) -> Option<CommandSuggestionsView> {
     let context = file_suggestion_context(input, cursor)?;
-    let candidate_indices = file_suggestion_candidate_indices(files, &context.query);
-    let items = fuzzy_indices(
-        &candidate_indices,
-        &context.query,
-        FuzzyMode::Path,
-        Some(10),
-        |index| files[*index].clone(),
-    )
-    .into_iter()
-    .map(|candidate_index| {
-        let index = candidate_indices[candidate_index];
-        let file = &files[index];
-        CommandSuggestionItem {
-            label: file.clone(),
-            summary: "file".into(),
-            replacement: format!("@{file}"),
-            replace_start: context.replace_start,
-            replace_end: context.replace_end,
-            complete_on_enter: false,
-            category: CommandSuggestionCategory::File,
-        }
-    })
-    .collect::<Vec<_>>();
+    let items = if context.query.trim().is_empty() {
+        files
+            .iter()
+            .take(10)
+            .map(|file| file_suggestion_item(file, context.replace_start, context.replace_end))
+            .collect::<Vec<_>>()
+    } else {
+        let candidate_indices = file_suggestion_candidate_indices(files, &context.query);
+        fuzzy_indices(
+            &candidate_indices,
+            &context.query,
+            FuzzyMode::Path,
+            Some(10),
+            |index| files[*index].clone(),
+        )
+        .into_iter()
+        .map(|candidate_index| {
+            let index = candidate_indices[candidate_index];
+            file_suggestion_item(&files[index], context.replace_start, context.replace_end)
+        })
+        .collect::<Vec<_>>()
+    };
     Some(view("Files", context.query, items))
+}
+
+fn file_suggestion_item(
+    file: &str,
+    replace_start: usize,
+    replace_end: usize,
+) -> CommandSuggestionItem {
+    CommandSuggestionItem {
+        label: file.to_string(),
+        summary: "file".into(),
+        replacement: format!("@{file}"),
+        replace_start,
+        replace_end,
+        complete_on_enter: false,
+        category: CommandSuggestionCategory::File,
+    }
 }
 
 fn file_suggestion_candidate_indices(files: &[String], query: &str) -> Vec<usize> {
@@ -1242,6 +1257,19 @@ mod tests {
         assert_eq!(view.items.len(), 1);
         assert_eq!(view.items[0].replacement, "@crates/oino-tui/src/app.rs");
         assert_eq!(view.items[0].replace_start, 15);
+    }
+
+    #[test]
+    fn empty_file_suggestions_are_limited_without_fuzzy_scan() {
+        let files = (0..20)
+            .map(|index| format!("file-{index}.rs"))
+            .collect::<Vec<_>>();
+        let view = file_suggestions_for("attach @", 8, &files)
+            .unwrap_or_else(|| panic!("missing file suggestions"));
+
+        assert_eq!(view.items.len(), 10);
+        assert_eq!(view.items[0].replacement, "@file-0.rs");
+        assert_eq!(view.items[9].replacement, "@file-9.rs");
     }
 
     #[test]
