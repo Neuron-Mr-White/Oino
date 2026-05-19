@@ -5,7 +5,7 @@ use crate::{
     message::{MessageView, ToolCallView},
     settings::{ChatStyle, CollapseMode},
     text::{truncate_to_width, wrap_text},
-    theme::Theme,
+    theme::{theme_cache_hash, Theme},
 };
 use ratatui::{
     style::{Modifier, Style},
@@ -402,12 +402,6 @@ fn cached_minimal_message_lines(
             theme,
         )
     })
-}
-
-fn theme_cache_hash(theme: &Theme) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{theme:?}").hash(&mut hasher);
-    hasher.finish()
 }
 
 const fn collapse_mode_key(mode: CollapseMode) -> u8 {

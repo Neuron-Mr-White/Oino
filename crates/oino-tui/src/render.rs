@@ -13,8 +13,8 @@ use crate::{
         chat_style_label, chat_style_value, collapse_mode_label, thinking_label, ChatStyle,
         KeymapsMode, SettingsPage, SettingsState,
     },
-    text::{truncate_to_width, truncate_with_ellipsis, wrap_text},
-    theme::Theme,
+    text::{truncate_to_width, truncate_with_ellipsis, wrap_text, wrapped_line_count},
+    theme::{theme_cache_hash, Theme},
     transcript::transcript_line_blocks,
 };
 use ratatui::{
@@ -28,7 +28,6 @@ use ratatui::{
 };
 use std::{
     collections::{HashMap, VecDeque},
-    hash::{Hash, Hasher},
     sync::{Arc, Mutex, OnceLock},
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -560,12 +559,6 @@ fn transcript_status(state: &TuiState) -> (u8, Option<String>) {
     } else {
         (TRANSCRIPT_STATUS_NONE, None)
     }
-}
-
-fn theme_cache_hash(theme: &Theme) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{theme:?}").hash(&mut hasher);
-    hasher.finish()
 }
 
 const fn collapse_mode_key(mode: crate::settings::CollapseMode) -> u8 {
@@ -2686,7 +2679,7 @@ fn composer_cursor_position(area: Rect, composer: &ComposerState) -> Position {
 fn composer_height(input: &str, width: u16, total_height: u16) -> u16 {
     let available_height = total_height.saturating_sub(MIN_TRANSCRIPT_HEIGHT).max(3);
     let content_width = composer_content_width_for_width(width);
-    let line_count = wrap_text(input, content_width).len().max(MIN_COMPOSER_ROWS);
+    let line_count = wrapped_line_count(input, content_width).max(MIN_COMPOSER_ROWS);
     let desired = line_count.saturating_add(2);
     let cap = available_height.clamp(3, MAX_COMPOSER_HEIGHT) as usize;
     desired.clamp(3, cap) as u16

@@ -337,15 +337,17 @@ pub fn file_suggestions_for(
     files: &[String],
 ) -> Option<CommandSuggestionsView> {
     let context = file_suggestion_context(input, cursor)?;
+    let candidate_indices = file_suggestion_candidate_indices(files, &context.query);
     let items = fuzzy_indices(
-        files,
+        &candidate_indices,
         &context.query,
         FuzzyMode::Path,
         Some(10),
-        Clone::clone,
+        |index| files[*index].clone(),
     )
     .into_iter()
-    .map(|index| {
+    .map(|candidate_index| {
+        let index = candidate_indices[candidate_index];
         let file = &files[index];
         CommandSuggestionItem {
             label: file.clone(),
@@ -359,6 +361,48 @@ pub fn file_suggestions_for(
     })
     .collect::<Vec<_>>();
     Some(view("Files", context.query, items))
+}
+
+fn file_suggestion_candidate_indices(files: &[String], query: &str) -> Vec<usize> {
+    let query = query.trim();
+    if query.is_empty() || !query.is_ascii() {
+        return (0..files.len()).collect();
+    }
+    files
+        .iter()
+        .enumerate()
+        .filter_map(|(index, file)| ascii_subsequence_match(file, query).then_some(index))
+        .collect()
+}
+
+fn ascii_subsequence_match(haystack: &str, needle: &str) -> bool {
+    ascii_subsequence_match_parts([haystack], needle)
+}
+
+fn ascii_subsequence_match_parts<'a>(
+    parts: impl IntoIterator<Item = &'a str>,
+    needle: &str,
+) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let mut needle = needle.bytes().map(|byte| byte.to_ascii_lowercase());
+    let Some(mut wanted) = needle.next() else {
+        return true;
+    };
+    for byte in parts
+        .into_iter()
+        .flat_map(str::bytes)
+        .map(|byte| byte.to_ascii_lowercase())
+    {
+        if byte == wanted {
+            let Some(next) = needle.next() else {
+                return true;
+            };
+            wanted = next;
+        }
+    }
+    false
 }
 
 #[must_use]
@@ -704,15 +748,20 @@ fn model_suggestions(
     context: SuggestionContext,
     models: &[ModelOption],
 ) -> Option<CommandSuggestionsView> {
+    let candidate_indices = model_suggestion_candidate_indices(models, &context.active_prefix);
     let items = fuzzy_indices(
-        models,
+        &candidate_indices,
         &context.active_prefix,
         FuzzyMode::Text,
         None,
-        |model| format!("{} {}", model.id, model.display_name),
+        |index| {
+            let model = &models[*index];
+            format!("{} {}", model.id, model.display_name)
+        },
     )
     .into_iter()
-    .map(|index| {
+    .map(|candidate_index| {
+        let index = candidate_indices[candidate_index];
         let model = &models[index];
         CommandSuggestionItem {
             label: model.id.clone(),
@@ -726,6 +775,21 @@ fn model_suggestions(
     })
     .collect::<Vec<_>>();
     Some(view("Models", context.active_prefix, items))
+}
+
+fn model_suggestion_candidate_indices(models: &[ModelOption], query: &str) -> Vec<usize> {
+    let query = query.trim();
+    if query.is_empty() || !query.is_ascii() {
+        return (0..models.len()).collect();
+    }
+    models
+        .iter()
+        .enumerate()
+        .filter_map(|(index, model)| {
+            ascii_subsequence_match_parts([model.id.as_str(), model.display_name.as_str()], query)
+                .then_some(index)
+        })
+        .collect()
 }
 
 fn thinking_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
@@ -1178,6 +1242,39 @@ mod tests {
         assert_eq!(view.items.len(), 1);
         assert_eq!(view.items[0].replacement, "@crates/oino-tui/src/app.rs");
         assert_eq!(view.items[0].replace_start, 15);
+    }
+
+    #[test]
+    fn file_suggestions_prefilter_keeps_case_insensitive_subsequence_matches() {
+        let files = vec![
+            "README.md".to_string(),
+            "crates/Oino-Tui/src/App.rs".to_string(),
+            "crates/oino-app/src/main.rs".to_string(),
+        ];
+        let view = file_suggestions_for("open @TUI/App", 13, &files)
+            .unwrap_or_else(|| panic!("missing file suggestions"));
+
+        assert_eq!(view.items[0].replacement, "@crates/Oino-Tui/src/App.rs");
+        assert!(ascii_subsequence_match(
+            "crates/Oino-Tui/src/App.rs",
+            "TUI/App"
+        ));
+    }
+
+    #[test]
+    fn model_suggestions_prefilter_checks_id_and_display_name() {
+        let models = vec![
+            ModelOption::new("openrouter:a/alpha"),
+            ModelOption::new("openrouter:b/bravo").with_display_name("Displayed Model"),
+        ];
+        let view = command_suggestions_for("/model displayed", 16, &models, &[], &[])
+            .unwrap_or_else(|| panic!("missing model suggestions"));
+
+        assert_eq!(view.items[0].label, "openrouter:b/bravo");
+        assert!(ascii_subsequence_match_parts(
+            ["openrouter:b/bravo", "Displayed Model"],
+            "displayed"
+        ));
     }
 
     #[test]

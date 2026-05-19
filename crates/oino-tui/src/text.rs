@@ -11,32 +11,50 @@ pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
 
     let mut lines = Vec::new();
     for raw in text.split('\n') {
-        if raw.is_empty() {
-            lines.push(String::new());
-            continue;
-        }
-        let mut current = String::new();
-        let mut current_width = 0usize;
-        for grapheme in raw.graphemes(true) {
-            let grapheme_width = grapheme.width();
-            if current_width + grapheme_width > width && current_width != 0 {
-                lines.push(current);
-                current = String::new();
-                current_width = 0;
-            }
-            current.push_str(grapheme);
-            current_width += grapheme_width;
-            if current_width >= width {
-                lines.push(current);
-                current = String::new();
-                current_width = 0;
-            }
-        }
-        if !current.is_empty() {
-            lines.push(current);
-        }
+        wrap_raw_line(raw, width, |line| lines.push(line.to_string()));
     }
     lines
+}
+
+pub(crate) fn wrapped_line_count(text: &str, width: usize) -> usize {
+    let width = width.max(1);
+    if text.is_empty() {
+        return 1;
+    }
+
+    let mut count = 0usize;
+    for raw in text.split('\n') {
+        wrap_raw_line(raw, width, |_| count = count.saturating_add(1));
+    }
+    count
+}
+
+fn wrap_raw_line<'a>(raw: &'a str, width: usize, mut push: impl FnMut(&'a str)) {
+    if raw.is_empty() {
+        push("");
+        return;
+    }
+
+    let mut line_start = 0usize;
+    let mut current_width = 0usize;
+    for (index, grapheme) in raw.grapheme_indices(true) {
+        let grapheme_width = grapheme.width();
+        if current_width + grapheme_width > width && current_width != 0 {
+            push(&raw[line_start..index]);
+            line_start = index;
+            current_width = 0;
+        }
+        current_width += grapheme_width;
+        if current_width >= width {
+            let end = index + grapheme.len();
+            push(&raw[line_start..end]);
+            line_start = end;
+            current_width = 0;
+        }
+    }
+    if line_start < raw.len() {
+        push(&raw[line_start..]);
+    }
 }
 
 pub(crate) fn truncate_to_width(text: &str, max_width: usize) -> String {
@@ -80,4 +98,29 @@ pub(crate) fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
     }
     out.push(ellipsis);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapped_line_count_matches_wrapped_lines() {
+        let cases = [
+            "",
+            "short",
+            "one two three four five",
+            "one\n\nthree",
+            "emoji ✅🚀 width",
+            "日本語の幅を扱うテキスト",
+        ];
+        for text in cases {
+            for width in 1..12 {
+                assert_eq!(
+                    wrapped_line_count(text, width),
+                    wrap_text(text, width).len()
+                );
+            }
+        }
+    }
 }

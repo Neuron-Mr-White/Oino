@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
 use ratatui::style::{Color, Modifier, Style};
+use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Theme {
     pub fg: Color,
     pub muted: Color,
@@ -41,6 +42,12 @@ impl Default for Theme {
                 .add_modifier(Modifier::BOLD),
         }
     }
+}
+
+pub(crate) fn theme_cache_hash(theme: &Theme) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    theme.hash(&mut hasher);
+    hasher.finish()
 }
 
 impl Theme {
