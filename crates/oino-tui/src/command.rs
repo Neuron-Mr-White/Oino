@@ -1069,20 +1069,36 @@ fn suggestion_context(input: &str, cursor: usize) -> Option<SuggestionContext> {
 fn file_suggestion_context(input: &str, cursor: usize) -> Option<FileSuggestionContext> {
     let len = char_count(input);
     let cursor = cursor.min(len);
-    let token = tokens_with_ranges(input)
-        .into_iter()
-        .find(|token| token.start < cursor.saturating_add(1) && cursor <= token.end)?;
-    if !token.text.starts_with('@') {
+    let (token_start, token_end) = token_bounds_at_cursor(input, cursor)?;
+    if char_at(input, token_start) != Some('@') {
         return None;
     }
-    let query_end = cursor
-        .saturating_sub(token.start)
-        .min(char_count(&token.text));
-    let query = char_range(&token.text, 1, query_end);
+    let query_end = cursor.min(token_end);
+    let query = char_range(input, token_start.saturating_add(1), query_end);
     Some(FileSuggestionContext {
         query,
-        replace_start: token.start,
-        replace_end: token.end,
+        replace_start: token_start,
+        replace_end: token_end,
+    })
+}
+
+fn token_bounds_at_cursor(input: &str, cursor: usize) -> Option<(usize, usize)> {
+    let mut start = None;
+    for (index, ch) in input.chars().enumerate() {
+        if ch.is_whitespace() {
+            if let Some(token_start) = start.take() {
+                if token_start < cursor.saturating_add(1) && cursor <= index {
+                    return Some((token_start, index));
+                }
+            }
+        } else if start.is_none() {
+            start = Some(index);
+        }
+    }
+    start.and_then(|token_start| {
+        let token_end = char_count(input);
+        (token_start < cursor.saturating_add(1) && cursor <= token_end)
+            .then_some((token_start, token_end))
     })
 }
 
@@ -1257,6 +1273,20 @@ mod tests {
         assert_eq!(view.items.len(), 1);
         assert_eq!(view.items[0].replacement, "@crates/oino-tui/src/app.rs");
         assert_eq!(view.items[0].replace_start, 15);
+    }
+
+    #[test]
+    fn file_suggestion_context_finds_active_token_without_tokenizing_all_input() {
+        let context = file_suggestion_context("before @src/main.rs after", 16)
+            .unwrap_or_else(|| panic!("missing file context"));
+
+        assert_eq!(context.query, "src/main");
+        assert_eq!(context.replace_start, 7);
+        assert_eq!(context.replace_end, 19);
+        assert_eq!(
+            token_bounds_at_cursor("before @src/main.rs after", 16),
+            Some((7, 19))
+        );
     }
 
     #[test]

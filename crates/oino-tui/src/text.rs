@@ -29,6 +29,25 @@ pub(crate) fn wrapped_line_count(text: &str, width: usize) -> usize {
     count
 }
 
+pub(crate) fn for_each_wrapped_line<'a>(
+    text: &'a str,
+    width: usize,
+    mut push: impl FnMut(&'a str),
+) {
+    let width = width.max(1);
+    if text.is_empty() {
+        push("");
+        return;
+    }
+    for raw in text.split('\n') {
+        for_each_wrapped_raw_line(raw, width, &mut push);
+    }
+}
+
+pub(crate) fn for_each_wrapped_raw_line<'a>(raw: &'a str, width: usize, push: impl FnMut(&'a str)) {
+    wrap_raw_line(raw, width.max(1), push);
+}
+
 fn wrap_raw_line<'a>(raw: &'a str, width: usize, mut push: impl FnMut(&'a str)) {
     if raw.is_empty() {
         push("");

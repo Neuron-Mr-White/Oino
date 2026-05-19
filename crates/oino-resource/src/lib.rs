@@ -416,7 +416,8 @@ fn discover_prompts(
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension() != Some(OsStr::new("md")) || !path.is_file() {
+        let is_file = entry.file_type().is_ok_and(|file_type| file_type.is_file());
+        if path.extension() != Some(OsStr::new("md")) || !is_file {
             continue;
         }
         match load_prompt(&path) {
@@ -497,31 +498,32 @@ fn collect_skills(
         }
     };
     for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
-            let skill_path = path.join("SKILL.md");
-            if skill_path.is_file() {
-                match load_skill(&skill_path, scope) {
-                    Ok(skill) => {
-                        if let Some(kept) = seen.get(&skill.name) {
-                            diagnostics.push(ResourceDiagnostic::DuplicateSkill {
-                                name: skill.name,
-                                kept: kept.clone(),
-                                skipped: skill_path,
-                            });
-                        } else {
-                            seen.insert(skill.name.clone(), skill.path.clone());
-                            skills.push(skill);
-                        }
+        let skill_path = path.join("SKILL.md");
+        if skill_path.is_file() {
+            match load_skill(&skill_path, scope) {
+                Ok(skill) => {
+                    if let Some(kept) = seen.get(&skill.name) {
+                        diagnostics.push(ResourceDiagnostic::DuplicateSkill {
+                            name: skill.name,
+                            kept: kept.clone(),
+                            skipped: skill_path,
+                        });
+                    } else {
+                        seen.insert(skill.name.clone(), skill.path.clone());
+                        skills.push(skill);
                     }
-                    Err(message) => diagnostics.push(ResourceDiagnostic::InvalidSkill {
-                        path: skill_path,
-                        message,
-                    }),
                 }
-            } else {
-                collect_skills(&path, scope, skills, seen, diagnostics);
+                Err(message) => diagnostics.push(ResourceDiagnostic::InvalidSkill {
+                    path: skill_path,
+                    message,
+                }),
             }
+        } else {
+            collect_skills(&path, scope, skills, seen, diagnostics);
         }
     }
 }

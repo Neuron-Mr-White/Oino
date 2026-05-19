@@ -4,7 +4,7 @@ use crate::{
     markdown::{prefixed_markdown_lines, render_markdown_lines},
     message::{MessageView, ToolCallView},
     settings::{ChatStyle, CollapseMode},
-    text::{truncate_to_width, wrap_text},
+    text::{for_each_wrapped_line, for_each_wrapped_raw_line, truncate_to_width, wrap_text},
     theme::{theme_cache_hash, Theme},
 };
 use ratatui::{
@@ -1001,26 +1001,23 @@ fn prefixed_text_lines(
     let mut out = Vec::new();
     let mut first = true;
     for raw in text.split('\n') {
-        let wrapped = wrap_text(raw, if first { first_width } else { rest_width });
-        for segment in wrapped {
-            let prefix = if first {
-                initial_prefix.clone()
-            } else {
-                subsequent_prefix.clone()
-            };
-            let mut line = prefix;
-            if !segment.is_empty() {
-                line.push_span(Span::styled(segment, style));
-            }
-            out.push(line);
-            first = false;
-        }
-        if raw.is_empty() && first {
-            let mut line = initial_prefix.clone();
-            line.push_span(Span::styled(String::new(), style));
-            out.push(line);
-            first = false;
-        }
+        for_each_wrapped_raw_line(
+            raw,
+            if first { first_width } else { rest_width },
+            |segment| {
+                let prefix = if first {
+                    initial_prefix.clone()
+                } else {
+                    subsequent_prefix.clone()
+                };
+                let mut line = prefix;
+                if !segment.is_empty() {
+                    line.push_span(Span::styled(segment.to_string(), style));
+                }
+                out.push(line);
+                first = false;
+            },
+        );
     }
     if out.is_empty() {
         out.push(initial_prefix);
@@ -1415,15 +1412,16 @@ fn resource_attachment_lines(
             ),
         ]));
         let source_indent = "  source ";
-        for segment in wrap_text(
+        for_each_wrapped_line(
             &attachment.source,
             width.saturating_sub(source_indent.width()).max(1),
-        ) {
-            lines.push(Line::from(vec![
-                Span::styled(source_indent, Style::default().fg(theme.muted)),
-                Span::styled(segment, Style::default().fg(theme.muted)),
-            ]));
-        }
+            |segment| {
+                lines.push(Line::from(vec![
+                    Span::styled(source_indent, Style::default().fg(theme.muted)),
+                    Span::styled(segment.to_string(), Style::default().fg(theme.muted)),
+                ]));
+            },
+        );
     }
     lines
 }
@@ -1447,10 +1445,11 @@ fn message_content_lines(
 }
 
 fn plain_wrapped_lines(text: &str, width: usize, style: Style) -> Vec<Line<'static>> {
-    wrap_text(text, width)
-        .into_iter()
-        .map(|line| Line::from(Span::styled(line, style)))
-        .collect()
+    let mut lines = Vec::new();
+    for_each_wrapped_line(text, width, |line| {
+        lines.push(Line::from(Span::styled(line.to_string(), style)));
+    });
+    lines
 }
 
 fn content_metric(content: &str) -> String {
@@ -1561,10 +1560,7 @@ fn bubble_lines(
             border_style,
             vec![Span::styled("◌", Style::default().fg(theme.muted))],
         ));
-        for line in wrap_text(
-            thinking_text.as_deref().unwrap_or_default(),
-            inner_width.saturating_sub(2).max(1),
-        ) {
+        for line in &thinking_wrapped {
             let text = format!("  {line}");
             lines.push(bubble_content_line(
                 left_pad,
