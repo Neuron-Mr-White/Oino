@@ -837,8 +837,9 @@ async fn run_tui(
             }
             TuiAction::SteerPrompt(prompt) => {
                 if prompt_in_flight {
-                    match harness.steer(Message::user_text(prompt)).await {
-                        Ok(()) => state.status = "Steered current response".into(),
+                    let message = Message::user_text(prompt);
+                    match harness.steer(message.clone()).await {
+                        Ok(()) => materialize_accepted_steer(&mut state, &message),
                         Err(err) => state.set_error(user_facing_error(&err)),
                     }
                 } else {
@@ -2110,6 +2111,12 @@ async fn register_tui_stream_hooks(harness: &Harness, tx: mpsc::UnboundedSender<
     }
 }
 
+fn materialize_accepted_steer(state: &mut TuiState, message: &Message) {
+    state.finish_message(message);
+    state.transcript_scroll.jump_bottom();
+    state.status = "Steered current response".into();
+}
+
 fn apply_tui_runtime_event(
     state: &mut TuiState,
     event: TuiRuntimeEvent,
@@ -2479,6 +2486,22 @@ mod tests {
         assert!(html.contains("hello &lt;world&gt;"));
         assert!(html.contains("ok &amp; done"));
         assert!(!html.contains("hello <world>"));
+    }
+
+    #[test]
+    fn accepted_steer_materializes_in_tui_transcript() {
+        let mut state = TuiState::new();
+        state.transcript_scroll.scroll_up(3);
+        let message = Message::user_text("steer now");
+
+        materialize_accepted_steer(&mut state, &message);
+
+        assert!(state
+            .messages
+            .iter()
+            .any(|message| message.role == "user" && message.content == "steer now"));
+        assert!(state.transcript_scroll.is_at_bottom());
+        assert_eq!(state.status, "Steered current response");
     }
 
     #[tokio::test]

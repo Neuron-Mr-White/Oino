@@ -449,10 +449,17 @@ async fn run_agent_loop_continue_inner(
         if config.abort_signal.is_aborted()
             || matches!(
                 stop_reason,
-                StopReason::Aborted | StopReason::Error | StopReason::Length | StopReason::EndTurn
+                StopReason::Aborted | StopReason::Error | StopReason::Length
             )
         {
             break;
+        }
+
+        if matches!(stop_reason, StopReason::EndTurn) {
+            if drain_queues(&mut messages, &config).await? == 0 {
+                break;
+            }
+            continue;
         }
 
         let tool_calls = assistant_tool_calls(&assistant);
@@ -1000,15 +1007,49 @@ async fn drain_queues(messages: &mut Vec<Message>, config: &AgentLoopConfig) -> 
     let mut count = 0;
     if let Some(drain) = &config.get_steering_messages {
         let drained = drain().await?;
-        count += drained.len();
-        messages.extend(drained);
+        count += append_drained_messages(messages, config, drained).await?;
     }
     if let Some(drain) = &config.get_follow_up_messages {
         let drained = drain().await?;
-        count += drained.len();
-        messages.extend(drained);
+        count += append_drained_messages(messages, config, drained).await?;
     }
     Ok(count)
+}
+
+async fn append_drained_messages(
+    messages: &mut Vec<Message>,
+    config: &AgentLoopConfig,
+    drained: Vec<Message>,
+) -> LoopResult<usize> {
+    let count = drained.len();
+    for message in drained {
+        config
+            .event_sink
+            .emit(AgentEvent::MessageStart {
+                message_id: message.id(),
+                role: message_role(&message).into(),
+            })
+            .await?;
+        config
+            .event_sink
+            .emit(AgentEvent::MessageEnd {
+                message: message.clone(),
+            })
+            .await?;
+        messages.push(message);
+    }
+    Ok(count)
+}
+
+fn message_role(message: &Message) -> &'static str {
+    match message {
+        Message::User { .. } => "user",
+        Message::Assistant { .. } => "assistant",
+        Message::ToolResult { .. } => "tool_result",
+        Message::Custom { .. } => "custom",
+        Message::CompactionSummary { .. } => "compaction_summary",
+        Message::BranchSummary { .. } => "branch_summary",
+    }
 }
 
 #[derive(Clone)]
@@ -1299,6 +1340,83 @@ mod tests {
             Err(err) => panic!("loop failed: {err}"),
         };
         assert_eq!(output.stop_reason, StopReason::Length);
+    }
+
+    #[tokio::test]
+    async fn end_turn_drains_steering_and_continues() {
+        let sink = VecEventSink::new();
+        let queued = Arc::new(Mutex::new(Some(Message::user_text("steer now"))));
+        let stream = Arc::new(FauxStream::turns(vec![
+            vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }],
+            vec![
+                AssistantStreamEvent::TextDelta {
+                    delta: "after steer".into(),
+                },
+                AssistantStreamEvent::Done {
+                    stop_reason: StopReason::EndTurn,
+                    provider: None,
+                },
+            ],
+        ]));
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.event_sink = Arc::new(sink.clone());
+        config.max_turns = 3;
+        let queued_messages = Arc::clone(&queued);
+        config.get_steering_messages = Some(Arc::new(move || {
+            let queued_messages = Arc::clone(&queued_messages);
+            Box::pin(async move { Ok(queued_messages.lock().await.take().into_iter().collect()) })
+        }));
+
+        let output = match run_agent_loop(Message::user_text("start"), config).await {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+
+        let user_texts: Vec<String> = output
+            .messages
+            .iter()
+            .filter_map(|message| match message {
+                Message::User { content, .. } => content.iter().find_map(|block| match block {
+                    ContentBlock::Text { text } => Some(text.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            user_texts,
+            vec!["start".to_string(), "steer now".to_string()]
+        );
+        assert!(matches!(
+            output.messages.last(),
+            Some(Message::Assistant { content, .. })
+                if content.iter().any(|block| matches!(
+                    block,
+                    ContentBlock::Text { text } if text == "after steer"
+                ))
+        ));
+
+        let ended_user_texts: Vec<String> = sink
+            .events()
+            .await
+            .into_iter()
+            .filter_map(|event| match event {
+                AgentEvent::MessageEnd {
+                    message: Message::User { content, .. },
+                } => content.into_iter().find_map(|block| match block {
+                    ContentBlock::Text { text } => Some(text),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            ended_user_texts,
+            vec!["start".to_string(), "steer now".to_string()]
+        );
     }
 
     #[tokio::test]
