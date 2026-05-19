@@ -76,7 +76,7 @@ fn chat_transcript_blocks(
     tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Arc<Vec<Line<'static>>>> {
-    let mut blocks = Vec::new();
+    let mut blocks = Vec::with_capacity(spaced_transcript_block_capacity(messages.len(), error));
     let theme_hash = theme_cache_hash(theme);
     for message in messages {
         append_spaced_block(
@@ -109,7 +109,7 @@ fn agentic_transcript_blocks(
     tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Arc<Vec<Line<'static>>>> {
-    let mut blocks = Vec::new();
+    let mut blocks = Vec::with_capacity(spaced_transcript_block_capacity(messages.len(), error));
     let theme_hash = theme_cache_hash(theme);
     let relation_hash = message_relation_hash(messages);
     for (index, message) in messages.iter().enumerate() {
@@ -156,7 +156,8 @@ fn minimal_transcript_blocks(
     _tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Arc<Vec<Line<'static>>>> {
-    let mut blocks = Vec::new();
+    let mut blocks =
+        Vec::with_capacity(messages.len().saturating_add(usize::from(error.is_some())));
     let theme_hash = theme_cache_hash(theme);
     let relation_hash = message_relation_hash(messages);
     let mut user_index = 0usize;
@@ -197,6 +198,11 @@ fn minimal_transcript_blocks(
         );
     }
     blocks
+}
+
+fn spaced_transcript_block_capacity(message_count: usize, error: Option<&str>) -> usize {
+    let block_count = message_count.saturating_add(usize::from(error.is_some()));
+    block_count.saturating_mul(2).saturating_sub(1)
 }
 
 fn append_spaced_block(blocks: &mut Vec<Arc<Vec<Line<'static>>>>, block: Arc<Vec<Line<'static>>>) {

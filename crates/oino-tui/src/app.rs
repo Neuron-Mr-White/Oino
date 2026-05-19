@@ -11,7 +11,7 @@ use crate::{
         char_count, collapsed_paste_summary, normalize_paste_text, should_collapse_paste,
         ComposerState, MAX_PASTE_CHARS,
     },
-    fuzzy::{fuzzy_indices, FuzzyMode},
+    fuzzy::{ascii_subsequence_match_parts, fuzzy_indices, FuzzyMode},
     help::{help_entries, help_entry_match_text},
     keymap::{KeyAction, KeyContext, KeyStroke, KeymapConfig, KeymapMatch},
     message::{project_content_blocks, project_message, project_messages, MessageView},
@@ -2386,15 +2386,120 @@ fn move_index(current: usize, len: usize, delta: isize) -> usize {
 }
 
 fn filtered_session_indices(items: &[SessionListItem], query: &str) -> Vec<usize> {
-    fuzzy_indices(items, query, FuzzyMode::Path, None, session_match_text)
+    let query = query.trim();
+    if query.is_empty() {
+        return (0..items.len()).collect();
+    }
+    let candidate_indices = session_filter_candidate_indices(items, query);
+    fuzzy_indices(&candidate_indices, query, FuzzyMode::Path, None, |index| {
+        session_match_text(&items[*index])
+    })
+    .into_iter()
+    .map(|candidate_index| candidate_indices[candidate_index])
+    .collect()
+}
+
+fn session_filter_candidate_indices(items: &[SessionListItem], query: &str) -> Vec<usize> {
+    if !query.is_ascii() {
+        return (0..items.len()).collect();
+    }
+    items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, session)| {
+            ascii_subsequence_match_parts(
+                [
+                    session.name.as_str(),
+                    " ",
+                    session.id.as_str(),
+                    " ",
+                    session.preview.as_str(),
+                    " ",
+                    session.cwd.as_str(),
+                ],
+                query,
+            )
+            .then_some(index)
+        })
+        .collect()
 }
 
 fn filtered_prompt_indices(items: &[PromptResource], query: &str) -> Vec<usize> {
-    fuzzy_indices(items, query, FuzzyMode::Text, None, prompt_match_text)
+    let query = query.trim();
+    if query.is_empty() {
+        return (0..items.len()).collect();
+    }
+    let candidate_indices = prompt_filter_candidate_indices(items, query);
+    fuzzy_indices(&candidate_indices, query, FuzzyMode::Text, None, |index| {
+        prompt_match_text(&items[*index])
+    })
+    .into_iter()
+    .map(|candidate_index| candidate_indices[candidate_index])
+    .collect()
+}
+
+fn prompt_filter_candidate_indices(items: &[PromptResource], query: &str) -> Vec<usize> {
+    if !query.is_ascii() {
+        return (0..items.len()).collect();
+    }
+    items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, prompt)| {
+            ascii_subsequence_match_parts(
+                [
+                    prompt.name.as_str(),
+                    " ",
+                    prompt.description.as_str(),
+                    " ",
+                    prompt.source.as_str(),
+                    " ",
+                    prompt.scope.as_str(),
+                ],
+                query,
+            )
+            .then_some(index)
+        })
+        .collect()
 }
 
 fn filtered_skill_indices(items: &[SkillResource], query: &str) -> Vec<usize> {
-    fuzzy_indices(items, query, FuzzyMode::Text, None, skill_match_text)
+    let query = query.trim();
+    if query.is_empty() {
+        return (0..items.len()).collect();
+    }
+    let candidate_indices = skill_filter_candidate_indices(items, query);
+    fuzzy_indices(&candidate_indices, query, FuzzyMode::Text, None, |index| {
+        skill_match_text(&items[*index])
+    })
+    .into_iter()
+    .map(|candidate_index| candidate_indices[candidate_index])
+    .collect()
+}
+
+fn skill_filter_candidate_indices(items: &[SkillResource], query: &str) -> Vec<usize> {
+    if !query.is_ascii() {
+        return (0..items.len()).collect();
+    }
+    items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, skill)| {
+            ascii_subsequence_match_parts(
+                [
+                    skill.name.as_str(),
+                    " ",
+                    skill.description.as_str(),
+                    " ",
+                    skill.source.as_str(),
+                    " ",
+                    skill.scope.as_str(),
+                ],
+                query,
+            )
+            .then_some(index)
+        })
+        .collect()
 }
 
 fn session_match_text(session: &SessionListItem) -> String {
@@ -3288,6 +3393,56 @@ mod tests {
             state.handle_key(key(KeyCode::Char('r'))),
             TuiAction::ReloadResources
         );
+    }
+
+    #[test]
+    fn resource_and_session_filters_prefilter_candidates() {
+        let prompts = vec![
+            PromptResource {
+                name: "review".into(),
+                description: "Review changes".into(),
+                argument_hint: None,
+                source: "/tmp/prompts/review.md".into(),
+                scope: "project".into(),
+                content: String::new(),
+            },
+            PromptResource {
+                name: "debug".into(),
+                description: "Debug failure".into(),
+                argument_hint: None,
+                source: "/tmp/prompts/debug.md".into(),
+                scope: "project".into(),
+                content: String::new(),
+            },
+        ];
+        let skills = vec![
+            SkillResource {
+                name: "research".into(),
+                description: "Read only".into(),
+                source: "/tmp/skills/research/SKILL.md".into(),
+                scope: "project".into(),
+                content: String::new(),
+            },
+            SkillResource {
+                name: "quick-fix".into(),
+                description: "Patch bug".into(),
+                source: "/tmp/skills/quick-fix/SKILL.md".into(),
+                scope: "project".into(),
+                content: String::new(),
+            },
+        ];
+        let sessions = vec![SessionListItem {
+            id: "abc".into(),
+            name: "Planning".into(),
+            cwd: "/repo/oino".into(),
+            message_count: 3,
+            preview: "Discuss resources".into(),
+            current: false,
+        }];
+
+        assert_eq!(prompt_filter_candidate_indices(&prompts, "rev"), vec![0]);
+        assert_eq!(filtered_skill_indices(&skills, "qfix"), vec![1]);
+        assert_eq!(session_filter_candidate_indices(&sessions, "repo"), vec![0]);
     }
 
     #[test]

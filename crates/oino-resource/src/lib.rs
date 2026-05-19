@@ -674,16 +674,28 @@ fn is_skill_name(name: &str) -> bool {
 }
 
 fn expand_template(template: &str, input: &str) -> String {
-    let args = shell_words(input);
-    let mut expanded = template
-        .replace("$ARGUMENTS", input.trim())
-        .replace("$@", input.trim());
-    for index in (1..=9).rev() {
-        let needle = format!("${index}");
-        let value = args.get(index - 1).map_or("", String::as_str);
-        expanded = expanded.replace(&needle, value);
+    if !template.contains('$') {
+        return template.to_string();
+    }
+
+    let input = input.trim();
+    let mut expanded = template.replace("$ARGUMENTS", input).replace("$@", input);
+    if has_positional_placeholder(template) {
+        let args = shell_words(input);
+        for index in (1..=9).rev() {
+            let needle = format!("${index}");
+            let value = args.get(index - 1).map_or("", String::as_str);
+            expanded = expanded.replace(&needle, value);
+        }
     }
     expanded
+}
+
+fn has_positional_placeholder(template: &str) -> bool {
+    template
+        .as_bytes()
+        .windows(2)
+        .any(|window| window[0] == b'$' && matches!(window[1], b'1'..=b'9'))
 }
 
 fn shell_words(input: &str) -> Vec<String> {
@@ -712,6 +724,16 @@ fn shell_words(input: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn template_without_placeholders_expands_as_literal() {
+        assert_eq!(
+            expand_template("No placeholders", "ignored"),
+            "No placeholders"
+        );
+        assert!(!has_positional_placeholder("$ARGUMENTS only"));
+        assert!(has_positional_placeholder("Use $1"));
+    }
 
     #[test]
     fn frontmatter_parser_avoids_body_changes() {

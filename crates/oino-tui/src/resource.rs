@@ -74,16 +74,28 @@ pub struct ResourceBrowserState {
 }
 
 fn expand_template(template: &str, input: &str) -> String {
-    let args = shell_words(input);
-    let mut expanded = template
-        .replace("$ARGUMENTS", input.trim())
-        .replace("$@", input.trim());
-    for index in (1..=9).rev() {
-        let needle = format!("${index}");
-        let value = args.get(index - 1).map_or("", String::as_str);
-        expanded = expanded.replace(&needle, value);
+    if !template.contains('$') {
+        return template.to_string();
+    }
+
+    let input = input.trim();
+    let mut expanded = template.replace("$ARGUMENTS", input).replace("$@", input);
+    if has_positional_placeholder(template) {
+        let args = shell_words(input);
+        for index in (1..=9).rev() {
+            let needle = format!("${index}");
+            let value = args.get(index - 1).map_or("", String::as_str);
+            expanded = expanded.replace(&needle, value);
+        }
     }
     expanded
+}
+
+fn has_positional_placeholder(template: &str) -> bool {
+    template
+        .as_bytes()
+        .windows(2)
+        .any(|window| window[0] == b'$' && matches!(window[1], b'1'..=b'9'))
 }
 
 fn shell_words(input: &str) -> Vec<String> {
@@ -111,6 +123,20 @@ fn shell_words(input: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prompt_without_placeholders_expands_as_literal() {
+        let prompt = PromptResource {
+            name: "literal".into(),
+            description: "Literal".into(),
+            argument_hint: None,
+            source: "test".into(),
+            scope: "project".into(),
+            content: "No placeholders here".into(),
+        };
+        assert_eq!(prompt.expand("ignored"), "No placeholders here");
+        assert!(!has_positional_placeholder("$ARGUMENTS only"));
+    }
 
     #[test]
     fn prompt_expands_arguments() {
