@@ -191,22 +191,22 @@ It should not request shell, filesystem, secrets, arbitrary provider payload mut
 
 ## Implementation Checklist
 
-- [ ] Create a disposable branch/worktree for the extension experiment.
-- [ ] Define the repo-local extension package layout under `extensions/`.
-- [ ] Add extension manifest schema and validation types.
-- [ ] Add capability and permission model for tool registration, sidebar UI, and named host capabilities.
-- [ ] Add a local extension discovery path for `extensions/*/oino.extension.json`.
-- [ ] Add WASM host lifecycle for loading, initializing, invoking, cancelling, and shutting down extensions.
-- [ ] Add extension-to-tool bridge that exposes extension tools as Oino `Tool` implementations.
-- [ ] Add native `host.web.search` capability interface and mock backend.
-- [ ] Validate Rust HTTP backend candidates, starting with `wreq`/`newwreq`, then fallback candidates.
-- [ ] Add the `extensions/web/` WASM package and `web_search` tool contribution.
-- [ ] Add declarative sidebar/panel contribution model.
-- [ ] Render web search sidebar states in TUI: idle, loading, results, error.
-- [ ] Connect web search tool execution to sidebar state updates.
-- [ ] Add settings/diagnostics surface for extension health and permissions.
-- [ ] Add tests for manifest validation, capability checks, WASM invocation, tool bridge, web capability, and sidebar rendering.
-- [ ] Add documentation for the experimental extension layout and dogfood workflow.
+- [x] Create a disposable branch/worktree for the extension experiment. — covered by plan Task 1
+- [x] Define the repo-local extension package layout under `extensions/`. — covered by plan Tasks 3 and 10
+- [x] Add extension manifest schema and validation types. — covered by plan Task 2
+- [x] Add capability and permission model for tool registration, sidebar UI, and named host capabilities. — covered by plan Tasks 2 and 5
+- [x] Add a local extension discovery path for `extensions/*/oino.extension.json`. — covered by plan Task 3
+- [x] Add WASM host lifecycle for loading, initializing, invoking, cancelling, and shutting down extensions. — covered by plan Task 4
+- [x] Add extension-to-tool bridge that exposes extension tools as Oino `Tool` implementations. — covered by plan Task 6
+- [x] Add native `host.web.search` capability interface and mock backend. — covered by plan Task 5
+- [x] Validate Rust HTTP backend candidates, starting with `wreq`/`newwreq`, then fallback candidates. — covered by plan Task 11
+- [x] Add the `extensions/web/` WASM package and `web_search` tool contribution. — covered by plan Task 10
+- [x] Add declarative sidebar/panel contribution model. — covered by plan Task 8
+- [x] Render web search sidebar states in TUI: idle, loading, results, error. — covered by plan Task 8
+- [x] Connect web search tool execution to sidebar state updates. — covered by plan Task 9
+- [x] Add settings/diagnostics surface for extension health and permissions. — covered by plan Task 12
+- [x] Add tests for manifest validation, capability checks, WASM invocation, tool bridge, web capability, and sidebar rendering. — covered by plan Task 13
+- [x] Add documentation for the experimental extension layout and dogfood workflow. — covered by plan Task 14
 
 ## Open Questions
 
