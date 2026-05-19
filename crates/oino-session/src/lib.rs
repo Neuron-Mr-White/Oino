@@ -14,7 +14,10 @@ use std::{
     path::{Path, PathBuf},
 };
 use thiserror::Error;
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::{
+    fs,
+    io::{AsyncWriteExt, BufWriter},
+};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -334,7 +337,7 @@ impl SessionManager {
         {
             fs::create_dir_all(parent).await?;
         }
-        let mut file = fs::File::create(path).await?;
+        let mut file = BufWriter::new(fs::File::create(path).await?);
         let header = JsonlRecord::Header {
             header: self.header.clone(),
             leaf_id: self.leaf_id,
@@ -350,6 +353,7 @@ impl SessionManager {
                 .await?;
             file.write_all(b"\n").await?;
         }
+        file.flush().await?;
         Ok(())
     }
 

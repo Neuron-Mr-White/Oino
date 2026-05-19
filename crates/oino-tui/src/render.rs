@@ -78,7 +78,7 @@ struct PreparedTranscript {
 
 impl PreparedTranscript {
     fn from_blocks(blocks: Vec<Arc<Vec<Line<'static>>>>) -> Self {
-        let mut prepared_blocks = Vec::new();
+        let mut prepared_blocks = Vec::with_capacity(blocks.len());
         let mut total_lines = 0usize;
         for lines in blocks {
             if lines.is_empty() {
@@ -107,8 +107,11 @@ impl PreparedTranscript {
             return Vec::new();
         }
         let mut out = Vec::with_capacity(end - start);
-        for block in &self.blocks {
+        for block in &self.blocks[self.first_overlapping_block_index(start)..] {
             let block_start = block.start;
+            if block_start >= end {
+                break;
+            }
             let block_end = block_start.saturating_add(block.lines.len());
             let overlap_start = start.max(block_start);
             let overlap_end = end.min(block_end);
@@ -120,6 +123,11 @@ impl PreparedTranscript {
             out.extend_from_slice(&block.lines[local_start..local_end]);
         }
         out
+    }
+
+    fn first_overlapping_block_index(&self, line: usize) -> usize {
+        self.blocks
+            .partition_point(|block| block.start.saturating_add(block.lines.len()) <= line)
     }
 }
 
@@ -2801,6 +2809,31 @@ mod tests {
             panic!("draw failed: {err}");
         }
         terminal.backend().buffer().clone()
+    }
+
+    fn line_texts(lines: Vec<Line<'static>>) -> Vec<String> {
+        lines.iter().map(plain_line).collect()
+    }
+
+    #[test]
+    fn prepared_transcript_materializes_requested_slice() {
+        let prepared = PreparedTranscript::from_blocks(vec![
+            std::sync::Arc::new(vec![Line::from("a0"), Line::from("a1")]),
+            std::sync::Arc::new(Vec::new()),
+            std::sync::Arc::new(vec![Line::from("b0"), Line::from("b1"), Line::from("b2")]),
+            std::sync::Arc::new(vec![Line::from("c0")]),
+        ]);
+
+        assert_eq!(prepared.total_lines(), 6);
+        assert_eq!(
+            line_texts(prepared.materialize_line_slice(1, 5)),
+            vec!["a1", "b0", "b1", "b2"]
+        );
+        assert_eq!(
+            line_texts(prepared.materialize_line_slice(2, 3)),
+            vec!["b0"]
+        );
+        assert!(prepared.materialize_line_slice(6, 9).is_empty());
     }
 
     #[test]
