@@ -421,17 +421,21 @@ const fn chat_style_key(style: ChatStyle) -> u8 {
 }
 
 fn message_relation_hash(messages: &[MessageView]) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = None::<std::collections::hash_map::DefaultHasher>;
     for message in messages {
+        if message.tool_calls.is_empty() && !message.role.starts_with("tool:") {
+            continue;
+        }
+        let hasher = hasher.get_or_insert_with(std::collections::hash_map::DefaultHasher::new);
         for call in &message.tool_calls {
-            hash_tool_call(call, &mut hasher);
+            hash_tool_call(call, hasher);
         }
         if message.role.starts_with("tool:") {
-            message.tool_call_id.hash(&mut hasher);
-            message.role.hash(&mut hasher);
+            message.tool_call_id.hash(hasher);
+            message.role.hash(hasher);
         }
     }
-    hasher.finish()
+    hasher.map_or(0, |hasher| hasher.finish())
 }
 
 fn message_cache_hash(message: &MessageView) -> u64 {

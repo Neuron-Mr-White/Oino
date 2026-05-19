@@ -316,10 +316,21 @@ impl ResourceDiagnostic {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-struct Frontmatter {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Frontmatter<'a> {
     fields: BTreeMap<String, String>,
-    body: String,
+    body: &'a str,
+    has_frontmatter: bool,
+}
+
+impl<'a> Frontmatter<'a> {
+    fn content(&self) -> String {
+        if self.has_frontmatter {
+            normalized_frontmatter_body(self.body)
+        } else {
+            self.body.to_string()
+        }
+    }
 }
 
 fn find_project_root(cwd: &Path) -> PathBuf {
@@ -433,7 +444,7 @@ fn load_prompt(path: &Path) -> Result<PromptTemplate, String> {
         .fields
         .get("description")
         .cloned()
-        .or_else(|| first_non_empty_line(&parsed.body))
+        .or_else(|| first_non_empty_line(parsed.body))
         .unwrap_or_else(|| "Prompt template".into());
     let argument_hint = parsed.fields.get("argument-hint").cloned();
     Ok(PromptTemplate {
@@ -442,7 +453,7 @@ fn load_prompt(path: &Path) -> Result<PromptTemplate, String> {
         argument_hint,
         path: path.to_path_buf(),
         scope: ResourceScope::Project,
-        content: parsed.body,
+        content: parsed.content(),
     })
 }
 
@@ -558,43 +569,66 @@ fn load_skill(path: &Path, scope: ResourceScope) -> Result<Skill, String> {
     })
 }
 
-fn parse_frontmatter(raw: &str) -> Frontmatter {
-    let mut lines = raw.lines();
-    if lines.next() != Some("---") {
+fn parse_frontmatter(raw: &str) -> Frontmatter<'_> {
+    let mut segments = raw.split_inclusive('\n');
+    let Some(first) = segments.next() else {
         return Frontmatter {
             fields: BTreeMap::new(),
-            body: raw.to_string(),
+            body: raw,
+            has_frontmatter: false,
+        };
+    };
+    if logical_line(first) != "---" {
+        return Frontmatter {
+            fields: BTreeMap::new(),
+            body: raw,
+            has_frontmatter: false,
         };
     }
+
     let mut fields = BTreeMap::new();
-    let mut body_lines = Vec::new();
-    let mut in_frontmatter = true;
-    for line in lines {
-        if in_frontmatter && line == "---" {
-            in_frontmatter = false;
-            continue;
+    let mut offset = first.len();
+    for segment in segments {
+        let line = logical_line(segment);
+        offset += segment.len();
+        if line == "---" {
+            return Frontmatter {
+                fields,
+                body: &raw[offset..],
+                has_frontmatter: true,
+            };
         }
-        if in_frontmatter {
-            if let Some((key, value)) = line.split_once(':') {
-                fields.insert(
-                    key.trim().to_ascii_lowercase(),
-                    trim_frontmatter_value(value).to_string(),
-                );
-            }
-        } else {
-            body_lines.push(line);
+        if let Some((key, value)) = line.split_once(':') {
+            fields.insert(
+                key.trim().to_ascii_lowercase(),
+                trim_frontmatter_value(value).to_string(),
+            );
         }
     }
-    if in_frontmatter {
-        return Frontmatter {
-            fields: BTreeMap::new(),
-            body: raw.to_string(),
-        };
-    }
+
     Frontmatter {
-        fields,
-        body: body_lines.join("\n"),
+        fields: BTreeMap::new(),
+        body: raw,
+        has_frontmatter: false,
     }
+}
+
+fn logical_line(segment: &str) -> &str {
+    segment.trim_end_matches('\n').trim_end_matches('\r')
+}
+
+fn normalized_frontmatter_body(body: &str) -> String {
+    let mut lines = body.lines();
+    let Some(first) = lines.next() else {
+        return String::new();
+    };
+    let mut out = String::with_capacity(body.len());
+    out.push_str(first);
+    for line in lines {
+        out.push('\n');
+        out.push_str(line);
+    }
+    out
 }
 
 fn trim_frontmatter_value(value: &str) -> &str {
@@ -676,6 +710,33 @@ fn shell_words(input: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn frontmatter_parser_avoids_body_changes() {
+        let parsed = parse_frontmatter("---\ndescription: Test\n---\nBody\n\n");
+        assert!(parsed.has_frontmatter);
+        assert_eq!(
+            parsed.fields.get("description").map(String::as_str),
+            Some("Test")
+        );
+        assert_eq!(parsed.content(), "Body\n");
+
+        let raw = "No frontmatter\nkeeps trailing newline\n";
+        let parsed = parse_frontmatter(raw);
+        assert!(!parsed.has_frontmatter);
+        assert_eq!(parsed.content(), raw);
+    }
+
+    #[test]
+    fn frontmatter_parser_accepts_crlf_delimiters() {
+        let parsed = parse_frontmatter("---\r\ndescription: Test\r\n---\r\nBody\r\n");
+        assert!(parsed.has_frontmatter);
+        assert_eq!(
+            parsed.fields.get("description").map(String::as_str),
+            Some("Test")
+        );
+        assert_eq!(parsed.content(), "Body");
+    }
 
     #[test]
     fn skeleton_creation_is_visible_and_does_not_overwrite(
