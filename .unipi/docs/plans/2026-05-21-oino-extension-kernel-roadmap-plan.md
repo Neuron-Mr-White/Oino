@@ -53,7 +53,7 @@ Planning decisions recorded for implementation:
     3. Map each Pi capability to an Oino registry contribution, hook, runtime capability, or explicit deferral.
     4. Link each planned capability to later tasks in this plan.
 
-- unstarted: Task 3 — Add Extension Core Crate and Identity Contracts
+- completed: Task 3 — Add Extension Core Crate and Identity Contracts
   - Description: Introduce a runtime-agnostic `oino-extension-core` layer for extension/package identity and shared serializable types.
   - Dependencies: Task 2.
   - Acceptance Criteria:
@@ -66,7 +66,7 @@ Planning decisions recorded for implementation:
     3. Define compatibility and lifecycle state types.
     4. Add unit tests and schema/serde fixtures.
 
-- unstarted: Task 4 — Define Manifest, Package, Permission, Provenance, and Diagnostic Contracts
+- completed: Task 4 — Define Manifest, Package, Permission, Provenance, and Diagnostic Contracts
   - Description: Extend core contracts to describe extension manifests, package metadata, permissions, provenance, health, diagnostics, and conflict policy.
   - Dependencies: Task 3.
   - Acceptance Criteria:
