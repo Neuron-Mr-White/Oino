@@ -94,7 +94,7 @@ Planning decisions recorded for implementation:
     3. Implement diffing between snapshots for reload/install/update/remove.
     4. Add deterministic tests for common and conflict cases.
 
-- unstarted: Task 6 — Add Specialized Registry Types
+- completed: Task 6 — Add Specialized Registry Types
   - Description: Layer typed registries on the generic engine for the contribution categories identified by the roadmap.
   - Dependencies: Task 5.
   - Acceptance Criteria:

@@ -570,6 +570,8 @@ pub struct HookContribution {
     pub mode: HookMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handler: Option<String>,
+    #[serde(default)]
+    pub conflict: ConflictPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -868,9 +870,10 @@ impl ExtensionDiagnostic {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiagnosticSeverity {
+    #[default]
     Info,
     Warning,
     Error,
@@ -1652,6 +1655,425 @@ pub struct ChangedContribution<T> {
     pub next: ActiveContribution<T>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryFamily {
+    Tool,
+    Command,
+    Keymap,
+    Hook,
+    UiSurface,
+    SettingsPage,
+    Theme,
+    ProviderModel,
+    Resource,
+    Autosuggest,
+    TranscriptRenderer,
+    MessageRenderer,
+    ToolRenderer,
+    Diagnostic,
+    Health,
+}
+
+impl RegistryFamily {
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Tool => "tool",
+            Self::Command => "command",
+            Self::Keymap => "keymap",
+            Self::Hook => "hook",
+            Self::UiSurface => "ui_surface",
+            Self::SettingsPage => "settings_page",
+            Self::Theme => "theme",
+            Self::ProviderModel => "provider_model",
+            Self::Resource => "resource",
+            Self::Autosuggest => "autosuggest",
+            Self::TranscriptRenderer => "transcript_renderer",
+            Self::MessageRenderer => "message_renderer",
+            Self::ToolRenderer => "tool_renderer",
+            Self::Diagnostic => "diagnostic",
+            Self::Health => "health",
+        }
+    }
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[error("invalid {family} contribution `{contribution_id}`: {message}")]
+pub struct RegistryValidationError {
+    pub family: &'static str,
+    pub contribution_id: ContributionId,
+    pub message: String,
+}
+
+impl RegistryValidationError {
+    #[must_use]
+    pub fn new(
+        family: RegistryFamily,
+        contribution_id: ContributionId,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            family: family.label(),
+            contribution_id,
+            message: message.into(),
+        }
+    }
+}
+
+pub trait RegistryContribution: Clone {
+    fn contribution_id(&self) -> &ContributionId;
+    fn conflict_policy(&self) -> ConflictPolicy;
+    fn validate_for_registry(&self, family: RegistryFamily) -> Result<(), RegistryValidationError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticContribution {
+    pub id: ContributionId,
+    pub title: String,
+    #[serde(default)]
+    pub default_severity: DiagnosticSeverity,
+    #[serde(default)]
+    pub conflict: ConflictPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HealthContribution {
+    pub id: ContributionId,
+    pub title: String,
+    #[serde(default)]
+    pub default_state: HealthState,
+    #[serde(default)]
+    pub conflict: ConflictPolicy,
+}
+
+macro_rules! impl_registry_contribution {
+    ($type:ty, $validator:expr) => {
+        impl RegistryContribution for $type {
+            fn contribution_id(&self) -> &ContributionId {
+                &self.id
+            }
+
+            fn conflict_policy(&self) -> ConflictPolicy {
+                self.conflict
+            }
+
+            fn validate_for_registry(
+                &self,
+                family: RegistryFamily,
+            ) -> Result<(), RegistryValidationError> {
+                $validator(self, family)
+            }
+        }
+    };
+}
+
+fn validate_required(
+    family: RegistryFamily,
+    id: &ContributionId,
+    field: &'static str,
+    value: &str,
+) -> Result<(), RegistryValidationError> {
+    if value.trim().is_empty() {
+        Err(RegistryValidationError::new(
+            family,
+            id.clone(),
+            format!("{field} is required"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_renderer_family(
+    family: RegistryFamily,
+    id: &ContributionId,
+    target: RendererTarget,
+) -> Result<(), RegistryValidationError> {
+    let matches_family = matches!(
+        (family, target),
+        (
+            RegistryFamily::TranscriptRenderer,
+            RendererTarget::TranscriptMessage
+        ) | (
+            RegistryFamily::MessageRenderer,
+            RendererTarget::TranscriptMessage
+        ) | (
+            RegistryFamily::MessageRenderer,
+            RendererTarget::MarkdownBlock
+        ) | (RegistryFamily::ToolRenderer, RendererTarget::ToolCall)
+            | (RegistryFamily::ToolRenderer, RendererTarget::ToolResult)
+    );
+    if matches_family {
+        Ok(())
+    } else {
+        Err(RegistryValidationError::new(
+            family,
+            id.clone(),
+            format!("renderer target `{target:?}` does not match registry family"),
+        ))
+    }
+}
+
+impl_registry_contribution!(ToolContribution, |item: &ToolContribution, family| {
+    validate_required(family, &item.id, "description", &item.description)
+});
+
+impl_registry_contribution!(CommandContribution, |item: &CommandContribution, family| {
+    validate_required(family, &item.id, "description", &item.description)
+});
+
+impl_registry_contribution!(KeymapContribution, |item: &KeymapContribution, family| {
+    validate_required(family, &item.id, "action", &item.action)
+});
+
+impl_registry_contribution!(HookContribution, |item: &HookContribution, family| {
+    if matches!(
+        item.mode,
+        HookMode::Mutable | HookMode::Cancellable | HookMode::Blocking
+    ) && item
+        .handler
+        .as_deref()
+        .map(str::trim)
+        .map(str::is_empty)
+        .unwrap_or(true)
+    {
+        Err(RegistryValidationError::new(
+            family,
+            item.id.clone(),
+            "mutable, cancellable, and blocking hooks require a handler",
+        ))
+    } else {
+        Ok(())
+    }
+});
+
+impl_registry_contribution!(
+    UiSurfaceContribution,
+    |item: &UiSurfaceContribution, family| {
+        validate_required(family, &item.id, "title", &item.title)
+    }
+);
+
+impl_registry_contribution!(
+    SettingsPageContribution,
+    |item: &SettingsPageContribution, family| {
+        validate_required(family, &item.id, "title", &item.title)
+    }
+);
+
+impl_registry_contribution!(ThemeContribution, |item: &ThemeContribution, family| {
+    validate_required(family, &item.id, "path", &item.path)
+});
+
+impl_registry_contribution!(
+    ProviderContribution,
+    |item: &ProviderContribution, family| {
+        validate_required(family, &item.id, "provider_id", &item.provider_id)
+    }
+);
+
+impl_registry_contribution!(
+    ResourceContribution,
+    |item: &ResourceContribution, family| {
+        validate_required(family, &item.id, "path", &item.path)
+    }
+);
+
+impl_registry_contribution!(
+    AutosuggestContribution,
+    |item: &AutosuggestContribution, family| {
+        validate_required(family, &item.id, "trigger", &item.trigger)
+    }
+);
+
+impl_registry_contribution!(
+    RendererContribution,
+    |item: &RendererContribution, family| {
+        validate_renderer_family(family, &item.id, item.target)
+    }
+);
+
+impl_registry_contribution!(
+    DiagnosticContribution,
+    |item: &DiagnosticContribution, family| {
+        validate_required(family, &item.id, "title", &item.title)
+    }
+);
+
+impl_registry_contribution!(HealthContribution, |item: &HealthContribution, family| {
+    validate_required(family, &item.id, "title", &item.title)
+});
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TypedContributionRegistry<T> {
+    family: RegistryFamily,
+    registry: ContributionRegistry<T>,
+}
+
+impl<T: RegistryContribution> TypedContributionRegistry<T> {
+    #[must_use]
+    pub fn new(family: RegistryFamily) -> Self {
+        Self {
+            family,
+            registry: ContributionRegistry::new(),
+        }
+    }
+
+    pub fn register_entry(
+        &mut self,
+        key: RegistryEntryKey,
+        mut metadata: ContributionMetadata,
+        contribution: T,
+    ) -> Result<Option<RegistryEntry<T>>, RegistryValidationError> {
+        contribution.validate_for_registry(self.family)?;
+        metadata.id = contribution.contribution_id().clone();
+        metadata.conflict = contribution.conflict_policy();
+        Ok(self
+            .registry
+            .register(RegistryEntry::new(key, metadata, contribution)))
+    }
+
+    pub fn unregister(&mut self, key: &RegistryEntryKey) -> Option<RegistryEntry<T>> {
+        self.registry.unregister(key)
+    }
+
+    #[must_use]
+    pub fn compose(&self, policy: &RegistryPolicy) -> RegistrySnapshot<T>
+    where
+        T: Clone,
+    {
+        self.registry.compose(policy)
+    }
+
+    #[must_use]
+    pub fn family(&self) -> RegistryFamily {
+        self.family
+    }
+
+    #[must_use]
+    pub fn inner(&self) -> &ContributionRegistry<T> {
+        &self.registry
+    }
+}
+
+pub type ToolRegistry = TypedContributionRegistry<ToolContribution>;
+pub type CommandRegistry = TypedContributionRegistry<CommandContribution>;
+pub type KeymapRegistry = TypedContributionRegistry<KeymapContribution>;
+pub type HookRegistry = TypedContributionRegistry<HookContribution>;
+pub type UiSurfaceRegistry = TypedContributionRegistry<UiSurfaceContribution>;
+pub type SettingsPageRegistry = TypedContributionRegistry<SettingsPageContribution>;
+pub type ThemeRegistry = TypedContributionRegistry<ThemeContribution>;
+pub type ProviderModelRegistry = TypedContributionRegistry<ProviderContribution>;
+pub type ResourceRegistry = TypedContributionRegistry<ResourceContribution>;
+pub type AutosuggestRegistry = TypedContributionRegistry<AutosuggestContribution>;
+pub type TranscriptRendererRegistry = TypedContributionRegistry<RendererContribution>;
+pub type MessageRendererRegistry = TypedContributionRegistry<RendererContribution>;
+pub type ToolRendererRegistry = TypedContributionRegistry<RendererContribution>;
+pub type DiagnosticRegistry = TypedContributionRegistry<DiagnosticContribution>;
+pub type HealthRegistry = TypedContributionRegistry<HealthContribution>;
+
+impl TypedContributionRegistry<ToolContribution> {
+    #[must_use]
+    pub fn tools() -> Self {
+        Self::new(RegistryFamily::Tool)
+    }
+}
+
+impl TypedContributionRegistry<CommandContribution> {
+    #[must_use]
+    pub fn commands() -> Self {
+        Self::new(RegistryFamily::Command)
+    }
+}
+
+impl TypedContributionRegistry<KeymapContribution> {
+    #[must_use]
+    pub fn keymaps() -> Self {
+        Self::new(RegistryFamily::Keymap)
+    }
+}
+
+impl TypedContributionRegistry<HookContribution> {
+    #[must_use]
+    pub fn hooks() -> Self {
+        Self::new(RegistryFamily::Hook)
+    }
+}
+
+impl TypedContributionRegistry<UiSurfaceContribution> {
+    #[must_use]
+    pub fn ui_surfaces() -> Self {
+        Self::new(RegistryFamily::UiSurface)
+    }
+}
+
+impl TypedContributionRegistry<SettingsPageContribution> {
+    #[must_use]
+    pub fn settings_pages() -> Self {
+        Self::new(RegistryFamily::SettingsPage)
+    }
+}
+
+impl TypedContributionRegistry<ThemeContribution> {
+    #[must_use]
+    pub fn themes() -> Self {
+        Self::new(RegistryFamily::Theme)
+    }
+}
+
+impl TypedContributionRegistry<ProviderContribution> {
+    #[must_use]
+    pub fn providers_models() -> Self {
+        Self::new(RegistryFamily::ProviderModel)
+    }
+}
+
+impl TypedContributionRegistry<ResourceContribution> {
+    #[must_use]
+    pub fn resources() -> Self {
+        Self::new(RegistryFamily::Resource)
+    }
+}
+
+impl TypedContributionRegistry<AutosuggestContribution> {
+    #[must_use]
+    pub fn autosuggest_providers() -> Self {
+        Self::new(RegistryFamily::Autosuggest)
+    }
+}
+
+impl TypedContributionRegistry<RendererContribution> {
+    #[must_use]
+    pub fn transcript_renderers() -> Self {
+        Self::new(RegistryFamily::TranscriptRenderer)
+    }
+
+    #[must_use]
+    pub fn message_renderers() -> Self {
+        Self::new(RegistryFamily::MessageRenderer)
+    }
+
+    #[must_use]
+    pub fn tool_renderers() -> Self {
+        Self::new(RegistryFamily::ToolRenderer)
+    }
+}
+
+impl TypedContributionRegistry<DiagnosticContribution> {
+    #[must_use]
+    pub fn diagnostics() -> Self {
+        Self::new(RegistryFamily::Diagnostic)
+    }
+}
+
+impl TypedContributionRegistry<HealthContribution> {
+    #[must_use]
+    pub fn health() -> Self {
+        Self::new(RegistryFamily::Health)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2117,6 +2539,328 @@ mod tests {
         assert_eq!(diff.changed[0].effective_id.as_str(), "alpha");
         assert_eq!(diff.changed[0].previous.entry.contribution, "v1");
         assert_eq!(diff.changed[0].next.entry.contribution, "v2");
+        Ok(())
+    }
+
+    fn typed_metadata(id: &ContributionId) -> ContributionMetadata {
+        ContributionMetadata::new(
+            id.clone(),
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, id.as_str()),
+        )
+    }
+
+    fn assert_typed_valid<T>(
+        mut registry: TypedContributionRegistry<T>,
+        contribution: T,
+    ) -> Result<(), Box<dyn Error>>
+    where
+        T: RegistryContribution + Clone,
+    {
+        let id = contribution.contribution_id().clone();
+        let previous = registry.register_entry(
+            RegistryEntryKey::new(format!("valid-{id}")),
+            typed_metadata(&id),
+            contribution,
+        )?;
+        assert!(previous.is_none());
+        let snapshot = registry.compose(&RegistryPolicy::default());
+        assert_eq!(snapshot.active.len(), 1);
+        assert_eq!(snapshot.active[0].effective_id, id);
+        Ok(())
+    }
+
+    fn assert_typed_invalid<T>(
+        mut registry: TypedContributionRegistry<T>,
+        contribution: T,
+    ) -> Result<(), Box<dyn Error>>
+    where
+        T: RegistryContribution + Clone,
+    {
+        let id = contribution.contribution_id().clone();
+        let result = registry.register_entry(
+            RegistryEntryKey::new(format!("invalid-{id}")),
+            typed_metadata(&id),
+            contribution,
+        );
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn typed_registries_accept_valid_contributions() -> Result<(), Box<dyn Error>> {
+        assert_typed_valid(
+            ToolRegistry::tools(),
+            ToolContribution {
+                id: ContributionId::new("tool")?,
+                description: "A model-visible tool".into(),
+                input_schema: Value::Null,
+                execution_mode: ToolExecutionMode::Parallel,
+                handler: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            CommandRegistry::commands(),
+            CommandContribution {
+                id: ContributionId::new("command")?,
+                description: "A slash command".into(),
+                handler: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            KeymapRegistry::keymaps(),
+            KeymapContribution {
+                id: ContributionId::new("keymap")?,
+                action: "app.test".into(),
+                default_bindings: vec!["ctrl+x".into()],
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            HookRegistry::hooks(),
+            HookContribution {
+                id: ContributionId::new("hook")?,
+                event: HookEventKind::ToolCall,
+                priority: 0,
+                mode: HookMode::Observe,
+                handler: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            UiSurfaceRegistry::ui_surfaces(),
+            UiSurfaceContribution {
+                id: ContributionId::new("ui.sidebar")?,
+                surface: UiSurfaceKind::Sidebar,
+                title: "Sidebar".into(),
+                state_schema: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            SettingsPageRegistry::settings_pages(),
+            SettingsPageContribution {
+                id: ContributionId::new("settings.page")?,
+                title: "Settings".into(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            ThemeRegistry::themes(),
+            ThemeContribution {
+                id: ContributionId::new("theme")?,
+                path: "themes/dark.json".into(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            ProviderModelRegistry::providers_models(),
+            ProviderContribution {
+                id: ContributionId::new("provider")?,
+                provider_id: "openrouter".into(),
+                model_ids: vec!["openai/gpt-4o-mini".into()],
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            ResourceRegistry::resources(),
+            ResourceContribution {
+                id: ContributionId::new("skill.resource")?,
+                kind: ResourceKind::Skill,
+                path: "skills/test/SKILL.md".into(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            AutosuggestRegistry::autosuggest_providers(),
+            AutosuggestContribution {
+                id: ContributionId::new("autosuggest")?,
+                trigger: "@".into(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            TranscriptRendererRegistry::transcript_renderers(),
+            RendererContribution {
+                id: ContributionId::new("transcript.renderer")?,
+                target: RendererTarget::TranscriptMessage,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            MessageRendererRegistry::message_renderers(),
+            RendererContribution {
+                id: ContributionId::new("message.renderer")?,
+                target: RendererTarget::MarkdownBlock,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            ToolRendererRegistry::tool_renderers(),
+            RendererContribution {
+                id: ContributionId::new("tool.renderer")?,
+                target: RendererTarget::ToolResult,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            DiagnosticRegistry::diagnostics(),
+            DiagnosticContribution {
+                id: ContributionId::new("diagnostic")?,
+                title: "Diagnostics".into(),
+                default_severity: DiagnosticSeverity::Warning,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
+            HealthRegistry::health(),
+            HealthContribution {
+                id: ContributionId::new("health")?,
+                title: "Health".into(),
+                default_state: HealthState::Healthy,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn typed_registries_reject_invalid_contributions() -> Result<(), Box<dyn Error>> {
+        assert_typed_invalid(
+            ToolRegistry::tools(),
+            ToolContribution {
+                id: ContributionId::new("tool")?,
+                description: String::new(),
+                input_schema: Value::Null,
+                execution_mode: ToolExecutionMode::Parallel,
+                handler: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            CommandRegistry::commands(),
+            CommandContribution {
+                id: ContributionId::new("command")?,
+                description: String::new(),
+                handler: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            KeymapRegistry::keymaps(),
+            KeymapContribution {
+                id: ContributionId::new("keymap")?,
+                action: String::new(),
+                default_bindings: Vec::new(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            HookRegistry::hooks(),
+            HookContribution {
+                id: ContributionId::new("hook")?,
+                event: HookEventKind::ToolCall,
+                priority: 0,
+                mode: HookMode::Blocking,
+                handler: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            UiSurfaceRegistry::ui_surfaces(),
+            UiSurfaceContribution {
+                id: ContributionId::new("ui.sidebar")?,
+                surface: UiSurfaceKind::Sidebar,
+                title: String::new(),
+                state_schema: None,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            SettingsPageRegistry::settings_pages(),
+            SettingsPageContribution {
+                id: ContributionId::new("settings.page")?,
+                title: String::new(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            ThemeRegistry::themes(),
+            ThemeContribution {
+                id: ContributionId::new("theme")?,
+                path: String::new(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            ProviderModelRegistry::providers_models(),
+            ProviderContribution {
+                id: ContributionId::new("provider")?,
+                provider_id: String::new(),
+                model_ids: Vec::new(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            ResourceRegistry::resources(),
+            ResourceContribution {
+                id: ContributionId::new("skill.resource")?,
+                kind: ResourceKind::Skill,
+                path: String::new(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            AutosuggestRegistry::autosuggest_providers(),
+            AutosuggestContribution {
+                id: ContributionId::new("autosuggest")?,
+                trigger: String::new(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            TranscriptRendererRegistry::transcript_renderers(),
+            RendererContribution {
+                id: ContributionId::new("transcript.renderer")?,
+                target: RendererTarget::ToolCall,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            MessageRendererRegistry::message_renderers(),
+            RendererContribution {
+                id: ContributionId::new("message.renderer")?,
+                target: RendererTarget::ToolResult,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            ToolRendererRegistry::tool_renderers(),
+            RendererContribution {
+                id: ContributionId::new("tool.renderer")?,
+                target: RendererTarget::TranscriptMessage,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            DiagnosticRegistry::diagnostics(),
+            DiagnosticContribution {
+                id: ContributionId::new("diagnostic")?,
+                title: String::new(),
+                default_severity: DiagnosticSeverity::Warning,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            HealthRegistry::health(),
+            HealthContribution {
+                id: ContributionId::new("health")?,
+                title: String::new(),
+                default_state: HealthState::Healthy,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
         Ok(())
     }
 

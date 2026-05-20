@@ -67,3 +67,20 @@ Task 5 validation:
 - Added deterministic registry tests for source registration/unregistration, ordering, duplicate namespacing, user overrides, disable policy, incompatible entries, permission pending/denied entries, diagnostics, and snapshot diffs.
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Task 6 specialized registry types
+
+Layered typed registries on the generic registry engine:
+
+- Added `RegistryFamily`, `RegistryContribution`, `RegistryValidationError`, and `TypedContributionRegistry<T>`.
+- Added typed aliases/constructors for tool, command, keymap, hook, UI surface, settings page, theme, provider/model, resource, autosuggest, transcript renderer, message renderer, tool renderer, diagnostic, and health registries.
+- Added diagnostic and health contribution shapes.
+- Registered contributions now validate family-specific required fields and then flow through the same metadata, provenance, conflict, enablement, snapshot, and diff model from Task 5.
+- Renderer registries validate that renderer targets match transcript/message/tool renderer family constraints.
+
+Task 6 validation:
+
+- Added typed registry tests that accept one valid contribution for every specialized registry family.
+- Added typed registry tests that reject one invalid contribution for every specialized registry family.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed
