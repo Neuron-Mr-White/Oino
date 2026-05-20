@@ -27,7 +27,7 @@ Planning decisions recorded for implementation:
 
 ## Tasks
 
-- unstarted: Task 1 — Create Roadmap Worktree and Capture Baseline
+- completed: Task 1 — Create Roadmap Worktree and Capture Baseline
   - Description: Start implementation in the selected isolated branch and capture the current workspace state before architecture changes.
   - Dependencies: None.
   - Acceptance Criteria:
@@ -40,7 +40,7 @@ Planning decisions recorded for implementation:
     3. Re-read `AGENT.md`, `README.md`, root `Cargo.toml`, and relevant prior extension docs/specs.
     4. Run the repository validation commands and record baseline results.
 
-- unstarted: Task 2 — Complete Pi-to-Oino Extensibility Parity Matrix
+- completed: Task 2 — Complete Pi-to-Oino Extensibility Parity Matrix
   - Description: Produce the authoritative parity map for Pi extension capabilities and Oino-native equivalents.
   - Dependencies: Task 1.
   - Acceptance Criteria:
