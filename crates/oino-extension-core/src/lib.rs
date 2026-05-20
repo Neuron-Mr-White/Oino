@@ -11,7 +11,11 @@ and tests.
 use semver::{Version, VersionReq};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-use std::{collections::BTreeSet, fmt, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    path::PathBuf,
+};
 use thiserror::Error;
 
 pub const MANIFEST_FILE: &str = "oino.extension.json";
@@ -216,9 +220,10 @@ pub enum SourceKind {
     NativeSidecar,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleState {
+    #[default]
     Discovered,
     Validated,
     Enabled,
@@ -936,6 +941,717 @@ fn default_user_override() -> bool {
     true
 }
 
+impl SourceScope {
+    #[must_use]
+    pub fn precedence(self) -> u8 {
+        match self {
+            Self::BuiltIn => 0,
+            Self::Global => 10,
+            Self::Project => 20,
+            Self::Session => 30,
+            Self::Development => 40,
+        }
+    }
+
+    #[must_use]
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::BuiltIn => "built_in",
+            Self::Global => "global",
+            Self::Project => "project",
+            Self::Session => "session",
+            Self::Development => "development",
+        }
+    }
+}
+
+impl SourceKind {
+    #[must_use]
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::BuiltIn => "built_in",
+            Self::LocalExtension => "local_extension",
+            Self::LocalPackage => "local_package",
+            Self::InstalledPackage => "installed_package",
+            Self::RegistryPackage => "registry_package",
+            Self::WasmModule => "wasm_module",
+            Self::NativeSidecar => "native_sidecar",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct RegistryEntryKey(String);
+
+impl RegistryEntryKey {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for RegistryEntryKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContributionMetadata {
+    pub id: ContributionId,
+    pub source: SourceDescriptor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_id: Option<PackageId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_id: Option<ExtensionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
+    #[serde(default)]
+    pub lifecycle: LifecycleState,
+    #[serde(default)]
+    pub compatibility: RegistryCompatibility,
+    #[serde(default)]
+    pub permission: PermissionDecision,
+    #[serde(default)]
+    pub health: HealthState,
+    #[serde(default)]
+    pub conflict: ConflictPolicy,
+}
+
+impl ContributionMetadata {
+    #[must_use]
+    pub fn new(id: ContributionId, source: SourceDescriptor) -> Self {
+        Self {
+            id,
+            source,
+            package_id: None,
+            extension_id: None,
+            provenance: None,
+            lifecycle: LifecycleState::Validated,
+            compatibility: RegistryCompatibility::Compatible,
+            permission: PermissionDecision::Granted,
+            health: HealthState::Healthy,
+            conflict: ConflictPolicy::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_extension_id(mut self, extension_id: ExtensionId) -> Self {
+        self.extension_id = Some(extension_id);
+        self
+    }
+
+    #[must_use]
+    pub fn with_package_id(mut self, package_id: PackageId) -> Self {
+        self.package_id = Some(package_id);
+        self
+    }
+
+    #[must_use]
+    pub fn with_conflict(mut self, conflict: ConflictPolicy) -> Self {
+        self.conflict = conflict;
+        self
+    }
+
+    #[must_use]
+    pub fn with_compatibility(mut self, compatibility: RegistryCompatibility) -> Self {
+        self.compatibility = compatibility;
+        self
+    }
+
+    #[must_use]
+    pub fn with_permission(mut self, permission: PermissionDecision) -> Self {
+        self.permission = permission;
+        self
+    }
+
+    #[must_use]
+    pub fn with_health(mut self, health: HealthState) -> Self {
+        self.health = health;
+        self
+    }
+
+    #[must_use]
+    pub fn with_lifecycle(mut self, lifecycle: LifecycleState) -> Self {
+        self.lifecycle = lifecycle;
+        self
+    }
+
+    #[must_use]
+    pub fn priority(&self) -> i32 {
+        self.conflict.priority
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state", content = "reason")]
+pub enum RegistryCompatibility {
+    #[default]
+    Compatible,
+    Incompatible(String),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "state", content = "reason")]
+pub enum PermissionDecision {
+    #[default]
+    Granted,
+    PendingReview(String),
+    Denied(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryEntry<T> {
+    pub key: RegistryEntryKey,
+    pub metadata: ContributionMetadata,
+    pub contribution: T,
+}
+
+impl<T> RegistryEntry<T> {
+    #[must_use]
+    pub fn new(key: RegistryEntryKey, metadata: ContributionMetadata, contribution: T) -> Self {
+        Self {
+            key,
+            metadata,
+            contribution,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryPolicy {
+    #[serde(default)]
+    pub disabled_extensions: BTreeSet<ExtensionId>,
+    #[serde(default)]
+    pub disabled_packages: BTreeSet<PackageId>,
+    #[serde(default)]
+    pub disabled_contributions: BTreeSet<ContributionId>,
+    #[serde(default)]
+    pub disabled_entries: BTreeSet<RegistryEntryKey>,
+    #[serde(default)]
+    pub overrides: BTreeMap<ContributionId, RegistryEntryKey>,
+}
+
+impl RegistryPolicy {
+    #[must_use]
+    pub fn is_disabled<T>(&self, entry: &RegistryEntry<T>) -> Option<InactiveReason> {
+        if self.disabled_entries.contains(&entry.key) {
+            return Some(InactiveReason::DisabledByPolicy(
+                "entry disabled by policy".into(),
+            ));
+        }
+        if self.disabled_contributions.contains(&entry.metadata.id) {
+            return Some(InactiveReason::DisabledByPolicy(format!(
+                "contribution `{}` disabled by policy",
+                entry.metadata.id
+            )));
+        }
+        if entry
+            .metadata
+            .extension_id
+            .as_ref()
+            .is_some_and(|extension_id| self.disabled_extensions.contains(extension_id))
+        {
+            return Some(InactiveReason::DisabledByPolicy(
+                "extension disabled by policy".into(),
+            ));
+        }
+        if entry
+            .metadata
+            .package_id
+            .as_ref()
+            .is_some_and(|package_id| self.disabled_packages.contains(package_id))
+        {
+            return Some(InactiveReason::DisabledByPolicy(
+                "package disabled by policy".into(),
+            ));
+        }
+        None
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContributionRegistry<T> {
+    entries: BTreeMap<RegistryEntryKey, RegistryEntry<T>>,
+}
+
+impl<T> ContributionRegistry<T> {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+        }
+    }
+
+    pub fn register(&mut self, entry: RegistryEntry<T>) -> Option<RegistryEntry<T>> {
+        self.entries.insert(entry.key.clone(), entry)
+    }
+
+    pub fn unregister(&mut self, key: &RegistryEntryKey) -> Option<RegistryEntry<T>> {
+        self.entries.remove(key)
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = &RegistryEntry<T>> {
+        self.entries.values()
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+impl<T: Clone> ContributionRegistry<T> {
+    #[must_use]
+    pub fn compose(&self, policy: &RegistryPolicy) -> RegistrySnapshot<T> {
+        let mut inactive = Vec::new();
+        let mut diagnostics = Vec::new();
+        let mut candidates_by_id: BTreeMap<ContributionId, Vec<RegistryEntry<T>>> = BTreeMap::new();
+
+        for entry in self.entries.values() {
+            if let Some(reason) = inactive_reason(entry, policy) {
+                diagnostics.push(diagnostic_for_inactive(entry, &reason));
+                inactive.push(InactiveContribution {
+                    entry: entry.clone(),
+                    reason,
+                });
+                continue;
+            }
+            candidates_by_id
+                .entry(entry.metadata.id.clone())
+                .or_default()
+                .push(entry.clone());
+        }
+
+        let mut active = Vec::new();
+        for (id, mut entries) in candidates_by_id {
+            sort_entries(&mut entries);
+            if entries.len() == 1 {
+                if let Some(entry) = entries.into_iter().next() {
+                    active.push(ActiveContribution {
+                        effective_id: id,
+                        entry,
+                    });
+                }
+                continue;
+            }
+
+            if let Some(override_key) = policy.overrides.get(&id) {
+                if let Some(selected) = entries
+                    .iter()
+                    .find(|entry| &entry.key == override_key)
+                    .cloned()
+                {
+                    for entry in entries {
+                        if entry.key == selected.key {
+                            active.push(ActiveContribution {
+                                effective_id: id.clone(),
+                                entry,
+                            });
+                        } else {
+                            inactive.push(InactiveContribution {
+                                entry,
+                                reason: InactiveReason::OverriddenByUser(override_key.clone()),
+                            });
+                        }
+                    }
+                    continue;
+                }
+                diagnostics.push(conflict_diagnostic(
+                    DiagnosticSeverity::Warning,
+                    &entries[0],
+                    format!(
+                        "override `{override_key}` for contribution `{id}` did not match any candidate"
+                    ),
+                ));
+            }
+
+            if entries
+                .iter()
+                .any(|entry| entry.metadata.conflict.strategy == ConflictStrategy::Error)
+            {
+                diagnostics.push(conflict_diagnostic(
+                    DiagnosticSeverity::Error,
+                    &entries[0],
+                    format!("duplicate contribution id `{id}` is configured as an error"),
+                ));
+                for entry in entries {
+                    inactive.push(InactiveContribution {
+                        entry,
+                        reason: InactiveReason::ConflictError,
+                    });
+                }
+                continue;
+            }
+
+            let strategy = group_strategy(&entries);
+            match strategy {
+                ConflictStrategy::Namespaced => {
+                    diagnostics.push(conflict_diagnostic(
+                        DiagnosticSeverity::Warning,
+                        &entries[0],
+                        format!("duplicate contribution id `{id}` was resolved with namespacing"),
+                    ));
+                    for (index, entry) in entries.into_iter().enumerate() {
+                        let effective_id = if index == 0 {
+                            id.clone()
+                        } else {
+                            namespaced_id(&entry)
+                        };
+                        active.push(ActiveContribution {
+                            effective_id,
+                            entry,
+                        });
+                    }
+                }
+                ConflictStrategy::FirstWins => {
+                    push_single_winner(id, entries, 0, &mut active, &mut inactive);
+                }
+                ConflictStrategy::LastWins | ConflictStrategy::UserOverride => {
+                    let winner_index = entries.len().saturating_sub(1);
+                    push_single_winner(id, entries, winner_index, &mut active, &mut inactive);
+                }
+                ConflictStrategy::Error => {}
+            }
+        }
+
+        sort_active(&mut active);
+        inactive.sort_by(|left, right| entry_cmp(&left.entry, &right.entry));
+        diagnostics.sort_by_key(ExtensionDiagnostic::format_message);
+        RegistrySnapshot {
+            active,
+            inactive,
+            diagnostics,
+        }
+    }
+}
+
+fn inactive_reason<T>(entry: &RegistryEntry<T>, policy: &RegistryPolicy) -> Option<InactiveReason> {
+    if matches!(entry.metadata.lifecycle, LifecycleState::Removed) {
+        return Some(InactiveReason::Removed);
+    }
+    if !matches!(
+        entry.metadata.health,
+        HealthState::Healthy | HealthState::Degraded
+    ) {
+        return Some(InactiveReason::Unhealthy(entry.metadata.health));
+    }
+    match &entry.metadata.compatibility {
+        RegistryCompatibility::Compatible => {}
+        RegistryCompatibility::Incompatible(reason) => {
+            return Some(InactiveReason::Incompatible(reason.clone()));
+        }
+    }
+    match &entry.metadata.permission {
+        PermissionDecision::Granted => {}
+        PermissionDecision::PendingReview(reason) => {
+            return Some(InactiveReason::PermissionPending(reason.clone()));
+        }
+        PermissionDecision::Denied(reason) => {
+            return Some(InactiveReason::PermissionDenied(reason.clone()));
+        }
+    }
+    policy.is_disabled(entry)
+}
+
+fn group_strategy<T>(entries: &[RegistryEntry<T>]) -> ConflictStrategy {
+    entries
+        .iter()
+        .map(|entry| entry.metadata.conflict.strategy)
+        .find(|strategy| *strategy != ConflictStrategy::Namespaced)
+        .unwrap_or(ConflictStrategy::Namespaced)
+}
+
+fn sort_entries<T>(entries: &mut [RegistryEntry<T>]) {
+    entries.sort_by(entry_cmp);
+}
+
+fn sort_active<T>(active: &mut [ActiveContribution<T>]) {
+    active.sort_by(|left, right| {
+        entry_cmp(&left.entry, &right.entry).then(left.effective_id.cmp(&right.effective_id))
+    });
+}
+
+fn entry_cmp<T>(left: &RegistryEntry<T>, right: &RegistryEntry<T>) -> std::cmp::Ordering {
+    left.metadata
+        .source
+        .scope
+        .precedence()
+        .cmp(&right.metadata.source.scope.precedence())
+        .then_with(|| right.metadata.priority().cmp(&left.metadata.priority()))
+        .then_with(|| left.metadata.id.cmp(&right.metadata.id))
+        .then_with(|| left.key.cmp(&right.key))
+}
+
+fn push_single_winner<T: Clone>(
+    id: ContributionId,
+    entries: Vec<RegistryEntry<T>>,
+    winner_index: usize,
+    active: &mut Vec<ActiveContribution<T>>,
+    inactive: &mut Vec<InactiveContribution<T>>,
+) {
+    for (index, entry) in entries.into_iter().enumerate() {
+        if index == winner_index {
+            active.push(ActiveContribution {
+                effective_id: id.clone(),
+                entry,
+            });
+        } else {
+            inactive.push(InactiveContribution {
+                entry,
+                reason: InactiveReason::ConflictShadowed,
+            });
+        }
+    }
+}
+
+fn namespaced_id<T>(entry: &RegistryEntry<T>) -> ContributionId {
+    let namespace = entry
+        .metadata
+        .extension_id
+        .as_ref()
+        .map(ToString::to_string)
+        .or_else(|| entry.metadata.package_id.as_ref().map(ToString::to_string))
+        .unwrap_or_else(|| {
+            format!(
+                "{}.{}",
+                entry.metadata.source.scope.slug(),
+                entry.metadata.source.kind.slug()
+            )
+        });
+    let candidate = format!("{}.{}", namespace, entry.metadata.id);
+    ContributionId::new(candidate).unwrap_or_else(|_| entry.metadata.id.clone())
+}
+
+fn diagnostic_for_inactive<T>(
+    entry: &RegistryEntry<T>,
+    reason: &InactiveReason,
+) -> ExtensionDiagnostic {
+    let severity = match reason {
+        InactiveReason::PermissionPending(_)
+        | InactiveReason::DisabledByPolicy(_)
+        | InactiveReason::Removed
+        | InactiveReason::OverriddenByUser(_)
+        | InactiveReason::ConflictShadowed => DiagnosticSeverity::Info,
+        InactiveReason::Incompatible(_) | InactiveReason::Unhealthy(_) => {
+            DiagnosticSeverity::Warning
+        }
+        InactiveReason::PermissionDenied(_) | InactiveReason::ConflictError => {
+            DiagnosticSeverity::Error
+        }
+    };
+    ExtensionDiagnostic {
+        severity,
+        phase: DiagnosticPhase::RegistryComposition,
+        package_id: entry.metadata.package_id.clone(),
+        extension_id: entry.metadata.extension_id.clone(),
+        contribution_id: Some(entry.metadata.id.clone()),
+        source_path: entry.metadata.source.path.clone(),
+        message: reason.message(),
+        remediation: reason.remediation(),
+        health: reason.health(),
+    }
+}
+
+fn conflict_diagnostic<T>(
+    severity: DiagnosticSeverity,
+    entry: &RegistryEntry<T>,
+    message: String,
+) -> ExtensionDiagnostic {
+    ExtensionDiagnostic {
+        severity,
+        phase: DiagnosticPhase::RegistryComposition,
+        package_id: entry.metadata.package_id.clone(),
+        extension_id: entry.metadata.extension_id.clone(),
+        contribution_id: Some(entry.metadata.id.clone()),
+        source_path: entry.metadata.source.path.clone(),
+        message,
+        remediation: Some(
+            "adjust contribution ids, conflict policy, priority, or user override".into(),
+        ),
+        health: if severity == DiagnosticSeverity::Error {
+            HealthState::Blocked
+        } else {
+            HealthState::Degraded
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActiveContribution<T> {
+    pub effective_id: ContributionId,
+    pub entry: RegistryEntry<T>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InactiveContribution<T> {
+    pub entry: RegistryEntry<T>,
+    pub reason: InactiveReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "reason", content = "details")]
+pub enum InactiveReason {
+    DisabledByPolicy(String),
+    Incompatible(String),
+    PermissionPending(String),
+    PermissionDenied(String),
+    Unhealthy(HealthState),
+    Removed,
+    OverriddenByUser(RegistryEntryKey),
+    ConflictShadowed,
+    ConflictError,
+}
+
+impl InactiveReason {
+    #[must_use]
+    pub fn message(&self) -> String {
+        match self {
+            Self::DisabledByPolicy(reason)
+            | Self::Incompatible(reason)
+            | Self::PermissionPending(reason)
+            | Self::PermissionDenied(reason) => reason.clone(),
+            Self::Unhealthy(health) => format!("contribution health is {health:?}"),
+            Self::Removed => "contribution was removed".into(),
+            Self::OverriddenByUser(key) => {
+                format!("contribution overridden by user selection `{key}`")
+            }
+            Self::ConflictShadowed => "contribution shadowed by conflict resolution".into(),
+            Self::ConflictError => "contribution blocked by duplicate-id conflict".into(),
+        }
+    }
+
+    #[must_use]
+    pub fn remediation(&self) -> Option<String> {
+        match self {
+            Self::DisabledByPolicy(_) => {
+                Some("enable the extension or contribution in settings".into())
+            }
+            Self::Incompatible(_) => {
+                Some("install a compatible package version or update Oino".into())
+            }
+            Self::PermissionPending(_) => {
+                Some("review and approve the requested permission".into())
+            }
+            Self::PermissionDenied(_) => {
+                Some("grant permission or disable the contribution".into())
+            }
+            Self::Unhealthy(_) => {
+                Some("inspect extension diagnostics and reload when fixed".into())
+            }
+            Self::Removed => None,
+            Self::OverriddenByUser(_) | Self::ConflictShadowed | Self::ConflictError => Some(
+                "adjust contribution ids, priority, conflict policy, or override settings".into(),
+            ),
+        }
+    }
+
+    #[must_use]
+    pub fn health(&self) -> HealthState {
+        match self {
+            Self::DisabledByPolicy(_) | Self::Removed | Self::OverriddenByUser(_) => {
+                HealthState::Disabled
+            }
+            Self::Incompatible(_) | Self::PermissionPending(_) | Self::ConflictShadowed => {
+                HealthState::Degraded
+            }
+            Self::PermissionDenied(_) | Self::Unhealthy(_) | Self::ConflictError => {
+                HealthState::Blocked
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistrySnapshot<T> {
+    pub active: Vec<ActiveContribution<T>>,
+    pub inactive: Vec<InactiveContribution<T>>,
+    pub diagnostics: Vec<ExtensionDiagnostic>,
+}
+
+impl<T> RegistrySnapshot<T> {
+    #[must_use]
+    pub fn active_ids(&self) -> Vec<&ContributionId> {
+        self.active
+            .iter()
+            .map(|contribution| &contribution.effective_id)
+            .collect()
+    }
+}
+
+impl<T: Clone + PartialEq> RegistrySnapshot<T> {
+    #[must_use]
+    pub fn diff(&self, next: &Self) -> RegistryDiff<T> {
+        let previous_by_id = self
+            .active
+            .iter()
+            .map(|entry| (&entry.effective_id, entry))
+            .collect::<BTreeMap<_, _>>();
+        let next_by_id = next
+            .active
+            .iter()
+            .map(|entry| (&entry.effective_id, entry))
+            .collect::<BTreeMap<_, _>>();
+
+        let mut added = Vec::new();
+        let mut removed = Vec::new();
+        let mut changed = Vec::new();
+
+        for (id, next_entry) in &next_by_id {
+            match previous_by_id.get(id) {
+                None => added.push((*next_entry).clone()),
+                Some(previous_entry)
+                    if previous_entry.entry.key != next_entry.entry.key
+                        || previous_entry.entry.contribution != next_entry.entry.contribution =>
+                {
+                    changed.push(ChangedContribution {
+                        effective_id: (*id).clone(),
+                        previous: (*previous_entry).clone(),
+                        next: (*next_entry).clone(),
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+
+        for (id, previous_entry) in &previous_by_id {
+            if !next_by_id.contains_key(id) {
+                removed.push((*previous_entry).clone());
+            }
+        }
+
+        RegistryDiff {
+            added,
+            removed,
+            changed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiff<T> {
+    pub added: Vec<ActiveContribution<T>>,
+    pub removed: Vec<ActiveContribution<T>>,
+    pub changed: Vec<ChangedContribution<T>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChangedContribution<T> {
+    pub effective_id: ContributionId,
+    pub previous: ActiveContribution<T>,
+    pub next: ActiveContribution<T>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1118,6 +1834,289 @@ mod tests {
         assert!(message.contains("extension=acme.web"));
         assert!(message.contains("contribution=web_search"));
         assert!(message.contains("remediation"));
+        Ok(())
+    }
+
+    fn registry_source(scope: SourceScope, kind: SourceKind, name: &str) -> SourceDescriptor {
+        SourceDescriptor {
+            scope,
+            kind,
+            path: Some(PathBuf::from(format!(".oino/test/{name}"))),
+            registry: None,
+        }
+    }
+
+    fn registry_entry(
+        key: &str,
+        id: &str,
+        source: SourceDescriptor,
+        contribution: &str,
+    ) -> Result<RegistryEntry<String>, Box<dyn Error>> {
+        let metadata = ContributionMetadata::new(ContributionId::new(id)?, source);
+        Ok(RegistryEntry::new(
+            RegistryEntryKey::new(key),
+            metadata,
+            contribution.into(),
+        ))
+    }
+
+    #[test]
+    fn registry_registers_sources_orders_and_unregisters() -> Result<(), Box<dyn Error>> {
+        let mut registry: ContributionRegistry<String> = ContributionRegistry::new();
+        let sources = [
+            (
+                "builtin",
+                "builtin_tool",
+                SourceScope::BuiltIn,
+                SourceKind::BuiltIn,
+            ),
+            (
+                "global",
+                "global_tool",
+                SourceScope::Global,
+                SourceKind::InstalledPackage,
+            ),
+            (
+                "project",
+                "project_tool",
+                SourceScope::Project,
+                SourceKind::LocalPackage,
+            ),
+            (
+                "session",
+                "session_tool",
+                SourceScope::Session,
+                SourceKind::WasmModule,
+            ),
+            (
+                "dev",
+                "dev_tool",
+                SourceScope::Development,
+                SourceKind::LocalExtension,
+            ),
+        ];
+        for (key, id, scope, kind) in sources {
+            registry.register(registry_entry(
+                key,
+                id,
+                registry_source(scope, kind, key),
+                id,
+            )?);
+        }
+        assert_eq!(registry.len(), 5);
+        let removed = registry.unregister(&RegistryEntryKey::new("session"));
+        assert!(removed.is_some());
+        let snapshot = registry.compose(&RegistryPolicy::default());
+        let ids = snapshot
+            .active
+            .iter()
+            .map(|entry| entry.effective_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            vec!["builtin_tool", "global_tool", "project_tool", "dev_tool"]
+        );
+        assert!(snapshot.diagnostics.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn registry_namespaces_duplicate_ids_by_default() -> Result<(), Box<dyn Error>> {
+        let mut registry: ContributionRegistry<String> = ContributionRegistry::new();
+        registry.register(registry_entry(
+            "builtin-read",
+            "read",
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, "builtin-read"),
+            "builtin read",
+        )?);
+        let metadata = ContributionMetadata::new(
+            ContributionId::new("read")?,
+            registry_source(SourceScope::Project, SourceKind::WasmModule, "acme-read"),
+        )
+        .with_extension_id(ExtensionId::new("acme.tools")?);
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("acme-read"),
+            metadata,
+            "extension read".into(),
+        ));
+
+        let snapshot = registry.compose(&RegistryPolicy::default());
+        let ids = snapshot
+            .active
+            .iter()
+            .map(|entry| entry.effective_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["read", "acme.tools.read"]);
+        assert_eq!(snapshot.diagnostics.len(), 1);
+        assert!(snapshot.diagnostics[0].message.contains("namespacing"));
+        Ok(())
+    }
+
+    #[test]
+    fn registry_applies_user_overrides_and_disable_policy() -> Result<(), Box<dyn Error>> {
+        let conflict = ConflictPolicy {
+            strategy: ConflictStrategy::UserOverride,
+            priority: 0,
+            allow_user_override: true,
+        };
+        let mut registry: ContributionRegistry<String> = ContributionRegistry::new();
+        let global_metadata = ContributionMetadata::new(
+            ContributionId::new("runner")?,
+            registry_source(
+                SourceScope::Global,
+                SourceKind::InstalledPackage,
+                "global-runner",
+            ),
+        )
+        .with_extension_id(ExtensionId::new("global.runner")?)
+        .with_conflict(conflict);
+        let project_metadata = ContributionMetadata::new(
+            ContributionId::new("runner")?,
+            registry_source(
+                SourceScope::Project,
+                SourceKind::LocalPackage,
+                "project-runner",
+            ),
+        )
+        .with_extension_id(ExtensionId::new("project.runner")?)
+        .with_conflict(conflict);
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("global-runner"),
+            global_metadata,
+            "global".into(),
+        ));
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("project-runner"),
+            project_metadata,
+            "project".into(),
+        ));
+
+        let mut policy = RegistryPolicy::default();
+        policy.overrides.insert(
+            ContributionId::new("runner")?,
+            RegistryEntryKey::new("global-runner"),
+        );
+        let snapshot = registry.compose(&policy);
+        assert_eq!(snapshot.active.len(), 1);
+        assert_eq!(snapshot.active[0].entry.contribution, "global");
+        assert_eq!(snapshot.inactive.len(), 1);
+        assert!(matches!(
+            snapshot.inactive[0].reason,
+            InactiveReason::OverriddenByUser(_)
+        ));
+
+        policy
+            .disabled_extensions
+            .insert(ExtensionId::new("global.runner")?);
+        let disabled_snapshot = registry.compose(&policy);
+        assert_eq!(disabled_snapshot.active.len(), 1);
+        assert_eq!(disabled_snapshot.active[0].entry.contribution, "project");
+        assert!(disabled_snapshot
+            .inactive
+            .iter()
+            .any(|entry| matches!(entry.reason, InactiveReason::DisabledByPolicy(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn registry_reports_incompatible_and_denied_entries() -> Result<(), Box<dyn Error>> {
+        let mut registry: ContributionRegistry<String> = ContributionRegistry::new();
+        let incompatible = ContributionMetadata::new(
+            ContributionId::new("future_tool")?,
+            registry_source(SourceScope::Project, SourceKind::LocalPackage, "future"),
+        )
+        .with_compatibility(RegistryCompatibility::Incompatible(
+            "requires Oino >=2".into(),
+        ));
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("future"),
+            incompatible,
+            "future".into(),
+        ));
+        let denied = ContributionMetadata::new(
+            ContributionId::new("shell_tool")?,
+            registry_source(SourceScope::Project, SourceKind::WasmModule, "shell"),
+        )
+        .with_permission(PermissionDecision::Denied(
+            "shell/process permission denied".into(),
+        ));
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("shell"),
+            denied,
+            "shell".into(),
+        ));
+        let pending = ContributionMetadata::new(
+            ContributionId::new("review_tool")?,
+            registry_source(SourceScope::Project, SourceKind::WasmModule, "review"),
+        )
+        .with_permission(PermissionDecision::PendingReview(
+            "permission review required".into(),
+        ));
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("review"),
+            pending,
+            "review".into(),
+        ));
+
+        let snapshot = registry.compose(&RegistryPolicy::default());
+        assert!(snapshot.active.is_empty());
+        assert_eq!(snapshot.inactive.len(), 3);
+        assert!(snapshot
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Warning));
+        assert!(snapshot
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == DiagnosticSeverity::Error));
+        assert!(snapshot
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.health == HealthState::Degraded));
+        Ok(())
+    }
+
+    #[test]
+    fn registry_snapshot_diff_tracks_added_removed_and_changed() -> Result<(), Box<dyn Error>> {
+        let mut before = ContributionRegistry::new();
+        before.register(registry_entry(
+            "alpha",
+            "alpha",
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, "alpha"),
+            "v1",
+        )?);
+        before.register(registry_entry(
+            "beta",
+            "beta",
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, "beta"),
+            "same",
+        )?);
+
+        let mut after = ContributionRegistry::new();
+        after.register(registry_entry(
+            "alpha",
+            "alpha",
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, "alpha"),
+            "v2",
+        )?);
+        after.register(registry_entry(
+            "gamma",
+            "gamma",
+            registry_source(SourceScope::Project, SourceKind::LocalPackage, "gamma"),
+            "new",
+        )?);
+
+        let before_snapshot = before.compose(&RegistryPolicy::default());
+        let after_snapshot = after.compose(&RegistryPolicy::default());
+        let diff = before_snapshot.diff(&after_snapshot);
+        assert_eq!(diff.added.len(), 1);
+        assert_eq!(diff.added[0].effective_id.as_str(), "gamma");
+        assert_eq!(diff.removed.len(), 1);
+        assert_eq!(diff.removed[0].effective_id.as_str(), "beta");
+        assert_eq!(diff.changed.len(), 1);
+        assert_eq!(diff.changed[0].effective_id.as_str(), "alpha");
+        assert_eq!(diff.changed[0].previous.entry.contribution, "v1");
+        assert_eq!(diff.changed[0].next.entry.contribution, "v2");
         Ok(())
     }
 

@@ -80,7 +80,7 @@ Planning decisions recorded for implementation:
     3. Define provenance, diagnostic, health, and conflict-policy structures.
     4. Add serde tests and invalid fixture coverage.
 
-- unstarted: Task 5 — Implement Generic Contribution Registry Engine
+- completed: Task 5 — Implement Generic Contribution Registry Engine
   - Description: Build the shared registry engine that all specialized registries use for validation, enablement, ordering, conflicts, provenance, snapshots, and diffs.
   - Dependencies: Task 4.
   - Acceptance Criteria:

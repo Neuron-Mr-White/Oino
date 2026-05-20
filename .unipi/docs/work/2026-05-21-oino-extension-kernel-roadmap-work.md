@@ -51,3 +51,19 @@ Verification after Tasks 3–4:
 - `cargo fmt --all --check` — passed
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Task 5 generic contribution registry
+
+Added generic registry primitives to `oino-extension-core`:
+
+- `RegistryEntryKey`, `ContributionMetadata`, and `RegistryEntry<T>`.
+- `ContributionRegistry<T>` with register/unregister/iterate/compose APIs.
+- `RegistryPolicy` for disabled extensions/packages/contributions/entries and user-selected overrides.
+- `RegistrySnapshot<T>` and `RegistryDiff<T>` for immutable active/inactive snapshots and reload/install/update/remove diffs.
+- Composition support for deterministic source-scope ordering, priority, compatibility filtering, permission decisions, health/lifecycle filtering, duplicate-id diagnostics, namespaced defaults, first/last/user-override conflict strategies, and error conflicts.
+
+Task 5 validation:
+
+- Added deterministic registry tests for source registration/unregistration, ordering, duplicate namespacing, user overrides, disable policy, incompatible entries, permission pending/denied entries, diagnostics, and snapshot diffs.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed
