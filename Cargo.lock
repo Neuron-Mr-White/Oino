@@ -1071,6 +1071,7 @@ dependencies = [
  "dirs",
  "oino-agent-loop",
  "oino-auth",
+ "oino-extension-core",
  "oino-harness",
  "oino-provider-openrouter",
  "oino-resource",

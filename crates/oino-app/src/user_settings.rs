@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use oino_extension_core::ExtensionPolicySettings;
 use oino_tui::{ChatStyle, CollapseMode, KeymapConfig};
 use oino_types::ThinkingLevel;
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,7 @@ pub struct UserSettings {
     pub chat_style: Option<ChatStyle>,
     pub keymap: Option<KeymapConfig>,
     pub tools: BTreeMap<String, bool>,
+    pub extensions: ExtensionPolicySettings,
 }
 
 impl UserSettings {
@@ -39,6 +41,7 @@ impl UserSettings {
             chat_style: Some(chat_style),
             keymap: None,
             tools: BTreeMap::new(),
+            extensions: ExtensionPolicySettings::default(),
         }
     }
 
@@ -123,6 +126,36 @@ mod tests {
             Err(err) => panic!("load settings failed: {err}"),
         };
         assert_eq!(loaded, settings);
+        let _ = fs::remove_file(&path).await;
+    }
+
+    #[tokio::test]
+    async fn extension_policy_settings_round_trip_with_user_settings() {
+        let path = std::env::temp_dir().join(format!(
+            "oino-extension-user-settings-{}.json",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&path).await;
+        let extension_id = match oino_extension_core::ExtensionId::new("acme.process") {
+            Ok(extension_id) => extension_id,
+            Err(err) => panic!("extension id should be valid: {err}"),
+        };
+        let mut settings = UserSettings::default();
+        settings.extensions.extensions.insert(
+            extension_id.clone(),
+            oino_extension_core::PolicyToggle::Enabled,
+        );
+        if let Err(err) = save_to_path(&settings, &path).await {
+            panic!("save settings failed: {err}");
+        }
+        let loaded = match load_from_path(&path).await {
+            Ok(settings) => settings,
+            Err(err) => panic!("load settings failed: {err}"),
+        };
+        assert_eq!(
+            loaded.extensions.extensions.get(&extension_id),
+            Some(&oino_extension_core::PolicyToggle::Enabled)
+        );
         let _ = fs::remove_file(&path).await;
     }
 

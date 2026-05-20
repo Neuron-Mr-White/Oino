@@ -84,3 +84,21 @@ Task 6 validation:
 - Added typed registry tests that reject one invalid contribution for every specialized registry family.
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Task 7 registry configuration and persistence
+
+Added registry policy configuration and persistence support:
+
+- Extended `RegistryPolicy` with explicit enabled/disabled extension, package, contribution, and registry-entry sets.
+- Added persisted override support for conflict winners and priority/order overrides.
+- Added source-scope policy defaults so built-ins stay enabled while unknown external contributions require review or can be disabled by policy.
+- Added `ExtensionPolicySettings`, `SourceScopePolicySettings`, `PolicyToggle`, and `UnknownContributionPolicy` to model global/project Oino settings and merge project settings over global settings.
+- Added `ExtensionPolicySettings::from_optional_json`, `merge`, `to_registry_policy`, and `merged_registry_policy` helpers.
+- Extended app `UserSettings` with an `extensions` field backed by `oino-extension-core`, so global/project `.oino/settings.json` files can persist extension policy state alongside existing settings.
+
+Task 7 validation:
+
+- Added tests for global/project merge precedence, source-scope precedence overrides, missing settings JSON, invalid override ids, conflict winner override reload, priority override reload, invalid override diagnostics, safe built-in defaults, and external review/disable/explicit-enable policy.
+- Added app settings round-trip coverage for persisted extension policy settings.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed

@@ -107,7 +107,7 @@ Planning decisions recorded for implementation:
     3. Add validation helpers for ids, schema shape, and declared permissions.
     4. Add registry-family tests and fixtures.
 
-- unstarted: Task 7 — Add Registry Configuration, Enablement, and Override Persistence
+- completed: Task 7 — Add Registry Configuration, Enablement, and Override Persistence
   - Description: Persist user/project choices for extension enablement, contribution enablement, conflict overrides, and scope preferences.
   - Dependencies: Tasks 5 and 6.
   - Acceptance Criteria:

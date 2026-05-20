@@ -1126,21 +1126,96 @@ impl<T> RegistryEntry<T> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnknownContributionPolicy {
+    Enabled,
+    PendingReview,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceScopePolicy {
+    #[serde(default = "default_unknown_contribution_policy")]
+    pub unknown_contributions: UnknownContributionPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precedence: Option<u8>,
+}
+
+impl Default for SourceScopePolicy {
+    fn default() -> Self {
+        Self {
+            unknown_contributions: default_unknown_contribution_policy(),
+            precedence: None,
+        }
+    }
+}
+
+fn default_unknown_contribution_policy() -> UnknownContributionPolicy {
+    UnknownContributionPolicy::Enabled
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PolicyToggle {
+    Enabled,
+    Disabled,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegistryPolicy {
     #[serde(default)]
+    pub enabled_extensions: BTreeSet<ExtensionId>,
+    #[serde(default)]
     pub disabled_extensions: BTreeSet<ExtensionId>,
+    #[serde(default)]
+    pub enabled_packages: BTreeSet<PackageId>,
     #[serde(default)]
     pub disabled_packages: BTreeSet<PackageId>,
     #[serde(default)]
+    pub enabled_contributions: BTreeSet<ContributionId>,
+    #[serde(default)]
     pub disabled_contributions: BTreeSet<ContributionId>,
+    #[serde(default)]
+    pub enabled_entries: BTreeSet<RegistryEntryKey>,
     #[serde(default)]
     pub disabled_entries: BTreeSet<RegistryEntryKey>,
     #[serde(default)]
     pub overrides: BTreeMap<ContributionId, RegistryEntryKey>,
+    #[serde(default)]
+    pub priority_overrides: BTreeMap<RegistryEntryKey, i32>,
+    #[serde(default)]
+    pub source_scopes: BTreeMap<SourceScope, SourceScopePolicy>,
 }
 
 impl RegistryPolicy {
+    #[must_use]
+    pub fn safe_defaults() -> Self {
+        let mut policy = Self::default();
+        policy.source_scopes.insert(
+            SourceScope::BuiltIn,
+            SourceScopePolicy {
+                unknown_contributions: UnknownContributionPolicy::Enabled,
+                precedence: Some(SourceScope::BuiltIn.precedence()),
+            },
+        );
+        for scope in [
+            SourceScope::Global,
+            SourceScope::Project,
+            SourceScope::Session,
+            SourceScope::Development,
+        ] {
+            policy.source_scopes.insert(
+                scope,
+                SourceScopePolicy {
+                    unknown_contributions: UnknownContributionPolicy::PendingReview,
+                    precedence: Some(scope.precedence()),
+                },
+            );
+        }
+        policy
+    }
+
     #[must_use]
     pub fn is_disabled<T>(&self, entry: &RegistryEntry<T>) -> Option<InactiveReason> {
         if self.disabled_entries.contains(&entry.key) {
@@ -1175,6 +1250,174 @@ impl RegistryPolicy {
             ));
         }
         None
+    }
+
+    #[must_use]
+    pub fn source_default_reason<T>(&self, entry: &RegistryEntry<T>) -> Option<InactiveReason> {
+        if self.is_explicitly_enabled(entry) {
+            return None;
+        }
+        let scope_policy = self.source_scopes.get(&entry.metadata.source.scope)?;
+        match scope_policy.unknown_contributions {
+            UnknownContributionPolicy::Enabled => None,
+            UnknownContributionPolicy::PendingReview => {
+                Some(InactiveReason::PermissionPending(format!(
+                    "{} source contributions require review before activation",
+                    entry.metadata.source.scope.slug()
+                )))
+            }
+            UnknownContributionPolicy::Disabled => Some(InactiveReason::DisabledByPolicy(format!(
+                "{} source contributions are disabled by default",
+                entry.metadata.source.scope.slug()
+            ))),
+        }
+    }
+
+    #[must_use]
+    pub fn effective_priority<T>(&self, entry: &RegistryEntry<T>) -> i32 {
+        self.priority_overrides
+            .get(&entry.key)
+            .copied()
+            .unwrap_or_else(|| entry.metadata.priority())
+    }
+
+    #[must_use]
+    pub fn source_precedence(&self, scope: SourceScope) -> u8 {
+        self.source_scopes
+            .get(&scope)
+            .and_then(|policy| policy.precedence)
+            .unwrap_or_else(|| scope.precedence())
+    }
+
+    fn is_explicitly_enabled<T>(&self, entry: &RegistryEntry<T>) -> bool {
+        self.enabled_entries.contains(&entry.key)
+            || self.enabled_contributions.contains(&entry.metadata.id)
+            || entry
+                .metadata
+                .extension_id
+                .as_ref()
+                .is_some_and(|extension_id| self.enabled_extensions.contains(extension_id))
+            || entry
+                .metadata
+                .package_id
+                .as_ref()
+                .is_some_and(|package_id| self.enabled_packages.contains(package_id))
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SourceScopePolicySettings {
+    pub unknown_contributions: Option<UnknownContributionPolicy>,
+    pub precedence: Option<u8>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExtensionPolicySettings {
+    pub extensions: BTreeMap<ExtensionId, PolicyToggle>,
+    pub packages: BTreeMap<PackageId, PolicyToggle>,
+    pub contributions: BTreeMap<ContributionId, PolicyToggle>,
+    pub entries: BTreeMap<RegistryEntryKey, PolicyToggle>,
+    pub overrides: BTreeMap<ContributionId, RegistryEntryKey>,
+    pub priority_overrides: BTreeMap<RegistryEntryKey, i32>,
+    pub source_scopes: BTreeMap<SourceScope, SourceScopePolicySettings>,
+}
+
+impl ExtensionPolicySettings {
+    #[must_use]
+    pub fn merge(global: &Self, project: &Self) -> Self {
+        let mut merged = global.clone();
+        merge_toggle_map(&mut merged.extensions, &project.extensions);
+        merge_toggle_map(&mut merged.packages, &project.packages);
+        merge_toggle_map(&mut merged.contributions, &project.contributions);
+        merge_toggle_map(&mut merged.entries, &project.entries);
+        merged.overrides.extend(project.overrides.clone());
+        merged
+            .priority_overrides
+            .extend(project.priority_overrides.clone());
+        for (scope, settings) in &project.source_scopes {
+            let target = merged.source_scopes.entry(*scope).or_default();
+            if settings.unknown_contributions.is_some() {
+                target.unknown_contributions = settings.unknown_contributions;
+            }
+            if settings.precedence.is_some() {
+                target.precedence = settings.precedence;
+            }
+        }
+        merged
+    }
+
+    #[must_use]
+    pub fn to_registry_policy(&self) -> RegistryPolicy {
+        let mut policy = RegistryPolicy::safe_defaults();
+        apply_toggle_map(
+            &self.extensions,
+            &mut policy.enabled_extensions,
+            &mut policy.disabled_extensions,
+        );
+        apply_toggle_map(
+            &self.packages,
+            &mut policy.enabled_packages,
+            &mut policy.disabled_packages,
+        );
+        apply_toggle_map(
+            &self.contributions,
+            &mut policy.enabled_contributions,
+            &mut policy.disabled_contributions,
+        );
+        apply_toggle_map(
+            &self.entries,
+            &mut policy.enabled_entries,
+            &mut policy.disabled_entries,
+        );
+        policy.overrides = self.overrides.clone();
+        policy.priority_overrides = self.priority_overrides.clone();
+        for (scope, settings) in &self.source_scopes {
+            let target = policy.source_scopes.entry(*scope).or_default();
+            if let Some(unknown_contributions) = settings.unknown_contributions {
+                target.unknown_contributions = unknown_contributions;
+            }
+            if let Some(precedence) = settings.precedence {
+                target.precedence = Some(precedence);
+            }
+        }
+        policy
+    }
+
+    #[must_use]
+    pub fn merged_registry_policy(global: &Self, project: &Self) -> RegistryPolicy {
+        Self::merge(global, project).to_registry_policy()
+    }
+
+    pub fn from_optional_json(text: Option<&str>) -> serde_json::Result<Self> {
+        text.map_or_else(|| Ok(Self::default()), serde_json::from_str)
+    }
+}
+
+fn merge_toggle_map<K: Ord + Clone>(
+    target: &mut BTreeMap<K, PolicyToggle>,
+    overlay: &BTreeMap<K, PolicyToggle>,
+) {
+    target.extend(overlay.clone());
+}
+
+fn apply_toggle_map<K: Ord + Clone>(
+    toggles: &BTreeMap<K, PolicyToggle>,
+    enabled: &mut BTreeSet<K>,
+    disabled: &mut BTreeSet<K>,
+) {
+    for (key, toggle) in toggles {
+        match toggle {
+            PolicyToggle::Enabled => {
+                enabled.insert(key.clone());
+                disabled.remove(key);
+            }
+            PolicyToggle::Disabled => {
+                disabled.insert(key.clone());
+                enabled.remove(key);
+            }
+        }
     }
 }
 
@@ -1238,7 +1481,7 @@ impl<T: Clone> ContributionRegistry<T> {
 
         let mut active = Vec::new();
         for (id, mut entries) in candidates_by_id {
-            sort_entries(&mut entries);
+            sort_entries(&mut entries, policy);
             if entries.len() == 1 {
                 if let Some(entry) = entries.into_iter().next() {
                     active.push(ActiveContribution {
@@ -1328,8 +1571,8 @@ impl<T: Clone> ContributionRegistry<T> {
             }
         }
 
-        sort_active(&mut active);
-        inactive.sort_by(|left, right| entry_cmp(&left.entry, &right.entry));
+        sort_active(&mut active, policy);
+        inactive.sort_by(|left, right| entry_cmp(&left.entry, &right.entry, policy));
         diagnostics.sort_by_key(ExtensionDiagnostic::format_message);
         RegistrySnapshot {
             active,
@@ -1364,7 +1607,9 @@ fn inactive_reason<T>(entry: &RegistryEntry<T>, policy: &RegistryPolicy) -> Opti
             return Some(InactiveReason::PermissionDenied(reason.clone()));
         }
     }
-    policy.is_disabled(entry)
+    policy
+        .is_disabled(entry)
+        .or_else(|| policy.source_default_reason(entry))
 }
 
 fn group_strategy<T>(entries: &[RegistryEntry<T>]) -> ConflictStrategy {
@@ -1375,23 +1620,30 @@ fn group_strategy<T>(entries: &[RegistryEntry<T>]) -> ConflictStrategy {
         .unwrap_or(ConflictStrategy::Namespaced)
 }
 
-fn sort_entries<T>(entries: &mut [RegistryEntry<T>]) {
-    entries.sort_by(entry_cmp);
+fn sort_entries<T>(entries: &mut [RegistryEntry<T>], policy: &RegistryPolicy) {
+    entries.sort_by(|left, right| entry_cmp(left, right, policy));
 }
 
-fn sort_active<T>(active: &mut [ActiveContribution<T>]) {
+fn sort_active<T>(active: &mut [ActiveContribution<T>], policy: &RegistryPolicy) {
     active.sort_by(|left, right| {
-        entry_cmp(&left.entry, &right.entry).then(left.effective_id.cmp(&right.effective_id))
+        entry_cmp(&left.entry, &right.entry, policy)
+            .then(left.effective_id.cmp(&right.effective_id))
     });
 }
 
-fn entry_cmp<T>(left: &RegistryEntry<T>, right: &RegistryEntry<T>) -> std::cmp::Ordering {
-    left.metadata
-        .source
-        .scope
-        .precedence()
-        .cmp(&right.metadata.source.scope.precedence())
-        .then_with(|| right.metadata.priority().cmp(&left.metadata.priority()))
+fn entry_cmp<T>(
+    left: &RegistryEntry<T>,
+    right: &RegistryEntry<T>,
+    policy: &RegistryPolicy,
+) -> std::cmp::Ordering {
+    policy
+        .source_precedence(left.metadata.source.scope)
+        .cmp(&policy.source_precedence(right.metadata.source.scope))
+        .then_with(|| {
+            policy
+                .effective_priority(right)
+                .cmp(&policy.effective_priority(left))
+        })
         .then_with(|| left.metadata.id.cmp(&right.metadata.id))
         .then_with(|| left.key.cmp(&right.key))
 }
@@ -2539,6 +2791,302 @@ mod tests {
         assert_eq!(diff.changed[0].effective_id.as_str(), "alpha");
         assert_eq!(diff.changed[0].previous.entry.contribution, "v1");
         assert_eq!(diff.changed[0].next.entry.contribution, "v2");
+        Ok(())
+    }
+
+    #[test]
+    fn extension_policy_settings_merge_project_precedence() -> Result<(), Box<dyn Error>> {
+        let extension_id = ExtensionId::new("acme.runner")?;
+        let contribution_id = ContributionId::new("runner")?;
+        let entry_key = RegistryEntryKey::new("project-runner");
+
+        let mut global = ExtensionPolicySettings::default();
+        global
+            .extensions
+            .insert(extension_id.clone(), PolicyToggle::Disabled);
+        global
+            .contributions
+            .insert(contribution_id.clone(), PolicyToggle::Disabled);
+        global.overrides.insert(
+            contribution_id.clone(),
+            RegistryEntryKey::new("global-runner"),
+        );
+        global
+            .priority_overrides
+            .insert(RegistryEntryKey::new("global-runner"), 10);
+        global.source_scopes.insert(
+            SourceScope::Project,
+            SourceScopePolicySettings {
+                unknown_contributions: Some(UnknownContributionPolicy::PendingReview),
+                precedence: Some(30),
+            },
+        );
+
+        let mut project = ExtensionPolicySettings::default();
+        project
+            .extensions
+            .insert(extension_id.clone(), PolicyToggle::Enabled);
+        project
+            .contributions
+            .insert(contribution_id.clone(), PolicyToggle::Enabled);
+        project
+            .overrides
+            .insert(contribution_id.clone(), entry_key.clone());
+        project.priority_overrides.insert(entry_key.clone(), 50);
+        project.source_scopes.insert(
+            SourceScope::Project,
+            SourceScopePolicySettings {
+                unknown_contributions: Some(UnknownContributionPolicy::Enabled),
+                precedence: Some(5),
+            },
+        );
+
+        let merged = ExtensionPolicySettings::merge(&global, &project);
+        assert_eq!(
+            merged.extensions.get(&extension_id),
+            Some(&PolicyToggle::Enabled)
+        );
+        assert_eq!(
+            merged.contributions.get(&contribution_id),
+            Some(&PolicyToggle::Enabled)
+        );
+        assert_eq!(merged.overrides.get(&contribution_id), Some(&entry_key));
+        assert_eq!(merged.priority_overrides.get(&entry_key), Some(&50));
+        assert_eq!(
+            merged
+                .source_scopes
+                .get(&SourceScope::Project)
+                .and_then(|settings| settings.unknown_contributions),
+            Some(UnknownContributionPolicy::Enabled)
+        );
+        assert_eq!(
+            merged
+                .source_scopes
+                .get(&SourceScope::Project)
+                .and_then(|settings| settings.precedence),
+            Some(5)
+        );
+
+        let policy = merged.to_registry_policy();
+        assert!(policy.enabled_extensions.contains(&extension_id));
+        assert!(!policy.disabled_extensions.contains(&extension_id));
+        assert_eq!(policy.overrides.get(&contribution_id), Some(&entry_key));
+        assert_eq!(
+            policy.effective_priority(&RegistryEntry::new(
+                entry_key,
+                ContributionMetadata::new(
+                    contribution_id,
+                    registry_source(
+                        SourceScope::Project,
+                        SourceKind::LocalPackage,
+                        "project-runner"
+                    ),
+                ),
+                String::new(),
+            )),
+            50
+        );
+        assert_eq!(policy.source_precedence(SourceScope::Project), 5);
+        Ok(())
+    }
+
+    #[test]
+    fn safe_default_policy_keeps_builtins_and_reviews_unknown_external(
+    ) -> Result<(), Box<dyn Error>> {
+        let mut registry = ContributionRegistry::new();
+        registry.register(registry_entry(
+            "builtin-read",
+            "read",
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, "builtin-read"),
+            "builtin",
+        )?);
+        let external_metadata = ContributionMetadata::new(
+            ContributionId::new("process_manager")?,
+            registry_source(
+                SourceScope::Project,
+                SourceKind::LocalPackage,
+                "process-manager",
+            ),
+        )
+        .with_extension_id(ExtensionId::new("acme.process")?);
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("process-manager"),
+            external_metadata,
+            "external".into(),
+        ));
+
+        let default_policy = ExtensionPolicySettings::default().to_registry_policy();
+        let snapshot = registry.compose(&default_policy);
+        assert_eq!(snapshot.active.len(), 1);
+        assert_eq!(snapshot.active[0].effective_id.as_str(), "read");
+        assert_eq!(snapshot.inactive.len(), 1);
+        assert!(matches!(
+            snapshot.inactive[0].reason,
+            InactiveReason::PermissionPending(_)
+        ));
+
+        let mut disabled_by_scope = ExtensionPolicySettings::default();
+        disabled_by_scope.source_scopes.insert(
+            SourceScope::Project,
+            SourceScopePolicySettings {
+                unknown_contributions: Some(UnknownContributionPolicy::Disabled),
+                precedence: None,
+            },
+        );
+        let disabled_snapshot = registry.compose(&disabled_by_scope.to_registry_policy());
+        assert!(matches!(
+            disabled_snapshot.inactive[0].reason,
+            InactiveReason::DisabledByPolicy(_)
+        ));
+
+        let mut explicitly_enabled = disabled_by_scope;
+        explicitly_enabled
+            .extensions
+            .insert(ExtensionId::new("acme.process")?, PolicyToggle::Enabled);
+        let enabled_snapshot = registry.compose(&explicitly_enabled.to_registry_policy());
+        let ids = enabled_snapshot
+            .active
+            .iter()
+            .map(|entry| entry.effective_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["read", "process_manager"]);
+        Ok(())
+    }
+
+    #[test]
+    fn extension_policy_settings_missing_and_invalid_json() -> Result<(), Box<dyn Error>> {
+        let missing = ExtensionPolicySettings::from_optional_json(None)?;
+        assert_eq!(missing, ExtensionPolicySettings::default());
+
+        let parsed = ExtensionPolicySettings::from_optional_json(Some(
+            r#"{
+              "extensions": { "acme.process": "enabled" },
+              "contributions": { "process_manager": "disabled" },
+              "source_scopes": {
+                "project": { "unknown_contributions": "pending_review", "precedence": 15 }
+              }
+            }"#,
+        ))?;
+        assert_eq!(
+            parsed.extensions.get(&ExtensionId::new("acme.process")?),
+            Some(&PolicyToggle::Enabled)
+        );
+        assert_eq!(
+            parsed
+                .contributions
+                .get(&ContributionId::new("process_manager")?),
+            Some(&PolicyToggle::Disabled)
+        );
+
+        let invalid = ExtensionPolicySettings::from_optional_json(Some(
+            r#"{ "overrides": { "Bad Id": "entry" } }"#,
+        ));
+        assert!(invalid.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn extension_policy_overrides_priorities_and_invalid_override_diagnostics_survive_reload(
+    ) -> Result<(), Box<dyn Error>> {
+        let conflict = ConflictPolicy {
+            strategy: ConflictStrategy::UserOverride,
+            priority: 0,
+            allow_user_override: true,
+        };
+        let mut settings = ExtensionPolicySettings::default();
+        settings.source_scopes.insert(
+            SourceScope::Global,
+            SourceScopePolicySettings {
+                unknown_contributions: Some(UnknownContributionPolicy::Enabled),
+                precedence: None,
+            },
+        );
+        settings.source_scopes.insert(
+            SourceScope::Project,
+            SourceScopePolicySettings {
+                unknown_contributions: Some(UnknownContributionPolicy::Enabled),
+                precedence: None,
+            },
+        );
+        settings.overrides.insert(
+            ContributionId::new("runner")?,
+            RegistryEntryKey::new("global-runner"),
+        );
+        settings
+            .priority_overrides
+            .insert(RegistryEntryKey::new("beta"), 100);
+
+        let encoded = serde_json::to_string(&settings)?;
+        let decoded: ExtensionPolicySettings = serde_json::from_str(&encoded)?;
+        assert_eq!(decoded, settings);
+        let policy = decoded.to_registry_policy();
+
+        let mut registry = ContributionRegistry::new();
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("global-runner"),
+            ContributionMetadata::new(
+                ContributionId::new("runner")?,
+                registry_source(
+                    SourceScope::Global,
+                    SourceKind::InstalledPackage,
+                    "global-runner",
+                ),
+            )
+            .with_conflict(conflict),
+            "global".into(),
+        ));
+        registry.register(RegistryEntry::new(
+            RegistryEntryKey::new("project-runner"),
+            ContributionMetadata::new(
+                ContributionId::new("runner")?,
+                registry_source(
+                    SourceScope::Project,
+                    SourceKind::LocalPackage,
+                    "project-runner",
+                ),
+            )
+            .with_conflict(conflict),
+            "project".into(),
+        ));
+        registry.register(registry_entry(
+            "alpha",
+            "alpha",
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, "alpha"),
+            "alpha",
+        )?);
+        registry.register(registry_entry(
+            "beta",
+            "beta",
+            registry_source(SourceScope::BuiltIn, SourceKind::BuiltIn, "beta"),
+            "beta",
+        )?);
+
+        let snapshot = registry.compose(&policy);
+        let active = snapshot
+            .active
+            .iter()
+            .map(|entry| {
+                (
+                    entry.effective_id.as_str(),
+                    entry.entry.contribution.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            active,
+            vec![("beta", "beta"), ("alpha", "alpha"), ("runner", "global")]
+        );
+
+        let mut invalid_override_policy = policy;
+        invalid_override_policy.overrides.insert(
+            ContributionId::new("runner")?,
+            RegistryEntryKey::new("missing-runner"),
+        );
+        let invalid_snapshot = registry.compose(&invalid_override_policy);
+        assert!(invalid_snapshot.diagnostics.iter().any(|diagnostic| {
+            diagnostic.severity == DiagnosticSeverity::Warning
+                && diagnostic.message.contains("did not match")
+        }));
         Ok(())
     }
 

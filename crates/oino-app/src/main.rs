@@ -2440,6 +2440,7 @@ mod tests {
                 chat_style: Some(oino_tui::ChatStyle::Minimal),
                 keymap: None,
                 tools: BTreeMap::new(),
+                extensions: oino_extension_core::ExtensionPolicySettings::default(),
             },
             None,
             None,
