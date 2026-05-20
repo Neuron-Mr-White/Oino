@@ -1071,6 +1071,7 @@ dependencies = [
  "dirs",
  "oino-agent-loop",
  "oino-auth",
+ "oino-extension-builtins",
  "oino-extension-core",
  "oino-harness",
  "oino-provider-openrouter",
@@ -1109,6 +1110,20 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "oino-extension-builtins"
+version = "0.1.0"
+dependencies = [
+ "oino-agent-loop",
+ "oino-env",
+ "oino-extension-core",
+ "oino-resource",
+ "oino-tools",
+ "oino-tui",
+ "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

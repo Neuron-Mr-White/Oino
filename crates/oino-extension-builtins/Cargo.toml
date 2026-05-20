@@ -1,0 +1,20 @@
+[package]
+name = "oino-extension-builtins"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oino-agent-loop = { path = "../oino-agent-loop" }
+oino-extension-core = { path = "../oino-extension-core" }
+oino-resource = { path = "../oino-resource" }
+oino-tui = { path = "../oino-tui" }
+thiserror.workspace = true
+
+[dev-dependencies]
+oino-env = { path = "../oino-env" }
+oino-tools = { path = "../oino-tools" }
+tempfile.workspace = true
+
+[lints]
+workspace = true

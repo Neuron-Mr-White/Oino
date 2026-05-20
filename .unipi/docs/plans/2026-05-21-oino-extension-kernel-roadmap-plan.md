@@ -121,7 +121,7 @@ Planning decisions recorded for implementation:
     3. Apply policies during registry composition.
     4. Add tests for precedence and invalid settings diagnostics.
 
-- unstarted: Task 8 — Migrate Built-in Tools, Commands, Keymaps, Resources, Settings, Themes, and Provider Metadata onto Registries
+- completed: Task 8 — Migrate Built-in Tools, Commands, Keymaps, Resources, Settings, Themes, and Provider Metadata onto Registries
   - Description: Register existing built-ins through the same contribution path used by extensions without changing user-visible defaults.
   - Dependencies: Tasks 6 and 7.
   - Acceptance Criteria:

@@ -102,3 +102,20 @@ Task 7 validation:
 - Added app settings round-trip coverage for persisted extension policy settings.
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Task 8 built-in registry migration
+
+Moved built-in contribution surfaces onto registry-backed metadata:
+
+- Added `crates/oino-extension-builtins` as the bridge between existing hardcoded Oino surfaces and extension-kernel registries.
+- Represented built-in tools as `ToolRegistry` contributions generated from live `ToolDefinition` values and execution modes.
+- Represented built-in slash commands, prompt/skill include prefixes, keymap actions/default bindings, settings pages, chat-style theme metadata, OpenRouter provider/model metadata, and Oino resource paths as typed registries.
+- Updated app tool wiring so the existing global/project tool settings are converted into a `RegistryPolicy`, composed through the built-in `ToolRegistry`, and then used to filter actual harness tools.
+- Kept existing TUI/non-interactive defaults: read/bash/edit/write remain enabled, session-title remains disabled unless explicitly enabled, and existing tool settings still control the same behavior.
+
+Task 8 validation:
+
+- Added built-in catalog tests covering tools, slash commands, keymaps, settings pages, themes, provider metadata, resources, and contribution-id slugging.
+- Added app regression test proving existing global/project tool settings map to registry policy enable/disable decisions.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed

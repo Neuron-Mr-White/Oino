@@ -13,6 +13,7 @@ crossterm.workspace = true
 dirs.workspace = true
 oino-agent-loop = { path = "../oino-agent-loop" }
 oino-auth = { path = "../oino-auth" }
+oino-extension-builtins = { path = "../oino-extension-builtins" }
 oino-extension-core = { path = "../oino-extension-core" }
 oino-harness = { path = "../oino-harness" }
 oino-provider-openrouter = { path = "../oino-provider-openrouter" }

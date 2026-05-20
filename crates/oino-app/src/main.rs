@@ -23,6 +23,7 @@ use crossterm::{
 use model_catalog::ModelCatalogUpdate;
 use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider, Tool};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
+use oino_extension_core::{ContributionId, RegistryPolicy};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
@@ -413,6 +414,24 @@ fn project_tool_enabled(settings: &ToolSettingsSnapshot, name: &str) -> bool {
         .unwrap_or_else(|| global_tool_enabled(settings, name))
 }
 
+fn tool_registry_policy_from_settings(
+    settings: &ToolSettingsSnapshot,
+    names: impl IntoIterator<Item = String>,
+) -> RegistryPolicy {
+    let mut policy = RegistryPolicy::default();
+    for name in names {
+        let Ok(id) = ContributionId::new(name.clone()) else {
+            continue;
+        };
+        if project_tool_enabled(settings, &name) {
+            policy.enabled_contributions.insert(id);
+        } else {
+            policy.disabled_contributions.insert(id);
+        }
+    }
+    policy
+}
+
 fn tool_settings_items(settings: &ToolSettingsSnapshot) -> Vec<ToolSettingsItem> {
     known_tool_names(settings)
         .into_iter()
@@ -482,9 +501,25 @@ async fn apply_tool_settings_to_harness(
         oino_tools::SESSION_TITLE_TOOL_NAME.into(),
         oino_tools::session_title_tool(harness.session_title_setter()),
     );
+    let active_tool_names = match oino_extension_builtins::tool_registry_from_tools(&available) {
+        Ok(registry) => {
+            let policy = tool_registry_policy_from_settings(settings, available.keys().cloned());
+            registry
+                .compose(&policy)
+                .active
+                .into_iter()
+                .map(|entry| entry.effective_id.to_string())
+                .collect::<BTreeSet<_>>()
+        }
+        Err(_) => available
+            .keys()
+            .filter(|name| project_tool_enabled(settings, name))
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+    };
     let tools = available
         .into_iter()
-        .filter(|(name, _)| project_tool_enabled(settings, name))
+        .filter(|(name, _)| active_tool_names.contains(name))
         .collect::<BTreeMap<String, Arc<dyn Tool>>>();
     harness.set_tools(tools).await;
 }
@@ -2427,6 +2462,41 @@ mod tests {
 
         settings.project.tools.insert("bash".into(), true);
         assert!(project_tool_enabled(&settings, "bash"));
+    }
+
+    #[test]
+    fn tool_registry_policy_preserves_existing_tool_enablement() {
+        let mut settings = ToolSettingsSnapshot::default();
+        settings.global.tools.insert("bash".into(), false);
+        settings.project.tools.insert("read".into(), false);
+        settings
+            .project
+            .tools
+            .insert(oino_tools::SESSION_TITLE_TOOL_NAME.into(), true);
+
+        let policy = tool_registry_policy_from_settings(
+            &settings,
+            [
+                "bash".to_string(),
+                "read".to_string(),
+                "write".to_string(),
+                oino_tools::SESSION_TITLE_TOOL_NAME.to_string(),
+            ],
+        );
+
+        assert!(policy.disabled_contributions.contains(
+            &ContributionId::new("bash").unwrap_or_else(|err| panic!("valid id: {err}"))
+        ));
+        assert!(policy.disabled_contributions.contains(
+            &ContributionId::new("read").unwrap_or_else(|err| panic!("valid id: {err}"))
+        ));
+        assert!(policy.enabled_contributions.contains(
+            &ContributionId::new("write").unwrap_or_else(|err| panic!("valid id: {err}"))
+        ));
+        assert!(policy.enabled_contributions.contains(
+            &ContributionId::new(oino_tools::SESSION_TITLE_TOOL_NAME)
+                .unwrap_or_else(|err| panic!("valid id: {err}"))
+        ));
     }
 
     #[test]
