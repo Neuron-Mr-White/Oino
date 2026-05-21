@@ -7,14 +7,21 @@ structured errors.
 "#]
 #![forbid(unsafe_code)]
 
+use async_trait::async_trait;
+use oino_agent_loop::{
+    AbortSignal, LoopError, LoopResult, Tool, ToolCall, ToolDefinition,
+    ToolExecutionMode as AgentToolExecutionMode, ToolResult, ToolUpdate, ToolUpdateCallback,
+};
 use oino_extension_core::{
     ContributionId, DiagnosticPhase, DiagnosticSeverity, ExtensionDiagnostic, ExtensionId,
-    HealthState, HookContribution, HookEventKind, HookMode, RegistrySnapshot,
+    ExtensionPermissions, HealthState, HookContribution, HookEventKind, HookMode, RegistrySnapshot,
+    ToolContribution, ToolExecutionMode,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 use thiserror::Error;
@@ -383,7 +390,7 @@ pub enum RuntimeError {
     Handler(String),
 }
 
-pub trait ExtensionRuntime {
+pub trait ExtensionRuntime: Send {
     fn initialize(&mut self, init: RuntimeInitialize)
         -> Result<Vec<RuntimeProgress>, RuntimeError>;
     fn invoke(&mut self, invocation: RuntimeInvocation)
@@ -618,6 +625,453 @@ pub fn runtime_error_diagnostic(
             RuntimeError::Crash(_) => HealthState::Unhealthy,
             _ => HealthState::Blocked,
         },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CapabilityDecision {
+    Allowed,
+    Denied { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilityAudit {
+    pub request_id: String,
+    pub extension_id: ExtensionId,
+    pub contribution_id: Option<ContributionId>,
+    pub capability: String,
+    pub decision: CapabilityDecision,
+    pub timeout_ms: u64,
+    pub payload_bytes: usize,
+    pub response_bytes: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilityRequest {
+    pub request_id: String,
+    pub extension_id: ExtensionId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<ContributionId>,
+    pub capability: String,
+    #[serde(default)]
+    pub payload: Value,
+    pub timeout: Duration,
+    pub max_response_bytes: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Value>,
+}
+
+impl CapabilityRequest {
+    #[must_use]
+    pub fn new(extension_id: ExtensionId, capability: impl Into<String>, payload: Value) -> Self {
+        Self {
+            request_id: Uuid::new_v4().to_string(),
+            extension_id,
+            contribution_id: None,
+            capability: capability.into(),
+            payload,
+            timeout: Duration::from_millis(1_000),
+            max_response_bytes: 16 * 1024,
+            provenance: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_contribution_id(mut self, contribution_id: ContributionId) -> Self {
+        self.contribution_id = Some(contribution_id);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilityResponse {
+    #[serde(default)]
+    pub output: Value,
+    pub audit: CapabilityAudit,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "details")]
+pub enum CapabilityError {
+    #[error("capability `{capability}` denied: {reason}")]
+    PermissionDenied { capability: String, reason: String },
+    #[error("capability `{0}` is unknown")]
+    UnknownCapability(String),
+    #[error("capability request timed out after {0}ms")]
+    Timeout(u64),
+    #[error("invalid capability payload: {0}")]
+    InvalidPayload(String),
+    #[error("capability payload is {actual} bytes, max is {max}")]
+    OversizedPayload { actual: usize, max: usize },
+    #[error("capability response is {actual} bytes, max is {max}")]
+    OversizedResponse { actual: usize, max: usize },
+    #[error("extension `{0}` is unhealthy")]
+    UnhealthyExtension(ExtensionId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuiltinCapability {
+    Echo,
+    MockWebSearch,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapabilityBroker {
+    permissions: BTreeMap<ExtensionId, ExtensionPermissions>,
+    capabilities: BTreeMap<String, BuiltinCapability>,
+    unhealthy: BTreeSet<ExtensionId>,
+    max_payload_bytes: usize,
+    audits: Vec<CapabilityAudit>,
+}
+
+impl Default for CapabilityBroker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CapabilityBroker {
+    #[must_use]
+    pub fn new() -> Self {
+        let mut capabilities = BTreeMap::new();
+        capabilities.insert("host.test.echo".into(), BuiltinCapability::Echo);
+        capabilities.insert("host.web.search".into(), BuiltinCapability::MockWebSearch);
+        Self {
+            permissions: BTreeMap::new(),
+            capabilities,
+            unhealthy: BTreeSet::new(),
+            max_payload_bytes: 16 * 1024,
+            audits: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_max_payload_bytes(mut self, max_payload_bytes: usize) -> Self {
+        self.max_payload_bytes = max_payload_bytes;
+        self
+    }
+
+    pub fn register_permissions(
+        &mut self,
+        extension_id: ExtensionId,
+        permissions: ExtensionPermissions,
+    ) {
+        self.permissions.insert(extension_id, permissions);
+    }
+
+    pub fn mark_unhealthy(&mut self, extension_id: ExtensionId) {
+        self.unhealthy.insert(extension_id);
+    }
+
+    #[must_use]
+    pub fn audits(&self) -> &[CapabilityAudit] {
+        &self.audits
+    }
+
+    pub fn call(
+        &mut self,
+        request: CapabilityRequest,
+    ) -> Result<CapabilityResponse, CapabilityError> {
+        let payload_bytes = json_size(&request.payload)?;
+        if payload_bytes > self.max_payload_bytes {
+            let err = CapabilityError::OversizedPayload {
+                actual: payload_bytes,
+                max: self.max_payload_bytes,
+            };
+            self.audit_error(&request, payload_bytes, err.clone());
+            return Err(err);
+        }
+        if self.unhealthy.contains(&request.extension_id) {
+            let err = CapabilityError::UnhealthyExtension(request.extension_id.clone());
+            self.audit_error(&request, payload_bytes, err.clone());
+            return Err(err);
+        }
+        let permissions = self.permissions.get(&request.extension_id);
+        if !permissions
+            .is_some_and(|permissions| permissions.allows_host_capability(&request.capability))
+        {
+            let err = CapabilityError::PermissionDenied {
+                capability: request.capability.clone(),
+                reason: "extension manifest or policy did not grant this host capability".into(),
+            };
+            self.audit_error(&request, payload_bytes, err.clone());
+            return Err(err);
+        }
+        let Some(capability) = self.capabilities.get(&request.capability).cloned() else {
+            let err = CapabilityError::UnknownCapability(request.capability.clone());
+            self.audit_error(&request, payload_bytes, err.clone());
+            return Err(err);
+        };
+        let timeout_ms = request.timeout.as_millis().try_into().unwrap_or(u64::MAX);
+        let output = match execute_capability(capability, &request.payload, timeout_ms) {
+            Ok(output) => output,
+            Err(err) => {
+                self.audit_error(&request, payload_bytes, err.clone());
+                return Err(err);
+            }
+        };
+        let response_bytes = json_size(&output)?;
+        if response_bytes > request.max_response_bytes {
+            let err = CapabilityError::OversizedResponse {
+                actual: response_bytes,
+                max: request.max_response_bytes,
+            };
+            self.audit_error(&request, payload_bytes, err.clone());
+            return Err(err);
+        }
+        let audit = CapabilityAudit {
+            request_id: request.request_id,
+            extension_id: request.extension_id,
+            contribution_id: request.contribution_id,
+            capability: request.capability,
+            decision: CapabilityDecision::Allowed,
+            timeout_ms,
+            payload_bytes,
+            response_bytes: Some(response_bytes),
+            provenance: request.provenance,
+        };
+        self.audits.push(audit.clone());
+        Ok(CapabilityResponse { output, audit })
+    }
+
+    fn audit_error(
+        &mut self,
+        request: &CapabilityRequest,
+        payload_bytes: usize,
+        error: CapabilityError,
+    ) {
+        self.audits.push(CapabilityAudit {
+            request_id: request.request_id.clone(),
+            extension_id: request.extension_id.clone(),
+            contribution_id: request.contribution_id.clone(),
+            capability: request.capability.clone(),
+            decision: CapabilityDecision::Denied {
+                reason: error.to_string(),
+            },
+            timeout_ms: request.timeout.as_millis().try_into().unwrap_or(u64::MAX),
+            payload_bytes,
+            response_bytes: None,
+            provenance: request.provenance.clone(),
+        });
+    }
+}
+
+fn execute_capability(
+    capability: BuiltinCapability,
+    payload: &Value,
+    timeout_ms: u64,
+) -> Result<Value, CapabilityError> {
+    if timeout_ms == 0 {
+        return Err(CapabilityError::Timeout(0));
+    }
+    let simulated_ms = payload
+        .get("simulate_timeout_ms")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if simulated_ms > timeout_ms {
+        return Err(CapabilityError::Timeout(timeout_ms));
+    }
+    match capability {
+        BuiltinCapability::Echo => Ok(payload.clone()),
+        BuiltinCapability::MockWebSearch => {
+            let query = payload
+                .get("query")
+                .and_then(Value::as_str)
+                .filter(|query| !query.trim().is_empty())
+                .ok_or_else(|| CapabilityError::InvalidPayload("query is required".into()))?;
+            Ok(serde_json::json!({
+                "query": query,
+                "results": [{
+                    "title": "Mock Oino result",
+                    "url": "https://example.invalid/oino/mock-search",
+                    "snippet": format!("mock result for {query}")
+                }]
+            }))
+        }
+    }
+}
+
+fn json_size(value: &Value) -> Result<usize, CapabilityError> {
+    serde_json::to_vec(value)
+        .map(|bytes| bytes.len())
+        .map_err(|err| CapabilityError::InvalidPayload(err.to_string()))
+}
+
+pub fn capability_error_diagnostic(
+    request: &CapabilityRequest,
+    error: &CapabilityError,
+) -> ExtensionDiagnostic {
+    ExtensionDiagnostic {
+        severity: match error {
+            CapabilityError::PermissionDenied { .. }
+            | CapabilityError::UnhealthyExtension(_)
+            | CapabilityError::UnknownCapability(_) => DiagnosticSeverity::Error,
+            CapabilityError::Timeout(_)
+            | CapabilityError::InvalidPayload(_)
+            | CapabilityError::OversizedPayload { .. }
+            | CapabilityError::OversizedResponse { .. } => DiagnosticSeverity::Warning,
+        },
+        phase: DiagnosticPhase::Permission,
+        package_id: None,
+        extension_id: Some(request.extension_id.clone()),
+        contribution_id: request.contribution_id.clone(),
+        source_path: None,
+        message: error.to_string(),
+        remediation: Some(
+            "update extension permissions, reduce payload size, or fix the capability call".into(),
+        ),
+        health: match error {
+            CapabilityError::PermissionDenied { .. } | CapabilityError::UnknownCapability(_) => {
+                HealthState::Blocked
+            }
+            CapabilityError::UnhealthyExtension(_) => HealthState::Unhealthy,
+            CapabilityError::Timeout(_)
+            | CapabilityError::InvalidPayload(_)
+            | CapabilityError::OversizedPayload { .. }
+            | CapabilityError::OversizedResponse { .. } => HealthState::Degraded,
+        },
+    }
+}
+
+#[derive(Clone)]
+pub struct ExtensionToolAdapter {
+    contribution: ToolContribution,
+    extension_id: ExtensionId,
+    runtime: SharedRuntime,
+}
+
+pub type SharedRuntime = Arc<Mutex<Box<dyn ExtensionRuntime + Send>>>;
+
+impl ExtensionToolAdapter {
+    #[must_use]
+    pub fn new(
+        contribution: ToolContribution,
+        extension_id: ExtensionId,
+        runtime: SharedRuntime,
+    ) -> Self {
+        Self {
+            contribution,
+            extension_id,
+            runtime,
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for ExtensionToolAdapter {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: self.contribution.id.to_string(),
+            description: self.contribution.description.clone(),
+            input_schema: self.contribution.input_schema.clone(),
+        }
+    }
+
+    fn execution_mode(&self) -> AgentToolExecutionMode {
+        match self.contribution.execution_mode {
+            ToolExecutionMode::Parallel => AgentToolExecutionMode::Parallel,
+            ToolExecutionMode::Sequential => AgentToolExecutionMode::Sequential,
+        }
+    }
+
+    async fn execute(
+        &self,
+        call: ToolCall,
+        updates: ToolUpdateCallback,
+        signal: AbortSignal,
+    ) -> LoopResult<ToolResult> {
+        if signal.is_aborted() {
+            return Err(LoopError::Tool(
+                "extension tool cancelled before start".into(),
+            ));
+        }
+        let handler = self
+            .contribution
+            .handler
+            .clone()
+            .unwrap_or_else(|| self.contribution.id.to_string());
+        let mut invocation =
+            RuntimeInvocation::new(self.extension_id.clone(), handler, call.arguments.clone());
+        invocation.contribution_id = Some(self.contribution.id.clone());
+        invocation.invocation_id = call.id.to_string();
+        let result = {
+            let mut runtime = self
+                .runtime
+                .lock()
+                .map_err(|_| LoopError::Tool("extension runtime lock poisoned".into()))?;
+            runtime.invoke(invocation)
+        };
+        if signal.is_aborted() {
+            if let Ok(mut runtime) = self.runtime.lock() {
+                let _ = runtime.cancel(&call.id.to_string());
+            }
+            return Err(LoopError::Tool("extension tool cancelled".into()));
+        }
+        match result {
+            Ok(value) => {
+                for progress in &value.progress {
+                    updates
+                        .update(ToolUpdate {
+                            message: progress.message.clone(),
+                            details: progress.details.clone(),
+                        })
+                        .await?;
+                }
+                Ok(ToolResult::text(&call, value.output.to_string()))
+            }
+            Err(err) => Ok(ToolResult::error(&call, err.to_string())),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ExtensionCommandAdapter {
+    contribution_id: ContributionId,
+    description: String,
+    extension_id: ExtensionId,
+    handler: String,
+    runtime: SharedRuntime,
+}
+
+impl ExtensionCommandAdapter {
+    #[must_use]
+    pub fn new(
+        contribution_id: ContributionId,
+        description: impl Into<String>,
+        extension_id: ExtensionId,
+        handler: impl Into<String>,
+        runtime: SharedRuntime,
+    ) -> Self {
+        Self {
+            contribution_id,
+            description: description.into(),
+            extension_id,
+            handler: handler.into(),
+            runtime,
+        }
+    }
+
+    #[must_use]
+    pub fn contribution_id(&self) -> &ContributionId {
+        &self.contribution_id
+    }
+
+    #[must_use]
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    pub fn execute(&self, arguments: Value) -> Result<Value, RuntimeError> {
+        let mut invocation =
+            RuntimeInvocation::new(self.extension_id.clone(), self.handler.clone(), arguments);
+        invocation.contribution_id = Some(self.contribution_id.clone());
+        let mut runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| RuntimeError::Crash("extension runtime lock poisoned".into()))?;
+        runtime.invoke(invocation).map(|result| result.output)
     }
 }
 
@@ -906,6 +1360,228 @@ mod tests {
         assert!(matches!(
             runtime.invoke(RuntimeInvocation::new(extension_id(), "slow", json!("bad"))),
             Err(RuntimeError::MalformedPayload(_))
+        ));
+    }
+
+    fn permissions_with(capability: &str) -> ExtensionPermissions {
+        let mut permissions = ExtensionPermissions::default();
+        permissions.host_capabilities.insert(capability.into());
+        permissions
+    }
+
+    #[test]
+    fn capability_broker_allows_mock_capabilities_and_audits() {
+        let mut broker = CapabilityBroker::new();
+        broker.register_permissions(extension_id(), permissions_with("host.web.search"));
+        let response = broker
+            .call(CapabilityRequest::new(
+                extension_id(),
+                "host.web.search",
+                json!({"query": "oino"}),
+            ))
+            .unwrap_or_else(|err| panic!("capability call: {err}"));
+        assert_eq!(response.audit.decision, CapabilityDecision::Allowed);
+        assert_eq!(response.output["query"], "oino");
+        assert_eq!(broker.audits().len(), 1);
+    }
+
+    #[test]
+    fn capability_broker_denies_times_out_invalid_oversized_and_unhealthy() {
+        let mut broker = CapabilityBroker::new().with_max_payload_bytes(20);
+        broker.register_permissions(extension_id(), permissions_with("host.web.search"));
+        assert!(matches!(
+            broker.call(CapabilityRequest::new(
+                extension_id(),
+                "host.test.echo",
+                json!({"ok": true}),
+            )),
+            Err(CapabilityError::PermissionDenied { .. })
+        ));
+        assert!(matches!(
+            broker.call(CapabilityRequest::new(
+                extension_id(),
+                "host.web.search",
+                json!({"query": "oino", "simulate_timeout_ms": 2}),
+            )),
+            Err(CapabilityError::OversizedPayload { .. })
+        ));
+
+        let mut broker = CapabilityBroker::new();
+        broker.register_permissions(extension_id(), permissions_with("host.web.search"));
+        let mut timeout = CapabilityRequest::new(
+            extension_id(),
+            "host.web.search",
+            json!({"query": "oino", "simulate_timeout_ms": 2}),
+        );
+        timeout.timeout = Duration::from_millis(1);
+        assert!(matches!(
+            broker.call(timeout),
+            Err(CapabilityError::Timeout(1))
+        ));
+        assert!(matches!(
+            broker.call(CapabilityRequest::new(
+                extension_id(),
+                "host.web.search",
+                json!({"missing": "query"}),
+            )),
+            Err(CapabilityError::InvalidPayload(_))
+        ));
+        broker.mark_unhealthy(extension_id());
+        assert!(matches!(
+            broker.call(CapabilityRequest::new(
+                extension_id(),
+                "host.web.search",
+                json!({"query": "oino"}),
+            )),
+            Err(CapabilityError::UnhealthyExtension(_))
+        ));
+        assert!(broker
+            .audits()
+            .iter()
+            .any(|audit| matches!(audit.decision, CapabilityDecision::Denied { .. })));
+    }
+
+    #[tokio::test]
+    async fn extension_tool_adapter_returns_normal_tool_results() {
+        let module = FixtureWasmModule::default().with_handler(
+            "tool.run",
+            FixtureHandlerBehavior::Success {
+                output: json!({"ok": true}),
+                progress: vec![RuntimeProgress {
+                    message: "working".into(),
+                    details: None,
+                }],
+            },
+        );
+        let mut runtime = JsonWasmRuntime::new(module);
+        runtime
+            .initialize(init())
+            .unwrap_or_else(|err| panic!("init: {err}"));
+        let runtime: SharedRuntime = Arc::new(Mutex::new(Box::new(runtime)));
+        let adapter = ExtensionToolAdapter::new(
+            ToolContribution {
+                id: ContributionId::new("visible_tool")
+                    .unwrap_or_else(|err| panic!("valid id: {err}")),
+                description: "Visible extension tool".into(),
+                input_schema: json!({"type": "object"}),
+                execution_mode: ToolExecutionMode::Parallel,
+                handler: Some("tool.run".into()),
+                conflict: Default::default(),
+            },
+            extension_id(),
+            runtime,
+        );
+        let call = oino_agent_loop::ToolCall {
+            id: oino_types::OinoId::nil(),
+            name: "visible_tool".into(),
+            arguments: json!({}),
+        };
+        let sink = Arc::new(oino_agent_loop::VecEventSink::new());
+        let result = adapter
+            .execute(
+                call,
+                oino_agent_loop::ToolUpdateCallback::new(sink, oino_types::OinoId::nil()),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("execute: {err}"));
+        assert!(!result.is_error);
+        assert!(
+            matches!(&result.content[0], oino_types::ContentBlock::Text { text } if text.contains("ok"))
+        );
+    }
+
+    #[tokio::test]
+    async fn extension_tool_adapter_returns_errors_and_honors_cancellation() {
+        let module = FixtureWasmModule::default()
+            .with_handler("tool.fail", FixtureHandlerBehavior::Error("boom".into()));
+        let mut runtime = JsonWasmRuntime::new(module);
+        runtime
+            .initialize(init())
+            .unwrap_or_else(|err| panic!("init: {err}"));
+        let adapter = ExtensionToolAdapter::new(
+            ToolContribution {
+                id: ContributionId::new("failing_tool")
+                    .unwrap_or_else(|err| panic!("valid id: {err}")),
+                description: "Failing extension tool".into(),
+                input_schema: json!({"type": "object"}),
+                execution_mode: ToolExecutionMode::Parallel,
+                handler: Some("tool.fail".into()),
+                conflict: Default::default(),
+            },
+            extension_id(),
+            Arc::new(Mutex::new(Box::new(runtime))),
+        );
+        let call = oino_agent_loop::ToolCall {
+            id: oino_types::OinoId::nil(),
+            name: "failing_tool".into(),
+            arguments: json!({}),
+        };
+        let sink = Arc::new(oino_agent_loop::VecEventSink::new());
+        let result = adapter
+            .execute(
+                call.clone(),
+                oino_agent_loop::ToolUpdateCallback::new(
+                    Arc::clone(&sink) as Arc<dyn oino_agent_loop::EventSink>,
+                    oino_types::OinoId::nil(),
+                ),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("execute: {err}"));
+        assert!(result.is_error);
+
+        let signal = AbortSignal::new();
+        signal.abort();
+        assert!(adapter
+            .execute(
+                call,
+                oino_agent_loop::ToolUpdateCallback::new(sink, oino_types::OinoId::nil()),
+                signal,
+            )
+            .await
+            .is_err());
+    }
+
+    #[test]
+    fn extension_command_adapter_routes_success_and_errors() {
+        let module = FixtureWasmModule::default()
+            .with_handler(
+                "cmd.run",
+                FixtureHandlerBehavior::Success {
+                    output: json!({"message": "done"}),
+                    progress: Vec::new(),
+                },
+            )
+            .with_handler("cmd.err", FixtureHandlerBehavior::Error("nope".into()));
+        let mut runtime = JsonWasmRuntime::new(module);
+        runtime
+            .initialize(init())
+            .unwrap_or_else(|err| panic!("init: {err}"));
+        let runtime: SharedRuntime = Arc::new(Mutex::new(Box::new(runtime)));
+        let command = ExtensionCommandAdapter::new(
+            ContributionId::new("demo_command").unwrap_or_else(|err| panic!("valid id: {err}")),
+            "demo",
+            extension_id(),
+            "cmd.run",
+            Arc::clone(&runtime),
+        );
+        assert_eq!(
+            command
+                .execute(json!({}))
+                .unwrap_or_else(|err| panic!("command: {err}"))["message"],
+            "done"
+        );
+        let failing = ExtensionCommandAdapter::new(
+            ContributionId::new("bad_command").unwrap_or_else(|err| panic!("valid id: {err}")),
+            "bad",
+            extension_id(),
+            "cmd.err",
+            runtime,
+        );
+        assert!(matches!(
+            failing.execute(json!({})),
+            Err(RuntimeError::Handler(_))
         ));
     }
 

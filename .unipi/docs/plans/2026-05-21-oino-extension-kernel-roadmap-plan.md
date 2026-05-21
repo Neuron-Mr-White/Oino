@@ -191,7 +191,7 @@ Planning decisions recorded for implementation:
     3. Add fixture modules for success, error, timeout, and unauthorized import cases.
     4. Route runtime health into the Extension Manager.
 
-- unstarted: Task 13 — Implement Capability Broker and Permission Enforcement
+- completed: Task 13 — Implement Capability Broker and Permission Enforcement
   - Description: Add the host capability broker used by WASM extensions and future runtimes for privileged behavior.
   - Dependencies: Tasks 4, 7, 10, and 12.
   - Acceptance Criteria:
@@ -205,7 +205,7 @@ Planning decisions recorded for implementation:
     3. Implement initial named capabilities and mocks.
     4. Add audit/diagnostic emission and tests.
 
-- unstarted: Task 14 — Bridge Extension Tools and Commands into Oino Runtime Paths
+- completed: Task 14 — Bridge Extension Tools and Commands into Oino Runtime Paths
   - Description: Make extension-contributed tools and commands usable through existing agent/harness/TUI flows.
   - Dependencies: Tasks 6, 8, 9, 12, and 13.
   - Acceptance Criteria:

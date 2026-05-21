@@ -23,7 +23,15 @@ use crossterm::{
 use model_catalog::ModelCatalogUpdate;
 use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider, Tool};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
-use oino_extension_core::{ContributionId, RegistryPolicy};
+use oino_extension_core::{ContributionId, RegistryPolicy, SourceScope};
+use oino_extension_manager::{
+    ExtensionDiscovery, ExtensionManager, ExtensionManagerConfig, ExtensionManagerSnapshot,
+};
+use oino_extension_runtime::{
+    ExtensionCommandAdapter, ExtensionRuntime, ExtensionToolAdapter, FixtureHandlerBehavior,
+    FixtureWasmModule, JsonWasmRuntime, RuntimeInitialize, RuntimeProgress, SharedRuntime,
+    WASM_JSON_V1_ABI,
+};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
@@ -43,7 +51,7 @@ use std::{
     io::{self, Stdout, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
@@ -298,7 +306,7 @@ async fn main() -> Result<(), AppError> {
         &resource_catalog,
     )?;
     let tool_settings = load_tool_settings(&resource_paths).await;
-    apply_tool_settings_to_harness(&harness, &tool_settings, &cwd).await;
+    apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd).await;
 
     if cli.settings || cli.input.is_some() {
         return run_non_interactive(cli, harness, auth, config, session_path, resource_catalog)
@@ -491,9 +499,145 @@ async fn save_tool_settings(
     }
 }
 
+fn current_extension_version() -> semver::Version {
+    semver::Version::parse(env!("CARGO_PKG_VERSION"))
+        .unwrap_or_else(|_| semver::Version::new(0, 1, 0))
+}
+
+fn load_extension_snapshot(
+    paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
+) -> ExtensionManagerSnapshot {
+    let policy = oino_extension_core::ExtensionPolicySettings::merged_registry_policy(
+        &settings.global.extensions,
+        &settings.project.extensions,
+    );
+    let config = ExtensionManagerConfig::new(
+        current_extension_version(),
+        ExtensionDiscovery::from_home_and_project(&paths.home_dir, &paths.project_root),
+    )
+    .with_policy(policy);
+    ExtensionManager::new(config).load()
+}
+
+fn extension_tool_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, Arc<dyn Tool>> {
+    let mut tools = BTreeMap::new();
+    for active in &snapshot.registries.tools.active {
+        if active.entry.metadata.source.scope == SourceScope::BuiltIn {
+            continue;
+        }
+        let Some(extension_id) = active.entry.metadata.extension_id.clone() else {
+            continue;
+        };
+        let contribution = active.entry.contribution.clone();
+        if let Some(runtime) = fixture_runtime_for_tool(&extension_id, &contribution) {
+            tools.insert(
+                contribution.id.to_string(),
+                Arc::new(ExtensionToolAdapter::new(
+                    contribution,
+                    extension_id,
+                    runtime,
+                )) as Arc<dyn Tool>,
+            );
+        }
+    }
+    tools
+}
+
+fn fixture_runtime_for_tool(
+    extension_id: &oino_extension_core::ExtensionId,
+    contribution: &oino_extension_core::ToolContribution,
+) -> Option<SharedRuntime> {
+    let handler = contribution
+        .handler
+        .clone()
+        .unwrap_or_else(|| contribution.id.to_string());
+    let module = FixtureWasmModule::default().with_handler(
+        handler,
+        FixtureHandlerBehavior::Success {
+            output: serde_json::json!({
+                "status": "extension runtime bridge invoked",
+                "tool": contribution.id.to_string(),
+                "note": "wasm-json-v1 fixture runtime is active; replace with a real WASM handler when available"
+            }),
+            progress: vec![RuntimeProgress {
+                message: format!("Invoked extension tool {}", contribution.id),
+                details: None,
+            }],
+        },
+    );
+    let mut runtime = JsonWasmRuntime::new(module);
+    runtime
+        .initialize(RuntimeInitialize {
+            extension_id: extension_id.clone(),
+            abi: WASM_JSON_V1_ABI.into(),
+            entry: "fixture-runtime".into(),
+            metadata: serde_json::Value::Null,
+        })
+        .ok()?;
+    Some(Arc::new(Mutex::new(Box::new(runtime))))
+}
+
+fn execute_extension_command(
+    input: &str,
+    snapshot: &ExtensionManagerSnapshot,
+) -> Option<Result<String, AppError>> {
+    let trimmed = input.trim();
+    let command_name = trimmed
+        .strip_prefix('/')?
+        .split_whitespace()
+        .next()
+        .unwrap_or_default();
+    let contribution_id = ContributionId::new(command_name).ok()?;
+    let active = snapshot.registries.commands.active.iter().find(|active| {
+        active.effective_id == contribution_id
+            && active.entry.metadata.source.scope != SourceScope::BuiltIn
+    })?;
+    let extension_id = active.entry.metadata.extension_id.clone()?;
+    let contribution = &active.entry.contribution;
+    let handler = contribution
+        .handler
+        .clone()
+        .unwrap_or_else(|| contribution.id.to_string());
+    let module = FixtureWasmModule::default().with_handler(
+        handler.clone(),
+        FixtureHandlerBehavior::Success {
+            output: serde_json::json!({
+                "status": "extension command bridge invoked",
+                "command": contribution.id.to_string(),
+                "input": trimmed,
+            }),
+            progress: Vec::new(),
+        },
+    );
+    let mut runtime = JsonWasmRuntime::new(module);
+    if let Err(err) = runtime.initialize(RuntimeInitialize {
+        extension_id: extension_id.clone(),
+        abi: WASM_JSON_V1_ABI.into(),
+        entry: "fixture-runtime".into(),
+        metadata: serde_json::Value::Null,
+    }) {
+        return Some(Err(AppError::InvalidArguments(err.to_string())));
+    }
+    let adapter = ExtensionCommandAdapter::new(
+        contribution.id.clone(),
+        contribution.description.clone(),
+        extension_id,
+        handler,
+        Arc::new(Mutex::new(Box::new(runtime))),
+    );
+    Some(
+        adapter
+            .execute(serde_json::json!({ "input": trimmed }))
+            .map(|output| output.to_string())
+            .map_err(|err| AppError::InvalidArguments(err.to_string())),
+    )
+}
+
 async fn apply_tool_settings_to_harness(
     harness: &Harness,
     settings: &ToolSettingsSnapshot,
+    paths: &ResourcePaths,
     cwd: &Path,
 ) {
     let mut available = oino_tools::default_tools(harness.env(), cwd.to_path_buf());
@@ -501,6 +645,8 @@ async fn apply_tool_settings_to_harness(
         oino_tools::SESSION_TITLE_TOOL_NAME.into(),
         oino_tools::session_title_tool(harness.session_title_setter()),
     );
+    let snapshot = load_extension_snapshot(paths, settings);
+    available.extend(extension_tool_map(&snapshot));
     let active_tool_names = match oino_extension_builtins::tool_registry_from_tools(&available) {
         Ok(registry) => {
             let policy = tool_registry_policy_from_settings(settings, available.keys().cloned());
@@ -519,7 +665,16 @@ async fn apply_tool_settings_to_harness(
     };
     let tools = available
         .into_iter()
-        .filter(|(name, _)| active_tool_names.contains(name))
+        .filter(|(name, tool)| {
+            active_tool_names.contains(name)
+                || tool.definition().name == *name
+                    && snapshot
+                        .registries
+                        .tools
+                        .active
+                        .iter()
+                        .any(|active| active.effective_id.as_str() == name)
+        })
         .collect::<BTreeMap<String, Arc<dyn Tool>>>();
     harness.set_tools(tools).await;
 }
@@ -697,7 +852,7 @@ async fn run_tui(
     let mut terminal = TerminalGuard::enter()?;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut tool_settings = load_tool_settings(&resource_paths).await;
-    apply_tool_settings_to_harness(&harness, &tool_settings, &cwd).await;
+    apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd).await;
     let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
@@ -841,7 +996,8 @@ async fn run_tui(
             } => {
                 set_tool_enabled(&mut tool_settings, scope, name, enabled);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
-                apply_tool_settings_to_harness(&harness, &tool_settings, &cwd).await;
+                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
+                    .await;
                 state.set_tool_settings(tool_settings_items(&tool_settings));
             }
             TuiAction::SetSessionTitle(title) => {
@@ -1542,18 +1698,27 @@ async fn run_non_interactive(
     };
 
     if input.trim_start().starts_with('/') && !contains_resource_reference(&input) {
-        let command = parse_command(&input)
-            .ok_or_else(|| AppError::InvalidArguments(format!("unknown command `{input}`")))?;
-        let message = execute_runtime_command(
-            command,
-            &harness,
-            &mut config,
-            &session_path,
-            &resource_catalog,
-        )
-        .await?;
-        println!("{message}");
-        return Ok(());
+        if let Some(command) = parse_command(&input) {
+            let message = execute_runtime_command(
+                command,
+                &harness,
+                &mut config,
+                &session_path,
+                &resource_catalog,
+            )
+            .await?;
+            println!("{message}");
+            return Ok(());
+        }
+        let tool_settings = load_tool_settings(&resource_catalog.paths).await;
+        let snapshot = load_extension_snapshot(&resource_catalog.paths, &tool_settings);
+        if let Some(message) = execute_extension_command(&input, &snapshot) {
+            println!("{}", message?);
+            return Ok(());
+        }
+        return Err(AppError::InvalidArguments(format!(
+            "unknown command `{input}`"
+        )));
     }
 
     let input = expand_resource_references(&input, &resource_catalog)?;
@@ -2497,6 +2662,59 @@ mod tests {
             &ContributionId::new(oino_tools::SESSION_TITLE_TOOL_NAME)
                 .unwrap_or_else(|err| panic!("valid id: {err}"))
         ));
+    }
+
+    #[tokio::test]
+    async fn extension_snapshot_exposes_enabled_project_tools_and_commands() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let extension_dir = project.join(".oino/extensions/acme-visible");
+        fs::create_dir_all(&extension_dir)
+            .unwrap_or_else(|err| panic!("create extension dir failed: {err}"));
+        fs::write(
+            extension_dir.join("oino.extension.json"),
+            r#"{
+              "id": "acme.visible",
+              "version": "1.0.0",
+              "oino": "^0.1",
+              "runtime": { "kind": "wasm", "entry": "plugin.wasm" },
+              "permissions": { "tools": ["visible_tool"], "commands": ["visible_command"] },
+              "contributes": {
+                "tools": [{ "id": "visible_tool", "description": "Visible dogfood tool" }],
+                "commands": [{ "id": "visible_command", "description": "Visible dogfood command" }]
+              }
+            }"#,
+        )
+        .unwrap_or_else(|err| panic!("write extension failed: {err}"));
+        fs::create_dir_all(project.join(".oino"))
+            .unwrap_or_else(|err| panic!("create project settings dir failed: {err}"));
+        fs::write(
+            project.join(".oino/settings.json"),
+            r#"{ "extensions": { "extensions": { "acme.visible": "enabled" } } }"#,
+        )
+        .unwrap_or_else(|err| panic!("write settings failed: {err}"));
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("paths failed: {err}"));
+        let disabled_snapshot = load_extension_snapshot(&paths, &ToolSettingsSnapshot::default());
+        assert!(disabled_snapshot.registries.tools.active.is_empty());
+        assert!(execute_extension_command("/visible_command now", &disabled_snapshot).is_none());
+
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+
+        assert!(snapshot
+            .registries
+            .tools
+            .active
+            .iter()
+            .any(|active| active.effective_id.as_str() == "visible_tool"));
+        let tools = extension_tool_map(&snapshot);
+        assert!(tools.contains_key("visible_tool"));
+        let command = execute_extension_command("/visible_command now", &snapshot)
+            .unwrap_or_else(|| panic!("extension command should be known"))
+            .unwrap_or_else(|err| panic!("extension command failed: {err}"));
+        assert!(command.contains("visible_command"));
     }
 
     #[test]

@@ -154,3 +154,23 @@ Tasks 11–12 validation:
 - Added runtime tests for initialize, execute with progress, cancel, timeout, crash recovery, unauthorized imports, allowed brokered imports, malformed payloads, unsupported ABI, and shutdown.
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 13–14 capability broker and runtime bridge
+
+Added capability enforcement and runtime adapters for extension tools/commands:
+
+- Added `CapabilityBroker`, `CapabilityRequest`, `CapabilityResponse`, `CapabilityAudit`, `CapabilityDecision`, and typed `CapabilityError` values to `oino-extension-runtime`.
+- Capability calls now carry extension id, optional contribution id, capability name, payload, timeout budget, payload/response size limits, provenance, and audit records.
+- Broker permission checks use `ExtensionPermissions::allows_host_capability`, typed denial/timeout/invalid/oversized/unhealthy errors, and diagnostic conversion.
+- Added initial safe capabilities: `host.test.echo` and mock `host.web.search`.
+- Added `ExtensionToolAdapter` implementing `oino-agent-loop::Tool` so active extension tool contributions become normal model-visible tools routed through the runtime boundary with progress and normal Oino tool results.
+- Added `ExtensionCommandAdapter` for command contributions routed through runtime handlers.
+- Wired app startup/tool refresh to load extension manager snapshots from Oino-owned global/project paths, compose extension policy from global/project settings, and add active external extension tools to the harness tool map.
+- Added non-interactive extension command fallback for unknown slash commands when an active extension command contribution matches the slash command id.
+
+Tasks 13–14 validation:
+
+- Added broker tests for allow, deny, timeout, invalid payload, oversized payload, audit capture, and unhealthy extension behavior.
+- Added bridge tests for tool success, tool runtime errors, cancellation, command success/error, disabled extension contributions, and non-interactive command execution helper behavior.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed
