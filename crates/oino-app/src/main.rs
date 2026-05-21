@@ -24,10 +24,11 @@ use model_catalog::ModelCatalogUpdate;
 use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider, Tool};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_extension_core::{
-    ActiveContribution, ContributionId, ContributionMetadata, DiagnosticContribution,
-    HealthContribution, RegistryEntry, RegistryEntryKey, RegistryPolicy, RendererContribution,
-    RendererTarget, SourceScope, UiFocusPolicy, UiKeyDispatchPolicy, UiLayoutPolicy,
-    UiSurfaceContribution, UiSurfaceKind, UiTinyTerminalFallback, UiVisibilityPolicy,
+    ActiveContribution, ContributionId, ContributionMetadata, DiagnosticContribution, ExtensionId,
+    HealthContribution, PackageId, PolicyToggle, RegistryEntry, RegistryEntryKey, RegistryPolicy,
+    RendererContribution, RendererTarget, SourceScope, UiFocusPolicy, UiKeyDispatchPolicy,
+    UiLayoutPolicy, UiSurfaceContribution, UiSurfaceKind, UiTinyTerminalFallback,
+    UiVisibilityPolicy,
 };
 use oino_extension_manager::{
     ExtensionDiscovery, ExtensionManager, ExtensionManagerConfig, ExtensionManagerSnapshot,
@@ -44,9 +45,11 @@ use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
     transcript_click_targets, transcript_url_overlays, transcript_visible_lines, CollapseMode,
-    KeymapConfig, MessageView, ParsedCommand, PromptResource, SessionListItem, SettingsCommand,
-    SkillResource, TerminalClickTarget, TerminalUrlOverlay, ToolSettingsItem, ToolSettingsScope,
-    TuiAction, TuiState, HELP_STATUS,
+    ExtensionAutosuggestItem, ExtensionManagementItem, ExtensionManagementTarget,
+    ExtensionShortcut, ExtensionThemeState, KeySequence, KeymapConfig, MessageView, ModelOption,
+    ParsedCommand, PromptResource, SessionListItem, SettingsCommand, SkillResource,
+    TerminalClickTarget, TerminalUrlOverlay, ToolSettingsItem, ToolSettingsScope, TuiAction,
+    TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -484,6 +487,82 @@ fn set_tool_enabled(
     };
 }
 
+fn extension_enabled_global(settings: &ToolSettingsSnapshot, id: &ExtensionId) -> bool {
+    extension_policy_enabled(settings.global.extensions.extensions.get(id), true)
+}
+
+fn extension_enabled_project(settings: &ToolSettingsSnapshot, id: &ExtensionId) -> bool {
+    extension_policy_enabled(
+        settings.project.extensions.extensions.get(id),
+        extension_enabled_global(settings, id),
+    )
+}
+
+fn package_enabled_global(settings: &ToolSettingsSnapshot, id: &PackageId) -> bool {
+    extension_policy_enabled(settings.global.extensions.packages.get(id), true)
+}
+
+fn package_enabled_project(settings: &ToolSettingsSnapshot, id: &PackageId) -> bool {
+    extension_policy_enabled(
+        settings.project.extensions.packages.get(id),
+        package_enabled_global(settings, id),
+    )
+}
+
+fn contribution_enabled_global(settings: &ToolSettingsSnapshot, id: &ContributionId) -> bool {
+    extension_policy_enabled(settings.global.extensions.contributions.get(id), true)
+}
+
+fn contribution_enabled_project(settings: &ToolSettingsSnapshot, id: &ContributionId) -> bool {
+    extension_policy_enabled(
+        settings.project.extensions.contributions.get(id),
+        contribution_enabled_global(settings, id),
+    )
+}
+
+fn extension_policy_enabled(toggle: Option<&PolicyToggle>, default: bool) -> bool {
+    match toggle {
+        Some(PolicyToggle::Enabled) => true,
+        Some(PolicyToggle::Disabled) => false,
+        None => default,
+    }
+}
+
+fn set_extension_enabled(
+    settings: &mut ToolSettingsSnapshot,
+    target: ExtensionManagementTarget,
+    id: String,
+    scope: ToolSettingsScope,
+    enabled: bool,
+) {
+    let toggle = if enabled {
+        PolicyToggle::Enabled
+    } else {
+        PolicyToggle::Disabled
+    };
+    let settings = match scope {
+        ToolSettingsScope::Global => &mut settings.global.extensions,
+        ToolSettingsScope::Project => &mut settings.project.extensions,
+    };
+    match target {
+        ExtensionManagementTarget::Extension => {
+            if let Ok(id) = ExtensionId::new(id) {
+                settings.extensions.insert(id, toggle);
+            }
+        }
+        ExtensionManagementTarget::Package => {
+            if let Ok(id) = PackageId::new(id) {
+                settings.packages.insert(id, toggle);
+            }
+        }
+        ExtensionManagementTarget::Contribution => {
+            if let Ok(id) = ContributionId::new(id) {
+                settings.contributions.insert(id, toggle);
+            }
+        }
+    }
+}
+
 async fn save_tool_settings(
     settings: &ToolSettingsSnapshot,
     paths: &ResourcePaths,
@@ -528,8 +607,13 @@ fn load_extension_snapshot(
 fn apply_extension_snapshot_to_tui_state(
     state: &mut TuiState,
     snapshot: &ExtensionManagerSnapshot,
+    settings: &ToolSettingsSnapshot,
 ) {
     state.set_extension_ui_surfaces(extension_ui_surfaces(snapshot));
+    state.set_extension_shortcuts(extension_shortcuts(snapshot));
+    state.set_extension_autosuggest_items(extension_autosuggest_items(snapshot));
+    state.set_extension_theme(extension_theme(snapshot));
+    state.set_extension_management_items(extension_management_items(snapshot, settings));
 }
 
 fn extension_ui_surfaces(
@@ -639,6 +723,319 @@ fn extension_ui_surfaces(
             .map(synthetic_health_surface),
     );
     surfaces
+}
+
+fn extension_shortcuts(snapshot: &ExtensionManagerSnapshot) -> Vec<ExtensionShortcut> {
+    snapshot
+        .registries
+        .keymaps
+        .active
+        .iter()
+        .filter(|active| active.entry.metadata.source.scope != SourceScope::BuiltIn)
+        .flat_map(|active| {
+            active
+                .entry
+                .contribution
+                .default_bindings
+                .iter()
+                .filter_map(|binding| {
+                    let sequence = binding.parse::<KeySequence>().ok()?;
+                    let source = active
+                        .entry
+                        .metadata
+                        .extension_id
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| active.entry.metadata.source.scope.slug().into());
+                    Some(ExtensionShortcut::new(
+                        active.entry.contribution.action.clone(),
+                        sequence,
+                        source,
+                    ))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn extension_autosuggest_items(
+    snapshot: &ExtensionManagerSnapshot,
+) -> Vec<ExtensionAutosuggestItem> {
+    snapshot
+        .registries
+        .autosuggest_providers
+        .active
+        .iter()
+        .filter(|active| active.entry.metadata.source.scope != SourceScope::BuiltIn)
+        .flat_map(|active| {
+            let trigger = active.entry.contribution.trigger.clone();
+            let source = active
+                .entry
+                .metadata
+                .extension_id
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| active.effective_id.to_string());
+            let fallback_label = if active.entry.contribution.label.trim().is_empty() {
+                active.effective_id.to_string()
+            } else {
+                active.entry.contribution.label.clone()
+            };
+            if active.entry.contribution.items.is_empty() {
+                return vec![ExtensionAutosuggestItem {
+                    label: fallback_label.clone(),
+                    summary: format!("Extension autosuggest trigger `{trigger}`"),
+                    replacement: trigger.clone(),
+                    trigger,
+                    source,
+                }];
+            }
+            active
+                .entry
+                .contribution
+                .items
+                .iter()
+                .map(|item| ExtensionAutosuggestItem {
+                    label: item.label.clone(),
+                    summary: if item.detail.trim().is_empty() {
+                        fallback_label.clone()
+                    } else {
+                        item.detail.clone()
+                    },
+                    replacement: item.replacement.clone(),
+                    trigger: trigger.clone(),
+                    source: source.clone(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn extension_theme(snapshot: &ExtensionManagerSnapshot) -> ExtensionThemeState {
+    let Some(active) = snapshot
+        .registries
+        .themes
+        .active
+        .iter()
+        .rev()
+        .find(|active| {
+            active.entry.metadata.source.scope != SourceScope::BuiltIn
+                && !active.entry.contribution.tokens.is_empty()
+        })
+    else {
+        return ExtensionThemeState::default();
+    };
+    let mut warnings = Vec::new();
+    for token in active.entry.contribution.tokens.keys() {
+        if !matches!(
+            token.as_str(),
+            "accent"
+                | "focused_border"
+                | "panel_border"
+                | "user_border"
+                | "assistant_border"
+                | "tool_border"
+                | "title"
+                | "warning"
+                | "error"
+                | "footer"
+        ) {
+            warnings.push(format!("unknown theme token `{token}` ignored"));
+        }
+    }
+    ExtensionThemeState {
+        label: Some(active.effective_id.to_string()),
+        tokens: active.entry.contribution.tokens.clone(),
+        warnings,
+    }
+}
+
+fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOption> {
+    snapshot
+        .registries
+        .providers
+        .active
+        .iter()
+        .filter(|active| active.entry.metadata.source.scope != SourceScope::BuiltIn)
+        .filter(|active| !active.entry.contribution.privacy.can_receive_prompts)
+        .flat_map(|active| {
+            let provider_id = &active.entry.contribution.provider_id;
+            let display = if active.entry.contribution.display_name.trim().is_empty() {
+                provider_id.as_str()
+            } else {
+                active.entry.contribution.display_name.as_str()
+            };
+            active
+                .entry
+                .contribution
+                .model_ids
+                .iter()
+                .filter_map(move |model_id| {
+                    let id = format!("{provider_id}:{model_id}");
+                    Model::from_identifier(&id).map(|_| {
+                        ModelOption::new(id).with_display_name(format!("{display} {model_id}"))
+                    })
+                })
+        })
+        .collect()
+}
+
+fn merge_extension_models(
+    mut models: Vec<ModelOption>,
+    extension_models: &[ModelOption],
+) -> Vec<ModelOption> {
+    let mut seen = models
+        .iter()
+        .map(|model| model.id.clone())
+        .collect::<BTreeSet<_>>();
+    for model in extension_models {
+        if seen.insert(model.id.clone()) {
+            models.push(model.clone());
+        }
+    }
+    models
+}
+
+fn extension_management_items(
+    snapshot: &ExtensionManagerSnapshot,
+    settings: &ToolSettingsSnapshot,
+) -> Vec<ExtensionManagementItem> {
+    let conflicts = extension_conflict_map(snapshot);
+    let mut items = Vec::new();
+    items.extend(snapshot.extensions.iter().map(|record| {
+        ExtensionManagementItem {
+            target: ExtensionManagementTarget::Extension,
+            id: record.id.to_string(),
+            title: record.display_name.clone(),
+            family: "extension".into(),
+            scope: record.source.scope.slug().into(),
+            health: format!("{:?}", record.health),
+            state: format!("{:?}", record.lifecycle),
+            permission: permission_summary(&record.permissions),
+            provenance: provenance_summary(record.provenance.as_ref()),
+            diagnostics: record
+                .diagnostics
+                .iter()
+                .map(oino_extension_core::ExtensionDiagnostic::format_message)
+                .collect(),
+            conflicts: Vec::new(),
+            global_enabled: extension_enabled_global(settings, &record.id),
+            project_enabled: extension_enabled_project(settings, &record.id),
+        }
+    }));
+    items.extend(snapshot.packages.iter().map(|record| {
+        ExtensionManagementItem {
+            target: ExtensionManagementTarget::Package,
+            id: record.id.to_string(),
+            title: record.display_name.clone(),
+            family: "package".into(),
+            scope: record.source.scope.slug().into(),
+            health: format!("{:?}", record.health),
+            state: format!("{:?}", record.lifecycle),
+            permission: "package".into(),
+            provenance: String::new(),
+            diagnostics: record
+                .diagnostics
+                .iter()
+                .map(oino_extension_core::ExtensionDiagnostic::format_message)
+                .collect(),
+            conflicts: Vec::new(),
+            global_enabled: package_enabled_global(settings, &record.id),
+            project_enabled: package_enabled_project(settings, &record.id),
+        }
+    }));
+    items.extend(snapshot.contributions.iter().map(|record| {
+        let contribution_conflicts = conflicts
+            .get(&record.id.to_string())
+            .cloned()
+            .unwrap_or_default();
+        ExtensionManagementItem {
+            target: ExtensionManagementTarget::Contribution,
+            id: record.id.to_string(),
+            title: record.entry_key.to_string(),
+            family: record.family.label().into(),
+            scope: record.source.scope.slug().into(),
+            health: format!("{:?}", record.health),
+            state: format!("{:?}", record.state),
+            permission: permission_decision_summary(&record.permission),
+            provenance: provenance_summary(record.provenance.as_ref()),
+            diagnostics: record
+                .diagnostics
+                .iter()
+                .map(oino_extension_core::ExtensionDiagnostic::format_message)
+                .collect(),
+            conflicts: contribution_conflicts,
+            global_enabled: contribution_enabled_global(settings, &record.id),
+            project_enabled: contribution_enabled_project(settings, &record.id),
+        }
+    }));
+    items.sort_by(|left, right| {
+        left.target
+            .label()
+            .cmp(right.target.label())
+            .then(left.family.cmp(&right.family))
+            .then(left.id.cmp(&right.id))
+    });
+    items
+}
+
+fn extension_conflict_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, Vec<String>> {
+    let mut conflicts = BTreeMap::<String, Vec<String>>::new();
+    for conflict in &snapshot.registries.ui_surfaces.diagnostics {
+        if let Some(id) = &conflict.contribution_id {
+            conflicts
+                .entry(id.to_string())
+                .or_default()
+                .push(conflict.message.clone());
+        }
+    }
+    for diagnostic in &snapshot.diagnostics {
+        if let Some(id) = &diagnostic.contribution_id {
+            if diagnostic.message.contains("conflict") || diagnostic.message.contains("duplicate") {
+                conflicts
+                    .entry(id.to_string())
+                    .or_default()
+                    .push(diagnostic.message.clone());
+            }
+        }
+    }
+    conflicts
+}
+
+fn permission_summary(permissions: &oino_extension_core::ExtensionPermissions) -> String {
+    format!(
+        "tools:{} commands:{} ui:{} host:{}",
+        permissions.tools.len(),
+        permissions.commands.len(),
+        permissions.ui.len(),
+        permissions.host_capabilities.len()
+    )
+}
+
+fn permission_decision_summary(permission: &oino_extension_core::PermissionDecision) -> String {
+    match permission {
+        oino_extension_core::PermissionDecision::Granted => "granted".into(),
+        oino_extension_core::PermissionDecision::PendingReview(reason) => {
+            format!("pending: {reason}")
+        }
+        oino_extension_core::PermissionDecision::Denied(reason) => format!("denied: {reason}"),
+    }
+}
+
+fn provenance_summary(provenance: Option<&oino_extension_core::Provenance>) -> String {
+    provenance.map_or_else(String::new, |provenance| {
+        let package = provenance
+            .package_id
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        let extension = provenance
+            .extension_id
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        format!("{} {}", package, extension).trim().to_string()
+    })
 }
 
 fn synthetic_renderer_surface(
@@ -1053,9 +1450,10 @@ async fn run_tui(
     apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd).await;
     let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+    let mut extension_models = extension_model_options(&extension_snapshot);
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
-    apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot);
+    apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot, &tool_settings);
     apply_resource_catalog_to_state(&mut state, &resource_catalog);
     state.set_file_paths(scan_project_files(&cwd));
     state
@@ -1081,7 +1479,7 @@ async fn run_tui(
             if matches!(event, TuiRuntimeEvent::PromptFinished(_)) {
                 prompt_finished = true;
             }
-            apply_tui_runtime_event(&mut state, event, &mut prompt_in_flight);
+            apply_tui_runtime_event(&mut state, event, &mut prompt_in_flight, &extension_models);
         }
         if prompt_finished {
             start_next_queued_prompt_if_idle(
@@ -1199,14 +1597,41 @@ async fn run_tui(
                 apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
                     .await;
                 let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                extension_models = extension_model_options(&extension_snapshot);
                 state.set_tool_settings(tool_settings_items(&tool_settings));
-                apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot);
+                apply_extension_snapshot_to_tui_state(
+                    &mut state,
+                    &extension_snapshot,
+                    &tool_settings,
+                );
             }
             TuiAction::RunExtensionUiAction {
                 surface_id,
                 action_id,
             } => {
                 state.status = format!("Extension UI action `{surface_id}.{action_id}` queued");
+            }
+            TuiAction::RunExtensionAction { action } => {
+                state.status = format!("Extension shortcut action `{action}` queued");
+            }
+            TuiAction::SetExtensionEnabled {
+                target,
+                id,
+                scope,
+                enabled,
+            } => {
+                set_extension_enabled(&mut tool_settings, target, id, scope, enabled);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
+                    .await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                extension_models = extension_model_options(&extension_snapshot);
+                state.set_tool_settings(tool_settings_items(&tool_settings));
+                apply_extension_snapshot_to_tui_state(
+                    &mut state,
+                    &extension_snapshot,
+                    &tool_settings,
+                );
             }
             TuiAction::SetSessionTitle(title) => {
                 if let Err(err) = harness.set_session_title(title.clone()).await {
@@ -2181,6 +2606,11 @@ async fn execute_runtime_command(
             let snapshot = harness.inspect_full_prompt().await?;
             return Ok(snapshot.content);
         }
+        ParsedCommand::Extensions => {
+            return Err(AppError::InvalidArguments(
+                "`/extensions` opens the interactive extension manager in the TUI".into(),
+            ));
+        }
         ParsedCommand::SetSessionTitle(title) => {
             harness.set_session_title(title.clone()).await?;
             harness.save_session_jsonl(session_path).await?;
@@ -2529,6 +2959,7 @@ fn apply_tui_runtime_event(
     state: &mut TuiState,
     event: TuiRuntimeEvent,
     prompt_in_flight: &mut bool,
+    extension_models: &[ModelOption],
 ) {
     match event {
         TuiRuntimeEvent::Agent(AgentEvent::AgentStart { .. }) => {
@@ -2578,7 +3009,10 @@ fn apply_tui_runtime_event(
                 state.settings.status = update.status;
                 state.set_model_catalog_refreshing(update.refreshing);
             } else {
-                state.set_model_catalog(update.models, update.status);
+                state.set_model_catalog(
+                    merge_extension_models(update.models, extension_models),
+                    update.status,
+                );
                 state.set_model_catalog_refreshing(update.refreshing);
             }
         }
@@ -2835,6 +3269,37 @@ mod tests {
 
         settings.project.tools.insert("bash".into(), true);
         assert!(project_tool_enabled(&settings, "bash"));
+    }
+
+    #[test]
+    fn extension_management_toggle_updates_policy_settings() {
+        let mut settings = ToolSettingsSnapshot::default();
+        set_extension_enabled(
+            &mut settings,
+            ExtensionManagementTarget::Extension,
+            "process.manager".into(),
+            ToolSettingsScope::Project,
+            false,
+        );
+        assert_eq!(
+            settings.project.extensions.extensions.get(
+                &ExtensionId::new("process.manager").unwrap_or_else(|err| panic!("id: {err}"))
+            ),
+            Some(&PolicyToggle::Disabled)
+        );
+        set_extension_enabled(
+            &mut settings,
+            ExtensionManagementTarget::Contribution,
+            "ui.processes".into(),
+            ToolSettingsScope::Global,
+            true,
+        );
+        assert_eq!(
+            settings.global.extensions.contributions.get(
+                &ContributionId::new("ui.processes").unwrap_or_else(|err| panic!("id: {err}"))
+            ),
+            Some(&PolicyToggle::Enabled)
+        );
     }
 
     #[test]

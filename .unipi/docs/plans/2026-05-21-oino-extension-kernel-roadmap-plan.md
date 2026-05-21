@@ -247,7 +247,7 @@ Planning decisions recorded for implementation:
     3. Extend layout/render modules for each first-class surface in dependency-safe order.
     4. Add state and render tests for each surface family.
 
-- unstarted: Task 17 — Add Autosuggest, Keymap, Theme, Renderer, and Provider/Model Extensibility
+- completed: Task 17 — Add Autosuggest, Keymap, Theme, Renderer, and Provider/Model Extensibility
   - Description: Complete the interactive customization surfaces beyond basic panels and tools.
   - Dependencies: Tasks 6, 8, 15, and 16.
   - Acceptance Criteria:
@@ -262,7 +262,7 @@ Planning decisions recorded for implementation:
     3. Apply theme tokens through existing TUI theme/style boundaries.
     4. Add provider/model metadata and safe hook integration.
 
-- unstarted: Task 18 — Add Many-extension Management UX
+- completed: Task 18 — Add Many-extension Management UX
   - Description: Build user-facing management surfaces for installed extensions and contributed components at scale.
   - Dependencies: Tasks 10, 15, 16, and 17.
   - Acceptance Criteria:

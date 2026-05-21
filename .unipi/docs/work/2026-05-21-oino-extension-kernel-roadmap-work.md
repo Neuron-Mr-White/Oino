@@ -198,3 +198,30 @@ Tasks 15–16 validation:
 - `cargo fmt --all` — passed
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 17–18 extensibility surfaces and management UX
+
+Completed interactive extensibility surfaces beyond basic panels/tools:
+
+- Extended extension contracts for keymaps, autosuggest providers, theme token packs, and provider/model metadata.
+- Added provider privacy policy metadata so extension-provided model entries are listed only when they do not request prompt/tool/request mutation access by default.
+- Added static autosuggest items and trigger metadata, with TUI-side fuzzy matching through existing `nucleo`-backed `fuzzy_indices` outside render paths.
+- Added extension shortcut state that parses registry keymap snapshots, preserves built-in key precedence, exposes built-in/extension conflicts, and dispatches non-conflicting extension shortcut actions.
+- Added extension theme token application through the existing `Theme` boundary with a safe token allowlist and ignored-token warnings.
+- Synthesized TUI-visible metadata surfaces for settings pages, themes, autosuggest providers, transcript/message/tool renderers, diagnostics, and health contributions.
+- Merged safe extension provider/model metadata into model catalog updates without replacing existing OpenRouter catalog behavior.
+
+Added many-extension management UX:
+
+- Added `/extensions` command and an Extensions overlay.
+- Added searchable management state covering extensions, packages, and contributions with scope, family, health, state, permission, provenance, diagnostics, conflicts, and global/project enablement.
+- Added project/global enable-disable actions from the overlay (`p`/Enter for project, `g` for global) backed by persisted `ExtensionPolicySettings`.
+- Search/filtering is precomputed in TUI state with `nucleo` fuzzy matching and not rescored in render paths.
+- App adapters now project `ExtensionManagerSnapshot` records into TUI management rows and refresh the TUI/harness snapshot after enablement changes.
+
+Tasks 17–18 validation:
+
+- Added tests for extension shortcut dispatch/conflict exposure, autosuggest cache refresh, theme token plumbing via render path, extension management search/toggle actions, diagnostic/conflict rendering, and policy-setting persistence.
+- `cargo fmt --all` — passed
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed

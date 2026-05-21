@@ -19,7 +19,9 @@ mod transcript;
 
 pub use action::TuiAction;
 pub use app::{
-    ChordState, OverlayKind, SessionListItem, SessionsState, TuiFocus, TuiState, HELP_STATUS,
+    ChordState, ExtensionAutosuggestItem, ExtensionManagementItem, ExtensionManagementState,
+    ExtensionManagementTarget, ExtensionShortcut, ExtensionThemeState, OverlayKind,
+    SessionListItem, SessionsState, TuiFocus, TuiState, HELP_STATUS,
 };
 pub use command::{
     chat_style_value, collapse_mode_value, collapse_target_value, command_query,

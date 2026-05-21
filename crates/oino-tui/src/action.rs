@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{
+    app::ExtensionManagementTarget,
     keymap::KeymapConfig,
     settings::{ChatStyle, CollapseMode, CollapseTarget, ToolSettingsScope},
 };
@@ -31,6 +32,15 @@ pub enum TuiAction {
     RunExtensionUiAction {
         surface_id: String,
         action_id: String,
+    },
+    RunExtensionAction {
+        action: String,
+    },
+    SetExtensionEnabled {
+        target: ExtensionManagementTarget,
+        id: String,
+        scope: ToolSettingsScope,
+        enabled: bool,
     },
     SetSessionTitle(String),
     AbortPrompt,

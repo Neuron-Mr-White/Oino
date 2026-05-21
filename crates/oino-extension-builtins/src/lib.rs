@@ -153,6 +153,7 @@ pub fn keymap_registry(keymap: &KeymapConfig) -> Result<KeymapRegistry, BuiltinR
             KeymapContribution {
                 id: ContributionId::new(info.action.id())?,
                 action: info.action.id().into(),
+                context: info.context.label().into(),
                 default_bindings: keymap
                     .bindings_for(info.action)
                     .into_iter()
@@ -269,6 +270,7 @@ pub fn theme_registry() -> Result<ThemeRegistry, BuiltinRegistryError> {
             ThemeContribution {
                 id: ContributionId::new(format!("theme.{}", chat_style_value(style)))?,
                 path: format!("builtin://theme/{}", chat_style_value(style)),
+                tokens: Default::default(),
                 conflict: Default::default(),
             },
         )?;
@@ -285,7 +287,10 @@ pub fn provider_registry(
         ProviderContribution {
             id: ContributionId::new("provider.openrouter")?,
             provider_id: "openrouter".into(),
+            display_name: "OpenRouter".into(),
             model_ids: openrouter_models.into_iter().collect(),
+            privacy: Default::default(),
+            hook: None,
             conflict: Default::default(),
         },
     )?;

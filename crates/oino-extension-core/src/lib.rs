@@ -555,6 +555,8 @@ pub struct KeymapContribution {
     pub id: ContributionId,
     pub action: String,
     #[serde(default)]
+    pub context: String,
+    #[serde(default)]
     pub default_bindings: Vec<String>,
     #[serde(default)]
     pub conflict: ConflictPolicy,
@@ -1018,6 +1020,8 @@ pub struct ThemeContribution {
     pub id: ContributionId,
     pub path: String,
     #[serde(default)]
+    pub tokens: BTreeMap<String, String>,
+    #[serde(default)]
     pub conflict: ConflictPolicy,
 }
 
@@ -1026,9 +1030,25 @@ pub struct ProviderContribution {
     pub id: ContributionId,
     pub provider_id: String,
     #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
     pub model_ids: Vec<String>,
     #[serde(default)]
+    pub privacy: ProviderPrivacyPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hook: Option<String>,
+    #[serde(default)]
     pub conflict: ConflictPolicy,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderPrivacyPolicy {
+    #[serde(default)]
+    pub can_receive_prompts: bool,
+    #[serde(default)]
+    pub can_receive_tools: bool,
+    #[serde(default)]
+    pub can_mutate_requests: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1056,7 +1076,19 @@ pub struct AutosuggestContribution {
     pub id: ContributionId,
     pub trigger: String,
     #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub items: Vec<AutosuggestItem>,
+    #[serde(default)]
     pub conflict: ConflictPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutosuggestItem {
+    pub label: String,
+    pub replacement: String,
+    #[serde(default)]
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3513,6 +3545,7 @@ mod tests {
             KeymapContribution {
                 id: ContributionId::new("keymap")?,
                 action: "app.test".into(),
+                context: "global".into(),
                 default_bindings: vec!["ctrl+x".into()],
                 conflict: ConflictPolicy::default(),
             },
@@ -3555,6 +3588,7 @@ mod tests {
             ThemeContribution {
                 id: ContributionId::new("theme")?,
                 path: "themes/dark.json".into(),
+                tokens: BTreeMap::from([("accent".into(), "cyan".into())]),
                 conflict: ConflictPolicy::default(),
             },
         )?;
@@ -3563,7 +3597,10 @@ mod tests {
             ProviderContribution {
                 id: ContributionId::new("provider")?,
                 provider_id: "openrouter".into(),
+                display_name: "OpenRouter".into(),
                 model_ids: vec!["openai/gpt-4o-mini".into()],
+                privacy: ProviderPrivacyPolicy::default(),
+                hook: None,
                 conflict: ConflictPolicy::default(),
             },
         )?;
@@ -3581,6 +3618,12 @@ mod tests {
             AutosuggestContribution {
                 id: ContributionId::new("autosuggest")?,
                 trigger: "@".into(),
+                label: "Files".into(),
+                items: vec![AutosuggestItem {
+                    label: "README.md".into(),
+                    replacement: "@README.md".into(),
+                    detail: "Project file".into(),
+                }],
                 conflict: ConflictPolicy::default(),
             },
         )?;
@@ -3656,6 +3699,7 @@ mod tests {
             KeymapContribution {
                 id: ContributionId::new("keymap")?,
                 action: String::new(),
+                context: String::new(),
                 default_bindings: Vec::new(),
                 conflict: ConflictPolicy::default(),
             },
@@ -3698,6 +3742,7 @@ mod tests {
             ThemeContribution {
                 id: ContributionId::new("theme")?,
                 path: String::new(),
+                tokens: BTreeMap::new(),
                 conflict: ConflictPolicy::default(),
             },
         )?;
@@ -3706,7 +3751,10 @@ mod tests {
             ProviderContribution {
                 id: ContributionId::new("provider")?,
                 provider_id: String::new(),
+                display_name: String::new(),
                 model_ids: Vec::new(),
+                privacy: ProviderPrivacyPolicy::default(),
+                hook: None,
                 conflict: ConflictPolicy::default(),
             },
         )?;
@@ -3724,6 +3772,8 @@ mod tests {
             AutosuggestContribution {
                 id: ContributionId::new("autosuggest")?,
                 trigger: String::new(),
+                label: String::new(),
+                items: Vec::new(),
                 conflict: ConflictPolicy::default(),
             },
         )?;

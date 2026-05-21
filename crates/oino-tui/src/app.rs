@@ -13,12 +13,12 @@ use crate::{
     },
     fuzzy::{ascii_subsequence_match_parts, fuzzy_indices, FuzzyMode},
     help::{help_entries, help_entry_match_text},
-    keymap::{KeyAction, KeyContext, KeyStroke, KeymapConfig, KeymapMatch},
+    keymap::{KeyAction, KeyContext, KeySequence, KeyStroke, KeymapConfig, KeymapMatch},
     message::{project_content_blocks, project_message, project_messages, MessageView},
     resource::{PromptResource, ResourceBrowserState, SkillResource},
     settings::{
         chat_style_label, collapse_mode_label, KeymapsMode, ModelOption, SettingsAction,
-        SettingsState, ToolSettingsItem,
+        SettingsState, ToolSettingsItem, ToolSettingsScope,
     },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -28,7 +28,7 @@ use oino_extension_core::{
     UiSurfaceValidationError,
 };
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const HELP_STATUS: &str = "Type /help for shortcuts and commands";
 
@@ -43,6 +43,7 @@ pub enum OverlayKind {
     Sessions,
     Prompts,
     Skills,
+    Extensions,
     Inspect,
 }
 
@@ -119,6 +120,167 @@ pub enum ChordState {
     CtrlO,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionManagementTarget {
+    Extension,
+    Package,
+    Contribution,
+}
+
+impl ExtensionManagementTarget {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Extension => "extension",
+            Self::Package => "package",
+            Self::Contribution => "contribution",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionManagementItem {
+    pub target: ExtensionManagementTarget,
+    pub id: String,
+    pub title: String,
+    pub family: String,
+    pub scope: String,
+    pub health: String,
+    pub state: String,
+    pub permission: String,
+    pub provenance: String,
+    pub diagnostics: Vec<String>,
+    pub conflicts: Vec<String>,
+    pub global_enabled: bool,
+    pub project_enabled: bool,
+}
+
+impl ExtensionManagementItem {
+    #[must_use]
+    pub fn haystack(&self) -> String {
+        format!(
+            "{} {} {} {} {} {} {} {} {}",
+            self.target.label(),
+            self.id,
+            self.title,
+            self.family,
+            self.scope,
+            self.health,
+            self.state,
+            self.permission,
+            self.provenance
+        )
+    }
+
+    #[must_use]
+    pub fn enabled(&self, scope: ToolSettingsScope) -> bool {
+        match scope {
+            ToolSettingsScope::Global => self.global_enabled,
+            ToolSettingsScope::Project => self.project_enabled,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExtensionManagementState {
+    pub items: Vec<ExtensionManagementItem>,
+    pub filtered_indices: Vec<usize>,
+    pub cursor: usize,
+    pub search: String,
+    pub search_active: bool,
+}
+
+impl ExtensionManagementState {
+    pub fn set_items(&mut self, items: Vec<ExtensionManagementItem>) {
+        self.items = items;
+        self.cursor = self.cursor.min(self.items.len().saturating_sub(1));
+        self.refresh_filter();
+    }
+
+    pub fn refresh_filter(&mut self) {
+        self.filtered_indices =
+            fuzzy_indices(&self.items, &self.search, FuzzyMode::Text, None, |item| {
+                item.haystack()
+            });
+        if self.filtered_indices.is_empty() {
+            self.cursor = 0;
+        } else {
+            self.cursor = self
+                .cursor
+                .min(self.filtered_indices.len().saturating_sub(1));
+        }
+    }
+
+    pub fn move_cursor(&mut self, delta: isize) {
+        self.cursor = move_index(self.cursor, self.filtered_indices.len(), delta);
+    }
+
+    #[must_use]
+    pub fn selected_item(&self) -> Option<&ExtensionManagementItem> {
+        self.filtered_indices
+            .get(self.cursor)
+            .and_then(|index| self.items.get(*index))
+    }
+
+    pub fn set_selected_enabled(&mut self, scope: ToolSettingsScope, enabled: bool) {
+        let Some(index) = self.filtered_indices.get(self.cursor).copied() else {
+            return;
+        };
+        let Some(item) = self.items.get_mut(index) else {
+            return;
+        };
+        match scope {
+            ToolSettingsScope::Global => item.global_enabled = enabled,
+            ToolSettingsScope::Project => item.project_enabled = enabled,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionShortcut {
+    pub action: String,
+    pub sequence: KeySequence,
+    pub source: String,
+    pub conflicts: BTreeSet<String>,
+}
+
+impl ExtensionShortcut {
+    #[must_use]
+    pub fn new(
+        action: impl Into<String>,
+        sequence: KeySequence,
+        source: impl Into<String>,
+    ) -> Self {
+        Self {
+            action: action.into(),
+            sequence,
+            source: source.into(),
+            conflicts: BTreeSet::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        self.conflicts.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionAutosuggestItem {
+    pub label: String,
+    pub summary: String,
+    pub replacement: String,
+    pub trigger: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExtensionThemeState {
+    pub label: Option<String>,
+    pub tokens: BTreeMap<String, String>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExtensionUiState {
     pub surfaces: Vec<ActiveContribution<UiSurfaceContribution>>,
@@ -126,6 +288,9 @@ pub struct ExtensionUiState {
     pub actions: BTreeMap<ContributionId, Vec<UiSurfaceAction>>,
     pub focused_surface: Option<ContributionId>,
     pub conflicts: Vec<UiSurfaceConflict>,
+    pub shortcuts: Vec<ExtensionShortcut>,
+    pub autosuggest_items: Vec<ExtensionAutosuggestItem>,
+    pub theme: ExtensionThemeState,
 }
 
 impl ExtensionUiState {
@@ -157,6 +322,24 @@ impl ExtensionUiState {
             self.focused_surface = None;
         }
         self.surfaces = surfaces;
+    }
+
+    pub fn set_shortcuts(&mut self, shortcuts: Vec<ExtensionShortcut>, keymap: &KeymapConfig) {
+        self.shortcuts = mark_extension_shortcut_conflicts(shortcuts, keymap);
+    }
+
+    pub fn set_autosuggest_items(&mut self, mut items: Vec<ExtensionAutosuggestItem>) {
+        items.sort_by(|left, right| {
+            left.trigger
+                .cmp(&right.trigger)
+                .then(left.label.cmp(&right.label))
+                .then(left.source.cmp(&right.source))
+        });
+        self.autosuggest_items = items;
+    }
+
+    pub fn set_theme(&mut self, theme: ExtensionThemeState) {
+        self.theme = theme;
     }
 
     pub fn apply_update(
@@ -205,6 +388,104 @@ impl ExtensionUiState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExtensionShortcutMatch {
+    None,
+    Pending,
+    Matched(String),
+}
+
+fn mark_extension_shortcut_conflicts(
+    mut shortcuts: Vec<ExtensionShortcut>,
+    keymap: &KeymapConfig,
+) -> Vec<ExtensionShortcut> {
+    let all_contexts = [
+        KeyContext::Common,
+        KeyContext::Global,
+        KeyContext::Composer,
+        KeyContext::CommandSuggestions,
+        KeyContext::Transcript,
+        KeyContext::Help,
+        KeyContext::HelpSearch,
+        KeyContext::SendPanel,
+        KeyContext::SendPanelConfirm,
+        KeyContext::Sessions,
+        KeyContext::Search,
+        KeyContext::ResourceBrowser,
+        KeyContext::Inspect,
+        KeyContext::Settings,
+        KeyContext::SettingsTools,
+        KeyContext::SettingsKeymaps,
+        KeyContext::SettingsKeymapDetail,
+        KeyContext::SettingsKeymapType,
+        KeyContext::SettingsKeymapPreset,
+        KeyContext::SettingsKeymapPresetConfirm,
+    ];
+    for shortcut in &mut shortcuts {
+        match keymap.resolve(&all_contexts, shortcut.sequence.strokes()) {
+            KeymapMatch::Matched(action) => {
+                shortcut
+                    .conflicts
+                    .insert(format!("built-in:{}", action.id()));
+            }
+            KeymapMatch::Pending => {
+                shortcut.conflicts.insert("built-in:prefix".into());
+            }
+            KeymapMatch::None => {}
+        }
+    }
+    let len = shortcuts.len();
+    for left in 0..len {
+        for right in (left + 1)..len {
+            let left_sequence = shortcuts[left].sequence.clone();
+            let right_sequence = shortcuts[right].sequence.clone();
+            if left_sequence == right_sequence
+                || left_sequence.starts_with(right_sequence.strokes())
+                || right_sequence.starts_with(left_sequence.strokes())
+            {
+                let left_action = shortcuts[left].action.clone();
+                let right_action = shortcuts[right].action.clone();
+                shortcuts[left]
+                    .conflicts
+                    .insert(format!("extension:{right_action}"));
+                shortcuts[right]
+                    .conflicts
+                    .insert(format!("extension:{left_action}"));
+            }
+        }
+    }
+    shortcuts.sort_by(|left, right| {
+        left.sequence
+            .cmp(&right.sequence)
+            .then(left.action.cmp(&right.action))
+            .then(left.source.cmp(&right.source))
+    });
+    shortcuts
+}
+
+fn resolve_extension_shortcut(
+    shortcuts: &[ExtensionShortcut],
+    strokes: &[KeyStroke],
+) -> ExtensionShortcutMatch {
+    if strokes.is_empty() {
+        return ExtensionShortcutMatch::None;
+    }
+    let mut pending = false;
+    for shortcut in shortcuts.iter().filter(|shortcut| shortcut.is_active()) {
+        if shortcut.sequence.strokes() == strokes {
+            return ExtensionShortcutMatch::Matched(shortcut.action.clone());
+        }
+        if shortcut.sequence.len() > strokes.len() && shortcut.sequence.starts_with(strokes) {
+            pending = true;
+        }
+    }
+    if pending {
+        ExtensionShortcutMatch::Pending
+    } else {
+        ExtensionShortcutMatch::None
+    }
+}
+
 fn summarize_extension_ui_state(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => String::new(),
@@ -235,11 +516,12 @@ fn plural(count: usize) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum KeymapKeyResult {
     Unhandled,
     Consumed,
     Matched(KeyAction),
+    MatchedExtension(String),
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -317,6 +599,7 @@ pub struct TuiState {
     pub skill_resources: Vec<SkillResource>,
     pub resource_diagnostics: Vec<String>,
     pub extension_ui: ExtensionUiState,
+    pub extension_management: ExtensionManagementState,
     pub help_scroll: usize,
     pub help_search: String,
     pub help_search_active: bool,
@@ -355,6 +638,7 @@ impl Default for TuiState {
             skill_resources: Vec::new(),
             resource_diagnostics: Vec::new(),
             extension_ui: ExtensionUiState::default(),
+            extension_management: ExtensionManagementState::default(),
             help_scroll: 0,
             help_search: String::new(),
             help_search_active: false,
@@ -848,7 +1132,60 @@ impl TuiState {
             &self.prompt_resources,
             &self.skill_resources,
         )
+        .or_else(|| self.extension_autosuggestions(input, cursor))
         .or_else(|| file_suggestions_for(input, cursor, &self.file_paths))
+    }
+
+    fn extension_autosuggestions(
+        &self,
+        input: &str,
+        cursor: usize,
+    ) -> Option<CommandSuggestionsView> {
+        let cursor = cursor.min(input.len());
+        let before_cursor = input.get(..cursor)?;
+        let context = self
+            .extension_ui
+            .autosuggest_items
+            .iter()
+            .filter_map(|item| {
+                let start = before_cursor.rfind(&item.trigger)?;
+                let query = before_cursor[start + item.trigger.len()..].to_string();
+                let token_has_space = query.chars().any(char::is_whitespace);
+                (!token_has_space).then_some((start, query, item.trigger.clone()))
+            })
+            .min_by(|left, right| right.0.cmp(&left.0))?;
+        let (replace_start, query, trigger) = context;
+        let candidates = self
+            .extension_ui
+            .autosuggest_items
+            .iter()
+            .filter(|item| item.trigger == trigger)
+            .cloned()
+            .collect::<Vec<_>>();
+        let indices = fuzzy_indices(&candidates, &query, FuzzyMode::Text, Some(10), |item| {
+            format!("{} {} {}", item.label, item.summary, item.source)
+        });
+        let items = indices
+            .into_iter()
+            .map(|index| {
+                let item = &candidates[index];
+                CommandSuggestionItem {
+                    label: item.label.clone(),
+                    summary: format!("{} • {}", item.summary, item.source),
+                    replacement: item.replacement.clone(),
+                    replace_start,
+                    replace_end: cursor,
+                    complete_on_enter: false,
+                    category: CommandSuggestionCategory::Extension,
+                }
+            })
+            .collect::<Vec<_>>();
+        (!items.is_empty()).then_some(CommandSuggestionsView {
+            query,
+            title: "Extension Suggestions".into(),
+            items,
+            selected: 0,
+        })
     }
 
     pub(crate) fn refresh_command_suggestions(&mut self) {
@@ -1005,6 +1342,24 @@ impl TuiState {
         self.extension_ui.set_surfaces(surfaces);
     }
 
+    pub fn set_extension_shortcuts(&mut self, shortcuts: Vec<ExtensionShortcut>) {
+        self.extension_ui
+            .set_shortcuts(shortcuts, &self.settings.keymap);
+    }
+
+    pub fn set_extension_autosuggest_items(&mut self, items: Vec<ExtensionAutosuggestItem>) {
+        self.extension_ui.set_autosuggest_items(items);
+        self.refresh_command_suggestions();
+    }
+
+    pub fn set_extension_theme(&mut self, theme: ExtensionThemeState) {
+        self.extension_ui.set_theme(theme);
+    }
+
+    pub fn set_extension_management_items(&mut self, items: Vec<ExtensionManagementItem>) {
+        self.extension_management.set_items(items);
+    }
+
     pub fn apply_extension_ui_update(
         &mut self,
         update: UiSurfaceStateUpdate,
@@ -1023,6 +1378,9 @@ impl TuiState {
 
     pub fn set_keymap(&mut self, keymap: KeymapConfig) {
         self.settings.set_keymap(keymap);
+        let shortcuts = self.extension_ui.shortcuts.clone();
+        self.extension_ui
+            .set_shortcuts(shortcuts, &self.settings.keymap);
         self.refresh_help_filter();
     }
 
@@ -1107,6 +1465,9 @@ impl TuiState {
 
         match self.resolve_keymap_key(key) {
             KeymapKeyResult::Matched(action) => return self.execute_key_action(action),
+            KeymapKeyResult::MatchedExtension(action) => {
+                return TuiAction::RunExtensionAction { action }
+            }
             KeymapKeyResult::Consumed => return TuiAction::None,
             KeymapKeyResult::Unhandled => {}
         }
@@ -1125,6 +1486,10 @@ impl TuiState {
             Some(OverlayKind::Skills) if self.skills.search_active => {
                 return self.handle_skills_search_text_key(key);
             }
+            Some(OverlayKind::Extensions) if self.extension_management.search_active => {
+                return self.handle_extensions_search_text_key(key);
+            }
+            Some(OverlayKind::Extensions) => return self.handle_extensions_plain_key(key),
             Some(_) => return TuiAction::None,
             None => {}
         }
@@ -1192,7 +1557,29 @@ impl TuiState {
                 }
                 KeymapKeyResult::Consumed
             }
-            KeymapMatch::None => KeymapKeyResult::Unhandled,
+            KeymapMatch::None => {
+                match resolve_extension_shortcut(&self.extension_ui.shortcuts, &sequence) {
+                    ExtensionShortcutMatch::Matched(action) => {
+                        self.key_sequence.clear();
+                        self.chord = ChordState::None;
+                        KeymapKeyResult::MatchedExtension(action)
+                    }
+                    ExtensionShortcutMatch::Pending => {
+                        self.key_sequence = sequence;
+                        self.chord = ChordState::None;
+                        self.status = format!(
+                            "{} extension prefix active • press next key or Esc cancel",
+                            self.key_sequence
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        );
+                        KeymapKeyResult::Consumed
+                    }
+                    ExtensionShortcutMatch::None => KeymapKeyResult::Unhandled,
+                }
+            }
         }
     }
 
@@ -1216,9 +1603,13 @@ impl TuiState {
             Some(OverlayKind::Skills) if self.skills.search_active => {
                 contexts.push(KeyContext::Search);
             }
+            Some(OverlayKind::Extensions) if self.extension_management.search_active => {
+                contexts.push(KeyContext::Search);
+            }
             Some(OverlayKind::Prompts | OverlayKind::Skills) => {
                 contexts.push(KeyContext::ResourceBrowser);
             }
+            Some(OverlayKind::Extensions) => contexts.push(KeyContext::Sessions),
             Some(OverlayKind::Inspect) => contexts.push(KeyContext::Inspect),
             None => {
                 if self.command_suggestions_view().is_some() {
@@ -1536,6 +1927,7 @@ impl TuiState {
         match self.overlay {
             Some(OverlayKind::Help) => self.execute_help_search_action(action),
             Some(OverlayKind::Sessions) => self.execute_sessions_search_action(action),
+            Some(OverlayKind::Extensions) => self.execute_extensions_search_action(action),
             Some(OverlayKind::Prompts) => self.execute_prompts_search_action(action),
             Some(OverlayKind::Skills) => self.execute_skills_search_action(action),
             Some(OverlayKind::Settings) => self.execute_settings_search_action(action),
@@ -1675,6 +2067,9 @@ impl TuiState {
     }
 
     fn execute_sessions_action(&mut self, action: KeyAction) -> TuiAction {
+        if self.overlay == Some(OverlayKind::Extensions) {
+            return self.execute_extensions_action(action);
+        }
         match action {
             KeyAction::SessionsClose => {
                 self.overlay = None;
@@ -1732,6 +2127,117 @@ impl TuiState {
                 TuiAction::None
             }
             _ => TuiAction::None,
+        }
+    }
+
+    fn execute_extensions_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SessionsClose => {
+                self.overlay = None;
+                self.extension_management.search_active = false;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyAction::SessionsUp => {
+                self.extension_management.move_cursor(-1);
+                TuiAction::None
+            }
+            KeyAction::SessionsDown => {
+                self.extension_management.move_cursor(1);
+                TuiAction::None
+            }
+            KeyAction::SessionsSearch => {
+                self.extension_management.search_active = true;
+                self.extension_management.search.clear();
+                self.extension_management.refresh_filter();
+                self.status = "Extension search active".into();
+                TuiAction::None
+            }
+            KeyAction::SessionsOpen => {
+                self.toggle_selected_extension_scope(ToolSettingsScope::Project)
+            }
+            KeyAction::SessionsRefresh => {
+                self.status = "Extension snapshot is already loaded".into();
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_extensions_search_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SearchClose => {
+                self.extension_management.search_active = false;
+                self.extension_management.search.clear();
+                self.extension_management.refresh_filter();
+                self.status = "Extension search cleared".into();
+                TuiAction::None
+            }
+            KeyAction::SearchAccept => {
+                self.toggle_selected_extension_scope(ToolSettingsScope::Project)
+            }
+            KeyAction::SearchBackspace => {
+                self.extension_management.search.pop();
+                self.extension_management.refresh_filter();
+                self.status = extension_search_status(&self.extension_management.search);
+                TuiAction::None
+            }
+            KeyAction::SearchUp => {
+                self.extension_management.move_cursor(-1);
+                TuiAction::None
+            }
+            KeyAction::SearchDown => {
+                self.extension_management.move_cursor(1);
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn handle_extensions_search_text_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Char(ch) if key.modifiers.is_empty() => {
+                self.extension_management.search.push(ch);
+                self.extension_management.refresh_filter();
+                self.status = extension_search_status(&self.extension_management.search);
+            }
+            _ => {}
+        }
+        TuiAction::None
+    }
+
+    fn handle_extensions_plain_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Char('g') if key.modifiers.is_empty() => {
+                self.toggle_selected_extension_scope(ToolSettingsScope::Global)
+            }
+            KeyCode::Char('p') if key.modifiers.is_empty() => {
+                self.toggle_selected_extension_scope(ToolSettingsScope::Project)
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn toggle_selected_extension_scope(&mut self, scope: ToolSettingsScope) -> TuiAction {
+        let Some(item) = self.extension_management.selected_item().cloned() else {
+            self.status = "No extension item selected".into();
+            return TuiAction::None;
+        };
+        let enabled = !item.enabled(scope);
+        self.extension_management
+            .set_selected_enabled(scope, enabled);
+        let status = if enabled { "enabled" } else { "disabled" };
+        self.status = format!(
+            "{} {} `{}` {status}",
+            scope.label(),
+            item.target.label(),
+            item.id
+        );
+        TuiAction::SetExtensionEnabled {
+            target: item.target,
+            id: item.id,
+            scope,
+            enabled,
         }
     }
 
@@ -2258,6 +2764,10 @@ impl TuiState {
                 self.open_inspect_overlay();
                 TuiAction::OpenInspect
             }
+            ParsedCommand::Extensions => {
+                self.open_extensions_overlay();
+                TuiAction::None
+            }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();
                 TuiAction::None
@@ -2398,6 +2908,16 @@ impl TuiState {
         self.skills.search.clear();
         self.refresh_skill_filter();
         self.status = "Skills".into();
+    }
+
+    fn open_extensions_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Extensions);
+        self.extension_management.search_active = false;
+        self.extension_management.search.clear();
+        self.extension_management.refresh_filter();
+        self.status =
+            "Extensions: / search • ↑/↓ select • g global • p/Enter project • Esc close".into();
     }
 
     fn open_inspect_overlay(&mut self) {
@@ -2686,6 +3206,14 @@ fn prompt_search_status(query: &str) -> String {
     }
 }
 
+fn extension_search_status(query: &str) -> String {
+    if query.is_empty() {
+        "Extension search active".into()
+    } else {
+        format!("Searching extensions for `{query}`")
+    }
+}
+
 fn skill_search_status(query: &str) -> String {
     if query.is_empty() {
         "Skill search active".into()
@@ -2971,6 +3499,96 @@ mod tests {
             TuiAction::SubmitPrompt("hi".into())
         );
         assert_eq!(state.input(), "");
+    }
+
+    #[test]
+    fn extension_shortcuts_dispatch_and_expose_conflicts() {
+        let mut state = TuiState::new();
+        let active = "alt-x"
+            .parse::<KeySequence>()
+            .unwrap_or_else(|err| panic!("shortcut parse failed: {err}"));
+        let conflicting = "ctrl-c"
+            .parse::<KeySequence>()
+            .unwrap_or_else(|err| panic!("shortcut parse failed: {err}"));
+        assert!(matches!(
+            state
+                .settings
+                .keymap
+                .resolve(&[KeyContext::Global], conflicting.strokes()),
+            KeymapMatch::Matched(_)
+        ));
+        state.set_extension_shortcuts(vec![
+            ExtensionShortcut::new("extension.process.stop", active, "process-manager"),
+            ExtensionShortcut::new("extension.conflict", conflicting, "process-manager"),
+        ]);
+
+        assert!(state
+            .extension_ui
+            .shortcuts
+            .iter()
+            .any(|shortcut| shortcut.action == "extension.conflict"
+                && !shortcut.conflicts.is_empty()));
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT)),
+            TuiAction::RunExtensionAction {
+                action: "extension.process.stop".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn extension_autosuggest_refreshes_cached_suggestions() {
+        let mut state = TuiState::new();
+        state.set_extension_autosuggest_items(vec![ExtensionAutosuggestItem {
+            label: "process:list".into(),
+            summary: "List managed processes".into(),
+            replacement: "#process:list".into(),
+            trigger: "#".into(),
+            source: "process-manager".into(),
+        }]);
+        state.insert_literal("#pro");
+        let suggestions = state
+            .command_suggestions_view()
+            .unwrap_or_else(|| panic!("missing extension suggestions"));
+        assert_eq!(suggestions.title, "Extension Suggestions");
+        assert_eq!(suggestions.items[0].label, "process:list");
+        assert_eq!(
+            suggestions.items[0].category,
+            CommandSuggestionCategory::Extension
+        );
+    }
+
+    #[test]
+    fn extensions_overlay_searches_and_toggles_project_policy() {
+        let mut state = TuiState::new();
+        state.set_extension_management_items(vec![ExtensionManagementItem {
+            target: ExtensionManagementTarget::Extension,
+            id: "process.manager".into(),
+            title: "Process Manager".into(),
+            family: "extension".into(),
+            scope: "project".into(),
+            health: "Healthy".into(),
+            state: "Active".into(),
+            permission: "tools:1".into(),
+            provenance: "process.package process.manager".into(),
+            diagnostics: Vec::new(),
+            conflicts: Vec::new(),
+            global_enabled: true,
+            project_enabled: true,
+        }]);
+        state.composer.replace_text("/extensions");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Extensions));
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)),
+            TuiAction::SetExtensionEnabled {
+                target: ExtensionManagementTarget::Extension,
+                id: "process.manager".into(),
+                scope: ToolSettingsScope::Project,
+                enabled: false,
+            }
+        );
+        assert!(!state.extension_management.items[0].project_enabled);
     }
 
     #[test]

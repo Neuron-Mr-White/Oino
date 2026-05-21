@@ -66,6 +66,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Settings,
     },
     CommandSpec {
+        name: "/extensions",
+        summary: "Manage installed extensions and contributions",
+        kind: CommandKind::Settings,
+    },
+    CommandSpec {
         name: "/prompts",
         summary: "Browse prompt templates",
         kind: CommandKind::Resource,
@@ -104,6 +109,7 @@ pub enum ParsedCommand {
     Skills,
     ReloadResources,
     Inspect,
+    Extensions,
     SetSessionTitle(String),
     Settings(SettingsCommand),
 }
@@ -248,6 +254,7 @@ pub enum CommandSuggestionCategory {
     Model,
     File,
     Value,
+    Extension,
 }
 
 impl CommandSuggestionCategory {
@@ -257,6 +264,7 @@ impl CommandSuggestionCategory {
             Self::System => Some("[SYS]"),
             Self::Prompt => Some("[PROMPT]"),
             Self::Skill => Some("[SKILL]"),
+            Self::Extension => Some("[EXT]"),
             Self::Model | Self::File | Self::Value => None,
         }
     }
@@ -420,6 +428,7 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/skills"] => Some(ParsedCommand::Skills),
         ["/reload"] => Some(ParsedCommand::ReloadResources),
         ["/inspect"] => Some(ParsedCommand::Inspect),
+        ["/extensions"] => Some(ParsedCommand::Extensions),
         ["/settings"] => Some(ParsedCommand::Settings(SettingsCommand::Open)),
         ["/model"] => Some(ParsedCommand::Settings(SettingsCommand::OpenModelSelection)),
         ["/thinking"] => Some(ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel)),

@@ -194,7 +194,51 @@ fn transcript_cache() -> &'static Mutex<TranscriptCacheState> {
 }
 
 pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
-    render_with_theme(frame, state, &Theme::default());
+    let theme = theme_with_extension_tokens(state, Theme::default());
+    render_with_theme(frame, state, &theme);
+}
+
+fn theme_with_extension_tokens(state: &TuiState, mut theme: Theme) -> Theme {
+    for (token, value) in &state.extension_ui.theme.tokens {
+        let Some(color) = extension_theme_color(value) else {
+            continue;
+        };
+        match token.as_str() {
+            "focused_border" | "accent" => theme.focused_border = color,
+            "panel_border" => theme.panel_border = color,
+            "user_border" => theme.user_border = color,
+            "assistant_border" => theme.assistant_border = color,
+            "tool_border" => theme.tool_border = color,
+            "title" => theme.title = theme.title.fg(color),
+            "warning" => theme.warning = theme.warning.fg(color),
+            "error" => theme.error = theme.error.fg(color),
+            "footer" => theme.footer = theme.footer.fg(color),
+            _ => {}
+        }
+    }
+    theme
+}
+
+fn extension_theme_color(value: &str) -> Option<Color> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "black" => Some(Color::Black),
+        "red" => Some(Color::Red),
+        "green" => Some(Color::Green),
+        "yellow" => Some(Color::Yellow),
+        "blue" => Some(Color::Blue),
+        "magenta" => Some(Color::Magenta),
+        "cyan" => Some(Color::Cyan),
+        "gray" | "grey" => Some(Color::Gray),
+        "dark_gray" | "dark-grey" | "darkgray" => Some(Color::DarkGray),
+        "light_red" | "light-red" => Some(Color::LightRed),
+        "light_green" | "light-green" => Some(Color::LightGreen),
+        "light_yellow" | "light-yellow" => Some(Color::LightYellow),
+        "light_blue" | "light-blue" => Some(Color::LightBlue),
+        "light_magenta" | "light-magenta" => Some(Color::LightMagenta),
+        "light_cyan" | "light-cyan" => Some(Color::LightCyan),
+        "white" => Some(Color::White),
+        _ => None,
+    }
 }
 
 pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme) {
@@ -292,6 +336,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         Some(OverlayKind::Sessions) => render_sessions_overlay(frame, area, state, theme),
         Some(OverlayKind::Prompts) => render_prompts_overlay(frame, area, state, theme),
         Some(OverlayKind::Skills) => render_skills_overlay(frame, area, state, theme),
+        Some(OverlayKind::Extensions) => render_extensions_overlay(frame, area, state, theme),
         Some(OverlayKind::Inspect) => render_inspect_overlay(frame, area, state, theme),
         None => {}
     }
@@ -1372,6 +1417,9 @@ fn command_category_style(category: CommandSuggestionCategory, theme: &Theme) ->
         CommandSuggestionCategory::Skill => Style::default()
             .fg(Color::Magenta)
             .add_modifier(Modifier::BOLD),
+        CommandSuggestionCategory::Extension => Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
         CommandSuggestionCategory::Model
         | CommandSuggestionCategory::File
         | CommandSuggestionCategory::Value => Style::default().fg(theme.muted),
@@ -2011,6 +2059,167 @@ fn sessions_item_line(
         Span::styled(separator, Style::default().fg(theme.muted)),
         Span::styled(description, Style::default().fg(theme.muted)),
     ])
+}
+
+fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 88, 78);
+    frame.render_widget(Clear, overlay);
+    frame.render_widget(
+        Block::default()
+            .title(Span::styled(" Extensions ", theme.title))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.focused_border)),
+        overlay,
+    );
+    let inner = overlay.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(8), Constraint::Length(2)])
+        .split(inner);
+    let content_height = list_content_height(sections[0]);
+    let content_width = sections[0].width.saturating_sub(2) as usize;
+    let lines = extension_management_lines(state, content_width, content_height, theme);
+    let filtered = &state.extension_management.filtered_indices;
+    let title = if filtered.is_empty() {
+        format!(
+            " Extension Items 0/{} ",
+            state.extension_management.items.len()
+        )
+    } else if state.extension_management.search.trim().is_empty() {
+        format!(
+            " Extension Items {}/{} ",
+            state
+                .extension_management
+                .cursor
+                .saturating_add(1)
+                .min(filtered.len()),
+            state.extension_management.items.len()
+        )
+    } else {
+        format!(
+            " Extension Items {}/{} ({} total) ",
+            state
+                .extension_management
+                .cursor
+                .saturating_add(1)
+                .min(filtered.len()),
+            filtered.len(),
+            state.extension_management.items.len()
+        )
+    };
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(section_border_style(true, theme)),
+        ),
+        sections[0],
+    );
+    let controls = if state.extension_management.search_active {
+        "type to fuzzy search • ↑/↓ move • Enter toggle project • Esc clear search"
+    } else {
+        "↑/↓ select • / search • g toggle global • p/Enter toggle project • Esc close"
+    };
+    let status = format!("{} • {controls}", state.status);
+    frame.render_widget(
+        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
+        sections[1],
+    );
+}
+
+fn extension_management_lines(
+    state: &TuiState,
+    content_width: usize,
+    content_height: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let search = if state.extension_management.search_active {
+        format!("Search: {}", state.extension_management.search)
+    } else if state.extension_management.search.is_empty() {
+        "Press / to search extensions".into()
+    } else {
+        format!("Filter: {}", state.extension_management.search)
+    };
+    lines.push(Line::styled(search, Style::default().fg(theme.muted)));
+    lines.push(Line::from(""));
+    if state.extension_management.items.is_empty() {
+        lines.push(Line::styled(
+            "No extensions discovered yet.",
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let filtered = &state.extension_management.filtered_indices;
+    if filtered.is_empty() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!(
+                    "No extension items match `{}`",
+                    state.extension_management.search
+                ),
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let remaining = content_height.saturating_sub(lines.len()).max(1);
+    let range = visible_range(state.extension_management.cursor, filtered.len(), remaining);
+    lines.extend(
+        filtered[range.clone()]
+            .iter()
+            .enumerate()
+            .filter_map(|(offset, item_index)| {
+                let item = state.extension_management.items.get(*item_index)?;
+                let active = range.start + offset == state.extension_management.cursor;
+                let marker = if active { "›" } else { " " };
+                let diagnostics = if item.diagnostics.is_empty() {
+                    String::new()
+                } else {
+                    format!(" • {} diag", item.diagnostics.len())
+                };
+                let conflicts = if item.conflicts.is_empty() {
+                    String::new()
+                } else {
+                    format!(" • {} conflict", item.conflicts.len())
+                };
+                let line = format!(
+                    "{marker} [{}] {} — {} [{}] G:{} P:{} • {} • {}{}{}",
+                    item.target.label(),
+                    item.id,
+                    item.title,
+                    item.scope,
+                    extension_on_off(item.global_enabled),
+                    extension_on_off(item.project_enabled),
+                    item.health,
+                    item.permission,
+                    diagnostics,
+                    conflicts,
+                );
+                Some(Line::styled(
+                    truncate_with_ellipsis(&line, content_width),
+                    if active {
+                        theme.working
+                    } else {
+                        Style::default().fg(theme.fg)
+                    },
+                ))
+            }),
+    );
+    lines
+}
+
+fn extension_on_off(value: bool) -> &'static str {
+    if value {
+        "ON"
+    } else {
+        "OFF"
+    }
 }
 
 fn render_prompts_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -3279,7 +3488,10 @@ fn cursor_byte(input: &str, cursor: usize) -> usize {
 mod tests {
     use super::*;
     use crate::{
-        app::{OverlayKind, SessionListItem, TuiState},
+        app::{
+            ExtensionManagementItem, ExtensionManagementTarget, OverlayKind, SessionListItem,
+            TuiState,
+        },
         message::{MessageView, ToolCallView},
         settings::CollapseMode,
         TuiAction,
@@ -3292,7 +3504,11 @@ mod tests {
     };
     use ratatui::{backend::TestBackend, Terminal};
     use serde_json::json;
-    use std::{collections::BTreeSet, error::Error, path::PathBuf};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        error::Error,
+        path::PathBuf,
+    };
 
     fn draw_state(width: u16, height: u16, state: &TuiState) -> ratatui::buffer::Buffer {
         let backend = TestBackend::new(width, height);
@@ -3434,6 +3650,50 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(text.contains("Oino needs"));
+    }
+
+    #[test]
+    fn extension_theme_tokens_apply_through_theme_boundary() {
+        let mut state = TuiState::new();
+        state.set_extension_theme(crate::app::ExtensionThemeState {
+            label: Some("theme.process".into()),
+            tokens: BTreeMap::from([
+                ("title".into(), "red".into()),
+                ("focused_border".into(), "green".into()),
+            ]),
+            warnings: Vec::new(),
+        });
+        let themed = theme_with_extension_tokens(&state, Theme::default());
+        assert_eq!(themed.title, Theme::default().title.fg(Color::Red));
+        assert_eq!(themed.focused_border, Color::Green);
+    }
+
+    #[test]
+    fn extensions_overlay_renders_diagnostics_conflicts_and_enablement() {
+        let mut state = TuiState::new();
+        state.set_extension_management_items(vec![ExtensionManagementItem {
+            target: ExtensionManagementTarget::Contribution,
+            id: "ui.processes".into(),
+            title: "Proc".into(),
+            family: "ui".into(),
+            scope: "project".into(),
+            health: "Bad".into(),
+            state: "Active".into(),
+            permission: "ok".into(),
+            provenance: "pkg ext".into(),
+            diagnostics: vec!["invalid state shape".into()],
+            conflicts: vec!["slot conflict".into()],
+            global_enabled: true,
+            project_enabled: false,
+        }]);
+        state.overlay = Some(OverlayKind::Extensions);
+        let buffer = draw_state(120, 30, &state);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("Extensions"));
+        assert!(text.contains("ui.processes"));
+        assert!(text.contains("G:ON P:OFF"));
+        assert!(text.contains("diag"));
+        assert!(text.contains("conflict"));
     }
 
     #[test]
