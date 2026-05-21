@@ -57,3 +57,9 @@ Status legend:
 ## First-phase coverage
 
 Tasks 3–4 intentionally cover the foundation rows only: identity, protocol, source, manifest, package, permissions, provenance, diagnostics, compatibility, and conflicts. Later tasks migrate built-ins, add registry composition, connect runtime execution, and expose UI/package/community layers.
+
+## Automated coverage gate
+
+Task 24 connects this matrix to `oino-extension-sdk::validate_parity_matrix`. The gate ensures required implemented/deferred/rejected capability rows remain present and that rejected compatibility decisions (npm/git package compatibility, direct Ratatui rendering from extension code, and Pi TypeScript extension API compatibility) stay explicitly rejected.
+
+The same SDK test suite also exercises safe mode, hot reload, multi-extension conflict behavior, author examples, package validation, host capability denials, UI state snapshots, and persistence harness behavior.

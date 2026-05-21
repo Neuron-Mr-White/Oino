@@ -1,0 +1,71 @@
+{
+  "id": "acme.example_extension",
+  "display_name": "Oino Rust WASM example package",
+  "version": "1.0.0",
+  "oino": "^0.1",
+  "publisher": "acme",
+  "description": "Fixture package covering tools, commands, keymaps, UI, themes, providers, hooks, and persistence",
+  "source": null,
+  "extensions": [
+    {
+      "manifest": "extensions/example/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [
+    {
+      "path": "plugin.wasm"
+    }
+  ],
+  "examples": [
+    {
+      "path": "examples/basic.rs"
+    }
+  ],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [
+      "example_tool"
+    ],
+    "commands": [
+      "example_command"
+    ],
+    "host_capabilities": [
+      "host.persistence.delete",
+      "host.persistence.read",
+      "host.persistence.write",
+      "host.test.echo"
+    ],
+    "ui": [
+      "floating_panel",
+      "footer",
+      "sidebar"
+    ],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [
+      "project"
+    ],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "acme",
+    "advisories": []
+  }
+}

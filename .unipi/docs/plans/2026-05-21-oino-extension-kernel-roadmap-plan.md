@@ -333,7 +333,7 @@ Planning decisions recorded for implementation:
     3. Add publishing validation tooling for package authors.
     4. Document trust and security policies before enabling public hosting.
 
-- unstarted: Task 23 — Build Author SDK, Devkit, Examples, and Test Harness
+- complete: Task 23 — Build Author SDK, Devkit, Examples, and Test Harness
   - Description: Provide authoring support targeting the same stable contracts used by Oino core and packages.
   - Dependencies: Tasks 12, 13, 14, 15, 19, 20, and 22.
   - Acceptance Criteria:
@@ -348,7 +348,7 @@ Planning decisions recorded for implementation:
     3. Add test harness helpers for capabilities, UI state, and persistence.
     4. Document multi-language roadmap and provide minimal examples as feasible.
 
-- unstarted: Task 24 — Add Comprehensive Test and Parity Coverage Gates
+- complete: Task 24 — Add Comprehensive Test and Parity Coverage Gates
   - Description: Ensure the extension kernel remains safe, deterministic, and Pi-parity-trackable as features accumulate.
   - Dependencies: Tasks 2 through 23.
   - Acceptance Criteria:

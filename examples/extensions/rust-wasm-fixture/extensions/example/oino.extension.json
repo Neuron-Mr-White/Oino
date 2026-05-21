@@ -1,0 +1,279 @@
+{
+  "id": "acme.example_extension",
+  "package_id": "acme.example_extension",
+  "display_name": "Oino Rust WASM example",
+  "version": "1.0.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "wasm",
+    "entry": "plugin.wasm",
+    "abi": "wasm-json-v1"
+  },
+  "permissions": {
+    "tools": [
+      "example_tool"
+    ],
+    "commands": [
+      "example_command"
+    ],
+    "host_capabilities": [
+      "host.persistence.delete",
+      "host.persistence.read",
+      "host.persistence.write",
+      "host.test.echo"
+    ],
+    "ui": [
+      "floating_panel",
+      "footer",
+      "sidebar"
+    ],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [
+      "project"
+    ],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "tools": [
+      {
+        "id": "example_tool",
+        "description": "Echo a message through the extension runtime",
+        "input_schema": {
+          "properties": {
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "type": "object"
+        },
+        "execution_mode": "parallel",
+        "handler": "handle_tool",
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "example_command",
+        "description": "Run the example extension command",
+        "handler": "handle_command",
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "keymaps": [
+      {
+        "id": "example_keymap",
+        "action": "extension.example.open",
+        "context": "global",
+        "default_bindings": [
+          "ctrl-o x"
+        ],
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "hooks": [
+      {
+        "id": "example_tool_hook",
+        "event": "tool_call",
+        "priority": 10,
+        "mode": "mutable",
+        "handler": "handle_tool_hook",
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "ui_surfaces": [
+      {
+        "id": "example_sidebar",
+        "surface": "sidebar",
+        "title": "Example Sidebar",
+        "state_schema": "object",
+        "layout": {
+          "slot": "sidebar:right",
+          "priority": 0,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_floating_panel",
+        "surface": "floating_panel",
+        "title": "Example Floating Panel",
+        "state_schema": "object",
+        "layout": {
+          "slot": "floating:center",
+          "priority": 0,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_footer",
+        "surface": "footer",
+        "title": "Example Footer",
+        "state_schema": "string",
+        "layout": {
+          "slot": "footer:status",
+          "priority": 0,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "settings_pages": [],
+    "themes": [
+      {
+        "id": "example_theme",
+        "path": "themes/example-theme.json",
+        "tokens": {
+          "accent": "#7dd3fc",
+          "success": "#86efac"
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "providers": [
+      {
+        "id": "example_provider",
+        "provider_id": "example-provider",
+        "display_name": "Example Provider Metadata",
+        "model_ids": [
+          "example-provider/example-model"
+        ],
+        "privacy": {
+          "can_receive_prompts": false,
+          "can_receive_tools": false,
+          "can_mutate_requests": false
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "resources": [],
+    "persistence": [
+      {
+        "id": "example_persistence",
+        "scope": "project",
+        "key": "example_state",
+        "schema_version": 1,
+        "schema": "object",
+        "max_bytes": 4096,
+        "migration": {
+          "policy": "none"
+        },
+        "cleanup": "delete_on_uninstall",
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "autosuggest_providers": [
+      {
+        "id": "example_autosuggest",
+        "trigger": "@example",
+        "label": "Example completions",
+        "items": [
+          {
+            "label": "example greeting",
+            "replacement": "Hello from an Oino extension",
+            "detail": "static SDK example suggestion"
+          }
+        ],
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
+    "renderers": []
+  },
+  "metadata": {
+    "languages": [
+      "rust",
+      "typescript-plan",
+      "go-plan",
+      "python-plan"
+    ],
+    "sdk": "oino-extension-sdk"
+  }
+}

@@ -276,3 +276,25 @@ Tasks 21–22 validation:
 - `cargo fmt --all` — passed
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 23–24 author SDK/devkit and coverage gates
+
+Completed authoring support:
+
+- Added `crates/oino-extension-sdk` with manifest/package template generation, manifest/package JSON validators, package-directory validation, Rust JSON-v1 `WasmSdk` helpers, `ExtensionTestHarness`, parity coverage gates, and a small `oino-extension-devkit` binary.
+- The SDK example template covers tools, slash commands, keymaps, sidebar/floating/footer UI surfaces, theme tokens, autosuggest, provider/model metadata, mutable tool hooks, and project persistence.
+- Added local test harness support for runtime tool/command calls, host capability mocks, permission denials, UI state update validation, persistence write/read, package validation, and package lifecycle smoke tests.
+- Added an author-facing fixture at `examples/extensions/rust-wasm-fixture` and SDK notes at `docs/extension-sdk/README.md`, including the TypeScript/JavaScript, Go, and Python binding roadmap without promising Pi API compatibility.
+
+Completed coverage/parity gates:
+
+- Added `REQUIRED_COVERAGE_GATES` and `validate_parity_matrix` to keep the tracked Pi parity matrix connected to tests.
+- Added SDK tests for safe mode, hot reload, multi-extension conflict errors, package lifecycle install/reload diffs, author examples, host capability denial, UI snapshots, persistence, and parity matrix coverage.
+- Updated `.unipi/docs/research/2026-05-21-oino-pi-extension-parity-matrix.md` with the automated coverage gate note.
+
+Tasks 23–24 validation:
+
+- `cargo test -p oino-extension-sdk --no-fail-fast` — passed
+- `cargo fmt --all` — passed
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed
