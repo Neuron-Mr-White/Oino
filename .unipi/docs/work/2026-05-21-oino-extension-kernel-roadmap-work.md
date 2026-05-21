@@ -298,3 +298,34 @@ Tasks 23–24 validation:
 - `cargo fmt --all` — passed
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 25–26 docs, hardening, and review readiness
+
+Completed documentation:
+
+- Added `docs/extension-kernel/README.md` covering architecture, crate responsibilities, registries, source precedence, contribution authoring, permissions/capabilities, diagnostics, safe mode, management UX, UI surfaces, WASM ABI, persistence/session APIs, package lifecycle, community registry policy, Pi parity, and explicit non-goals.
+- Added `docs/extension-kernel/rollout-review.md` with current state, compatibility guarantees, migration notes, rollout risks, follow-up issues, and review checklist.
+- Updated `README.md` with extension-devkit smoke commands, extension-kernel user/developer overview, new crate layer boundaries, and current limitations that avoid promising Pi compatibility or a hosted registry.
+- Kept SDK docs in `docs/extension-sdk/README.md` aligned with the validator/devkit and example fixture.
+
+Completed final hardening/review prep:
+
+- Reconciled plan statuses for Tasks 25–26 to `complete`.
+- Captured rollout risks, migration notes, compatibility guarantees, and follow-up issues in `docs/extension-kernel/rollout-review.md`.
+- Confirmed the branch is ready for `/unipi:review-work` and later merge review.
+
+Final validation:
+
+- `mise run quality` — passed
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace`
+  - `cargo doc --workspace --no-deps`
+
+Dogfood/review commands:
+
+```bash
+cd .unipi/worktrees/feat/extension-kernel-roadmap && mise run quality
+cd .unipi/worktrees/feat/extension-kernel-roadmap && OPENROUTER_API_KEY=sk-or-... mise run dev
+cd .unipi/worktrees/feat/extension-kernel-roadmap && cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-package examples/extensions/rust-wasm-fixture
+```

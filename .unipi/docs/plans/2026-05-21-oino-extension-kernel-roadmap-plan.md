@@ -361,7 +361,7 @@ Planning decisions recorded for implementation:
     3. Connect parity matrix status to tests or review checklist.
     4. Run final formatting, clippy, and workspace tests.
 
-- unstarted: Task 25 — Document Architecture, Authoring, Permissions, UI, Packages, and Community Roadmap
+- complete: Task 25 — Document Architecture, Authoring, Permissions, UI, Packages, and Community Roadmap
   - Description: Publish maintainable docs for Oino core maintainers, extension authors, and users.
   - Dependencies: Tasks 3 through 24.
   - Acceptance Criteria:
@@ -375,7 +375,7 @@ Planning decisions recorded for implementation:
     3. Update README limitations/features as appropriate.
     4. Cross-check docs against tests and examples.
 
-- unstarted: Task 26 — Final Hardening, Review Prep, and Merge Readiness
+- complete: Task 26 — Final Hardening, Review Prep, and Merge Readiness
   - Description: Prepare the long-running roadmap branch for review and eventual merge.
   - Dependencies: Tasks 1 through 25.
   - Acceptance Criteria:

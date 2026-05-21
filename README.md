@@ -22,6 +22,13 @@ Standalone markdown rendering proof-of-concept:
 mise run tui:render-test
 ```
 
+Extension authoring/devkit smoke checks:
+
+```bash
+cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-package examples/extensions/rust-wasm-fixture
+cargo run -p oino-extension-sdk --bin oino-extension-devkit -- parity-check .unipi/docs/research/2026-05-21-oino-pi-extension-parity-matrix.md
+```
+
 Optional configuration:
 
 ```bash
@@ -79,6 +86,21 @@ OpenRouter model names are cached at `~/.oino/openrouter-models.json`. The app l
 
 Oino now owns an explicit resource convention instead of silently reading Pi, Claude, or generic agent paths. On launch it creates visible defaults without overwriting user edits: `~/.oino/SYSTEM.md`, `~/.oino/settings.json`, `~/.oino/skills/`, `<project>/.oino/AGENT.md`, `<project>/.oino/prompts/`, and `<project>/.oino/skills/`. The global `SYSTEM.md` is loaded first and project `AGENT.md` is loaded after it. Prompt templates are single Markdown files under `<project>/.oino/prompts/`; skills use `skills/<name>/SKILL.md`. Resources are explicit: include prompts with `/prompt:<name>` and skills with `/skill:<name>` in the composer. Repeat tokens to combine multiple resources in one request.
 
+## Extension kernel
+
+Oino includes a registry-first extension kernel for Oino-native manifests and packages. It targets semantic parity with useful Pi extension capabilities, but **does not support Pi TypeScript extension API compatibility**. Extension docs live in `docs/extension-kernel/README.md`; SDK/devkit docs live in `docs/extension-sdk/README.md`; the author fixture is `examples/extensions/rust-wasm-fixture`.
+
+Key user/developer surfaces:
+
+- `oino.extension.json` and `oino.package.json` contracts for extensions and packages.
+- Oino-owned discovery roots under `.oino` and `~/.oino`; Pi/Claude/generic agent extension paths are not loaded implicitly.
+- Registry-backed tools, commands, keymaps, hooks, UI surfaces, settings pages, themes, providers, resources, autosuggest providers, renderers, diagnostics, health, and persistence contributions.
+- Runtime capability broker and `wasm-json-v1` boundary for tool/command execution, host capabilities, progress, cancellation, and diagnostics.
+- `/extensions` management overlay for discovered extensions, packages, contributions, health, diagnostics, conflicts, provenance, and project/global enablement toggles.
+- Package lifecycle and community registry fixture services for install/update/remove/reload tests and future UI flows.
+
+External contributions are pending review by default unless enabled through extension policy settings. Safe mode disables non-built-in contributions while preserving diagnostics. The current implementation includes deterministic fixture runtime/testing support and kernel APIs; polished end-user install/update/remove UI and a hosted community registry remain follow-ups.
+
 The command palette labels resource types explicitly: `[SYS]` for built-in commands, `[PROMPT]` for prompt templates, and `[SKILL]` for skills. Bare `/` suggestions only open at the start of the input and list system commands. Use `/prompts` and `/skills` to browse resources with fuzzy search, `/reload` to rescan `SYSTEM.md`, `AGENT.md`, prompts, and skills, `/P:<query>` or `/prompt:<query>` anywhere to search prompt templates, and `/S:<query>` or `/skill:<query>` anywhere to search skills.
 
 ## Auth file
@@ -107,6 +129,11 @@ The auth crate writes the file with user-only permissions on Unix where feasible
 - `oino-session`: append-only session trees plus JSONL persistence. It reconstructs model context without owning providers/tools.
 - `oino-env`: execution-environment abstraction and local filesystem/process adapter for tools.
 - `oino-tools`: built-in Pi-like local coding tools (`read`, `bash`, `edit`, `write`) implemented on `ExecutionEnv`.
+- `oino-extension-core`: data-only extension contracts, manifests, package metadata, permissions, registries, diagnostics, UI surfaces, persistence, and community registry schemas.
+- `oino-extension-builtins`: registry representation of Oino's built-in tools, commands, settings, resources, themes, provider metadata, and hooks.
+- `oino-extension-manager`: Oino-owned discovery, validation, safe mode, reload diffs, management snapshots, package lifecycle, and fixture registry metadata.
+- `oino-extension-runtime`: JSON-v1 runtime boundary, hook runner, capability broker, and extension tool/command adapters.
+- `oino-extension-sdk`: author templates, validators, Rust SDK helpers, local test harness, devkit CLI, examples, and parity coverage gates.
 - `oino-harness`: high-level binding of agent, sessions, env, providers, resources, and typed hooks.
 - `oino-auth`: generic credential storage/resolution. It knows provider ids/env-var mappings, not HTTP protocols.
 - `oino-provider-openrouter`: OpenRouter model listing, request serialization, HTTP streaming, SSE parsing, and conversion into `AssistantStreamEvent`.
@@ -125,4 +152,4 @@ Provider code is intentionally separate from auth: auth answers “what credenti
 
 ## Current limitations
 
-The first shell supports token-by-token transcript updates for provider text/thinking deltas, Markdown-rendered assistant output, local coding tool calls, persisted JSONL sessions, non-interactive `--session <uuid>` continuation, Oino-owned resource files, prompt templates, skills, and `/new`/`/sessions`/`/settings`/`/prompts`/`/skills`/`/reload`/`/model`/`/thinking` commands. It does not yet include `/login`, MCP, dynamic plugins/packages, memory DB, migration/import commands, or permissions UI.
+The first shell supports token-by-token transcript updates for provider text/thinking deltas, Markdown-rendered assistant output, local coding tool calls, persisted JSONL sessions, non-interactive `--session <uuid>` continuation, Oino-owned resource files, prompt templates, skills, registry-backed extension kernel contracts, `/extensions`, and `/new`/`/sessions`/`/settings`/`/prompts`/`/skills`/`/reload`/`/model`/`/thinking` commands. It does not yet include `/login`, MCP, a hosted extension registry, polished end-user package install/update/remove UI, production untrusted WASM host hardening, memory DB, migration/import commands, or a full high-risk permission approval UI.
