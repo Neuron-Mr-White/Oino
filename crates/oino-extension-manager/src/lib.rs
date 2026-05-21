@@ -15,13 +15,14 @@ use oino_extension_core::{
     ExtensionContributions, ExtensionDiagnostic, ExtensionId, ExtensionManifest,
     ExtensionPermissions, HealthContribution, HealthRegistry, HealthState, HookContribution,
     HookRegistry, InactiveContribution, InactiveReason, KeymapContribution, KeymapRegistry,
-    LifecycleState, PackageId, PackageManifest, PermissionDecision, Provenance,
-    ProviderContribution, ProviderModelRegistry, RegistryCompatibility, RegistryDiff,
-    RegistryEntryKey, RegistryFamily, RegistryPolicy, RegistrySnapshot, RendererContribution,
-    ResourceContribution, ResourceRegistry, SettingsPageContribution, SettingsPageRegistry,
-    SourceDescriptor, SourceKind, SourceScope, ThemeContribution, ThemeRegistry, ToolContribution,
-    ToolRegistry, TypedContributionRegistry, UiSurfaceContribution, UiSurfaceRegistry,
-    MANIFEST_FILE, PACKAGE_MANIFEST_FILE,
+    LifecycleState, PackageId, PackageManifest, PermissionDecision, PersistenceCleanupPolicy,
+    PersistenceContribution, PersistenceMigrationPolicy, PersistenceRecord, PersistenceRegistry,
+    PersistenceScope, Provenance, ProviderContribution, ProviderModelRegistry,
+    RegistryCompatibility, RegistryDiff, RegistryEntryKey, RegistryFamily, RegistryPolicy,
+    RegistrySnapshot, RendererContribution, ResourceContribution, ResourceRegistry,
+    SettingsPageContribution, SettingsPageRegistry, SourceDescriptor, SourceKind, SourceScope,
+    ThemeContribution, ThemeRegistry, ToolContribution, ToolRegistry, TypedContributionRegistry,
+    UiSurfaceContribution, UiSurfaceRegistry, MANIFEST_FILE, PACKAGE_MANIFEST_FILE,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -29,7 +30,9 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs, io,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtensionManagerConfig {
@@ -83,6 +86,92 @@ impl ExtensionManagerConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionLayoutPaths {
+    pub home_oino: PathBuf,
+    pub project_oino: PathBuf,
+    pub global_extensions: PathBuf,
+    pub global_installed_packages: PathBuf,
+    pub global_registry_packages: PathBuf,
+    pub project_extensions: PathBuf,
+    pub project_installed_packages: PathBuf,
+    pub project_wasm_extensions: PathBuf,
+    pub session_extensions: PathBuf,
+    pub development_extensions: PathBuf,
+    pub global_extension_state: PathBuf,
+    pub project_extension_state: PathBuf,
+    pub package_assets: PathBuf,
+}
+
+impl ExtensionLayoutPaths {
+    #[must_use]
+    pub fn for_home_and_project(home: impl AsRef<Path>, project: impl AsRef<Path>) -> Self {
+        let home_oino = home.as_ref().join(".oino");
+        let project_oino = project.as_ref().join(".oino");
+        Self {
+            global_extensions: home_oino.join("extensions"),
+            global_installed_packages: home_oino.join("extension-packages"),
+            global_registry_packages: home_oino.join("extension-registry"),
+            project_extensions: project_oino.join("extensions"),
+            project_installed_packages: project_oino.join("extension-packages"),
+            project_wasm_extensions: project_oino.join("wasm-extensions"),
+            session_extensions: project_oino.join("session-extensions"),
+            development_extensions: project_oino.join("dev/extensions"),
+            global_extension_state: home_oino.join("extension-state"),
+            project_extension_state: project_oino.join("extension-state"),
+            package_assets: project_oino.join("extension-assets"),
+            home_oino,
+            project_oino,
+        }
+    }
+
+    #[must_use]
+    pub fn discovery_roots(&self) -> Vec<ExtensionDiscoveryRoot> {
+        vec![
+            ExtensionDiscoveryRoot::new(
+                self.global_extensions.clone(),
+                SourceScope::Global,
+                SourceKind::LocalExtension,
+            ),
+            ExtensionDiscoveryRoot::new(
+                self.global_installed_packages.clone(),
+                SourceScope::Global,
+                SourceKind::InstalledPackage,
+            ),
+            ExtensionDiscoveryRoot::new(
+                self.global_registry_packages.clone(),
+                SourceScope::Global,
+                SourceKind::RegistryPackage,
+            ),
+            ExtensionDiscoveryRoot::new(
+                self.project_extensions.clone(),
+                SourceScope::Project,
+                SourceKind::LocalExtension,
+            ),
+            ExtensionDiscoveryRoot::new(
+                self.project_installed_packages.clone(),
+                SourceScope::Project,
+                SourceKind::LocalPackage,
+            ),
+            ExtensionDiscoveryRoot::new(
+                self.project_wasm_extensions.clone(),
+                SourceScope::Project,
+                SourceKind::WasmModule,
+            ),
+            ExtensionDiscoveryRoot::new(
+                self.session_extensions.clone(),
+                SourceScope::Session,
+                SourceKind::LocalExtension,
+            ),
+            ExtensionDiscoveryRoot::new(
+                self.development_extensions.clone(),
+                SourceScope::Development,
+                SourceKind::LocalExtension,
+            ),
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExtensionDiscovery {
     pub roots: Vec<ExtensionDiscoveryRoot>,
@@ -105,50 +194,12 @@ impl ExtensionDiscovery {
 
     #[must_use]
     pub fn from_home_and_project(home: impl AsRef<Path>, project: impl AsRef<Path>) -> Self {
-        let home = home.as_ref().join(".oino");
-        let project = project.as_ref().join(".oino");
-        Self::new(vec![
-            ExtensionDiscoveryRoot::new(
-                home.join("extensions"),
-                SourceScope::Global,
-                SourceKind::LocalExtension,
-            ),
-            ExtensionDiscoveryRoot::new(
-                home.join("extension-packages"),
-                SourceScope::Global,
-                SourceKind::InstalledPackage,
-            ),
-            ExtensionDiscoveryRoot::new(
-                home.join("extension-registry"),
-                SourceScope::Global,
-                SourceKind::RegistryPackage,
-            ),
-            ExtensionDiscoveryRoot::new(
-                project.join("extensions"),
-                SourceScope::Project,
-                SourceKind::LocalExtension,
-            ),
-            ExtensionDiscoveryRoot::new(
-                project.join("extension-packages"),
-                SourceScope::Project,
-                SourceKind::LocalPackage,
-            ),
-            ExtensionDiscoveryRoot::new(
-                project.join("wasm-extensions"),
-                SourceScope::Project,
-                SourceKind::WasmModule,
-            ),
-            ExtensionDiscoveryRoot::new(
-                project.join("session-extensions"),
-                SourceScope::Session,
-                SourceKind::LocalExtension,
-            ),
-            ExtensionDiscoveryRoot::new(
-                project.join("dev/extensions"),
-                SourceScope::Development,
-                SourceKind::LocalExtension,
-            ),
-        ])
+        Self::from_layout(&ExtensionLayoutPaths::for_home_and_project(home, project))
+    }
+
+    #[must_use]
+    pub fn from_layout(layout: &ExtensionLayoutPaths) -> Self {
+        Self::new(layout.discovery_roots())
     }
 
     #[must_use]
@@ -224,6 +275,7 @@ pub struct ExtensionRegistries {
     pub themes: ThemeRegistry,
     pub providers: ProviderModelRegistry,
     pub resources: ResourceRegistry,
+    pub persistence: PersistenceRegistry,
     pub autosuggest_providers: AutosuggestRegistry,
     pub transcript_renderers: TypedContributionRegistry<RendererContribution>,
     pub message_renderers: TypedContributionRegistry<RendererContribution>,
@@ -251,6 +303,7 @@ impl ExtensionRegistries {
             themes: ThemeRegistry::themes(),
             providers: ProviderModelRegistry::providers_models(),
             resources: ResourceRegistry::resources(),
+            persistence: PersistenceRegistry::persistence(),
             autosuggest_providers: AutosuggestRegistry::autosuggest_providers(),
             transcript_renderers: TypedContributionRegistry::transcript_renderers(),
             message_renderers: TypedContributionRegistry::message_renderers(),
@@ -287,6 +340,7 @@ impl ExtensionRegistries {
             themes: self.themes.compose(policy),
             providers: self.providers.compose(policy),
             resources: self.resources.compose(policy),
+            persistence: self.persistence.compose(policy),
             autosuggest_providers: self.autosuggest_providers.compose(policy),
             transcript_renderers: self.transcript_renderers.compose(policy),
             message_renderers: self.message_renderers.compose(policy),
@@ -307,6 +361,7 @@ impl ExtensionRegistries {
         collect_external_keys(self.themes.inner(), &mut keys);
         collect_external_keys(self.providers.inner(), &mut keys);
         collect_external_keys(self.resources.inner(), &mut keys);
+        collect_external_keys(self.persistence.inner(), &mut keys);
         collect_external_keys(self.autosuggest_providers.inner(), &mut keys);
         collect_external_keys(self.transcript_renderers.inner(), &mut keys);
         collect_external_keys(self.message_renderers.inner(), &mut keys);
@@ -328,6 +383,7 @@ pub struct RegistrySnapshotBundle {
     pub themes: RegistrySnapshot<ThemeContribution>,
     pub providers: RegistrySnapshot<ProviderContribution>,
     pub resources: RegistrySnapshot<ResourceContribution>,
+    pub persistence: RegistrySnapshot<PersistenceContribution>,
     pub autosuggest_providers: RegistrySnapshot<AutosuggestContribution>,
     pub transcript_renderers: RegistrySnapshot<RendererContribution>,
     pub message_renderers: RegistrySnapshot<RendererContribution>,
@@ -348,6 +404,7 @@ impl Default for RegistrySnapshotBundle {
             themes: empty_snapshot(),
             providers: empty_snapshot(),
             resources: empty_snapshot(),
+            persistence: empty_snapshot(),
             autosuggest_providers: empty_snapshot(),
             transcript_renderers: empty_snapshot(),
             message_renderers: empty_snapshot(),
@@ -379,6 +436,7 @@ impl RegistrySnapshotBundle {
             themes: self.themes.diff(&next.themes),
             providers: self.providers.diff(&next.providers),
             resources: self.resources.diff(&next.resources),
+            persistence: self.persistence.diff(&next.persistence),
             autosuggest_providers: self.autosuggest_providers.diff(&next.autosuggest_providers),
             transcript_renderers: self.transcript_renderers.diff(&next.transcript_renderers),
             message_renderers: self.message_renderers.diff(&next.message_renderers),
@@ -400,6 +458,7 @@ impl RegistrySnapshotBundle {
         diagnostics.extend(self.themes.diagnostics.clone());
         diagnostics.extend(self.providers.diagnostics.clone());
         diagnostics.extend(self.resources.diagnostics.clone());
+        diagnostics.extend(self.persistence.diagnostics.clone());
         diagnostics.extend(self.autosuggest_providers.diagnostics.clone());
         diagnostics.extend(self.transcript_renderers.diagnostics.clone());
         diagnostics.extend(self.message_renderers.diagnostics.clone());
@@ -421,6 +480,7 @@ pub struct RegistryDiffBundle {
     pub themes: RegistryDiff<ThemeContribution>,
     pub providers: RegistryDiff<ProviderContribution>,
     pub resources: RegistryDiff<ResourceContribution>,
+    pub persistence: RegistryDiff<PersistenceContribution>,
     pub autosuggest_providers: RegistryDiff<AutosuggestContribution>,
     pub transcript_renderers: RegistryDiff<RendererContribution>,
     pub message_renderers: RegistryDiff<RendererContribution>,
@@ -441,6 +501,7 @@ impl Default for RegistryDiffBundle {
             themes: empty_diff(),
             providers: empty_diff(),
             resources: empty_diff(),
+            persistence: empty_diff(),
             autosuggest_providers: empty_diff(),
             transcript_renderers: empty_diff(),
             message_renderers: empty_diff(),
@@ -471,6 +532,7 @@ impl RegistryDiffBundle {
             && diff_empty(&self.themes)
             && diff_empty(&self.providers)
             && diff_empty(&self.resources)
+            && diff_empty(&self.persistence)
             && diff_empty(&self.autosuggest_providers)
             && diff_empty(&self.transcript_renderers)
             && diff_empty(&self.message_renderers)
@@ -677,6 +739,289 @@ impl ExtensionHealthEvent {
             health: self.health,
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub enum PersistenceStoreError {
+    #[error("persistence key `{0}` is invalid")]
+    InvalidKey(String),
+    #[error("extension `{actual}` cannot access state owned by `{expected}`")]
+    OwnerMismatch {
+        expected: ExtensionId,
+        actual: ExtensionId,
+    },
+    #[error("extension `{extension_id}` lacks persistence permission for `{scope:?}`")]
+    PermissionDenied {
+        extension_id: ExtensionId,
+        scope: PersistenceScope,
+    },
+    #[error("persistence payload is {actual} bytes, max is {max}")]
+    Oversized { actual: usize, max: usize },
+    #[error("persistence record is corrupted: {0}")]
+    Corrupted(String),
+    #[error("persistence record not found")]
+    NotFound,
+    #[error("persistence migration from schema {from} to {to} is not available")]
+    MigrationUnavailable { from: u32, to: u32 },
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtensionPersistenceStore {
+    root: PathBuf,
+    default_max_bytes: usize,
+}
+
+impl ExtensionPersistenceStore {
+    #[must_use]
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self {
+            root: root.into(),
+            default_max_bytes: 64 * 1024,
+        }
+    }
+
+    #[must_use]
+    pub fn with_default_max_bytes(mut self, default_max_bytes: usize) -> Self {
+        self.default_max_bytes = default_max_bytes;
+        self
+    }
+
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn write(
+        &self,
+        record: &PersistenceRecord,
+        permissions: &ExtensionPermissions,
+        max_bytes: Option<usize>,
+    ) -> Result<(), PersistenceStoreError> {
+        validate_persistence_key(&record.key)?;
+        ensure_persistence_permission(&record.owner_extension_id, record.scope, permissions)?;
+        let bytes = serde_json::to_vec(record)?;
+        let max = max_bytes.unwrap_or(self.default_max_bytes);
+        if bytes.len() > max {
+            return Err(PersistenceStoreError::Oversized {
+                actual: bytes.len(),
+                max,
+            });
+        }
+        let path = self.record_path(&record.owner_extension_id, record.scope, &record.key)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    pub fn read(
+        &self,
+        extension_id: &ExtensionId,
+        scope: PersistenceScope,
+        key: &str,
+        permissions: &ExtensionPermissions,
+    ) -> Result<PersistenceRecord, PersistenceStoreError> {
+        validate_persistence_key(key)?;
+        ensure_persistence_permission(extension_id, scope, permissions)?;
+        let path = self.record_path(extension_id, scope, key)?;
+        let text = match fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                return Err(PersistenceStoreError::NotFound)
+            }
+            Err(err) => return Err(err.into()),
+        };
+        let record = serde_json::from_str::<PersistenceRecord>(&text)
+            .map_err(|err| PersistenceStoreError::Corrupted(err.to_string()))?;
+        if &record.owner_extension_id != extension_id {
+            return Err(PersistenceStoreError::OwnerMismatch {
+                expected: record.owner_extension_id,
+                actual: extension_id.clone(),
+            });
+        }
+        Ok(record)
+    }
+
+    pub fn delete(
+        &self,
+        extension_id: &ExtensionId,
+        scope: PersistenceScope,
+        key: &str,
+        permissions: &ExtensionPermissions,
+    ) -> Result<(), PersistenceStoreError> {
+        validate_persistence_key(key)?;
+        ensure_persistence_permission(extension_id, scope, permissions)?;
+        let path = self.record_path(extension_id, scope, key)?;
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    pub fn migrate(
+        &self,
+        extension_id: &ExtensionId,
+        scope: PersistenceScope,
+        key: &str,
+        target_version: u32,
+        policy: &PersistenceMigrationPolicy,
+        permissions: &ExtensionPermissions,
+    ) -> Result<PersistenceRecord, PersistenceStoreError> {
+        let mut record = self.read(extension_id, scope, key, permissions)?;
+        if record.schema_version >= target_version {
+            return Ok(record);
+        }
+        match policy {
+            PersistenceMigrationPolicy::HostCopyForward => {
+                record.schema_version = target_version;
+                record.updated_at_unix_ms = current_unix_ms();
+                self.write(&record, permissions, None)?;
+                Ok(record)
+            }
+            PersistenceMigrationPolicy::None | PersistenceMigrationPolicy::ExtensionHook { .. } => {
+                Err(PersistenceStoreError::MigrationUnavailable {
+                    from: record.schema_version,
+                    to: target_version,
+                })
+            }
+        }
+    }
+
+    pub fn cleanup_extension(
+        &self,
+        extension_id: &ExtensionId,
+        policy: PersistenceCleanupPolicy,
+    ) -> Result<(), PersistenceStoreError> {
+        match policy {
+            PersistenceCleanupPolicy::Retain => Ok(()),
+            PersistenceCleanupPolicy::DeleteOnUninstall => {
+                for scope in [
+                    PersistenceScope::Session,
+                    PersistenceScope::Project,
+                    PersistenceScope::Global,
+                ] {
+                    let path = self.extension_scope_dir(extension_id, scope);
+                    match fs::remove_dir_all(path) {
+                        Ok(()) => {}
+                        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                        Err(err) => return Err(err.into()),
+                    }
+                }
+                Ok(())
+            }
+            PersistenceCleanupPolicy::RetainWithTombstone => {
+                for mut record in self.list_extension(extension_id)? {
+                    record.tombstoned = true;
+                    record.updated_at_unix_ms = current_unix_ms();
+                    let path =
+                        self.record_path(&record.owner_extension_id, record.scope, &record.key)?;
+                    fs::write(path, serde_json::to_vec(&record)?)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub fn list_extension(
+        &self,
+        extension_id: &ExtensionId,
+    ) -> Result<Vec<PersistenceRecord>, PersistenceStoreError> {
+        let mut records = Vec::new();
+        for scope in [
+            PersistenceScope::Session,
+            PersistenceScope::Project,
+            PersistenceScope::Global,
+        ] {
+            let dir = self.extension_scope_dir(extension_id, scope);
+            if !dir.exists() {
+                continue;
+            }
+            for entry in fs::read_dir(dir)? {
+                let path = entry?.path();
+                if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                    continue;
+                }
+                let text = fs::read_to_string(path)?;
+                let record = serde_json::from_str::<PersistenceRecord>(&text)
+                    .map_err(|err| PersistenceStoreError::Corrupted(err.to_string()))?;
+                records.push(record);
+            }
+        }
+        records.sort_by(|left, right| {
+            left.scope
+                .cmp(&right.scope)
+                .then(left.owner_extension_id.cmp(&right.owner_extension_id))
+                .then(left.key.cmp(&right.key))
+        });
+        Ok(records)
+    }
+
+    fn record_path(
+        &self,
+        extension_id: &ExtensionId,
+        scope: PersistenceScope,
+        key: &str,
+    ) -> Result<PathBuf, PersistenceStoreError> {
+        validate_persistence_key(key)?;
+        Ok(self
+            .extension_scope_dir(extension_id, scope)
+            .join(format!("{key}.json")))
+    }
+
+    fn extension_scope_dir(&self, extension_id: &ExtensionId, scope: PersistenceScope) -> PathBuf {
+        self.root
+            .join(scope_slug(scope))
+            .join(extension_id.as_str())
+    }
+}
+
+fn ensure_persistence_permission(
+    extension_id: &ExtensionId,
+    scope: PersistenceScope,
+    permissions: &ExtensionPermissions,
+) -> Result<(), PersistenceStoreError> {
+    if permissions.allows_persistence_scope(scope) {
+        Ok(())
+    } else {
+        Err(PersistenceStoreError::PermissionDenied {
+            extension_id: extension_id.clone(),
+            scope,
+        })
+    }
+}
+
+fn validate_persistence_key(key: &str) -> Result<(), PersistenceStoreError> {
+    let valid = !key.trim().is_empty()
+        && key.len() <= 128
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'));
+    if valid {
+        Ok(())
+    } else {
+        Err(PersistenceStoreError::InvalidKey(key.into()))
+    }
+}
+
+fn scope_slug(scope: PersistenceScope) -> &'static str {
+    match scope {
+        PersistenceScope::Session => "session",
+        PersistenceScope::Project => "project",
+        PersistenceScope::Global => "global",
+    }
+}
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().try_into().unwrap_or(u64::MAX))
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1132,6 +1477,15 @@ fn register_all(
             diagnostics,
         );
     }
+    for contribution in contributions.persistence {
+        register_contribution(
+            &mut registries.persistence,
+            metadata.clone(),
+            contribution,
+            path,
+            diagnostics,
+        );
+    }
     for contribution in contributions.autosuggest_providers {
         register_contribution(
             &mut registries.autosuggest_providers,
@@ -1369,6 +1723,18 @@ fn contribution_records(
     collect_inactive_records(
         RegistryFamily::Resource,
         &snapshots.resources.inactive,
+        diagnostics,
+        &mut records,
+    );
+    collect_active_records(
+        RegistryFamily::Persistence,
+        &snapshots.persistence.active,
+        diagnostics,
+        &mut records,
+    );
+    collect_inactive_records(
+        RegistryFamily::Persistence,
+        &snapshots.persistence.inactive,
         diagnostics,
         &mut records,
     );
@@ -1839,6 +2205,147 @@ mod tests {
                 ),
             ]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn layout_paths_are_oino_owned_and_ignore_implicit_foreign_files() -> Result<(), Box<dyn Error>>
+    {
+        let temp = tempfile::tempdir()?;
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let layout = ExtensionLayoutPaths::for_home_and_project(&home, &project);
+        assert!(layout
+            .global_installed_packages
+            .ends_with(".oino/extension-packages"));
+        assert!(layout
+            .project_extension_state
+            .ends_with(".oino/extension-state"));
+        assert!(layout.package_assets.ends_with(".oino/extension-assets"));
+
+        fs::create_dir_all(&project)?;
+        fs::write(project.join("CLAUDE.md"), "not an Oino extension")?;
+        fs::write(project.join("AGENTS.md"), "not an Oino extension")?;
+        write_json(
+            &layout
+                .project_installed_packages
+                .join("pkg/oino.package.json"),
+            r#"{
+              "id": "acme.project-package",
+              "version": "1.0.0",
+              "extensions": [{ "manifest": "extensions/acme/oino.extension.json" }],
+              "examples": [{ "path": "examples/basic" }],
+              "docs": [{ "path": "docs/README.md" }]
+            }"#,
+        )?;
+        let files = ExtensionDiscovery::from_layout(&layout).discover_manifest_files();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_kind, DiscoveredFileKind::PackageManifest);
+        assert_eq!(files[0].source.scope, SourceScope::Project);
+        assert_eq!(files[0].source.kind, SourceKind::LocalPackage);
+        Ok(())
+    }
+
+    #[test]
+    fn persistence_store_enforces_permissions_migrates_and_cleans_up() -> Result<(), Box<dyn Error>>
+    {
+        let temp = tempfile::tempdir()?;
+        let store = ExtensionPersistenceStore::new(temp.path().join(".oino/extension-state"));
+        let extension_id = ExtensionId::new("acme.persist")?;
+        let mut permissions = ExtensionPermissions::default();
+        permissions
+            .session_persistence
+            .insert(PersistenceScope::Project);
+        let record = PersistenceRecord {
+            owner_extension_id: extension_id.clone(),
+            scope: PersistenceScope::Project,
+            key: "processes".into(),
+            schema_version: 1,
+            schema: Some("object".into()),
+            payload: serde_json::json!({ "running": ["cargo test"] }),
+            provenance: None,
+            updated_at_unix_ms: 1,
+            tombstoned: false,
+        };
+        store.write(&record, &permissions, Some(4096))?;
+        let loaded = store.read(
+            &extension_id,
+            PersistenceScope::Project,
+            "processes",
+            &permissions,
+        )?;
+        assert_eq!(loaded.payload["running"][0], "cargo test");
+
+        let migrated = store.migrate(
+            &extension_id,
+            PersistenceScope::Project,
+            "processes",
+            2,
+            &PersistenceMigrationPolicy::HostCopyForward,
+            &permissions,
+        )?;
+        assert_eq!(migrated.schema_version, 2);
+
+        let mut denied = ExtensionPermissions::default();
+        denied.session_persistence.insert(PersistenceScope::Session);
+        assert!(matches!(
+            store.read(
+                &extension_id,
+                PersistenceScope::Project,
+                "processes",
+                &denied
+            ),
+            Err(PersistenceStoreError::PermissionDenied { .. })
+        ));
+
+        store.cleanup_extension(&extension_id, PersistenceCleanupPolicy::RetainWithTombstone)?;
+        let tombstoned = store.read(
+            &extension_id,
+            PersistenceScope::Project,
+            "processes",
+            &permissions,
+        )?;
+        assert!(tombstoned.tombstoned);
+        store.cleanup_extension(&extension_id, PersistenceCleanupPolicy::DeleteOnUninstall)?;
+        assert!(matches!(
+            store.read(
+                &extension_id,
+                PersistenceScope::Project,
+                "processes",
+                &permissions
+            ),
+            Err(PersistenceStoreError::NotFound)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn persistence_store_reports_corrupted_state() -> Result<(), Box<dyn Error>> {
+        let temp = tempfile::tempdir()?;
+        let store = ExtensionPersistenceStore::new(temp.path().join("state"));
+        let extension_id = ExtensionId::new("acme.persist")?;
+        let mut permissions = ExtensionPermissions::default();
+        permissions
+            .session_persistence
+            .insert(PersistenceScope::Project);
+        let path = store
+            .root()
+            .join("project")
+            .join(extension_id.as_str())
+            .join("bad.json");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, "not-json")?;
+        assert!(matches!(
+            store.read(
+                &extension_id,
+                PersistenceScope::Project,
+                "bad",
+                &permissions
+            ),
+            Err(PersistenceStoreError::Corrupted(_))
+        ));
         Ok(())
     }
 

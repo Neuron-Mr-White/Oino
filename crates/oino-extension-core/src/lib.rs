@@ -395,6 +395,11 @@ impl ExtensionPermissions {
     pub fn allows_ui_surface(&self, surface: &str) -> bool {
         allows_named(&self.ui, surface)
     }
+
+    #[must_use]
+    pub fn allows_persistence_scope(&self, scope: PersistenceScope) -> bool {
+        self.session_persistence.contains(&scope)
+    }
 }
 
 fn allows_named(values: &BTreeSet<String>, name: &str) -> bool {
@@ -479,6 +484,8 @@ pub struct ExtensionContributions {
     #[serde(default)]
     pub resources: Vec<ResourceContribution>,
     #[serde(default)]
+    pub persistence: Vec<PersistenceContribution>,
+    #[serde(default)]
     pub autosuggest_providers: Vec<AutosuggestContribution>,
     #[serde(default)]
     pub renderers: Vec<RendererContribution>,
@@ -505,6 +512,11 @@ impl ExtensionContributions {
                     &contribution.id,
                     contribution.surface.as_permission_name(),
                 ));
+            }
+        }
+        for contribution in &self.persistence {
+            if !permissions.allows_persistence_scope(contribution.scope) {
+                return Err(missing_permission(&contribution.id, "session_persistence"));
             }
         }
         Ok(())
@@ -1052,6 +1064,82 @@ pub struct ProviderPrivacyPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistenceContribution {
+    pub id: ContributionId,
+    pub scope: PersistenceScope,
+    pub key: String,
+    #[serde(default = "default_persistence_schema_version")]
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    #[serde(default = "default_persistence_max_bytes")]
+    pub max_bytes: usize,
+    #[serde(default)]
+    pub migration: PersistenceMigrationPolicy,
+    #[serde(default)]
+    pub cleanup: PersistenceCleanupPolicy,
+    #[serde(default)]
+    pub conflict: ConflictPolicy,
+}
+
+fn default_persistence_schema_version() -> u32 {
+    1
+}
+
+fn default_persistence_max_bytes() -> usize {
+    64 * 1024
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "policy", content = "details")]
+pub enum PersistenceMigrationPolicy {
+    #[default]
+    None,
+    HostCopyForward,
+    ExtensionHook {
+        handler: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PersistenceCleanupPolicy {
+    #[default]
+    DeleteOnUninstall,
+    RetainWithTombstone,
+    Retain,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PersistenceRecord {
+    pub owner_extension_id: ExtensionId,
+    pub scope: PersistenceScope,
+    pub key: String,
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    #[serde(default)]
+    pub payload: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
+    #[serde(default)]
+    pub updated_at_unix_ms: u64,
+    #[serde(default)]
+    pub tombstoned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtensionSessionEntry {
+    pub owner_extension_id: ExtensionId,
+    pub key: String,
+    pub schema_version: u32,
+    #[serde(default)]
+    pub payload: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceContribution {
     pub id: ContributionId,
     pub kind: ResourceKind,
@@ -1129,6 +1217,10 @@ pub struct PackageManifest {
     #[serde(default)]
     pub assets: Vec<PackageAssetRef>,
     #[serde(default)]
+    pub examples: Vec<PackageAssetRef>,
+    #[serde(default)]
+    pub docs: Vec<PackageAssetRef>,
+    #[serde(default)]
     pub dependencies: Vec<PackageDependency>,
     #[serde(default)]
     pub permissions: ExtensionPermissions,
@@ -1138,7 +1230,12 @@ pub struct PackageManifest {
 
 impl PackageManifest {
     pub fn validate(&self) -> Result<(), ExtensionCoreError> {
-        if self.extensions.is_empty() && self.resources.is_empty() && self.assets.is_empty() {
+        if self.extensions.is_empty()
+            && self.resources.is_empty()
+            && self.assets.is_empty()
+            && self.examples.is_empty()
+            && self.docs.is_empty()
+        {
             return Err(ExtensionCoreError::EmptyPackage);
         }
         Ok(())
@@ -2303,6 +2400,7 @@ pub enum RegistryFamily {
     Theme,
     ProviderModel,
     Resource,
+    Persistence,
     Autosuggest,
     TranscriptRenderer,
     MessageRenderer,
@@ -2324,6 +2422,7 @@ impl RegistryFamily {
             Self::Theme => "theme",
             Self::ProviderModel => "provider_model",
             Self::Resource => "resource",
+            Self::Persistence => "persistence",
             Self::Autosuggest => "autosuggest",
             Self::TranscriptRenderer => "transcript_renderer",
             Self::MessageRenderer => "message_renderer",
@@ -2517,6 +2616,29 @@ impl_registry_contribution!(
 );
 
 impl_registry_contribution!(
+    PersistenceContribution,
+    |item: &PersistenceContribution, family| {
+        validate_required(family, &item.id, "key", &item.key).and_then(|()| {
+            if item.schema_version == 0 {
+                Err(RegistryValidationError::new(
+                    family,
+                    item.id.clone(),
+                    "schema_version must be greater than zero",
+                ))
+            } else if item.max_bytes == 0 {
+                Err(RegistryValidationError::new(
+                    family,
+                    item.id.clone(),
+                    "max_bytes must be greater than zero",
+                ))
+            } else {
+                Ok(())
+            }
+        })
+    }
+);
+
+impl_registry_contribution!(
     AutosuggestContribution,
     |item: &AutosuggestContribution, family| {
         validate_required(family, &item.id, "trigger", &item.trigger)
@@ -2602,6 +2724,7 @@ pub type SettingsPageRegistry = TypedContributionRegistry<SettingsPageContributi
 pub type ThemeRegistry = TypedContributionRegistry<ThemeContribution>;
 pub type ProviderModelRegistry = TypedContributionRegistry<ProviderContribution>;
 pub type ResourceRegistry = TypedContributionRegistry<ResourceContribution>;
+pub type PersistenceRegistry = TypedContributionRegistry<PersistenceContribution>;
 pub type AutosuggestRegistry = TypedContributionRegistry<AutosuggestContribution>;
 pub type TranscriptRendererRegistry = TypedContributionRegistry<RendererContribution>;
 pub type MessageRendererRegistry = TypedContributionRegistry<RendererContribution>;
@@ -2669,6 +2792,13 @@ impl TypedContributionRegistry<ResourceContribution> {
     #[must_use]
     pub fn resources() -> Self {
         Self::new(RegistryFamily::Resource)
+    }
+}
+
+impl TypedContributionRegistry<PersistenceContribution> {
+    #[must_use]
+    pub fn persistence() -> Self {
+        Self::new(RegistryFamily::Persistence)
     }
 }
 
@@ -2832,12 +2962,16 @@ mod tests {
               "extensions": [{ "manifest": "extensions/web/oino.extension.json" }],
               "resources": [{ "kind": "skill", "path": "skills/review/SKILL.md" }],
               "assets": [{ "path": "assets/icon.png", "checksum": "sha256:test" }],
+              "examples": [{ "path": "examples/sidebar" }],
+              "docs": [{ "path": "docs/README.md" }],
               "trust": { "reviewed": true, "checksum": "sha256:package" }
             }"#,
         )?;
         package.validate()?;
         assert!(package.compatible_with(&Version::parse("0.1.2")?));
         assert_eq!(package.extensions.len(), 1);
+        assert_eq!(package.examples[0].path, "examples/sidebar");
+        assert_eq!(package.docs[0].path, "docs/README.md");
         assert!(package.trust.reviewed);
         Ok(())
     }
@@ -3614,6 +3748,20 @@ mod tests {
             },
         )?;
         assert_typed_valid(
+            PersistenceRegistry::persistence(),
+            PersistenceContribution {
+                id: ContributionId::new("state.processes")?,
+                scope: PersistenceScope::Project,
+                key: "processes".into(),
+                schema_version: 1,
+                schema: Some("object".into()),
+                max_bytes: 4096,
+                migration: PersistenceMigrationPolicy::HostCopyForward,
+                cleanup: PersistenceCleanupPolicy::DeleteOnUninstall,
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_valid(
             AutosuggestRegistry::autosuggest_providers(),
             AutosuggestContribution {
                 id: ContributionId::new("autosuggest")?,
@@ -3764,6 +3912,20 @@ mod tests {
                 id: ContributionId::new("skill.resource")?,
                 kind: ResourceKind::Skill,
                 path: String::new(),
+                conflict: ConflictPolicy::default(),
+            },
+        )?;
+        assert_typed_invalid(
+            PersistenceRegistry::persistence(),
+            PersistenceContribution {
+                id: ContributionId::new("state.processes")?,
+                scope: PersistenceScope::Project,
+                key: String::new(),
+                schema_version: 0,
+                schema: None,
+                max_bytes: 0,
+                migration: PersistenceMigrationPolicy::None,
+                cleanup: PersistenceCleanupPolicy::DeleteOnUninstall,
                 conflict: ConflictPolicy::default(),
             },
         )?;

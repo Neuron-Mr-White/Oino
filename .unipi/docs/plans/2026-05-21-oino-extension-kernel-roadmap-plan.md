@@ -277,7 +277,7 @@ Planning decisions recorded for implementation:
     3. Implement enable/disable and override actions.
     4. Add fuzzy search state and management UX tests.
 
-- unstarted: Task 19 — Add Extension Persistence and Session APIs
+- completed: Task 19 — Add Extension Persistence and Session APIs
   - Description: Let extensions persist typed custom state safely across sessions/projects with migrations and cleanup rules.
   - Dependencies: Tasks 4, 7, 9, 12, and 13.
   - Acceptance Criteria:
@@ -291,7 +291,7 @@ Planning decisions recorded for implementation:
     3. Broker runtime access through capability checks.
     4. Add migration and cleanup tests.
 
-- unstarted: Task 20 — Define Local and Installed Package Layouts
+- completed: Task 20 — Define Local and Installed Package Layouts
   - Description: Standardize package source layouts under Oino-owned paths before public registry features depend on them.
   - Dependencies: Tasks 4, 7, and 9.
   - Acceptance Criteria:

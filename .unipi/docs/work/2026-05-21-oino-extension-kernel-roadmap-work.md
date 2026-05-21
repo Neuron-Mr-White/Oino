@@ -225,3 +225,29 @@ Tasks 17–18 validation:
 - `cargo fmt --all` — passed
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 19–20 persistence/session APIs and package layouts
+
+Completed extension persistence and session API foundations:
+
+- Added persistence contribution contracts with scope, key, schema version, optional schema marker, size limits, migration policy, cleanup policy, and conflict policy.
+- Added typed `PersistenceRecord` and `ExtensionSessionEntry` data shapes so extension-owned state can be reconstructed without loading or executing extension code.
+- Added `ExtensionPermissions::allows_persistence_scope` checks and validation that persistence contributions declare matching `session_persistence` permission scope.
+- Added `PersistenceRegistry` and wired persistence contributions through extension manager registries, snapshots, diffs, diagnostics, and management contribution records.
+- Added `ExtensionPersistenceStore` under Oino-owned state roots with read/write/delete/list/migrate/cleanup APIs, owner/key validation, size limits, permission enforcement, tombstone cleanup, delete-on-uninstall cleanup, migration copy-forward, and corrupted-state errors.
+- Added session JSONL support for extension custom entries via `SessionEntryKind::ExtensionCustom`, `append_extension_custom`, and `extension_custom_entries`.
+- Added runtime capability broker entries for `host.persistence.read`, `host.persistence.write`, and `host.persistence.delete` so runtime access is gated by host capability permissions.
+
+Completed package layout standardization:
+
+- Added `ExtensionLayoutPaths` to centralize Oino-owned global/project roots for local extensions, installed packages, registry metadata fixtures, WASM bundles, session extensions, dev extensions, package assets, and extension state.
+- Refactored discovery to build roots from `ExtensionLayoutPaths` while preserving deterministic scope/kind/path ordering.
+- Extended `PackageManifest` with `examples[]` and `docs[]`; packages are valid if they include extensions, resources, assets, examples, or docs.
+- Documented accepted package layout ADR: `.unipi/docs/adr/2026-05-21-extension-package-layouts.md`.
+
+Tasks 19–20 validation:
+
+- Added tests for persistence registry validation, permission-denied persistence access, migration, uninstall cleanup/tombstones, corrupted state, session replay of extension custom entries, persistence capability gating, missing/valid package roots, docs/examples manifest entries, ignoring implicit foreign files, and scope ordering.
+- `cargo fmt --all` — passed
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed

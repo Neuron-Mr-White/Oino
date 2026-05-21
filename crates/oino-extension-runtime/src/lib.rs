@@ -715,6 +715,9 @@ pub enum CapabilityError {
 pub enum BuiltinCapability {
     Echo,
     MockWebSearch,
+    PersistenceRead,
+    PersistenceWrite,
+    PersistenceDelete,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -738,6 +741,18 @@ impl CapabilityBroker {
         let mut capabilities = BTreeMap::new();
         capabilities.insert("host.test.echo".into(), BuiltinCapability::Echo);
         capabilities.insert("host.web.search".into(), BuiltinCapability::MockWebSearch);
+        capabilities.insert(
+            "host.persistence.read".into(),
+            BuiltinCapability::PersistenceRead,
+        );
+        capabilities.insert(
+            "host.persistence.write".into(),
+            BuiltinCapability::PersistenceWrite,
+        );
+        capabilities.insert(
+            "host.persistence.delete".into(),
+            BuiltinCapability::PersistenceDelete,
+        );
         Self {
             permissions: BTreeMap::new(),
             capabilities,
@@ -890,7 +905,45 @@ fn execute_capability(
                 }]
             }))
         }
+        BuiltinCapability::PersistenceRead => {
+            let key = persistence_key(payload)?;
+            Ok(serde_json::json!({ "key": key, "found": false, "value": null }))
+        }
+        BuiltinCapability::PersistenceWrite => {
+            let key = persistence_key(payload)?;
+            let value = payload
+                .get("value")
+                .ok_or_else(|| CapabilityError::InvalidPayload("value is required".into()))?;
+            Ok(serde_json::json!({ "key": key, "written": true, "bytes": json_size(value)? }))
+        }
+        BuiltinCapability::PersistenceDelete => {
+            let key = persistence_key(payload)?;
+            Ok(serde_json::json!({ "key": key, "deleted": true }))
+        }
     }
+}
+
+fn persistence_key(payload: &Value) -> Result<&str, CapabilityError> {
+    let key = payload
+        .get("key")
+        .and_then(Value::as_str)
+        .filter(|key| {
+            !key.trim().is_empty()
+                && key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+        })
+        .ok_or_else(|| CapabilityError::InvalidPayload("valid key is required".into()))?;
+    let scope = payload
+        .get("scope")
+        .and_then(Value::as_str)
+        .unwrap_or("session");
+    if !matches!(scope, "session" | "project" | "global") {
+        return Err(CapabilityError::InvalidPayload(
+            "scope must be session, project, or global".into(),
+        ));
+    }
+    Ok(key)
 }
 
 fn json_size(value: &Value) -> Result<usize, CapabilityError> {
@@ -1367,6 +1420,41 @@ mod tests {
         let mut permissions = ExtensionPermissions::default();
         permissions.host_capabilities.insert(capability.into());
         permissions
+    }
+
+    #[test]
+    fn capability_broker_gates_persistence_capabilities() {
+        let mut broker = CapabilityBroker::new();
+        broker.register_permissions(extension_id(), permissions_with("host.persistence.write"));
+        let response = broker
+            .call(CapabilityRequest::new(
+                extension_id(),
+                "host.persistence.write",
+                serde_json::json!({
+                    "scope": "project",
+                    "key": "processes",
+                    "value": { "running": 1 }
+                }),
+            ))
+            .unwrap_or_else(|err| panic!("capability failed: {err}"));
+        assert_eq!(response.output["written"], true);
+        assert!(matches!(
+            broker.call(CapabilityRequest::new(
+                extension_id(),
+                "host.persistence.read",
+                serde_json::json!({ "scope": "project", "key": "processes" }),
+            )),
+            Err(CapabilityError::PermissionDenied { .. })
+        ));
+        broker.register_permissions(extension_id(), permissions_with("host.persistence.read"));
+        assert!(matches!(
+            broker.call(CapabilityRequest::new(
+                extension_id(),
+                "host.persistence.read",
+                serde_json::json!({ "scope": "invalid", "key": "processes" }),
+            )),
+            Err(CapabilityError::InvalidPayload(_))
+        ));
     }
 
     #[test]

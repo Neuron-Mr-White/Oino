@@ -1216,6 +1216,7 @@ dependencies = [
 name = "oino-session"
 version = "0.1.0"
 dependencies = [
+ "oino-extension-core",
  "oino-types",
  "serde",
  "serde_json",

@@ -6,6 +6,7 @@ context building. It does not own providers, tools, UI, or the agent loop.
 "#]
 #![forbid(unsafe_code)]
 
+use oino_extension_core::{ExtensionId, ExtensionSessionEntry};
 use oino_types::{Message, Model, OinoId, ThinkingLevel};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -76,6 +77,9 @@ pub enum SessionEntryKind {
     Custom {
         name: String,
         payload: Value,
+    },
+    ExtensionCustom {
+        entry: Box<ExtensionSessionEntry>,
     },
     CustomMessage {
         message: Message,
@@ -194,6 +198,28 @@ impl SessionManager {
         self.append(SessionEntryKind::Label {
             label: label.into(),
         })
+    }
+
+    pub fn append_extension_custom(&mut self, entry: ExtensionSessionEntry) -> OinoId {
+        self.append(SessionEntryKind::ExtensionCustom {
+            entry: Box::new(entry),
+        })
+    }
+
+    #[must_use]
+    pub fn extension_custom_entries(&self, owner: &ExtensionId) -> Vec<ExtensionSessionEntry> {
+        self.branch_entry_refs(self.leaf_id)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|entry| match &entry.kind {
+                SessionEntryKind::ExtensionCustom { entry }
+                    if &entry.owner_extension_id == owner =>
+                {
+                    Some((**entry).clone())
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     pub fn branch(&mut self, from: OinoId) -> SessionResult<()> {
@@ -320,6 +346,7 @@ impl SessionManager {
                     })
                 }
                 SessionEntryKind::Custom { .. }
+                | SessionEntryKind::ExtensionCustom { .. }
                 | SessionEntryKind::Label { .. }
                 | SessionEntryKind::SessionInfo { .. }
                 | SessionEntryKind::LeafMove { .. } => {}
@@ -445,6 +472,7 @@ impl SessionRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oino_extension_core::{Provenance, SourceDescriptor, SourceKind, SourceScope};
     use oino_types::StopReason;
 
     fn manager() -> SessionManager {
@@ -484,6 +512,52 @@ mod tests {
             context.messages[0],
             Message::CompactionSummary { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn extension_custom_entries_round_trip_without_runtime_code() {
+        let dir = match tempfile::tempdir() {
+            Ok(dir) => dir,
+            Err(err) => panic!("tempdir failed: {err}"),
+        };
+        let path = dir.path().join("session.jsonl");
+        let extension_id =
+            ExtensionId::new("acme.persist").unwrap_or_else(|err| panic!("id: {err}"));
+        let mut session = manager();
+        session.append_extension_custom(ExtensionSessionEntry {
+            owner_extension_id: extension_id.clone(),
+            key: "pane".into(),
+            schema_version: 2,
+            payload: serde_json::json!({ "visible": true }),
+            provenance: Some(Provenance {
+                source: SourceDescriptor {
+                    scope: SourceScope::Project,
+                    kind: SourceKind::LocalExtension,
+                    path: None,
+                    registry: None,
+                },
+                package_id: None,
+                extension_id: Some(extension_id.clone()),
+                package_version: None,
+                manifest_path: None,
+            }),
+        });
+        session.append_message(Message::user_text("normal context"));
+        session
+            .save_jsonl(&path)
+            .await
+            .unwrap_or_else(|err| panic!("save failed: {err}"));
+        let loaded = SessionManager::load_jsonl(&path)
+            .await
+            .unwrap_or_else(|err| panic!("load failed: {err}"));
+        let entries = loaded.extension_custom_entries(&extension_id);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].schema_version, 2);
+        assert_eq!(entries[0].payload["visible"], true);
+        let context = loaded
+            .build_session_context()
+            .unwrap_or_else(|err| panic!("context failed: {err}"));
+        assert_eq!(context.messages.len(), 1);
     }
 
     #[tokio::test]
