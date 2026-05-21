@@ -2,6 +2,8 @@
 
 The first author-facing SDK is `crates/oino-extension-sdk`. It deliberately reuses Oino's core contracts instead of defining separate schemas.
 
+For full authoring, testing, GitHub publishing, and install instructions, see `docs/extension-kernel/developer-guide.md`. For end-user install/manage instructions, see `docs/extension-kernel/user-guide.md`.
+
 ## Rust WASM path
 
 - Generate starter manifests with `oino-extension-devkit template-extension` and `template-package`.

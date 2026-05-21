@@ -623,8 +623,65 @@ fn package_install_scope(scope: ToolSettingsScope) -> PackageInstallScope {
     }
 }
 
-fn resolve_install_source(source: &str, cwd: &Path, home_dir: &Path) -> PathBuf {
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExtensionInstallSource {
+    Local(PathBuf),
+    Git(GitInstallSource),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GitInstallSource {
+    clone_url: String,
+    display: String,
+    reference: Option<String>,
+}
+
+#[derive(Debug)]
+struct PreparedExtensionInstallSource {
+    path: PathBuf,
+    display: String,
+    _temp_checkout: Option<TemporaryDirectory>,
+}
+
+#[derive(Debug)]
+struct TemporaryDirectory {
+    path: PathBuf,
+}
+
+impl TemporaryDirectory {
+    fn create(prefix: &str) -> Result<Self, String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("system clock error: {err}"))?
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{}-{stamp}", std::process::id()));
+        fs::create_dir_all(&path)
+            .map_err(|err| format!("failed to create temp checkout `{}`: {err}", path.display()))?;
+        Ok(Self { path })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TemporaryDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+fn resolve_install_source(source: &str, cwd: &Path, home_dir: &Path) -> ExtensionInstallSource {
     let source = source.trim();
+    let local_path = resolve_local_install_path(source, cwd, home_dir);
+    if let Some(git) = git_install_source(source, local_path.exists()) {
+        ExtensionInstallSource::Git(git)
+    } else {
+        ExtensionInstallSource::Local(local_path)
+    }
+}
+
+fn resolve_local_install_path(source: &str, cwd: &Path, home_dir: &Path) -> PathBuf {
     if let Some(rest) = source.strip_prefix("~/") {
         return home_dir.join(rest);
     }
@@ -634,6 +691,150 @@ fn resolve_install_source(source: &str, cwd: &Path, home_dir: &Path) -> PathBuf 
     } else {
         cwd.join(path)
     }
+}
+
+fn prepare_install_source(
+    source: &str,
+    cwd: &Path,
+    home_dir: &Path,
+) -> Result<PreparedExtensionInstallSource, String> {
+    match resolve_install_source(source, cwd, home_dir) {
+        ExtensionInstallSource::Local(path) => Ok(PreparedExtensionInstallSource {
+            display: path.display().to_string(),
+            path,
+            _temp_checkout: None,
+        }),
+        ExtensionInstallSource::Git(git) => clone_extension_git_source(git),
+    }
+}
+
+fn clone_extension_git_source(
+    source: GitInstallSource,
+) -> Result<PreparedExtensionInstallSource, String> {
+    let checkout = TemporaryDirectory::create("oino-extension-install")?;
+    let mut command = Command::new("git");
+    command
+        .arg("clone")
+        .arg("--depth")
+        .arg("1")
+        .arg("--recurse-submodules")
+        .arg("--shallow-submodules");
+    if let Some(reference) = &source.reference {
+        command.arg("--branch").arg(reference);
+    }
+    command.arg(&source.clone_url).arg(checkout.path());
+    let output = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|err| format!("failed to run git clone: {err}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let details = [stderr.trim(), stdout.trim()]
+            .into_iter()
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(if details.is_empty() {
+            format!("git clone failed for `{}`", source.display)
+        } else {
+            format!("git clone failed for `{}`: {details}", source.display)
+        });
+    }
+    Ok(PreparedExtensionInstallSource {
+        path: checkout.path().to_path_buf(),
+        display: source.display,
+        _temp_checkout: Some(checkout),
+    })
+}
+
+fn git_install_source(source: &str, local_path_exists: bool) -> Option<GitInstallSource> {
+    let source = source.trim();
+    if source.is_empty() {
+        return None;
+    }
+    let source = source.strip_prefix("git+").unwrap_or(source);
+    let (body, reference) = split_git_reference(source);
+    if let Some(repo) = body
+        .strip_prefix("github:")
+        .or_else(|| body.strip_prefix("gh:"))
+    {
+        return github_shorthand_source(repo, reference);
+    }
+    if !local_path_exists {
+        if let Some(github) = github_shorthand_source(body, reference.clone()) {
+            return Some(github);
+        }
+    }
+    if looks_like_git_url(body) {
+        return Some(GitInstallSource {
+            clone_url: body.to_string(),
+            display: if let Some(reference) = &reference {
+                format!("{body}#{reference}")
+            } else {
+                body.to_string()
+            },
+            reference,
+        });
+    }
+    None
+}
+
+fn split_git_reference(source: &str) -> (&str, Option<String>) {
+    match source.rsplit_once('#') {
+        Some((body, reference)) if !body.is_empty() && !reference.trim().is_empty() => {
+            (body, Some(reference.trim().to_string()))
+        }
+        _ => (source, None),
+    }
+}
+
+fn github_shorthand_source(repo: &str, reference: Option<String>) -> Option<GitInstallSource> {
+    let repo = repo.trim().trim_start_matches('/').trim_end_matches('/');
+    let repo = repo.strip_suffix(".git").unwrap_or(repo);
+    let mut parts = repo.split('/');
+    let owner = parts.next()?;
+    let name = parts.next()?;
+    if parts.next().is_some() || !valid_github_owner(owner) || !valid_github_repo(name) {
+        return None;
+    }
+    let clone_url = format!("https://github.com/{owner}/{name}.git");
+    let display = if let Some(reference) = &reference {
+        format!("github:{owner}/{name}#{reference}")
+    } else {
+        format!("github:{owner}/{name}")
+    };
+    Some(GitInstallSource {
+        clone_url,
+        display,
+        reference,
+    })
+}
+
+fn valid_github_owner(owner: &str) -> bool {
+    !owner.is_empty()
+        && !owner.starts_with('-')
+        && !owner.ends_with('-')
+        && owner
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+}
+
+fn valid_github_repo(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+}
+
+fn looks_like_git_url(source: &str) -> bool {
+    source.starts_with("https://")
+        || source.starts_with("http://")
+        || source.starts_with("ssh://")
+        || source.starts_with("git://")
+        || source.starts_with("git@")
+        || source.ends_with(".git")
 }
 
 fn apply_extension_snapshot_to_tui_state(
@@ -1666,7 +1867,8 @@ async fn run_tui(
                 );
             }
             TuiAction::InstallExtensionPackage { source, scope } => {
-                let install_path = resolve_install_source(&source, &cwd, &resource_paths.home_dir);
+                let prepared_source =
+                    prepare_install_source(&source, &cwd, &resource_paths.home_dir);
                 let mut manager =
                     extension_manager_with_current_policy(&resource_paths, &tool_settings);
                 manager.load();
@@ -1674,18 +1876,22 @@ async fn run_tui(
                     extension_layout_paths(&resource_paths),
                     current_extension_version(),
                 );
-                let lifecycle = service
-                    .install_local(&install_path, package_install_scope(scope), &mut manager)
-                    .or_else(|err| match err {
-                        PackageLifecycleError::AlreadyInstalled(_) => service.update_local(
-                            &install_path,
-                            package_install_scope(scope),
-                            &mut manager,
-                        ),
-                        other => Err(other),
-                    });
+                let lifecycle = prepared_source.and_then(|prepared| {
+                    let lifecycle = service
+                        .install_local(&prepared.path, package_install_scope(scope), &mut manager)
+                        .or_else(|err| match err {
+                            PackageLifecycleError::AlreadyInstalled(_) => service.update_local(
+                                &prepared.path,
+                                package_install_scope(scope),
+                                &mut manager,
+                            ),
+                            other => Err(other),
+                        })
+                        .map_err(|err| err.to_string());
+                    lifecycle.map(|report| (report, prepared.display))
+                });
                 match lifecycle {
-                    Ok(report) => {
+                    Ok((report, source_display)) => {
                         let package_id = report.package_id.to_string();
                         set_extension_enabled(
                             &mut tool_settings,
@@ -1716,7 +1922,7 @@ async fn run_tui(
                             "Installed {} package `{}` from `{}`",
                             scope.label(),
                             package_id,
-                            install_path.display()
+                            source_display
                         );
                     }
                     Err(err) => state.set_error(format!("Extension install failed: {err}")),
@@ -3320,6 +3526,52 @@ mod tests {
         assert_eq!(
             resolve_external_target("assets/image.png", cwd),
             "/tmp/oino-project/assets/image.png"
+        );
+    }
+
+    #[test]
+    fn extension_install_source_accepts_local_paths_and_git_sources() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let cwd = temp.path().join("project");
+        let home = temp.path().join("home");
+        fs::create_dir_all(cwd.join("examples/extensions"))
+            .unwrap_or_else(|err| panic!("create local path failed: {err}"));
+
+        assert_eq!(
+            resolve_install_source("examples/extensions", &cwd, &home),
+            ExtensionInstallSource::Local(cwd.join("examples/extensions"))
+        );
+        assert_eq!(
+            resolve_install_source("~/packages/example", &cwd, &home),
+            ExtensionInstallSource::Local(home.join("packages/example"))
+        );
+        assert_eq!(
+            resolve_install_source("acme/example-extension", &cwd, &home),
+            ExtensionInstallSource::Git(GitInstallSource {
+                clone_url: "https://github.com/acme/example-extension.git".into(),
+                display: "github:acme/example-extension".into(),
+                reference: None,
+            })
+        );
+        assert_eq!(
+            resolve_install_source("github:acme/example-extension#v1.2.3", &cwd, &home),
+            ExtensionInstallSource::Git(GitInstallSource {
+                clone_url: "https://github.com/acme/example-extension.git".into(),
+                display: "github:acme/example-extension#v1.2.3".into(),
+                reference: Some("v1.2.3".into()),
+            })
+        );
+        assert_eq!(
+            resolve_install_source(
+                "git+https://github.com/acme/example-extension.git#main",
+                &cwd,
+                &home,
+            ),
+            ExtensionInstallSource::Git(GitInstallSource {
+                clone_url: "https://github.com/acme/example-extension.git".into(),
+                display: "https://github.com/acme/example-extension.git#main".into(),
+                reference: Some("main".into()),
+            })
         );
     }
 

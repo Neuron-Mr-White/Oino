@@ -2120,13 +2120,13 @@ fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
         sections[0],
     );
     let controls = if state.extension_management.install_active {
-        "type package path • Enter install • Esc cancel"
+        "type path, Git URL, or owner/repo • Enter install • Esc cancel"
     } else if state.extension_management.remove_confirm.is_some() {
         "Enter/Y uninstall • N/Esc cancel"
     } else if state.extension_management.search_active {
         "type to fuzzy search • ↑/↓ move • Enter toggle project • Esc clear search"
     } else {
-        "↑/↓ select • / search • i install project • I install global • u/x uninstall package • g toggle global • p/Enter toggle project • Esc close"
+        "↑/↓ select • / search • i install project • I install global from path/GitHub • u/x uninstall package • g toggle global • p/Enter toggle project • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
     frame.render_widget(
@@ -2144,7 +2144,7 @@ fn extension_management_lines(
     let mut lines = Vec::new();
     let search = if state.extension_management.install_active {
         let input = if state.extension_management.install_input.is_empty() {
-            "<package path>"
+            "<package path, Git URL, or owner/repo>"
         } else {
             &state.extension_management.install_input
         };
@@ -2161,7 +2161,7 @@ fn extension_management_lines(
     } else if state.extension_management.search_active {
         format!("Search: {}", state.extension_management.search)
     } else if state.extension_management.search.is_empty() {
-        "Press / to search extensions • i/I install • u/x uninstall selected package".into()
+        "Press / to search extensions • i/I install path or GitHub repo • u/x uninstall selected package".into()
     } else {
         format!("Filter: {}", state.extension_management.search)
     };

@@ -2356,7 +2356,7 @@ impl TuiState {
     fn submit_extension_install(&mut self) -> TuiAction {
         let source = self.extension_management.install_input.trim().to_string();
         if source.is_empty() {
-            self.status = "Enter a package path to install".into();
+            self.status = "Enter a package path, Git URL, or owner/repo to install".into();
             return TuiAction::None;
         }
         let scope = self.extension_management.install_scope;
@@ -3092,7 +3092,7 @@ impl TuiState {
         self.extension_management.search_active = false;
         self.extension_management.search.clear();
         self.extension_management.refresh_filter();
-        self.status = "Extensions: / search • i install project • I install global • u/x uninstall package • g global • p/Enter project • Esc close".into();
+        self.status = "Extensions: / search • i install project • I install global from path/GitHub • u/x uninstall package • g global • p/Enter project • Esc close".into();
     }
 
     fn open_inspect_overlay(&mut self) {
@@ -3391,7 +3391,7 @@ fn extension_search_status(query: &str) -> String {
 
 fn extension_install_status(management: &ExtensionManagementState) -> String {
     let input = if management.install_input.is_empty() {
-        "<package path>"
+        "<package path, Git URL, or owner/repo>"
     } else {
         &management.install_input
     };

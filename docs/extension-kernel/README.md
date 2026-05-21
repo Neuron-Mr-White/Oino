@@ -4,6 +4,12 @@ This document is the maintainer and author reference for the extension-kernel wo
 
 Oino targets **semantic parity** with useful Pi extension capabilities, but it does **not** support Pi TypeScript extension API compatibility. Oino extensions use Oino-owned manifests, registries, permissions, and package layouts.
 
+Companion guides:
+
+- User install/manage guide: `docs/extension-kernel/user-guide.md`
+- Developer author/test/publish guide: `docs/extension-kernel/developer-guide.md`
+- SDK/devkit notes: `docs/extension-sdk/README.md`
+
 ## Architecture
 
 The extension kernel is split into intentionally narrow crates:
@@ -94,8 +100,8 @@ Core developer/community install flow from the panel:
 
 1. Open `/extensions`.
 2. Press `i` to install a package into the current project, or `I` to install globally.
-3. Type a local package path such as `examples/extensions/rust-wasm-fixture` and press Enter.
-4. Oino validates, installs, enables the package in the selected scope, reloads the Extension Manager, and refreshes model-visible tools/UI surfaces.
+3. Type a local package path such as `examples/extensions/rust-wasm-fixture`, a GitHub shorthand such as `owner/repo`, or a Git URL such as `https://github.com/owner/repo.git#v1.0.0`, then press Enter.
+4. Oino resolves local paths or clones Git sources, validates, installs, enables the package in the selected scope, reloads the Extension Manager, and refreshes model-visible tools/UI surfaces.
 5. Select a package row and press `u` or `x` to uninstall; Enter/Y confirms and Esc/N cancels.
 6. Use `p`/Enter to toggle project enablement and `g` to toggle global enablement for the selected extension, package, or contribution.
 
@@ -127,7 +133,7 @@ Extensions can declare persistence contributions with scope, key, schema version
 
 A package manifest (`oino.package.json`) can include extension manifests, resources, assets, examples, docs, dependencies, package-level permissions, Oino compatibility, and trust metadata.
 
-`PackageLifecycleService` supports local install, update, remove, and fixture-registry install. Preflight checks cover manifest validity, compatibility, dependency availability/version compatibility, install scope, checksums, signature/review policy, and rollback/cleanup on write failures.
+`PackageLifecycleService` supports local install, update, remove, and fixture-registry install. The app-level `/extensions` panel additionally resolves Git/GitHub sources into temporary checkouts before invoking package lifecycle validation/install. Preflight checks cover manifest validity, compatibility, dependency availability/version compatibility, install scope, checksums, signature/review policy, and rollback/cleanup on write failures.
 
 Community registry metadata is local/fixture-based for now. It models package id, publisher, version, description, categories, license, source link, assets, compatibility, dependencies, permissions, trust/review/signing/checksum status, update policy, changelog, deprecation, and advisories.
 
@@ -140,7 +146,7 @@ Tracked matrix: `.unipi/docs/research/2026-05-21-oino-pi-extension-parity-matrix
 Explicit non-goals:
 
 - No Pi TypeScript extension API compatibility shim.
-- No npm/git package compatibility as a default install path.
+- No npm package compatibility; Git installs are supported only for Oino package repos containing `oino.package.json`.
 - No direct Ratatui rendering from extension code.
 - No raw filesystem/process/network access without explicit brokered permissions.
 

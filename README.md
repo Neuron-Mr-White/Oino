@@ -88,7 +88,7 @@ Oino now owns an explicit resource convention instead of silently reading Pi, Cl
 
 ## Extension kernel
 
-Oino includes a registry-first extension kernel for Oino-native manifests and packages. It targets semantic parity with useful Pi extension capabilities, but **does not support Pi TypeScript extension API compatibility**. Extension docs live in `docs/extension-kernel/README.md`; SDK/devkit docs live in `docs/extension-sdk/README.md`; the author fixture is `examples/extensions/rust-wasm-fixture`.
+Oino includes a registry-first extension kernel for Oino-native manifests and packages. It targets semantic parity with useful Pi extension capabilities, but **does not support Pi TypeScript extension API compatibility**. Extension docs live in `docs/extension-kernel/README.md`; user install/manage docs live in `docs/extension-kernel/user-guide.md`; developer author/test/publish docs live in `docs/extension-kernel/developer-guide.md`; SDK/devkit docs live in `docs/extension-sdk/README.md`; the author fixture is `examples/extensions/rust-wasm-fixture`.
 
 Key user/developer surfaces:
 
@@ -96,10 +96,10 @@ Key user/developer surfaces:
 - Oino-owned discovery roots under `.oino` and `~/.oino`; Pi/Claude/generic agent extension paths are not loaded implicitly.
 - Registry-backed tools, commands, keymaps, hooks, UI surfaces, settings pages, themes, providers, resources, autosuggest providers, renderers, diagnostics, health, and persistence contributions.
 - Runtime capability broker and `wasm-json-v1` boundary for tool/command execution, host capabilities, progress, cancellation, and diagnostics.
-- `/extensions` management overlay for discovered extensions, packages, contributions, health, diagnostics, conflicts, provenance, install (`i` project / `I` global), uninstall (`u`/`x` package row), and project/global enablement toggles (`p`/Enter and `g`).
-- Package lifecycle services plus `/extensions` local package install/uninstall/reload flow; hosted registry browsing remains a future flow.
+- `/extensions` management overlay for discovered extensions, packages, contributions, health, diagnostics, conflicts, provenance, local/GitHub install (`i` project / `I` global), uninstall (`u`/`x` package row), and project/global enablement toggles (`p`/Enter and `g`).
+- Package lifecycle services plus `/extensions` local/Git/GitHub package install/uninstall/reload flow; hosted registry browsing remains a future flow.
 
-External contributions are pending review by default unless enabled through extension policy settings. Safe mode disables non-built-in contributions while preserving diagnostics. The current implementation includes deterministic fixture runtime/testing support, kernel APIs, and local package install/uninstall from `/extensions`; hosted community registry browsing/publishing and production untrusted WASM host hardening remain follow-ups.
+External contributions are pending review by default unless enabled through extension policy settings. Safe mode disables non-built-in contributions while preserving diagnostics. The current implementation includes deterministic fixture runtime/testing support, kernel APIs, and local/GitHub package install/uninstall from `/extensions`; hosted community registry browsing/publishing and production untrusted WASM host hardening remain follow-ups.
 
 The command palette labels resource types explicitly: `[SYS]` for built-in commands, `[PROMPT]` for prompt templates, and `[SKILL]` for skills. Bare `/` suggestions only open at the start of the input and list system commands. Use `/prompts` and `/skills` to browse resources with fuzzy search, `/reload` to rescan `SYSTEM.md`, `AGENT.md`, prompts, and skills, `/P:<query>` or `/prompt:<query>` anywhere to search prompt templates, and `/S:<query>` or `/skill:<query>` anywhere to search skills.
 
@@ -152,4 +152,4 @@ Provider code is intentionally separate from auth: auth answers “what credenti
 
 ## Current limitations
 
-The first shell supports token-by-token transcript updates for provider text/thinking deltas, Markdown-rendered assistant output, local coding tool calls, persisted JSONL sessions, non-interactive `--session <uuid>` continuation, Oino-owned resource files, prompt templates, skills, registry-backed extension kernel contracts, `/extensions` local package install/uninstall and enablement, and `/new`/`/sessions`/`/settings`/`/prompts`/`/skills`/`/reload`/`/model`/`/thinking` commands. It does not yet include `/login`, MCP, a hosted extension registry, production untrusted WASM host hardening, memory DB, migration/import commands, or a full high-risk permission approval UI.
+The first shell supports token-by-token transcript updates for provider text/thinking deltas, Markdown-rendered assistant output, local coding tool calls, persisted JSONL sessions, non-interactive `--session <uuid>` continuation, Oino-owned resource files, prompt templates, skills, registry-backed extension kernel contracts, `/extensions` local/GitHub package install/uninstall and enablement, and `/new`/`/sessions`/`/settings`/`/prompts`/`/skills`/`/reload`/`/model`/`/thinking` commands. It does not yet include `/login`, MCP, a hosted extension registry, production untrusted WASM host hardening, memory DB, migration/import commands, or a full high-risk permission approval UI.

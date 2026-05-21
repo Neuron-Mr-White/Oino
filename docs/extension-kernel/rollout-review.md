@@ -23,13 +23,13 @@ The extension-kernel roadmap branch implements the kernel contracts, registry co
 - **Contract lock-in:** manifest fields, permissions, registry snapshots, and `wasm-json-v1` become author-facing; changes after merge need migration notes.
 - **Security:** community registry publication should remain fixture/local until signature authority, advisory distribution, and takedown operations are reviewed.
 - **Runtime execution:** fixture runtime support is deterministic and testable; production WASM host hardening remains a follow-up before encouraging untrusted community code.
-- **UX visibility:** `/extensions` now supports local package install/uninstall and enablement toggles, but hosted registry browsing/publishing and richer permission-prompt UX remain follow-ups.
+- **UX visibility:** `/extensions` now supports local and Git/GitHub package install, package uninstall, and enablement toggles, but hosted registry browsing/publishing and richer permission-prompt UX remain follow-ups.
 - **SDK drift:** future TypeScript/JavaScript, Go, and Python SDKs must be generated from or tested against the Rust contracts.
 
 ## Follow-up issues
 
 1. Build production WASM host execution around the JSON-v1 contract and capability broker.
-2. Add a main-binary CLI (`oino extensions install/list/remove/update`) mirroring the `/extensions` panel flow.
+2. Add a main-binary CLI (`oino extensions install/list/remove/update`) mirroring the `/extensions` panel flow, including local path and Git/GitHub sources.
 3. Add hosted registry client/publishing workflow only after trust/signing/advisory policy review.
 4. Add schema export for multi-language SDKs and keep parity tests as gates.
 5. Add migration/import tooling for users who want to translate existing Pi-like assets into Oino layouts.
