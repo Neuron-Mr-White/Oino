@@ -174,3 +174,27 @@ Tasks 13–14 validation:
 - Added bridge tests for tool success, tool runtime errors, cancellation, command success/error, disabled extension contributions, and non-interactive command execution helper behavior.
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 15–16 UI surface contracts and TUI wiring
+
+Added explicit extension UI contracts in `oino-extension-core`:
+
+- Extended `UiSurfaceContribution` with layout, visibility, focus, key-dispatch, tiny-terminal fallback, slot ownership, and conflict policy data.
+- Added UI surface kinds for sidebar, floating panel, footer/status/notification/health, main panel, settings page, autosuggest, overlay, theme, transcript/message renderers, and tool call/result renderers.
+- Added `UiSurfaceStateUpdate`, `UiSurfaceAction`, layout-decision helpers, conflict detection by surface/slot, ownership validation, schema-shape validation, and key-scope validation.
+- Added Display/Error support for UI validation errors so app/TUI paths can propagate diagnostics cleanly.
+
+Wired registry-backed surfaces into TUI state/rendering:
+
+- Added `ExtensionUiState` to `TuiState` for active registry snapshots, state summaries, focus, actions, and conflict badges.
+- Added state APIs for applying validated extension UI updates, focusing extension-owned surfaces, and dispatching extension UI actions through `TuiAction::RunExtensionUiAction`.
+- Rendered core-owned, state-driven extension surfaces without calling extension code in render paths: sidebar, main panel, footer/status surfaces, floating/overlay panels, settings-page badges, autosuggest/renderer badges, tiny-terminal fallbacks, and conflict indicators.
+- Wired app startup/tool-policy refresh to synthesize TUI-visible surfaces from extension manager snapshots, including settings pages, themes, autosuggest providers, transcript/message/tool renderers, diagnostics, and health contributions.
+
+Tasks 15–16 validation:
+
+- Added core tests for invalid ownership, conflicting slots, bad state shapes, undeclared key scopes, and tiny-terminal fallback decisions.
+- Added TUI render/state tests for registry-backed surfaces, focus/action dispatch, tiny fallbacks, and conflict badges.
+- `cargo fmt --all` — passed
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed

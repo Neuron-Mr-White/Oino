@@ -1247,6 +1247,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "nucleo",
+ "oino-extension-core",
  "oino-types",
  "pulldown-cmark",
  "ratatui",

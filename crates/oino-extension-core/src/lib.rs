@@ -620,10 +620,18 @@ pub struct UiSurfaceContribution {
     #[serde(default)]
     pub state_schema: Option<String>,
     #[serde(default)]
+    pub layout: UiLayoutPolicy,
+    #[serde(default)]
+    pub visibility: UiVisibilityPolicy,
+    #[serde(default)]
+    pub focus: UiFocusPolicy,
+    #[serde(default)]
+    pub key_dispatch: UiKeyDispatchPolicy,
+    #[serde(default)]
     pub conflict: ConflictPolicy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UiSurfaceKind {
     Sidebar,
@@ -632,10 +640,15 @@ pub enum UiSurfaceKind {
     MainPanel,
     SettingsPage,
     Autosuggest,
+    Overlay,
     TranscriptRenderer,
     MessageRenderer,
+    Theme,
+    ToolCallRenderer,
+    ToolResultRenderer,
     ToolRenderer,
     Notification,
+    Status,
     Health,
 }
 
@@ -649,13 +662,347 @@ impl UiSurfaceKind {
             Self::MainPanel => "main_panel",
             Self::SettingsPage => "settings_page",
             Self::Autosuggest => "autosuggest",
+            Self::Overlay => "overlay",
             Self::TranscriptRenderer => "transcript_renderer",
             Self::MessageRenderer => "message_renderer",
+            Self::Theme => "theme",
+            Self::ToolCallRenderer => "tool_call_renderer",
+            Self::ToolResultRenderer => "tool_result_renderer",
             Self::ToolRenderer => "tool_renderer",
             Self::Notification => "notification",
+            Self::Status => "status",
             Self::Health => "health",
         }
     }
+}
+
+impl UiSurfaceKind {
+    #[must_use]
+    pub fn default_slot(self) -> &'static str {
+        match self {
+            Self::Sidebar => "sidebar:right",
+            Self::FloatingPanel => "floating:center",
+            Self::Footer => "footer:status",
+            Self::MainPanel => "main:primary",
+            Self::SettingsPage => "settings:extension",
+            Self::Autosuggest => "autosuggest:provider",
+            Self::Overlay => "overlay:extension",
+            Self::TranscriptRenderer => "renderer:transcript",
+            Self::MessageRenderer => "renderer:message",
+            Self::Theme => "theme:tokens",
+            Self::ToolCallRenderer => "renderer:tool-call",
+            Self::ToolResultRenderer => "renderer:tool-result",
+            Self::ToolRenderer => "renderer:tool",
+            Self::Notification => "notification:status",
+            Self::Status => "status:footer",
+            Self::Health => "health:summary",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiLayoutPolicy {
+    #[serde(default = "default_ui_slot")]
+    pub slot: String,
+    #[serde(default)]
+    pub priority: i32,
+    #[serde(default = "default_ui_min_width")]
+    pub min_width: u16,
+    #[serde(default = "default_ui_min_height")]
+    pub min_height: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_width: Option<u16>,
+    #[serde(default)]
+    pub tiny_terminal: UiTinyTerminalFallback,
+}
+
+impl Default for UiLayoutPolicy {
+    fn default() -> Self {
+        Self {
+            slot: default_ui_slot(),
+            priority: 0,
+            min_width: default_ui_min_width(),
+            min_height: default_ui_min_height(),
+            max_width: None,
+            tiny_terminal: UiTinyTerminalFallback::default(),
+        }
+    }
+}
+
+fn default_ui_slot() -> String {
+    "primary".into()
+}
+
+fn default_ui_min_width() -> u16 {
+    20
+}
+
+fn default_ui_min_height() -> u16 {
+    3
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiTinyTerminalFallback {
+    Hide,
+    #[default]
+    CompactBadge,
+    StatusLine,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiFocusPolicy {
+    #[default]
+    None,
+    Focusable,
+    ModalTrap,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiVisibilityPolicy {
+    Hidden,
+    #[default]
+    Visible,
+    UserToggleable,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiKeyDispatchPolicy {
+    #[serde(default)]
+    pub scopes: BTreeSet<String>,
+    #[serde(default = "default_key_pass_through")]
+    pub pass_through: bool,
+}
+
+fn default_key_pass_through() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiSurfaceStateUpdate {
+    pub surface_id: ContributionId,
+    pub owner_extension_id: ExtensionId,
+    #[serde(default)]
+    pub state: Value,
+    #[serde(default)]
+    pub actions: Vec<UiSurfaceAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiSurfaceAction {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_scope: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiSurfaceConflict {
+    pub surface: UiSurfaceKind,
+    pub slot: String,
+    pub owners: Vec<ContributionId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiSurfaceLayoutDecision {
+    Render,
+    CompactBadge,
+    StatusLine,
+    Hide,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UiSurfaceValidationError {
+    UnknownSurface {
+        surface_id: ContributionId,
+    },
+    MissingOwner {
+        surface_id: ContributionId,
+    },
+    InvalidOwner {
+        surface_id: ContributionId,
+        expected: ExtensionId,
+        actual: ExtensionId,
+    },
+    BadStateShape {
+        surface_id: ContributionId,
+        expected: String,
+    },
+    BlankActionId {
+        surface_id: ContributionId,
+    },
+    BlankActionLabel {
+        surface_id: ContributionId,
+    },
+    UndeclaredKeyScope {
+        surface_id: ContributionId,
+        scope: String,
+    },
+}
+
+impl fmt::Display for UiSurfaceValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownSurface { surface_id } => {
+                write!(formatter, "unknown UI surface `{surface_id}`")
+            }
+            Self::MissingOwner { surface_id } => write!(
+                formatter,
+                "UI surface `{surface_id}` does not declare an owning extension"
+            ),
+            Self::InvalidOwner {
+                surface_id,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "UI surface `{surface_id}` is owned by `{expected}`, not `{actual}`"
+            ),
+            Self::BadStateShape {
+                surface_id,
+                expected,
+            } => write!(
+                formatter,
+                "UI surface `{surface_id}` state must match `{expected}`"
+            ),
+            Self::BlankActionId { surface_id } => {
+                write!(formatter, "UI surface `{surface_id}` action id is blank")
+            }
+            Self::BlankActionLabel { surface_id } => {
+                write!(formatter, "UI surface `{surface_id}` action label is blank")
+            }
+            Self::UndeclaredKeyScope { surface_id, scope } => write!(
+                formatter,
+                "UI surface `{surface_id}` action uses undeclared key scope `{scope}`"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for UiSurfaceValidationError {}
+
+pub fn validate_ui_surface_update(
+    contribution: &ActiveContribution<UiSurfaceContribution>,
+    update: &UiSurfaceStateUpdate,
+) -> Result<(), UiSurfaceValidationError> {
+    if contribution.effective_id != update.surface_id {
+        return Err(UiSurfaceValidationError::UnknownSurface {
+            surface_id: update.surface_id.clone(),
+        });
+    }
+    let Some(expected_owner) = contribution.entry.metadata.extension_id.clone() else {
+        return Err(UiSurfaceValidationError::MissingOwner {
+            surface_id: update.surface_id.clone(),
+        });
+    };
+    if expected_owner != update.owner_extension_id {
+        return Err(UiSurfaceValidationError::InvalidOwner {
+            surface_id: update.surface_id.clone(),
+            expected: expected_owner,
+            actual: update.owner_extension_id.clone(),
+        });
+    }
+    if let Some(expected) = contribution.entry.contribution.state_schema.as_deref() {
+        let valid = match expected {
+            "any" => true,
+            "object" => update.state.is_object(),
+            "array" => update.state.is_array(),
+            "string" => update.state.is_string(),
+            "number" => update.state.is_number(),
+            "boolean" => update.state.is_boolean(),
+            _ => update.state.is_object(),
+        };
+        if !valid {
+            return Err(UiSurfaceValidationError::BadStateShape {
+                surface_id: update.surface_id.clone(),
+                expected: expected.into(),
+            });
+        }
+    }
+    for action in &update.actions {
+        if action.id.trim().is_empty() {
+            return Err(UiSurfaceValidationError::BlankActionId {
+                surface_id: update.surface_id.clone(),
+            });
+        }
+        if action.label.trim().is_empty() {
+            return Err(UiSurfaceValidationError::BlankActionLabel {
+                surface_id: update.surface_id.clone(),
+            });
+        }
+        if let Some(scope) = action.key_scope.as_deref() {
+            if !contribution
+                .entry
+                .contribution
+                .key_dispatch
+                .scopes
+                .contains(scope)
+            {
+                return Err(UiSurfaceValidationError::UndeclaredKeyScope {
+                    surface_id: update.surface_id.clone(),
+                    scope: scope.into(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+#[must_use]
+pub fn ui_surface_layout_decision(
+    contribution: &UiSurfaceContribution,
+    terminal_width: u16,
+    terminal_height: u16,
+) -> UiSurfaceLayoutDecision {
+    if contribution.visibility == UiVisibilityPolicy::Hidden {
+        return UiSurfaceLayoutDecision::Hide;
+    }
+    if terminal_width < contribution.layout.min_width
+        || terminal_height < contribution.layout.min_height
+    {
+        return match contribution.layout.tiny_terminal {
+            UiTinyTerminalFallback::Hide => UiSurfaceLayoutDecision::Hide,
+            UiTinyTerminalFallback::CompactBadge => UiSurfaceLayoutDecision::CompactBadge,
+            UiTinyTerminalFallback::StatusLine => UiSurfaceLayoutDecision::StatusLine,
+        };
+    }
+    UiSurfaceLayoutDecision::Render
+}
+
+#[must_use]
+pub fn detect_ui_surface_conflicts(
+    contributions: &[ActiveContribution<UiSurfaceContribution>],
+) -> Vec<UiSurfaceConflict> {
+    let mut by_slot: BTreeMap<(UiSurfaceKind, String), Vec<ContributionId>> = BTreeMap::new();
+    for contribution in contributions {
+        let slot = if contribution.entry.contribution.layout.slot == "primary" {
+            contribution
+                .entry
+                .contribution
+                .surface
+                .default_slot()
+                .to_string()
+        } else {
+            contribution.entry.contribution.layout.slot.clone()
+        };
+        by_slot
+            .entry((contribution.entry.contribution.surface, slot))
+            .or_default()
+            .push(contribution.effective_id.clone());
+    }
+    by_slot
+        .into_iter()
+        .filter_map(|((surface, slot), owners)| {
+            (owners.len() > 1).then_some(UiSurfaceConflict {
+                surface,
+                slot,
+                owners,
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3188,6 +3535,10 @@ mod tests {
                 surface: UiSurfaceKind::Sidebar,
                 title: "Sidebar".into(),
                 state_schema: None,
+                layout: UiLayoutPolicy::default(),
+                visibility: UiVisibilityPolicy::default(),
+                focus: UiFocusPolicy::default(),
+                key_dispatch: UiKeyDispatchPolicy::default(),
                 conflict: ConflictPolicy::default(),
             },
         )?;
@@ -3327,6 +3678,10 @@ mod tests {
                 surface: UiSurfaceKind::Sidebar,
                 title: String::new(),
                 state_schema: None,
+                layout: UiLayoutPolicy::default(),
+                visibility: UiVisibilityPolicy::default(),
+                focus: UiFocusPolicy::default(),
+                key_dispatch: UiKeyDispatchPolicy::default(),
                 conflict: ConflictPolicy::default(),
             },
         )?;
@@ -3414,6 +3769,147 @@ mod tests {
                 conflict: ConflictPolicy::default(),
             },
         )?;
+        Ok(())
+    }
+
+    fn active_ui_surface(
+        id: &str,
+        owner: &str,
+        surface: UiSurfaceKind,
+        slot: &str,
+        schema: Option<&str>,
+    ) -> Result<ActiveContribution<UiSurfaceContribution>, Box<dyn Error>> {
+        let contribution_id = ContributionId::new(id)?;
+        let extension_id = ExtensionId::new(owner)?;
+        let mut key_scopes = BTreeSet::new();
+        key_scopes.insert("extension.surface".into());
+        Ok(ActiveContribution {
+            effective_id: contribution_id.clone(),
+            entry: RegistryEntry::new(
+                RegistryEntryKey::new(id),
+                ContributionMetadata::new(
+                    contribution_id.clone(),
+                    registry_source(SourceScope::Project, SourceKind::LocalPackage, id),
+                )
+                .with_extension_id(extension_id),
+                UiSurfaceContribution {
+                    id: contribution_id,
+                    surface,
+                    title: format!("{surface:?}"),
+                    state_schema: schema.map(str::to_string),
+                    layout: UiLayoutPolicy {
+                        slot: slot.into(),
+                        min_width: 30,
+                        min_height: 8,
+                        tiny_terminal: UiTinyTerminalFallback::StatusLine,
+                        ..UiLayoutPolicy::default()
+                    },
+                    visibility: UiVisibilityPolicy::Visible,
+                    focus: UiFocusPolicy::Focusable,
+                    key_dispatch: UiKeyDispatchPolicy {
+                        scopes: key_scopes,
+                        pass_through: false,
+                    },
+                    conflict: ConflictPolicy::default(),
+                },
+            ),
+        })
+    }
+
+    #[test]
+    fn ui_surface_updates_validate_owner_state_shape_and_key_scopes() -> Result<(), Box<dyn Error>>
+    {
+        let surface = active_ui_surface(
+            "ui.processes",
+            "process-manager",
+            UiSurfaceKind::Sidebar,
+            "sidebar:right",
+            Some("object"),
+        )?;
+        let valid_update = UiSurfaceStateUpdate {
+            surface_id: ContributionId::new("ui.processes")?,
+            owner_extension_id: ExtensionId::new("process-manager")?,
+            state: serde_json::json!({ "rows": ["cargo test"] }),
+            actions: vec![UiSurfaceAction {
+                id: "stop".into(),
+                label: "Stop".into(),
+                key_scope: Some("extension.surface".into()),
+            }],
+        };
+        assert!(validate_ui_surface_update(&surface, &valid_update).is_ok());
+
+        let mut wrong_owner = valid_update.clone();
+        wrong_owner.owner_extension_id = ExtensionId::new("other-extension")?;
+        assert!(matches!(
+            validate_ui_surface_update(&surface, &wrong_owner),
+            Err(UiSurfaceValidationError::InvalidOwner { .. })
+        ));
+
+        let mut bad_shape = valid_update.clone();
+        bad_shape.state = Value::String("not an object".into());
+        assert!(matches!(
+            validate_ui_surface_update(&surface, &bad_shape),
+            Err(UiSurfaceValidationError::BadStateShape { .. })
+        ));
+
+        let mut bad_scope = valid_update;
+        bad_scope.actions[0].key_scope = Some("undeclared.scope".into());
+        assert!(matches!(
+            validate_ui_surface_update(&surface, &bad_scope),
+            Err(UiSurfaceValidationError::UndeclaredKeyScope { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn ui_surface_conflicts_are_reported_by_surface_and_slot() -> Result<(), Box<dyn Error>> {
+        let first = active_ui_surface(
+            "ui.first",
+            "first-ext",
+            UiSurfaceKind::Footer,
+            "footer:status",
+            None,
+        )?;
+        let second = active_ui_surface(
+            "ui.second",
+            "second-ext",
+            UiSurfaceKind::Footer,
+            "footer:status",
+            None,
+        )?;
+        let third = active_ui_surface(
+            "ui.third",
+            "third-ext",
+            UiSurfaceKind::Sidebar,
+            "sidebar:right",
+            None,
+        )?;
+
+        let conflicts = detect_ui_surface_conflicts(&[first, second, third]);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].surface, UiSurfaceKind::Footer);
+        assert_eq!(conflicts[0].slot, "footer:status");
+        assert_eq!(conflicts[0].owners.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn ui_surface_layout_decision_honors_tiny_terminal_fallbacks() -> Result<(), Box<dyn Error>> {
+        let surface = active_ui_surface(
+            "ui.status",
+            "status-ext",
+            UiSurfaceKind::Status,
+            "status:footer",
+            None,
+        )?;
+        assert_eq!(
+            ui_surface_layout_decision(&surface.entry.contribution, 120, 30),
+            UiSurfaceLayoutDecision::Render
+        );
+        assert_eq!(
+            ui_surface_layout_decision(&surface.entry.contribution, 10, 5),
+            UiSurfaceLayoutDecision::StatusLine
+        );
         Ok(())
     }
 

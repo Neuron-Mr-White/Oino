@@ -28,6 +28,10 @@ pub enum TuiAction {
         scope: ToolSettingsScope,
         enabled: bool,
     },
+    RunExtensionUiAction {
+        surface_id: String,
+        action_id: String,
+    },
     SetSessionTitle(String),
     AbortPrompt,
     Quit,

@@ -23,7 +23,12 @@ use crossterm::{
 use model_catalog::ModelCatalogUpdate;
 use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider, Tool};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
-use oino_extension_core::{ContributionId, RegistryPolicy, SourceScope};
+use oino_extension_core::{
+    ActiveContribution, ContributionId, ContributionMetadata, DiagnosticContribution,
+    HealthContribution, RegistryEntry, RegistryEntryKey, RegistryPolicy, RendererContribution,
+    RendererTarget, SourceScope, UiFocusPolicy, UiKeyDispatchPolicy, UiLayoutPolicy,
+    UiSurfaceContribution, UiSurfaceKind, UiTinyTerminalFallback, UiVisibilityPolicy,
+};
 use oino_extension_manager::{
     ExtensionDiscovery, ExtensionManager, ExtensionManagerConfig, ExtensionManagerSnapshot,
 };
@@ -520,6 +525,199 @@ fn load_extension_snapshot(
     ExtensionManager::new(config).load()
 }
 
+fn apply_extension_snapshot_to_tui_state(
+    state: &mut TuiState,
+    snapshot: &ExtensionManagerSnapshot,
+) {
+    state.set_extension_ui_surfaces(extension_ui_surfaces(snapshot));
+}
+
+fn extension_ui_surfaces(
+    snapshot: &ExtensionManagerSnapshot,
+) -> Vec<ActiveContribution<UiSurfaceContribution>> {
+    let mut surfaces = snapshot.registries.ui_surfaces.active.clone();
+    surfaces.extend(
+        snapshot
+            .registries
+            .settings_pages
+            .active
+            .iter()
+            .map(|active| {
+                synthetic_ui_surface(
+                    &active.effective_id,
+                    &active.entry.metadata,
+                    UiSurfaceKind::SettingsPage,
+                    &active.entry.contribution.title,
+                    15,
+                )
+            }),
+    );
+    surfaces.extend(snapshot.registries.themes.active.iter().map(|active| {
+        synthetic_ui_surface(
+            &active.effective_id,
+            &active.entry.metadata,
+            UiSurfaceKind::Theme,
+            &format!("Theme {}", active.entry.contribution.path),
+            10,
+        )
+    }));
+    surfaces.extend(
+        snapshot
+            .registries
+            .autosuggest_providers
+            .active
+            .iter()
+            .map(|active| {
+                synthetic_ui_surface(
+                    &active.effective_id,
+                    &active.entry.metadata,
+                    UiSurfaceKind::Autosuggest,
+                    &format!("Autosuggest {}", active.entry.contribution.trigger),
+                    5,
+                )
+            }),
+    );
+    surfaces.extend(
+        snapshot
+            .registries
+            .transcript_renderers
+            .active
+            .iter()
+            .map(|active| {
+                synthetic_renderer_surface(
+                    active,
+                    UiSurfaceKind::TranscriptRenderer,
+                    "Transcript renderer",
+                )
+            }),
+    );
+    surfaces.extend(
+        snapshot
+            .registries
+            .message_renderers
+            .active
+            .iter()
+            .map(|active| {
+                synthetic_renderer_surface(
+                    active,
+                    UiSurfaceKind::MessageRenderer,
+                    "Message renderer",
+                )
+            }),
+    );
+    surfaces.extend(
+        snapshot
+            .registries
+            .tool_renderers
+            .active
+            .iter()
+            .map(|active| {
+                let kind = match active.entry.contribution.target {
+                    RendererTarget::ToolCall => UiSurfaceKind::ToolCallRenderer,
+                    RendererTarget::ToolResult => UiSurfaceKind::ToolResultRenderer,
+                    RendererTarget::TranscriptMessage | RendererTarget::MarkdownBlock => {
+                        UiSurfaceKind::ToolRenderer
+                    }
+                };
+                synthetic_renderer_surface(active, kind, "Tool renderer")
+            }),
+    );
+    surfaces.extend(
+        snapshot
+            .registries
+            .diagnostics
+            .active
+            .iter()
+            .map(synthetic_diagnostic_surface),
+    );
+    surfaces.extend(
+        snapshot
+            .registries
+            .health
+            .active
+            .iter()
+            .map(synthetic_health_surface),
+    );
+    surfaces
+}
+
+fn synthetic_renderer_surface(
+    active: &ActiveContribution<RendererContribution>,
+    surface: UiSurfaceKind,
+    prefix: &str,
+) -> ActiveContribution<UiSurfaceContribution> {
+    synthetic_ui_surface(
+        &active.effective_id,
+        &active.entry.metadata,
+        surface,
+        &format!("{prefix} {:?}", active.entry.contribution.target),
+        5,
+    )
+}
+
+fn synthetic_diagnostic_surface(
+    active: &ActiveContribution<DiagnosticContribution>,
+) -> ActiveContribution<UiSurfaceContribution> {
+    synthetic_ui_surface(
+        &active.effective_id,
+        &active.entry.metadata,
+        UiSurfaceKind::Notification,
+        &active.entry.contribution.title,
+        5,
+    )
+}
+
+fn synthetic_health_surface(
+    active: &ActiveContribution<HealthContribution>,
+) -> ActiveContribution<UiSurfaceContribution> {
+    synthetic_ui_surface(
+        &active.effective_id,
+        &active.entry.metadata,
+        UiSurfaceKind::Health,
+        &active.entry.contribution.title,
+        5,
+    )
+}
+
+fn synthetic_ui_surface(
+    id: &ContributionId,
+    metadata: &ContributionMetadata,
+    surface: UiSurfaceKind,
+    title: &str,
+    priority: i32,
+) -> ActiveContribution<UiSurfaceContribution> {
+    let mut scopes = BTreeSet::new();
+    scopes.insert(format!("extension.{}", surface.as_permission_name()));
+    ActiveContribution {
+        effective_id: id.clone(),
+        entry: RegistryEntry::new(
+            RegistryEntryKey::new(format!("synthetic-ui:{surface:?}:{id}")),
+            metadata.clone(),
+            UiSurfaceContribution {
+                id: id.clone(),
+                surface,
+                title: title.into(),
+                state_schema: Some("object".into()),
+                layout: UiLayoutPolicy {
+                    slot: surface.default_slot().into(),
+                    priority,
+                    min_width: 24,
+                    min_height: 8,
+                    max_width: Some(34),
+                    tiny_terminal: UiTinyTerminalFallback::CompactBadge,
+                },
+                visibility: UiVisibilityPolicy::Visible,
+                focus: UiFocusPolicy::None,
+                key_dispatch: UiKeyDispatchPolicy {
+                    scopes,
+                    pass_through: true,
+                },
+                conflict: Default::default(),
+            },
+        ),
+    }
+}
+
 fn extension_tool_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, Arc<dyn Tool>> {
     let mut tools = BTreeMap::new();
     for active in &snapshot.registries.tools.active {
@@ -854,8 +1052,10 @@ async fn run_tui(
     let mut tool_settings = load_tool_settings(&resource_paths).await;
     apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd).await;
     let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
+    let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
+    apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot);
     apply_resource_catalog_to_state(&mut state, &resource_catalog);
     state.set_file_paths(scan_project_files(&cwd));
     state
@@ -998,7 +1198,15 @@ async fn run_tui(
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
                 apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
                     .await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
                 state.set_tool_settings(tool_settings_items(&tool_settings));
+                apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot);
+            }
+            TuiAction::RunExtensionUiAction {
+                surface_id,
+                action_id,
+            } => {
+                state.status = format!("Extension UI action `{surface_id}.{action_id}` queued");
             }
             TuiAction::SetSessionTitle(title) => {
                 if let Err(err) = harness.set_session_title(title.clone()).await {

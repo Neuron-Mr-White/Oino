@@ -22,7 +22,13 @@ use crate::{
     },
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use oino_extension_core::{
+    detect_ui_surface_conflicts, validate_ui_surface_update, ActiveContribution, ContributionId,
+    UiSurfaceAction, UiSurfaceConflict, UiSurfaceContribution, UiSurfaceStateUpdate,
+    UiSurfaceValidationError,
+};
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
+use std::collections::BTreeMap;
 
 pub const HELP_STATUS: &str = "Type /help for shortcuts and commands";
 
@@ -113,6 +119,122 @@ pub enum ChordState {
     CtrlO,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExtensionUiState {
+    pub surfaces: Vec<ActiveContribution<UiSurfaceContribution>>,
+    pub state_summaries: BTreeMap<ContributionId, String>,
+    pub actions: BTreeMap<ContributionId, Vec<UiSurfaceAction>>,
+    pub focused_surface: Option<ContributionId>,
+    pub conflicts: Vec<UiSurfaceConflict>,
+}
+
+impl ExtensionUiState {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.surfaces.is_empty()
+    }
+
+    pub fn set_surfaces(&mut self, mut surfaces: Vec<ActiveContribution<UiSurfaceContribution>>) {
+        surfaces.sort_by(|left, right| {
+            right
+                .entry
+                .contribution
+                .layout
+                .priority
+                .cmp(&left.entry.contribution.layout.priority)
+                .then_with(|| left.effective_id.cmp(&right.effective_id))
+        });
+        self.conflicts = detect_ui_surface_conflicts(&surfaces);
+        self.state_summaries
+            .retain(|id, _| surfaces.iter().any(|surface| &surface.effective_id == id));
+        self.actions
+            .retain(|id, _| surfaces.iter().any(|surface| &surface.effective_id == id));
+        if self
+            .focused_surface
+            .as_ref()
+            .is_some_and(|id| !surfaces.iter().any(|surface| &surface.effective_id == id))
+        {
+            self.focused_surface = None;
+        }
+        self.surfaces = surfaces;
+    }
+
+    pub fn apply_update(
+        &mut self,
+        update: UiSurfaceStateUpdate,
+    ) -> Result<(), UiSurfaceValidationError> {
+        let surface = self
+            .surfaces
+            .iter()
+            .find(|surface| surface.effective_id == update.surface_id)
+            .ok_or_else(|| UiSurfaceValidationError::UnknownSurface {
+                surface_id: update.surface_id.clone(),
+            })?;
+        validate_ui_surface_update(surface, &update)?;
+        self.state_summaries.insert(
+            update.surface_id.clone(),
+            summarize_extension_ui_state(&update.state),
+        );
+        self.actions.insert(update.surface_id, update.actions);
+        Ok(())
+    }
+
+    pub fn focus_surface(&mut self, surface_id: &ContributionId) -> bool {
+        if self
+            .surfaces
+            .iter()
+            .any(|surface| &surface.effective_id == surface_id)
+        {
+            self.focused_surface = Some(surface_id.clone());
+            return true;
+        }
+        false
+    }
+
+    #[must_use]
+    pub fn action_for_scope(&self, scope: &str) -> Option<TuiAction> {
+        let focused = self.focused_surface.as_ref()?;
+        let actions = self.actions.get(focused)?;
+        let action = actions
+            .iter()
+            .find(|action| action.key_scope.as_deref() == Some(scope))?;
+        Some(TuiAction::RunExtensionUiAction {
+            surface_id: focused.as_str().to_string(),
+            action_id: action.id.clone(),
+        })
+    }
+}
+
+fn summarize_extension_ui_state(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(items) => format!("{} item{}", items.len(), plural(items.len())),
+        serde_json::Value::Object(map) => {
+            if let Some(summary) = map.get("summary").and_then(serde_json::Value::as_str) {
+                return summary.to_string();
+            }
+            if let Some(title) = map.get("title").and_then(serde_json::Value::as_str) {
+                return title.to_string();
+            }
+            if let Some(rows) = map.get("rows").and_then(serde_json::Value::as_array) {
+                return format!("{} row{}", rows.len(), plural(rows.len()));
+            }
+            format!("{} field{}", map.len(), plural(map.len()))
+        }
+        serde_json::Value::Bool(value) => value.to_string(),
+        serde_json::Value::Number(value) => value.to_string(),
+    }
+}
+
+fn plural(count: usize) -> &'static str {
+    if count == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KeymapKeyResult {
     Unhandled,
@@ -194,6 +316,7 @@ pub struct TuiState {
     pub prompt_resources: Vec<PromptResource>,
     pub skill_resources: Vec<SkillResource>,
     pub resource_diagnostics: Vec<String>,
+    pub extension_ui: ExtensionUiState,
     pub help_scroll: usize,
     pub help_search: String,
     pub help_search_active: bool,
@@ -231,6 +354,7 @@ impl Default for TuiState {
             prompt_resources: Vec::new(),
             skill_resources: Vec::new(),
             resource_diagnostics: Vec::new(),
+            extension_ui: ExtensionUiState::default(),
             help_scroll: 0,
             help_search: String::new(),
             help_search_active: false,
@@ -872,6 +996,29 @@ impl TuiState {
 
     pub fn set_tool_settings(&mut self, tools: Vec<ToolSettingsItem>) {
         self.settings.set_tools(tools);
+    }
+
+    pub fn set_extension_ui_surfaces(
+        &mut self,
+        surfaces: Vec<ActiveContribution<UiSurfaceContribution>>,
+    ) {
+        self.extension_ui.set_surfaces(surfaces);
+    }
+
+    pub fn apply_extension_ui_update(
+        &mut self,
+        update: UiSurfaceStateUpdate,
+    ) -> Result<(), UiSurfaceValidationError> {
+        self.extension_ui.apply_update(update)
+    }
+
+    pub fn focus_extension_surface(&mut self, surface_id: &ContributionId) -> bool {
+        self.extension_ui.focus_surface(surface_id)
+    }
+
+    #[must_use]
+    pub fn extension_key_action_for_scope(&self, scope: &str) -> Option<TuiAction> {
+        self.extension_ui.action_for_scope(scope)
     }
 
     pub fn set_keymap(&mut self, keymap: KeymapConfig) {

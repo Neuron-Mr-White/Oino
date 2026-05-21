@@ -219,7 +219,7 @@ Planning decisions recorded for implementation:
     3. Preserve existing built-in behavior and settings defaults.
     4. Add integration tests for model-visible and user-invoked extension contributions.
 
-- unstarted: Task 15 — Implement UI Surface Registry Contracts
+- completed: Task 15 — Implement UI Surface Registry Contracts
   - Description: Define extension-visible UI surface contributions without allowing extension code in Ratatui render paths.
   - Dependencies: Tasks 4, 6, and 10.
   - Acceptance Criteria:
@@ -233,7 +233,7 @@ Planning decisions recorded for implementation:
     3. Add validation for actions, state updates, and declared key scopes.
     4. Add surface registry tests.
 
-- unstarted: Task 16 — Wire Registry-backed UI Surfaces into TUI State and Rendering
+- completed: Task 16 — Wire Registry-backed UI Surfaces into TUI State and Rendering
   - Description: Consume UI registry snapshots in `oino-tui` while preserving deterministic state-machine rendering and no blocking render work.
   - Dependencies: Tasks 8 and 15.
   - Acceptance Criteria:

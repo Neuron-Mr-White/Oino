@@ -18,6 +18,10 @@ use crate::{
     theme::{theme_cache_hash, Theme},
     transcript::transcript_line_blocks,
 };
+use oino_extension_core::{
+    ui_surface_layout_decision, ActiveContribution, UiSurfaceContribution, UiSurfaceKind,
+    UiSurfaceLayoutDecision,
+};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Position, Rect},
     style::{Color, Modifier, Style},
@@ -196,31 +200,94 @@ pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
 pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme) {
     let area = frame.area();
     if area.width < 20 || area.height < 8 {
-        render_tiny(frame, area, theme);
+        render_tiny(frame, area, state, theme);
         return;
     }
 
     let composer_height = composer_height(state.composer.text(), area.width, area.height);
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
+    let main_panel_count = extension_surfaces(state, UiSurfaceKind::MainPanel, area)
+        .into_iter()
+        .take(1)
+        .count();
+    let footer_count = extension_footer_surfaces(state, area)
+        .into_iter()
+        .take(3)
+        .count();
+    let main_height = if main_panel_count == 0 { 0 } else { 4 };
+    let footer_height = footer_count as u16;
+    let constraints = if main_height == 0 && footer_height == 0 {
+        vec![
             Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
             Constraint::Length(composer_height),
-        ])
+        ]
+    } else if main_height == 0 {
+        vec![
+            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
+            Constraint::Length(footer_height.saturating_add(2)),
+            Constraint::Length(composer_height),
+        ]
+    } else if footer_height == 0 {
+        vec![
+            Constraint::Length(main_height),
+            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
+            Constraint::Length(composer_height),
+        ]
+    } else {
+        vec![
+            Constraint::Length(main_height),
+            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
+            Constraint::Length(footer_height.saturating_add(2)),
+            Constraint::Length(composer_height),
+        ]
+    };
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
         .split(area);
 
-    render_transcript(frame, chunks[0], state, theme);
-    render_composer(frame, chunks[1], state, theme);
+    let mut chunk_index = 0;
+    if main_height > 0 {
+        render_extension_main_panel(frame, chunks[chunk_index], state, theme);
+        chunk_index += 1;
+    }
+
+    let transcript_area = chunks[chunk_index];
+    chunk_index += 1;
+    let sidebar_surfaces = extension_surfaces(state, UiSurfaceKind::Sidebar, transcript_area);
+    if sidebar_surfaces.is_empty() || transcript_area.width < 64 {
+        render_transcript(frame, transcript_area, state, theme);
+    } else {
+        let sidebar_width = extension_sidebar_width(&sidebar_surfaces, transcript_area.width);
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(30), Constraint::Length(sidebar_width)])
+            .split(transcript_area);
+        render_transcript(frame, panes[0], state, theme);
+        render_extension_sidebar(frame, panes[1], state, theme, &sidebar_surfaces);
+    }
+
+    if footer_height > 0 {
+        render_extension_footer(frame, chunks[chunk_index], state, theme);
+        chunk_index += 1;
+    }
+
+    let composer_area = chunks[chunk_index];
+    render_composer(frame, composer_area, state, theme);
 
     if state.overlay.is_none() {
         if let Some(suggestions) = state.command_suggestions_view() {
-            render_command_suggestions(frame, area, chunks[1], &suggestions, theme);
+            render_command_suggestions(frame, area, composer_area, &suggestions, theme);
         }
+        render_extension_floating_panels(frame, area, state, theme);
+        render_extension_autosuggest_badges(frame, area, composer_area, state, theme);
     }
 
     match state.overlay {
         Some(OverlayKind::Help) => render_help_overlay(frame, area, state, theme),
-        Some(OverlayKind::Settings) => render_settings_overlay(frame, area, &state.settings, theme),
+        Some(OverlayKind::Settings) => {
+            render_settings_overlay(frame, area, &state.settings, theme);
+            render_extension_settings_badges(frame, area, state, theme);
+        }
         Some(OverlayKind::SendPanel) => render_send_panel_overlay(frame, area, state, theme),
         Some(OverlayKind::Sessions) => render_sessions_overlay(frame, area, state, theme),
         Some(OverlayKind::Prompts) => render_prompts_overlay(frame, area, state, theme),
@@ -252,9 +319,347 @@ fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     );
 }
 
-fn render_tiny(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
-    let paragraph = Paragraph::new(TINY_MESSAGE).style(theme.warning);
+fn render_tiny(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let mut lines = vec![Line::from(Span::styled(TINY_MESSAGE, theme.warning))];
+    let badges = extension_tiny_fallback_labels(state, area);
+    if !badges.is_empty() && area.height > 1 {
+        lines.push(Line::from(Span::styled(
+            format!("Ext: {}", badges.join(", ")),
+            Style::default().fg(theme.muted),
+        )));
+    }
+    let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, area);
+}
+
+fn extension_surfaces(
+    state: &TuiState,
+    surface_kind: UiSurfaceKind,
+    area: Rect,
+) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
+    state
+        .extension_ui
+        .surfaces
+        .iter()
+        .filter(|surface| surface.entry.contribution.surface == surface_kind)
+        .filter(|surface| {
+            ui_surface_layout_decision(&surface.entry.contribution, area.width, area.height.max(8))
+                == UiSurfaceLayoutDecision::Render
+        })
+        .collect()
+}
+
+fn extension_footer_surfaces(
+    state: &TuiState,
+    area: Rect,
+) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
+    [
+        UiSurfaceKind::Footer,
+        UiSurfaceKind::Status,
+        UiSurfaceKind::Notification,
+        UiSurfaceKind::Health,
+        UiSurfaceKind::Theme,
+    ]
+    .into_iter()
+    .flat_map(|kind| extension_surfaces(state, kind, area))
+    .collect()
+}
+
+fn extension_tiny_fallback_labels(state: &TuiState, area: Rect) -> Vec<String> {
+    state
+        .extension_ui
+        .surfaces
+        .iter()
+        .filter_map(|surface| {
+            match ui_surface_layout_decision(&surface.entry.contribution, area.width, area.height) {
+                UiSurfaceLayoutDecision::CompactBadge | UiSurfaceLayoutDecision::StatusLine => {
+                    Some(extension_surface_label(state, surface))
+                }
+                UiSurfaceLayoutDecision::Render | UiSurfaceLayoutDecision::Hide => None,
+            }
+        })
+        .take(3)
+        .collect()
+}
+
+fn extension_surface_label(
+    state: &TuiState,
+    surface: &ActiveContribution<UiSurfaceContribution>,
+) -> String {
+    let title = surface.entry.contribution.title.trim();
+    let mut label = if title.is_empty() {
+        surface.effective_id.as_str().to_string()
+    } else {
+        title.to_string()
+    };
+    if let Some(summary) = state
+        .extension_ui
+        .state_summaries
+        .get(&surface.effective_id)
+    {
+        if !summary.trim().is_empty() {
+            label.push_str(": ");
+            label.push_str(summary.trim());
+        }
+    }
+    if surface_has_conflict(state, &surface.effective_id) {
+        label.push_str(" ⚠ conflict");
+    }
+    label
+}
+
+fn surface_has_conflict(
+    state: &TuiState,
+    surface_id: &oino_extension_core::ContributionId,
+) -> bool {
+    state
+        .extension_ui
+        .conflicts
+        .iter()
+        .any(|conflict| conflict.owners.iter().any(|owner| owner == surface_id))
+}
+
+fn extension_sidebar_width(
+    surfaces: &[&ActiveContribution<UiSurfaceContribution>],
+    available_width: u16,
+) -> u16 {
+    let requested = surfaces
+        .iter()
+        .filter_map(|surface| surface.entry.contribution.layout.max_width)
+        .max()
+        .unwrap_or(32)
+        .max(
+            surfaces
+                .iter()
+                .map(|surface| surface.entry.contribution.layout.min_width)
+                .max()
+                .unwrap_or(24),
+        );
+    requested.min(available_width.saturating_sub(32)).max(20)
+}
+
+fn render_extension_sidebar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+    surfaces: &[&ActiveContribution<UiSurfaceContribution>],
+) {
+    let lines = extension_surface_lines(state, surfaces, area.width.saturating_sub(2) as usize);
+    let title = extension_group_title(
+        "Extensions",
+        surfaces.len(),
+        state.extension_ui.conflicts.len(),
+    );
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(title, theme.title))
+            .borders(Borders::ALL)
+            .border_style(theme.panel_border),
+    );
+    frame.render_widget(paragraph, area);
+}
+
+fn render_extension_main_panel(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let surfaces = extension_surfaces(state, UiSurfaceKind::MainPanel, area);
+    if surfaces.is_empty() {
+        return;
+    }
+    let lines = extension_surface_lines(state, &surfaces, area.width.saturating_sub(2) as usize);
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(" Extension Main ", theme.title))
+            .borders(Borders::ALL)
+            .border_style(theme.panel_border),
+    );
+    frame.render_widget(paragraph, area);
+}
+
+fn render_extension_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let surfaces = extension_footer_surfaces(state, area);
+    if surfaces.is_empty() {
+        return;
+    }
+    let lines = extension_surface_lines(state, &surfaces, area.width.saturating_sub(2) as usize);
+    let title = extension_group_title(
+        "Extension Status",
+        surfaces.len(),
+        state.extension_ui.conflicts.len(),
+    );
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(title, theme.title))
+            .borders(Borders::ALL)
+            .border_style(theme.panel_border),
+    );
+    frame.render_widget(paragraph, area);
+}
+
+fn render_extension_floating_panels(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+) {
+    let mut surfaces = extension_surfaces(state, UiSurfaceKind::FloatingPanel, area);
+    surfaces.extend(extension_surfaces(state, UiSurfaceKind::Overlay, area));
+    if surfaces.is_empty() {
+        return;
+    }
+    let width = if area.width < 24 {
+        area.width
+    } else {
+        area.width.min(54)
+    };
+    let height = (surfaces.len() as u16)
+        .saturating_add(3)
+        .min(area.height.saturating_sub(2));
+    if height < 3 {
+        return;
+    }
+    let panel_area = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, panel_area);
+    let lines = extension_surface_lines(
+        state,
+        &surfaces,
+        panel_area.width.saturating_sub(2) as usize,
+    );
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(" Extension Panel ", theme.title))
+            .borders(Borders::ALL)
+            .border_style(theme.focused_border),
+    );
+    frame.render_widget(paragraph, panel_area);
+}
+
+fn render_extension_autosuggest_badges(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    composer_area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+) {
+    let mut surfaces = extension_surfaces(state, UiSurfaceKind::Autosuggest, area);
+    surfaces.extend(extension_surfaces(
+        state,
+        UiSurfaceKind::TranscriptRenderer,
+        area,
+    ));
+    surfaces.extend(extension_surfaces(
+        state,
+        UiSurfaceKind::MessageRenderer,
+        area,
+    ));
+    surfaces.extend(extension_surfaces(
+        state,
+        UiSurfaceKind::ToolCallRenderer,
+        area,
+    ));
+    surfaces.extend(extension_surfaces(
+        state,
+        UiSurfaceKind::ToolResultRenderer,
+        area,
+    ));
+    surfaces.extend(extension_surfaces(state, UiSurfaceKind::ToolRenderer, area));
+    if surfaces.is_empty() || composer_area.y == 0 {
+        return;
+    }
+    let labels = surfaces
+        .iter()
+        .take(4)
+        .map(|surface| extension_surface_label(state, surface))
+        .collect::<Vec<_>>()
+        .join(" • ");
+    if labels.is_empty() {
+        return;
+    }
+    let y = composer_area.y.saturating_sub(1);
+    let badge_area = Rect {
+        x: 1,
+        y,
+        width: area.width.saturating_sub(2),
+        height: 1,
+    };
+    frame.render_widget(
+        Paragraph::new(truncate_to_width(
+            &format!("Ext: {labels}"),
+            badge_area.width as usize,
+        ))
+        .style(Style::default().fg(theme.muted)),
+        badge_area,
+    );
+}
+
+fn render_extension_settings_badges(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+) {
+    let surfaces = extension_surfaces(state, UiSurfaceKind::SettingsPage, area);
+    if surfaces.is_empty() {
+        return;
+    }
+    let height = (surfaces.len() as u16).saturating_add(2).min(6);
+    let panel_area = Rect {
+        x: area.x.saturating_add(area.width.saturating_sub(34)),
+        y: area.y.saturating_add(1),
+        width: area.width.min(33),
+        height,
+    };
+    frame.render_widget(Clear, panel_area);
+    let lines = extension_surface_lines(
+        state,
+        &surfaces,
+        panel_area.width.saturating_sub(2) as usize,
+    );
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .title(Span::styled(" Extension Settings ", theme.title))
+            .borders(Borders::ALL)
+            .border_style(theme.panel_border),
+    );
+    frame.render_widget(paragraph, panel_area);
+}
+
+fn extension_surface_lines(
+    state: &TuiState,
+    surfaces: &[&ActiveContribution<UiSurfaceContribution>],
+    width: usize,
+) -> Vec<Line<'static>> {
+    surfaces
+        .iter()
+        .map(|surface| {
+            let label = extension_surface_label(state, surface);
+            let focus =
+                if state.extension_ui.focused_surface.as_ref() == Some(&surface.effective_id) {
+                    "› "
+                } else {
+                    "  "
+                };
+            Line::from(vec![
+                Span::styled(focus.to_string(), Style::default().fg(Color::Cyan)),
+                Span::raw(truncate_to_width(&label, width.saturating_sub(2))),
+            ])
+        })
+        .collect()
+}
+
+fn extension_group_title(label: &str, count: usize, conflicts: usize) -> String {
+    if conflicts == 0 {
+        format!(" {label} {count} ")
+    } else {
+        format!(
+            " {label} {count} • {conflicts} conflict{} ",
+            if conflicts == 1 { "" } else { "s" }
+        )
+    }
 }
 
 pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> usize {
@@ -2879,8 +3284,15 @@ mod tests {
         settings::CollapseMode,
         TuiAction,
     };
+    use oino_extension_core::{
+        ActiveContribution, ContributionId, ContributionMetadata, ExtensionId, RegistryEntry,
+        RegistryEntryKey, SourceDescriptor, SourceKind, SourceScope, UiFocusPolicy,
+        UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceAction, UiSurfaceStateUpdate,
+        UiTinyTerminalFallback, UiVisibilityPolicy,
+    };
     use ratatui::{backend::TestBackend, Terminal};
     use serde_json::json;
+    use std::{collections::BTreeSet, error::Error, path::PathBuf};
 
     fn draw_state(width: u16, height: u16, state: &TuiState) -> ratatui::buffer::Buffer {
         let backend = TestBackend::new(width, height);
@@ -2896,6 +3308,65 @@ mod tests {
 
     fn line_texts(lines: Vec<Line<'static>>) -> Vec<String> {
         lines.iter().map(plain_line).collect()
+    }
+
+    fn buffer_text(buffer: &ratatui::buffer::Buffer) -> String {
+        buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>()
+    }
+
+    fn extension_surface(
+        id: &str,
+        owner: &str,
+        surface: UiSurfaceKind,
+        title: &str,
+        slot: &str,
+        priority: i32,
+    ) -> Result<ActiveContribution<UiSurfaceContribution>, Box<dyn Error>> {
+        let id = ContributionId::new(id)?;
+        let owner = ExtensionId::new(owner)?;
+        let mut scopes = BTreeSet::new();
+        scopes.insert("extension.surface".into());
+        Ok(ActiveContribution {
+            effective_id: id.clone(),
+            entry: RegistryEntry::new(
+                RegistryEntryKey::new(format!("test-{id}")),
+                ContributionMetadata::new(
+                    id.clone(),
+                    SourceDescriptor {
+                        scope: SourceScope::Project,
+                        kind: SourceKind::LocalPackage,
+                        path: Some(PathBuf::from(format!(".oino/extensions/{id}"))),
+                        registry: None,
+                    },
+                )
+                .with_extension_id(owner),
+                UiSurfaceContribution {
+                    id,
+                    surface,
+                    title: title.into(),
+                    state_schema: Some("object".into()),
+                    layout: UiLayoutPolicy {
+                        slot: slot.into(),
+                        priority,
+                        min_width: 24,
+                        min_height: 8,
+                        max_width: Some(32),
+                        tiny_terminal: UiTinyTerminalFallback::CompactBadge,
+                    },
+                    visibility: UiVisibilityPolicy::Visible,
+                    focus: UiFocusPolicy::Focusable,
+                    key_dispatch: UiKeyDispatchPolicy {
+                        scopes,
+                        pass_through: false,
+                    },
+                    conflict: Default::default(),
+                },
+            ),
+        })
     }
 
     #[test]
@@ -2963,6 +3434,128 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(text.contains("Oino needs"));
+    }
+
+    #[test]
+    fn registry_backed_extension_surfaces_render_from_state() -> Result<(), Box<dyn Error>> {
+        let mut state = TuiState::new();
+        state.set_extension_ui_surfaces(vec![
+            extension_surface(
+                "ui.processes",
+                "process-manager",
+                UiSurfaceKind::Sidebar,
+                "Process Manager",
+                "sidebar:right",
+                30,
+            )?,
+            extension_surface(
+                "ui.status",
+                "process-manager",
+                UiSurfaceKind::Footer,
+                "Background Jobs",
+                "footer:status",
+                20,
+            )?,
+            extension_surface(
+                "ui.float",
+                "process-manager",
+                UiSurfaceKind::FloatingPanel,
+                "Process Details",
+                "floating:center",
+                10,
+            )?,
+            extension_surface(
+                "ui.suggest",
+                "process-manager",
+                UiSurfaceKind::Autosuggest,
+                "Process Suggestions",
+                "autosuggest:provider",
+                5,
+            )?,
+        ]);
+        state.apply_extension_ui_update(UiSurfaceStateUpdate {
+            surface_id: ContributionId::new("ui.processes")?,
+            owner_extension_id: ExtensionId::new("process-manager")?,
+            state: json!({ "summary": "2 running" }),
+            actions: vec![UiSurfaceAction {
+                id: "stop".into(),
+                label: "Stop selected".into(),
+                key_scope: Some("extension.surface".into()),
+            }],
+        })?;
+        assert!(state.focus_extension_surface(&ContributionId::new("ui.processes")?));
+        assert_eq!(
+            state.extension_key_action_for_scope("extension.surface"),
+            Some(TuiAction::RunExtensionUiAction {
+                surface_id: "ui.processes".into(),
+                action_id: "stop".into(),
+            })
+        );
+        state.apply_extension_ui_update(UiSurfaceStateUpdate {
+            surface_id: ContributionId::new("ui.status")?,
+            owner_extension_id: ExtensionId::new("process-manager")?,
+            state: json!({ "summary": "jobs healthy" }),
+            actions: Vec::new(),
+        })?;
+
+        let buffer = draw_state(100, 30, &state);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("Process Manager"));
+        assert!(text.contains("2 running"));
+        assert!(text.contains("Extension Status"));
+        assert!(text.contains("jobs healthy"));
+        assert!(text.contains("Extension Panel"));
+        assert!(text.contains("Process Details"));
+        assert!(text.contains("Process Suggestions"));
+        Ok(())
+    }
+
+    #[test]
+    fn registry_backed_extension_surfaces_show_tiny_fallbacks() -> Result<(), Box<dyn Error>> {
+        let mut state = TuiState::new();
+        state.set_extension_ui_surfaces(vec![extension_surface(
+            "ui.tiny",
+            "tiny-extension",
+            UiSurfaceKind::Status,
+            "Tiny Status",
+            "status:footer",
+            0,
+        )?]);
+        let buffer = draw_state(18, 6, &state);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("Oino needs"));
+        assert!(text.contains("Ext:"));
+        assert!(text.contains("Tiny"));
+        Ok(())
+    }
+
+    #[test]
+    fn registry_backed_extension_surfaces_show_conflict_badges() -> Result<(), Box<dyn Error>> {
+        let mut state = TuiState::new();
+        state.set_extension_ui_surfaces(vec![
+            extension_surface(
+                "ui.first",
+                "first-extension",
+                UiSurfaceKind::Footer,
+                "First Footer",
+                "footer:status",
+                1,
+            )?,
+            extension_surface(
+                "ui.second",
+                "second-extension",
+                UiSurfaceKind::Footer,
+                "Second Footer",
+                "footer:status",
+                1,
+            )?,
+        ]);
+        let buffer = draw_state(80, 24, &state);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("conflict"));
+        assert!(text.contains("First Footer"));
+        assert!(text.contains("Second Footer"));
+        Ok(())
     }
 
     #[test]

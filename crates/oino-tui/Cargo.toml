@@ -11,6 +11,7 @@ path = "src/bin/render_test.rs"
 [dependencies]
 crossterm.workspace = true
 nucleo.workspace = true
+oino-extension-core = { path = "../oino-extension-core" }
 oino-types = { path = "../oino-types" }
 pulldown-cmark.workspace = true
 ratatui.workspace = true
