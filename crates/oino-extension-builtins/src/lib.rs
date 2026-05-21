@@ -10,11 +10,11 @@ settings pages, themes, and provider metadata as registry contributions.
 use oino_agent_loop::{Tool, ToolDefinition, ToolExecutionMode as AgentToolExecutionMode};
 use oino_extension_core::{
     CommandContribution, CommandRegistry, ContributionId, ContributionMetadata, ExtensionCoreError,
-    ExtensionId, KeymapContribution, KeymapRegistry, LifecycleState, ProviderContribution,
-    ProviderModelRegistry, RegistryEntryKey, RegistryValidationError, ResourceContribution,
-    ResourceKind, ResourceRegistry, SettingsPageContribution, SettingsPageRegistry,
-    SourceDescriptor, SourceKind, SourceScope, ThemeContribution, ThemeRegistry, ToolContribution,
-    ToolExecutionMode, ToolRegistry,
+    ExtensionId, HookContribution, HookEventKind, HookMode, HookRegistry, KeymapContribution,
+    KeymapRegistry, LifecycleState, ProviderContribution, ProviderModelRegistry, RegistryEntryKey,
+    RegistryValidationError, ResourceContribution, ResourceKind, ResourceRegistry,
+    SettingsPageContribution, SettingsPageRegistry, SourceDescriptor, SourceKind, SourceScope,
+    ThemeContribution, ThemeRegistry, ToolContribution, ToolExecutionMode, ToolRegistry,
 };
 use oino_resource::ResourceCatalog;
 use oino_tui::{
@@ -38,6 +38,7 @@ pub struct BuiltinRegistryCatalog {
     pub tools: ToolRegistry,
     pub commands: CommandRegistry,
     pub keymaps: KeymapRegistry,
+    pub hooks: HookRegistry,
     pub settings_pages: SettingsPageRegistry,
     pub themes: ThemeRegistry,
     pub providers: ProviderModelRegistry,
@@ -55,6 +56,7 @@ impl BuiltinRegistryCatalog {
             tools: tool_registry_from_tools(tools)?,
             commands: command_registry()?,
             keymaps: keymap_registry(keymap)?,
+            hooks: hook_registry()?,
             settings_pages: settings_page_registry()?,
             themes: theme_registry()?,
             providers: provider_registry(openrouter_models)?,
@@ -67,6 +69,7 @@ impl BuiltinRegistryCatalog {
         self.tools.inner().len()
             + self.commands.inner().len()
             + self.keymaps.inner().len()
+            + self.hooks.inner().len()
             + self.settings_pages.inner().len()
             + self.themes.inner().len()
             + self.providers.inner().len()
@@ -160,6 +163,80 @@ pub fn keymap_registry(keymap: &KeymapConfig) -> Result<KeymapRegistry, BuiltinR
         )?;
     }
     Ok(registry)
+}
+
+pub fn hook_registry() -> Result<HookRegistry, BuiltinRegistryError> {
+    let mut registry = HookRegistry::hooks();
+    for event in builtin_hook_events() {
+        register(
+            &mut registry,
+            HookContribution {
+                id: ContributionId::new(format!("hook.{}", hook_event_slug(event)))?,
+                event,
+                priority: 0,
+                mode: HookMode::Observe,
+                handler: None,
+                conflict: Default::default(),
+            },
+        )?;
+    }
+    Ok(registry)
+}
+
+fn builtin_hook_events() -> [HookEventKind; 23] {
+    [
+        HookEventKind::Startup,
+        HookEventKind::ResourceDiscovery,
+        HookEventKind::Session,
+        HookEventKind::Input,
+        HookEventKind::Command,
+        HookEventKind::BeforeAgentTurn,
+        HookEventKind::AfterAgentTurn,
+        HookEventKind::Context,
+        HookEventKind::ProviderRequest,
+        HookEventKind::ProviderResponse,
+        HookEventKind::MessageStream,
+        HookEventKind::ToolCall,
+        HookEventKind::ToolResult,
+        HookEventKind::ToolUpdate,
+        HookEventKind::ModelSelection,
+        HookEventKind::ThinkingSelection,
+        HookEventKind::Compaction,
+        HookEventKind::Tree,
+        HookEventKind::Reload,
+        HookEventKind::Install,
+        HookEventKind::Update,
+        HookEventKind::Remove,
+        HookEventKind::PackageLifecycle,
+    ]
+}
+
+fn hook_event_slug(event: HookEventKind) -> &'static str {
+    match event {
+        HookEventKind::Startup => "startup",
+        HookEventKind::ResourceDiscovery => "resource_discovery",
+        HookEventKind::Session => "session",
+        HookEventKind::Input => "input",
+        HookEventKind::Command => "command",
+        HookEventKind::BeforeAgentTurn => "before_agent_turn",
+        HookEventKind::AfterAgentTurn => "after_agent_turn",
+        HookEventKind::Context => "context",
+        HookEventKind::ProviderRequest => "provider_request",
+        HookEventKind::ProviderResponse => "provider_response",
+        HookEventKind::MessageStream => "message_stream",
+        HookEventKind::ToolCall => "tool_call",
+        HookEventKind::ToolResult => "tool_result",
+        HookEventKind::ToolUpdate => "tool_update",
+        HookEventKind::ModelSelection => "model_selection",
+        HookEventKind::ThinkingSelection => "thinking_selection",
+        HookEventKind::Compaction => "compaction",
+        HookEventKind::Tree => "tree",
+        HookEventKind::Reload => "reload",
+        HookEventKind::Install => "install",
+        HookEventKind::Update => "update",
+        HookEventKind::Remove => "remove",
+        HookEventKind::PackageLifecycle => "package_lifecycle",
+    }
 }
 
 pub fn settings_page_registry() -> Result<SettingsPageRegistry, BuiltinRegistryError> {
@@ -372,6 +449,7 @@ mod tests {
         assert!(tool_ids.contains(&SESSION_TITLE_TOOL_NAME));
         assert!(catalog.commands.inner().len() >= COMMANDS.len());
         assert!(!catalog.keymaps.inner().is_empty());
+        assert_eq!(catalog.hooks.inner().len(), builtin_hook_events().len());
         assert!(!catalog.settings_pages.inner().is_empty());
         assert_eq!(catalog.themes.inner().len(), ChatStyle::all().len());
         assert_eq!(catalog.providers.inner().len(), 1);

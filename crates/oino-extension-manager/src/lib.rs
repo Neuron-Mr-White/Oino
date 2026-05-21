@@ -266,6 +266,7 @@ impl ExtensionRegistries {
             tools: builtins.tools,
             commands: builtins.commands,
             keymaps: builtins.keymaps,
+            hooks: builtins.hooks,
             settings_pages: builtins.settings_pages,
             themes: builtins.themes,
             providers: builtins.providers,

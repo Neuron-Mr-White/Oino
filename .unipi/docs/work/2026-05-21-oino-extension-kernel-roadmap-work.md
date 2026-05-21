@@ -137,3 +137,20 @@ Tasks 9–10 validation:
 - Added tests for deterministic discovery ordering, manifest load/parse/runtime/compatibility/permission diagnostics, snapshot composition, safe-mode disables, reload diffs, diagnostic grouping, and health state transitions.
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 11–12 hooks and runtime ABI
+
+Added `crates/oino-extension-runtime` for hook/event execution and the v1 runtime boundary:
+
+- Expanded `HookEventKind` to cover thinking selection, tree, install, update, and remove events in addition to the existing startup/resource/session/input/command/agent/context/provider/message/tool/model/compaction/reload/package lifecycle groups.
+- Added built-in no-op hook contributions for every declared hook event group through `oino-extension-builtins` and threaded those into manager built-in registries.
+- Added typed hook event payloads, typed hook patches, hook decisions, hook execution records, timeout diagnostics, fallback/cancellation semantics, mutable patch application, deterministic priority ordering, and unhealthy hook isolation.
+- Added `wasm-json-v1` ABI decision and runtime lifecycle in `oino-extension-runtime`: initialize, invoke, progress, cancel, shutdown, health, structured errors, payload validation, denied imports, timeout, crash, and malformed payload behavior.
+- Added ADR: `.unipi/docs/adr/2026-05-21-extension-wasm-json-v1-abi.md` comparing simple Wasmtime JSON, WASI Preview 2/component model, and Extism-style options. Accepted `wasm-json-v1` as the v1 host-owned ABI.
+
+Tasks 11–12 validation:
+
+- Added hook tests for ordering, typed patch application, cancellation, timeout diagnostics, and unhealthy isolation.
+- Added runtime tests for initialize, execute with progress, cancel, timeout, crash recovery, unauthorized imports, allowed brokered imports, malformed payloads, unsupported ABI, and shutdown.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed

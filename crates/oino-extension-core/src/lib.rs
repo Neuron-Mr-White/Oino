@@ -574,7 +574,7 @@ pub struct HookContribution {
     pub conflict: ConflictPolicy,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HookEventKind {
     Startup,
@@ -592,8 +592,13 @@ pub enum HookEventKind {
     ToolResult,
     ToolUpdate,
     ModelSelection,
+    ThinkingSelection,
     Compaction,
+    Tree,
     Reload,
+    Install,
+    Update,
+    Remove,
     PackageLifecycle,
 }
 

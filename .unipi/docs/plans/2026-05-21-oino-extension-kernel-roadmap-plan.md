@@ -163,7 +163,7 @@ Planning decisions recorded for implementation:
     3. Add state transitions for unhealthy and disabled contributions.
     4. Add test fixtures for common failure modes.
 
-- unstarted: Task 11 — Implement Hook and Event Registry Model
+- completed: Task 11 — Implement Hook and Event Registry Model
   - Description: Add typed hook groups with observe-only, mutable, cancellable, blocking, ordering, timeout, and fallback semantics.
   - Dependencies: Tasks 6, 9, and 10.
   - Acceptance Criteria:
@@ -177,7 +177,7 @@ Planning decisions recorded for implementation:
     3. Wire initial no-op/built-in hook points into harness/app boundaries.
     4. Add tests before enabling external hook runtimes.
 
-- unstarted: Task 12 — Choose WASM ABI and Implement Runtime Lifecycle
+- completed: Task 12 — Choose WASM ABI and Implement Runtime Lifecycle
   - Description: Stabilize the untrusted extension runtime boundary for initialize, execute, cancel, progress, structured results, shutdown, and crash recovery.
   - Dependencies: Tasks 4, 9, and 10.
   - Acceptance Criteria:

@@ -1150,6 +1150,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "oino-extension-runtime"
+version = "0.1.0"
+dependencies = [
+ "oino-extension-core",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
 name = "oino-harness"
 version = "0.1.0"
 dependencies = [
