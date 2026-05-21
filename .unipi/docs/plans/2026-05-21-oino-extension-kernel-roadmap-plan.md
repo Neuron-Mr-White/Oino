@@ -305,7 +305,7 @@ Planning decisions recorded for implementation:
     3. Document paths and source precedence.
     4. Add filesystem fixture tests.
 
-- unstarted: Task 21 — Implement Package Install, Update, Remove, and Reload Flow
+- complete: Task 21 — Implement Package Install, Update, Remove, and Reload Flow
   - Description: Add package lifecycle operations against local files or registry metadata while enforcing compatibility, permissions, trust, and dependency checks.
   - Dependencies: Tasks 10, 13, and 20.
   - Acceptance Criteria:
@@ -319,7 +319,7 @@ Planning decisions recorded for implementation:
     3. Add registry-metadata fixture support without requiring a hosted service.
     4. Connect lifecycle completion to manager reload and diagnostics.
 
-- unstarted: Task 22 — Design and Implement Community Registry Metadata, Trust, Publishing, and Advisory Policy
+- complete: Task 22 — Design and Implement Community Registry Metadata, Trust, Publishing, and Advisory Policy
   - Description: Add the community-facing registry model and tooling needed before public distribution, without hardcoding a specific hosted backend too early.
   - Dependencies: Tasks 20 and 21.
   - Acceptance Criteria:

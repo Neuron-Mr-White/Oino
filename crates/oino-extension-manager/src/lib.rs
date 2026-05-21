@@ -9,20 +9,22 @@ health/diagnostic state without executing extension code.
 
 use oino_extension_builtins::BuiltinRegistryCatalog;
 use oino_extension_core::{
-    ActiveContribution, AutosuggestContribution, AutosuggestRegistry, CommandContribution,
-    CommandRegistry, ContributionId, ContributionMetadata, ContributionRegistry,
-    DiagnosticContribution, DiagnosticPhase, DiagnosticRegistry, DiagnosticSeverity,
-    ExtensionContributions, ExtensionDiagnostic, ExtensionId, ExtensionManifest,
-    ExtensionPermissions, HealthContribution, HealthRegistry, HealthState, HookContribution,
-    HookRegistry, InactiveContribution, InactiveReason, KeymapContribution, KeymapRegistry,
-    LifecycleState, PackageId, PackageManifest, PermissionDecision, PersistenceCleanupPolicy,
+    ActiveContribution, AdvisorySeverity, AutosuggestContribution, AutosuggestRegistry,
+    CommandContribution, CommandRegistry, CommunityPackageMetadata, CommunityRegistryIndex,
+    ContributionId, ContributionMetadata, ContributionRegistry, DiagnosticContribution,
+    DiagnosticPhase, DiagnosticRegistry, DiagnosticSeverity, ExtensionContributions,
+    ExtensionCoreError, ExtensionDiagnostic, ExtensionId, ExtensionManifest, ExtensionPermissions,
+    HealthContribution, HealthRegistry, HealthState, HookContribution, HookRegistry,
+    InactiveContribution, InactiveReason, KeymapContribution, KeymapRegistry, LifecycleState,
+    PackageId, PackageManifest, PermissionDecision, PersistenceCleanupPolicy,
     PersistenceContribution, PersistenceMigrationPolicy, PersistenceRecord, PersistenceRegistry,
     PersistenceScope, Provenance, ProviderContribution, ProviderModelRegistry,
     RegistryCompatibility, RegistryDiff, RegistryEntryKey, RegistryFamily, RegistryPolicy,
     RegistrySnapshot, RendererContribution, ResourceContribution, ResourceRegistry,
-    SettingsPageContribution, SettingsPageRegistry, SourceDescriptor, SourceKind, SourceScope,
-    ThemeContribution, ThemeRegistry, ToolContribution, ToolRegistry, TypedContributionRegistry,
-    UiSurfaceContribution, UiSurfaceRegistry, MANIFEST_FILE, PACKAGE_MANIFEST_FILE,
+    SecurityAdvisory, SettingsPageContribution, SettingsPageRegistry, SourceDescriptor, SourceKind,
+    SourceScope, ThemeContribution, ThemeRegistry, ToolContribution, ToolRegistry,
+    TypedContributionRegistry, UiSurfaceContribution, UiSurfaceRegistry, MANIFEST_FILE,
+    PACKAGE_MANIFEST_FILE,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -1022,6 +1024,617 @@ fn current_unix_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().try_into().unwrap_or(u64::MAX))
         .unwrap_or(0)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageInstallScope {
+    Global,
+    Project,
+}
+
+impl PackageInstallScope {
+    #[must_use]
+    pub const fn source_scope(self) -> SourceScope {
+        match self {
+            Self::Global => SourceScope::Global,
+            Self::Project => SourceScope::Project,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageLifecycleOperation {
+    Install,
+    Update,
+    Remove,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackagePermissionPrompt {
+    pub package_id: PackageId,
+    pub permissions: ExtensionPermissions,
+    pub trust: oino_extension_core::TrustMetadata,
+    pub operation: PackageLifecycleOperation,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PackageLifecycleReport {
+    pub operation: PackageLifecycleOperation,
+    pub package_id: PackageId,
+    pub version: Version,
+    pub destination: PathBuf,
+    pub permission_prompt: PackagePermissionPrompt,
+    pub diagnostics: Vec<ExtensionDiagnostic>,
+    pub reload: ExtensionReload,
+}
+
+#[derive(Debug, Error)]
+pub enum PackageLifecycleError {
+    #[error("package manifest not found at {0}")]
+    MissingManifest(PathBuf),
+    #[error("package `{0}` is already installed")]
+    AlreadyInstalled(PackageId),
+    #[error("package `{0}` is not installed")]
+    NotInstalled(PackageId),
+    #[error("package `{package_id}` is incompatible with Oino {current_version}; requires {requirement}")]
+    Incompatible {
+        package_id: PackageId,
+        current_version: Version,
+        requirement: String,
+    },
+    #[error("dependency `{dependency}` is missing or incompatible")]
+    DependencyConflict { dependency: PackageId },
+    #[error("package `{package_id}` requires install scope `{required:?}`, got `{actual:?}`")]
+    InvalidInstallScope {
+        package_id: PackageId,
+        required: SourceScope,
+        actual: PackageInstallScope,
+    },
+    #[error("package checksum mismatch: expected {expected}, got {actual}")]
+    ChecksumMismatch { expected: String, actual: String },
+    #[error("package signature `{0}` is not trusted by local policy")]
+    SignatureRejected(String),
+    #[error("package validation failed: {0}")]
+    Validation(ExtensionCoreError),
+    #[error("package metadata parse failed: {0}")]
+    Parse(String),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PackageLifecycleService {
+    layout: ExtensionLayoutPaths,
+    current_version: Version,
+}
+
+impl PackageLifecycleService {
+    #[must_use]
+    pub fn new(layout: ExtensionLayoutPaths, current_version: Version) -> Self {
+        Self {
+            layout,
+            current_version,
+        }
+    }
+
+    #[must_use]
+    pub fn layout(&self) -> &ExtensionLayoutPaths {
+        &self.layout
+    }
+
+    pub fn install_local(
+        &self,
+        source_dir: impl AsRef<Path>,
+        scope: PackageInstallScope,
+        manager: &mut ExtensionManager,
+    ) -> Result<PackageLifecycleReport, PackageLifecycleError> {
+        let source_dir = source_dir.as_ref();
+        let manifest = read_package_manifest_from_dir(source_dir)?;
+        self.preflight_package(&manifest, source_dir, scope)?;
+        let destination = self.destination_for(&manifest.id, scope);
+        if destination.exists() {
+            return Err(PackageLifecycleError::AlreadyInstalled(manifest.id));
+        }
+        copy_dir_rollback(source_dir, &destination)?;
+        let reload = manager.reload();
+        Ok(self.report(
+            PackageLifecycleOperation::Install,
+            manifest,
+            destination,
+            reload,
+        ))
+    }
+
+    pub fn update_local(
+        &self,
+        source_dir: impl AsRef<Path>,
+        scope: PackageInstallScope,
+        manager: &mut ExtensionManager,
+    ) -> Result<PackageLifecycleReport, PackageLifecycleError> {
+        let source_dir = source_dir.as_ref();
+        let manifest = read_package_manifest_from_dir(source_dir)?;
+        self.preflight_package(&manifest, source_dir, scope)?;
+        let destination = self.destination_for(&manifest.id, scope);
+        if !destination.exists() {
+            return Err(PackageLifecycleError::NotInstalled(manifest.id));
+        }
+        replace_dir_with_backup(source_dir, &destination)?;
+        let reload = manager.reload();
+        Ok(self.report(
+            PackageLifecycleOperation::Update,
+            manifest,
+            destination,
+            reload,
+        ))
+    }
+
+    pub fn remove(
+        &self,
+        package_id: PackageId,
+        scope: PackageInstallScope,
+        manager: &mut ExtensionManager,
+    ) -> Result<PackageLifecycleReport, PackageLifecycleError> {
+        let destination = self.destination_for(&package_id, scope);
+        if !destination.exists() {
+            return Err(PackageLifecycleError::NotInstalled(package_id));
+        }
+        let manifest = read_package_manifest_from_dir(&destination)?;
+        fs::remove_dir_all(&destination)?;
+        let reload = manager.reload();
+        Ok(self.report(
+            PackageLifecycleOperation::Remove,
+            manifest,
+            destination,
+            reload,
+        ))
+    }
+
+    pub fn install_from_registry(
+        &self,
+        registry: &FixtureRegistryClient,
+        package_id: &PackageId,
+        scope: PackageInstallScope,
+        manager: &mut ExtensionManager,
+    ) -> Result<PackageLifecycleReport, PackageLifecycleError> {
+        let metadata = registry
+            .latest_package(package_id)
+            .ok_or_else(|| PackageLifecycleError::NotInstalled(package_id.clone()))?;
+        let Some(path) = &metadata.package_path else {
+            return Err(PackageLifecycleError::MissingManifest(PathBuf::from(
+                format!("registry:{package_id}"),
+            )));
+        };
+        self.install_local(path, scope, manager)
+    }
+
+    fn preflight_package(
+        &self,
+        manifest: &PackageManifest,
+        source_dir: &Path,
+        scope: PackageInstallScope,
+    ) -> Result<(), PackageLifecycleError> {
+        manifest
+            .validate()
+            .map_err(PackageLifecycleError::Validation)?;
+        if !manifest.compatible_with(&self.current_version) {
+            return Err(PackageLifecycleError::Incompatible {
+                package_id: manifest.id.clone(),
+                current_version: self.current_version.clone(),
+                requirement: manifest.oino.to_string(),
+            });
+        }
+        if let Some(source) = &manifest.source {
+            let actual_scope = scope.source_scope();
+            if source.scope != actual_scope {
+                return Err(PackageLifecycleError::InvalidInstallScope {
+                    package_id: manifest.id.clone(),
+                    required: source.scope,
+                    actual: scope,
+                });
+            }
+        }
+        for dependency in &manifest.dependencies {
+            if dependency.optional {
+                continue;
+            }
+            let Some(installed) =
+                self.installed_package_version_in_scope_or_global(&dependency.id, scope)
+            else {
+                return Err(PackageLifecycleError::DependencyConflict {
+                    dependency: dependency.id.clone(),
+                });
+            };
+            if !dependency.version.matches(&installed) {
+                return Err(PackageLifecycleError::DependencyConflict {
+                    dependency: dependency.id.clone(),
+                });
+            }
+        }
+        if let Some(expected) = manifest.trust.checksum.as_deref() {
+            let actual = package_directory_checksum(source_dir)?;
+            if expected != actual {
+                return Err(PackageLifecycleError::ChecksumMismatch {
+                    expected: expected.into(),
+                    actual,
+                });
+            }
+        }
+        if let Some(signature) = manifest.trust.signature.as_deref() {
+            if !manifest.trust.reviewed {
+                return Err(PackageLifecycleError::SignatureRejected(signature.into()));
+            }
+        }
+        Ok(())
+    }
+
+    fn installed_package_version_in_scope_or_global(
+        &self,
+        package_id: &PackageId,
+        scope: PackageInstallScope,
+    ) -> Option<Version> {
+        self.installed_package_version(package_id, scope)
+            .or_else(|| match scope {
+                PackageInstallScope::Project => {
+                    self.installed_package_version(package_id, PackageInstallScope::Global)
+                }
+                PackageInstallScope::Global => None,
+            })
+    }
+
+    fn installed_package_version(
+        &self,
+        package_id: &PackageId,
+        scope: PackageInstallScope,
+    ) -> Option<Version> {
+        let path = self
+            .destination_for(package_id, scope)
+            .join(PACKAGE_MANIFEST_FILE);
+        read_json::<PackageManifest>(&path)
+            .ok()
+            .map(|manifest| manifest.version)
+    }
+
+    fn destination_for(&self, package_id: &PackageId, scope: PackageInstallScope) -> PathBuf {
+        match scope {
+            PackageInstallScope::Global => &self.layout.global_installed_packages,
+            PackageInstallScope::Project => &self.layout.project_installed_packages,
+        }
+        .join(package_id.as_str())
+    }
+
+    fn report(
+        &self,
+        operation: PackageLifecycleOperation,
+        manifest: PackageManifest,
+        destination: PathBuf,
+        reload: ExtensionReload,
+    ) -> PackageLifecycleReport {
+        let diagnostics = reload.next.diagnostics.clone();
+        let permission_prompt = PackagePermissionPrompt {
+            package_id: manifest.id.clone(),
+            permissions: manifest.permissions.clone(),
+            trust: manifest.trust.clone(),
+            operation,
+        };
+        PackageLifecycleReport {
+            operation,
+            package_id: manifest.id,
+            version: manifest.version,
+            destination,
+            permission_prompt,
+            diagnostics,
+            reload,
+        }
+    }
+}
+
+fn read_package_manifest_from_dir(dir: &Path) -> Result<PackageManifest, PackageLifecycleError> {
+    let manifest_path = dir.join(PACKAGE_MANIFEST_FILE);
+    if !manifest_path.exists() {
+        return Err(PackageLifecycleError::MissingManifest(manifest_path));
+    }
+    read_json::<PackageManifest>(&manifest_path).map_err(PackageLifecycleError::Parse)
+}
+
+fn copy_dir_rollback(source: &Path, destination: &Path) -> Result<(), io::Error> {
+    if let Err(err) = copy_dir_recursive(source, destination) {
+        let _ = fs::remove_dir_all(destination);
+        return Err(err);
+    }
+    Ok(())
+}
+
+fn replace_dir_with_backup(source: &Path, destination: &Path) -> Result<(), io::Error> {
+    let backup = destination.with_extension("oino-backup");
+    if backup.exists() {
+        fs::remove_dir_all(&backup)?;
+    }
+    fs::rename(destination, &backup)?;
+    match copy_dir_recursive(source, destination) {
+        Ok(()) => {
+            fs::remove_dir_all(backup)?;
+            Ok(())
+        }
+        Err(err) => {
+            let _ = fs::remove_dir_all(destination);
+            let _ = fs::rename(&backup, destination);
+            Err(err)
+        }
+    }
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), io::Error> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+        } else {
+            if let Some(parent) = destination_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&source_path, &destination_path)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn package_directory_checksum(path: &Path) -> Result<String, io::Error> {
+    let mut files = Vec::new();
+    collect_package_files(path, path, &mut files)?;
+    files.sort();
+    let mut hash = 0xcbf29ce484222325u64;
+    for relative in files {
+        let absolute = path.join(&relative);
+        update_checksum(&mut hash, relative.to_string_lossy().as_bytes());
+        update_checksum(&mut hash, &checksum_file_bytes(&relative, &absolute)?);
+    }
+    Ok(format!("oino-fnv64:{hash:016x}"))
+}
+
+fn collect_package_files(
+    root: &Path,
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), io::Error> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_package_files(root, &path, files)?;
+        } else if let Ok(relative) = path.strip_prefix(root) {
+            files.push(relative.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+fn checksum_file_bytes(relative: &Path, absolute: &Path) -> Result<Vec<u8>, io::Error> {
+    let bytes = fs::read(absolute)?;
+    if relative == Path::new(PACKAGE_MANIFEST_FILE) {
+        if let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            if let Some(trust) = value
+                .get_mut("trust")
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                trust.remove("checksum");
+                trust.remove("signature");
+            }
+            if let Ok(normalized) = serde_json::to_vec(&value) {
+                return Ok(normalized);
+            }
+        }
+    }
+    Ok(bytes)
+}
+
+fn update_checksum(hash: &mut u64, bytes: &[u8]) {
+    for byte in bytes {
+        *hash ^= u64::from(*byte);
+        *hash = hash.wrapping_mul(0x100000001b3);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryTrustPolicy {
+    #[serde(default)]
+    pub require_review: bool,
+    #[serde(default)]
+    pub require_checksum: bool,
+    #[serde(default)]
+    pub require_signature: bool,
+    #[serde(default)]
+    pub reject_deprecated: bool,
+    #[serde(default)]
+    pub reject_high_advisories: bool,
+}
+
+impl Default for RegistryTrustPolicy {
+    fn default() -> Self {
+        Self {
+            require_review: true,
+            require_checksum: true,
+            require_signature: false,
+            reject_deprecated: true,
+            reject_high_advisories: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublishingValidation {
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+impl PublishingValidation {
+    #[must_use]
+    pub fn is_ok(&self) -> bool {
+        self.errors.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FixtureRegistryClient {
+    index: CommunityRegistryIndex,
+}
+
+impl FixtureRegistryClient {
+    #[must_use]
+    pub fn new(index: CommunityRegistryIndex) -> Self {
+        Self { index }
+    }
+
+    pub fn from_path(path: impl AsRef<Path>) -> Result<Self, PackageLifecycleError> {
+        Ok(Self::new(
+            read_json::<CommunityRegistryIndex>(path.as_ref())
+                .map_err(PackageLifecycleError::Parse)?,
+        ))
+    }
+
+    #[must_use]
+    pub fn index(&self) -> &CommunityRegistryIndex {
+        &self.index
+    }
+
+    #[must_use]
+    pub fn latest_package(&self, package_id: &PackageId) -> Option<&CommunityPackageMetadata> {
+        self.index
+            .packages
+            .iter()
+            .filter(|package| &package.id == package_id)
+            .max_by(|left, right| left.version.cmp(&right.version))
+    }
+
+    #[must_use]
+    pub fn search(
+        &self,
+        query: &str,
+        category: Option<&str>,
+        current_version: &Version,
+    ) -> Vec<&CommunityPackageMetadata> {
+        let query = query.trim().to_ascii_lowercase();
+        let category = category.map(str::to_ascii_lowercase);
+        let mut packages = self
+            .index
+            .packages
+            .iter()
+            .filter(|package| package.oino.matches(current_version))
+            .filter(|package| {
+                category.as_ref().is_none_or(|category| {
+                    package
+                        .categories
+                        .iter()
+                        .any(|value| value.eq_ignore_ascii_case(category))
+                })
+            })
+            .filter(|package| {
+                query.is_empty()
+                    || package.id.as_str().contains(&query)
+                    || package.display_name.to_ascii_lowercase().contains(&query)
+                    || package.description.to_ascii_lowercase().contains(&query)
+            })
+            .collect::<Vec<_>>();
+        packages.sort_by(|left, right| {
+            left.id
+                .cmp(&right.id)
+                .then(right.version.cmp(&left.version))
+        });
+        packages
+    }
+
+    #[must_use]
+    pub fn advisories_for(&self, package_id: &PackageId) -> Vec<&SecurityAdvisory> {
+        self.index
+            .advisories
+            .iter()
+            .filter(|advisory| &advisory.package_id == package_id && !advisory.withdrawn)
+            .collect()
+    }
+}
+
+#[must_use]
+pub fn validate_registry_package_metadata(
+    package: &CommunityPackageMetadata,
+    current_version: &Version,
+    advisories: &[SecurityAdvisory],
+    policy: &RegistryTrustPolicy,
+) -> PublishingValidation {
+    let mut validation = PublishingValidation::default();
+    if package.publisher.trim().is_empty() {
+        validation.errors.push("publisher is required".into());
+    }
+    if package.description.trim().is_empty() {
+        validation.warnings.push("description is empty".into());
+    }
+    if package.categories.is_empty() {
+        validation
+            .warnings
+            .push("at least one category is recommended".into());
+    }
+    if !package.oino.matches(current_version) {
+        validation.errors.push(format!(
+            "package is incompatible with Oino {current_version}"
+        ));
+    }
+    if policy.require_review && !package.trust.reviewed {
+        validation
+            .errors
+            .push("package has not been reviewed".into());
+    }
+    if policy.require_checksum
+        && package
+            .trust
+            .checksum
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
+    {
+        validation
+            .errors
+            .push("package checksum is required".into());
+    }
+    if policy.require_signature
+        && package
+            .trust
+            .signature
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
+    {
+        validation
+            .errors
+            .push("package signature is required".into());
+    }
+    if policy.reject_deprecated && package.deprecated {
+        validation.errors.push("package is deprecated".into());
+    }
+    let active_advisories = advisories
+        .iter()
+        .filter(|advisory| advisory.package_id == package.id && !advisory.withdrawn)
+        .collect::<Vec<_>>();
+    if policy.reject_high_advisories
+        && active_advisories
+            .iter()
+            .any(|advisory| advisory.severity >= AdvisorySeverity::High)
+    {
+        validation
+            .errors
+            .push("package has high or critical active security advisories".into());
+    }
+    if !active_advisories.is_empty() {
+        validation.warnings.push(format!(
+            "{} active security advisory/advisories apply",
+            active_advisories.len()
+        ));
+    }
+    validation
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2521,6 +3134,353 @@ mod tests {
             diagnostic.phase == DiagnosticPhase::UiUpdate
                 && diagnostic.message.contains("invalid UI update")
         }));
+        Ok(())
+    }
+
+    fn write_package_fixture(
+        root: &Path,
+        package_id: &str,
+        version: &str,
+        tool_id: &str,
+        dependency: Option<&str>,
+        checksum: bool,
+    ) -> Result<PathBuf, Box<dyn Error>> {
+        let package_dir = root.join(package_id.replace('.', "-"));
+        let extension_id = format!("{package_id}.extension");
+        let extension_manifest = format!(
+            r#"{{
+              "id": "{extension_id}",
+              "package_id": "{package_id}",
+              "version": "{version}",
+              "oino": "^0.1",
+              "runtime": {{ "kind": "wasm", "entry": "plugin.wasm" }},
+              "permissions": {{ "tools": ["{tool_id}"] }},
+              "contributes": {{
+                "tools": [{{ "id": "{tool_id}", "description": "lifecycle tool" }}]
+              }}
+            }}"#,
+        );
+        write_json(
+            &package_dir.join("extensions/main/oino.extension.json"),
+            &extension_manifest,
+        )?;
+        fs::write(package_dir.join("plugin.wasm"), b"wasm fixture")?;
+        let dependency_json = dependency
+            .map(|id| format!(r#", "dependencies": [{{ "id": "{id}", "version": "^1" }}]"#))
+            .unwrap_or_default();
+        let package_manifest = format!(
+            r#"{{
+              "id": "{package_id}",
+              "display_name": "{package_id}",
+              "version": "{version}",
+              "oino": "^0.1",
+              "publisher": "acme",
+              "description": "Package fixture",
+              "extensions": [{{ "manifest": "extensions/main/oino.extension.json" }}],
+              "permissions": {{ "tools": ["{tool_id}"] }},
+              "trust": {{ "reviewed": true }}{dependency_json}
+            }}"#,
+        );
+        write_json(&package_dir.join(PACKAGE_MANIFEST_FILE), &package_manifest)?;
+        if checksum {
+            let checksum = package_directory_checksum(&package_dir)?;
+            let mut value = serde_json::from_str::<serde_json::Value>(&package_manifest)?;
+            value["trust"]["checksum"] = serde_json::Value::String(checksum);
+            write_json(
+                &package_dir.join(PACKAGE_MANIFEST_FILE),
+                &serde_json::to_string_pretty(&value)?,
+            )?;
+        }
+        Ok(package_dir)
+    }
+
+    fn package_metadata(
+        id: &str,
+        version: &str,
+        category: &str,
+        package_path: Option<&Path>,
+    ) -> Result<CommunityPackageMetadata, Box<dyn Error>> {
+        let mut value = serde_json::json!({
+            "id": id,
+            "version": version,
+            "publisher": "acme",
+            "display_name": id,
+            "description": format!("{id} registry package"),
+            "categories": [category],
+            "license": "MIT",
+            "source_link": "https://example.com/acme",
+            "oino": "^0.1",
+            "assets": [{ "path": "plugin.wasm", "size_bytes": 12 }],
+            "permissions": { "tools": ["registry_tool"] },
+            "trust": { "reviewed": true, "checksum": "fixture-checksum", "signature": "sig:fixture" },
+            "update_policy": "compatible",
+            "changelog": [{ "version": version, "notes": "Initial release" }]
+        });
+        if let Some(path) = package_path {
+            value["package_path"] = serde_json::Value::String(path.display().to_string());
+        }
+        Ok(serde_json::from_value(value)?)
+    }
+
+    #[test]
+    fn package_lifecycle_installs_updates_removes_and_reloads() -> Result<(), Box<dyn Error>> {
+        let temp = tempfile::tempdir()?;
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let layout = ExtensionLayoutPaths::for_home_and_project(&home, &project);
+        let package_v1 = write_package_fixture(
+            &temp.path().join("sources/v1"),
+            "acme.lifecycle",
+            "1.0.0",
+            "lifecycle_tool",
+            None,
+            true,
+        )?;
+        let package_v2 = write_package_fixture(
+            &temp.path().join("sources/v2"),
+            "acme.lifecycle",
+            "1.1.0",
+            "lifecycle_tool",
+            None,
+            true,
+        )?;
+
+        let mut policy = RegistryPolicy::safe_defaults();
+        policy
+            .enabled_extensions
+            .insert(ExtensionId::new("acme.lifecycle.extension")?);
+        let config = ExtensionManagerConfig::new(
+            Version::parse("0.1.0")?,
+            ExtensionDiscovery::from_layout(&layout),
+        )
+        .with_policy(policy);
+        let mut manager = ExtensionManager::new(config);
+        manager.load();
+        let service = PackageLifecycleService::new(layout.clone(), Version::parse("0.1.0")?);
+
+        let install =
+            service.install_local(&package_v1, PackageInstallScope::Project, &mut manager)?;
+        assert_eq!(install.operation, PackageLifecycleOperation::Install);
+        assert_eq!(install.version, Version::parse("1.0.0")?);
+        assert!(install
+            .permission_prompt
+            .permissions
+            .tools
+            .contains("lifecycle_tool"));
+        assert!(install
+            .reload
+            .next
+            .packages
+            .iter()
+            .any(|package| package.id.as_str() == "acme.lifecycle"));
+        assert_eq!(install.reload.diffs.tools.added.len(), 1);
+
+        let update =
+            service.update_local(&package_v2, PackageInstallScope::Project, &mut manager)?;
+        assert_eq!(update.operation, PackageLifecycleOperation::Update);
+        assert_eq!(update.version, Version::parse("1.1.0")?);
+
+        let remove = service.remove(
+            PackageId::new("acme.lifecycle")?,
+            PackageInstallScope::Project,
+            &mut manager,
+        )?;
+        assert_eq!(remove.operation, PackageLifecycleOperation::Remove);
+        assert!(!remove.destination.exists());
+        assert!(!remove
+            .reload
+            .next
+            .packages
+            .iter()
+            .any(|package| package.id.as_str() == "acme.lifecycle"));
+        Ok(())
+    }
+
+    #[test]
+    fn package_lifecycle_blocks_dependencies_and_preserves_existing_on_failure(
+    ) -> Result<(), Box<dyn Error>> {
+        let temp = tempfile::tempdir()?;
+        let layout = ExtensionLayoutPaths::for_home_and_project(
+            temp.path().join("home"),
+            temp.path().join("project"),
+        );
+        let mut manager = ExtensionManager::new(ExtensionManagerConfig::new(
+            Version::parse("0.1.0")?,
+            ExtensionDiscovery::from_layout(&layout),
+        ));
+        manager.load();
+        let service = PackageLifecycleService::new(layout.clone(), Version::parse("0.1.0")?);
+        let dependent = write_package_fixture(
+            &temp.path().join("sources/dependent"),
+            "acme.dependent",
+            "1.0.0",
+            "dependent_tool",
+            Some("acme.missing"),
+            false,
+        )?;
+        assert!(matches!(
+            service.install_local(&dependent, PackageInstallScope::Project, &mut manager),
+            Err(PackageLifecycleError::DependencyConflict { .. })
+        ));
+
+        let package_v1 = write_package_fixture(
+            &temp.path().join("sources/original"),
+            "acme.rollback",
+            "1.0.0",
+            "rollback_tool",
+            None,
+            true,
+        )?;
+        service.install_local(&package_v1, PackageInstallScope::Project, &mut manager)?;
+        let bad_update = write_package_fixture(
+            &temp.path().join("sources/bad-update"),
+            "acme.rollback",
+            "2.0.0",
+            "rollback_tool",
+            None,
+            false,
+        )?;
+        let mut value = serde_json::from_str::<serde_json::Value>(&fs::read_to_string(
+            bad_update.join(PACKAGE_MANIFEST_FILE),
+        )?)?;
+        value["trust"]["checksum"] = serde_json::Value::String("oino-fnv64:bad".into());
+        write_json(
+            &bad_update.join(PACKAGE_MANIFEST_FILE),
+            &serde_json::to_string_pretty(&value)?,
+        )?;
+        assert!(matches!(
+            service.update_local(&bad_update, PackageInstallScope::Project, &mut manager),
+            Err(PackageLifecycleError::ChecksumMismatch { .. })
+        ));
+        let installed: PackageManifest = read_json(
+            &layout
+                .project_installed_packages
+                .join("acme.rollback")
+                .join(PACKAGE_MANIFEST_FILE),
+        )?;
+        assert_eq!(installed.version, Version::parse("1.0.0")?);
+        Ok(())
+    }
+
+    #[test]
+    fn fixture_registry_searches_validates_and_installs_with_diff_output(
+    ) -> Result<(), Box<dyn Error>> {
+        let temp = tempfile::tempdir()?;
+        let layout = ExtensionLayoutPaths::for_home_and_project(
+            temp.path().join("home"),
+            temp.path().join("project"),
+        );
+        let package_dir = write_package_fixture(
+            &temp.path().join("sources/registry"),
+            "acme.registry",
+            "1.0.0",
+            "registry_tool",
+            None,
+            true,
+        )?;
+        let registry = FixtureRegistryClient::new(CommunityRegistryIndex {
+            schema_version: 1,
+            packages: vec![
+                package_metadata("acme.registry", "1.0.0", "tools", Some(&package_dir))?,
+                serde_json::from_value(serde_json::json!({
+                    "id": "acme.future",
+                    "version": "1.0.0",
+                    "publisher": "acme",
+                    "description": "future only",
+                    "categories": ["tools"],
+                    "oino": ">=9.0.0",
+                    "permissions": {},
+                    "trust": { "reviewed": true, "checksum": "future" }
+                }))?,
+            ],
+            advisories: Vec::new(),
+        });
+        let current = Version::parse("0.1.0")?;
+        let search = registry.search("registry", Some("tools"), &current);
+        assert_eq!(search.len(), 1);
+        assert_eq!(search[0].id.as_str(), "acme.registry");
+
+        let mut policy = RegistryPolicy::safe_defaults();
+        policy
+            .enabled_extensions
+            .insert(ExtensionId::new("acme.registry.extension")?);
+        let mut manager = ExtensionManager::new(
+            ExtensionManagerConfig::new(current.clone(), ExtensionDiscovery::from_layout(&layout))
+                .with_policy(policy),
+        );
+        manager.load();
+        let service = PackageLifecycleService::new(layout, current);
+        let report = service.install_from_registry(
+            &registry,
+            &PackageId::new("acme.registry")?,
+            PackageInstallScope::Project,
+            &mut manager,
+        )?;
+        assert_eq!(report.operation, PackageLifecycleOperation::Install);
+        assert_eq!(report.reload.diffs.tools.added.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn registry_metadata_validation_flags_deprecation_advisories_and_trust(
+    ) -> Result<(), Box<dyn Error>> {
+        let current = Version::parse("0.1.0")?;
+        let package = package_metadata("acme.secure", "1.0.0", "security", None)?;
+        let clean = validate_registry_package_metadata(
+            &package,
+            &current,
+            &[],
+            &RegistryTrustPolicy::default(),
+        );
+        assert!(clean.is_ok(), "unexpected errors: {:?}", clean.errors);
+
+        let mut deprecated = package.clone();
+        deprecated.deprecated = true;
+        deprecated.deprecation_message = Some("superseded by acme.secure2".into());
+        let deprecated_result = validate_registry_package_metadata(
+            &deprecated,
+            &current,
+            &[],
+            &RegistryTrustPolicy::default(),
+        );
+        assert!(deprecated_result
+            .errors
+            .iter()
+            .any(|error| error.contains("deprecated")));
+
+        let advisory = SecurityAdvisory {
+            id: "OINO-2026-0001".into(),
+            package_id: PackageId::new("acme.secure")?,
+            affected: None,
+            severity: AdvisorySeverity::High,
+            title: "unsafe default".into(),
+            description: "test advisory".into(),
+            patched_versions: Vec::new(),
+            withdrawn: false,
+        };
+        let advisory_result = validate_registry_package_metadata(
+            &package,
+            &current,
+            &[advisory],
+            &RegistryTrustPolicy::default(),
+        );
+        assert!(advisory_result
+            .errors
+            .iter()
+            .any(|error| error.contains("advisories")));
+
+        let mut unsigned = package;
+        unsigned.trust.signature = None;
+        let signature_required = RegistryTrustPolicy {
+            require_signature: true,
+            ..RegistryTrustPolicy::default()
+        };
+        let unsigned_result =
+            validate_registry_package_metadata(&unsigned, &current, &[], &signature_required);
+        assert!(unsigned_result
+            .errors
+            .iter()
+            .any(|error| error.contains("signature")));
         Ok(())
     }
 }

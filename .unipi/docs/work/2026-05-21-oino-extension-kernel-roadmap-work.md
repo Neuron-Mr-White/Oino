@@ -251,3 +251,28 @@ Tasks 19–20 validation:
 - `cargo fmt --all` — passed
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 21–22 package lifecycle and community registry policy
+
+Completed package lifecycle operations:
+
+- Added `PackageLifecycleService` for local install, update, remove, and registry-fixture install flows against `ExtensionLayoutPaths`.
+- Added lifecycle reports with operation, package/version/destination, permission/trust prompt data, diagnostics, and extension-manager reload diffs.
+- Added install preflight checks for manifest validity, Oino compatibility, dependency availability/version compatibility, install scope, trust checksums, and signature/review policy.
+- Added deterministic package-directory checksums that normalize mutable trust checksum/signature manifest fields.
+- Added copy/replace helpers with cleanup/rollback behavior so failed writes do not leave partial installs or clobber previous installs.
+- Connected successful lifecycle operations to `ExtensionManager::reload` so package/contribution state and registry diffs are refreshed immediately.
+
+Completed community registry metadata and policy foundations:
+
+- Added typed community registry index metadata contracts for package id, publisher, version, description, categories, license, source link, package path/artifacts, assets, compatibility, dependencies, permissions, trust metadata, update policy, changelog, deprecation, and security advisories.
+- Added `FixtureRegistryClient` for local/fixture indexes with latest-package lookup, search/category filtering, compatibility filtering, and advisory lookup.
+- Added publishing validation with configurable trust policy gates for review, checksum, signature, deprecation, compatibility, and high/critical advisories.
+- Documented trust, review, checksum/signature, advisory, deprecation, takedown, compatibility, and publishing policy in `.unipi/docs/specs/2026-05-21-oino-extension-community-registry-policy.md`.
+
+Tasks 21–22 validation:
+
+- Added tests for install/update/remove reload behavior, permission prompt data, registry diff output, dependency conflict handling, checksum failure preserving installed packages, fixture registry search/category/compatibility filtering, metadata validation, deprecation, advisories, and signature requirements.
+- `cargo fmt --all` — passed
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed

@@ -1294,6 +1294,109 @@ pub struct TrustMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommunityRegistryIndex {
+    #[serde(default = "default_registry_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub packages: Vec<CommunityPackageMetadata>,
+    #[serde(default)]
+    pub advisories: Vec<SecurityAdvisory>,
+}
+
+fn default_registry_schema_version() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommunityPackageMetadata {
+    pub id: PackageId,
+    pub version: Version,
+    pub publisher: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_link: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_path: Option<PathBuf>,
+    #[serde(default)]
+    pub assets: Vec<RegistryAssetMetadata>,
+    #[serde(default)]
+    pub oino: OinoCompatibility,
+    #[serde(default)]
+    pub dependencies: Vec<PackageDependency>,
+    #[serde(default)]
+    pub permissions: ExtensionPermissions,
+    #[serde(default)]
+    pub trust: TrustMetadata,
+    #[serde(default)]
+    pub update_policy: RegistryUpdatePolicy,
+    #[serde(default)]
+    pub changelog: Vec<ChangelogEntry>,
+    #[serde(default)]
+    pub deprecated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecation_message: Option<String>,
+    #[serde(default)]
+    pub advisories: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAssetMetadata {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
+    #[serde(default)]
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryUpdatePolicy {
+    #[default]
+    Manual,
+    Compatible,
+    Latest,
+    Pinned,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChangelogEntry {
+    pub version: Version,
+    pub notes: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecurityAdvisory {
+    pub id: String,
+    pub package_id: PackageId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub affected: Option<OinoCompatibility>,
+    pub severity: AdvisorySeverity,
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub patched_versions: Vec<OinoCompatibility>,
+    #[serde(default)]
+    pub withdrawn: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdvisorySeverity {
+    Low,
+    Moderate,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Provenance {
     pub source: SourceDescriptor,
     #[serde(default, skip_serializing_if = "Option::is_none")]
