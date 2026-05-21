@@ -1137,6 +1137,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "oino-extension-manager"
+version = "0.1.0"
+dependencies = [
+ "oino-extension-builtins",
+ "oino-extension-core",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "oino-harness"
 version = "0.1.0"
 dependencies = [

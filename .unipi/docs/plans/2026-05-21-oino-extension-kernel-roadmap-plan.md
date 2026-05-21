@@ -135,7 +135,7 @@ Planning decisions recorded for implementation:
     3. Replace direct consumers with registry snapshots incrementally.
     4. Validate no behavior regressions in TUI, harness, and app wiring.
 
-- unstarted: Task 9 — Implement Extension Manager Discovery, Loading, Safe Mode, and Reload
+- completed: Task 9 — Implement Extension Manager Discovery, Loading, Safe Mode, and Reload
   - Description: Add the manager that discovers extension sources, validates manifests, initializes runtimes, wires registries, and publishes health/snapshot state.
   - Dependencies: Tasks 4, 5, 6, and 7.
   - Acceptance Criteria:
@@ -149,7 +149,7 @@ Planning decisions recorded for implementation:
     3. Compose registry snapshots through the manager.
     4. Add safe-mode and reload entry points.
 
-- unstarted: Task 10 — Expose Extension Health, Diagnostics, and Management Snapshots
+- completed: Task 10 — Expose Extension Health, Diagnostics, and Management Snapshots
   - Description: Provide queryable state for management UX, logs, and diagnostics across app, harness, and TUI.
   - Dependencies: Task 9.
   - Acceptance Criteria:

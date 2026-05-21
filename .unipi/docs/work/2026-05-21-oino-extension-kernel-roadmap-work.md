@@ -119,3 +119,21 @@ Task 8 validation:
 - Added app regression test proving existing global/project tool settings map to registry policy enable/disable decisions.
 - `cargo clippy --workspace --all-targets -- -D warnings` — passed
 - `cargo test --workspace` — passed
+
+## 2026-05-21 — Tasks 9–10 extension manager and management snapshots
+
+Added `crates/oino-extension-manager` for discovery, load/reload, safe mode, and read-only management state:
+
+- Defined deterministic Oino-owned discovery roots for global, project, session, development, local-package, installed-package, registry-package, and WASM extension sources.
+- Added manifest/package discovery for `oino.extension.json` and `oino.package.json` with deterministic scope/kind/path ordering.
+- Implemented manifest/package parsing, compatibility validation, runtime-entry validation, permission-denial diagnostics, contribution registration, and registry snapshot composition without crashing on bad inputs.
+- Added safe-mode behavior that disables all non-built-in registry entries and reflects safe mode in extension health/lifecycle state.
+- Added reload APIs that preserve the previous snapshot and return typed registry diffs.
+- Added management snapshot types exposing extensions, packages, contributions, lifecycle/health/permission/provenance/compatibility state, diagnostics, and grouped diagnostics.
+- Added health event transitions for runtime crashes, permission denials, hook timeouts, and invalid UI updates.
+
+Tasks 9–10 validation:
+
+- Added tests for deterministic discovery ordering, manifest load/parse/runtime/compatibility/permission diagnostics, snapshot composition, safe-mode disables, reload diffs, diagnostic grouping, and health state transitions.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passed
+- `cargo test --workspace` — passed
