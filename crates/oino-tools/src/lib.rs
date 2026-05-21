@@ -1,7 +1,7 @@
 #![doc = r#"Built-in coding tools for Oino.
 
-The first tool set intentionally mirrors pi-coding-agent's default model tools:
-`read`, `bash`, `edit`, and `write`. Tools depend on `ExecutionEnv` so future
+The default model-visible tools are `read`, `bash`, `edit`, and `write`.
+Tools depend on `ExecutionEnv` so future
 sandboxed or remote runtimes can reuse the same model-visible surface.
 "#]
 #![forbid(unsafe_code)]

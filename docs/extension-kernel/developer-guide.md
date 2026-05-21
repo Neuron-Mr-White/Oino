@@ -2,7 +2,7 @@
 
 This guide is for extension authors and Oino core developers building Oino-native extensions. It covers package layout, manifests, contributions, permissions, local testing, and installation from local paths or GitHub repositories.
 
-Oino extension APIs are **Oino-native**. They intentionally do not implement Pi's TypeScript extension API. The stable contract is the manifest + registry + `wasm-json-v1` runtime boundary owned by Oino.
+Oino extension APIs are **Oino-native**. They intentionally do not implement unrelated TypeScript extension APIs. The stable contract is the manifest + registry + `wasm-json-v1` runtime boundary owned by Oino.
 
 ## Development prerequisites
 

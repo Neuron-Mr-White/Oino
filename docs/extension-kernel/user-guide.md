@@ -2,7 +2,7 @@
 
 This guide explains how to find, install, enable, update, and remove Oino extensions from the user-facing `/extensions` panel.
 
-Oino extensions are **Oino-native packages**. They are not Pi/Claude/TypeScript extensions and they are not arbitrary npm packages. A package must contain an `oino.package.json` manifest at the install root.
+Oino extensions are **Oino-native packages**. They are not arbitrary npm packages and they do not use unrelated agent extension APIs. A package must contain an `oino.package.json` manifest at the install root.
 
 ## Quick start
 

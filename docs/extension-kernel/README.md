@@ -1,8 +1,8 @@
 # Oino Extension Kernel
 
-This document is the maintainer and author reference for the extension-kernel work on the `feat/extension-kernel-roadmap` branch.
+This document is the maintainer and author reference for Oino's extension kernel.
 
-Oino targets **semantic parity** with useful Pi extension capabilities, but it does **not** support Pi TypeScript extension API compatibility. Oino extensions use Oino-owned manifests, registries, permissions, and package layouts.
+Oino extensions use Oino-owned manifests, registries, permissions, and package layouts.
 
 Companion guides:
 
@@ -18,14 +18,14 @@ The extension kernel is split into intentionally narrow crates:
 - `oino-extension-builtins` — maps existing built-in Oino surfaces into typed registries so built-ins and external contributions share policy/composition behavior.
 - `oino-extension-manager` — discovers Oino-owned extension/package roots, validates manifests, composes registry snapshots, tracks safe mode, reload diffs, management rows, diagnostics, package lifecycle operations, and fixture registry metadata.
 - `oino-extension-runtime` — JSON-v1 runtime lifecycle, hook execution, capability broker, and adapters that bridge active extension tools/commands into existing Oino tool and command paths.
-- `oino-extension-sdk` — author-facing templates, validators, Rust JSON-v1 helpers, test harness, devkit CLI, and parity coverage gates.
+- `oino-extension-sdk` — author-facing templates, validators, Rust JSON-v1 helpers, test harness, devkit CLI, and coverage gates.
 - `oino-app` / `oino-tui` — runtime wiring and visible management/registry-backed UI surfaces (`/extensions`, settings pages, keymaps, theme tokens, autosuggest, renderer/provider metadata badges).
 
 Render paths remain host-owned. Extension code must never run inside Ratatui rendering; extensions publish declarative contributions and validated state updates, and Oino renders those states.
 
 ## Source layout and precedence
 
-Oino only auto-discovers explicit Oino-owned paths. It intentionally ignores implicit Pi, Claude, or generic agent conventions unless a future import command copies data into Oino paths.
+Oino only auto-discovers explicit Oino-owned paths. It intentionally ignores unrelated agent conventions unless a future import command copies data into Oino paths.
 
 | Scope | Path | Kind |
 |---|---|---|
@@ -67,12 +67,11 @@ cargo run -p oino-extension-sdk --bin oino-extension-devkit -- template-extensio
 cargo run -p oino-extension-sdk --bin oino-extension-devkit -- template-package
 cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-extension path/to/oino.extension.json
 cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-package examples/extensions/rust-wasm-fixture
-cargo run -p oino-extension-sdk --bin oino-extension-devkit -- parity-check .unipi/docs/research/2026-05-21-oino-pi-extension-parity-matrix.md
 ```
 
 Example package: `examples/extensions/rust-wasm-fixture`.
 
-Authoring SDK notes and multi-language roadmap: `docs/extension-sdk/README.md`.
+Authoring SDK notes and future language binding plans: `docs/extension-sdk/README.md`.
 
 ## Permissions and capability broker
 
@@ -123,7 +122,7 @@ Supported surface kinds cover sidebar, floating panel, footer/status, main panel
 
 The v1 runtime boundary is `wasm-json-v1`: initialize, invoke, progress, cancel, shutdown, and health. The host owns JSON payload validation, timeouts, cancellation, diagnostics, and capability imports. The current runtime implementation includes fixture modules for deterministic tests and SDK harnesses; untrusted community execution should remain WASM-first.
 
-ADR: `.unipi/docs/adr/2026-05-21-extension-wasm-json-v1-abi.md`.
+The ABI is intentionally host-owned and JSON-based so Oino can validate payloads, isolate failures, and keep rendering deterministic.
 
 ## Persistence and sessions
 
@@ -137,15 +136,11 @@ A package manifest (`oino.package.json`) can include extension manifests, resour
 
 Community registry metadata is local/fixture-based for now. It models package id, publisher, version, description, categories, license, source link, assets, compatibility, dependencies, permissions, trust/review/signing/checksum status, update policy, changelog, deprecation, and advisories.
 
-Policy doc: `.unipi/docs/specs/2026-05-21-oino-extension-community-registry-policy.md`.
-
-## Pi parity and non-goals
-
-Tracked matrix: `.unipi/docs/research/2026-05-21-oino-pi-extension-parity-matrix.md`.
+## Non-goals
 
 Explicit non-goals:
 
-- No Pi TypeScript extension API compatibility shim.
+- No compatibility shim for unrelated extension APIs.
 - No npm package compatibility; Git installs are supported only for Oino package repos containing `oino.package.json`.
 - No direct Ratatui rendering from extension code.
 - No raw filesystem/process/network access without explicit brokered permissions.

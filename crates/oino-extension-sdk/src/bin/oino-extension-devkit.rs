@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 use oino_extension_sdk::{
-    validate_extension_manifest_json, validate_package_dir, validate_package_manifest_json,
-    validate_parity_matrix, AuthoringError, ExampleExtensionTemplate,
+    validate_coverage_matrix, validate_extension_manifest_json, validate_package_dir,
+    validate_package_manifest_json, AuthoringError, ExampleExtensionTemplate,
 };
 use std::{env, fs, process::ExitCode};
 
@@ -69,18 +69,18 @@ fn run() -> Result<(), AuthoringError> {
                 println!("package manifest ok: {} {}", manifest.id, manifest.version);
             }
         }
-        "parity-check" => {
+        "coverage-check" => {
             let Some(path) = args.next() else {
                 return Err(AuthoringError::Validation(
-                    "parity-check requires a parity matrix markdown path".into(),
+                    "coverage-check requires a coverage matrix markdown path".into(),
                 ));
             };
-            let report = validate_parity_matrix(&fs::read_to_string(path)?);
+            let report = validate_coverage_matrix(&fs::read_to_string(path)?);
             if report.is_ok() {
-                println!("parity matrix ok");
+                println!("coverage matrix ok");
             } else {
                 return Err(AuthoringError::Validation(format!(
-                    "parity matrix gaps: {report:?}"
+                    "coverage matrix gaps: {report:?}"
                 )));
             }
         }
@@ -96,6 +96,6 @@ fn run() -> Result<(), AuthoringError> {
 
 fn print_usage() {
     println!(
-        "oino-extension-devkit commands:\n  template-extension\n  template-package\n  validate-extension <oino.extension.json>\n  validate-package <oino.package.json|package-dir>\n  parity-check <parity-matrix.md>"
+        "oino-extension-devkit commands:\n  template-extension\n  template-package\n  validate-extension <oino.extension.json>\n  validate-package <oino.package.json|package-dir>\n  coverage-check <coverage-matrix.md>"
     );
 }

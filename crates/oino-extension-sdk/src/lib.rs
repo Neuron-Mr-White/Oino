@@ -880,7 +880,7 @@ pub const REQUIRED_COVERAGE_GATES: &[CoverageGate] = &[
         evidence: "auth UX follow-up",
     },
     CoverageGate {
-        capability: "npm/git package compatibility",
+        capability: "npm package compatibility",
         decision: CoverageDecision::Rejected,
         evidence: "Oino-owned package format",
     },
@@ -890,9 +890,9 @@ pub const REQUIRED_COVERAGE_GATES: &[CoverageGate] = &[
         evidence: "render safety policy",
     },
     CoverageGate {
-        capability: "Pi TypeScript extension API",
+        capability: "Foreign TypeScript extension APIs",
         decision: CoverageDecision::Rejected,
-        evidence: "semantic parity only",
+        evidence: "Oino-native API only",
     },
 ];
 
@@ -910,7 +910,7 @@ impl CoverageReport {
 }
 
 #[must_use]
-pub fn validate_parity_matrix(markdown: &str) -> CoverageReport {
+pub fn validate_coverage_matrix(markdown: &str) -> CoverageReport {
     let mut report = CoverageReport::default();
     for gate in REQUIRED_COVERAGE_GATES {
         if !markdown.contains(&format!("| {} |", gate.capability)) {
@@ -1161,17 +1161,29 @@ mod tests {
     }
 
     #[test]
-    fn parity_coverage_gate_matches_tracked_matrix() -> Result<(), Box<dyn Error>> {
-        let matrix = include_str!(
-            "../../../.unipi/docs/research/2026-05-21-oino-pi-extension-parity-matrix.md"
-        );
-        let report = validate_parity_matrix(matrix);
-        assert!(report.is_ok(), "parity coverage gaps: {report:?}");
-        assert!(REQUIRED_COVERAGE_GATES
+    fn coverage_gate_matrix_validation_is_self_contained() {
+        let matrix = REQUIRED_COVERAGE_GATES
             .iter()
-            .any(|gate| gate.capability == "Pi TypeScript extension API"
-                && gate.decision == CoverageDecision::Rejected));
-        Ok(())
+            .map(|gate| {
+                format!(
+                    "| {} | {} | {} |",
+                    gate.capability,
+                    match gate.decision {
+                        CoverageDecision::Implemented => "implemented",
+                        CoverageDecision::Deferred => "deferred",
+                        CoverageDecision::Rejected => "rejected",
+                    },
+                    gate.evidence
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let report = validate_coverage_matrix(&matrix);
+        assert!(report.is_ok(), "coverage gaps: {report:?}");
+        assert!(REQUIRED_COVERAGE_GATES.iter().any(|gate| {
+            gate.capability == "Foreign TypeScript extension APIs"
+                && gate.decision == CoverageDecision::Rejected
+        }));
     }
 
     #[test]

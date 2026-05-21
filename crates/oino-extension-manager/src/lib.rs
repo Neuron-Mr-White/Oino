@@ -1,7 +1,7 @@
 #![doc = r#"Discovery, loading, reload, and management snapshots for Oino extensions.
 
-The manager is intentionally data-oriented at this stage of the roadmap. It
-finds Oino-owned extension manifests, validates them, wires declared
+The manager is intentionally data-oriented. It finds Oino-owned extension manifests,
+validates them, wires declared
 contributions into typed registries, composes read-only snapshots, and reports
 health/diagnostic state without executing extension code.
 "#]

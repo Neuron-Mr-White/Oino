@@ -1,8 +1,8 @@
 #![doc = r#"Oino-owned resource discovery and loading.
 
-This crate intentionally discovers only explicit Oino paths. Compatibility with Pi,
-Claude, Codex, or generic Agent conventions should happen through future importers,
-not through silent startup discovery.
+This crate intentionally discovers only explicit Oino paths. Compatibility with
+unrelated agent conventions should happen through future importers, not through
+silent startup discovery.
 "#]
 #![forbid(unsafe_code)]
 

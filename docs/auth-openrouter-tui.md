@@ -48,7 +48,7 @@ Provider text/thinking deltas are forwarded as they arrive, so the TUI can updat
 
 ## Built-in tools
 
-The app wires Oino's first Pi-like default tool set into the harness on startup:
+The app wires Oino's default tool set into the harness on startup:
 
 - `read` — read text files with offset/limit and truncation notices; image files are detected but currently returned as text notes because the first OpenRouter adapter does not yet serialize image tool results.
 - `bash` — execute shell commands in the startup working directory with optional timeout and truncated stdout/stderr output.

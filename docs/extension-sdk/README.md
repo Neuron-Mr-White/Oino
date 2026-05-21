@@ -13,10 +13,10 @@ For full authoring, testing, GitHub publishing, and install instructions, see `d
 
 Example fixture: `examples/extensions/rust-wasm-fixture`.
 
-## Multi-language roadmap
+## Future language bindings
 
-- **TypeScript/JavaScript:** generate JSON schemas from the Rust contracts and provide a thin JSON-v1 helper package. No Pi API compatibility shim is planned.
+- **TypeScript/JavaScript:** generate JSON schemas from the Rust contracts and provide a thin JSON-v1 helper package. No unrelated agent API compatibility shim is planned.
 - **Go:** provide typed structs for JSON-v1 request/response payloads and manifest generation after schema export stabilizes.
 - **Python:** provide dataclass/Pydantic helpers for manifest validation and local fixture-runtime tests after schema export stabilizes.
 
-All language bindings must pass the parity/contract tests in `oino-extension-sdk` before being documented as stable.
+All language bindings must pass the coverage/contract tests in `oino-extension-sdk` before being documented as stable.
