@@ -31,7 +31,8 @@ use oino_extension_core::{
     UiVisibilityPolicy,
 };
 use oino_extension_manager::{
-    ExtensionDiscovery, ExtensionManager, ExtensionManagerConfig, ExtensionManagerSnapshot,
+    ExtensionDiscovery, ExtensionLayoutPaths, ExtensionManager, ExtensionManagerConfig,
+    ExtensionManagerSnapshot, PackageInstallScope, PackageLifecycleError, PackageLifecycleService,
 };
 use oino_extension_runtime::{
     ExtensionCommandAdapter, ExtensionRuntime, ExtensionToolAdapter, FixtureHandlerBehavior,
@@ -588,10 +589,10 @@ fn current_extension_version() -> semver::Version {
         .unwrap_or_else(|_| semver::Version::new(0, 1, 0))
 }
 
-fn load_extension_snapshot(
+fn extension_manager_with_current_policy(
     paths: &ResourcePaths,
     settings: &ToolSettingsSnapshot,
-) -> ExtensionManagerSnapshot {
+) -> ExtensionManager {
     let policy = oino_extension_core::ExtensionPolicySettings::merged_registry_policy(
         &settings.global.extensions,
         &settings.project.extensions,
@@ -601,7 +602,38 @@ fn load_extension_snapshot(
         ExtensionDiscovery::from_home_and_project(&paths.home_dir, &paths.project_root),
     )
     .with_policy(policy);
-    ExtensionManager::new(config).load()
+    ExtensionManager::new(config)
+}
+
+fn load_extension_snapshot(
+    paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
+) -> ExtensionManagerSnapshot {
+    extension_manager_with_current_policy(paths, settings).load()
+}
+
+fn extension_layout_paths(paths: &ResourcePaths) -> ExtensionLayoutPaths {
+    ExtensionLayoutPaths::for_home_and_project(&paths.home_dir, &paths.project_root)
+}
+
+fn package_install_scope(scope: ToolSettingsScope) -> PackageInstallScope {
+    match scope {
+        ToolSettingsScope::Global => PackageInstallScope::Global,
+        ToolSettingsScope::Project => PackageInstallScope::Project,
+    }
+}
+
+fn resolve_install_source(source: &str, cwd: &Path, home_dir: &Path) -> PathBuf {
+    let source = source.trim();
+    if let Some(rest) = source.strip_prefix("~/") {
+        return home_dir.join(rest);
+    }
+    let path = PathBuf::from(source);
+    if path.is_absolute() {
+        path
+    } else {
+        cwd.join(path)
+    }
 }
 
 fn apply_extension_snapshot_to_tui_state(
@@ -1632,6 +1664,121 @@ async fn run_tui(
                     &extension_snapshot,
                     &tool_settings,
                 );
+            }
+            TuiAction::InstallExtensionPackage { source, scope } => {
+                let install_path = resolve_install_source(&source, &cwd, &resource_paths.home_dir);
+                let mut manager =
+                    extension_manager_with_current_policy(&resource_paths, &tool_settings);
+                manager.load();
+                let service = PackageLifecycleService::new(
+                    extension_layout_paths(&resource_paths),
+                    current_extension_version(),
+                );
+                let lifecycle = service
+                    .install_local(&install_path, package_install_scope(scope), &mut manager)
+                    .or_else(|err| match err {
+                        PackageLifecycleError::AlreadyInstalled(_) => service.update_local(
+                            &install_path,
+                            package_install_scope(scope),
+                            &mut manager,
+                        ),
+                        other => Err(other),
+                    });
+                match lifecycle {
+                    Ok(report) => {
+                        let package_id = report.package_id.to_string();
+                        set_extension_enabled(
+                            &mut tool_settings,
+                            ExtensionManagementTarget::Package,
+                            package_id.clone(),
+                            scope,
+                            true,
+                        );
+                        save_tool_settings(&tool_settings, &resource_paths, scope, &mut state)
+                            .await;
+                        apply_tool_settings_to_harness(
+                            &harness,
+                            &tool_settings,
+                            &resource_paths,
+                            &cwd,
+                        )
+                        .await;
+                        let extension_snapshot =
+                            load_extension_snapshot(&resource_paths, &tool_settings);
+                        extension_models = extension_model_options(&extension_snapshot);
+                        state.set_tool_settings(tool_settings_items(&tool_settings));
+                        apply_extension_snapshot_to_tui_state(
+                            &mut state,
+                            &extension_snapshot,
+                            &tool_settings,
+                        );
+                        state.status = format!(
+                            "Installed {} package `{}` from `{}`",
+                            scope.label(),
+                            package_id,
+                            install_path.display()
+                        );
+                    }
+                    Err(err) => state.set_error(format!("Extension install failed: {err}")),
+                }
+            }
+            TuiAction::RemoveExtensionPackage { package_id, scope } => {
+                let mut manager =
+                    extension_manager_with_current_policy(&resource_paths, &tool_settings);
+                manager.load();
+                let service = PackageLifecycleService::new(
+                    extension_layout_paths(&resource_paths),
+                    current_extension_version(),
+                );
+                match PackageId::new(&package_id) {
+                    Ok(id) => {
+                        match service.remove(id, package_install_scope(scope), &mut manager) {
+                            Ok(_) => {
+                                set_extension_enabled(
+                                    &mut tool_settings,
+                                    ExtensionManagementTarget::Package,
+                                    package_id.clone(),
+                                    scope,
+                                    false,
+                                );
+                                save_tool_settings(
+                                    &tool_settings,
+                                    &resource_paths,
+                                    scope,
+                                    &mut state,
+                                )
+                                .await;
+                                apply_tool_settings_to_harness(
+                                    &harness,
+                                    &tool_settings,
+                                    &resource_paths,
+                                    &cwd,
+                                )
+                                .await;
+                                let extension_snapshot =
+                                    load_extension_snapshot(&resource_paths, &tool_settings);
+                                extension_models = extension_model_options(&extension_snapshot);
+                                state.set_tool_settings(tool_settings_items(&tool_settings));
+                                apply_extension_snapshot_to_tui_state(
+                                    &mut state,
+                                    &extension_snapshot,
+                                    &tool_settings,
+                                );
+                                state.status = format!(
+                                    "Uninstalled {} package `{}`",
+                                    scope.label(),
+                                    package_id
+                                );
+                            }
+                            Err(err) => {
+                                state.set_error(format!("Extension uninstall failed: {err}"))
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        state.set_error(format!("Invalid package id `{package_id}`: {err}"))
+                    }
+                }
             }
             TuiAction::SetSessionTitle(title) => {
                 if let Err(err) = harness.set_session_title(title.clone()).await {

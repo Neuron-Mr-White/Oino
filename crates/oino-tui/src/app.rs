@@ -181,13 +181,39 @@ impl ExtensionManagementItem {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionPackageSelection {
+    pub package_id: String,
+    pub scope: ToolSettingsScope,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtensionManagementState {
     pub items: Vec<ExtensionManagementItem>,
     pub filtered_indices: Vec<usize>,
     pub cursor: usize,
     pub search: String,
     pub search_active: bool,
+    pub install_input: String,
+    pub install_scope: ToolSettingsScope,
+    pub install_active: bool,
+    pub remove_confirm: Option<ExtensionPackageSelection>,
+}
+
+impl Default for ExtensionManagementState {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            filtered_indices: Vec::new(),
+            cursor: 0,
+            search: String::new(),
+            search_active: false,
+            install_input: String::new(),
+            install_scope: ToolSettingsScope::Project,
+            install_active: false,
+            remove_confirm: None,
+        }
+    }
 }
 
 impl ExtensionManagementState {
@@ -220,6 +246,35 @@ impl ExtensionManagementState {
         self.filtered_indices
             .get(self.cursor)
             .and_then(|index| self.items.get(*index))
+    }
+
+    pub fn begin_install(&mut self, scope: ToolSettingsScope) {
+        self.install_scope = scope;
+        self.install_active = true;
+        self.install_input.clear();
+        self.search_active = false;
+        self.remove_confirm = None;
+    }
+
+    pub fn cancel_install(&mut self) {
+        self.install_active = false;
+        self.install_input.clear();
+    }
+
+    pub fn package_selection_for_selected(&self) -> Option<ExtensionPackageSelection> {
+        let item = self.selected_item()?;
+        if item.target != ExtensionManagementTarget::Package {
+            return None;
+        }
+        let scope = match item.scope.as_str() {
+            "global" => ToolSettingsScope::Global,
+            "project" => ToolSettingsScope::Project,
+            _ => ToolSettingsScope::Project,
+        };
+        Some(ExtensionPackageSelection {
+            package_id: item.id.clone(),
+            scope,
+        })
     }
 
     pub fn set_selected_enabled(&mut self, scope: ToolSettingsScope, enabled: bool) {
@@ -1486,6 +1541,9 @@ impl TuiState {
             Some(OverlayKind::Skills) if self.skills.search_active => {
                 return self.handle_skills_search_text_key(key);
             }
+            Some(OverlayKind::Extensions) if self.extension_management.install_active => {
+                return self.handle_extensions_install_text_key(key);
+            }
             Some(OverlayKind::Extensions) if self.extension_management.search_active => {
                 return self.handle_extensions_search_text_key(key);
             }
@@ -1603,7 +1661,10 @@ impl TuiState {
             Some(OverlayKind::Skills) if self.skills.search_active => {
                 contexts.push(KeyContext::Search);
             }
-            Some(OverlayKind::Extensions) if self.extension_management.search_active => {
+            Some(OverlayKind::Extensions)
+                if self.extension_management.search_active
+                    || self.extension_management.install_active =>
+            {
                 contexts.push(KeyContext::Search);
             }
             Some(OverlayKind::Prompts | OverlayKind::Skills) => {
@@ -1927,6 +1988,9 @@ impl TuiState {
         match self.overlay {
             Some(OverlayKind::Help) => self.execute_help_search_action(action),
             Some(OverlayKind::Sessions) => self.execute_sessions_search_action(action),
+            Some(OverlayKind::Extensions) if self.extension_management.install_active => {
+                self.execute_extensions_install_action(action)
+            }
             Some(OverlayKind::Extensions) => self.execute_extensions_search_action(action),
             Some(OverlayKind::Prompts) => self.execute_prompts_search_action(action),
             Some(OverlayKind::Skills) => self.execute_skills_search_action(action),
@@ -2131,10 +2195,23 @@ impl TuiState {
     }
 
     fn execute_extensions_action(&mut self, action: KeyAction) -> TuiAction {
+        if self.extension_management.remove_confirm.is_some() {
+            return match action {
+                KeyAction::SessionsClose => {
+                    self.extension_management.remove_confirm = None;
+                    self.status = "Extension uninstall canceled".into();
+                    TuiAction::None
+                }
+                KeyAction::SessionsOpen => self.confirm_extension_package_remove(),
+                _ => TuiAction::None,
+            };
+        }
         match action {
             KeyAction::SessionsClose => {
                 self.overlay = None;
                 self.extension_management.search_active = false;
+                self.extension_management.install_active = false;
+                self.extension_management.remove_confirm = None;
                 self.status = HELP_STATUS.into();
                 TuiAction::None
             }
@@ -2158,6 +2235,23 @@ impl TuiState {
             }
             KeyAction::SessionsRefresh => {
                 self.status = "Extension snapshot is already loaded".into();
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn execute_extensions_install_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::SearchClose => {
+                self.extension_management.cancel_install();
+                self.status = "Extension install canceled".into();
+                TuiAction::None
+            }
+            KeyAction::SearchAccept => self.submit_extension_install(),
+            KeyAction::SearchBackspace => {
+                self.extension_management.install_input.pop();
+                self.status = extension_install_status(&self.extension_management);
                 TuiAction::None
             }
             _ => TuiAction::None,
@@ -2194,6 +2288,17 @@ impl TuiState {
         }
     }
 
+    fn handle_extensions_install_text_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Char(ch) if key.modifiers.is_empty() => {
+                self.extension_management.install_input.push(ch);
+                self.status = extension_install_status(&self.extension_management);
+            }
+            _ => {}
+        }
+        TuiAction::None
+    }
+
     fn handle_extensions_search_text_key(&mut self, key: KeyEvent) -> TuiAction {
         match key.code {
             KeyCode::Char(ch) if key.modifiers.is_empty() => {
@@ -2207,6 +2312,19 @@ impl TuiState {
     }
 
     fn handle_extensions_plain_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.extension_management.remove_confirm.is_some() {
+            return match key.code {
+                KeyCode::Char('y') if key.modifiers.is_empty() => {
+                    self.confirm_extension_package_remove()
+                }
+                KeyCode::Char('n') if key.modifiers.is_empty() => {
+                    self.extension_management.remove_confirm = None;
+                    self.status = "Extension uninstall canceled".into();
+                    TuiAction::None
+                }
+                _ => TuiAction::None,
+            };
+        }
         match key.code {
             KeyCode::Char('g') if key.modifiers.is_empty() => {
                 self.toggle_selected_extension_scope(ToolSettingsScope::Global)
@@ -2214,7 +2332,65 @@ impl TuiState {
             KeyCode::Char('p') if key.modifiers.is_empty() => {
                 self.toggle_selected_extension_scope(ToolSettingsScope::Project)
             }
+            KeyCode::Char('i') if key.modifiers.is_empty() => {
+                self.extension_management
+                    .begin_install(ToolSettingsScope::Project);
+                self.status = extension_install_status(&self.extension_management);
+                TuiAction::None
+            }
+            KeyCode::Char('I')
+                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+            {
+                self.extension_management
+                    .begin_install(ToolSettingsScope::Global);
+                self.status = extension_install_status(&self.extension_management);
+                TuiAction::None
+            }
+            KeyCode::Char('u') | KeyCode::Char('x') if key.modifiers.is_empty() => {
+                self.request_extension_package_remove()
+            }
             _ => TuiAction::None,
+        }
+    }
+
+    fn submit_extension_install(&mut self) -> TuiAction {
+        let source = self.extension_management.install_input.trim().to_string();
+        if source.is_empty() {
+            self.status = "Enter a package path to install".into();
+            return TuiAction::None;
+        }
+        let scope = self.extension_management.install_scope;
+        self.extension_management.cancel_install();
+        self.status = format!("Installing extension package from `{source}`…");
+        TuiAction::InstallExtensionPackage { source, scope }
+    }
+
+    fn request_extension_package_remove(&mut self) -> TuiAction {
+        let Some(selection) = self.extension_management.package_selection_for_selected() else {
+            self.status = "Select a package row to uninstall".into();
+            return TuiAction::None;
+        };
+        self.status = format!(
+            "Uninstall {} package `{}`? Enter/Y confirms • N/Esc cancels",
+            selection.scope.label(),
+            selection.package_id
+        );
+        self.extension_management.remove_confirm = Some(selection);
+        TuiAction::None
+    }
+
+    fn confirm_extension_package_remove(&mut self) -> TuiAction {
+        let Some(selection) = self.extension_management.remove_confirm.take() else {
+            return TuiAction::None;
+        };
+        self.status = format!(
+            "Uninstalling {} package `{}`…",
+            selection.scope.label(),
+            selection.package_id
+        );
+        TuiAction::RemoveExtensionPackage {
+            package_id: selection.package_id,
+            scope: selection.scope,
         }
     }
 
@@ -2916,8 +3092,7 @@ impl TuiState {
         self.extension_management.search_active = false;
         self.extension_management.search.clear();
         self.extension_management.refresh_filter();
-        self.status =
-            "Extensions: / search • ↑/↓ select • g global • p/Enter project • Esc close".into();
+        self.status = "Extensions: / search • i install project • I install global • u/x uninstall package • g global • p/Enter project • Esc close".into();
     }
 
     fn open_inspect_overlay(&mut self) {
@@ -3212,6 +3387,18 @@ fn extension_search_status(query: &str) -> String {
     } else {
         format!("Searching extensions for `{query}`")
     }
+}
+
+fn extension_install_status(management: &ExtensionManagementState) -> String {
+    let input = if management.install_input.is_empty() {
+        "<package path>"
+    } else {
+        &management.install_input
+    };
+    format!(
+        "Install {} extension package from {input} • Enter confirms • Esc cancels",
+        management.install_scope.label()
+    )
 }
 
 fn skill_search_status(query: &str) -> String {
@@ -3561,21 +3748,38 @@ mod tests {
     #[test]
     fn extensions_overlay_searches_and_toggles_project_policy() {
         let mut state = TuiState::new();
-        state.set_extension_management_items(vec![ExtensionManagementItem {
-            target: ExtensionManagementTarget::Extension,
-            id: "process.manager".into(),
-            title: "Process Manager".into(),
-            family: "extension".into(),
-            scope: "project".into(),
-            health: "Healthy".into(),
-            state: "Active".into(),
-            permission: "tools:1".into(),
-            provenance: "process.package process.manager".into(),
-            diagnostics: Vec::new(),
-            conflicts: Vec::new(),
-            global_enabled: true,
-            project_enabled: true,
-        }]);
+        state.set_extension_management_items(vec![
+            ExtensionManagementItem {
+                target: ExtensionManagementTarget::Extension,
+                id: "process.manager".into(),
+                title: "Process Manager".into(),
+                family: "extension".into(),
+                scope: "project".into(),
+                health: "Healthy".into(),
+                state: "Active".into(),
+                permission: "tools:1".into(),
+                provenance: "process.package process.manager".into(),
+                diagnostics: Vec::new(),
+                conflicts: Vec::new(),
+                global_enabled: true,
+                project_enabled: true,
+            },
+            ExtensionManagementItem {
+                target: ExtensionManagementTarget::Package,
+                id: "process.package".into(),
+                title: "Process Package".into(),
+                family: "package".into(),
+                scope: "project".into(),
+                health: "Healthy".into(),
+                state: "Active".into(),
+                permission: "package".into(),
+                provenance: String::new(),
+                diagnostics: Vec::new(),
+                conflicts: Vec::new(),
+                global_enabled: false,
+                project_enabled: true,
+            },
+        ]);
         state.composer.replace_text("/extensions");
         assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
         assert_eq!(state.overlay, Some(OverlayKind::Extensions));
@@ -3589,6 +3793,29 @@ mod tests {
             }
         );
         assert!(!state.extension_management.items[0].project_enabled);
+
+        assert_eq!(state.handle_key(key(KeyCode::Char('i'))), TuiAction::None);
+        for ch in "examples/extensions/rust-wasm-fixture".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::InstallExtensionPackage {
+                source: "examples/extensions/rust-wasm-fixture".into(),
+                scope: ToolSettingsScope::Project,
+            }
+        );
+
+        assert_eq!(state.handle_key(key(KeyCode::Down)), TuiAction::None);
+        assert_eq!(state.handle_key(key(KeyCode::Char('u'))), TuiAction::None);
+        assert!(state.extension_management.remove_confirm.is_some());
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::RemoveExtensionPackage {
+                package_id: "process.package".into(),
+                scope: ToolSettingsScope::Project,
+            }
+        );
     }
 
     #[test]

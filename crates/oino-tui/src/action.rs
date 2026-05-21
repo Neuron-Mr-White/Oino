@@ -42,6 +42,14 @@ pub enum TuiAction {
         scope: ToolSettingsScope,
         enabled: bool,
     },
+    InstallExtensionPackage {
+        source: String,
+        scope: ToolSettingsScope,
+    },
+    RemoveExtensionPackage {
+        package_id: String,
+        scope: ToolSettingsScope,
+    },
     SetSessionTitle(String),
     AbortPrompt,
     Quit,

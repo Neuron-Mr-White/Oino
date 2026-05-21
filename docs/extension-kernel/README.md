@@ -90,6 +90,15 @@ The Extension Manager never crashes the app for bad external inputs. It collects
 
 `/extensions` opens the management overlay. It exposes extensions, packages, contributions, scope, state, health, diagnostics, conflicts, provenance, and global/project enablement actions.
 
+Core developer/community install flow from the panel:
+
+1. Open `/extensions`.
+2. Press `i` to install a package into the current project, or `I` to install globally.
+3. Type a local package path such as `examples/extensions/rust-wasm-fixture` and press Enter.
+4. Oino validates, installs, enables the package in the selected scope, reloads the Extension Manager, and refreshes model-visible tools/UI surfaces.
+5. Select a package row and press `u` or `x` to uninstall; Enter/Y confirms and Esc/N cancels.
+6. Use `p`/Enter to toggle project enablement and `g` to toggle global enablement for the selected extension, package, or contribution.
+
 Safe mode disables all non-built-in contributions while retaining diagnostics. Reload APIs return typed registry diffs so package lifecycle, hot reload, and author workflows can explain what changed.
 
 ## UI surfaces

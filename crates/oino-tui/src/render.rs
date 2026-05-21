@@ -2119,10 +2119,14 @@ fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
         ),
         sections[0],
     );
-    let controls = if state.extension_management.search_active {
+    let controls = if state.extension_management.install_active {
+        "type package path • Enter install • Esc cancel"
+    } else if state.extension_management.remove_confirm.is_some() {
+        "Enter/Y uninstall • N/Esc cancel"
+    } else if state.extension_management.search_active {
         "type to fuzzy search • ↑/↓ move • Enter toggle project • Esc clear search"
     } else {
-        "↑/↓ select • / search • g toggle global • p/Enter toggle project • Esc close"
+        "↑/↓ select • / search • i install project • I install global • u/x uninstall package • g toggle global • p/Enter toggle project • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
     frame.render_widget(
@@ -2138,10 +2142,26 @@ fn extension_management_lines(
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    let search = if state.extension_management.search_active {
+    let search = if state.extension_management.install_active {
+        let input = if state.extension_management.install_input.is_empty() {
+            "<package path>"
+        } else {
+            &state.extension_management.install_input
+        };
+        format!(
+            "Install {} package: {input}",
+            state.extension_management.install_scope.label()
+        )
+    } else if let Some(confirm) = &state.extension_management.remove_confirm {
+        format!(
+            "Confirm uninstall {} package `{}`",
+            confirm.scope.label(),
+            confirm.package_id
+        )
+    } else if state.extension_management.search_active {
         format!("Search: {}", state.extension_management.search)
     } else if state.extension_management.search.is_empty() {
-        "Press / to search extensions".into()
+        "Press / to search extensions • i/I install • u/x uninstall selected package".into()
     } else {
         format!("Filter: {}", state.extension_management.search)
     };
