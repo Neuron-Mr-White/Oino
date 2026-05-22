@@ -3,6 +3,40 @@
 This crate converts Oino's provider-neutral `StreamRequest` into OpenRouter's
 OpenAI-compatible chat-completions API and converts streaming SSE chunks back into typed
 `AssistantStreamEvent`s for the pure agent loop.
+
+## Boundary
+
+`oino-provider-openrouter` owns only OpenRouter-specific HTTP and JSON details: the
+base URL and endpoints, attribution headers, request serialization, model listing,
+SSE parsing, finish-reason mapping, reasoning-parameter mapping, and tool-call chunk
+assembly. It asks `oino-auth` for credentials but does not decide where secrets come
+from, and it does not own session storage, model-cache persistence, UI state, or
+prompt assembly.
+
+## Public API map
+
+- [`OpenRouterConfig`] carries the base URL, optional `HTTP-Referer` and
+  `X-OpenRouter-Title` headers, and request timeout used by both chat and model-list
+  calls.
+- [`OpenRouterProvider`] implements the agent-loop streaming provider contract. It
+  resolves the API key, builds a [`OpenRouterChatRequest`], posts to
+  `/chat/completions`, and feeds response bytes into [`SseEventParser`].
+- [`build_chat_request`] is the fixture-friendly conversion seam from Oino messages,
+  tools, model ids, and thinking levels into OpenRouter chat-completions JSON.
+- [`list_models`] fetches `/models` and returns [`OpenRouterModelInfo`] with
+  `supported_parameters`; `oino-app` owns caching and settings integration.
+- The `OpenRouter*` request structs are public so tests and documentation can assert
+  exact JSON without making network calls.
+
+## Contributor rules
+
+Keep provider-neutral stream semantics in `oino-agent-loop` and Oino message shapes in
+`oino-types`; add only OpenRouter protocol translations here. Prefer serialization
+fixtures and SSE parser tests over live HTTP tests. When OpenRouter adds fields, map
+them into existing `AssistantStreamEvent` or `StopReason` variants when possible, and
+only extend core types when the concept is provider-neutral. Preserve abort checks,
+sink-error propagation, and sanitized provider error bodies so credentials and large
+HTML error pages do not leak into transcripts.
 "#]
 #![forbid(unsafe_code)]
 

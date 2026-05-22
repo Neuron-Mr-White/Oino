@@ -1,9 +1,49 @@
 #![doc = r#"Built-in Oino contribution catalogs backed by the extension registry model.
 
-This crate is the bridge between hardcoded Oino surfaces and the generic
-extension-kernel contribution registries. It does not execute tools or render
-UI itself; it only represents built-in tools, commands, keymaps, resources,
-settings pages, themes, and provider metadata as registry contributions.
+`oino-extension-builtins` is the adapter that presents Oino's built-in tools,
+commands, keymaps, hooks, resources, settings pages, themes, and provider metadata as
+regular extension-kernel registry contributions. This lets built-ins and external
+extensions flow through the same policy, conflict, snapshot, and management surfaces.
+
+## Boundary
+
+This crate translates existing Oino surfaces into `oino-extension-core` contribution
+registries. It does not execute tools, render UI, discover extension manifests, load
+packages, persist extension state, mutate keymap/settings files, or decide registry
+policy. `oino-tools`, `oino-tui`, `oino-resource`, and provider/app crates keep owning
+the runtime behavior; this crate only mirrors their current metadata into built-in
+registry entries with the built-in source and active lifecycle.
+
+## Public API map
+
+- [`BUILTIN_EXTENSION_ID`] is the synthetic owner for all built-in contributions.
+- [`BuiltinRegistryCatalog`] groups the built-in [`oino_extension_core::ToolRegistry`],
+  [`oino_extension_core::CommandRegistry`], [`oino_extension_core::KeymapRegistry`],
+  [`oino_extension_core::HookRegistry`],
+  [`oino_extension_core::SettingsPageRegistry`],
+  [`oino_extension_core::ThemeRegistry`],
+  [`oino_extension_core::ProviderModelRegistry`], and
+  [`oino_extension_core::ResourceRegistry`]. [`BuiltinRegistryCatalog::from_parts`]
+  builds the catalog from the current tool map, keymap config, resource catalog, and
+  OpenRouter model ids.
+- [`tool_registry_from_tools`] and [`tool_contribution_from_definition`] turn
+  model-visible built-in tools into registry contributions while preserving sequential
+  vs. parallel execution metadata.
+- [`command_registry`], [`keymap_registry`], [`hook_registry`],
+  [`settings_page_registry`], [`theme_registry`], [`provider_registry`], and
+  [`resource_registry`] mirror the corresponding built-in Oino surfaces.
+- [`BuiltinRegistryError`] keeps identifier and registry validation failures typed for
+  the extension manager and tests.
+
+## Contributor rules
+
+Keep this crate a metadata mirror. When adding or renaming built-in commands, key actions,
+settings pages, chat styles, provider metadata, tools, or resource kinds, update the
+owning crate first and then update this catalog, extension docs, and registry tests so
+`/extensions` shows the same surface the app actually exposes. Preserve deterministic ids
+and slugs because user policy overrides can reference them. Do not bypass extension
+policy by special-casing built-ins here; built-ins should remain registry entries whose
+source and lifecycle make them enabled by default unless policy disables them.
 "#]
 #![forbid(unsafe_code)]
 

@@ -3,6 +3,45 @@
 Sessions store runtime history as immutable entries linked by parent identifiers. The manager
 tracks a current leaf for navigation, branching, compaction reconstruction, labels, and
 context building. It does not own providers, tools, UI, or the agent loop.
+
+## Boundary
+
+`oino-session` owns the in-memory session tree and JSONL load/save format. It records
+messages, model/thinking changes, compaction summaries, branch summaries, labels, title
+and cwd updates, extension-owned custom entries, and the current leaf. It does not run
+providers or tools, decide TUI navigation, choose storage roots, expand resources, or
+manage auth/settings; `oino-harness`, `oino-app`, and `oino-tui` turn session data into
+runtime behavior and user workflows.
+
+## Public API map
+
+- [`SessionHeader`] stores file-level metadata: format version, session id, display
+  name, and starting cwd.
+- [`SessionEntryKind`] and [`SessionEntry`] are the append-only tree records. Entries
+  are immutable and linked by parent id; moving the current leaf chooses which branch is
+  active.
+- [`SessionManager`] appends entries, branches/reset leaves, exposes children/tree data,
+  finds labels, filters extension entries, and builds [`SessionContext`] for the active
+  branch.
+- [`SessionContext`] is the reconstructed model context plus latest model and thinking
+  settings; compaction entries replace earlier message context with a summary message.
+- [`SessionRepository`] owns directory-level helpers for creating, opening, and listing
+  `.jsonl` session files; callers own higher-level sorting, previews, and blank-session
+  policies.
+- [`SessionError`] and [`SessionResult`] keep missing-entry, invalid-record, I/O, and
+  JSON failures typed for app/TUI error handling.
+
+## Contributor rules
+
+Keep persistence deterministic and inspectable: a JSONL file starts with one header
+record followed by entry records. Preserve branch reconstruction semantics when adding
+new entry kinds, and decide explicitly whether a new entry affects model context,
+metadata, labels, extension state, or only UI/session bookkeeping. Extension-specific
+state should remain typed as [`oino_extension_core::ExtensionSessionEntry`] so sessions
+can be inspected without loading extension runtime code. Update the [sessions guide]
+when user-visible save, branch, title, import, delete, or migration behavior changes.
+
+[sessions guide]: ../../../docs/sessions.md
 "#]
 #![forbid(unsafe_code)]
 

@@ -3,6 +3,39 @@
 The default model-visible tools are `read`, `bash`, `edit`, and `write`.
 Tools depend on `ExecutionEnv` so future
 sandboxed or remote runtimes can reuse the same model-visible surface.
+
+## Boundary
+
+`oino-tools` owns model-visible tool definitions, JSON input schemas, argument
+normalization, truncation messages, exact edit validation, current-working-directory
+resolution, and conversion from environment failures into tool errors. Actual process
+and filesystem access belongs to `oino-env`; provider serialization, session storage,
+TUI confirmations, extension permissions, and app-level policy live outside this crate.
+
+## Public API map
+
+- [`default_tools`] builds the standard local coding tool set around a shared
+  `ExecutionEnv` and startup working directory.
+- [`ReadTool`] reads text with offset/limit continuation notices and returns a text
+  placeholder for image files until providers support image tool results.
+- [`BashTool`] runs shell commands through `ExecutionEnv`, formats stdout/stderr/status,
+  and truncates long output from the tail so recent command output remains visible.
+- [`EditTool`] applies exact, unique, non-overlapping replacements against the original
+  file and keeps writes sequential.
+- [`WriteTool`] creates or overwrites a file through `ExecutionEnv`, including parent
+  directory creation delegated to the environment adapter.
+- [`session_title_tool`], [`SessionTitleTool`], [`SessionTitleSetter`], and
+  [`SESSION_TITLE_TOOL_NAME`] bridge the app's session-title callback into the same
+  tool protocol without making this crate depend on session storage.
+
+## Contributor rules
+
+Keep tool names, schemas, and output wording stable unless the TUI help, user docs,
+and tests are updated together. Route every side effect through `ExecutionEnv`; do not
+call local filesystem or process APIs directly from tool implementations. Preserve abort
+checks before and after environment work, keep `write`/`edit`/session-title operations
+sequential, and prefer typed `Deserialize` argument structs with `serde_json::from_value`
+over ad-hoc JSON probing except for compatibility shims.
 "#]
 #![forbid(unsafe_code)]
 

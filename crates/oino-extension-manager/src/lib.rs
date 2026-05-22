@@ -1,9 +1,59 @@
-#![doc = r#"Discovery, loading, reload, and management snapshots for Oino extensions.
+#![doc = r#"Discovery, loading, package lifecycle, persistence, and snapshots for Oino extensions.
 
-The manager is intentionally data-oriented. It finds Oino-owned extension manifests,
-validates them, wires declared
-contributions into typed registries, composes read-only snapshots, and reports
-health/diagnostic state without executing extension code.
+`oino-extension-manager` is the filesystem-facing manager for extension data. It finds
+Oino-owned manifests and packages, validates them against `oino-extension-core`, wires
+contributions into typed registries, composes read-only snapshots, records diagnostics
+and health, handles local package install/update/remove, and stores extension-owned
+persistence records without executing extension runtime code.
+
+## Boundary
+
+This crate owns explicit Oino extension roots, manifest loading, registry composition,
+safe-mode filtering, management rows, diagnostic grouping, local package lifecycle
+filesystem changes, fixture community-registry checks, and the host-side persistence
+store. It does not run WASM/native extension code, broker runtime capabilities, render
+Ratatui surfaces, parse user keybindings, call providers, or decide model/tool behavior.
+Those responsibilities stay in `oino-extension-runtime`, `oino-tui`/`oino-app`, provider
+crates, and the agent/tool crates.
+
+## Public API map
+
+- [`ExtensionLayoutPaths`], [`ExtensionDiscovery`], [`ExtensionDiscoveryRoot`],
+  [`DiscoveredExtensionFile`], and [`DiscoveredFileKind`] define the explicit global,
+  project, session, development, installed-package, and registry-fixture locations the
+  manager scans.
+- [`ExtensionManagerConfig`] wires current Oino compatibility, discovery roots,
+  [`oino_extension_core::RegistryPolicy`], safe mode, denied-permission reasons, and
+  optional built-in registries.
+- [`ExtensionRegistries`] owns the live typed registries. [`RegistrySnapshotBundle`] and
+  [`RegistryDiffBundle`] are the composed/diffed snapshots consumed by app and TUI
+  layers.
+- [`ExtensionManager`], [`ExtensionManagerSnapshot`], and [`ExtensionReload`] are the
+  main load/reload surface. Snapshot rows use [`ExtensionRecord`], [`PackageRecord`],
+  [`ContributionRecord`], [`ContributionState`], [`DiagnosticGroup`], and
+  [`ExtensionHealthEvent`] for management UI and diagnostics.
+- [`ExtensionPersistenceStore`] reads, writes, migrates, lists, tombstones, and cleans up
+  [`oino_extension_core::PersistenceRecord`] values while enforcing declared persistence
+  scopes. [`PersistenceStoreError`] keeps ownership, permission, size, migration,
+  corruption, and I/O failures typed.
+- [`PackageLifecycleService`], [`PackageInstallScope`], [`PackageLifecycleOperation`],
+  [`PackagePermissionPrompt`], [`PackageLifecycleReport`], and
+  [`PackageLifecycleError`] validate and copy local packages into the selected Oino
+  scope, remove installed packages, and reload manager state.
+- [`FixtureRegistryClient`], [`RegistryTrustPolicy`], [`PublishingValidation`], and
+  [`validate_registry_package_metadata`] support deterministic community-registry
+  fixtures, search, advisory checks, and publish/readiness validation.
+
+## Contributor rules
+
+Keep discovery limited to Oino-owned roots and keep ordering deterministic after
+filesystem reads. Add new contribution families first in `oino-extension-core`, then wire
+built-ins, manager registries, snapshots, diffs, tests, and docs together. Do not execute
+runtime code or grant capabilities from this crate; package install and persistence
+operations should remain validation-heavy filesystem moves/writes. When changing install
+semantics, safe mode, registry policy, persistence cleanup/migration, or diagnostic
+wording, update the extension user/developer guides and fixture package validation so
+`/extensions` explains the same behavior the manager enforces.
 "#]
 #![forbid(unsafe_code)]
 

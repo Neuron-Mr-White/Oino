@@ -4,6 +4,14 @@ The selected v1 ABI is a small JSON message contract designed to be host-owned
 and runtime-agnostic. WASM hosts, native sidecars, and test fixtures all use the
 same lifecycle surface: initialize, invoke, progress, cancel, shutdown, and
 structured errors.
+
+This crate also owns the runtime capability gate: [`CapabilityBroker`] checks
+[`CapabilityRequest`] values against declared [`ExtensionPermissions`] and host
+policy before any privileged operation is allowed. It does not store extension
+state directly; persistence records are managed by `oino-extension-manager`, and
+runtime code reaches them only through brokered `host.persistence.*` capability
+requests. Keep public capability names, payload shapes, and developer docs in
+sync when changing this boundary.
 "#]
 #![forbid(unsafe_code)]
 

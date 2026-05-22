@@ -1,8 +1,33 @@
 #![doc = r#"High-level Oino runtime harness.
 
-The harness binds the loop, stateful agent, sessions, execution environment, resources,
-provider/auth boundaries, and deterministic typed hooks. It is intentionally headless: TUI,
-real providers, MCP, memory databases, and dynamic plugin ABIs belong in later layers.
+The harness is the headless runtime boundary between the pure agent loop and the
+application shell. It wires a stateful agent to sessions, tools, resources, auth
+resolution, execution environments, and deterministic typed hooks without owning a
+terminal UI, provider-specific HTTP code, extension package management, memory DBs,
+or project filesystem discovery.
+
+## Boundary map
+
+- [`HarnessConfig`] supplies the model, stream provider, event sink, tools,
+  session tree, execution environment, resource labels, and optional auth resolver.
+- [`Harness`] owns the live agent plus synchronized session/tool/resource state.
+  It records prompts, model changes, thinking-level changes, titles, compaction
+  summaries, and session replacements; callers choose when and where to persist
+  with [`Harness::save_session_jsonl`].
+- [`HookRegistry`] exposes deterministic notification and mutation hooks. Use
+  [`NotificationHook`] for event fan-out and [`MutatingHook`] families for context,
+  provider-boundary, tool, compaction, or tree-navigation changes.
+- [`FullPromptInspect`] is a debugging snapshot for `/inspect`: model, thinking
+  level, system prompt, transformed messages, tools, and an approximate token count.
+
+## Contributor rules
+
+Keep this crate provider- and UI-agnostic. Add user-facing commands, key handling,
+settings pages, and rendering in `oino-tui`/`oino-app`; add provider request JSON
+inside provider crates; add resource path discovery in `oino-resource`; and add
+raw tool filesystem/process behavior behind `oino-env`/`oino-tools`. When adding
+new mutable harness state, keep lock scopes small and avoid holding async mutex
+guards while calling providers or tools.
 "#]
 #![forbid(unsafe_code)]
 

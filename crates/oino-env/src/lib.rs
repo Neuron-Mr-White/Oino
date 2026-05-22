@@ -3,6 +3,37 @@
 Tools should depend on `ExecutionEnv` instead of directly calling process or filesystem APIs.
 The local adapter is intentionally small and typed so future sandbox, remote, and container
 adapters can provide the same surface.
+
+## Boundary
+
+`oino-env` owns the low-level execution capability surface: shell commands, text and
+binary file I/O, directory listing, metadata, canonical paths, temporary directories,
+and cleanup. It does not define model-visible tool names or JSON schemas (`oino-tools`),
+provider behavior, TUI confirmations, extension permission policy, or a security sandbox.
+Callers decide which paths and commands are allowed before they invoke an
+[`ExecutionEnv`].
+
+## Public API map
+
+- [`ExecutionEnv`] is the trait every local, sandboxed, remote, or container adapter
+  must implement.
+- [`LocalExecutionEnv`] is the current host adapter. It runs commands through
+  `sh -lc`, captures stdout/stderr/status, uses Tokio filesystem APIs, and creates
+  Oino-prefixed temp directories under the process temp directory.
+- [`CommandOptions`] carries the optional working directory and timeout in
+  milliseconds; the default timeout is 30 seconds.
+- [`CommandOutput`] records exit status plus UTF-8 stdout/stderr.
+- [`FileStat`] exposes the small metadata subset tools currently need.
+- [`EnvError`] keeps I/O, timeout, and UTF-8 conversion failures typed for callers.
+
+## Contributor rules
+
+Keep this crate policy-neutral and adapter-focused. Do not add path allowlists, model
+copy, tool-specific truncation, UI prompts, or extension capability decisions here.
+When adding methods, update `oino-tools` only if the model-visible surface changes, and
+keep tests covering local file operations, shell status capture, timeouts, temp dirs,
+and cleanup behavior. If a future adapter is sandboxed or remote, preserve these method
+semantics and document any adapter-specific limitations at the caller-facing layer.
 "#]
 #![forbid(unsafe_code)]
 

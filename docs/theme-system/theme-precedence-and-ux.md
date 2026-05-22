@@ -1,6 +1,6 @@
-# Oino Theme Precedence and UX Design
+# Oino Theme Precedence and UX
 
-This document designs project/global theme behavior and the user-facing theme picker.
+This document records project/global theme behavior, the implemented theme picker, and the remaining UX follow-ups. For the theme docs index, see [Oino theme system docs](README.md).
 
 ## Settings scopes
 
@@ -13,7 +13,7 @@ Theme selection should use the same model as tools/extensions: project settings 
 
 ## Theme settings shape
 
-Add a `theme` settings object to both global and project `UserSettings`.
+Oino stores a `theme` settings object in both global and project `UserSettings`.
 
 ```json
 {
@@ -92,14 +92,14 @@ resolved = merge(resolved, global.overrides) if global.active participates
 resolved = merge(resolved, project.overrides)
 ```
 
-For a project-selected theme, global token overrides should not unexpectedly recolor it unless the user selects "inherit global overrides" later. The first implementation should keep this simple:
+For a project-selected theme, global token overrides should not unexpectedly recolor it. The current implementation keeps this simple:
 
 - Inherited global theme: apply global overrides, then project overrides.
 - Project-selected theme: apply project-selected theme, then project overrides.
 
 ## `/settings theme` UX
 
-Add a dedicated theme page reachable by:
+The dedicated theme page is reachable by:
 
 ```text
 /settings theme
@@ -124,7 +124,7 @@ Add a dedicated theme page reachable by:
 └───────────────────────────────────────────────────────────────┘
 ```
 
-### Core actions
+### Implemented actions
 
 | Key | Action |
 | --- | --- |
@@ -133,17 +133,22 @@ Add a dedicated theme page reachable by:
 | `g` | Save selected theme as global theme. |
 | `r` | Reset project theme to inherit global. |
 | `R` | Reset global theme to `system`. |
-| `/` | Search themes by ID/name/source/mode. Planned follow-up; not in the first picker slice. |
-| `o` | Open token override editor for current scope. Planned follow-up. |
-| `O` | Clear overrides for current scope. Planned follow-up. |
-| `v` | Cycle preview sample: shell, transcript, markdown/code, extensions. Planned follow-up. |
-| `e` | Open/edit theme file when the selected source is a file theme. Planned follow-up. |
-| `Esc` | Leave preview or return to settings. |
+| `Esc` / `←` | Leave preview or return to settings. |
+
+### Planned follow-up actions
+
+| Key | Action |
+| --- | --- |
+| `/` | Search themes by ID/name/source/mode. |
+| `o` | Open token override editor for current scope. |
+| `O` | Clear overrides for current scope. |
+| `v` | Cycle preview sample: shell, transcript, markdown/code, extensions. |
+| `e` | Open/edit theme file when the selected source is a file theme. |
 
 ### Preview behavior
 
 - Preview is immediate but unsaved.
-- Status line should say `Previewing <theme>; p project / g global / Esc cancel`.
+- Status line says `Previewing <theme>; p project / g global / Esc cancel`.
 - Leaving the theme page without saving reverts to the effective persisted theme.
 - Saving commits the preview to the chosen scope and updates the effective badge.
 
@@ -226,7 +231,7 @@ Syntax colors are Oino role colors (`syntax.keyword`, `syntax.string`, etc.) der
 
 ## Conflict and diagnostic display
 
-Rows should carry badges:
+Rows can carry these badges:
 
 ```text
 ACTIVE
@@ -241,11 +246,15 @@ EXTENSION DISABLED
 
 Selecting an invalid/shadowed row shows diagnostics in the preview pane rather than applying a broken theme.
 
-## Implementation slices
+## Implementation status
 
-1. Add theme registry/data model and built-in theme definitions.
-2. Add project/global theme settings and effective resolution.
-3. Replace current `theme_with_extension_tokens` bridge with resolved theme application.
-4. Add `/settings theme` picker with preview and scope actions.
-5. Load theme files and extension theme paths.
-6. Expand component styles using the classification matrix.
+Implemented:
+
+1. Theme registry/data model and built-in theme definitions.
+2. Project/global theme settings and effective resolution.
+3. Resolved theme application across app components.
+4. `/settings theme` and `/theme` picker with preview and scope actions.
+5. Theme file loading and extension theme paths.
+6. Component styles using the classification matrix.
+
+Remaining follow-ups include theme search, token override editing, preview-sample switching, and direct edit/open actions for file themes.

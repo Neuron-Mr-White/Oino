@@ -1,8 +1,36 @@
-#![doc = r#"Oino-owned resource discovery and loading.
+#![doc = r#"Oino-owned resource path discovery, skeleton creation, and catalog loading.
 
-This crate intentionally discovers only explicit Oino paths. Compatibility with
-unrelated agent conventions should happen through future importers, not through
-silent startup discovery.
+This crate intentionally discovers only explicit Oino paths. It does not scan
+unrelated agent conventions, extension package directories, or arbitrary hidden
+folders at startup. Compatibility with other layouts should happen through
+explicit importers that copy or link content into Oino-owned paths.
+
+## Boundary map
+
+- [`ResourcePaths`] computes the global and project `.oino` locations from a home
+  directory plus current working directory. It owns the path contract for
+  `SYSTEM.md`, `AGENT.md`, prompts, skills, themes, settings, and chat exports.
+- [`ResourcePaths::ensure_skeleton`] creates missing directories and default files
+  without overwriting user edits.
+- [`ResourcePaths::load_catalog`] reads the current files into a [`ResourceCatalog`]
+  and records recoverable problems as [`ResourceDiagnostic`] values.
+- [`ResourceCatalog::system_prompt_sections`] exposes the global system prompt and
+  project instructions in the order `oino-app` appends to the provider system
+  prompt.
+- [`PromptTemplate`] and [`Skill`] are user-selected resources. They produce
+  command tokens for the TUI/CLI and expand into prompt text only when the user
+  explicitly references them.
+- [`ResourceSection`] is a lightweight handoff object for assembling system prompt
+  text outside this crate.
+
+## Contributor rules
+
+Keep this crate filesystem-focused and UI/provider-agnostic. Add command parsing,
+fuzzy suggestions, and overlay state in `oino-tui`; add prompt assembly and
+extension-contributed resources in `oino-app`; add extension registry/package
+resource contracts in the extension crates. If new resource kinds are added,
+update the public resource guide, skeleton behavior, diagnostics, and catalog
+tests together so users can discover and troubleshoot the new files.
 "#]
 #![forbid(unsafe_code)]
 

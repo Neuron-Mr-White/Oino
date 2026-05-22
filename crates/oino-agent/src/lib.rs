@@ -1,8 +1,51 @@
-#![doc = r#"Stateful Oino agent wrapper.
+#![doc = r#"Stateful in-memory agent facade for Oino.
 
-This crate owns transcript state, steering/follow-up queues, subscriber settlement,
-cancellation, and prompt concurrency guards around the pure `oino-agent-loop` crate. It
-has no session persistence, provider serialization, UI, or filesystem responsibilities.
+`oino-agent` wraps the pure `oino-agent-loop` crate with the mutable runtime state an
+application needs between turns. It owns transcript state, steering and follow-up
+queues, subscriber fan-out, cancellation, and prompt concurrency guards while keeping
+sessions, provider serialization, UI, and filesystem behavior outside the crate.
+
+## Boundary
+
+This crate owns live in-memory agent state only. It snapshots and updates
+[`AgentState`], drains queued [`oino_types::Message`] values into
+[`oino_agent_loop::AgentLoopConfig`], relays [`oino_agent_loop::AgentEvent`] values to
+subscribers, and exposes a single busy guard around the underlying loop. It does not
+persist JSONL sessions, choose resource paths, build provider HTTP requests, execute raw
+filesystem/process operations, render terminal UI, or define model-visible tool schemas.
+Those concerns belong to `oino-session`, `oino-resource`, provider crates,
+`oino-env`/`oino-tools`, `oino-tui`, and `oino-harness`.
+
+## Public API map
+
+- [`Agent`] is the clonable facade over shared async state. [`Agent::new`] starts from
+  an [`oino_agent_loop::AgentLoopConfig`]; [`Agent::new_with_messages`] resumes from an
+  already reconstructed transcript.
+- [`AgentState`] is the current UI/runtime snapshot: messages, model, thinking level,
+  system prompt, visible tool definitions, and whether a prompt is streaming.
+- [`Agent::prompt`] runs a new user message and [`Agent::continue_from_current_context`]
+  continues the reconstructed transcript without adding a new prompt.
+- [`Agent::steer`] and [`Agent::follow_up`] append queued messages that the loop drains
+  between provider turns. [`QueueMode`] chooses whether each drain takes every queued
+  item or one message at a time.
+- [`Agent::subscribe`] registers [`AgentEventSubscriber`] callbacks. Events first reach
+  the configured loop sink, then every subscriber is awaited before emission completes.
+- [`Agent::abort`] signals the current run, [`Agent::wait_for_idle`] is a small test/UI
+  settlement helper, and the `set_*` methods keep [`AgentState`] and loop config in
+  sync for model, thinking, system-prompt, and tool changes.
+- [`AgentError`] and [`AgentResult`] keep the public error surface small: concurrent
+  prompts return [`AgentError::Busy`], and loop failures stay typed as loop errors.
+
+## Contributor rules
+
+Keep this crate focused on async state coordination. Do not add provider JSON, session
+file formats, TUI commands, model-visible tool definitions, or direct filesystem/process
+side effects here. Preserve the single-run guard and make sure `is_streaming` plus the
+current abort signal are reset on every exit path. Keep async mutex lock scopes short,
+clone state/config before calling providers or tools, and avoid holding locks while
+subscriber callbacks run. If queue draining, event fan-out, or busy/abort semantics
+change, update the harness/TUI docs and the queue, subscriber, concurrency, and abort
+tests together.
 "#]
 #![forbid(unsafe_code)]
 

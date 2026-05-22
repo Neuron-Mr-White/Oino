@@ -117,6 +117,8 @@ Controls:
 
 Oino owns extension surface navigation. Extensions can register sidebar, main panel, footer/status, header, composer widget, floating, editor-metadata, and working-indicator surfaces, but the host controls focus, tab switching, hide/show, and close behavior.
 
+The shortcuts below are the default keymap. If you changed shortcuts in `/settings keymaps`, open `/help` to see the current labels. `Ctrl-O` is the default global chord prefix; changing the prefix updates these extension surface shortcuts too.
+
 Global shortcuts:
 
 | Key | Action |
@@ -131,6 +133,8 @@ Global shortcuts:
 | `Ctrl-O m` | Toggle all extension main-panel slots. |
 
 If several extensions register the same slot, Oino shows a tab row and lets you switch the active one instead of silently letting extensions override each other.
+
+Extension-provided shortcuts, such as the bundled example's `Ctrl-O x`, run from the main chat view. They pause while `/extensions`, `/settings`, or another overlay is open so the overlay's own keys keep working.
 
 ## What install does
 
@@ -148,7 +152,7 @@ When you install a package, Oino:
 
 ## Updating extensions
 
-For now, update by installing the same package id again from the newer source:
+For now, update by installing the same package id again from the source you want to use:
 
 ```text
 /extensions
@@ -157,7 +161,13 @@ github:owner/repo#v1.2.4
 Enter
 ```
 
-If the package id already exists in the target scope, Oino invokes the update path. The package manifest version should be newer or otherwise compatible with the lifecycle service's update checks.
+Updates are scope-specific:
+
+- Use `i` again for a package installed in the current project.
+- Use `I` again for a globally installed package.
+- Installing the same package id in the other scope creates or enables that other copy instead of replacing the first one.
+
+Oino decides install vs update from the `id` in `oino.package.json`. During an update it validates the package, checks Oino compatibility, required dependencies, requested scope, and trust metadata, then replaces the installed package directory. Oino does not look up the newest GitHub release for you and does not prove that a tag is newer; choose a pinned tag/source you trust and inspect the package version or changelog before updating.
 
 ## Removing extensions
 

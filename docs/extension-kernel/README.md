@@ -6,9 +6,9 @@ Oino extensions use Oino-owned manifests, registries, permissions, and package l
 
 Companion guides:
 
-- User install/manage guide: `docs/extension-kernel/user-guide.md`
-- Developer author/test/publish guide: `docs/extension-kernel/developer-guide.md`
-- SDK/devkit notes: `docs/extension-sdk/README.md`
+- [User install/manage guide](user-guide.md)
+- [Developer author/test/publish guide](developer-guide.md)
+- [SDK/devkit notes](../extension-sdk/README.md)
 
 ## Architecture
 
@@ -71,7 +71,7 @@ cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-package 
 
 Example package: `examples/extensions/rust-wasm-fixture`.
 
-Authoring SDK notes and future language binding plans: `docs/extension-sdk/README.md`.
+Authoring SDK notes and future language binding plans: [Extension SDK and devkit](../extension-sdk/README.md).
 
 ## Permissions and capability broker
 

@@ -1,4 +1,35 @@
-#![doc = "Ratatui chat interface primitives for Oino."]
+#![doc = r#"Ratatui chat interface state, rendering, input, settings, and theme primitives for Oino.
+
+`oino-tui` is deliberately UI-only. It owns the terminal-facing state machine
+([`TuiState`]), user actions ([`TuiAction`]), composer state ([`ComposerState`]),
+keymap configuration ([`KeymapConfig`]), settings overlays ([`SettingsState`]),
+resource browser models ([`PromptResource`] and [`SkillResource`]), and theme
+resolution types ([`ThemeCatalog`] and [`ResolvedTheme`]). Runtime wiring,
+provider/auth decisions, session persistence, filesystem/process tools, and
+extension package loading belong to outer crates such as `oino-app`,
+`oino-harness`, and the extension manager.
+
+Contributor map:
+
+- [`app`] handles focus, overlays, command execution decisions, extension surface
+  controller state, and conversion from keys into [`TuiAction`] values.
+- [`mod@render`] draws the current state with Ratatui widgets; keep rendering
+  deterministic and side-effect free.
+- [`keymap`] defines customizable shortcuts and context-aware key dispatch.
+- [`command`] parses slash commands and builds command/resource suggestions.
+- [`composer`] owns multiline input, collapsed pasted blocks, and resource-token
+  expansion affordances.
+- [`settings`] owns settings-page state for models, thinking, tools, themes,
+  keymaps, and chat style.
+- [`theme`] loads built-in/file/extension themes and resolves component roles.
+- [`resource`] and [`message`] contain lightweight view models used by overlays
+  and transcript rendering.
+
+When adding UI behavior, prefer explicit focus/mode state in [`TuiState`], add a
+semantic [`TuiAction`] when the app layer must notify the runtime, and update the
+help/keymap/theme roles so visible hints stay truthful. User-facing resource and
+theme docs live under `docs/resources.md` and `docs/theme-system/`.
+"#]
 #![forbid(unsafe_code)]
 
 pub mod action;

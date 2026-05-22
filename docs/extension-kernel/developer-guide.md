@@ -214,7 +214,7 @@ Supported contribution families include:
 - **Commands** — slash commands bridged into Oino command handling.
 - **Hooks** — host lifecycle or tool-call hooks with priority and mutable/read-only mode.
 - **UI surfaces** — sidebar, main panel, header, floating panel, footer top/bottom, inline status, composer widgets, editor metadata, working indicator, overlays, settings pages, health summaries.
-- **Keymaps** — default bindings for extension actions.
+- **Keymaps** — default bindings for extension actions. Treat them as suggestions: users can change Oino's keymap in `/settings keymaps`, and extension shortcuts do not dispatch while overlays such as `/extensions` or `/settings` are open.
 - **Themes** — semantic theme token overrides using named colors, `#rrggbb`, 256-color indexes, `default`, or `reset`.
 - **Providers/models** — provider/model metadata, privacy and capability descriptors.
 - **Autosuggest** — composer suggestion providers.
@@ -274,7 +274,7 @@ status
 health
 ```
 
-If multiple extensions register the same resolved slot, Oino shows tabs and lets the user switch winners. Do not trap global navigation keys; use contribution keymaps and let Oino's conflict policy decide whether they are active.
+If multiple extensions register the same resolved slot, Oino shows tabs and lets the user switch winners. Do not trap global navigation keys; use contribution keymaps and let Oino's conflict policy decide whether they are active. When documenting an extension shortcut, say that it uses the default keymap and point users to `/help` or `/settings keymaps` for their current binding.
 
 ## Theme contributions
 
@@ -374,6 +374,18 @@ Current built-in capability fixtures include:
 - `host.persistence.read`
 - `host.persistence.write`
 - `host.persistence.delete`
+
+### Capability and persistence checklist
+
+When an extension needs host help or stored state:
+
+1. Declare the capability in both package-level and extension-level `permissions.host_capabilities`.
+2. For stored state, also declare the allowed scope in `permissions.session_persistence` (`session`, `project`, or `global`) and add a `contributes.persistence` entry with `key`, `schema_version`, `max_bytes`, migration, cleanup, and conflict policy.
+3. Request the capability at runtime instead of reading files or writing state directly. Persistence payloads should include the declared scope and key; writes also include the JSON value.
+4. Keep persisted values small and schema-versioned. Prefer typed Rust structs with `Serialize`/`Deserialize` in extension code, then convert to JSON at the `wasm-json-v1` boundary.
+5. Cover both the allowed path and at least one denied path in `ExtensionTestHarness` so permission drift is caught before users install the package.
+
+Persistence cleanup is user-visible. Use `delete_on_uninstall` only for disposable state, and use a retaining policy when users may expect project or global data to survive package removal.
 
 ## Local validation loop
 
@@ -486,13 +498,14 @@ git@github.com:owner/private-extension.git#v1.0.0
 
 To release an update:
 
-1. Update code/manifests.
-2. Bump package and extension versions.
-3. Re-run validation and tests.
-4. Commit and tag the repo.
-5. Ask users to install the newer tag from `/extensions`.
+1. Keep the package `id` stable. Changing it creates a different install.
+2. Update code/manifests.
+3. Bump package and extension versions using SemVer-compatible release rules for your contract.
+4. Re-run validation and tests from a clean checkout.
+5. Commit and tag the repo.
+6. Ask users to install the newer pinned tag from `/extensions`.
 
-Oino treats installing an already-installed package id in the same scope as an update path.
+Oino treats installing an already-installed package id in the same scope as an update path. It validates compatibility, dependencies, scope, checksum/signature metadata, and manifest shape before replacing the installed directory, but it does not query GitHub releases or enforce that the new manifest version is higher. Authors should make the version bump and changelog obvious so users can choose the intended tag.
 
 ## Uninstall and cleanup
 

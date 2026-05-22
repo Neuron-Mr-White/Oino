@@ -4,6 +4,45 @@
 ordered `AgentEvent`s. It intentionally does not know provider JSON payload formats,
 API keys, sessions, filesystems, UI, or persistence. Harness/provider adapters own those
 concerns and pass typed events into this crate.
+
+## Boundary
+
+`oino-agent-loop` owns turn orchestration only: building provider-neutral stream
+requests, accumulating provider stream events into assistant messages, validating and
+executing tool calls, draining steering/follow-up queues between turns, honoring aborts,
+and emitting ordered lifecycle events. Providers own wire formats and auth, tools own
+side effects, sessions own persistence, and UI/harness crates own presentation,
+resource assembly, and policy decisions.
+
+## Public API map
+
+- [`AgentLoopConfig`] wires one run: model, thinking level, system prompt, tool
+  registry, [`StreamProvider`], [`EventSink`], hook callbacks, queue drains, turn
+  limit, and [`AbortSignal`].
+- [`run_agent_loop`], [`run_agent_loop_with_context`], and
+  [`run_agent_loop_continue`] are the entry points for a new prompt, prompt plus
+  existing context, or continuing already-reconstructed messages.
+- [`StreamProvider`] receives a provider-neutral [`StreamRequest`] and returns or
+  streams [`oino_types::AssistantStreamEvent`] values.
+- [`Tool`], [`ToolDefinition`], [`ToolCall`], [`ToolResult`],
+  [`ToolUpdateCallback`], and [`ToolExecutionMode`] define the model-visible tool
+  protocol. Sequential tools force the whole batch to run sequentially; otherwise the
+  loop can execute calls concurrently and restore result order.
+- [`EventSink`] receives [`AgentEvent`] values for transcript/session/UI subscribers;
+  [`VecEventSink`] and [`NoopEventSink`] are small test/default sinks.
+- [`BeforeToolCallResult`] and the transform/before/after/queue callback type aliases
+  are harness seams for context shaping, policy, mutation, and live steering without
+  adding app dependencies to the pure loop.
+- [`FauxStream`] and [`FakeTool`] are deterministic fixtures for loop tests and
+  downstream crate smoke tests.
+
+## Contributor rules
+
+Keep this crate provider-neutral and deterministic. New concepts should enter as typed
+`oino-types` data or loop callbacks before any provider/app-specific behavior is added
+elsewhere. Preserve event ordering around starts, updates, ends, tool results, queue
+updates, and settlement; update fixture tests whenever that ordering changes. Do not add
+filesystem, network, auth, TUI, session-path, or extension package logic here.
 "#]
 #![forbid(unsafe_code)]
 

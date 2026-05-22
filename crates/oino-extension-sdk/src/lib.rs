@@ -1,11 +1,54 @@
-#![doc = r#"Author-facing SDK, devkit validators, examples, and test harness helpers
-for Oino extension authors.
+#![doc = r#"Author-facing SDK, devkit validators, examples, and test harness helpers.
 
-The crate intentionally reuses the same contracts consumed by Oino core:
-`oino-extension-core` for manifests/contributions, `oino-extension-runtime`
-for the JSON-v1 WASM boundary, and `oino-extension-manager` for package
-validation and persistence helpers. The goal is to keep author tooling from
+`oino-extension-sdk` is the supported Rust authoring surface for Oino-native
+extensions. It intentionally reuses the same contracts consumed by Oino core:
+`oino-extension-core` for manifests/contributions, `oino-extension-runtime` for the
+JSON-v1 WASM boundary, and `oino-extension-manager` for package validation,
+persistence, and package lifecycle helpers. The goal is to keep author tooling from
 inventing a second schema.
+
+## Boundary
+
+This crate owns author ergonomics, not host behavior. It can generate example manifests,
+validate package directories, write starter fixture packages, provide small JSON-v1 helper
+constructors, run deterministic fixture-runtime tests, and check documentation coverage
+matrices. It does not define new manifest fields, install packages in the running app,
+execute untrusted community code, render UI, grant capabilities, or persist production
+session state. Those responsibilities stay in the extension core, manager, runtime,
+app/TUI, and session crates.
+
+## Public API map
+
+- [`ExampleExtensionTemplate`] builds the checked-in example package shape used by docs,
+  fixtures, and devkit templates.
+- [`validate_extension_manifest_json`], [`validate_package_manifest_json`],
+  [`validate_package_dir`], and [`PackageValidationReport`] are the lightweight
+  validation seams used by the devkit CLI and contributor tests.
+- [`write_example_package`] writes a complete local fixture package to disk for examples,
+  smoke tests, and author onboarding.
+- [`WasmSdk`] creates JSON-v1 success results, progress values, capability requests, UI
+  state updates, and persistence capability payloads without exposing host internals.
+- [`ExtensionTestHarness`] combines a manifest, fixture module, capability broker,
+  persistence store, and UI-surface registry snapshot so authors can test tools,
+  commands, capabilities, permissions, UI updates, and persistence locally.
+- [`CoverageDecision`], [`CoverageGate`], [`REQUIRED_COVERAGE_GATES`],
+  [`CoverageReport`], and [`validate_coverage_matrix`] keep extension capability/status
+  documentation honest.
+- [`default_fixture_module`] and [`package_service_for_layout`] are small convenience
+  helpers for tests that need runtime handlers or manager lifecycle wiring.
+- [`AuthoringError`], [`AuthoringResult`], and `oino-extension-devkit` keep validation,
+  JSON, filesystem, runtime, capability, and UI-surface failures typed for author-facing
+  output.
+
+## Contributor rules
+
+Keep the SDK thin over the real kernel crates. Do not duplicate schemas, accept a
+manifest shape that Oino core would reject, or document foreign TypeScript/npm extension
+APIs as compatible. When templates or fixture package contents change, update the
+extension developer guide, SDK guide, fixture README, coverage gates, and devkit tests in
+the same change. Keep generated files deterministic and GitHub-reviewable, prefer
+pretty-printed JSON for templates, and validate package directories from disk so examples
+exercise the same path handling authors use.
 "#]
 #![forbid(unsafe_code)]
 

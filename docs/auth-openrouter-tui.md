@@ -1,6 +1,14 @@
 # Auth, OpenRouter, and TUI Shell
 
-This milestone adds the first real conversation path:
+This guide explains the first real conversation path and the user-facing controls that sit on top of it. For adjacent guides, see [commands](commands.md), [transcript rendering](transcript-rendering.md), [sessions](sessions.md), [resources](resources.md), [themes](theme-system/README.md), and [extensions](extension-kernel/user-guide.md).
+
+```bash
+OPENROUTER_API_KEY=sk-or-... mise run dev
+```
+
+Default model: `openrouter:openai/gpt-4o-mini`.
+
+The conversation path is:
 
 ```text
 Ratatui composer -> Harness::prompt -> OpenRouterProvider -> Oino stream/tool events -> live chat transcript
@@ -57,40 +65,44 @@ The app wires Oino's default tool set into the harness on startup:
 
 ## TUI shell
 
-Run:
-
-```bash
-OPENROUTER_API_KEY=sk-or-... mise run dev
-```
-
 Optional env vars:
 
-- `OINO_MODEL` — OpenRouter model name, default `openai/gpt-4o-mini`; overrides the persisted startup model when set.
+- `OINO_MODEL` — startup model in `provider:model-id` form, for example `openrouter:xai/glm-5.1`; overrides the persisted startup model when set.
 - `OINO_OPENROUTER_REFERER` — optional OpenRouter attribution referer.
 - `OINO_OPENROUTER_TITLE` — optional OpenRouter attribution title.
 
-Controls:
+Everyday controls:
 
-- printable keys append to the composer when input is enabled
-- Backspace/Delete edit input; Ctrl-W deletes the previous word
-- Ctrl-J or Alt-Enter inserts a newline; Shift-Enter also works on terminals that report enhanced key modifiers
-- Up/Down navigates between lines in multi-line input
-- the composer expands as the draft grows, up to the composer cap
-- Enter submits non-empty input
-- typing `/` as the first composer token opens command suggestions above the composer
-- in command suggestions: arrows choose, Tab completes, Enter runs or advances the highlighted command path, Esc dismisses
-- model identifiers use the single `provider:model-id` form, e.g. `openrouter:xai/glm-5.1`
-- `/settings` or `Ctrl-O s` opens the reusable settings overlay; `Ctrl-O q` opens the send panel
-- command paths such as `/model openrouter:xai/glm-5.1`, `/thinking high`, `/settings model openrouter:xai/glm-5.1`, and `/settings collapse tool truncate` apply settings directly
-- settings starts on a menu page with arrow-marked choices; Enter opens a dedicated Model Selection, Thinking Level, or Collapse Mode page
-- in Model Selection: `/` opens model search, typing filters the model list, arrows move matching models, Esc clears search back to normal list UX
-- in settings child pages: arrows/jk move, Enter applies, Esc/Left returns to the settings menu when not searching
-- OpenRouter models load from `~/.oino/openrouter-models.json` first, then refresh in a background interval
-- selected user settings persist to `~/.oino/settings.json`, currently including model, thinking level, and thinking/tool collapse modes
-- sessions persist under `~/.oino/sessions`, and `oino --session <uuid> <message-or-command>` continues a session in non-interactive mode
-- thinking levels are limited by the selected model's OpenRouter `supported_parameters`
-- input pauses while a prompt is running
-- Esc or Ctrl-C exits when no overlay is open
+| Control | Behavior |
+|---|---|
+| `/help` | Open current shortcuts and commands. `/` inside Help searches the help text. |
+| `Enter` | Submit non-empty input. While a response is running, send the current input as steering. |
+| `Ctrl-J`, `Alt-Enter`, `Shift-Enter` | Insert a newline. `Shift-Enter` depends on terminal enhanced-key reporting. |
+| `/` at the start of input | Open command suggestions. Arrows choose, Tab inserts/completes, Enter runs, Esc dismisses. See the [commands guide](commands.md). |
+| `@` | Fuzzy-search project file paths. |
+| `/prompt:<name>`, `/skill:<name>` | Include explicit resources. See the [resources guide](resources.md). |
+| `Ctrl-O e` | Expand a collapsed paste block or prompt reference before sending. |
+| `Ctrl-O t` | Focus the transcript for navigation; Esc returns to the composer. See the [transcript guide](transcript-rendering.md). |
+| `Ctrl-O q` | Open the send panel for steering history, queue, and drafts. |
+| `Ctrl-O s` or `/settings` | Open settings. |
+| `Esc` | Close overlays/search, close focused extension surfaces, or stop a running response. It does not quit Oino. |
+| `Ctrl-C` twice | Quit Oino. |
+
+Useful command paths:
+
+```text
+/model openrouter:xai/glm-5.1
+/thinking high
+/settings model openrouter:xai/glm-5.1
+/settings collapse thinking truncate
+/settings chat-style agentic
+/settings keymaps
+/settings theme
+```
+
+Model identifiers use the single `provider:model-id` form. OpenRouter models load from `~/.oino/openrouter-models.json` first, then refresh in the background. Thinking levels are limited by the selected model's OpenRouter `supported_parameters`.
+
+Selected user settings persist to `~/.oino/settings.json`. Sessions persist under `~/.oino/sessions`; see the [sessions guide](sessions.md) for `/new`, `/sessions`, `/title`, and `oino --session <uuid>` workflows. For chat styles, Markdown rendering, `/inspect`, and HTML export, see the [transcript guide](transcript-rendering.md).
 
 ## Boundary rule
 

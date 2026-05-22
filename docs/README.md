@@ -5,6 +5,11 @@ This directory contains public Oino documentation only. Planning notes, workflow
 ## Product guides
 
 - [Auth, OpenRouter, and TUI shell](auth-openrouter-tui.md)
+- [Commands, suggestions, and non-interactive use](commands.md)
+- [Transcript rendering, inspect, and export](transcript-rendering.md)
+- [Sessions and history](sessions.md)
+- [Resources, prompts, skills, and project instructions](resources.md)
+- [Theme system](theme-system/README.md)
 - [Extension kernel overview](extension-kernel/README.md)
 - [Extension user guide](extension-kernel/user-guide.md)
 - [Extension developer guide](extension-kernel/developer-guide.md)

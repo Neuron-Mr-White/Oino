@@ -3,6 +3,42 @@
 This crate contains model-visible data (messages and content blocks) and runtime-visible
 metadata (usage, stream events, stop reasons). It deliberately has no dependency on the
 agent loop, session manager, harness, providers, filesystem, or async runtime.
+
+## Boundary
+
+`oino-types` owns the stable data vocabulary shared across crates. It defines IDs,
+models, transcript messages, content blocks, provider stream events, usage metadata,
+provider metadata, thinking levels, and stop reasons. It does not own orchestration,
+provider wire formats, session storage, tool execution, TUI rendering, resources, auth,
+or filesystem behavior. Those crates should convert their local concepts into these
+shared shapes at their boundaries.
+
+## Public API map
+
+- [`OinoId`] is the UUID-backed identifier used for messages, tool calls, session
+  entries, and related runtime records.
+- [`Model`] stores the `provider:model-name` split plus opaque metadata; keep parsing
+  rules aligned with user-facing model identifiers.
+- [`ThinkingLevel`], [`StopReason`], [`Usage`], [`UsageCost`], and
+  [`ProviderMetadata`] normalize provider-facing settings and results without exposing
+  provider JSON payloads.
+- [`Message`] is the transcript/context unit consumed by sessions, providers, the loop,
+  and the TUI. [`Message::Custom`] remains runtime-only unless a higher layer converts
+  it before model context reconstruction.
+- [`ContentBlock`] carries text, image placeholders/data, thinking blocks, and tool
+  calls inside messages.
+- [`AssistantStreamEvent`] is the provider-to-loop streaming contract used by provider
+  adapters and deterministic loop fixtures.
+
+## Contributor rules
+
+Keep this crate dependency-light and serialization-first. Every public contract here
+should derive `Serialize`, `Deserialize`, and `JsonSchema` when practical so tests,
+fixtures, sessions, extension manifests, and provider adapters can share JSON-compatible
+shapes. Add new variants only when the concept is provider-neutral; otherwise keep the
+mapping in the provider, harness, session, or UI crate. Update round-trip tests and any
+focused user/developer docs when changing tagged enum names, model identifiers, or
+visibility rules for messages and content blocks.
 "#]
 #![forbid(unsafe_code)]
 

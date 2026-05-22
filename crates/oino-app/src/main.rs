@@ -1,3 +1,40 @@
+#![doc = r#"Oino binary runtime wiring.
+
+This binary crate is the composition layer for the Oino executable. It owns
+process-level concerns: CLI argument parsing, settings/auth/session/resource
+bootstrap, OpenRouter provider construction, extension package lifecycle wiring,
+terminal setup/teardown, TUI event dispatch, non-interactive command execution,
+model-cache refresh, chat export, and platform file/URL opening.
+
+## Startup map
+
+- `CliArgs` and `AppConfig` read process arguments, environment overrides, and
+  persisted user settings.
+- `ResourcePaths`, `load_resource_catalog`, and `default_system_prompt` connect
+  Oino-owned files to the provider-facing system prompt while leaving resource
+  discovery rules in `oino-resource`.
+- `load_or_create_session`, `new_tui_session`, and session open/list helpers wire
+  JSONL sessions without owning the session tree format.
+- `build_harness` binds model, provider, auth resolver, tools, resources, and
+  session state through `oino-harness`.
+- `load_extension_snapshot`, package lifecycle helpers, and `apply_*_to_state`
+  functions translate extension-manager snapshots into TUI/runtime state.
+- `run_tui` owns the crossterm/Ratatui lifecycle, event loop, stream hooks,
+  queued-prompt scheduling, settings persistence, and terminal cleanup guard.
+- `run_non_interactive` executes shell commands or one-shot prompts and prints
+  shell-safe output.
+
+## Contributor rules
+
+Keep domain behavior in the owning crate: provider HTTP in provider crates,
+session structure in `oino-session`, resource discovery in `oino-resource`,
+headless agent/session orchestration in `oino-harness`, UI state/rendering in
+`oino-tui`, and extension policy/package rules in extension crates. Changes in
+this crate should usually be glue that keeps those layers synchronized. When
+adding runtime behavior, update both TUI and non-interactive paths when relevant,
+preserve terminal cleanup on every exit path, and add targeted tests around the
+wiring edge that changed.
+"#]
 #![forbid(unsafe_code)]
 
 mod model_catalog;

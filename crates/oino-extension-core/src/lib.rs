@@ -1,10 +1,62 @@
-#![doc = r#"Shared identity, manifest, package, permission, provenance, diagnostic,
-compatibility, and conflict contracts for the Oino extension kernel.
+#![doc = r#"Shared data contracts for the Oino extension kernel.
 
-This crate is deliberately data-oriented. It must stay independent of TUI,
-provider, harness, runtime, filesystem, and package-manager implementation
-crates so it can be reused by Oino core, future WASM hosts, validators, SDKs,
-and tests.
+`oino-extension-core` defines the serializable vocabulary that every extension-facing
+crate agrees on: identifiers, manifests, package metadata, permissions, contributions,
+registries, policy, provenance, diagnostics, health, persistence, UI-surface contracts,
+and community registry metadata.
+
+## Boundary
+
+This crate is deliberately data-oriented. It validates shapes and composes registry
+state, but it does not discover files, install packages, execute extension code, broker
+runtime capabilities, render TUI surfaces, persist session files, call providers, or run
+tools. Those responsibilities belong to the manager, runtime, app/TUI, session,
+provider, and tool crates. Keeping this crate independent lets Oino core, future WASM
+hosts, SDK validators, devkit commands, and tests reuse one contract instead of drifting
+schemas.
+
+## Public API map
+
+- [`ExtensionId`], [`PackageId`], and [`ContributionId`] are validated lowercase id
+  newtypes used across manifests, registry keys, diagnostics, and policy settings.
+- [`MANIFEST_FILE`], [`PACKAGE_MANIFEST_FILE`], [`CURRENT_PROTOCOL_VERSION`],
+  [`ProtocolVersion`], [`OinoCompatibility`], [`SourceDescriptor`], [`SourceScope`],
+  [`SourceKind`], and [`LifecycleState`] describe compatibility and provenance without
+  touching the filesystem.
+- [`ExtensionManifest`], [`PackageManifest`], [`RuntimeDescriptor`], [`RuntimeKind`],
+  and [`ExtensionPermissions`] are the JSON manifest contracts reviewed before runtime
+  code is visible or executable.
+- [`ExtensionContributions`] groups declarative contribution families such as
+  [`ToolContribution`], [`CommandContribution`], [`KeymapContribution`],
+  [`HookContribution`], [`UiSurfaceContribution`], [`SettingsPageContribution`],
+  [`ThemeContribution`], [`ProviderContribution`], [`ResourceContribution`],
+  [`PersistenceContribution`], [`AutosuggestContribution`], [`RendererContribution`],
+  [`DiagnosticContribution`], and [`HealthContribution`].
+- [`UiSurfaceKind`], [`UiLayoutPolicy`], [`UiFocusPolicy`], [`UiKeyDispatchPolicy`],
+  [`UiSurfaceStateUpdate`], and [`UiSurfaceValidationError`] define host-rendered UI
+  contracts while keeping Ratatui state out of the manifest layer.
+- [`PersistenceRecord`] and [`ExtensionSessionEntry`] keep extension-owned state
+  inspectable as typed JSON data without loading extension runtime code.
+- [`CommunityRegistryIndex`], [`CommunityPackageMetadata`], [`TrustMetadata`],
+  [`SecurityAdvisory`], [`Provenance`], [`ExtensionDiagnostic`], and [`HealthState`]
+  describe registry, trust, audit, and health surfaces shown by higher layers.
+- [`ContributionMetadata`], [`RegistryEntryKey`], [`RegistryPolicy`],
+  [`ContributionRegistry`], [`TypedContributionRegistry`], [`RegistrySnapshot`],
+  [`RegistryDiff`], [`RegistryFamily`], and the `*Registry` type aliases are the generic
+  policy/composition layer used by built-ins and external packages.
+- [`ExtensionCoreError`] and [`RegistryValidationError`] keep manifest and registry
+  failures typed so manager, SDK, and app code can show actionable diagnostics.
+
+## Contributor rules
+
+Keep this crate dependency-light, deterministic, and serialization-first. Prefer typed
+Serde-compatible structs and enums over open-ended JSON unless the field is intentionally
+extension-defined. Do not add filesystem discovery, package lifecycle side effects,
+runtime execution, capability policy, provider protocol details, or TUI rendering here.
+When changing manifest fields, enum tags, id validation, compatibility checks, registry
+precedence, or permission semantics, update the extension kernel docs, SDK templates,
+fixture manifests, validation tests, and any user-facing install/review guidance in the
+same change.
 "#]
 #![forbid(unsafe_code)]
 

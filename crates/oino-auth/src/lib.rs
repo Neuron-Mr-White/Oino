@@ -3,6 +3,36 @@
 This crate stores provider credentials and resolves API keys for provider adapters. It
 intentionally does not know provider HTTP protocols or depend on the harness, TUI, or app
 crates.
+
+## Boundary
+
+`oino-auth` owns the local credential file shape, provider credential lookup order,
+typed auth errors, default auth path, and best-effort file permissions for stored
+secrets. Provider adapters supply a [`ProviderAuthSpec`] and receive an API key; they
+own HTTP headers, request signing, provider-specific error handling, and model
+semantics. `oino-app` owns user-facing setup flows and runtime overrides.
+
+## Public API map
+
+- [`AuthConfig`] selects the auth file, runtime overrides, explicit environment
+  overrides, and whether process environment variables are consulted.
+- [`AuthStorage`] loads/saves [`AuthFile`] entries and resolves credentials in this
+  order: runtime override by provider id, auth file by auth key, explicit environment
+  override by environment variable name, then process environment variable.
+- [`AuthCredential`] is intentionally small today (`api_key`) and redacts secret values
+  from `Debug` output.
+- [`ProviderAuthSpec`] maps one provider id to its auth-file key and environment
+  variable. [`ProviderAuthSpec::openrouter`] is the built-in OpenRouter mapping.
+- [`AuthError`] keeps missing, malformed, and I/O failures typed so the app can show
+  actionable setup messages without provider code parsing strings.
+
+## Contributor rules
+
+Do not add provider HTTP protocol details, TUI prompts, model settings, or harness
+state here. Keep secret formatting redacted, avoid logging raw credential values, and
+update read/write/permission tests when changing the file format. The auth file is a
+plain JSON convenience store protected by filesystem permissions where possible; do not
+document it as encryption or an OS keychain unless the storage contract changes.
 "#]
 #![forbid(unsafe_code)]
 

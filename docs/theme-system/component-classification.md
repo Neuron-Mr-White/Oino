@@ -2,7 +2,7 @@
 
 This is the initial component/text classification matrix for the first-class Oino theme system. It is intentionally Oino-native: extension theme contributions, built-in themes, and project overrides should all resolve into these shared roles instead of each widget inventing one-off colors.
 
-See also: [`text-inventory.generated.md`](text-inventory.generated.md) for the generated first-pass literal inventory.
+See also: [`README.md`](README.md) for the current theme-docs index and [`text-inventory.generated.md`](text-inventory.generated.md) for the generated first-pass literal inventory.
 
 ## Inventory scope
 
@@ -46,7 +46,7 @@ Generated first pass: **1,574** non-test string literals.
 
 ## First schema direction
 
-The first Oino theme schema should have three layers:
+The first Oino theme schema uses three layers:
 
 1. **Palette** — reusable colors (`background`, `surface`, `elevated`, `text`, `muted`, `accent`, `success`, `warning`, `error`, etc.).
 2. **Semantic roles** — component-independent meanings (`fg`, `bg`, `border`, `selected_bg`, `focused_border`, `live`, `danger`).
@@ -56,26 +56,21 @@ This keeps simple themes small while allowing project/extension-specific polish.
 
 ## UX direction for project-level theming
 
-Proposed settings UX:
+Implemented settings entry points:
 
 ```text
 /settings theme
 ```
 
-Tabs or scope selector:
-
-```text
-Global theme | Project theme | Installed/Extension themes | Preview
-```
-
-Actions:
+Implemented actions:
 
 - `Enter` preview selected theme immediately.
 - `p` set project theme.
 - `g` set global theme.
 - `r` reset project override to inherit global.
-- `/` search themes.
-- `v` toggle preview sample: app shell, transcript, markdown/code, extensions.
-- Footer always shows effective precedence: `project override → global setting → system/default`.
+- `R` reset global theme to `system`.
+- Footer/settings state shows effective precedence: `project override → global setting → system/default`.
+
+Theme search and preview-sample switching remain follow-ups tracked in [Theme precedence and UX](theme-precedence-and-ux.md).
 
 Project-level theming should not require editing extension policy manually; it should persist through the project settings file and be visible as an effective theme badge in the footer/settings UI.
