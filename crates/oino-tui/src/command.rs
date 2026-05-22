@@ -122,6 +122,7 @@ pub enum SettingsCommand {
     OpenChatStyle,
     OpenTools,
     OpenKeymaps,
+    OpenTheme,
     SetModel(Model),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode {
@@ -332,7 +333,8 @@ pub fn command_suggestions_for(
             chat_style_suggestions(context)
         }
         [settings, subject]
-            if settings == "/settings" && (subject == "tools" || subject == "keymaps") =>
+            if settings == "/settings"
+                && (subject == "tools" || subject == "keymaps" || subject == "theme") =>
         {
             None
         }
@@ -438,6 +440,9 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/settings", "tools"] => Some(ParsedCommand::Settings(SettingsCommand::OpenTools)),
         ["/settings", "keymaps"] | ["/settings", "keymap"] => {
             Some(ParsedCommand::Settings(SettingsCommand::OpenKeymaps))
+        }
+        ["/settings", "theme"] | ["/theme"] => {
+            Some(ParsedCommand::Settings(SettingsCommand::OpenTheme))
         }
         ["/settings", "model", model] | ["/model", model] => Model::from_identifier(model)
             .map(SettingsCommand::SetModel)
@@ -795,6 +800,7 @@ fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSug
         ("chat-style", "Set transcript rendering style", true),
         ("tools", "Show registered agent tools by scope", true),
         ("keymaps", "Configure keyboard shortcuts", true),
+        ("theme", "Choose global or project theme", true),
     ];
     let items = fuzzy_indices(
         &subjects,

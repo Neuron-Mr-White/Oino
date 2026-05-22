@@ -6,6 +6,7 @@ use crate::{
         key_action_rows, KeyAction, KeySequence, KeyStroke, KeymapConfig, KeymapPreset,
         ShortcutKind,
     },
+    theme::{ResolvedTheme, ThemeCatalog, ThemeMode, ThemeSettings, ThemeSource},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::ThinkingLevel;
@@ -125,6 +126,7 @@ pub enum SettingsPage {
     ChatStyle,
     Tools,
     Keymaps,
+    Theme,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,6 +198,7 @@ pub enum SettingsMenuItem {
     ChatStyle,
     Tools,
     Keymaps,
+    Theme,
 }
 
 impl SettingsMenuItem {
@@ -208,6 +211,7 @@ impl SettingsMenuItem {
             Self::ChatStyle => "Chat Style",
             Self::Tools => "Tools",
             Self::Keymaps => "Keymaps",
+            Self::Theme => "Theme",
         }
     }
 
@@ -220,6 +224,7 @@ impl SettingsMenuItem {
             Self::ChatStyle => SettingsPage::ChatStyle,
             Self::Tools => SettingsPage::Tools,
             Self::Keymaps => SettingsPage::Keymaps,
+            Self::Theme => SettingsPage::Theme,
         }
     }
 }
@@ -238,6 +243,25 @@ pub enum SettingsAction {
         scope: ToolSettingsScope,
         enabled: bool,
     },
+    SetTheme {
+        id: String,
+        scope: ToolSettingsScope,
+    },
+    ResetTheme {
+        scope: ToolSettingsScope,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeOption {
+    pub id: String,
+    pub display_name: String,
+    pub description: String,
+    pub mode: ThemeMode,
+    pub source: ThemeSource,
+    pub global_active: bool,
+    pub project_active: bool,
+    pub effective: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,6 +276,7 @@ pub struct SettingsState {
     pub collapse_cursor: usize,
     pub chat_style_cursor: usize,
     pub tool_cursor: usize,
+    pub theme_cursor: usize,
     pub keymap_cursor: usize,
     pub keymap_binding_cursor: usize,
     pub keymap_shortcut_kind_cursor: usize,
@@ -261,6 +286,10 @@ pub struct SettingsState {
     pub tool_collapse_mode: CollapseMode,
     pub chat_style: ChatStyle,
     pub tools: Vec<ToolSettingsItem>,
+    pub theme_options: Vec<ThemeOption>,
+    pub global_theme: ThemeSettings,
+    pub project_theme: ThemeSettings,
+    pub effective_theme: Option<ResolvedTheme>,
     pub keymap: KeymapConfig,
     pub model_search: String,
     pub model_search_active: bool,
@@ -283,6 +312,7 @@ impl SettingsState {
             collapse_cursor: 0,
             chat_style_cursor: 0,
             tool_cursor: 0,
+            theme_cursor: 0,
             keymap_cursor: 0,
             keymap_binding_cursor: 0,
             keymap_shortcut_kind_cursor: 0,
@@ -292,6 +322,10 @@ impl SettingsState {
             tool_collapse_mode: CollapseMode::Full,
             chat_style: ChatStyle::Chat,
             tools: Vec::new(),
+            theme_options: Vec::new(),
+            global_theme: ThemeSettings::default(),
+            project_theme: ThemeSettings::default(),
+            effective_theme: None,
             keymap: KeymapConfig::default(),
             model_search: String::new(),
             model_search_active: false,
@@ -357,6 +391,61 @@ impl SettingsState {
         self.tool_cursor = self.tool_cursor.min(self.tools.len().saturating_sub(1));
     }
 
+    pub fn set_theme_state(
+        &mut self,
+        catalog: &ThemeCatalog,
+        global: &ThemeSettings,
+        project: &ThemeSettings,
+        effective: &ResolvedTheme,
+    ) {
+        self.global_theme = global.clone();
+        self.project_theme = project.clone();
+        self.effective_theme = Some(effective.clone());
+        let global_active = global.active_id();
+        let project_active = project.active_id();
+        self.theme_options = catalog
+            .entries()
+            .iter()
+            .filter_map(|entry| {
+                let id = entry.document.normalized_id()?;
+                Some(ThemeOption {
+                    global_active: global_active.as_deref() == Some(id.as_str()),
+                    project_active: project_active.as_deref() == Some(id.as_str()),
+                    effective: effective.id == id,
+                    display_name: if entry.document.display_name.trim().is_empty() {
+                        id.clone()
+                    } else {
+                        entry.document.display_name.clone()
+                    },
+                    description: entry.document.description.clone().unwrap_or_default(),
+                    mode: entry.document.mode,
+                    source: entry.source,
+                    id,
+                })
+            })
+            .collect();
+        self.theme_options.sort_by(|left, right| {
+            right
+                .project_active
+                .cmp(&left.project_active)
+                .then(right.global_active.cmp(&left.global_active))
+                .then(right.effective.cmp(&left.effective))
+                .then_with(|| {
+                    right
+                        .source
+                        .precedence_rank()
+                        .cmp(&left.source.precedence_rank())
+                })
+                .then(left.display_name.cmp(&right.display_name))
+        });
+        self.theme_cursor = self
+            .theme_options
+            .iter()
+            .position(|option| option.effective)
+            .unwrap_or(0)
+            .min(self.theme_options.len().saturating_sub(1));
+    }
+
     pub fn open_chat_style(&mut self) {
         self.page = SettingsPage::ChatStyle;
         self.chat_style_cursor = chat_style_index(self.chat_style);
@@ -373,6 +462,13 @@ impl SettingsState {
         self.keymap_cursor = self
             .keymap_cursor
             .min(key_action_rows().len().saturating_sub(1));
+    }
+
+    pub fn open_theme(&mut self) {
+        self.page = SettingsPage::Theme;
+        self.theme_cursor = self
+            .theme_cursor
+            .min(self.theme_options.len().saturating_sub(1));
     }
 
     pub fn set_keymap(&mut self, keymap: KeymapConfig) {
@@ -399,7 +495,7 @@ impl SettingsState {
     }
 
     #[must_use]
-    pub fn menu_items(&self) -> [SettingsMenuItem; 6] {
+    pub fn menu_items(&self) -> [SettingsMenuItem; 7] {
         [
             SettingsMenuItem::ModelSelection,
             SettingsMenuItem::ThinkingLevel,
@@ -407,6 +503,7 @@ impl SettingsState {
             SettingsMenuItem::ChatStyle,
             SettingsMenuItem::Tools,
             SettingsMenuItem::Keymaps,
+            SettingsMenuItem::Theme,
         ]
     }
 
@@ -507,6 +604,26 @@ impl SettingsState {
                 if self.page == SettingsPage::Tools && key.modifiers.is_empty() =>
             {
                 self.toggle_tool(ToolSettingsScope::Project)
+            }
+            KeyCode::Char('p' | 'P')
+                if self.page == SettingsPage::Theme && key.modifiers.is_empty() =>
+            {
+                self.apply_theme(ToolSettingsScope::Project)
+            }
+            KeyCode::Char('g' | 'G')
+                if self.page == SettingsPage::Theme && key.modifiers.is_empty() =>
+            {
+                self.apply_theme(ToolSettingsScope::Global)
+            }
+            KeyCode::Char('r') if self.page == SettingsPage::Theme && key.modifiers.is_empty() => {
+                SettingsAction::ResetTheme {
+                    scope: ToolSettingsScope::Project,
+                }
+            }
+            KeyCode::Char('R') if self.page == SettingsPage::Theme && key.modifiers.is_empty() => {
+                SettingsAction::ResetTheme {
+                    scope: ToolSettingsScope::Global,
+                }
             }
             KeyCode::Char('/') if self.page == SettingsPage::Models && key.modifiers.is_empty() => {
                 self.model_search_active = true;
@@ -944,6 +1061,7 @@ impl SettingsState {
             SettingsPage::ChatStyle => self.apply_chat_style(),
             SettingsPage::Tools => self.toggle_tool(ToolSettingsScope::Project),
             SettingsPage::Keymaps => self.open_keymap_detail(),
+            SettingsPage::Theme => self.apply_theme(ToolSettingsScope::Project),
         }
     }
 
@@ -968,6 +1086,9 @@ impl SettingsState {
             }
             SettingsPage::Tools => {
                 self.tool_cursor = move_index(self.tool_cursor, self.tools.len(), delta);
+            }
+            SettingsPage::Theme => {
+                self.theme_cursor = move_index(self.theme_cursor, self.theme_options.len(), delta);
             }
             SettingsPage::Keymaps => {
                 self.keymap_cursor = move_index(self.keymap_cursor, key_action_rows().len(), delta);
@@ -1083,6 +1204,16 @@ impl SettingsState {
             name: tool.name.clone(),
             scope,
             enabled,
+        }
+    }
+
+    fn apply_theme(&mut self, scope: ToolSettingsScope) -> SettingsAction {
+        let Some(option) = self.theme_options.get(self.theme_cursor) else {
+            return SettingsAction::None;
+        };
+        SettingsAction::SetTheme {
+            id: option.id.clone(),
+            scope,
         }
     }
 

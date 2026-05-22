@@ -15,7 +15,7 @@ use crate::{
         KeymapsMode, SettingsPage, SettingsState,
     },
     text::{truncate_to_width, truncate_with_ellipsis, wrap_text, wrapped_line_count},
-    theme::{theme_cache_hash, Theme},
+    theme::{parse_theme_color, theme_cache_hash, Theme},
     transcript::transcript_line_blocks,
 };
 use oino_extension_core::{
@@ -195,13 +195,14 @@ fn transcript_cache() -> &'static Mutex<TranscriptCacheState> {
 }
 
 pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
-    let theme = theme_with_extension_tokens(state, Theme::default());
+    let theme =
+        theme_with_extension_tokens(state, Theme::from_resolved_theme(&state.resolved_theme));
     render_with_theme(frame, state, &theme);
 }
 
 fn theme_with_extension_tokens(state: &TuiState, mut theme: Theme) -> Theme {
     for (token, value) in &state.extension_ui.theme.tokens {
-        let Some(color) = extension_theme_color(value) else {
+        let Some(color) = parse_theme_color(value) else {
             continue;
         };
         match normalize_theme_token(token).as_str() {
@@ -256,54 +257,12 @@ fn normalize_theme_token(token: &str) -> String {
     normalized
 }
 
-fn extension_theme_color(value: &str) -> Option<Color> {
-    let value = value.trim();
-    if value.is_empty()
-        || value.eq_ignore_ascii_case("default")
-        || value.eq_ignore_ascii_case("reset")
-    {
-        return Some(Color::Reset);
-    }
-    if let Some(color) = hex_theme_color(value) {
-        return Some(color);
-    }
-    if let Ok(index) = value.parse::<u8>() {
-        return Some(Color::Indexed(index));
-    }
-    match value.to_ascii_lowercase().as_str() {
-        "black" => Some(Color::Black),
-        "red" => Some(Color::Red),
-        "green" => Some(Color::Green),
-        "yellow" => Some(Color::Yellow),
-        "blue" => Some(Color::Blue),
-        "magenta" => Some(Color::Magenta),
-        "cyan" => Some(Color::Cyan),
-        "gray" | "grey" => Some(Color::Gray),
-        "dark_gray" | "dark-grey" | "darkgray" => Some(Color::DarkGray),
-        "light_red" | "light-red" => Some(Color::LightRed),
-        "light_green" | "light-green" => Some(Color::LightGreen),
-        "light_yellow" | "light-yellow" => Some(Color::LightYellow),
-        "light_blue" | "light-blue" => Some(Color::LightBlue),
-        "light_magenta" | "light-magenta" => Some(Color::LightMagenta),
-        "light_cyan" | "light-cyan" => Some(Color::LightCyan),
-        "white" => Some(Color::White),
-        _ => None,
-    }
-}
-
-fn hex_theme_color(value: &str) -> Option<Color> {
-    let hex = value.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
-    }
-    let red = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let green = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let blue = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(Color::Rgb(red, green, blue))
-}
-
 pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme) {
     let area = frame.area();
+    frame.render_widget(
+        Block::default().style(Style::default().fg(theme.fg).bg(theme.bg)),
+        area,
+    );
     if area.width < 20 || area.height < 8 {
         render_tiny(frame, area, state, theme);
         return;
@@ -1058,8 +1017,14 @@ fn render_transcript(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
         .title(Span::styled(title, title_style))
         .borders(Borders::ALL)
         .border_style(border_style)
+        .style(Style::default().fg(theme.fg).bg(theme.panel_bg))
         .padding(Padding::left(TRANSCRIPT_LEFT_PADDING));
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(theme.fg).bg(theme.panel_bg))
+            .block(block),
+        area,
+    );
 
     if has_scrollbar {
         render_transcript_scrollbar(frame, area, start, inner_height, total_lines, theme);
@@ -1503,9 +1468,15 @@ fn render_composer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(border_style);
+        .border_style(border_style)
+        .style(Style::default().fg(theme.fg).bg(theme.composer_bg));
     let lines = composer_lines(area, &state.composer, theme);
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(theme.fg).bg(theme.composer_bg))
+            .block(block),
+        area,
+    );
 
     if state.focus == TuiFocus::Composer && state.composer.is_enabled() {
         frame.set_cursor_position(composer_cursor_position(area, &state.composer));
@@ -2853,7 +2824,8 @@ fn render_settings_overlay(
     let block = Block::default()
         .title(Span::styled(" Settings ", theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focused_border));
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(Style::default().fg(theme.fg).bg(theme.panel_bg));
     frame.render_widget(block, overlay);
 
     let inner = overlay.inner(ratatui::layout::Margin {
@@ -2873,6 +2845,7 @@ fn render_settings_overlay(
         SettingsPage::ChatStyle => render_chat_style_settings(frame, sections[0], settings, theme),
         SettingsPage::Tools => render_tools_settings(frame, sections[0], settings, theme),
         SettingsPage::Keymaps => render_keymap_settings(frame, sections[0], settings, theme),
+        SettingsPage::Theme => render_theme_settings(frame, sections[0], settings, theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
 }
@@ -2908,6 +2881,16 @@ fn render_settings_menu(
             }
             SettingsPage::Tools => format!("{} registered", settings.tools.len()),
             SettingsPage::Keymaps => format!("preset: {}", settings.keymap.preset.label()),
+            SettingsPage::Theme => settings.effective_theme.as_ref().map_or_else(
+                || "current: system".into(),
+                |theme| {
+                    format!(
+                        "current: {} ({})",
+                        theme.display_name,
+                        theme.selected_scope.label()
+                    )
+                },
+            ),
             SettingsPage::Menu => String::new(),
         };
         let text = format!("{marker} {}  {}", item.label(), detail);
@@ -3177,6 +3160,122 @@ fn render_tools_settings(
                     Line::styled(
                         format!("{marker} {}", tool.label()),
                         item_style(active, tool.global_enabled || tool.project_enabled, theme),
+                    )
+                }),
+        );
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_theme_settings(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let title = if settings.theme_options.is_empty() {
+        " Theme ".to_string()
+    } else {
+        format!(
+            " Theme {}/{} ",
+            settings
+                .theme_cursor
+                .saturating_add(1)
+                .min(settings.theme_options.len()),
+            settings.theme_options.len()
+        )
+    };
+    let effective = settings.effective_theme.as_ref().map_or_else(
+        || "Effective: system".to_string(),
+        |theme| {
+            format!(
+                "Effective: {} ({}, {})",
+                theme.display_name,
+                theme.selected_scope.label(),
+                theme.source.label()
+            )
+        },
+    );
+    let global = settings
+        .global_theme
+        .active_id()
+        .unwrap_or_else(|| "system".into());
+    let project = settings
+        .project_theme
+        .active_id()
+        .unwrap_or_else(|| "inherits global".into());
+    let mut lines = vec![
+        Line::styled(effective, theme.title),
+        Line::styled(
+            format!("Global: {global} • Project: {project}"),
+            Style::default().fg(theme.muted),
+        ),
+        Line::styled(
+            "Enter/p set project • g set global • r reset project • R reset global",
+            theme.footer,
+        ),
+        Line::from(""),
+    ];
+    if settings.theme_options.is_empty() {
+        lines.push(Line::styled(
+            "No themes registered.",
+            Style::default().fg(theme.muted),
+        ));
+    } else {
+        let visible_height = list_content_height(area).saturating_sub(4).max(1);
+        let range = visible_range(
+            settings.theme_cursor,
+            settings.theme_options.len(),
+            visible_height,
+        );
+        lines.extend(
+            settings
+                .theme_options
+                .iter()
+                .enumerate()
+                .skip(range.start)
+                .take(range.end.saturating_sub(range.start))
+                .map(|(index, option)| {
+                    let active = index == settings.theme_cursor;
+                    let selected = option.effective;
+                    let marker = selection_marker(active, selected);
+                    let mut badges = Vec::new();
+                    if option.project_active {
+                        badges.push("PROJECT");
+                    }
+                    if option.global_active {
+                        badges.push("GLOBAL");
+                    }
+                    if option.effective {
+                        badges.push("EFFECTIVE");
+                    }
+                    let badges = if badges.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", badges.join(" "))
+                    };
+                    let description = if option.description.trim().is_empty() {
+                        option.source.label().to_string()
+                    } else {
+                        format!("{} • {}", option.source.label(), option.description)
+                    };
+                    Line::styled(
+                        format!(
+                            "{marker} {} ({}){badges} — {description}",
+                            option.display_name,
+                            option.mode.label()
+                        ),
+                        item_style(active, selected, theme),
                     )
                 }),
         );
@@ -3529,6 +3628,7 @@ fn render_settings_footer(
         SettingsPage::Tools => {
             "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
         }
+        SettingsPage::Theme => "arrows/jk move • Enter/p project • g global • r reset project • R reset global • Esc/← back",
         SettingsPage::Keymaps => match settings.keymaps_mode {
             KeymapsMode::List => {
                 "arrows/jk move • Enter detail • g chord key • p preset • Esc/← back"
@@ -3545,6 +3645,12 @@ fn render_settings_footer(
     };
     let status = if settings.page == SettingsPage::Tools {
         format!("Project controls this workspace; Global seeds new projects • {controls}")
+    } else if settings.page == SettingsPage::Theme {
+        let effective = settings.effective_theme.as_ref().map_or_else(
+            || "system".into(),
+            |theme| format!("{} ({})", theme.display_name, theme.selected_scope.label()),
+        );
+        format!("Theme: {effective} • {controls}")
     } else {
         format!("{} • {controls}", settings.status)
     };
@@ -3612,16 +3718,17 @@ fn selection_marker(active: bool, selected: bool) -> &'static str {
 }
 
 fn item_style(active: bool, selected: bool, theme: &Theme) -> Style {
-    let style = if selected {
-        Style::default().fg(theme.fg).add_modifier(Modifier::BOLD)
+    let mut style = if selected {
+        Style::default()
+            .fg(theme.selected_fg)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.fg)
     };
     if active {
-        style.add_modifier(Modifier::REVERSED)
-    } else {
-        style
+        style = style.bg(theme.selection_bg).add_modifier(Modifier::BOLD);
     }
+    style
 }
 
 fn composer_lines(area: Rect, composer: &ComposerState, theme: &Theme) -> Vec<Line<'static>> {

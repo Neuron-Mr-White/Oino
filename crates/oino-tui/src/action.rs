@@ -29,6 +29,13 @@ pub enum TuiAction {
         scope: ToolSettingsScope,
         enabled: bool,
     },
+    SetTheme {
+        id: String,
+        scope: ToolSettingsScope,
+    },
+    ResetTheme {
+        scope: ToolSettingsScope,
+    },
     RunExtensionUiAction {
         surface_id: String,
         action_id: String,

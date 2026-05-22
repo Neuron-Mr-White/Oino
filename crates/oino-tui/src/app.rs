@@ -20,6 +20,7 @@ use crate::{
         chat_style_label, collapse_mode_label, KeymapsMode, ModelOption, SettingsAction,
         SettingsState, ToolSettingsItem, ToolSettingsScope,
     },
+    theme::{resolve_effective_theme, ResolvedTheme, ThemeCatalog, ThemeSettings},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_extension_core::{
@@ -843,6 +844,8 @@ pub struct TuiState {
     pub error: Option<String>,
     pub overlay: Option<OverlayKind>,
     pub settings: SettingsState,
+    pub theme_catalog: ThemeCatalog,
+    pub resolved_theme: ResolvedTheme,
     pub command_suggestions: CommandSuggestionsState,
     pub chord: ChordState,
     key_sequence: Vec<KeyStroke>,
@@ -872,6 +875,17 @@ pub struct TuiState {
 
 impl Default for TuiState {
     fn default() -> Self {
+        let theme_catalog = ThemeCatalog::builtins();
+        let global_theme = ThemeSettings::default();
+        let project_theme = ThemeSettings::default();
+        let resolved_theme = resolve_effective_theme(&theme_catalog, &global_theme, &project_theme);
+        let mut settings = SettingsState::new("", ThinkingLevel::Off);
+        settings.set_theme_state(
+            &theme_catalog,
+            &global_theme,
+            &project_theme,
+            &resolved_theme,
+        );
         Self {
             messages: Vec::new(),
             session_title: String::new(),
@@ -881,7 +895,9 @@ impl Default for TuiState {
             working: false,
             error: None,
             overlay: None,
-            settings: SettingsState::new("", ThinkingLevel::Off),
+            settings,
+            theme_catalog,
+            resolved_theme,
             command_suggestions: CommandSuggestionsState::new(),
             chord: ChordState::None,
             key_sequence: Vec::new(),
@@ -919,8 +935,21 @@ impl TuiState {
 
     #[must_use]
     pub fn with_settings(model: impl Into<String>, thinking_level: ThinkingLevel) -> Self {
+        let theme_catalog = ThemeCatalog::builtins();
+        let global_theme = ThemeSettings::default();
+        let project_theme = ThemeSettings::default();
+        let resolved_theme = resolve_effective_theme(&theme_catalog, &global_theme, &project_theme);
+        let mut settings = SettingsState::new(model, thinking_level);
+        settings.set_theme_state(
+            &theme_catalog,
+            &global_theme,
+            &project_theme,
+            &resolved_theme,
+        );
         Self {
-            settings: SettingsState::new(model, thinking_level),
+            settings,
+            theme_catalog,
+            resolved_theme,
             ..Self::default()
         }
     }
@@ -1590,6 +1619,22 @@ impl TuiState {
 
     pub fn set_tool_settings(&mut self, tools: Vec<ToolSettingsItem>) {
         self.settings.set_tools(tools);
+    }
+
+    pub fn set_theme_settings(&mut self, global: &ThemeSettings, project: &ThemeSettings) {
+        self.resolved_theme = resolve_effective_theme(&self.theme_catalog, global, project);
+        self.settings
+            .set_theme_state(&self.theme_catalog, global, project, &self.resolved_theme);
+    }
+
+    pub fn set_theme_catalog(
+        &mut self,
+        catalog: ThemeCatalog,
+        global: &ThemeSettings,
+        project: &ThemeSettings,
+    ) {
+        self.theme_catalog = catalog;
+        self.set_theme_settings(global, project);
     }
 
     pub fn set_extension_ui_surfaces(
@@ -3130,6 +3175,14 @@ impl TuiState {
                 }
             }
         }
+        if self.settings.page == crate::settings::SettingsPage::Theme {
+            match key.code {
+                KeyCode::Char('p' | 'P' | 'g' | 'G' | 'r' | 'R') if key.modifiers.is_empty() => {
+                    return self.handle_settings_key(key);
+                }
+                _ => {}
+            }
+        }
         TuiAction::None
     }
 
@@ -3330,6 +3383,14 @@ impl TuiState {
                     enabled,
                 }
             }
+            SettingsAction::SetTheme { id, scope } => {
+                self.status = format!("{} theme set to `{id}`", scope.label());
+                TuiAction::SetTheme { id, scope }
+            }
+            SettingsAction::ResetTheme { scope } => {
+                self.status = format!("{} theme reset", scope.label());
+                TuiAction::ResetTheme { scope }
+            }
         }
     }
 
@@ -3485,6 +3546,10 @@ impl TuiState {
             }
             ParsedCommand::Settings(SettingsCommand::OpenKeymaps) => {
                 self.open_keymaps_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::OpenTheme) => {
+                self.open_theme_overlay();
                 TuiAction::None
             }
             ParsedCommand::SetSessionTitle(title) => {
@@ -3686,6 +3751,13 @@ impl TuiState {
         self.settings.open_keymaps();
         self.overlay = Some(OverlayKind::Settings);
         self.status = "Keymaps: Enter detail • a add in detail • p preset • Esc back".into();
+    }
+
+    fn open_theme_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_theme();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status = "Theme: Enter/p project • g global • r/R reset • Esc back".into();
     }
 
     fn open_settings_overlay(&mut self) {
@@ -4586,6 +4658,61 @@ mod tests {
                 scope: ToolSettingsScope::Project,
             }
         );
+    }
+
+    #[test]
+    fn theme_settings_page_sets_project_and_global_theme() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("/theme");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Settings));
+        assert_eq!(state.settings.page, crate::settings::SettingsPage::Theme);
+        assert!(!state.settings.theme_options.is_empty());
+
+        assert_eq!(state.handle_key(key(KeyCode::Down)), TuiAction::None);
+        let selected = state.settings.theme_options[state.settings.theme_cursor]
+            .id
+            .clone();
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('p'))),
+            TuiAction::SetTheme {
+                id: selected.clone(),
+                scope: ToolSettingsScope::Project,
+            }
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('g'))),
+            TuiAction::SetTheme {
+                id: selected,
+                scope: ToolSettingsScope::Global,
+            }
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('r'))),
+            TuiAction::ResetTheme {
+                scope: ToolSettingsScope::Project,
+            }
+        );
+    }
+
+    #[test]
+    fn set_theme_settings_updates_effective_theme_and_picker_state() {
+        let mut state = TuiState::new();
+        let mut global = ThemeSettings::default();
+        global.set_active("oino-light");
+        let mut project = ThemeSettings::default();
+        project.set_active("oino-aurora");
+        state.set_theme_settings(&global, &project);
+
+        assert_eq!(state.resolved_theme.id, "oino-aurora");
+        assert_eq!(
+            state.resolved_theme.selected_scope,
+            crate::theme::EffectiveThemeScope::Project
+        );
+        let selected = &state.settings.theme_options[state.settings.theme_cursor];
+        assert_eq!(selected.id, "oino-aurora");
+        assert!(selected.project_active);
+        assert!(selected.effective);
     }
 
     #[test]

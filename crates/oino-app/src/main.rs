@@ -488,6 +488,26 @@ fn set_tool_enabled(
     };
 }
 
+fn set_theme_active(settings: &mut ToolSettingsSnapshot, scope: ToolSettingsScope, id: String) {
+    match scope {
+        ToolSettingsScope::Global => settings.global.theme.set_active(id),
+        ToolSettingsScope::Project => settings.project.theme.set_active(id),
+    }
+}
+
+fn reset_theme(settings: &mut ToolSettingsSnapshot, scope: ToolSettingsScope) {
+    match scope {
+        ToolSettingsScope::Global => {
+            settings.global.theme.clear_active();
+            settings.global.theme.overrides.clear();
+        }
+        ToolSettingsScope::Project => {
+            settings.project.theme.clear_active();
+            settings.project.theme.overrides.clear();
+        }
+    }
+}
+
 fn extension_enabled_global(settings: &ToolSettingsSnapshot, id: &ExtensionId) -> bool {
     extension_policy_enabled(settings.global.extensions.extensions.get(id), true)
 }
@@ -1840,6 +1860,7 @@ async fn run_tui(
     let mut extension_models = extension_model_options(&extension_snapshot);
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
+    state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
     apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot, &tool_settings);
     apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
     state.set_file_paths(scan_project_files(&cwd));
@@ -1992,6 +2013,18 @@ async fn run_tui(
                     &tool_settings,
                 );
                 apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
+            }
+            TuiAction::SetTheme { id, scope } => {
+                set_theme_active(&mut tool_settings, scope, id.clone());
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
+                state.status = format!("{} theme set to `{id}`", scope.label());
+            }
+            TuiAction::ResetTheme { scope } => {
+                reset_theme(&mut tool_settings, scope);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
+                state.status = format!("{} theme reset", scope.label());
             }
             TuiAction::RunExtensionUiAction {
                 surface_id,
@@ -3279,7 +3312,8 @@ async fn execute_runtime_command(
             | SettingsCommand::OpenThinkingLevel
             | SettingsCommand::OpenChatStyle
             | SettingsCommand::OpenTools
-            | SettingsCommand::OpenKeymaps,
+            | SettingsCommand::OpenKeymaps
+            | SettingsCommand::OpenTheme,
         ) => {
             return Err(AppError::InvalidArguments(
                 "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model openrouter:xai/glm-5.1` or `/thinking high`".into(),
@@ -3521,6 +3555,7 @@ async fn persist_current_settings(state: &mut TuiState) {
     )
     .with_tools(tool_map_from_state(state, ToolSettingsScope::Global));
     settings.keymap = Some(state.settings.keymap.clone());
+    settings.theme = state.settings.global_theme.clone();
     if let Err(err) = settings.save_default().await {
         state.set_error(format!("Settings save failed: {err}"));
         state.status = HELP_STATUS.into();
