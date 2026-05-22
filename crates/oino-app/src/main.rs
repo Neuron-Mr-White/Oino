@@ -49,7 +49,8 @@ use oino_tui::{
     ExtensionAutosuggestItem, ExtensionManagementItem, ExtensionManagementTarget,
     ExtensionShortcut, ExtensionThemeState, KeySequence, KeymapConfig, MessageView, ModelOption,
     ParsedCommand, PromptResource, SessionListItem, SettingsCommand, SkillResource,
-    TerminalClickTarget, TerminalUrlOverlay, ToolSettingsItem, ToolSettingsScope, TuiAction,
+    TerminalClickTarget, TerminalUrlOverlay, ThemeCatalog, ThemeCatalogEntry, ThemeDocument,
+    ThemeSource, ThemeSourceKind, ThemeSourceScope, ToolSettingsItem, ToolSettingsScope, TuiAction,
     TuiState, HELP_STATUS,
 };
 use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
@@ -923,7 +924,12 @@ fn apply_extension_snapshot_to_tui_state(
     state.set_extension_ui_surfaces(extension_ui_surfaces(snapshot));
     state.set_extension_shortcuts(extension_shortcuts(snapshot));
     state.set_extension_autosuggest_items(extension_autosuggest_items(snapshot));
-    state.set_extension_theme(extension_theme(snapshot));
+    state.set_theme_catalog(
+        extension_theme_catalog(snapshot),
+        &settings.global.theme,
+        &settings.project.theme,
+    );
+    state.set_extension_theme(ExtensionThemeState::default());
     state.set_extension_management_items(extension_management_items(snapshot, settings));
 }
 
@@ -1122,119 +1128,158 @@ fn extension_autosuggest_items(
         .collect()
 }
 
-fn extension_theme(snapshot: &ExtensionManagerSnapshot) -> ExtensionThemeState {
-    let Some(active) = snapshot
+fn extension_theme_catalog(snapshot: &ExtensionManagerSnapshot) -> ThemeCatalog {
+    let mut catalog = ThemeCatalog::builtins();
+    for active in snapshot
         .registries
         .themes
         .active
         .iter()
-        .rev()
-        .find(|active| {
-            active.entry.metadata.source.scope != SourceScope::BuiltIn
-                && !active.entry.contribution.tokens.is_empty()
-        })
-    else {
-        return ExtensionThemeState::default();
-    };
-    let mut warnings = Vec::new();
-    for token in active.entry.contribution.tokens.keys() {
-        if !is_known_extension_theme_token(token) {
-            warnings.push(format!("unknown theme token `{token}` ignored"));
+        .filter(|active| active.entry.metadata.source.scope != SourceScope::BuiltIn)
+    {
+        let document = extension_theme_document(active);
+        catalog.register(ThemeCatalogEntry::new(
+            extension_theme_source(active.entry.metadata.source.scope),
+            document,
+        ));
+    }
+    catalog
+}
+
+fn extension_theme_document(
+    active: &ActiveContribution<oino_extension_core::ThemeContribution>,
+) -> ThemeDocument {
+    if let Some(path) = extension_theme_file_path(active) {
+        if let Some(document) = read_extension_theme_document(&path, active) {
+            return document;
         }
     }
-    ExtensionThemeState {
-        label: Some(active.effective_id.to_string()),
+    ThemeDocument {
+        schema_version: 1,
+        id: active.effective_id.to_string(),
+        display_name: active.effective_id.to_string(),
+        description: Some("Extension theme contribution".into()),
+        mode: oino_tui::ThemeMode::Dark,
+        inherits: Some("system".into()),
+        palette: BTreeMap::new(),
         tokens: active.entry.contribution.tokens.clone(),
-        warnings,
     }
 }
 
-fn is_known_extension_theme_token(token: &str) -> bool {
-    matches!(
-        normalize_theme_token(token).as_str(),
-        "accent"
-            | "success"
-            | "text"
-            | "fg"
-            | "muted"
-            | "dim"
-            | "focused_border"
-            | "border_accent"
-            | "panel_border"
-            | "border"
-            | "border_muted"
-            | "user_border"
-            | "user_message_text"
-            | "assistant_border"
-            | "assistant_message_text"
-            | "tool_border"
-            | "tool_title"
-            | "warning"
-            | "error"
-            | "footer"
-            | "status"
-            | "inline_status"
-            | "working"
-            | "working_indicator"
-            | "title"
-            | "placeholder"
-            | "selected_bg"
-            | "user_message_bg"
-            | "custom_message_bg"
-            | "custom_message_text"
-            | "custom_message_label"
-            | "tool_pending_bg"
-            | "tool_success_bg"
-            | "tool_error_bg"
-            | "tool_output"
-            | "md_heading"
-            | "md_link"
-            | "md_link_url"
-            | "md_code"
-            | "md_code_block"
-            | "md_code_block_border"
-            | "md_quote"
-            | "md_quote_border"
-            | "md_hr"
-            | "md_list_bullet"
-            | "tool_diff_added"
-            | "tool_diff_removed"
-            | "tool_diff_context"
-            | "syntax_comment"
-            | "syntax_keyword"
-            | "syntax_function"
-            | "syntax_variable"
-            | "syntax_string"
-            | "syntax_number"
-            | "syntax_type"
-            | "syntax_operator"
-            | "syntax_punctuation"
-            | "thinking_text"
-            | "thinking_off"
-            | "thinking_minimal"
-            | "thinking_low"
-            | "thinking_medium"
-            | "thinking_high"
-            | "thinking_xhigh"
-            | "bash_mode"
-    )
-}
-
-fn normalize_theme_token(token: &str) -> String {
-    let mut normalized = String::new();
-    for (index, ch) in token.chars().enumerate() {
-        if ch.is_ascii_uppercase() {
-            if index > 0 {
-                normalized.push('_');
-            }
-            normalized.push(ch.to_ascii_lowercase());
-        } else if matches!(ch, '-' | '.' | ' ') {
-            normalized.push('_');
-        } else {
-            normalized.push(ch);
+fn read_extension_theme_document(
+    path: &Path,
+    active: &ActiveContribution<oino_extension_core::ThemeContribution>,
+) -> Option<ThemeDocument> {
+    let text = fs::read_to_string(path).ok()?;
+    let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    if let Some(tokens) = legacy_theme_token_map(&value) {
+        return Some(ThemeDocument {
+            schema_version: 1,
+            id: active.effective_id.to_string(),
+            display_name: active.effective_id.to_string(),
+            description: Some(format!("Extension theme from {}", path.display())),
+            mode: oino_tui::ThemeMode::Dark,
+            inherits: Some("system".into()),
+            palette: BTreeMap::new(),
+            tokens: if tokens.is_empty() {
+                active.entry.contribution.tokens.clone()
+            } else {
+                tokens
+            },
+        });
+    }
+    if let Ok(mut document) = serde_json::from_value::<ThemeDocument>(value) {
+        if document.normalized_id().is_none() {
+            document.id = active.effective_id.to_string();
         }
+        if document.display_name.trim().is_empty() {
+            document.display_name = active.effective_id.to_string();
+        }
+        if document.inherits.is_none() {
+            document.inherits = Some("system".into());
+        }
+        return Some(document);
     }
-    normalized
+    None
+}
+
+fn legacy_theme_token_map(value: &serde_json::Value) -> Option<BTreeMap<String, String>> {
+    let object = value.as_object()?;
+    if object.contains_key("schema_version")
+        || object.contains_key("id")
+        || object.contains_key("tokens")
+        || object.contains_key("palette")
+    {
+        return None;
+    }
+    object
+        .iter()
+        .map(|(key, value)| value.as_str().map(|value| (key.clone(), value.to_string())))
+        .collect()
+}
+
+fn extension_theme_file_path(
+    active: &ActiveContribution<oino_extension_core::ThemeContribution>,
+) -> Option<PathBuf> {
+    let path = Path::new(&active.entry.contribution.path);
+    let manifest_path = active.entry.metadata.source.path.as_ref().or_else(|| {
+        active
+            .entry
+            .metadata
+            .provenance
+            .as_ref()
+            .and_then(|provenance| provenance.manifest_path.as_ref())
+    })?;
+    let manifest_dir = manifest_path.parent()?;
+    let base =
+        package_root_for_manifest(manifest_dir).unwrap_or_else(|| manifest_dir.to_path_buf());
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    };
+    if !theme_path_is_within_base(&candidate, &base) {
+        return None;
+    }
+    candidate.exists().then_some(candidate)
+}
+
+fn package_root_for_manifest(manifest_dir: &Path) -> Option<PathBuf> {
+    let mut current = Some(manifest_dir);
+    while let Some(dir) = current {
+        if dir.join("oino.package.json").is_file() {
+            return Some(dir.to_path_buf());
+        }
+        current = dir.parent();
+    }
+    None
+}
+
+fn theme_path_is_within_base(path: &Path, base: &Path) -> bool {
+    let Ok(base) = base.canonicalize() else {
+        return false;
+    };
+    match path.canonicalize() {
+        Ok(path) => path.starts_with(base),
+        Err(_) => path
+            .parent()
+            .and_then(|parent| parent.canonicalize().ok())
+            .is_some_and(|parent| parent.starts_with(base)),
+    }
+}
+
+const fn extension_theme_source(scope: SourceScope) -> ThemeSource {
+    let scope = match scope {
+        SourceScope::BuiltIn => ThemeSourceScope::BuiltIn,
+        SourceScope::Global => ThemeSourceScope::Global,
+        SourceScope::Project | SourceScope::Session | SourceScope::Development => {
+            ThemeSourceScope::Project
+        }
+    };
+    ThemeSource {
+        kind: ThemeSourceKind::Extension,
+        scope,
+    }
 }
 
 fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOption> {
@@ -4150,8 +4195,13 @@ mod tests {
         )
         .unwrap_or_else(|err| panic!("write skill failed: {err}"));
         fs::write(
+            extension_dir.join("visible-theme.json"),
+            r##"{ "accent": "#abcdef", "panel.bg": "#010203" }"##,
+        )
+        .unwrap_or_else(|err| panic!("write theme failed: {err}"));
+        fs::write(
             extension_dir.join("oino.extension.json"),
-            r#"{
+            r##"{
               "id": "acme.visible",
               "version": "1.0.0",
               "oino": "^0.1",
@@ -4163,9 +4213,12 @@ mod tests {
                 "resources": [
                   { "id": "visible_prompt", "kind": "prompt", "path": "visible-prompt.md" },
                   { "id": "visible_skill", "kind": "skill", "path": "visible-skill.md" }
+                ],
+                "themes": [
+                  { "id": "visible_theme", "path": "visible-theme.json", "tokens": { "accent": "#111111" } }
                 ]
               }
-            }"#,
+            }"##,
         )
         .unwrap_or_else(|err| panic!("write extension failed: {err}"));
         fs::create_dir_all(project.join(".oino"))
@@ -4205,6 +4258,29 @@ mod tests {
         assert!(skills
             .iter()
             .any(|skill| skill.name == "visible_skill" && skill.content.contains("Skill content")));
+
+        let catalog = extension_theme_catalog(&snapshot);
+        let theme = catalog
+            .selected_entry("visible_theme")
+            .unwrap_or_else(|| panic!("missing extension theme"));
+        assert_eq!(theme.source.scope, ThemeSourceScope::Project);
+        assert_eq!(
+            theme.document.tokens.get("accent").map(String::as_str),
+            Some("#abcdef")
+        );
+        assert_eq!(
+            theme.document.tokens.get("panel.bg").map(String::as_str),
+            Some("#010203")
+        );
+        let mut project_theme = oino_tui::ThemeSettings::default();
+        project_theme.set_active("visible_theme");
+        let resolved = oino_tui::resolve_effective_theme(
+            &catalog,
+            &oino_tui::ThemeSettings::default(),
+            &project_theme,
+        );
+        assert_eq!(resolved.id, "visible-theme");
+        assert!(resolved.tokens.contains_key("panel.bg"));
     }
 
     #[test]

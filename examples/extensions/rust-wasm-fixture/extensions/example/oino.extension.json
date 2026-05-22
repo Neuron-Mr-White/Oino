@@ -439,8 +439,11 @@
         "id": "example_theme",
         "path": "themes/example-theme.json",
         "tokens": {
-          "accent": "#7dd3fc",
-          "success": "#86efac"
+          "accent": "#f59e0b",
+          "panel.bg": "#102027",
+          "composer.bg": "#18313a",
+          "list.selected_bg": "#374151",
+          "success": "#4ade80"
         },
         "conflict": {
           "strategy": "namespaced",

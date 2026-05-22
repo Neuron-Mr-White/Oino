@@ -548,11 +548,12 @@ fn render_extension_sidebar(
         state.extension_ui.conflicts.len(),
         extension_surfaces_have_focus(state, surfaces),
     );
-    let paragraph = Paragraph::new(lines).block(
+    let paragraph = Paragraph::new(lines).style(panel_style(theme)).block(
         Block::default()
             .title(Span::styled(title, theme.title))
             .borders(Borders::ALL)
-            .border_style(theme.panel_border),
+            .border_style(theme.panel_border)
+            .style(panel_style(theme)),
     );
     frame.render_widget(paragraph, area);
 }
@@ -563,7 +564,7 @@ fn render_extension_main_panel(frame: &mut Frame<'_>, area: Rect, state: &TuiSta
         return;
     }
     let lines = extension_surface_lines(state, &surfaces, area.width.saturating_sub(2) as usize);
-    let paragraph = Paragraph::new(lines).block(
+    let paragraph = Paragraph::new(lines).style(panel_style(theme)).block(
         Block::default()
             .title(Span::styled(
                 extension_group_title(
@@ -575,7 +576,8 @@ fn render_extension_main_panel(frame: &mut Frame<'_>, area: Rect, state: &TuiSta
                 theme.title,
             ))
             .borders(Borders::ALL)
-            .border_style(theme.panel_border),
+            .border_style(theme.panel_border)
+            .style(panel_style(theme)),
     );
     frame.render_widget(paragraph, area);
 }
@@ -592,11 +594,12 @@ fn render_extension_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
         state.extension_ui.conflicts.len(),
         extension_surfaces_have_focus(state, &surfaces),
     );
-    let paragraph = Paragraph::new(lines).block(
+    let paragraph = Paragraph::new(lines).style(panel_style(theme)).block(
         Block::default()
             .title(Span::styled(title, theme.title))
             .borders(Borders::ALL)
-            .border_style(theme.panel_border),
+            .border_style(theme.panel_border)
+            .style(panel_style(theme)),
     );
     frame.render_widget(paragraph, area);
 }
@@ -635,7 +638,7 @@ fn render_extension_floating_panels(
         &surfaces,
         panel_area.width.saturating_sub(2) as usize,
     );
-    let paragraph = Paragraph::new(lines).block(
+    let paragraph = Paragraph::new(lines).style(panel_style(theme)).block(
         Block::default()
             .title(Span::styled(
                 extension_group_title(
@@ -647,7 +650,8 @@ fn render_extension_floating_panels(
                 theme.title,
             ))
             .borders(Borders::ALL)
-            .border_style(theme.focused_border),
+            .border_style(theme.focused_border)
+            .style(panel_style(theme)),
     );
     frame.render_widget(paragraph, panel_area);
 }
@@ -1550,14 +1554,15 @@ fn render_command_suggestions(
     };
 
     frame.render_widget(
-        Paragraph::new(lines).block(
+        Paragraph::new(lines).style(elevated_style(theme)).block(
             Block::default()
                 .title(format!(
                     " {} ",
                     command_suggestion_title(suggestions, content_capacity)
                 ))
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.focused_border)),
+                .border_style(Style::default().fg(theme.focused_border))
+                .style(elevated_style(theme)),
         ),
         area,
     );
@@ -1620,7 +1625,8 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, t
     let block = Block::default()
         .title(Span::styled(" Inspect ", theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focused_border));
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
     frame.render_widget(block, overlay);
 
     let inner = overlay.inner(Margin {
@@ -1727,7 +1733,8 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
     let block = Block::default()
         .title(Span::styled(" Help ", theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focused_border));
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
     frame.render_widget(block, overlay);
 
     let inner = overlay.inner(Margin {
@@ -1867,7 +1874,8 @@ fn render_send_panel_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
     let block = Block::default()
         .title(Span::styled(" Send Panel ", theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focused_border));
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
     frame.render_widget(block, overlay);
 
     let inner = overlay.inner(ratatui::layout::Margin {
@@ -2034,7 +2042,8 @@ fn render_sessions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
     let block = Block::default()
         .title(Span::styled(" Sessions ", theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focused_border));
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
     frame.render_widget(block, overlay);
 
     let inner = overlay.inner(ratatui::layout::Margin {
@@ -2233,7 +2242,8 @@ fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
         Block::default()
             .title(Span::styled(" Extensions ", theme.title))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.focused_border)),
+            .border_style(Style::default().fg(theme.focused_border))
+            .style(panel_style(theme)),
         overlay,
     );
     let inner = overlay.inner(Margin {
@@ -2493,7 +2503,8 @@ fn render_prompts_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, t
     let block = Block::default()
         .title(Span::styled(" Prompts ", theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focused_border));
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
     frame.render_widget(block, overlay);
     let inner = overlay.inner(ratatui::layout::Margin {
         horizontal: 1,
@@ -2542,7 +2553,8 @@ fn render_skills_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, th
     let block = Block::default()
         .title(Span::styled(" Skills ", theme.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.focused_border));
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
     frame.render_widget(block, overlay);
     let inner = overlay.inner(ratatui::layout::Margin {
         horizontal: 1,
@@ -2825,7 +2837,7 @@ fn render_settings_overlay(
         .title(Span::styled(" Settings ", theme.title))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.focused_border))
-        .style(Style::default().fg(theme.fg).bg(theme.panel_bg));
+        .style(panel_style(theme));
     frame.render_widget(block, overlay);
 
     let inner = overlay.inner(ratatui::layout::Margin {
@@ -3720,6 +3732,14 @@ fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
         width,
         height,
     }
+}
+
+fn panel_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.fg).bg(theme.panel_bg)
+}
+
+fn elevated_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.fg).bg(theme.elevated_bg)
 }
 
 fn section_border_style(active: bool, theme: &Theme) -> Style {
