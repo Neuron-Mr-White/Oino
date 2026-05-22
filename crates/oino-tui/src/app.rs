@@ -3409,6 +3409,10 @@ impl TuiState {
                     enabled,
                 }
             }
+            SettingsAction::OpenExtensions => {
+                self.open_extensions_overlay();
+                TuiAction::None
+            }
             SettingsAction::PreviewTheme { id } => {
                 self.set_theme_preview(id);
                 TuiAction::None
@@ -3587,6 +3591,10 @@ impl TuiState {
             }
             ParsedCommand::Settings(SettingsCommand::OpenTheme) => {
                 self.open_theme_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::OpenExtensions) => {
+                self.open_extensions_overlay();
                 TuiAction::None
             }
             ParsedCommand::SetSessionTitle(title) => {
@@ -4695,6 +4703,33 @@ mod tests {
                 scope: ToolSettingsScope::Project,
             }
         );
+    }
+
+    #[test]
+    fn settings_menu_can_open_extension_manager() {
+        let mut state = TuiState::new();
+        state.open_settings();
+        for _ in 0..state.settings.menu_items().len() {
+            if state.settings.current_menu_item() == crate::settings::SettingsMenuItem::Extensions {
+                break;
+            }
+            assert_eq!(state.handle_key(key(KeyCode::Down)), TuiAction::None);
+        }
+
+        assert_eq!(
+            state.settings.current_menu_item(),
+            crate::settings::SettingsMenuItem::Extensions
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Extensions));
+    }
+
+    #[test]
+    fn settings_extensions_command_opens_extension_manager() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("/settings extensions");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Extensions));
     }
 
     #[test]

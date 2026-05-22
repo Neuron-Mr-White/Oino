@@ -74,6 +74,11 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
             "browse saved sessions; press Enter to continue one",
         ),
         HelpEntry::item("/settings", "open settings pages"),
+        HelpEntry::item("/theme", "open theme selection"),
+        HelpEntry::item(
+            "/extensions",
+            "manage installed extensions and contribution toggles",
+        ),
         HelpEntry::item(
             "/prompts",
             "browse prompt templates from <project>/.oino/prompts/",
@@ -106,6 +111,10 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
         HelpEntry::item(
             "/settings tools",
             "show registered agent tools by global/project scope",
+        ),
+        HelpEntry::item(
+            "/settings extensions",
+            "open the extension manager from settings",
         ),
         HelpEntry::Blank,
         HelpEntry::heading("Transcript"),

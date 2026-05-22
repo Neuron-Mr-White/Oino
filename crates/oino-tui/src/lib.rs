@@ -20,7 +20,7 @@ Contributor map:
 - [`composer`] owns multiline input, collapsed pasted blocks, and resource-token
   expansion affordances.
 - [`settings`] owns settings-page state for models, thinking, tools, themes,
-  keymaps, and chat style.
+  extension entry points, keymaps, and chat style.
 - [`theme`] loads built-in/file/extension themes and resolves component roles.
 - [`resource`] and [`message`] contain lightweight view models used by overlays
   and transcript rendering.

@@ -26,11 +26,11 @@ Commands are the fastest way to navigate Oino without leaving the composer. For 
 | `/settings tools` | Show enabled agent tools by scope. |
 | `/settings keymaps` | Review or change shortcuts. |
 | `/settings theme` or `/theme` | Open theme selection. See [themes](theme-system/README.md). |
+| `/settings extensions` or `/extensions` | Manage installed extensions and contribution toggles. |
 | `/prompts` | Browse prompt templates. See [resources](resources.md). |
 | `/skills` | Browse skills. |
 | `/reload` | Rescan `SYSTEM.md`, `AGENT.md`, prompts, skills, and extension resources after edits. |
 | `/inspect` | Inspect the full prompt and export chat HTML from the inspect overlay. See [transcript rendering](transcript-rendering.md). |
-| `/extensions` | Manage installed extensions and contribution toggles. |
 
 ## Non-interactive use
 
@@ -47,7 +47,7 @@ Rules to remember:
 
 - A shell input that starts with a slash and has no resource tokens runs as a local command instead of calling the provider.
 - `/sessions`, `/prompts`, `/skills`, `/inspect`, `/reload`, `/title <name>`, `/model <provider:model-id>`, `/thinking <level>`, `/settings model ...`, `/settings thinking ...`, `/settings collapse ...`, and `/settings chat-style ...` work from the shell.
-- Overlay-only commands such as `/settings`, `/model` with no value, `/thinking` with no value, `/settings tools`, `/settings keymaps`, `/settings theme`, `/theme`, `/extensions`, and `/new` need the TUI.
+- Overlay-only commands such as `/settings`, `/model` with no value, `/thinking` with no value, `/settings tools`, `/settings keymaps`, `/settings theme`, `/theme`, `/settings extensions`, `/extensions`, and `/new` need the TUI.
 - Long resource tokens `/prompt:<name>` and `/skill:<name>` expand in shell prompts. Short `/P:` and `/S:` are only composer search shortcuts.
 - Non-interactive prompts print the assistant's final text and write the session id to stderr.
 

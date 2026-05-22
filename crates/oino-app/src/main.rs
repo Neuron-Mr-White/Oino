@@ -178,7 +178,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings keymaps"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /theme\n  /extensions\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings keymaps\n  /settings theme\n  /settings extensions"
 }
 
 #[derive(Debug, Error)]
@@ -3489,7 +3489,8 @@ async fn execute_runtime_command(
             | SettingsCommand::OpenChatStyle
             | SettingsCommand::OpenTools
             | SettingsCommand::OpenKeymaps
-            | SettingsCommand::OpenTheme,
+            | SettingsCommand::OpenTheme
+            | SettingsCommand::OpenExtensions,
         ) => {
             return Err(AppError::InvalidArguments(
                 "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model openrouter:xai/glm-5.1` or `/thinking high`".into(),

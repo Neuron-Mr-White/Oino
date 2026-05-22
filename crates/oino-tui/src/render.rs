@@ -12,7 +12,7 @@ use crate::{
     message::MessageView,
     settings::{
         chat_style_label, chat_style_value, collapse_mode_label, thinking_label, ChatStyle,
-        KeymapsMode, SettingsPage, SettingsState,
+        KeymapsMode, SettingsMenuItem, SettingsPage, SettingsState,
     },
     text::{truncate_to_width, truncate_with_ellipsis, wrap_text, wrapped_line_count},
     theme::{parse_theme_color, theme_cache_hash, Theme},
@@ -2994,6 +2994,7 @@ fn render_settings_overlay(
         SettingsPage::Tools => render_tools_settings(frame, sections[0], settings, theme),
         SettingsPage::Keymaps => render_keymap_settings(frame, sections[0], settings, theme),
         SettingsPage::Theme => render_theme_settings(frame, sections[0], settings, theme),
+        SettingsPage::Extensions => render_settings_extensions_page(frame, sections[0], theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
 }
@@ -3013,23 +3014,25 @@ fn render_settings_menu(
     lines.extend(items.iter().enumerate().map(|(index, item)| {
         let active = index == settings.menu_cursor;
         let marker = arrow_marker(active);
-        let detail = match item.page() {
-            SettingsPage::Models => format!("current: {}", settings.selected_model_label()),
-            SettingsPage::Thinking => format!(
+        let detail = match item {
+            SettingsMenuItem::ModelSelection => {
+                format!("current: {}", settings.selected_model_label())
+            }
+            SettingsMenuItem::ThinkingLevel => format!(
                 "current: {}",
                 thinking_label(settings.selected_thinking_level)
             ),
-            SettingsPage::Collapse => format!(
+            SettingsMenuItem::CollapseMode => format!(
                 "thinking: {}, tool: {}",
                 collapse_mode_label(settings.thinking_collapse_mode),
                 collapse_mode_label(settings.tool_collapse_mode)
             ),
-            SettingsPage::ChatStyle => {
+            SettingsMenuItem::ChatStyle => {
                 format!("current: {}", chat_style_label(settings.chat_style))
             }
-            SettingsPage::Tools => format!("{} registered", settings.tools.len()),
-            SettingsPage::Keymaps => format!("preset: {}", settings.keymap.preset.label()),
-            SettingsPage::Theme => settings.effective_theme.as_ref().map_or_else(
+            SettingsMenuItem::Tools => format!("{} registered", settings.tools.len()),
+            SettingsMenuItem::Keymaps => format!("preset: {}", settings.keymap.preset.label()),
+            SettingsMenuItem::Theme => settings.effective_theme.as_ref().map_or_else(
                 || "current: system".into(),
                 |theme| {
                     format!(
@@ -3039,7 +3042,7 @@ fn render_settings_menu(
                     )
                 },
             ),
-            SettingsPage::Menu => String::new(),
+            SettingsMenuItem::Extensions => "open extension manager".into(),
         };
         let text = format!("{marker} {}  {}", item.label(), detail);
         Line::styled(text, settings_item_style(active, false, theme))
@@ -3050,6 +3053,32 @@ fn render_settings_menu(
             .block(
                 Block::default()
                     .title(" Settings Pages ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_settings_extensions_page(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
+    let lines = vec![
+        Line::styled("Extension Manager", theme.title),
+        Line::from(""),
+        Line::styled(
+            "Press Enter to open the extension manager.",
+            settings_text_style(theme),
+        ),
+        Line::styled(
+            "Install packages, toggle project/global policy, and review contribution diagnostics there.",
+            settings_muted_style(theme),
+        ),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Extensions ")
                     .borders(Borders::ALL)
                     .border_style(section_border_style(true, theme)),
             )
@@ -3804,6 +3833,7 @@ fn render_settings_footer(
             "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
         }
         SettingsPage::Theme => "arrows/jk move • Enter preview • p project • g global • r reset project • R reset global • Esc/← back",
+        SettingsPage::Extensions => "Enter open extension manager • Esc/← back",
         SettingsPage::Keymaps => match settings.keymaps_mode {
             KeymapsMode::List => {
                 "arrows/jk move • Enter detail • g chord key • p preset • Esc/← back"
@@ -3830,6 +3860,8 @@ fn render_settings_footer(
             );
             format!("Theme: {effective} • {controls}")
         }
+    } else if settings.page == SettingsPage::Extensions {
+        format!("Extensions • {controls}")
     } else {
         format!("{} • {controls}", settings.status)
     };
@@ -5205,6 +5237,8 @@ mod tests {
         assert!(text.contains("Settings"));
         assert!(text.contains("Model Selection"));
         assert!(text.contains("Thinking Level"));
+        assert!(text.contains("Extensions"));
+        assert!(text.contains("open extension manager"));
         assert!(text.contains("›"));
     }
 

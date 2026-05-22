@@ -41,6 +41,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Settings,
     },
     CommandSpec {
+        name: "/theme",
+        summary: "Open theme selection",
+        kind: CommandKind::Settings,
+    },
+    CommandSpec {
         name: "/title",
         summary: "Set the current session title",
         kind: CommandKind::Session,
@@ -123,6 +128,7 @@ pub enum SettingsCommand {
     OpenTools,
     OpenKeymaps,
     OpenTheme,
+    OpenExtensions,
     SetModel(Model),
     SetThinkingLevel(ThinkingLevel),
     SetCollapseMode {
@@ -334,7 +340,10 @@ pub fn command_suggestions_for(
         }
         [settings, subject]
             if settings == "/settings"
-                && (subject == "tools" || subject == "keymaps" || subject == "theme") =>
+                && matches!(
+                    subject.as_str(),
+                    "tools" | "keymaps" | "keymap" | "theme" | "extensions" | "extension"
+                ) =>
         {
             None
         }
@@ -443,6 +452,9 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         }
         ["/settings", "theme"] | ["/theme"] => {
             Some(ParsedCommand::Settings(SettingsCommand::OpenTheme))
+        }
+        ["/settings", "extensions"] | ["/settings", "extension"] => {
+            Some(ParsedCommand::Settings(SettingsCommand::OpenExtensions))
         }
         ["/settings", "model", model] | ["/model", model] => Model::from_identifier(model)
             .map(SettingsCommand::SetModel)
@@ -801,6 +813,11 @@ fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSug
         ("tools", "Show registered agent tools by scope", true),
         ("keymaps", "Configure keyboard shortcuts", true),
         ("theme", "Choose global or project theme", true),
+        (
+            "extensions",
+            "Manage installed extensions and contributions",
+            true,
+        ),
     ];
     let items = fuzzy_indices(
         &subjects,
@@ -1321,6 +1338,15 @@ mod tests {
         let view = suggestions("/settings too", 13)
             .unwrap_or_else(|| panic!("missing tools settings suggestion"));
         assert!(view.items.iter().any(|item| item.label == "tools"));
+
+        let view = suggestions("/settings extensions", 20)
+            .unwrap_or_else(|| panic!("missing extensions settings suggestion"));
+        let extensions = view
+            .items
+            .iter()
+            .find(|item| item.label == "extensions")
+            .unwrap_or_else(|| panic!("missing extensions settings item"));
+        assert!(extensions.complete_on_enter);
     }
 
     #[test]
@@ -1417,6 +1443,8 @@ mod tests {
         assert!(view.items.iter().any(|item| item.label == "/help"));
         assert!(view.items.iter().any(|item| item.label == "/model"));
         assert!(view.items.iter().any(|item| item.label == "/thinking"));
+        assert!(view.items.iter().any(|item| item.label == "/theme"));
+        assert!(view.items.iter().any(|item| item.label == "/extensions"));
         assert!(view.items.iter().any(|item| item.label == "/prompts"));
         assert!(view.items.iter().any(|item| item.label == "/skills"));
         assert!(view.items.iter().any(|item| item.label == "/reload"));
@@ -1496,6 +1524,22 @@ mod tests {
         assert_eq!(
             parse_command("/thinking"),
             Some(ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel))
+        );
+        assert_eq!(
+            parse_command("/theme"),
+            Some(ParsedCommand::Settings(SettingsCommand::OpenTheme))
+        );
+        assert_eq!(
+            parse_command("/settings theme"),
+            Some(ParsedCommand::Settings(SettingsCommand::OpenTheme))
+        );
+        assert_eq!(
+            parse_command("/settings extensions"),
+            Some(ParsedCommand::Settings(SettingsCommand::OpenExtensions))
+        );
+        assert_eq!(
+            parse_command("/extensions"),
+            Some(ParsedCommand::Extensions)
         );
         assert_eq!(
             parse_command("/settings model openrouter:xai/glm-5.1"),

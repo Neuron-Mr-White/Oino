@@ -127,6 +127,7 @@ pub enum SettingsPage {
     Tools,
     Keymaps,
     Theme,
+    Extensions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,6 +200,7 @@ pub enum SettingsMenuItem {
     Tools,
     Keymaps,
     Theme,
+    Extensions,
 }
 
 impl SettingsMenuItem {
@@ -212,6 +214,7 @@ impl SettingsMenuItem {
             Self::Tools => "Tools",
             Self::Keymaps => "Keymaps",
             Self::Theme => "Theme",
+            Self::Extensions => "Extensions",
         }
     }
 
@@ -225,6 +228,7 @@ impl SettingsMenuItem {
             Self::Tools => SettingsPage::Tools,
             Self::Keymaps => SettingsPage::Keymaps,
             Self::Theme => SettingsPage::Theme,
+            Self::Extensions => SettingsPage::Extensions,
         }
     }
 }
@@ -243,6 +247,7 @@ pub enum SettingsAction {
         scope: ToolSettingsScope,
         enabled: bool,
     },
+    OpenExtensions,
     PreviewTheme {
         id: String,
     },
@@ -526,7 +531,7 @@ impl SettingsState {
     }
 
     #[must_use]
-    pub fn menu_items(&self) -> [SettingsMenuItem; 7] {
+    pub fn menu_items(&self) -> [SettingsMenuItem; 8] {
         [
             SettingsMenuItem::ModelSelection,
             SettingsMenuItem::ThinkingLevel,
@@ -535,6 +540,7 @@ impl SettingsState {
             SettingsMenuItem::Tools,
             SettingsMenuItem::Keymaps,
             SettingsMenuItem::Theme,
+            SettingsMenuItem::Extensions,
         ]
     }
 
@@ -1089,6 +1095,9 @@ impl SettingsState {
     }
 
     fn open_current_menu_item(&mut self) -> SettingsAction {
+        if self.current_menu_item() == SettingsMenuItem::Extensions {
+            return SettingsAction::OpenExtensions;
+        }
         self.page = self.current_menu_item().page();
         SettingsAction::None
     }
@@ -1103,6 +1112,7 @@ impl SettingsState {
             SettingsPage::Tools => self.toggle_tool(ToolSettingsScope::Project),
             SettingsPage::Keymaps => self.open_keymap_detail(),
             SettingsPage::Theme => self.preview_selected_theme(),
+            SettingsPage::Extensions => SettingsAction::OpenExtensions,
         }
     }
 
@@ -1131,6 +1141,7 @@ impl SettingsState {
             SettingsPage::Theme => {
                 self.theme_cursor = move_index(self.theme_cursor, self.theme_options.len(), delta);
             }
+            SettingsPage::Extensions => {}
             SettingsPage::Keymaps => {
                 self.keymap_cursor = move_index(self.keymap_cursor, key_action_rows().len(), delta);
                 self.keymap_binding_cursor = self
@@ -1564,6 +1575,25 @@ mod tests {
             }
         );
         assert!(settings.tools[1].project_enabled);
+    }
+
+    #[test]
+    fn extensions_menu_item_requests_extension_manager() {
+        let mut settings = SettingsState::new("a", ThinkingLevel::Off);
+        for _ in 0..settings.menu_items().len() {
+            if settings.current_menu_item() == SettingsMenuItem::Extensions {
+                break;
+            }
+            settings.handle_key(key(KeyCode::Down));
+        }
+
+        assert_eq!(settings.current_menu_item(), SettingsMenuItem::Extensions);
+        assert_eq!(settings.page, SettingsPage::Menu);
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::OpenExtensions
+        );
+        assert_eq!(settings.page, SettingsPage::Menu);
     }
 
     #[test]
