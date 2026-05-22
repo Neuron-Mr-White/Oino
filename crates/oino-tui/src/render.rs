@@ -203,24 +203,73 @@ fn theme_with_extension_tokens(state: &TuiState, mut theme: Theme) -> Theme {
         let Some(color) = extension_theme_color(value) else {
             continue;
         };
-        match token.as_str() {
-            "focused_border" | "accent" => theme.focused_border = color,
-            "panel_border" => theme.panel_border = color,
-            "user_border" => theme.user_border = color,
-            "assistant_border" => theme.assistant_border = color,
-            "tool_border" => theme.tool_border = color,
+        match normalize_theme_token(token).as_str() {
+            "accent" => {
+                theme.accent = color;
+                theme.focused_border = color;
+                theme.title = theme.title.fg(color);
+            }
+            "success" => {
+                theme.success = color;
+                theme.working = theme.working.fg(color);
+            }
+            "text" | "fg" => theme.fg = color,
+            "muted" => {
+                theme.muted = color;
+                theme.footer = theme.footer.fg(color);
+            }
+            "dim" => {
+                theme.dim = color;
+                theme.placeholder = theme.placeholder.fg(color);
+            }
+            "focused_border" | "border_accent" => theme.focused_border = color,
+            "panel_border" | "border" | "border_muted" => theme.panel_border = color,
+            "user_border" | "user_message_text" => theme.user_border = color,
+            "assistant_border" | "assistant_message_text" => theme.assistant_border = color,
+            "tool_border" | "tool_title" => theme.tool_border = color,
             "title" => theme.title = theme.title.fg(color),
             "warning" => theme.warning = theme.warning.fg(color),
             "error" => theme.error = theme.error.fg(color),
-            "footer" => theme.footer = theme.footer.fg(color),
+            "footer" | "status" | "inline_status" => theme.footer = theme.footer.fg(color),
+            "working" | "working_indicator" => theme.working = theme.working.fg(color),
             _ => {}
         }
     }
     theme
 }
 
+fn normalize_theme_token(token: &str) -> String {
+    let mut normalized = String::new();
+    for (index, ch) in token.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if index > 0 {
+                normalized.push('_');
+            }
+            normalized.push(ch.to_ascii_lowercase());
+        } else if matches!(ch, '-' | '.' | ' ') {
+            normalized.push('_');
+        } else {
+            normalized.push(ch);
+        }
+    }
+    normalized
+}
+
 fn extension_theme_color(value: &str) -> Option<Color> {
-    match value.trim().to_ascii_lowercase().as_str() {
+    let value = value.trim();
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("default")
+        || value.eq_ignore_ascii_case("reset")
+    {
+        return Some(Color::Reset);
+    }
+    if let Some(color) = hex_theme_color(value) {
+        return Some(color);
+    }
+    if let Ok(index) = value.parse::<u8>() {
+        return Some(Color::Indexed(index));
+    }
+    match value.to_ascii_lowercase().as_str() {
         "black" => Some(Color::Black),
         "red" => Some(Color::Red),
         "green" => Some(Color::Green),
@@ -241,6 +290,17 @@ fn extension_theme_color(value: &str) -> Option<Color> {
     }
 }
 
+fn hex_theme_color(value: &str) -> Option<Color> {
+    let hex = value.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let red = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let green = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let blue = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(Color::Rgb(red, green, blue))
+}
+
 pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme) {
     let area = frame.area();
     if area.width < 20 || area.height < 8 {
@@ -249,7 +309,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
     }
 
     let composer_height = composer_height(state.composer.text(), area.width, area.height);
-    let main_panel_count = extension_surfaces(state, UiSurfaceKind::MainPanel, area)
+    let main_panel_count = extension_main_panel_surfaces(state, area)
         .into_iter()
         .take(1)
         .count();
@@ -400,13 +460,32 @@ fn extension_surfaces(
         .collect()
 }
 
+fn extension_main_panel_surfaces(
+    state: &TuiState,
+    area: Rect,
+) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
+    [
+        UiSurfaceKind::Header,
+        UiSurfaceKind::MainPanel,
+        UiSurfaceKind::WidgetAboveComposer,
+        UiSurfaceKind::WidgetBelowComposer,
+    ]
+    .into_iter()
+    .flat_map(|kind| extension_surfaces(state, kind, area))
+    .collect()
+}
+
 fn extension_footer_surfaces(
     state: &TuiState,
     area: Rect,
 ) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
     [
+        UiSurfaceKind::FooterTop,
         UiSurfaceKind::Footer,
+        UiSurfaceKind::FooterBottom,
+        UiSurfaceKind::InlineStatus,
         UiSurfaceKind::Status,
+        UiSurfaceKind::WorkingIndicator,
         UiSurfaceKind::Notification,
         UiSurfaceKind::Health,
         UiSurfaceKind::Theme,
@@ -518,7 +597,7 @@ fn render_extension_sidebar(
 }
 
 fn render_extension_main_panel(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
-    let surfaces = extension_surfaces(state, UiSurfaceKind::MainPanel, area);
+    let surfaces = extension_main_panel_surfaces(state, area);
     if surfaces.is_empty() {
         return;
     }
@@ -624,6 +703,7 @@ fn render_extension_autosuggest_badges(
         area,
     ));
     surfaces.extend(extension_surfaces(state, UiSurfaceKind::ToolRenderer, area));
+    surfaces.extend(extension_surfaces(state, UiSurfaceKind::Editor, area));
     if surfaces.is_empty() || composer_area.y == 0 {
         return;
     }
@@ -3772,12 +3852,16 @@ mod tests {
             tokens: BTreeMap::from([
                 ("title".into(), "red".into()),
                 ("focused_border".into(), "green".into()),
+                ("success".into(), "#86efac".into()),
+                ("muted".into(), "242".into()),
             ]),
             warnings: Vec::new(),
         });
         let themed = theme_with_extension_tokens(&state, Theme::default());
         assert_eq!(themed.title, Theme::default().title.fg(Color::Red));
         assert_eq!(themed.focused_border, Color::Green);
+        assert_eq!(themed.success, Color::Rgb(0x86, 0xef, 0xac));
+        assert_eq!(themed.muted, Color::Indexed(242));
     }
 
     #[test]

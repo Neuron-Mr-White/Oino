@@ -6,7 +6,10 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Theme {
     pub fg: Color,
+    pub accent: Color,
+    pub success: Color,
     pub muted: Color,
+    pub dim: Color,
     pub focused_border: Color,
     pub panel_border: Color,
     pub user_border: Color,
@@ -24,7 +27,10 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             fg: Color::Reset,
+            accent: Color::Cyan,
+            success: Color::Green,
             muted: Color::DarkGray,
+            dim: Color::DarkGray,
             focused_border: Color::Cyan,
             panel_border: Color::DarkGray,
             user_border: Color::Blue,

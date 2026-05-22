@@ -24,9 +24,18 @@
       "host.test.echo"
     ],
     "ui": [
+      "editor",
       "floating_panel",
       "footer",
-      "sidebar"
+      "footer_bottom",
+      "footer_top",
+      "header",
+      "inline_status",
+      "main_panel",
+      "sidebar",
+      "widget_above_composer",
+      "widget_below_composer",
+      "working_indicator"
     ],
     "filesystem": [],
     "shell_process": {
@@ -171,6 +180,240 @@
         "layout": {
           "slot": "footer:status",
           "priority": 0,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_main_panel",
+        "surface": "main_panel",
+        "title": "Example Main Panel",
+        "state_schema": "object",
+        "layout": {
+          "slot": "main:primary",
+          "priority": 15,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_footer_top",
+        "surface": "footer_top",
+        "title": "Example Footer Top",
+        "state_schema": "string",
+        "layout": {
+          "slot": "footer:top",
+          "priority": 12,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_footer_bottom",
+        "surface": "footer_bottom",
+        "title": "Example Footer Bottom",
+        "state_schema": "string",
+        "layout": {
+          "slot": "footer:bottom",
+          "priority": 11,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_inline_status",
+        "surface": "inline_status",
+        "title": "Example Inline Status",
+        "state_schema": "string",
+        "layout": {
+          "slot": "status:inline",
+          "priority": 10,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_header",
+        "surface": "header",
+        "title": "Example Header",
+        "state_schema": "string",
+        "layout": {
+          "slot": "header:top",
+          "priority": 14,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_widget_above",
+        "surface": "widget_above_composer",
+        "title": "Example Above Composer",
+        "state_schema": "string",
+        "layout": {
+          "slot": "composer:above",
+          "priority": 8,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_widget_below",
+        "surface": "widget_below_composer",
+        "title": "Example Below Composer",
+        "state_schema": "string",
+        "layout": {
+          "slot": "composer:below",
+          "priority": 7,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_working_indicator",
+        "surface": "working_indicator",
+        "title": "Example Working Indicator",
+        "state_schema": "string",
+        "layout": {
+          "slot": "working:indicator",
+          "priority": 6,
+          "min_width": 20,
+          "min_height": 3,
+          "tiny_terminal": "compact_badge"
+        },
+        "visibility": "visible",
+        "focus": "focusable",
+        "key_dispatch": {
+          "scopes": [
+            "example"
+          ],
+          "pass_through": true
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_editor",
+        "surface": "editor",
+        "title": "Example Editor Metadata",
+        "state_schema": "object",
+        "layout": {
+          "slot": "editor:main",
+          "priority": 5,
           "min_width": 20,
           "min_height": 3,
           "tiny_terminal": "compact_badge"

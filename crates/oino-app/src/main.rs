@@ -1118,19 +1118,7 @@ fn extension_theme(snapshot: &ExtensionManagerSnapshot) -> ExtensionThemeState {
     };
     let mut warnings = Vec::new();
     for token in active.entry.contribution.tokens.keys() {
-        if !matches!(
-            token.as_str(),
-            "accent"
-                | "focused_border"
-                | "panel_border"
-                | "user_border"
-                | "assistant_border"
-                | "tool_border"
-                | "title"
-                | "warning"
-                | "error"
-                | "footer"
-        ) {
+        if !is_known_extension_theme_token(token) {
             warnings.push(format!("unknown theme token `{token}` ignored"));
         }
     }
@@ -1139,6 +1127,94 @@ fn extension_theme(snapshot: &ExtensionManagerSnapshot) -> ExtensionThemeState {
         tokens: active.entry.contribution.tokens.clone(),
         warnings,
     }
+}
+
+fn is_known_extension_theme_token(token: &str) -> bool {
+    matches!(
+        normalize_theme_token(token).as_str(),
+        "accent"
+            | "success"
+            | "text"
+            | "fg"
+            | "muted"
+            | "dim"
+            | "focused_border"
+            | "border_accent"
+            | "panel_border"
+            | "border"
+            | "border_muted"
+            | "user_border"
+            | "user_message_text"
+            | "assistant_border"
+            | "assistant_message_text"
+            | "tool_border"
+            | "tool_title"
+            | "warning"
+            | "error"
+            | "footer"
+            | "status"
+            | "inline_status"
+            | "working"
+            | "working_indicator"
+            | "title"
+            | "placeholder"
+            | "selected_bg"
+            | "user_message_bg"
+            | "custom_message_bg"
+            | "custom_message_text"
+            | "custom_message_label"
+            | "tool_pending_bg"
+            | "tool_success_bg"
+            | "tool_error_bg"
+            | "tool_output"
+            | "md_heading"
+            | "md_link"
+            | "md_link_url"
+            | "md_code"
+            | "md_code_block"
+            | "md_code_block_border"
+            | "md_quote"
+            | "md_quote_border"
+            | "md_hr"
+            | "md_list_bullet"
+            | "tool_diff_added"
+            | "tool_diff_removed"
+            | "tool_diff_context"
+            | "syntax_comment"
+            | "syntax_keyword"
+            | "syntax_function"
+            | "syntax_variable"
+            | "syntax_string"
+            | "syntax_number"
+            | "syntax_type"
+            | "syntax_operator"
+            | "syntax_punctuation"
+            | "thinking_text"
+            | "thinking_off"
+            | "thinking_minimal"
+            | "thinking_low"
+            | "thinking_medium"
+            | "thinking_high"
+            | "thinking_xhigh"
+            | "bash_mode"
+    )
+}
+
+fn normalize_theme_token(token: &str) -> String {
+    let mut normalized = String::new();
+    for (index, ch) in token.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if index > 0 {
+                normalized.push('_');
+            }
+            normalized.push(ch.to_ascii_lowercase());
+        } else if matches!(ch, '-' | '.' | ' ') {
+            normalized.push('_');
+        } else {
+            normalized.push(ch);
+        }
+    }
+    normalized
 }
 
 fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOption> {

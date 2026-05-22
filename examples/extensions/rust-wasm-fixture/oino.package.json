@@ -43,9 +43,18 @@
       "host.test.echo"
     ],
     "ui": [
+      "editor",
       "floating_panel",
       "footer",
-      "sidebar"
+      "footer_bottom",
+      "footer_top",
+      "header",
+      "inline_status",
+      "main_panel",
+      "sidebar",
+      "widget_above_composer",
+      "widget_below_composer",
+      "working_indicator"
     ],
     "filesystem": [],
     "shell_process": {
