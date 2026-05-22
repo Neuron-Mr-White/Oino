@@ -469,7 +469,28 @@
         }
       }
     ],
-    "resources": [],
+    "resources": [
+      {
+        "id": "example_prompt",
+        "kind": "prompt",
+        "path": "extensions/example/prompts/example-prompt.md",
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      },
+      {
+        "id": "example_skill",
+        "kind": "skill",
+        "path": "extensions/example/skills/example-skill/SKILL.md",
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ],
     "persistence": [
       {
         "id": "example_persistence",

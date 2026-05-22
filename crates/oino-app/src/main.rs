@@ -26,9 +26,9 @@ use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_extension_core::{
     ActiveContribution, ContributionId, ContributionMetadata, DiagnosticContribution, ExtensionId,
     HealthContribution, PackageId, PolicyToggle, RegistryEntry, RegistryEntryKey, RegistryPolicy,
-    RendererContribution, RendererTarget, SourceScope, UiFocusPolicy, UiKeyDispatchPolicy,
-    UiLayoutPolicy, UiSurfaceContribution, UiSurfaceKind, UiTinyTerminalFallback,
-    UiVisibilityPolicy,
+    RendererContribution, RendererTarget, ResourceKind, SourceScope, UiFocusPolicy,
+    UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceContribution, UiSurfaceKind,
+    UiTinyTerminalFallback, UiVisibilityPolicy,
 };
 use oino_extension_manager::{
     ExtensionDiscovery, ExtensionLayoutPaths, ExtensionManager, ExtensionManagerConfig,
@@ -1841,7 +1841,7 @@ async fn run_tui(
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
     apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot, &tool_settings);
-    apply_resource_catalog_to_state(&mut state, &resource_catalog);
+    apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
     state.set_file_paths(scan_project_files(&cwd));
     state
         .settings
@@ -1991,6 +1991,7 @@ async fn run_tui(
                     &extension_snapshot,
                     &tool_settings,
                 );
+                apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
             TuiAction::RunExtensionUiAction {
                 surface_id,
@@ -2019,6 +2020,7 @@ async fn run_tui(
                     &extension_snapshot,
                     &tool_settings,
                 );
+                apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
             TuiAction::SetExtensionOverride {
                 contribution_id,
@@ -2037,6 +2039,7 @@ async fn run_tui(
                     &extension_snapshot,
                     &tool_settings,
                 );
+                apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
             TuiAction::ClearExtensionOverride {
                 contribution_id,
@@ -2054,6 +2057,7 @@ async fn run_tui(
                     &extension_snapshot,
                     &tool_settings,
                 );
+                apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
             TuiAction::InstallExtensionPackage { source, scope } => {
                 let prepared_source =
@@ -2107,6 +2111,11 @@ async fn run_tui(
                             &extension_snapshot,
                             &tool_settings,
                         );
+                        apply_resource_catalog_to_state(
+                            &mut state,
+                            &resource_catalog,
+                            &extension_snapshot,
+                        );
                         state.status = format!(
                             "Installed {} package `{}` from `{}`",
                             scope.label(),
@@ -2158,6 +2167,11 @@ async fn run_tui(
                                     &mut state,
                                     &extension_snapshot,
                                     &tool_settings,
+                                );
+                                apply_resource_catalog_to_state(
+                                    &mut state,
+                                    &resource_catalog,
+                                    &extension_snapshot,
                                 );
                                 state.status = format!(
                                     "Uninstalled {} package `{}`",
@@ -2252,7 +2266,8 @@ async fn run_tui(
                 }
             }
             TuiAction::ReloadResources => {
-                reload_tui_resources(&mut state, &harness, &resource_paths, &cwd).await;
+                reload_tui_resources(&mut state, &harness, &resource_paths, &cwd, &tool_settings)
+                    .await;
             }
         }
     }
@@ -2286,8 +2301,12 @@ fn new_tui_session(root: PathBuf, cwd: PathBuf) -> (PathBuf, SessionManager) {
     (path, session)
 }
 
-fn apply_resource_catalog_to_state(state: &mut TuiState, catalog: &ResourceCatalog) {
-    let prompts = catalog
+fn apply_resource_catalog_to_state(
+    state: &mut TuiState,
+    catalog: &ResourceCatalog,
+    snapshot: &ExtensionManagerSnapshot,
+) {
+    let mut prompts = catalog
         .prompts
         .iter()
         .map(|prompt| PromptResource {
@@ -2299,7 +2318,7 @@ fn apply_resource_catalog_to_state(state: &mut TuiState, catalog: &ResourceCatal
             content: prompt.content.clone(),
         })
         .collect::<Vec<_>>();
-    let skills = catalog
+    let mut skills = catalog
         .skills
         .iter()
         .map(|skill| SkillResource {
@@ -2310,12 +2329,92 @@ fn apply_resource_catalog_to_state(state: &mut TuiState, catalog: &ResourceCatal
             content: skill.content.clone(),
         })
         .collect::<Vec<_>>();
+    let (extension_prompts, extension_skills, extension_diagnostics) =
+        extension_resource_items(snapshot);
+    prompts.extend(extension_prompts);
+    skills.extend(extension_skills);
     let diagnostics = catalog
         .diagnostics
         .iter()
         .map(oino_resource::ResourceDiagnostic::message)
+        .chain(extension_diagnostics)
         .collect::<Vec<_>>();
     state.set_resources(prompts, skills, diagnostics);
+}
+
+fn extension_resource_items(
+    snapshot: &ExtensionManagerSnapshot,
+) -> (Vec<PromptResource>, Vec<SkillResource>, Vec<String>) {
+    let mut prompts = Vec::new();
+    let mut skills = Vec::new();
+    let mut diagnostics = Vec::new();
+    for active in &snapshot.registries.resources.active {
+        let Some(path) = extension_resource_path(active) else {
+            diagnostics.push(format!(
+                "Extension resource `{}` has no resolvable source path",
+                active.effective_id
+            ));
+            continue;
+        };
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(err) => {
+                diagnostics.push(format!(
+                    "Extension resource `{}` could not be read from {}: {err}",
+                    active.effective_id,
+                    path.display()
+                ));
+                continue;
+            }
+        };
+        let source = path_to_string(&path);
+        let description = extension_resource_description(&content, &active.effective_id);
+        match active.entry.contribution.kind {
+            ResourceKind::Prompt
+            | ResourceKind::SystemPrompt
+            | ResourceKind::ProjectInstructions => {
+                prompts.push(PromptResource {
+                    name: active.effective_id.to_string(),
+                    description,
+                    argument_hint: None,
+                    source,
+                    scope: active.entry.metadata.source.scope.slug().into(),
+                    content,
+                });
+            }
+            ResourceKind::Skill => skills.push(SkillResource {
+                name: active.effective_id.to_string(),
+                description,
+                source,
+                scope: active.entry.metadata.source.scope.slug().into(),
+                content,
+            }),
+            ResourceKind::Theme | ResourceKind::Asset => {}
+        }
+    }
+    (prompts, skills, diagnostics)
+}
+
+fn extension_resource_path(
+    active: &ActiveContribution<oino_extension_core::ResourceContribution>,
+) -> Option<PathBuf> {
+    let base = active.entry.metadata.source.path.as_ref()?;
+    let base = if base.is_dir() {
+        base.as_path()
+    } else {
+        base.parent()?
+    };
+    Some(base.join(&active.entry.contribution.path))
+}
+
+fn extension_resource_description(content: &str, id: &ContributionId) -> String {
+    content
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with("---"))
+        .map(|line| line.trim_start_matches('#').trim().to_string())
+        .filter(|line| !line.is_empty())
+        .unwrap_or_else(|| format!("Extension resource `{id}`"))
 }
 
 async fn reload_tui_resources(
@@ -2323,13 +2422,15 @@ async fn reload_tui_resources(
     harness: &Harness,
     resource_paths: &ResourcePaths,
     cwd: &Path,
+    tool_settings: &ToolSettingsSnapshot,
 ) {
     match load_resource_catalog(resource_paths) {
         Ok(catalog) => {
             harness
                 .set_system_prompt(Some(default_system_prompt(cwd, &catalog)))
                 .await;
-            apply_resource_catalog_to_state(state, &catalog);
+            let extension_snapshot = load_extension_snapshot(resource_paths, tool_settings);
+            apply_resource_catalog_to_state(state, &catalog, &extension_snapshot);
             if let Some(summary) = catalog.diagnostics_summary() {
                 state.set_error(format!("Resource warnings: {summary}"));
             }
@@ -3959,6 +4060,16 @@ mod tests {
         fs::create_dir_all(&extension_dir)
             .unwrap_or_else(|err| panic!("create extension dir failed: {err}"));
         fs::write(
+            extension_dir.join("visible-prompt.md"),
+            "# Visible Prompt\n\nPrompt content from extension.",
+        )
+        .unwrap_or_else(|err| panic!("write prompt failed: {err}"));
+        fs::write(
+            extension_dir.join("visible-skill.md"),
+            "# Visible Skill\n\nSkill content from extension.",
+        )
+        .unwrap_or_else(|err| panic!("write skill failed: {err}"));
+        fs::write(
             extension_dir.join("oino.extension.json"),
             r#"{
               "id": "acme.visible",
@@ -3968,7 +4079,11 @@ mod tests {
               "permissions": { "tools": ["visible_tool"], "commands": ["visible_command"] },
               "contributes": {
                 "tools": [{ "id": "visible_tool", "description": "Visible dogfood tool" }],
-                "commands": [{ "id": "visible_command", "description": "Visible dogfood command" }]
+                "commands": [{ "id": "visible_command", "description": "Visible dogfood command" }],
+                "resources": [
+                  { "id": "visible_prompt", "kind": "prompt", "path": "visible-prompt.md" },
+                  { "id": "visible_skill", "kind": "skill", "path": "visible-skill.md" }
+                ]
               }
             }"#,
         )
@@ -4001,6 +4116,15 @@ mod tests {
             .unwrap_or_else(|| panic!("extension command should be known"))
             .unwrap_or_else(|err| panic!("extension command failed: {err}"));
         assert!(command.contains("visible_command"));
+        let (prompts, skills, diagnostics) = extension_resource_items(&snapshot);
+        assert!(diagnostics.is_empty());
+        assert!(prompts
+            .iter()
+            .any(|prompt| prompt.name == "visible_prompt"
+                && prompt.content.contains("Prompt content")));
+        assert!(skills
+            .iter()
+            .any(|skill| skill.name == "visible_skill" && skill.content.contains("Skill content")));
     }
 
     #[test]
