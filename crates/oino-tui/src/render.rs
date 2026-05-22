@@ -5314,6 +5314,49 @@ mod tests {
     }
 
     #[test]
+    fn command_suggestion_lines_stay_width_bounded_when_narrow() {
+        let view = CommandSuggestionsView {
+            query: "deepseek".into(),
+            title: "Models".into(),
+            items: vec![crate::command::CommandSuggestionItem {
+                label: "openrouter:deepseek/deepseek-v4-flash:free-with-a-long-tail".into(),
+                summary: "Display name with another long tail".into(),
+                replacement: "openrouter:deepseek/deepseek-v4-flash:free-with-a-long-tail".into(),
+                replace_start: 7,
+                replace_end: 15,
+                complete_on_enter: true,
+                category: CommandSuggestionCategory::Model,
+            }],
+            selected: 0,
+        };
+        let width = 14;
+        let lines = line_texts(command_suggestion_lines(&view, 4, width, &Theme::default()));
+
+        assert!(lines.iter().all(|line| line.width() <= width), "{lines:?}");
+        assert!(lines[0].contains('…'), "{}", lines[0]);
+        assert!(!lines[0].contains("long-tail"), "{}", lines[0]);
+    }
+
+    #[test]
+    fn render_command_suggestions_ellipsizes_long_rows_when_narrow() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("/model ");
+        state.set_model_catalog(
+            vec![crate::settings::ModelOption::new(
+                "openrouter:deepseek/deepseek-v4-flash:free-with-a-long-tail",
+            )],
+            "loaded",
+        );
+
+        let buffer = draw_state(20, 12, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Models"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("long-tail"));
+    }
+
+    #[test]
     fn render_model_command_suggestions_scroll_to_selected_item() {
         let mut state = TuiState::new();
         state.composer.replace_text("/settings model ");
