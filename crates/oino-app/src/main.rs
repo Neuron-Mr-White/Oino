@@ -3960,6 +3960,51 @@ mod tests {
         assert!(project_tool_enabled(&settings, "bash"));
     }
 
+    #[tokio::test]
+    async fn load_tool_settings_preserves_project_theme_settings() {
+        let home = tempfile::tempdir().unwrap_or_else(|err| panic!("home tempdir: {err}"));
+        let project = tempfile::tempdir().unwrap_or_else(|err| panic!("project tempdir: {err}"));
+        let paths = ResourcePaths::from_home_and_cwd(home.path(), project.path())
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        std::fs::create_dir_all(&paths.global_dir)
+            .unwrap_or_else(|err| panic!("create global dir: {err}"));
+        std::fs::create_dir_all(&paths.project_dir)
+            .unwrap_or_else(|err| panic!("create project dir: {err}"));
+
+        let mut global = UserSettings::default();
+        global.theme.set_active("oino-light");
+        user_settings::save_to_path(&global, &paths.global_settings)
+            .await
+            .unwrap_or_else(|err| panic!("save global settings: {err}"));
+        let mut project_settings = UserSettings::default();
+        project_settings.theme.set_active("oino-aurora");
+        project_settings
+            .theme
+            .overrides
+            .insert("app.bg".into(), "#08111f".into());
+        user_settings::save_to_path(&project_settings, &paths.project_settings)
+            .await
+            .unwrap_or_else(|err| panic!("save project settings: {err}"));
+
+        let snapshot = load_tool_settings(&paths).await;
+        assert_eq!(snapshot.global.theme.active.as_deref(), Some("oino-light"));
+        assert_eq!(
+            snapshot.project.theme.active.as_deref(),
+            Some("oino-aurora")
+        );
+        let catalog = oino_tui::ThemeCatalog::builtins();
+        let resolved = oino_tui::resolve_effective_theme(
+            &catalog,
+            &snapshot.global.theme,
+            &snapshot.project.theme,
+        );
+        assert_eq!(resolved.id, "oino-aurora");
+        assert_eq!(
+            resolved.selected_scope,
+            oino_tui::EffectiveThemeScope::Project
+        );
+    }
+
     #[test]
     fn extension_management_toggle_updates_policy_settings() {
         let mut settings = ToolSettingsSnapshot::default();
@@ -4137,6 +4182,7 @@ mod tests {
                 tool_collapse_mode: Some(CollapseMode::Collapse),
                 chat_style: Some(oino_tui::ChatStyle::Minimal),
                 keymap: None,
+                theme: oino_tui::ThemeSettings::default(),
                 tools: BTreeMap::new(),
                 extensions: oino_extension_core::ExtensionPolicySettings::default(),
             },

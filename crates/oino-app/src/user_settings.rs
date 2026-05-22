@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use oino_extension_core::ExtensionPolicySettings;
-use oino_tui::{ChatStyle, CollapseMode, KeymapConfig};
+use oino_tui::{ChatStyle, CollapseMode, KeymapConfig, ThemeSettings};
 use oino_types::ThinkingLevel;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -20,6 +20,7 @@ pub struct UserSettings {
     pub tool_collapse_mode: Option<CollapseMode>,
     pub chat_style: Option<ChatStyle>,
     pub keymap: Option<KeymapConfig>,
+    pub theme: ThemeSettings,
     pub tools: BTreeMap<String, bool>,
     pub extensions: ExtensionPolicySettings,
 }
@@ -40,6 +41,7 @@ impl UserSettings {
             tool_collapse_mode: Some(tool_collapse_mode),
             chat_style: Some(chat_style),
             keymap: None,
+            theme: ThemeSettings::default(),
             tools: BTreeMap::new(),
             extensions: ExtensionPolicySettings::default(),
         }
@@ -126,6 +128,34 @@ mod tests {
             Err(err) => panic!("load settings failed: {err}"),
         };
         assert_eq!(loaded, settings);
+        let _ = fs::remove_file(&path).await;
+    }
+
+    #[tokio::test]
+    async fn theme_settings_round_trip_with_user_settings() {
+        let path = std::env::temp_dir().join(format!(
+            "oino-theme-user-settings-{}.json",
+            std::process::id()
+        ));
+        let _ = fs::remove_file(&path).await;
+        let mut settings = UserSettings::default();
+        settings.theme.set_active("Oino Aurora");
+        settings
+            .theme
+            .overrides
+            .insert("app.bg".into(), "#08111f".into());
+        if let Err(err) = save_to_path(&settings, &path).await {
+            panic!("save settings failed: {err}");
+        }
+        let loaded = match load_from_path(&path).await {
+            Ok(settings) => settings,
+            Err(err) => panic!("load settings failed: {err}"),
+        };
+        assert_eq!(loaded.theme.active.as_deref(), Some("oino-aurora"));
+        assert_eq!(
+            loaded.theme.overrides.get("app.bg").map(String::as_str),
+            Some("#08111f")
+        );
         let _ = fs::remove_file(&path).await;
     }
 

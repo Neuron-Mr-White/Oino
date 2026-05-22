@@ -46,4 +46,9 @@ pub use settings::{
     CollapseMode, CollapseTarget, ModelOption, SettingsAction, SettingsMenuItem, SettingsPage,
     SettingsState, ToolSettingsItem, ToolSettingsScope,
 };
-pub use theme::Theme;
+pub use theme::{
+    builtin_theme_documents, normalize_theme_id, normalize_theme_token, parse_theme_color,
+    resolve_effective_theme, EffectiveThemeScope, ResolvedTheme, Theme, ThemeCatalog,
+    ThemeCatalogEntry, ThemeDiagnostic, ThemeDiagnosticLevel, ThemeDocument, ThemeMode,
+    ThemeSettings, ThemeSource, ThemeSourceKind, ThemeSourceScope,
+};
