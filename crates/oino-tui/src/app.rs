@@ -151,6 +151,10 @@ pub struct ExtensionManagementItem {
     pub provenance: String,
     pub diagnostics: Vec<String>,
     pub conflicts: Vec<String>,
+    pub entry_key: Option<String>,
+    pub canonical_id: Option<String>,
+    pub global_override: bool,
+    pub project_override: bool,
     pub global_enabled: bool,
     pub project_enabled: bool,
 }
@@ -275,6 +279,16 @@ impl ExtensionManagementState {
             package_id: item.id.clone(),
             scope,
         })
+    }
+
+    pub fn override_selection_for_selected(&self) -> Option<(String, String)> {
+        let item = self.selected_item()?;
+        if item.target != ExtensionManagementTarget::Contribution {
+            return None;
+        }
+        let contribution_id = item.canonical_id.clone().unwrap_or_else(|| item.id.clone());
+        let entry_key = item.entry_key.clone()?;
+        Some((contribution_id, entry_key))
     }
 
     pub fn set_selected_enabled(&mut self, scope: ToolSettingsScope, enabled: bool) {
@@ -2556,6 +2570,22 @@ impl TuiState {
             KeyCode::Char('p') if key.modifiers.is_empty() => {
                 self.toggle_selected_extension_scope(ToolSettingsScope::Project)
             }
+            KeyCode::Char('o') if key.modifiers.is_empty() => {
+                self.set_selected_extension_override(ToolSettingsScope::Project)
+            }
+            KeyCode::Char('O')
+                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+            {
+                self.set_selected_extension_override(ToolSettingsScope::Global)
+            }
+            KeyCode::Char('c') if key.modifiers.is_empty() => {
+                self.clear_selected_extension_override(ToolSettingsScope::Project)
+            }
+            KeyCode::Char('C')
+                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+            {
+                self.clear_selected_extension_override(ToolSettingsScope::Global)
+            }
             KeyCode::Char('i') if key.modifiers.is_empty() => {
                 self.extension_management
                     .begin_install(ToolSettingsScope::Project);
@@ -2638,6 +2668,44 @@ impl TuiState {
             id: item.id,
             scope,
             enabled,
+        }
+    }
+
+    fn set_selected_extension_override(&mut self, scope: ToolSettingsScope) -> TuiAction {
+        let Some((contribution_id, entry_key)) =
+            self.extension_management.override_selection_for_selected()
+        else {
+            self.status = "Select a contribution row to prefer as a conflict winner".into();
+            return TuiAction::None;
+        };
+        self.status = format!(
+            "{} conflict override: `{contribution_id}` now prefers `{entry_key}`",
+            scope.label()
+        );
+        TuiAction::SetExtensionOverride {
+            contribution_id,
+            entry_key,
+            scope,
+        }
+    }
+
+    fn clear_selected_extension_override(&mut self, scope: ToolSettingsScope) -> TuiAction {
+        let Some(item) = self.extension_management.selected_item() else {
+            self.status = "No extension contribution selected".into();
+            return TuiAction::None;
+        };
+        if item.target != ExtensionManagementTarget::Contribution {
+            self.status = "Select a contribution row to clear an override".into();
+            return TuiAction::None;
+        }
+        let contribution_id = item.canonical_id.clone().unwrap_or_else(|| item.id.clone());
+        self.status = format!(
+            "{} conflict override cleared for `{contribution_id}`",
+            scope.label()
+        );
+        TuiAction::ClearExtensionOverride {
+            contribution_id,
+            scope,
         }
     }
 
@@ -3372,7 +3440,7 @@ impl TuiState {
         self.extension_management.search_active = false;
         self.extension_management.search.clear();
         self.extension_management.refresh_filter();
-        self.status = "Extensions: / search • i install project • I install global from path/GitHub • u/x uninstall package • g global • p/Enter project • Esc close".into();
+        self.status = "Extensions: / search • i/I install • u/x uninstall • g/p toggles • o/O prefer conflict winner • c/C clear override • Esc close".into();
     }
 
     fn open_inspect_overlay(&mut self) {
@@ -4179,6 +4247,10 @@ mod tests {
                 provenance: "process.package process.manager".into(),
                 diagnostics: Vec::new(),
                 conflicts: Vec::new(),
+                entry_key: None,
+                canonical_id: None,
+                global_override: false,
+                project_override: false,
                 global_enabled: true,
                 project_enabled: true,
             },
@@ -4194,6 +4266,10 @@ mod tests {
                 provenance: String::new(),
                 diagnostics: Vec::new(),
                 conflicts: Vec::new(),
+                entry_key: None,
+                canonical_id: None,
+                global_override: false,
+                project_override: false,
                 global_enabled: false,
                 project_enabled: true,
             },
@@ -4231,6 +4307,47 @@ mod tests {
             state.handle_key(key(KeyCode::Enter)),
             TuiAction::RemoveExtensionPackage {
                 package_id: "process.package".into(),
+                scope: ToolSettingsScope::Project,
+            }
+        );
+    }
+
+    #[test]
+    fn extensions_overlay_sets_and_clears_conflict_overrides() {
+        let mut state = TuiState::new();
+        state.set_extension_management_items(vec![ExtensionManagementItem {
+            target: ExtensionManagementTarget::Contribution,
+            id: "acme.example.command".into(),
+            title: "command:acme:example:/tmp".into(),
+            family: "command".into(),
+            scope: "project".into(),
+            health: "Degraded".into(),
+            state: "Shadowed".into(),
+            permission: "granted".into(),
+            provenance: "acme.example acme.example".into(),
+            diagnostics: Vec::new(),
+            conflicts: vec!["duplicate command".into()],
+            entry_key: Some("command:acme:example:/tmp".into()),
+            canonical_id: Some("example".into()),
+            global_override: false,
+            project_override: false,
+            global_enabled: true,
+            project_enabled: true,
+        }]);
+        state.composer.replace_text("/extensions");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('o'))),
+            TuiAction::SetExtensionOverride {
+                contribution_id: "example".into(),
+                entry_key: "command:acme:example:/tmp".into(),
+                scope: ToolSettingsScope::Project,
+            }
+        );
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('c'))),
+            TuiAction::ClearExtensionOverride {
+                contribution_id: "example".into(),
                 scope: ToolSettingsScope::Project,
             }
         );

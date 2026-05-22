@@ -2208,7 +2208,7 @@ fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
     } else if state.extension_management.search_active {
         "type to fuzzy search • ↑/↓ move • Enter toggle project • Esc clear search"
     } else {
-        "↑/↓ select • / search • i install project • I install global from path/GitHub • u/x uninstall package • g toggle global • p/Enter toggle project • Esc close"
+        "↑/↓ select • / search • i/I install • u/x uninstall • g/p toggles • o/O prefer winner • c/C clear override • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
     frame.render_widget(
@@ -2243,7 +2243,7 @@ fn extension_management_lines(
     } else if state.extension_management.search_active {
         format!("Search: {}", state.extension_management.search)
     } else if state.extension_management.search.is_empty() {
-        "Press / to search extensions • i/I install path or GitHub repo • u/x uninstall selected package".into()
+        "Press / to search • i/I install • u/x uninstall • o/O prefer conflict winner • c/C clear override".into()
     } else {
         format!("Filter: {}", state.extension_management.search)
     };
@@ -2290,8 +2290,9 @@ fn extension_management_lines(
                 } else {
                     format!(" • {} conflict", item.conflicts.len())
                 };
+                let overrides = extension_override_badges(item);
                 let line = format!(
-                    "{marker} [{}] {} — {} [{}] G:{} P:{} • {} • {}{}{}",
+                    "{marker} [{}] {} — {} [{}] G:{} P:{}{overrides} • {} • {}{}{}",
                     item.target.label(),
                     item.id,
                     item.title,
@@ -2321,6 +2322,15 @@ fn extension_on_off(value: bool) -> &'static str {
         "ON"
     } else {
         "OFF"
+    }
+}
+
+fn extension_override_badges(item: &crate::app::ExtensionManagementItem) -> String {
+    match (item.global_override, item.project_override) {
+        (false, false) => String::new(),
+        (true, false) => " OVR:G".into(),
+        (false, true) => " OVR:P".into(),
+        (true, true) => " OVR:G/P".into(),
     }
 }
 
@@ -3785,6 +3795,10 @@ mod tests {
             provenance: "pkg ext".into(),
             diagnostics: vec!["invalid state shape".into()],
             conflicts: vec!["slot conflict".into()],
+            entry_key: Some("ui:pkg:ui.processes:/tmp".into()),
+            canonical_id: Some("ui.processes".into()),
+            global_override: true,
+            project_override: false,
             global_enabled: true,
             project_enabled: false,
         }]);
@@ -3793,7 +3807,7 @@ mod tests {
         let text = buffer_text(&buffer);
         assert!(text.contains("Extensions"));
         assert!(text.contains("ui.processes"));
-        assert!(text.contains("G:ON P:OFF"));
+        assert!(text.contains("G:ON P:OFF OVR:G"));
         assert!(text.contains("diag"));
         assert!(text.contains("conflict"));
     }

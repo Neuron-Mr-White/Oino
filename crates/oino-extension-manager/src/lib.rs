@@ -617,6 +617,7 @@ pub struct PackageRecord {
 pub struct ContributionRecord {
     pub family: RegistryFamily,
     pub id: ContributionId,
+    pub canonical_id: ContributionId,
     pub entry_key: RegistryEntryKey,
     pub source: SourceDescriptor,
     pub extension_id: Option<ExtensionId>,
@@ -2444,6 +2445,7 @@ fn collect_active_records<T>(
         records.push(ContributionRecord {
             family,
             id: contribution.effective_id.clone(),
+            canonical_id: metadata.id.clone(),
             entry_key: contribution.entry.key.clone(),
             source: metadata.source.clone(),
             extension_id: metadata.extension_id.clone(),
@@ -2470,6 +2472,7 @@ fn collect_inactive_records<T>(
         records.push(ContributionRecord {
             family,
             id: metadata.id.clone(),
+            canonical_id: metadata.id.clone(),
             entry_key: contribution.entry.key.clone(),
             source: metadata.source.clone(),
             extension_id: metadata.extension_id.clone(),

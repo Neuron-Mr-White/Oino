@@ -42,6 +42,15 @@ pub enum TuiAction {
         scope: ToolSettingsScope,
         enabled: bool,
     },
+    SetExtensionOverride {
+        contribution_id: String,
+        entry_key: String,
+        scope: ToolSettingsScope,
+    },
+    ClearExtensionOverride {
+        contribution_id: String,
+        scope: ToolSettingsScope,
+    },
     InstallExtensionPackage {
         source: String,
         scope: ToolSettingsScope,

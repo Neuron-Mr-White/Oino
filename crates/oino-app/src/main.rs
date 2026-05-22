@@ -521,12 +521,70 @@ fn contribution_enabled_project(settings: &ToolSettingsSnapshot, id: &Contributi
     )
 }
 
+fn contribution_override_global(
+    settings: &ToolSettingsSnapshot,
+    id: &ContributionId,
+    entry_key: &RegistryEntryKey,
+) -> bool {
+    settings
+        .global
+        .extensions
+        .overrides
+        .get(id)
+        .is_some_and(|key| key == entry_key)
+}
+
+fn contribution_override_project(
+    settings: &ToolSettingsSnapshot,
+    id: &ContributionId,
+    entry_key: &RegistryEntryKey,
+) -> bool {
+    settings
+        .project
+        .extensions
+        .overrides
+        .get(id)
+        .is_some_and(|key| key == entry_key)
+}
+
 fn extension_policy_enabled(toggle: Option<&PolicyToggle>, default: bool) -> bool {
     match toggle {
         Some(PolicyToggle::Enabled) => true,
         Some(PolicyToggle::Disabled) => false,
         None => default,
     }
+}
+
+fn set_extension_override(
+    settings: &mut ToolSettingsSnapshot,
+    contribution_id: String,
+    entry_key: String,
+    scope: ToolSettingsScope,
+) {
+    let Ok(contribution_id) = ContributionId::new(contribution_id) else {
+        return;
+    };
+    let entry_key = RegistryEntryKey::new(entry_key);
+    let settings = match scope {
+        ToolSettingsScope::Global => &mut settings.global.extensions,
+        ToolSettingsScope::Project => &mut settings.project.extensions,
+    };
+    settings.overrides.insert(contribution_id, entry_key);
+}
+
+fn clear_extension_override(
+    settings: &mut ToolSettingsSnapshot,
+    contribution_id: String,
+    scope: ToolSettingsScope,
+) {
+    let Ok(contribution_id) = ContributionId::new(contribution_id) else {
+        return;
+    };
+    let settings = match scope {
+        ToolSettingsScope::Global => &mut settings.global.extensions,
+        ToolSettingsScope::Project => &mut settings.project.extensions,
+    };
+    settings.overrides.remove(&contribution_id);
 }
 
 fn set_extension_enabled(
@@ -1152,6 +1210,10 @@ fn extension_management_items(
                 .map(oino_extension_core::ExtensionDiagnostic::format_message)
                 .collect(),
             conflicts: Vec::new(),
+            entry_key: None,
+            canonical_id: None,
+            global_override: false,
+            project_override: false,
             global_enabled: extension_enabled_global(settings, &record.id),
             project_enabled: extension_enabled_project(settings, &record.id),
         }
@@ -1173,6 +1235,10 @@ fn extension_management_items(
                 .map(oino_extension_core::ExtensionDiagnostic::format_message)
                 .collect(),
             conflicts: Vec::new(),
+            entry_key: None,
+            canonical_id: None,
+            global_override: false,
+            project_override: false,
             global_enabled: package_enabled_global(settings, &record.id),
             project_enabled: package_enabled_project(settings, &record.id),
         }
@@ -1198,8 +1264,20 @@ fn extension_management_items(
                 .map(oino_extension_core::ExtensionDiagnostic::format_message)
                 .collect(),
             conflicts: contribution_conflicts,
-            global_enabled: contribution_enabled_global(settings, &record.id),
-            project_enabled: contribution_enabled_project(settings, &record.id),
+            entry_key: Some(record.entry_key.to_string()),
+            canonical_id: Some(record.canonical_id.to_string()),
+            global_override: contribution_override_global(
+                settings,
+                &record.canonical_id,
+                &record.entry_key,
+            ),
+            project_override: contribution_override_project(
+                settings,
+                &record.canonical_id,
+                &record.entry_key,
+            ),
+            global_enabled: contribution_enabled_global(settings, &record.canonical_id),
+            project_enabled: contribution_enabled_project(settings, &record.canonical_id),
         }
     }));
     items.sort_by(|left, right| {
@@ -1854,6 +1932,41 @@ async fn run_tui(
                 enabled,
             } => {
                 set_extension_enabled(&mut tool_settings, target, id, scope, enabled);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
+                    .await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                extension_models = extension_model_options(&extension_snapshot);
+                state.set_tool_settings(tool_settings_items(&tool_settings));
+                apply_extension_snapshot_to_tui_state(
+                    &mut state,
+                    &extension_snapshot,
+                    &tool_settings,
+                );
+            }
+            TuiAction::SetExtensionOverride {
+                contribution_id,
+                entry_key,
+                scope,
+            } => {
+                set_extension_override(&mut tool_settings, contribution_id, entry_key, scope);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
+                    .await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                extension_models = extension_model_options(&extension_snapshot);
+                state.set_tool_settings(tool_settings_items(&tool_settings));
+                apply_extension_snapshot_to_tui_state(
+                    &mut state,
+                    &extension_snapshot,
+                    &tool_settings,
+                );
+            }
+            TuiAction::ClearExtensionOverride {
+                contribution_id,
+                scope,
+            } => {
+                clear_extension_override(&mut tool_settings, contribution_id, scope);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
                 apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
                     .await;
@@ -3699,6 +3812,31 @@ mod tests {
             ),
             Some(&PolicyToggle::Enabled)
         );
+
+        set_extension_override(
+            &mut settings,
+            "ui.processes".into(),
+            "ui:process.manager:ui.processes:/tmp".into(),
+            ToolSettingsScope::Project,
+        );
+        let contribution_id =
+            ContributionId::new("ui.processes").unwrap_or_else(|err| panic!("id: {err}"));
+        assert_eq!(
+            settings.project.extensions.overrides.get(&contribution_id),
+            Some(&RegistryEntryKey::new(
+                "ui:process.manager:ui.processes:/tmp"
+            ))
+        );
+        clear_extension_override(
+            &mut settings,
+            "ui.processes".into(),
+            ToolSettingsScope::Project,
+        );
+        assert!(!settings
+            .project
+            .extensions
+            .overrides
+            .contains_key(&contribution_id));
     }
 
     #[test]
