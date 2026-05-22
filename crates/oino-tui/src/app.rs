@@ -147,11 +147,11 @@ impl ExtensionManagementView {
     #[must_use]
     pub const fn accepts(self, target: ExtensionManagementTarget) -> bool {
         match self {
-            Self::Manage => matches!(
+            Self::Manage => matches!(target, ExtensionManagementTarget::Package),
+            Self::Registry => matches!(
                 target,
-                ExtensionManagementTarget::Package | ExtensionManagementTarget::Extension
+                ExtensionManagementTarget::Extension | ExtensionManagementTarget::Contribution
             ),
-            Self::Registry => matches!(target, ExtensionManagementTarget::Contribution),
         }
     }
 }
@@ -4463,13 +4463,23 @@ mod tests {
         assert_eq!(
             state.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE)),
             TuiAction::SetExtensionEnabled {
-                target: ExtensionManagementTarget::Extension,
-                id: "process.manager".into(),
+                target: ExtensionManagementTarget::Package,
+                id: "process.package".into(),
                 scope: ToolSettingsScope::Project,
                 enabled: false,
             }
         );
-        assert!(!state.extension_management.items[0].project_enabled);
+        assert!(!state.extension_management.items[1].project_enabled);
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(
+            state.extension_management.view,
+            ExtensionManagementView::Registry
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(
+            state.extension_management.view,
+            ExtensionManagementView::Manage
+        );
 
         assert_eq!(state.handle_key(key(KeyCode::Char('i'))), TuiAction::None);
         for ch in "examples/extensions/rust-wasm-fixture".chars() {

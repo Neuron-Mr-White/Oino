@@ -86,8 +86,8 @@ Open:
 
 The panel has two tabs:
 
-- **Manage** — package and extension rows for install, update-by-reinstall, uninstall, and coarse enablement.
-- **Registered** — individual registered contributions such as tools, commands, UI surfaces, themes, resources, hooks, providers, autosuggest, renderers, diagnostics, health, and persistence.
+- **Manage** — one row per installed package for install, update-by-reinstall, uninstall, and coarse enablement.
+- **Registered** — extension runtime rows plus individual registered contributions such as tools, commands, UI surfaces, themes, resources, hooks, providers, autosuggest, renderers, diagnostics, health, and persistence.
 
 Controls:
 

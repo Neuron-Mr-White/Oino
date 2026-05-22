@@ -2412,12 +2412,10 @@ fn extension_management_lines(
                 };
                 let overrides = extension_override_badges(item);
                 let line = format!(
-                    "{marker} P:{} G:{}{overrides} [{}:{}:{}] {} — {} • {} • {}{}{}",
+                    "{marker} P:{} G:{}{overrides} [{}] {} — {} • {} • {}{}{}",
                     extension_on_off(item.project_enabled),
                     extension_on_off(item.global_enabled),
-                    extension_management_target_badge(item.target),
-                    item.family,
-                    item.scope,
+                    extension_management_kind_label(item),
                     item.id,
                     item.title,
                     item.health,
@@ -2474,13 +2472,11 @@ fn extension_management_selected_line(
         format!(" • {} conflict", item.conflicts.len())
     };
     let text = format!(
-        "Selected: P:{} G:{}{} • [{}:{}:{}] {} — {} • {} • {}{}{}",
+        "Selected: P:{} G:{}{} • [{}] {} — {} • {} • {}{}{}",
         extension_on_off(item.project_enabled),
         extension_on_off(item.global_enabled),
         extension_override_badges(item),
-        extension_management_target_badge(item.target),
-        item.family,
-        item.scope,
+        extension_management_kind_label(item),
         item.id,
         item.title,
         item.health,
@@ -2494,14 +2490,13 @@ fn extension_management_selected_line(
     )
 }
 
-fn extension_management_target_badge(
-    target: crate::app::ExtensionManagementTarget,
-) -> &'static str {
-    match target {
-        crate::app::ExtensionManagementTarget::Package => "pkg",
-        crate::app::ExtensionManagementTarget::Extension => "ext",
-        crate::app::ExtensionManagementTarget::Contribution => "contrib",
-    }
+fn extension_management_kind_label(item: &crate::app::ExtensionManagementItem) -> String {
+    let kind = match item.target {
+        crate::app::ExtensionManagementTarget::Package => "package",
+        crate::app::ExtensionManagementTarget::Extension => "extension",
+        crate::app::ExtensionManagementTarget::Contribution => item.family.as_str(),
+    };
+    format!("{} {kind}", item.scope)
 }
 
 fn extension_on_off(value: bool) -> &'static str {
