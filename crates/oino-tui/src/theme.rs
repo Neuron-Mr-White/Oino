@@ -1504,6 +1504,24 @@ mod tests {
     }
 
     #[test]
+    fn example_extension_theme_file_validates() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("examples/extensions/rust-wasm-fixture/themes/example-theme.json");
+        let contents = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {} failed: {err}", path.display()));
+        let document = ThemeDocument::from_json_str(&contents)
+            .unwrap_or_else(|err| panic!("parse {} failed: {err}", path.display()));
+        let diagnostics = document.validate();
+        assert!(
+            diagnostics.is_empty(),
+            "example theme diagnostics: {diagnostics:?}"
+        );
+        assert_eq!(document.normalized_id().as_deref(), Some("example-theme"));
+        assert!(document.tokens.contains_key("diagnostic.error"));
+    }
+
+    #[test]
     fn resolves_project_theme_over_global_theme() {
         let catalog = ThemeCatalog::builtins();
         let mut global = ThemeSettings::default();

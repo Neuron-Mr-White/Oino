@@ -1,6 +1,6 @@
 # Oino Theme Schema Design
 
-This document defines the first Oino-native theme contract. It is a design target for the implementation that follows the component inventory and classification pass.
+This document defines the first Oino-native theme contract. It now reflects the first implementation of Oino's theme pipeline: built-ins, user theme files, extension theme files, project/global selection, live preview, and component-role rendering.
 
 ## Goals
 
@@ -46,6 +46,29 @@ Theme files should be JSON first because Oino extension manifests and user setti
   }
 }
 ```
+
+### Current load locations
+
+Oino discovers theme documents from these locations:
+
+```text
+~/.oino/themes/**/*.json
+<project>/.oino/themes/**/*.json
+<installed-extension-package>/themes/**/*.json  # when declared by an enabled extension theme contribution
+```
+
+Extension theme contribution `path` values are resolved relative to the package root when `oino.package.json` is present, otherwise relative to the extension manifest directory. Path traversal outside the package/theme root is rejected.
+
+Flat legacy token maps are still accepted:
+
+```json
+{
+  "accent": "#7dd3fc",
+  "success": "#86efac"
+}
+```
+
+When loaded as a file theme, Oino derives the theme id from the file stem and makes it inherit `system`.
 
 ### Fields
 
@@ -292,7 +315,7 @@ syntax.operator
 syntax.punctuation
 ```
 
-The first implementation may keep Syntect colors as-is, but the theme model should reserve these roles.
+Oino uses Syntect parsing to classify code spans, then maps scope categories into these Oino-owned syntax roles. The theme controls the visible colors; it does not need to copy or provide a Syntect theme.
 
 ### Settings/keymaps
 
@@ -305,6 +328,25 @@ settings.changed
 settings.warning
 settings.danger
 ```
+
+### Badges and diagnostics
+
+```text
+badge.fg
+badge.bg
+badge.accent
+badge.success
+badge.warning
+badge.error
+badge.muted
+diagnostic.info
+diagnostic.warning
+diagnostic.error
+diagnostic.success
+diagnostic.danger_bg
+```
+
+Badges cover command categories, extension surface indicators, scope labels, active/preview labels, and compact status tokens. Diagnostics cover chord/tiny-terminal warnings, errors, validation messages, and future diagnostic panes.
 
 ### Extension management and surfaces
 
@@ -354,12 +396,13 @@ Existing extension token aliases should map as follows:
 - Unknown token path: accepted with warning for extension compatibility; rejected only in strict devkit mode.
 - Invalid color: ignored with warning; devkit validation fails in strict mode.
 - Missing required roles: filled from inherited/default theme.
-- Theme ID conflict: resolved through normal extension conflict policy and user overrides.
+- Theme ID conflict: resolved by source precedence: `project file > project extension > global file > global extension > built-in`. Extension contribution conflict policy still resolves duplicate extension contributions before theme-source precedence.
 - Unsafe path in theme contribution: reject path traversal; theme files must live inside package/project/global theme roots.
+- Invalid/unavailable selected theme: fall back to `system` and report diagnostics in theme state.
 
 ## Built-in initial themes
 
-The first implementation should include at least:
+The first implementation includes:
 
 - `system` — follows terminal light/dark detection; defaults to `oino-dark` when unknown.
 - `oino-dark` — current Oino default upgraded with explicit backgrounds and selection.

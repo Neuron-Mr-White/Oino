@@ -38,13 +38,15 @@ Rules:
 
 ## Theme source registry
 
-The picker should list all resolved themes from these sources:
+The picker lists resolved themes from these sources:
 
 1. Built-in themes.
-2. Global user theme files: `~/.oino/themes/*.json`.
-3. Project theme files: `<project>/.oino/themes/*.json`.
-4. Enabled global extension theme contributions.
-5. Enabled project extension theme contributions.
+2. Global user theme files: `~/.oino/themes/**/*.json`.
+3. Enabled global extension theme contributions.
+4. Enabled project extension theme contributions.
+5. Project theme files: `<project>/.oino/themes/**/*.json`.
+
+Project files are registered last so they win duplicate theme IDs according to the source precedence table below.
 
 Each theme row should display:
 
@@ -131,11 +133,11 @@ Add a dedicated theme page reachable by:
 | `g` | Save selected theme as global theme. |
 | `r` | Reset project theme to inherit global. |
 | `R` | Reset global theme to `system`. |
-| `/` | Search themes by ID/name/source/mode. |
-| `o` | Open token override editor for current scope. |
-| `O` | Clear overrides for current scope. |
-| `v` | Cycle preview sample: shell, transcript, markdown/code, extensions. |
-| `e` | Open/edit theme file when the selected source is a file theme. |
+| `/` | Search themes by ID/name/source/mode. Planned follow-up; not in the first picker slice. |
+| `o` | Open token override editor for current scope. Planned follow-up. |
+| `O` | Clear overrides for current scope. Planned follow-up. |
+| `v` | Cycle preview sample: shell, transcript, markdown/code, extensions. Planned follow-up. |
+| `e` | Open/edit theme file when the selected source is a file theme. Planned follow-up. |
 | `Esc` | Leave preview or return to settings. |
 
 ### Preview behavior
@@ -192,7 +194,7 @@ Theme `example-theme` unavailable; using System. Re-enable the extension or choo
 
 ## Override UX
 
-The first version can support a compact override editor:
+Theme settings already persist a token override map, but a dedicated override editor is a follow-up. The intended compact editor is:
 
 ```text
 Scope: project overrides
@@ -210,6 +212,17 @@ Actions:
 - `Tab` switch project/global override scope.
 
 Token completion should use the canonical token registry from the schema design.
+
+## Implemented component coverage
+
+The first implementation resolves theme tokens into a runtime `Theme` and applies roles across:
+
+- app, panel, composer, list, status, footer, selection, and focus states;
+- transcript message, tool, thinking, resource, markdown, and syntax spans;
+- settings menu rows and extension-management rows;
+- suggestion panels, badges, diagnostics, extension surfaces, and command category labels.
+
+Syntax colors are Oino role colors (`syntax.keyword`, `syntax.string`, etc.) derived from Syntect scope categories, not an externally selected Syntect theme.
 
 ## Conflict and diagnostic display
 

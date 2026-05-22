@@ -36,7 +36,7 @@ https://github.com/owner/repo.git
 Enter
 ```
 
-After install, the package is enabled in the selected scope and Oino reloads extensions automatically. Stay in `/extensions` to inspect the package, extension, and contribution rows.
+After install, the package is enabled in the selected scope and Oino reloads extensions automatically. Stay in `/extensions` to inspect the package, extension, and contribution rows, or open `/theme` to preview/select any theme contributed by the package.
 
 ## Install sources
 
@@ -190,6 +190,42 @@ Contribution rows may also show override badges:
 - `OVR:G/P` — both scopes prefer this candidate.
 
 Use `o`/`O` to choose a conflict winner and `c`/`C` to clear the override. This works across contribution families such as commands, tools, keymaps, UI surfaces, resources/skills, providers/models, themes, hooks, autosuggest, renderers, diagnostics, health, and persistence.
+
+## Themes
+
+Oino has first-class built-in, file, and extension themes. Open the theme picker with:
+
+```text
+/theme
+```
+
+or:
+
+```text
+/settings theme
+```
+
+Controls:
+
+| Key | Action |
+|---|---|
+| `Enter` | Preview the selected theme immediately without saving. |
+| `p` | Save the selected theme as the project theme in `<project>/.oino/settings.json`. |
+| `g` | Save the selected theme as the global theme in `~/.oino/settings.json`. |
+| `r` | Reset the project theme to inherit global. |
+| `R` | Reset the global theme to `system`. |
+| `Esc` / `←` | Cancel preview or return/close. |
+
+Theme files can live in:
+
+```text
+~/.oino/themes/**/*.json
+<project>/.oino/themes/**/*.json
+```
+
+Project theme files and project active theme settings are reviewable/commit-friendly: commit `.oino/settings.json` and `.oino/themes/team.json` when you want a shared project look. If two sources provide the same theme id, Oino prefers project file themes over project extension themes, then global files, global extensions, and built-ins.
+
+Extension theme contributions appear in `/extensions` on the **Registered** tab and in `/theme` as selectable themes. Disabling the package removes those themes from the picker; if an active theme disappears, Oino falls back to `system` and reports a diagnostic.
 
 ## Trust and permissions
 

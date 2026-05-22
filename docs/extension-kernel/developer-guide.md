@@ -276,31 +276,83 @@ health
 
 If multiple extensions register the same resolved slot, Oino shows tabs and lets the user switch winners. Do not trap global navigation keys; use contribution keymaps and let Oino's conflict policy decide whether they are active.
 
-## Theme tokens
+## Theme contributions
 
-Oino accepts Oino-native tokens plus Pi-inspired token names. Token names are normalized across snake_case, kebab-case, dotted names, spaces, and camelCase. Supported values include named Ratatui colors (`cyan`, `dark_gray`), `#rrggbb`, 256-color indexes (`242`), `default`, and `reset`.
+Oino accepts first-class theme documents from extension contributions. Token names are normalized across snake_case, kebab-case, dotted names, spaces, and camelCase. Supported values include named Ratatui colors (`cyan`, `dark_gray`), `#rrggbb`, 256-color indexes (`242`), `default`, `reset`, and `$palette.name` references inside full theme documents.
 
-Common tokens that currently apply at the Ratatui theme boundary:
+Declare a theme contribution in `oino.extension.json`:
 
-```text
-accent
-success
-text / fg
-muted
-dim
-focused_border / borderAccent
-panel_border / border / borderMuted
-user_border / userMessageText
-assistant_border / assistantMessageText
-tool_border / toolTitle
-title
-warning
-error
-footer / status / inline_status
-working / working_indicator
+```json
+{
+  "contributes": {
+    "themes": [
+      {
+        "id": "acme_aurora",
+        "path": "themes/acme-aurora.json",
+        "tokens": {
+          "accent": "#7dd3fc",
+          "success": "#86efac"
+        },
+        "conflict": {
+          "strategy": "namespaced",
+          "priority": 0,
+          "allow_user_override": true
+        }
+      }
+    ]
+  }
+}
 ```
 
-Oino recognizes a broader Pi-inspired token vocabulary for forward compatibility; unsupported tokens are accepted but may not visibly affect current built-in widgets yet.
+`path` is optional but recommended. When an installed package has `oino.package.json`, the path is package-root-relative; otherwise it is resolved relative to the extension manifest directory. Keep paths inside the package. The inline `tokens` map is a fallback/compatibility layer and can be used alone for small themes.
+
+A full theme file looks like:
+
+```json
+{
+  "schema_version": 1,
+  "id": "acme_aurora",
+  "display_name": "Acme Aurora",
+  "description": "Team theme with visible transcript, markdown, and extension surfaces",
+  "mode": "dark",
+  "inherits": "oino-dark",
+  "palette": {
+    "bg": "#07111f",
+    "surface": "#0f1f33",
+    "elevated": "#172a42",
+    "text": "#e6eef8",
+    "muted": "#94a3b8",
+    "accent": "#7dd3fc",
+    "success": "#86efac",
+    "warning": "#f6c177",
+    "error": "#f38ba8",
+    "selection": "#243b55"
+  },
+  "tokens": {
+    "app.bg": "$palette.bg",
+    "panel.bg": "$palette.surface",
+    "composer.bg": "$palette.elevated",
+    "list.selected_bg": "$palette.selection",
+    "message.user.border": "$palette.accent",
+    "markdown.heading": "$palette.accent",
+    "syntax.keyword": "$palette.warning",
+    "extension_surface.tab_active": "$palette.accent",
+    "badge.success": "$palette.success",
+    "diagnostic.error": "$palette.error"
+  }
+}
+```
+
+Prefer semantic/component roles (`message.user.border`, `markdown.heading`, `syntax.keyword`, `extension_surface.tab_active`) over only the legacy aliases. Legacy aliases still work and are expanded into Oino roles:
+
+```text
+accent, success, text/fg, muted, dim, focused_border/borderAccent,
+panel_border/border/borderMuted, user_border/userMessageText,
+assistant_border/assistantMessageText, tool_border/toolTitle,
+title, warning, error, footer/status/inline_status, working/working_indicator
+```
+
+Theme contributions appear in `/extensions` for management and `/theme` for selection/preview. Oino does not auto-apply an extension theme merely because the extension is enabled; the user saves it as project or global theme.
 
 ## Runtime and capability rules
 
