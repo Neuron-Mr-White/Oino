@@ -243,6 +243,10 @@ pub enum SettingsAction {
         scope: ToolSettingsScope,
         enabled: bool,
     },
+    PreviewTheme {
+        id: String,
+    },
+    ClearThemePreview,
     SetTheme {
         id: String,
         scope: ToolSettingsScope,
@@ -290,6 +294,7 @@ pub struct SettingsState {
     pub global_theme: ThemeSettings,
     pub project_theme: ThemeSettings,
     pub effective_theme: Option<ResolvedTheme>,
+    pub preview_theme: Option<ResolvedTheme>,
     pub keymap: KeymapConfig,
     pub model_search: String,
     pub model_search_active: bool,
@@ -326,6 +331,7 @@ impl SettingsState {
             global_theme: ThemeSettings::default(),
             project_theme: ThemeSettings::default(),
             effective_theme: None,
+            preview_theme: None,
             keymap: KeymapConfig::default(),
             model_search: String::new(),
             model_search_active: false,
@@ -401,6 +407,7 @@ impl SettingsState {
         self.global_theme = global.clone();
         self.project_theme = project.clone();
         self.effective_theme = Some(effective.clone());
+        self.preview_theme = None;
         let global_active = global.active_id();
         let project_active = project.active_id();
         self.theme_options = catalog
@@ -469,6 +476,30 @@ impl SettingsState {
         self.theme_cursor = self
             .theme_cursor
             .min(self.theme_options.len().saturating_sub(1));
+    }
+
+    pub fn set_theme_preview(&mut self, preview: Option<ResolvedTheme>) {
+        self.preview_theme = preview;
+    }
+
+    pub fn clear_theme_preview(&mut self) {
+        self.preview_theme = None;
+    }
+
+    pub fn active_or_preview_theme(&self) -> Option<&ResolvedTheme> {
+        self.preview_theme
+            .as_ref()
+            .or(self.effective_theme.as_ref())
+    }
+
+    pub fn preview_theme_id(&self) -> Option<&str> {
+        self.preview_theme.as_ref().map(|theme| theme.id.as_str())
+    }
+
+    pub fn selected_theme_id(&self) -> Option<String> {
+        self.theme_options
+            .get(self.theme_cursor)
+            .map(|option| option.id.clone())
     }
 
     pub fn set_keymap(&mut self, keymap: KeymapConfig) {
@@ -586,6 +617,10 @@ impl SettingsState {
 
         match key.code {
             KeyCode::Esc => self.close_or_return_to_menu(),
+            KeyCode::Backspace | KeyCode::Left if self.page == SettingsPage::Theme => {
+                self.page = SettingsPage::Menu;
+                SettingsAction::ClearThemePreview
+            }
             KeyCode::Backspace | KeyCode::Left if self.page != SettingsPage::Menu => {
                 self.page = SettingsPage::Menu;
                 SettingsAction::None
@@ -1037,13 +1072,19 @@ impl SettingsState {
 
     fn close_or_return_to_menu(&mut self) -> SettingsAction {
         if self.page == SettingsPage::Menu {
+            self.clear_theme_preview();
             SettingsAction::Close
         } else {
+            let was_theme = self.page == SettingsPage::Theme;
             self.model_search_active = false;
             self.model_search.clear();
             self.refresh_model_filter();
             self.page = SettingsPage::Menu;
-            SettingsAction::None
+            if was_theme {
+                SettingsAction::ClearThemePreview
+            } else {
+                SettingsAction::None
+            }
         }
     }
 
@@ -1061,7 +1102,7 @@ impl SettingsState {
             SettingsPage::ChatStyle => self.apply_chat_style(),
             SettingsPage::Tools => self.toggle_tool(ToolSettingsScope::Project),
             SettingsPage::Keymaps => self.open_keymap_detail(),
-            SettingsPage::Theme => self.apply_theme(ToolSettingsScope::Project),
+            SettingsPage::Theme => self.preview_selected_theme(),
         }
     }
 
@@ -1207,14 +1248,18 @@ impl SettingsState {
         }
     }
 
-    fn apply_theme(&mut self, scope: ToolSettingsScope) -> SettingsAction {
-        let Some(option) = self.theme_options.get(self.theme_cursor) else {
+    fn preview_selected_theme(&self) -> SettingsAction {
+        let Some(id) = self.selected_theme_id() else {
             return SettingsAction::None;
         };
-        SettingsAction::SetTheme {
-            id: option.id.clone(),
-            scope,
-        }
+        SettingsAction::PreviewTheme { id }
+    }
+
+    fn apply_theme(&mut self, scope: ToolSettingsScope) -> SettingsAction {
+        let Some(id) = self.selected_theme_id() else {
+            return SettingsAction::None;
+        };
+        SettingsAction::SetTheme { id, scope }
     }
 
     fn clamp_thinking_to_selected_model(&mut self) {

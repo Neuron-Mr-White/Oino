@@ -196,7 +196,7 @@ fn transcript_cache() -> &'static Mutex<TranscriptCacheState> {
 
 pub fn render(frame: &mut Frame<'_>, state: &TuiState) {
     let theme =
-        theme_with_extension_tokens(state, Theme::from_resolved_theme(&state.resolved_theme));
+        theme_with_extension_tokens(state, Theme::from_resolved_theme(state.active_theme()));
     render_with_theme(frame, state, &theme);
 }
 
@@ -3195,11 +3195,16 @@ fn render_theme_settings(
             settings.theme_options.len()
         )
     };
-    let effective = settings.effective_theme.as_ref().map_or_else(
+    let effective = settings.active_or_preview_theme().map_or_else(
         || "Effective: system".to_string(),
         |theme| {
+            let label = if settings.preview_theme.is_some() {
+                "Preview"
+            } else {
+                "Effective"
+            };
             format!(
-                "Effective: {} ({}, {})",
+                "{label}: {} ({}, {})",
                 theme.display_name,
                 theme.selected_scope.label(),
                 theme.source.label()
@@ -3220,8 +3225,26 @@ fn render_theme_settings(
             format!("Global: {global} • Project: {project}"),
             Style::default().fg(theme.muted),
         ),
+        Line::from(vec![
+            Span::styled("Preview: ", theme.title),
+            Span::styled("user", Style::default().fg(theme.user_border)),
+            Span::styled(" • ", Style::default().fg(theme.muted)),
+            Span::styled("assistant", Style::default().fg(theme.assistant_border)),
+            Span::styled(" • ", Style::default().fg(theme.muted)),
+            Span::styled("tool", Style::default().fg(theme.tool_border)),
+            Span::styled(" • ", Style::default().fg(theme.muted)),
+            Span::styled("working", theme.working),
+            Span::styled(" • ", Style::default().fg(theme.muted)),
+            Span::styled("error", theme.error),
+        ]),
+        Line::from(vec![
+            Span::styled("Selected row ", item_style(true, false, theme)),
+            Span::styled("normal text ", Style::default().fg(theme.fg)),
+            Span::styled("muted ", Style::default().fg(theme.muted)),
+            Span::styled("focused border", Style::default().fg(theme.focused_border)),
+        ]),
         Line::styled(
-            "Enter/p set project • g set global • r reset project • R reset global",
+            "Enter preview • p set project • g set global • r reset project • R reset global",
             theme.footer,
         ),
         Line::from(""),
@@ -3232,7 +3255,7 @@ fn render_theme_settings(
             Style::default().fg(theme.muted),
         ));
     } else {
-        let visible_height = list_content_height(area).saturating_sub(4).max(1);
+        let visible_height = list_content_height(area).saturating_sub(6).max(1);
         let range = visible_range(
             settings.theme_cursor,
             settings.theme_options.len(),
@@ -3247,7 +3270,8 @@ fn render_theme_settings(
                 .take(range.end.saturating_sub(range.start))
                 .map(|(index, option)| {
                     let active = index == settings.theme_cursor;
-                    let selected = option.effective;
+                    let preview = settings.preview_theme_id() == Some(option.id.as_str());
+                    let selected = option.effective || preview;
                     let marker = selection_marker(active, selected);
                     let mut badges = Vec::new();
                     if option.project_active {
@@ -3258,6 +3282,9 @@ fn render_theme_settings(
                     }
                     if option.effective {
                         badges.push("EFFECTIVE");
+                    }
+                    if preview {
+                        badges.push("PREVIEW");
                     }
                     let badges = if badges.is_empty() {
                         String::new()
@@ -3628,7 +3655,7 @@ fn render_settings_footer(
         SettingsPage::Tools => {
             "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
         }
-        SettingsPage::Theme => "arrows/jk move • Enter/p project • g global • r reset project • R reset global • Esc/← back",
+        SettingsPage::Theme => "arrows/jk move • Enter preview • p project • g global • r reset project • R reset global • Esc/← back",
         SettingsPage::Keymaps => match settings.keymaps_mode {
             KeymapsMode::List => {
                 "arrows/jk move • Enter detail • g chord key • p preset • Esc/← back"
@@ -3646,11 +3673,15 @@ fn render_settings_footer(
     let status = if settings.page == SettingsPage::Tools {
         format!("Project controls this workspace; Global seeds new projects • {controls}")
     } else if settings.page == SettingsPage::Theme {
-        let effective = settings.effective_theme.as_ref().map_or_else(
-            || "system".into(),
-            |theme| format!("{} ({})", theme.display_name, theme.selected_scope.label()),
-        );
-        format!("Theme: {effective} • {controls}")
+        if let Some(preview) = &settings.preview_theme {
+            format!("Preview: {} • {controls}", preview.display_name)
+        } else {
+            let effective = settings.effective_theme.as_ref().map_or_else(
+                || "system".into(),
+                |theme| format!("{} ({})", theme.display_name, theme.selected_scope.label()),
+            );
+            format!("Theme: {effective} • {controls}")
+        }
     } else {
         format!("{} • {controls}", settings.status)
     };

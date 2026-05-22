@@ -846,6 +846,7 @@ pub struct TuiState {
     pub settings: SettingsState,
     pub theme_catalog: ThemeCatalog,
     pub resolved_theme: ResolvedTheme,
+    pub preview_theme: Option<ResolvedTheme>,
     pub command_suggestions: CommandSuggestionsState,
     pub chord: ChordState,
     key_sequence: Vec<KeyStroke>,
@@ -898,6 +899,7 @@ impl Default for TuiState {
             settings,
             theme_catalog,
             resolved_theme,
+            preview_theme: None,
             command_suggestions: CommandSuggestionsState::new(),
             chord: ChordState::None,
             key_sequence: Vec::new(),
@@ -950,6 +952,7 @@ impl TuiState {
             settings,
             theme_catalog,
             resolved_theme,
+            preview_theme: None,
             ..Self::default()
         }
     }
@@ -1623,8 +1626,31 @@ impl TuiState {
 
     pub fn set_theme_settings(&mut self, global: &ThemeSettings, project: &ThemeSettings) {
         self.resolved_theme = resolve_effective_theme(&self.theme_catalog, global, project);
+        self.clear_theme_preview();
         self.settings
             .set_theme_state(&self.theme_catalog, global, project, &self.resolved_theme);
+    }
+
+    fn set_theme_preview(&mut self, id: String) {
+        let mut project = ThemeSettings::default();
+        project.set_active(id);
+        let preview =
+            resolve_effective_theme(&self.theme_catalog, &ThemeSettings::default(), &project);
+        self.status = format!(
+            "Previewing theme `{}` • p project / g global / Esc cancel",
+            preview.display_name
+        );
+        self.settings.set_theme_preview(Some(preview.clone()));
+        self.preview_theme = Some(preview);
+    }
+
+    fn clear_theme_preview(&mut self) {
+        self.preview_theme = None;
+        self.settings.clear_theme_preview();
+    }
+
+    pub fn active_theme(&self) -> &ResolvedTheme {
+        self.preview_theme.as_ref().unwrap_or(&self.resolved_theme)
     }
 
     pub fn set_theme_catalog(
@@ -3383,11 +3409,22 @@ impl TuiState {
                     enabled,
                 }
             }
+            SettingsAction::PreviewTheme { id } => {
+                self.set_theme_preview(id);
+                TuiAction::None
+            }
+            SettingsAction::ClearThemePreview => {
+                self.clear_theme_preview();
+                self.status = "Theme preview canceled".into();
+                TuiAction::None
+            }
             SettingsAction::SetTheme { id, scope } => {
+                self.clear_theme_preview();
                 self.status = format!("{} theme set to `{id}`", scope.label());
                 TuiAction::SetTheme { id, scope }
             }
             SettingsAction::ResetTheme { scope } => {
+                self.clear_theme_preview();
                 self.status = format!("{} theme reset", scope.label());
                 TuiAction::ResetTheme { scope }
             }
@@ -4673,6 +4710,12 @@ mod tests {
         let selected = state.settings.theme_options[state.settings.theme_cursor]
             .id
             .clone();
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(
+            state.preview_theme.as_ref().map(|theme| theme.id.as_str()),
+            Some(selected.as_str())
+        );
+        assert_eq!(state.settings.preview_theme_id(), Some(selected.as_str()));
         assert_eq!(
             state.handle_key(key(KeyCode::Char('p'))),
             TuiAction::SetTheme {
@@ -4680,6 +4723,7 @@ mod tests {
                 scope: ToolSettingsScope::Project,
             }
         );
+        assert!(state.preview_theme.is_none());
         assert_eq!(
             state.handle_key(key(KeyCode::Char('g'))),
             TuiAction::SetTheme {
@@ -4713,6 +4757,21 @@ mod tests {
         assert_eq!(selected.id, "oino-aurora");
         assert!(selected.project_active);
         assert!(selected.effective);
+    }
+
+    #[test]
+    fn theme_preview_clears_when_leaving_theme_page() {
+        let mut state = TuiState::new();
+        state.composer.replace_text("/theme");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.handle_key(key(KeyCode::Down)), TuiAction::None);
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert!(state.preview_theme.is_some());
+        assert!(state.settings.preview_theme.is_some());
+        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
+        assert!(state.preview_theme.is_none());
+        assert!(state.settings.preview_theme.is_none());
+        assert_eq!(state.settings.page, crate::settings::SettingsPage::Menu);
     }
 
     #[test]
