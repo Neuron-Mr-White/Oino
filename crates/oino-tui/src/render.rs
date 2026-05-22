@@ -1763,7 +1763,7 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
                 &format!("No help topics match `{}`", state.help_search),
                 content_width,
             ),
-            Style::default().fg(theme.muted),
+            settings_muted_style(theme),
         ));
     } else {
         lines.extend(
@@ -1836,7 +1836,7 @@ fn help_search_line(state: &TuiState, theme: &Theme) -> Line<'static> {
         Line::styled("Press / to search help", Style::default().fg(theme.muted))
     } else {
         Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.muted)),
+            Span::styled("Search: ", settings_muted_style(theme)),
             Span::raw(state.help_search.clone()),
         ])
     }
@@ -2380,41 +2380,142 @@ fn extension_management_lines(
             .filter_map(|(offset, item_index)| {
                 let item = state.extension_management.items.get(*item_index)?;
                 let active = range.start + offset == state.extension_management.cursor;
-                let marker = if active { "›" } else { " " };
-                let diagnostics = if item.diagnostics.is_empty() {
-                    String::new()
-                } else {
-                    format!(" • {} diag", item.diagnostics.len())
-                };
-                let conflicts = if item.conflicts.is_empty() {
-                    String::new()
-                } else {
-                    format!(" • {} conflict", item.conflicts.len())
-                };
-                let overrides = extension_override_badges(item);
-                let line = format!(
-                    "{marker} P:{} G:{}{overrides} [{}] {} — {} • {} • {}{}{}",
-                    extension_on_off(item.project_enabled),
-                    extension_on_off(item.global_enabled),
-                    extension_management_kind_label(item),
-                    item.id,
-                    item.title,
-                    item.health,
-                    item.permission,
-                    diagnostics,
-                    conflicts,
-                );
-                Some(Line::styled(
-                    truncate_with_ellipsis(&line, content_width),
-                    if active {
-                        theme.working
-                    } else {
-                        Style::default().fg(theme.fg)
-                    },
+                Some(extension_management_item_line(
+                    item,
+                    active,
+                    content_width,
+                    theme,
                 ))
             }),
     );
     lines
+}
+
+fn extension_management_item_line(
+    item: &crate::app::ExtensionManagementItem,
+    active: bool,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let marker = if active { "›" } else { " " };
+    let diagnostics = if item.diagnostics.is_empty() {
+        String::new()
+    } else {
+        format!(" • {} diag", item.diagnostics.len())
+    };
+    let conflicts = if item.conflicts.is_empty() {
+        String::new()
+    } else {
+        format!(" • {} conflict", item.conflicts.len())
+    };
+    let overrides = extension_override_badges(item);
+    let mut spans = vec![
+        Span::styled(
+            format!("{marker} "),
+            extension_role_style(theme.settings_active, active, theme),
+        ),
+        Span::styled(
+            "P:",
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            extension_on_off(item.project_enabled),
+            extension_role_style(
+                extension_toggle_color(item.project_enabled, theme),
+                active,
+                theme,
+            ),
+        ),
+        Span::styled(
+            " G:",
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            extension_on_off(item.global_enabled),
+            extension_role_style(
+                extension_toggle_color(item.global_enabled, theme),
+                active,
+                theme,
+            ),
+        ),
+    ];
+    if !overrides.is_empty() {
+        spans.push(Span::styled(
+            overrides.to_string(),
+            extension_role_style(theme.extension_override, active, theme),
+        ));
+    }
+    spans.extend([
+        Span::styled(
+            " [",
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            extension_management_kind_label(item),
+            extension_role_style(extension_kind_color(item, theme), active, theme),
+        ),
+        Span::styled(
+            "] ",
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            item.id.clone(),
+            extension_role_style(theme.settings_fg, active, theme),
+        ),
+        Span::styled(
+            " — ",
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            item.title.clone(),
+            extension_role_style(theme.settings_fg, active, theme),
+        ),
+        Span::styled(
+            " • ",
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            item.health.clone(),
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            " • ",
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+        Span::styled(
+            item.permission.clone(),
+            extension_role_style(theme.settings_muted, active, theme),
+        ),
+    ]);
+    if !diagnostics.is_empty() {
+        spans.push(Span::styled(
+            diagnostics.to_string(),
+            extension_role_style(theme.extension_diagnostic, active, theme),
+        ));
+    }
+    if !conflicts.is_empty() {
+        spans.push(Span::styled(
+            conflicts.to_string(),
+            extension_role_style(theme.extension_conflict, active, theme),
+        ));
+    }
+    Line::from(truncate_spans_to_width(spans, width))
+}
+
+fn extension_toggle_color(value: bool, theme: &Theme) -> Color {
+    if value {
+        theme.extension_enabled
+    } else {
+        theme.extension_disabled
+    }
+}
+
+fn extension_kind_color(item: &crate::app::ExtensionManagementItem, theme: &Theme) -> Color {
+    match item.target {
+        crate::app::ExtensionManagementTarget::Package => theme.extension_package,
+        crate::app::ExtensionManagementTarget::Extension => theme.extension_runtime,
+        crate::app::ExtensionManagementTarget::Contribution => theme.extension_contribution,
+    }
 }
 
 fn extension_management_tabs_line(state: &TuiState, width: usize, theme: &Theme) -> Line<'static> {
@@ -2452,23 +2553,54 @@ fn extension_management_selected_line(
     } else {
         format!(" • {} conflict", item.conflicts.len())
     };
-    let text = format!(
-        "Selected: P:{} G:{}{} • [{}] {} — {} • {} • {}{}{}",
-        extension_on_off(item.project_enabled),
-        extension_on_off(item.global_enabled),
-        extension_override_badges(item),
-        extension_management_kind_label(item),
-        item.id,
-        item.title,
-        item.health,
-        item.permission,
-        diagnostics,
-        conflicts,
-    );
-    Line::styled(
-        truncate_with_ellipsis(&text, width),
-        Style::default().fg(theme.muted),
-    )
+    let overrides = extension_override_badges(item);
+    let mut spans = vec![
+        Span::styled("Selected: ", settings_muted_style(theme)),
+        Span::styled("P:", settings_muted_style(theme)),
+        Span::styled(
+            extension_on_off(item.project_enabled),
+            Style::default().fg(extension_toggle_color(item.project_enabled, theme)),
+        ),
+        Span::styled(" G:", settings_muted_style(theme)),
+        Span::styled(
+            extension_on_off(item.global_enabled),
+            Style::default().fg(extension_toggle_color(item.global_enabled, theme)),
+        ),
+    ];
+    if !overrides.is_empty() {
+        spans.push(Span::styled(
+            overrides,
+            Style::default().fg(theme.extension_override),
+        ));
+    }
+    spans.extend([
+        Span::styled(" • [", settings_muted_style(theme)),
+        Span::styled(
+            extension_management_kind_label(item),
+            Style::default().fg(extension_kind_color(item, theme)),
+        ),
+        Span::styled("] ", settings_muted_style(theme)),
+        Span::styled(item.id.clone(), settings_text_style(theme)),
+        Span::styled(" — ", settings_muted_style(theme)),
+        Span::styled(item.title.clone(), settings_text_style(theme)),
+        Span::styled(" • ", settings_muted_style(theme)),
+        Span::styled(item.health.clone(), settings_muted_style(theme)),
+        Span::styled(" • ", settings_muted_style(theme)),
+        Span::styled(item.permission.clone(), settings_muted_style(theme)),
+    ]);
+    if !diagnostics.is_empty() {
+        spans.push(Span::styled(
+            diagnostics,
+            Style::default().fg(theme.extension_diagnostic),
+        ));
+    }
+    if !conflicts.is_empty() {
+        spans.push(Span::styled(
+            conflicts,
+            Style::default().fg(theme.extension_conflict),
+        ));
+    }
+    Line::from(truncate_spans_to_width(spans, width))
 }
 
 fn extension_management_kind_label(item: &crate::app::ExtensionManagementItem) -> String {
@@ -2834,7 +2966,7 @@ fn render_settings_overlay(
     frame.render_widget(Clear, overlay);
 
     let block = Block::default()
-        .title(Span::styled(" Settings ", theme.title))
+        .title(Span::styled(" Settings ", settings_title_style(theme)))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.focused_border))
         .style(panel_style(theme));
@@ -2871,7 +3003,7 @@ fn render_settings_menu(
     let items = settings.menu_items();
     let mut lines = vec![Line::styled(
         "Choose a settings page:",
-        Style::default().fg(theme.muted),
+        settings_muted_style(theme),
     )];
     lines.push(Line::from(""));
     lines.extend(items.iter().enumerate().map(|(index, item)| {
@@ -2906,7 +3038,7 @@ fn render_settings_menu(
             SettingsPage::Menu => String::new(),
         };
         let text = format!("{marker} {}  {}", item.label(), detail);
-        Line::styled(text, item_style(active, false, theme))
+        Line::styled(text, settings_item_style(active, false, theme))
     }));
 
     frame.render_widget(
@@ -2955,7 +3087,7 @@ fn render_model_settings(
     if settings.models.is_empty() {
         lines.push(Line::styled(
             "Loading model catalog…",
-            Style::default().fg(theme.muted),
+            settings_muted_style(theme),
         ));
     } else if filtered_indices.is_empty() {
         lines.push(Line::styled(
@@ -2976,7 +3108,7 @@ fn render_model_settings(
                     let active = *model_index == settings.model_cursor;
                     let selected = model.id == settings.selected_model;
                     let marker = selection_marker(active, selected);
-                    let style = item_style(active, selected, theme);
+                    let style = settings_item_style(active, selected, theme);
                     Some(Line::styled(
                         format!("{marker} {}", model.display_name),
                         style,
@@ -3004,7 +3136,7 @@ fn model_search_line(settings: &SettingsState, theme: &Theme) -> Line<'static> {
         ]);
     }
     if settings.model_search.is_empty() {
-        Line::styled("Press / to search models", Style::default().fg(theme.muted))
+        Line::styled("Press / to search models", settings_muted_style(theme))
     } else {
         Line::from(vec![
             Span::styled("Search: ", Style::default().fg(theme.muted)),
@@ -3742,6 +3874,62 @@ fn elevated_style(theme: &Theme) -> Style {
     Style::default().fg(theme.fg).bg(theme.elevated_bg)
 }
 
+fn settings_title_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.settings_title)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn settings_text_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.settings_fg).bg(theme.panel_bg)
+}
+
+fn settings_muted_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.settings_muted).bg(theme.panel_bg)
+}
+
+fn settings_active_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.settings_active)
+        .bg(theme.selection_bg)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn extension_role_style(color: Color, active: bool, theme: &Theme) -> Style {
+    let style = Style::default().fg(color);
+    if active {
+        style.bg(theme.selection_bg).add_modifier(Modifier::BOLD)
+    } else {
+        style
+    }
+}
+
+fn truncate_spans_to_width(spans: Vec<Span<'static>>, width: usize) -> Vec<Span<'static>> {
+    if width == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut remaining = width;
+    for span in spans {
+        if remaining == 0 {
+            break;
+        }
+        let text = span.content.as_ref();
+        let text_width = text.width();
+        if text_width <= remaining {
+            remaining = remaining.saturating_sub(text_width);
+            out.push(span);
+        } else {
+            out.push(Span::styled(
+                truncate_with_ellipsis(text, remaining),
+                span.style,
+            ));
+            break;
+        }
+    }
+    out
+}
+
 fn section_border_style(active: bool, theme: &Theme) -> Style {
     let color = if active {
         theme.focused_border
@@ -3778,6 +3966,21 @@ fn item_style(active: bool, selected: bool, theme: &Theme) -> Style {
     };
     if active {
         style = style.bg(theme.selection_bg).add_modifier(Modifier::BOLD);
+    }
+    style
+}
+
+fn settings_item_style(active: bool, selected: bool, theme: &Theme) -> Style {
+    let mut style = if selected {
+        Style::default()
+            .fg(theme.settings_changed)
+            .bg(theme.panel_bg)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        settings_text_style(theme)
+    };
+    if active {
+        style = settings_active_style(theme);
     }
     style
 }
@@ -4157,6 +4360,94 @@ mod tests {
         assert!(text.contains("P:OFF G:ON OVR:G"));
         assert!(text.contains("diag"));
         assert!(text.contains("conflict"));
+    }
+
+    #[test]
+    fn extension_management_lines_use_theme_roles() {
+        let mut state = TuiState::new();
+        state.set_extension_management_items(vec![ExtensionManagementItem {
+            target: ExtensionManagementTarget::Contribution,
+            id: "ui.processes".into(),
+            title: "Proc".into(),
+            family: "ui".into(),
+            scope: "project".into(),
+            health: "Healthy".into(),
+            state: "Active".into(),
+            permission: "ok".into(),
+            provenance: "pkg ext".into(),
+            diagnostics: vec!["invalid state shape".into()],
+            conflicts: vec!["slot conflict".into()],
+            entry_key: Some("ui:pkg:ui.processes:/tmp".into()),
+            canonical_id: Some("ui.processes".into()),
+            global_override: true,
+            project_override: false,
+            global_enabled: true,
+            project_enabled: false,
+        }]);
+        state
+            .extension_management
+            .set_view(ExtensionManagementView::Registry);
+        let theme = Theme {
+            extension_enabled: Color::Blue,
+            extension_disabled: Color::Red,
+            extension_contribution: Color::Green,
+            extension_diagnostic: Color::Yellow,
+            extension_conflict: Color::Magenta,
+            extension_override: Color::Cyan,
+            settings_active: Color::White,
+            ..Theme::default()
+        };
+
+        let lines = extension_management_lines(&state, 120, 10, &theme);
+        let row = lines
+            .iter()
+            .find(|line| plain_line(line).contains("ui.processes"))
+            .unwrap_or_else(|| panic!("missing extension row"));
+
+        assert!(row
+            .spans
+            .iter()
+            .any(|span| span.content.as_ref() == "OFF" && span.style.fg == Some(Color::Red)));
+        assert!(row
+            .spans
+            .iter()
+            .any(|span| span.content.as_ref() == "ON" && span.style.fg == Some(Color::Blue)));
+        assert!(row.spans.iter().any(|span| {
+            span.content.as_ref().contains("project ui") && span.style.fg == Some(Color::Green)
+        }));
+        assert!(row.spans.iter().any(|span| {
+            span.content.as_ref().contains("OVR:G") && span.style.fg == Some(Color::Cyan)
+        }));
+        assert!(row.spans.iter().any(|span| {
+            span.content.as_ref().contains("diag") && span.style.fg == Some(Color::Yellow)
+        }));
+        assert!(row.spans.iter().any(|span| {
+            span.content.as_ref().contains("conflict") && span.style.fg == Some(Color::Magenta)
+        }));
+    }
+
+    #[test]
+    fn settings_role_helpers_use_settings_theme_fields() {
+        let theme = Theme {
+            settings_title: Color::Blue,
+            settings_fg: Color::Green,
+            settings_muted: Color::Yellow,
+            settings_active: Color::Magenta,
+            settings_changed: Color::Cyan,
+            ..Theme::default()
+        };
+
+        assert_eq!(settings_title_style(&theme).fg, Some(Color::Blue));
+        assert_eq!(settings_text_style(&theme).fg, Some(Color::Green));
+        assert_eq!(settings_muted_style(&theme).fg, Some(Color::Yellow));
+        assert_eq!(
+            settings_item_style(true, false, &theme).fg,
+            Some(Color::Magenta)
+        );
+        assert_eq!(
+            settings_item_style(false, true, &theme).fg,
+            Some(Color::Cyan)
+        );
     }
 
     #[test]
