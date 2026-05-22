@@ -41,35 +41,35 @@ impl MarkdownStyles {
         Self {
             base,
             heading: Style::default()
-                .fg(theme.tool_border)
+                .fg(theme.markdown_heading)
                 .add_modifier(Modifier::BOLD),
             heading_secondary: Style::default()
-                .fg(theme.tool_border)
+                .fg(theme.markdown_heading_secondary)
                 .add_modifier(Modifier::BOLD),
             emphasis: Style::default().add_modifier(Modifier::ITALIC),
             strong: Style::default().add_modifier(Modifier::BOLD),
             strike: Style::default().add_modifier(Modifier::CROSSED_OUT),
-            code: base.fg(theme.fg),
+            code: base.fg(theme.markdown_fg).bg(theme.markdown_code_bg),
             code_border: Style::default()
-                .fg(theme.focused_border)
+                .fg(theme.markdown_code_border)
                 .add_modifier(Modifier::BOLD),
-            code_line_number: Style::default().fg(theme.muted),
+            code_line_number: Style::default().fg(theme.markdown_code_line_number),
             link: base
-                .fg(theme.focused_border)
+                .fg(theme.markdown_link)
                 .add_modifier(Modifier::UNDERLINED),
-            muted: Style::default().fg(theme.muted),
+            muted: Style::default().fg(theme.markdown_muted),
             quote: Style::default()
-                .fg(theme.muted)
+                .fg(theme.markdown_quote)
                 .add_modifier(Modifier::ITALIC),
-            list_marker: Style::default().fg(theme.focused_border),
+            list_marker: Style::default().fg(theme.markdown_list_marker),
             task_done_marker: Style::default()
-                .fg(theme.assistant_border)
+                .fg(theme.success)
                 .add_modifier(Modifier::BOLD),
             task_pending_marker: Style::default()
-                .fg(theme.tool_border)
+                .fg(theme.warning.fg.unwrap_or(theme.markdown_marker))
                 .add_modifier(Modifier::BOLD),
             table_border: Style::default()
-                .fg(theme.focused_border)
+                .fg(theme.markdown_table_border)
                 .add_modifier(Modifier::BOLD),
         }
     }
@@ -1522,8 +1522,11 @@ mod tests {
         let theme = Theme::default();
         let styles = MarkdownStyles::new(Style::default(), &theme);
 
-        assert_eq!(styles.heading.fg, Some(theme.tool_border));
-        assert_eq!(styles.heading_secondary.fg, Some(theme.tool_border));
+        assert_eq!(styles.heading.fg, Some(theme.markdown_heading));
+        assert_eq!(
+            styles.heading_secondary.fg,
+            Some(theme.markdown_heading_secondary)
+        );
         assert!(styles.heading.add_modifier.contains(Modifier::BOLD));
         assert!(styles
             .heading_secondary
@@ -1534,6 +1537,46 @@ mod tests {
             .heading_secondary
             .add_modifier
             .contains(Modifier::UNDERLINED));
+    }
+
+    #[test]
+    fn markdown_component_roles_control_visible_spans() {
+        let theme = Theme {
+            markdown_heading: Color::Blue,
+            markdown_heading_secondary: Color::Magenta,
+            markdown_link: Color::Green,
+            markdown_list_marker: Color::Yellow,
+            markdown_code_border: Color::Red,
+            markdown_code_line_number: Color::Cyan,
+            ..Theme::default()
+        };
+        let lines = render_markdown_lines(
+            "## Heading\n\n- [Oino](https://example.invalid)\n\n```rust\nfn main() {}\n```",
+            80,
+            Style::default(),
+            &theme,
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("Heading") && span.style.fg == Some(Color::Magenta)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("Oino") && span.style.fg == Some(Color::Green)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains('•') && span.style.fg == Some(Color::Yellow)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains('╭') && span.style.fg == Some(Color::Red)
+            })
+        }));
     }
 
     #[test]
@@ -1575,12 +1618,12 @@ mod tests {
             assert!(!text.starts_with("• "));
             assert!(line.spans.iter().any(|span| {
                 span.content.as_ref().contains('▌')
-                    && span.style.fg == Some(theme.tool_border)
+                    && span.style.fg == Some(theme.markdown_heading_secondary)
                     && span.style.add_modifier.contains(Modifier::BOLD)
             }));
             assert!(line.spans.iter().any(|span| {
                 span.content.as_ref().contains("heading")
-                    && span.style.fg == Some(theme.tool_border)
+                    && span.style.fg == Some(theme.markdown_heading_secondary)
                     && span.style.add_modifier.contains(Modifier::BOLD)
             }));
         }

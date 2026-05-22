@@ -547,7 +547,7 @@ fn agentic_message_lines(
             width,
             initial_prefix,
             subsequent_prefix,
-            Style::default().fg(theme.fg),
+            user_text_style(theme),
         );
     }
     if message.role.starts_with("tool:") {
@@ -578,7 +578,7 @@ fn agentic_message_lines(
             Span::styled(format!("{label} "), Style::default().fg(theme.muted)),
         ]),
         Line::from("  "),
-        Style::default().fg(theme.muted),
+        system_text_style(theme),
     )
 }
 
@@ -597,9 +597,7 @@ fn agentic_assistant_lines(
             width,
             Line::from(Span::styled("• ", Style::default().fg(theme.muted))),
             Line::from("  "),
-            Style::default()
-                .fg(theme.muted)
-                .add_modifier(Modifier::ITALIC),
+            thinking_text_style(theme),
         ));
     }
     if message.content != "<empty>" {
@@ -608,7 +606,7 @@ fn agentic_assistant_lines(
             width,
             Line::from(Span::styled("• ", Style::default().fg(theme.muted))),
             Line::from("  "),
-            Style::default().fg(theme.fg),
+            assistant_text_style(theme),
             theme,
         ));
     }
@@ -634,7 +632,7 @@ fn agentic_running_tool_lines(
             Span::styled("• ", Style::default().fg(theme.muted)),
             Span::styled(
                 "Exploring",
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+                tool_text_style(theme).add_modifier(Modifier::BOLD),
             ),
         ])];
         lines.extend(prefixed_text_lines(
@@ -642,7 +640,7 @@ fn agentic_running_tool_lines(
             width,
             Line::from(Span::styled("  └ ", Style::default().fg(theme.muted))),
             Line::from("    "),
-            Style::default().fg(theme.fg),
+            tool_text_style(theme),
         ));
         return lines;
     }
@@ -654,11 +652,11 @@ fn agentic_running_tool_lines(
             Span::styled("• ", Style::default().fg(theme.muted)),
             Span::styled(
                 "Running ",
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+                tool_text_style(theme).add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from("  "),
-        Style::default().fg(theme.fg),
+        tool_text_style(theme),
     )
 }
 
@@ -678,7 +676,7 @@ fn agentic_tool_result_lines(
         theme.error
     } else {
         Style::default()
-            .fg(theme.assistant_border)
+            .fg(theme.tool_success)
             .add_modifier(Modifier::BOLD)
     };
     if tool_mode == CollapseMode::Collapse {
@@ -698,7 +696,7 @@ fn agentic_tool_result_lines(
             Span::styled("• ", bullet_style),
             Span::styled(
                 "Explored",
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+                tool_text_style(theme).add_modifier(Modifier::BOLD),
             ),
         ])];
         lines.extend(prefixed_text_lines(
@@ -706,7 +704,7 @@ fn agentic_tool_result_lines(
             width,
             Line::from(Span::styled("  └ ", Style::default().fg(theme.muted))),
             Line::from("    "),
-            Style::default().fg(theme.fg),
+            tool_text_style(theme),
         ));
         lines
     } else {
@@ -718,11 +716,11 @@ fn agentic_tool_result_lines(
                 Span::styled("• ", bullet_style),
                 Span::styled(
                     format!("{title} "),
-                    Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+                    tool_text_style(theme).add_modifier(Modifier::BOLD),
                 ),
             ]),
             Line::from("  "),
-            Style::default().fg(theme.fg),
+            tool_text_style(theme),
         )
     };
 
@@ -735,7 +733,7 @@ fn agentic_tool_result_lines(
             if message.is_error {
                 theme.error
             } else {
-                Style::default().fg(theme.muted)
+                Style::default().fg(theme.tool_output)
             },
         ));
     }
@@ -762,7 +760,7 @@ fn agentic_collapsed_tool_result_line(
         Span::styled("• ", bullet_style),
         Span::styled(
             format!("{title} "),
-            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            tool_text_style(theme).add_modifier(Modifier::BOLD),
         ),
     ]);
     let summary_width = width.saturating_sub(line_width(&line)).max(1);
@@ -774,7 +772,7 @@ fn agentic_collapsed_tool_result_line(
         if message.is_error {
             theme.error
         } else {
-            Style::default().fg(theme.fg)
+            tool_text_style(theme)
         },
     ));
     line
@@ -790,7 +788,7 @@ fn chat_collapsed_tool_result_line(
     let icon_style = if message.is_error {
         theme.error
     } else {
-        Style::default().fg(theme.assistant_border)
+        Style::default().fg(theme.tool_success)
     };
     let display_name = display_tool_name(tool_name);
     let mut line = Line::from(vec![
@@ -799,14 +797,14 @@ fn chat_collapsed_tool_result_line(
     ]);
     let detail = collapsed_tool_detail(message);
     if !detail.is_empty() {
-        line.push_span(Span::styled(" · ", Style::default().fg(theme.muted)));
+        line.push_span(Span::styled(" · ", tool_muted_style(theme)));
         let detail_width = width.saturating_sub(line_width(&line)).max(1);
         line.push_span(Span::styled(
             truncate_to_width(&detail, detail_width),
             if message.is_error {
                 theme.error
             } else {
-                Style::default().fg(theme.muted)
+                tool_muted_style(theme)
             },
         ));
     }
@@ -873,7 +871,7 @@ fn minimal_message_lines(
             width,
             initial_prefix,
             subsequent_prefix,
-            Style::default().fg(theme.fg),
+            user_text_style(theme),
         );
     }
     if message.is_assistant() {
@@ -896,7 +894,7 @@ fn minimal_message_lines(
         width,
         Line::from("  "),
         Line::from("  "),
-        Style::default().fg(theme.muted),
+        system_text_style(theme),
     )
 }
 
@@ -913,9 +911,9 @@ fn minimal_assistant_lines(
         lines.extend(prefixed_text_lines(
             &thinking,
             width,
-            Line::from(Span::styled("  ◌ ", Style::default().fg(theme.muted))),
+            Line::from(Span::styled("  ◌ ", thinking_muted_style(theme))),
             Line::from("    "),
-            Style::default().fg(theme.muted),
+            thinking_muted_style(theme),
         ));
     }
     if message.content != "<empty>" {
@@ -923,7 +921,7 @@ fn minimal_assistant_lines(
         lines.extend(render_markdown_lines(
             &message.content,
             width,
-            Style::default().fg(theme.fg),
+            assistant_text_style(theme),
             theme,
         ));
         lines.push(Line::from(""));
@@ -936,9 +934,9 @@ fn minimal_assistant_lines(
             Span::styled("  • ", Style::default().fg(theme.tool_border)),
             Span::styled(
                 tool_compact_summary(&call.name, Some(call)),
-                Style::default().fg(theme.fg),
+                tool_text_style(theme),
             ),
-            Span::styled(" · running", Style::default().fg(theme.muted)),
+            Span::styled(" · running", Style::default().fg(theme.tool_running)),
         ]));
     }
     lines
@@ -957,7 +955,7 @@ fn minimal_tool_result_lines(
     let icon_style = if message.is_error {
         theme.error
     } else {
-        Style::default().fg(theme.assistant_border)
+        Style::default().fg(theme.tool_success)
     };
     let metric = content_metric(&message.content);
     let mut line = Line::from(vec![
@@ -969,28 +967,87 @@ fn minimal_tool_result_lines(
     ]);
     let summary = tool_argument_summary(tool_name, call);
     if !summary.is_empty() {
-        line.push_span(Span::styled(
-            format!(" {summary}"),
-            Style::default().fg(theme.muted),
-        ));
+        line.push_span(Span::styled(format!(" {summary}"), tool_muted_style(theme)));
     }
     if message.is_error {
         if let Some(summary) = concise_error_summary(&message.content) {
-            line.push_span(Span::styled(" · ", Style::default().fg(theme.muted)));
+            line.push_span(Span::styled(" · ", tool_muted_style(theme)));
             line.push_span(Span::styled(summary, theme.error));
         } else {
             line.push_span(Span::styled(
                 format!(" · {metric}"),
-                Style::default().fg(theme.muted),
+                tool_muted_style(theme),
             ));
         }
     } else {
         line.push_span(Span::styled(
             format!(" · {metric}"),
-            Style::default().fg(theme.muted),
+            tool_muted_style(theme),
         ));
     }
     vec![line]
+}
+
+fn message_text_style(message: &MessageView, theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.message_fg_for_role(&message.role, message.is_error))
+        .bg(theme.message_bg_for_role(&message.role, message.is_error))
+}
+
+fn user_text_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.message_user_fg)
+        .bg(theme.message_user_bg)
+}
+
+fn assistant_text_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.message_assistant_fg)
+        .bg(theme.message_assistant_bg)
+}
+
+fn system_text_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.message_system_fg)
+        .bg(theme.message_system_bg)
+}
+
+fn tool_text_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.tool_fg).bg(theme.tool_bg)
+}
+
+fn tool_muted_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.tool_muted).bg(theme.tool_bg)
+}
+
+fn thinking_text_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.thinking_fg)
+        .bg(theme.thinking_bg)
+        .add_modifier(Modifier::ITALIC)
+}
+
+fn thinking_muted_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.thinking_muted)
+        .bg(theme.thinking_bg)
+}
+
+fn resource_title_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.resource_title)
+        .bg(theme.resource_bg)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn resource_text_style(theme: &Theme) -> Style {
+    Style::default().fg(theme.resource_fg).bg(theme.resource_bg)
+}
+
+fn resource_muted_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.resource_muted)
+        .bg(theme.resource_bg)
 }
 
 fn prefixed_text_lines(
@@ -1333,15 +1390,10 @@ fn resource_user_lines(
     let prompt_count = resources.prompts.len();
     let skill_count = resources.skills.len();
     lines.push(Line::from(vec![
-        Span::styled(
-            "Attached resources",
-            Style::default()
-                .fg(theme.focused_border)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled("Attached resources", resource_title_style(theme)),
         Span::styled(
             format!(" · {} prompt(s), {} skill(s)", prompt_count, skill_count),
-            Style::default().fg(theme.muted),
+            resource_muted_style(theme),
         ),
     ]));
     for prompt in &resources.prompts {
@@ -1349,9 +1401,7 @@ fn resource_user_lines(
             "Prompt",
             prompt,
             width,
-            Style::default()
-                .fg(theme.focused_border)
-                .add_modifier(Modifier::BOLD),
+            resource_title_style(theme),
             theme,
         ));
     }
@@ -1361,7 +1411,8 @@ fn resource_user_lines(
             skill,
             width,
             Style::default()
-                .fg(theme.tool_border)
+                .fg(theme.resource_badge)
+                .bg(theme.resource_bg)
                 .add_modifier(Modifier::BOLD),
             theme,
         ));
@@ -1372,14 +1423,12 @@ fn resource_user_lines(
         }
         lines.push(Line::from(Span::styled(
             "Request",
-            Style::default()
-                .fg(theme.muted)
-                .add_modifier(Modifier::BOLD),
+            resource_muted_style(theme).add_modifier(Modifier::BOLD),
         )));
         lines.extend(plain_wrapped_lines(
             &resources.user_request,
             width,
-            Style::default().fg(theme.fg),
+            resource_text_style(theme),
         ));
     }
     lines
@@ -1404,17 +1453,17 @@ fn resource_attachment_lines(
             Span::styled(label, kind_style),
             Span::styled(
                 attachment.name.clone(),
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+                resource_text_style(theme).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(source_prefix, Style::default().fg(theme.muted)),
-            Span::styled(attachment.source.clone(), Style::default().fg(theme.muted)),
+            Span::styled(source_prefix, resource_muted_style(theme)),
+            Span::styled(attachment.source.clone(), resource_muted_style(theme)),
         ]));
     } else {
         lines.push(Line::from(vec![
             Span::styled(label, kind_style),
             Span::styled(
                 attachment.name.clone(),
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+                resource_text_style(theme).add_modifier(Modifier::BOLD),
             ),
         ]));
         let source_indent = "  source ";
@@ -1423,8 +1472,8 @@ fn resource_attachment_lines(
             width.saturating_sub(source_indent.width()).max(1),
             |segment| {
                 lines.push(Line::from(vec![
-                    Span::styled(source_indent, Style::default().fg(theme.muted)),
-                    Span::styled(segment.to_string(), Style::default().fg(theme.muted)),
+                    Span::styled(source_indent, resource_muted_style(theme)),
+                    Span::styled(segment.to_string(), resource_muted_style(theme)),
                 ]));
             },
         );
@@ -1444,9 +1493,9 @@ fn message_content_lines(
         }
     }
     if message.is_assistant() && content != "<empty>" {
-        render_markdown_lines(content, width, Style::default().fg(theme.fg), theme)
+        render_markdown_lines(content, width, assistant_text_style(theme), theme)
     } else {
-        plain_wrapped_lines(content, width, Style::default().fg(theme.fg))
+        plain_wrapped_lines(content, width, message_text_style(message, theme))
     }
 }
 
@@ -1564,7 +1613,7 @@ fn bubble_lines(
             left_pad,
             inner_width,
             border_style,
-            vec![Span::styled("◌", Style::default().fg(theme.muted))],
+            vec![Span::styled("◌", thinking_muted_style(theme))],
         ));
         for line in &thinking_wrapped {
             let text = format!("  {line}");
@@ -1572,7 +1621,7 @@ fn bubble_lines(
                 left_pad,
                 inner_width,
                 border_style,
-                vec![Span::styled(text, Style::default().fg(theme.muted))],
+                vec![Span::styled(text, thinking_text_style(theme))],
             ));
         }
         if message_content != "<empty>" {
@@ -1691,6 +1740,7 @@ fn top_border(label: &str, inner_width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Color;
     use serde_json::json;
 
     fn plain(line: &Line<'static>) -> String {
@@ -1799,6 +1849,77 @@ mod tests {
             );
             assert!(!rendered.contains("`code`"), "style {style:?}: {rendered}");
         }
+    }
+
+    #[test]
+    fn transcript_component_roles_control_visible_spans() {
+        let theme = Theme {
+            message_user_fg: Color::Blue,
+            message_assistant_fg: Color::Magenta,
+            tool_success: Color::Green,
+            tool_muted: Color::Cyan,
+            thinking_muted: Color::Yellow,
+            ..Theme::default()
+        };
+
+        let messages = vec![
+            user_text("hello"),
+            MessageView {
+                id: oino_types::OinoId::from_u128(33),
+                role: "assistant".into(),
+                title: Some("test/model".into()),
+                content: "final answer".into(),
+                thinking: Some("Need answer clearly".into()),
+                thinking_redacted: false,
+                tool_call_id: None,
+                tool_calls: Vec::new(),
+                is_error: false,
+            },
+            assistant_tool_calls(vec![ToolCallView {
+                id: oino_types::OinoId::from_u128(7),
+                name: "read".into(),
+                arguments: json!({ "path": "README.md" }),
+            }]),
+            tool_result(24, 7, "read", "ok", false),
+        ];
+
+        let lines = transcript_lines(
+            &messages,
+            None,
+            120,
+            CollapseMode::Full,
+            CollapseMode::Collapse,
+            ChatStyle::Minimal,
+            &theme,
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("hello") && span.style.fg == Some(Color::Blue)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("final answer")
+                    && span.style.fg == Some(Color::Magenta)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("Need answer clearly")
+                    && span.style.fg == Some(Color::Yellow)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains('✓') && span.style.fg == Some(Color::Green)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("2 chars") && span.style.fg == Some(Color::Cyan)
+            })
+        }));
     }
 
     #[test]

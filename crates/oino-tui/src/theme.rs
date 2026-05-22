@@ -31,6 +31,45 @@ pub struct Theme {
     pub footer: Style,
     pub working: Style,
     pub title: Style,
+    pub message_user_fg: Color,
+    pub message_user_bg: Color,
+    pub message_assistant_fg: Color,
+    pub message_assistant_bg: Color,
+    pub message_system_fg: Color,
+    pub message_system_bg: Color,
+    pub message_error_bg: Color,
+    pub tool_fg: Color,
+    pub tool_muted: Color,
+    pub tool_bg: Color,
+    pub tool_output: Color,
+    pub tool_running: Color,
+    pub tool_success: Color,
+    pub thinking_fg: Color,
+    pub thinking_muted: Color,
+    pub thinking_bg: Color,
+    pub thinking_border: Color,
+    pub thinking_live: Color,
+    pub thinking_collapsed: Color,
+    pub resource_title: Color,
+    pub resource_fg: Color,
+    pub resource_muted: Color,
+    pub resource_bg: Color,
+    pub resource_border: Color,
+    pub resource_badge: Color,
+    pub markdown_fg: Color,
+    pub markdown_heading: Color,
+    pub markdown_heading_secondary: Color,
+    pub markdown_link: Color,
+    pub markdown_link_url: Color,
+    pub markdown_marker: Color,
+    pub markdown_muted: Color,
+    pub markdown_quote: Color,
+    pub markdown_quote_border: Color,
+    pub markdown_list_marker: Color,
+    pub markdown_table_border: Color,
+    pub markdown_code_bg: Color,
+    pub markdown_code_border: Color,
+    pub markdown_code_line_number: Color,
 }
 
 impl Default for Theme {
@@ -62,6 +101,45 @@ impl Default for Theme {
             title: Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
+            message_user_fg: Color::Reset,
+            message_user_bg: Color::Reset,
+            message_assistant_fg: Color::Reset,
+            message_assistant_bg: Color::Reset,
+            message_system_fg: Color::DarkGray,
+            message_system_bg: Color::Reset,
+            message_error_bg: Color::Reset,
+            tool_fg: Color::Reset,
+            tool_muted: Color::DarkGray,
+            tool_bg: Color::Reset,
+            tool_output: Color::DarkGray,
+            tool_running: Color::Yellow,
+            tool_success: Color::Green,
+            thinking_fg: Color::DarkGray,
+            thinking_muted: Color::DarkGray,
+            thinking_bg: Color::Reset,
+            thinking_border: Color::DarkGray,
+            thinking_live: Color::Yellow,
+            thinking_collapsed: Color::DarkGray,
+            resource_title: Color::Cyan,
+            resource_fg: Color::Reset,
+            resource_muted: Color::DarkGray,
+            resource_bg: Color::Reset,
+            resource_border: Color::Cyan,
+            resource_badge: Color::Yellow,
+            markdown_fg: Color::Reset,
+            markdown_heading: Color::Yellow,
+            markdown_heading_secondary: Color::Yellow,
+            markdown_link: Color::Cyan,
+            markdown_link_url: Color::DarkGray,
+            markdown_marker: Color::Cyan,
+            markdown_muted: Color::DarkGray,
+            markdown_quote: Color::DarkGray,
+            markdown_quote_border: Color::Cyan,
+            markdown_list_marker: Color::Cyan,
+            markdown_table_border: Color::Cyan,
+            markdown_code_bg: Color::Reset,
+            markdown_code_border: Color::Cyan,
+            markdown_code_line_number: Color::DarkGray,
         }
     }
 }
@@ -85,6 +163,32 @@ impl Theme {
             _ => self.panel_border,
         };
         Style::default().fg(color)
+    }
+
+    #[must_use]
+    pub fn message_fg_for_role(&self, role: &str, is_error: bool) -> Color {
+        if is_error {
+            return self.error.fg.unwrap_or(self.fg);
+        }
+        match role {
+            "user" => self.message_user_fg,
+            "assistant" => self.message_assistant_fg,
+            role if role.starts_with("tool:") => self.tool_fg,
+            _ => self.message_system_fg,
+        }
+    }
+
+    #[must_use]
+    pub fn message_bg_for_role(&self, role: &str, is_error: bool) -> Color {
+        if is_error {
+            return self.message_error_bg;
+        }
+        match role {
+            "user" => self.message_user_bg,
+            "assistant" => self.message_assistant_bg,
+            role if role.starts_with("tool:") => self.tool_bg,
+            _ => self.message_system_bg,
+        }
     }
 
     #[must_use]
@@ -767,24 +871,53 @@ fn default_raw_theme_tokens() -> BTreeMap<String, String> {
         ("status.warning".into(), "$palette.warning".into()),
         ("status.error".into(), "$palette.error".into()),
         ("message.user.fg".into(), "$palette.text".into()),
+        ("message.user.bg".into(), "default".into()),
         ("message.user.border".into(), "$palette.user".into()),
         ("message.assistant.fg".into(), "$palette.text".into()),
+        ("message.assistant.bg".into(), "default".into()),
         (
             "message.assistant.border".into(),
             "$palette.assistant".into(),
         ),
+        ("message.system.fg".into(), "$palette.muted".into()),
+        ("message.system.bg".into(), "default".into()),
         ("message.error.fg".into(), "$palette.error".into()),
+        ("message.error.bg".into(), "default".into()),
         ("tool.title".into(), "$palette.tool".into()),
         ("tool.fg".into(), "$palette.text".into()),
         ("tool.muted".into(), "$palette.muted".into()),
         ("tool.border".into(), "$palette.tool".into()),
+        ("tool.bg".into(), "default".into()),
         ("tool.running".into(), "$palette.warning".into()),
         ("tool.success".into(), "$palette.success".into()),
         ("tool.error".into(), "$palette.error".into()),
+        ("tool.output".into(), "$palette.muted".into()),
+        ("thinking.fg".into(), "$palette.muted".into()),
+        ("thinking.muted".into(), "$palette.muted".into()),
+        ("thinking.bg".into(), "default".into()),
+        ("thinking.border".into(), "$palette.muted".into()),
+        ("thinking.live".into(), "$palette.warning".into()),
+        ("thinking.collapsed".into(), "$palette.muted".into()),
+        ("resource.title".into(), "$palette.accent".into()),
+        ("resource.fg".into(), "$palette.text".into()),
+        ("resource.muted".into(), "$palette.muted".into()),
+        ("resource.bg".into(), "default".into()),
+        ("resource.border".into(), "$palette.accent".into()),
+        ("resource.badge".into(), "$palette.tool".into()),
         ("markdown.fg".into(), "$palette.text".into()),
         ("markdown.heading".into(), "$palette.tool".into()),
+        ("markdown.heading_secondary".into(), "$palette.tool".into()),
         ("markdown.link".into(), "$palette.accent".into()),
+        ("markdown.link_url".into(), "$palette.muted".into()),
+        ("markdown.marker".into(), "$palette.accent".into()),
+        ("markdown.muted".into(), "$palette.muted".into()),
+        ("markdown.quote".into(), "$palette.muted".into()),
+        ("markdown.quote_border".into(), "$palette.accent".into()),
+        ("markdown.list_marker".into(), "$palette.accent".into()),
+        ("markdown.table_border".into(), "$palette.accent".into()),
+        ("markdown.code_bg".into(), "default".into()),
         ("markdown.code_border".into(), "$palette.accent".into()),
+        ("markdown.code_line_number".into(), "$palette.muted".into()),
         ("extension_surface.bg".into(), "$palette.surface".into()),
         ("extension_surface.fg".into(), "$palette.text".into()),
         ("extension_surface.border".into(), "$palette.muted".into()),
@@ -926,7 +1059,15 @@ fn hex_theme_color(value: &str) -> Option<Color> {
 fn apply_color_token(theme: &mut Theme, token: &str, color: Color) {
     match token {
         "app.bg" => theme.bg = color,
-        "app.fg" | "panel.fg" | "markdown.fg" | "message.assistant.fg" => theme.fg = color,
+        "app.fg" => {
+            theme.fg = color;
+            theme.markdown_fg = color;
+            theme.message_user_fg = color;
+            theme.message_assistant_fg = color;
+            theme.tool_fg = color;
+            theme.resource_fg = color;
+        }
+        "panel.fg" => theme.fg = color,
         "app.border" | "panel.border" => theme.panel_border = color,
         "app.border_focused" | "panel.border_focused" | "composer.border_focused" => {
             theme.focused_border = color;
@@ -945,17 +1086,70 @@ fn apply_color_token(theme: &mut Theme, token: &str, color: Color) {
             theme.muted = color;
             theme.footer = theme.footer.fg(color);
         }
-        "status.working" | "tool.running" => theme.working = theme.working.fg(color),
-        "status.success" | "tool.success" => theme.success = color,
-        "status.warning" => theme.warning = theme.warning.fg(color),
-        "status.error" | "message.error.fg" | "tool.error" => theme.error = theme.error.fg(color),
-        "message.user.border" => theme.user_border = color,
-        "message.assistant.border" => theme.assistant_border = color,
-        "tool.border" | "tool.title" | "markdown.heading" => theme.tool_border = color,
-        "markdown.link" | "markdown.code_border" | "extension_surface.focused_border" => {
-            theme.focused_border = color
+        "status.working" => {
+            theme.working = theme.working.fg(color);
+            theme.thinking_live = color;
         }
+        "status.success" => theme.success = color,
+        "status.warning" => theme.warning = theme.warning.fg(color),
+        "status.error" => theme.error = theme.error.fg(color),
+        "message.user.fg" => theme.message_user_fg = color,
+        "message.user.bg" => theme.message_user_bg = color,
+        "message.user.border" => theme.user_border = color,
+        "message.assistant.fg" => theme.message_assistant_fg = color,
+        "message.assistant.bg" => theme.message_assistant_bg = color,
+        "message.assistant.border" => theme.assistant_border = color,
+        "message.system.fg" => theme.message_system_fg = color,
+        "message.system.bg" => theme.message_system_bg = color,
+        "message.system.border" => theme.panel_border = color,
+        "message.error.fg" => theme.error = theme.error.fg(color),
+        "message.error.bg" => theme.message_error_bg = color,
+        "message.error.border" => theme.error = theme.error.fg(color),
+        "message.muted" => theme.thinking_muted = color,
+        "tool.title" => theme.tool_border = color,
+        "tool.fg" => theme.tool_fg = color,
+        "tool.muted" => theme.tool_muted = color,
+        "tool.border" => theme.tool_border = color,
+        "tool.bg" => theme.tool_bg = color,
+        "tool.running" => {
+            theme.tool_running = color;
+            theme.working = theme.working.fg(color);
+        }
+        "tool.success" => {
+            theme.tool_success = color;
+            theme.success = color;
+        }
+        "tool.error" => theme.error = theme.error.fg(color),
+        "tool.output" => theme.tool_output = color,
+        "thinking.fg" => theme.thinking_fg = color,
+        "thinking.muted" => theme.thinking_muted = color,
+        "thinking.bg" => theme.thinking_bg = color,
+        "thinking.border" => theme.thinking_border = color,
+        "thinking.live" => theme.thinking_live = color,
+        "thinking.collapsed" => theme.thinking_collapsed = color,
+        "resource.title" => theme.resource_title = color,
+        "resource.fg" => theme.resource_fg = color,
+        "resource.muted" => theme.resource_muted = color,
+        "resource.bg" => theme.resource_bg = color,
+        "resource.border" => theme.resource_border = color,
+        "resource.badge" => theme.resource_badge = color,
+        "markdown.fg" => theme.markdown_fg = color,
+        "markdown.heading" => theme.markdown_heading = color,
+        "markdown.heading_secondary" => theme.markdown_heading_secondary = color,
+        "markdown.link" => theme.markdown_link = color,
+        "markdown.link_url" => theme.markdown_link_url = color,
+        "markdown.marker" => theme.markdown_marker = color,
+        "markdown.muted" => theme.markdown_muted = color,
+        "markdown.quote" => theme.markdown_quote = color,
+        "markdown.quote_border" => theme.markdown_quote_border = color,
+        "markdown.list_marker" => theme.markdown_list_marker = color,
+        "markdown.table_border" => theme.markdown_table_border = color,
+        "markdown.code_bg" => theme.markdown_code_bg = color,
+        "markdown.code_border" => theme.markdown_code_border = color,
+        "markdown.code_line_number" => theme.markdown_code_line_number = color,
+        "extension_surface.focused_border" => theme.focused_border = color,
         "extension_surface.border" => theme.panel_border = color,
+        "extension_surface.fg" => theme.fg = color,
         _ => {}
     }
 }
@@ -1203,5 +1397,48 @@ mod tests {
         assert_eq!(theme.panel_bg, Color::Rgb(0x0f, 0x1b, 0x2d));
         assert_eq!(theme.focused_border, Color::Rgb(0x7d, 0xd3, 0xfc));
         assert_eq!(theme.selection_bg, Color::Rgb(0x21, 0x3a, 0x5a));
+    }
+
+    #[test]
+    fn resolved_theme_maps_component_role_tokens() {
+        let mut catalog = ThemeCatalog::builtins();
+        catalog.register(ThemeCatalogEntry::new(
+            ThemeSource {
+                kind: ThemeSourceKind::File,
+                scope: ThemeSourceScope::Project,
+            },
+            ThemeDocument {
+                schema_version: 1,
+                id: "component-roles".into(),
+                display_name: "Component Roles".into(),
+                mode: ThemeMode::Dark,
+                inherits: Some("system".into()),
+                tokens: BTreeMap::from([
+                    ("message.user.fg".into(), "#010203".into()),
+                    ("message.assistant.bg".into(), "#040506".into()),
+                    ("tool.output".into(), "#070809".into()),
+                    ("thinking.fg".into(), "#0a0b0c".into()),
+                    ("resource.title".into(), "#0d0e0f".into()),
+                    ("markdown.heading_secondary".into(), "#101112".into()),
+                    ("markdown.code_bg".into(), "#131415".into()),
+                ]),
+                ..ThemeDocument::default()
+            },
+        ));
+        let mut project = ThemeSettings::default();
+        project.set_active("component-roles");
+        let resolved = resolve_effective_theme(&catalog, &ThemeSettings::default(), &project);
+        let theme = Theme::from_resolved_theme(&resolved);
+
+        assert_eq!(theme.message_user_fg, Color::Rgb(0x01, 0x02, 0x03));
+        assert_eq!(theme.message_assistant_bg, Color::Rgb(0x04, 0x05, 0x06));
+        assert_eq!(theme.tool_output, Color::Rgb(0x07, 0x08, 0x09));
+        assert_eq!(theme.thinking_fg, Color::Rgb(0x0a, 0x0b, 0x0c));
+        assert_eq!(theme.resource_title, Color::Rgb(0x0d, 0x0e, 0x0f));
+        assert_eq!(
+            theme.markdown_heading_secondary,
+            Color::Rgb(0x10, 0x11, 0x12)
+        );
+        assert_eq!(theme.markdown_code_bg, Color::Rgb(0x13, 0x14, 0x15));
     }
 }
