@@ -1510,7 +1510,10 @@ fn render_command_suggestions(
         return;
     }
     let content_capacity = height.saturating_sub(2).max(1) as usize;
-    let width = full_area.width.saturating_sub(4).clamp(24, 72);
+    let width = full_area.width.saturating_sub(4).min(72);
+    if width < 12 {
+        return;
+    }
     let x = full_area.x + full_area.width.saturating_sub(width) / 2;
     let y = composer_area.y.saturating_sub(height);
     let area = Rect {
@@ -1521,62 +1524,79 @@ fn render_command_suggestions(
     };
     frame.render_widget(Clear, area);
 
-    let lines = if suggestions.items.is_empty() {
-        vec![Line::styled(
-            format!("No suggestion matches `{}`", suggestions.query),
-            suggestion_muted_style(theme),
-        )]
-    } else {
-        let range = visible_range(
-            suggestions.selected,
-            suggestions.items.len(),
-            content_capacity,
-        );
-        let start = range.start;
-        suggestions.items[range]
-            .iter()
-            .enumerate()
-            .map(|(offset, item)| {
-                let index = start + offset;
-                let active = index == suggestions.selected;
-                let marker = arrow_marker(active);
-                let style = suggestion_item_style(active, theme);
-                let mut spans = vec![Span::styled(marker.to_string(), style)];
-                if let Some(label) = item.category.label() {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::styled(
-                        label,
-                        command_category_style(item.category, theme),
-                    ));
-                }
-                spans.push(Span::styled(
-                    format!(" {}", item.label),
-                    suggestion_label_style(active, theme),
-                ));
-                spans.push(Span::styled(
-                    format!("  {}", item.summary),
-                    suggestion_muted_style(theme),
-                ));
-                Line::from(spans)
-            })
-            .collect()
-    };
+    let content_width = area.width.saturating_sub(2) as usize;
+    let lines = command_suggestion_lines(suggestions, content_capacity, content_width, theme);
+    let title = truncate_with_ellipsis(
+        &format!(
+            " {} ",
+            command_suggestion_title(suggestions, content_capacity)
+        ),
+        area.width.saturating_sub(2) as usize,
+    );
 
     frame.render_widget(
         Paragraph::new(lines)
             .style(suggestion_panel_style(theme))
             .block(
                 Block::default()
-                    .title(format!(
-                        " {} ",
-                        command_suggestion_title(suggestions, content_capacity)
-                    ))
+                    .title(title)
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(theme.suggestion_border))
                     .style(suggestion_panel_style(theme)),
             ),
         area,
     );
+}
+
+fn command_suggestion_lines(
+    suggestions: &CommandSuggestionsView,
+    content_capacity: usize,
+    content_width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    if suggestions.items.is_empty() {
+        return vec![Line::styled(
+            truncate_with_ellipsis(
+                &format!("No suggestion matches `{}`", suggestions.query),
+                content_width,
+            ),
+            suggestion_muted_style(theme),
+        )];
+    }
+
+    let range = visible_range(
+        suggestions.selected,
+        suggestions.items.len(),
+        content_capacity,
+    );
+    let start = range.start;
+    suggestions.items[range]
+        .iter()
+        .enumerate()
+        .map(|(offset, item)| {
+            let index = start + offset;
+            let active = index == suggestions.selected;
+            let marker = arrow_marker(active);
+            let style = suggestion_item_style(active, theme);
+            let mut spans = vec![Span::styled(marker.to_string(), style)];
+            if let Some(label) = item.category.label() {
+                spans.push(Span::raw(" "));
+                spans.push(Span::styled(
+                    label,
+                    command_category_style(item.category, theme),
+                ));
+            }
+            spans.push(Span::styled(
+                format!(" {}", item.label),
+                suggestion_label_style(active, theme),
+            ));
+            spans.push(Span::styled(
+                format!("  {}", item.summary),
+                suggestion_muted_style(theme),
+            ));
+            Line::from(truncate_spans_to_width(spans, content_width))
+        })
+        .collect()
 }
 
 fn command_suggestion_max_rows(suggestions: &CommandSuggestionsView) -> usize {
@@ -1645,40 +1665,35 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, t
         .constraints([
             Constraint::Length(2),
             Constraint::Min(1),
-            Constraint::Length(1),
+            Constraint::Length(2),
         ])
         .split(inner);
 
-    let option = if state.inspect.loading {
-        Line::from(vec![
-            Span::styled("› ", Style::default().fg(theme.focused_border)),
-            Span::styled(
-                "Full prompt",
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" • loading…", Style::default().fg(theme.muted)),
-        ])
+    let header_width = sections[0].width as usize;
+    let option_status = if state.inspect.loading {
+        " • loading…".to_string()
     } else {
-        Line::from(vec![
+        format!(" • {} tokens", state.inspect.token_count)
+    };
+    let option = Line::from(truncate_spans_to_width(
+        vec![
             Span::styled("› ", Style::default().fg(theme.focused_border)),
             Span::styled(
                 "Full prompt",
                 Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                format!(" • {} tokens", state.inspect.token_count),
-                Style::default().fg(theme.muted),
-            ),
-        ])
-    };
-    let export_hint = state.inspect.export_message.as_deref().map_or_else(
-        || {
-            Line::styled(
-                "Press e to export chat as HTML",
-                Style::default().fg(theme.muted),
-            )
-        },
-        |message| Line::styled(message.to_string(), Style::default().fg(theme.muted)),
+            Span::styled(option_status, Style::default().fg(theme.muted)),
+        ],
+        header_width,
+    ));
+    let export_hint_text = state
+        .inspect
+        .export_message
+        .as_deref()
+        .unwrap_or("Press e to export chat as HTML");
+    let export_hint = Line::styled(
+        truncate_with_ellipsis(export_hint_text, header_width),
+        Style::default().fg(theme.muted),
     );
     frame.render_widget(Paragraph::new(vec![option, export_hint]), sections[0]);
 
@@ -1724,9 +1739,11 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, t
     } else {
         "e export • q/Esc close".into()
     };
-    frame.render_widget(
-        Paragraph::new(Line::styled(footer, Style::default().fg(theme.muted))),
+    render_overlay_footer(
+        frame,
         sections[2],
+        &footer,
+        Style::default().fg(theme.muted),
     );
 }
 
@@ -1747,13 +1764,16 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
     });
     let sections = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(6), Constraint::Length(1)])
+        .constraints([Constraint::Min(5), Constraint::Length(2)])
         .split(inner);
 
     let entries = help_entries(&state.settings.keymap);
     let content_height = list_content_height(sections[0]);
     let content_width = sections[0].width.saturating_sub(2) as usize;
-    let mut lines = vec![help_search_line(state, theme), Line::from("")];
+    let mut lines = vec![
+        help_search_line(state, content_width, theme),
+        Line::from(""),
+    ];
     let entries_height = content_height.saturating_sub(lines.len()).max(1);
     let filtered_indices = state.filtered_help_indices();
     let max_scroll = filtered_indices.len().saturating_sub(entries_height);
@@ -1792,15 +1812,18 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
             )
         }
     } else {
-        format!(
-            " Oino Help {} match{} for `{}` ",
-            filtered_indices.len(),
-            if filtered_indices.len() == 1 {
-                ""
-            } else {
-                "es"
-            },
-            state.help_search
+        truncate_with_ellipsis(
+            &format!(
+                " Oino Help {} match{} for `{}` ",
+                filtered_indices.len(),
+                if filtered_indices.len() == 1 {
+                    ""
+                } else {
+                    "es"
+                },
+                state.help_search
+            ),
+            content_width,
         )
     };
     frame.render_widget(
@@ -1822,27 +1845,33 @@ fn render_help_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, them
     } else {
         "↑/↓ or j/k scroll • / search • PgUp/PgDn page • Home/End jump • Esc/q close"
     };
-    frame.render_widget(
-        Paragraph::new(truncate_to_width(controls, sections[1].width as usize)).style(theme.footer),
-        sections[1],
-    );
+    render_overlay_footer(frame, sections[1], controls, theme.footer);
 }
 
-fn help_search_line(state: &TuiState, theme: &Theme) -> Line<'static> {
+fn help_search_line(state: &TuiState, width: usize, theme: &Theme) -> Line<'static> {
     if state.help_search_active {
-        return Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.focused_border)),
-            Span::raw(state.help_search.clone()),
-            Span::styled("█", Style::default().fg(theme.focused_border)),
-        ]);
+        return Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", Style::default().fg(theme.focused_border)),
+                Span::raw(state.help_search.clone()),
+                Span::styled("█", Style::default().fg(theme.focused_border)),
+            ],
+            width,
+        ));
     }
     if state.help_search.is_empty() {
-        Line::styled("Press / to search help", Style::default().fg(theme.muted))
+        Line::styled(
+            truncate_with_ellipsis("Press / to search help", width),
+            Style::default().fg(theme.muted),
+        )
     } else {
-        Line::from(vec![
-            Span::styled("Search: ", settings_muted_style(theme)),
-            Span::raw(state.help_search.clone()),
-        ])
+        Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", settings_muted_style(theme)),
+                Span::raw(state.help_search.clone()),
+            ],
+            width,
+        ))
     }
 }
 
@@ -1853,15 +1882,14 @@ fn help_entry_line(entry: &HelpEntry, width: usize, theme: &Theme) -> Line<'stat
             theme.title.add_modifier(Modifier::BOLD),
         ),
         HelpEntry::Item(key, description) => {
-            let separator = " — ";
-            let prefix = format!("{key}{separator}");
-            let prefix_width = UnicodeWidthStr::width(prefix.as_str());
-            let description =
-                truncate_with_ellipsis(description, width.saturating_sub(prefix_width));
-            Line::from(vec![
-                Span::styled(prefix, Style::default().fg(theme.focused_border)),
-                Span::styled(description, Style::default().fg(theme.fg)),
-            ])
+            let prefix = format!("{key} — ");
+            Line::from(truncate_spans_to_width(
+                vec![
+                    Span::styled(prefix, Style::default().fg(theme.focused_border)),
+                    Span::styled(description.clone(), Style::default().fg(theme.fg)),
+                ],
+                width,
+            ))
         }
         HelpEntry::Text(text) => Line::styled(
             truncate_with_ellipsis(text, width),
@@ -1916,10 +1944,7 @@ fn render_send_panel_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
     } else {
         format!("{} • {controls}", state.status)
     };
-    frame.render_widget(
-        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
-        sections[1],
-    );
+    render_overlay_footer(frame, sections[1], &status, theme.footer);
 }
 
 fn send_panel_lines(
@@ -1929,17 +1954,25 @@ fn send_panel_lines(
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let items = state.send_panel_items();
-    let mut lines = vec![Line::from(vec![
-        Span::styled("Input: ", Style::default().fg(theme.muted)),
-        if state.input().trim().is_empty() {
-            Span::styled("empty", theme.placeholder)
-        } else {
-            Span::styled(
-                panel_preview(state.input(), content_width.saturating_sub(7)),
-                Style::default().fg(theme.fg),
-            )
-        },
-    ])];
+    let input_label = "Input: ";
+    let input_value = if state.input().trim().is_empty() {
+        Span::styled("empty", theme.placeholder)
+    } else {
+        Span::styled(
+            panel_preview(
+                state.input(),
+                content_width.saturating_sub(input_label.width()),
+            ),
+            Style::default().fg(theme.fg),
+        )
+    };
+    let mut lines = vec![Line::from(truncate_spans_to_width(
+        vec![
+            Span::styled(input_label, Style::default().fg(theme.muted)),
+            input_value,
+        ],
+        content_width,
+    ))];
     lines.push(Line::from(""));
 
     for section in [
@@ -1954,7 +1987,7 @@ fn send_panel_lines(
             SendPanelSection::Draft => format!("Draft ({count}) — d parks current input"),
         };
         lines.push(Line::styled(
-            heading,
+            truncate_with_ellipsis(&heading, content_width),
             Style::default()
                 .fg(theme.tool_border)
                 .add_modifier(Modifier::BOLD),
@@ -1970,7 +2003,10 @@ fn send_panel_lines(
             lines.push(send_panel_item_line(item, active, content_width, theme));
         }
         if !section_has_items {
-            lines.push(Line::styled("  (empty)", Style::default().fg(theme.muted)));
+            lines.push(Line::styled(
+                truncate_with_ellipsis("  (empty)", content_width),
+                Style::default().fg(theme.muted),
+            ));
         }
         lines.push(Line::from(""));
     }
@@ -1997,13 +2033,16 @@ fn send_panel_item_line(
     let marker = arrow_marker(active);
     let label = format!("{marker} {}. ", item.index.saturating_add(1));
     let preview_width = width.saturating_sub(label.width());
-    Line::from(vec![
-        Span::styled(label, item_style(active, false, theme)),
-        Span::styled(
-            panel_preview(&item.text, preview_width),
-            item_style(active, false, theme),
-        ),
-    ])
+    Line::from(truncate_spans_to_width(
+        vec![
+            Span::styled(label, item_style(active, false, theme)),
+            Span::styled(
+                panel_preview(&item.text, preview_width),
+                item_style(active, false, theme),
+            ),
+        ],
+        width,
+    ))
 }
 
 fn send_panel_selected_line(items: &[SendPanelItem], cursor: usize) -> Option<usize> {
@@ -2104,10 +2143,7 @@ fn render_sessions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
         "↑/↓ select • / search • Enter continue • r reload • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
-    frame.render_widget(
-        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
-        sections[1],
-    );
+    render_overlay_footer(frame, sections[1], &status, theme.footer);
 }
 
 fn sessions_lines(
@@ -2116,19 +2152,22 @@ fn sessions_lines(
     content_height: usize,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let mut lines = vec![sessions_search_line(state, theme), Line::from("")];
+    let mut lines = vec![
+        sessions_search_line(state, content_width, theme),
+        Line::from(""),
+    ];
     let remaining_height = content_height.saturating_sub(lines.len()).max(1);
 
     if state.sessions.loading {
         lines.push(Line::styled(
-            "Loading saved sessions…",
+            truncate_with_ellipsis("Loading saved sessions…", content_width),
             Style::default().fg(theme.muted),
         ));
         return lines;
     }
     if state.sessions.items.is_empty() {
         lines.push(Line::styled(
-            "No saved sessions yet.",
+            truncate_with_ellipsis("No saved sessions yet.", content_width),
             Style::default().fg(theme.muted),
         ));
         lines.push(Line::styled(
@@ -2175,24 +2214,30 @@ fn sessions_lines(
     lines
 }
 
-fn sessions_search_line(state: &TuiState, theme: &Theme) -> Line<'static> {
+fn sessions_search_line(state: &TuiState, width: usize, theme: &Theme) -> Line<'static> {
     if state.sessions.search_active {
-        return Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.focused_border)),
-            Span::raw(state.sessions.search.clone()),
-            Span::styled("█", Style::default().fg(theme.focused_border)),
-        ]);
+        return Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", Style::default().fg(theme.focused_border)),
+                Span::raw(state.sessions.search.clone()),
+                Span::styled("█", Style::default().fg(theme.focused_border)),
+            ],
+            width,
+        ));
     }
     if state.sessions.search.is_empty() {
         Line::styled(
-            "Press / to search sessions",
+            truncate_with_ellipsis("Press / to search sessions", width),
             Style::default().fg(theme.muted),
         )
     } else {
-        Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.muted)),
-            Span::raw(state.sessions.search.clone()),
-        ])
+        Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", Style::default().fg(theme.muted)),
+                Span::raw(state.sessions.search.clone()),
+            ],
+            width,
+        ))
     }
 }
 
@@ -2282,12 +2327,7 @@ fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
         "Tab switch tab • 1 Manage • 2 Registered • ↑/↓ select • / search • i/I install • u/x uninstall • g/p toggles • o/O prefer winner • c/C clear override • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
-    frame.render_widget(
-        Paragraph::new(status)
-            .style(theme.footer)
-            .wrap(Wrap { trim: false }),
-        sections[1],
-    );
+    render_overlay_footer(frame, sections[1], &status, theme.footer);
 }
 
 fn extension_management_title(state: &TuiState, filtered_len: usize) -> String {
@@ -2345,7 +2385,10 @@ fn extension_management_lines(
     } else {
         format!("Filter: {}", state.extension_management.search)
     };
-    lines.push(Line::styled(search, Style::default().fg(theme.muted)));
+    lines.push(Line::styled(
+        truncate_with_ellipsis(&search, content_width),
+        Style::default().fg(theme.muted),
+    ));
     if let Some(item) = state.extension_management.selected_item() {
         lines.push(extension_management_selected_line(
             item,
@@ -2677,10 +2720,7 @@ fn render_prompts_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, t
         "↑/↓ select • / search • Enter expand • Tab complete • r reload • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
-    frame.render_widget(
-        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
-        sections[1],
-    );
+    render_overlay_footer(frame, sections[1], &status, theme.footer);
 }
 
 fn render_skills_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -2727,10 +2767,7 @@ fn render_skills_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, th
         "↑/↓ select • / search • Enter run • Tab complete • r reload • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
-    frame.render_widget(
-        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
-        sections[1],
-    );
+    render_overlay_footer(frame, sections[1], &status, theme.footer);
 }
 
 fn resource_title(
@@ -2772,6 +2809,7 @@ fn prompts_lines(
             state.prompts.search_active,
             &state.prompts.search,
             "Press / to search prompts",
+            content_width,
             theme,
         ),
         Line::from(""),
@@ -2779,14 +2817,14 @@ fn prompts_lines(
     let remaining_height = content_height.saturating_sub(lines.len()).max(1);
     if state.prompts.loading {
         lines.push(Line::styled(
-            "Reloading resources…",
+            truncate_with_ellipsis("Reloading resources…", content_width),
             Style::default().fg(theme.muted),
         ));
         return lines;
     }
     if state.prompt_resources.is_empty() {
         lines.push(Line::styled(
-            "No prompt templates found.",
+            truncate_with_ellipsis("No prompt templates found.", content_width),
             Style::default().fg(theme.muted),
         ));
         lines.push(Line::styled(
@@ -2847,6 +2885,7 @@ fn skills_lines(
             state.skills.search_active,
             &state.skills.search,
             "Press / to search skills",
+            content_width,
             theme,
         ),
         Line::from(""),
@@ -2854,14 +2893,14 @@ fn skills_lines(
     let remaining_height = content_height.saturating_sub(lines.len()).max(1);
     if state.skills.loading {
         lines.push(Line::styled(
-            "Reloading resources…",
+            truncate_with_ellipsis("Reloading resources…", content_width),
             Style::default().fg(theme.muted),
         ));
         return lines;
     }
     if state.skill_resources.is_empty() {
         lines.push(Line::styled(
-            "No skills found.",
+            truncate_with_ellipsis("No skills found.", content_width),
             Style::default().fg(theme.muted),
         ));
         lines.push(Line::styled(
@@ -2915,22 +2954,32 @@ fn resource_search_line(
     active: bool,
     search: &str,
     empty_hint: &str,
+    width: usize,
     theme: &Theme,
 ) -> Line<'static> {
     if active {
-        return Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.focused_border)),
-            Span::raw(search.to_string()),
-            Span::styled("█", Style::default().fg(theme.focused_border)),
-        ]);
+        return Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", Style::default().fg(theme.focused_border)),
+                Span::raw(search.to_string()),
+                Span::styled("█", Style::default().fg(theme.focused_border)),
+            ],
+            width,
+        ));
     }
     if search.is_empty() {
-        Line::styled(empty_hint.to_string(), Style::default().fg(theme.muted))
+        Line::styled(
+            truncate_with_ellipsis(empty_hint, width),
+            Style::default().fg(theme.muted),
+        )
     } else {
-        Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.muted)),
-            Span::raw(search.to_string()),
-        ])
+        Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", Style::default().fg(theme.muted)),
+                Span::raw(search.to_string()),
+            ],
+            width,
+        ))
     }
 }
 
@@ -3005,9 +3054,10 @@ fn render_settings_menu(
     settings: &SettingsState,
     theme: &Theme,
 ) {
+    let content_width = area.width.saturating_sub(2) as usize;
     let items = settings.menu_items();
     let mut lines = vec![Line::styled(
-        "Choose a settings page:",
+        truncate_with_ellipsis("Choose a settings page:", content_width),
         settings_muted_style(theme),
     )];
     lines.push(Line::from(""));
@@ -3044,7 +3094,10 @@ fn render_settings_menu(
             ),
             SettingsMenuItem::Extensions => "open extension manager".into(),
         };
-        let text = format!("{marker} {}  {}", item.label(), detail);
+        let text = truncate_with_ellipsis(
+            &format!("{marker} {}  {}", item.label(), detail),
+            content_width,
+        );
         Line::styled(text, settings_item_style(active, false, theme))
     }));
 
@@ -3062,15 +3115,19 @@ fn render_settings_menu(
 }
 
 fn render_settings_extensions_page(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
+    let content_width = area.width.saturating_sub(2) as usize;
     let lines = vec![
-        Line::styled("Extension Manager", theme.title),
+        Line::styled(truncate_with_ellipsis("Extension Manager", content_width), theme.title),
         Line::from(""),
         Line::styled(
-            "Press Enter to open the extension manager.",
+            truncate_with_ellipsis("Press Enter to open the extension manager.", content_width),
             settings_text_style(theme),
         ),
         Line::styled(
-            "Install packages, toggle project/global policy, and review contribution diagnostics there.",
+            truncate_with_ellipsis(
+                "Install packages, toggle project/global policy, and review contribution diagnostics there.",
+                content_width,
+            ),
             settings_muted_style(theme),
         ),
     ];
@@ -3116,7 +3173,11 @@ fn render_model_settings(
             settings.models.len()
         )
     };
-    let mut lines = vec![model_search_line(settings, theme), Line::from("")];
+    let content_width = area.width.saturating_sub(2) as usize;
+    let mut lines = vec![
+        model_search_line(settings, content_width, theme),
+        Line::from(""),
+    ];
     if settings.models.is_empty() {
         lines.push(Line::styled(
             "Loading model catalog…",
@@ -3124,7 +3185,10 @@ fn render_model_settings(
         ));
     } else if filtered_indices.is_empty() {
         lines.push(Line::styled(
-            format!("No models match `{}`", settings.model_search),
+            truncate_with_ellipsis(
+                &format!("No models match `{}`", settings.model_search),
+                content_width,
+            ),
             Style::default().fg(theme.muted),
         ));
     } else {
@@ -3143,7 +3207,10 @@ fn render_model_settings(
                     let marker = selection_marker(active, selected);
                     let style = settings_item_style(active, selected, theme);
                     Some(Line::styled(
-                        format!("{marker} {}", model.display_name),
+                        truncate_with_ellipsis(
+                            &format!("{marker} {}", model.display_name),
+                            content_width,
+                        ),
                         style,
                     ))
                 }),
@@ -3160,21 +3227,30 @@ fn render_model_settings(
     );
 }
 
-fn model_search_line(settings: &SettingsState, theme: &Theme) -> Line<'static> {
+fn model_search_line(settings: &SettingsState, width: usize, theme: &Theme) -> Line<'static> {
     if settings.model_search_active {
-        return Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.focused_border)),
-            Span::raw(settings.model_search.clone()),
-            Span::styled("█", Style::default().fg(theme.focused_border)),
-        ]);
+        return Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", Style::default().fg(theme.focused_border)),
+                Span::raw(settings.model_search.clone()),
+                Span::styled("█", Style::default().fg(theme.focused_border)),
+            ],
+            width,
+        ));
     }
     if settings.model_search.is_empty() {
-        Line::styled("Press / to search models", settings_muted_style(theme))
+        Line::styled(
+            truncate_with_ellipsis("Press / to search models", width),
+            settings_muted_style(theme),
+        )
     } else {
-        Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(theme.muted)),
-            Span::raw(settings.model_search.clone()),
-        ])
+        Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Search: ", Style::default().fg(theme.muted)),
+                Span::raw(settings.model_search.clone()),
+            ],
+            width,
+        ))
     }
 }
 
@@ -3185,8 +3261,12 @@ fn render_thinking_settings(
     theme: &Theme,
 ) {
     let levels = settings.thinking_levels();
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![Line::styled(
-        format!("Model: {}", settings.selected_model_label()),
+        truncate_with_ellipsis(
+            &format!("Model: {}", settings.selected_model_label()),
+            content_width,
+        ),
         Style::default().fg(theme.muted),
     )];
     lines.push(Line::from(""));
@@ -3195,7 +3275,13 @@ fn render_thinking_settings(
         let selected = *level == settings.selected_thinking_level;
         let marker = selection_marker(active, selected);
         let style = item_style(active, selected, theme);
-        Line::styled(format!("{marker} {}", thinking_label(*level)), style)
+        Line::styled(
+            truncate_with_ellipsis(
+                &format!("{marker} {}", thinking_label(*level)),
+                content_width,
+            ),
+            style,
+        )
     }));
     frame.render_widget(
         Paragraph::new(lines)
@@ -3220,8 +3306,9 @@ fn render_collapse_settings(
         ("Thinking", settings.thinking_collapse_mode),
         ("Tool", settings.tool_collapse_mode),
     ];
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![Line::styled(
-        "Enter cycles: Full → Truncate → Collapse",
+        truncate_with_ellipsis("Enter cycles: Full → Truncate → Collapse", content_width),
         Style::default().fg(theme.muted),
     )];
     lines.push(Line::from(""));
@@ -3229,7 +3316,10 @@ fn render_collapse_settings(
         let active = index == settings.collapse_cursor;
         let marker = arrow_marker(active);
         Line::styled(
-            format!("{marker} {label}: {}", collapse_mode_label(*mode)),
+            truncate_with_ellipsis(
+                &format!("{marker} {label}: {}", collapse_mode_label(*mode)),
+                content_width,
+            ),
             item_style(active, false, theme),
         )
     }));
@@ -3257,8 +3347,12 @@ fn render_chat_style_settings(
         (ChatStyle::Agentic, "Codex-like activity transcript"),
         (ChatStyle::Minimal, "jcode-like compact transcript"),
     ];
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![Line::styled(
-        "Changing style re-renders the current transcript immediately.",
+        truncate_with_ellipsis(
+            "Changing style re-renders the current transcript immediately.",
+            content_width,
+        ),
         Style::default().fg(theme.muted),
     )];
     lines.push(Line::from(""));
@@ -3271,10 +3365,13 @@ fn render_chat_style_settings(
                 let selected = *style == settings.chat_style;
                 let marker = selection_marker(active, selected);
                 Line::styled(
-                    format!(
-                        "{marker} {} ({}) — {description}",
-                        chat_style_label(*style),
-                        chat_style_value(*style)
+                    truncate_with_ellipsis(
+                        &format!(
+                            "{marker} {} ({}) — {description}",
+                            chat_style_label(*style),
+                            chat_style_value(*style)
+                        ),
+                        content_width,
                     ),
                     item_style(active, selected, theme),
                 )
@@ -3311,8 +3408,12 @@ fn render_tools_settings(
             settings.tools.len()
         )
     };
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![Line::styled(
-        "Project controls this workspace. Global is the default copied into new projects.",
+        truncate_with_ellipsis(
+            "Project controls this workspace. Global is the default copied into new projects.",
+            content_width,
+        ),
         Style::default().fg(theme.muted),
     )];
     lines.push(Line::from(""));
@@ -3335,7 +3436,10 @@ fn render_tools_settings(
                     let active = index == settings.tool_cursor;
                     let marker = arrow_marker(active);
                     Line::styled(
-                        format!("{marker} {}", tool.label()),
+                        truncate_with_ellipsis(
+                            &format!("{marker} {}", tool.label()),
+                            content_width,
+                        ),
                         item_style(active, tool.global_enabled || tool.project_enabled, theme),
                     )
                 }),
@@ -3372,6 +3476,7 @@ fn render_theme_settings(
             settings.theme_options.len()
         )
     };
+    let content_width = area.width.saturating_sub(2) as usize;
     let effective = settings.active_or_preview_theme().map_or_else(
         || "Effective: system".to_string(),
         |theme| {
@@ -3396,13 +3501,20 @@ fn render_theme_settings(
         .project_theme
         .active_id()
         .unwrap_or_else(|| "inherits global".into());
-    let mut lines = vec![
-        Line::styled(effective, theme.title),
-        Line::styled(
-            format!("Global: {global} • Project: {project}"),
-            Style::default().fg(theme.muted),
+    let mut lines = Vec::new();
+    lines.push(Line::styled(
+        truncate_with_ellipsis(&effective, content_width),
+        theme.title,
+    ));
+    lines.push(Line::styled(
+        truncate_with_ellipsis(
+            &format!("Global: {global} • Project: {project}"),
+            content_width,
         ),
-        Line::from(vec![
+        Style::default().fg(theme.muted),
+    ));
+    lines.push(Line::from(truncate_spans_to_width(
+        vec![
             Span::styled("Preview: ", theme.title),
             Span::styled("user", Style::default().fg(theme.user_border)),
             Span::styled(" • ", Style::default().fg(theme.muted)),
@@ -3413,19 +3525,26 @@ fn render_theme_settings(
             Span::styled("working", theme.working),
             Span::styled(" • ", Style::default().fg(theme.muted)),
             Span::styled("error", theme.error),
-        ]),
-        Line::from(vec![
+        ],
+        content_width,
+    )));
+    lines.push(Line::from(truncate_spans_to_width(
+        vec![
             Span::styled("Selected row ", item_style(true, false, theme)),
             Span::styled("normal text ", Style::default().fg(theme.fg)),
             Span::styled("muted ", Style::default().fg(theme.muted)),
             Span::styled("focused border", Style::default().fg(theme.focused_border)),
-        ]),
-        Line::styled(
+        ],
+        content_width,
+    )));
+    lines.push(Line::styled(
+        truncate_with_ellipsis(
             "Enter preview • p set project • g set global • r reset project • R reset global",
-            theme.footer,
+            content_width,
         ),
-        Line::from(""),
-    ];
+        theme.footer,
+    ));
+    lines.push(Line::from(""));
     if settings.theme_options.is_empty() {
         lines.push(Line::styled(
             "No themes registered.",
@@ -3474,10 +3593,13 @@ fn render_theme_settings(
                         format!("{} • {}", option.source.label(), option.description)
                     };
                     Line::styled(
-                        format!(
-                            "{marker} {} ({}){badges} — {description}",
-                            option.display_name,
-                            option.mode.label()
+                        truncate_with_ellipsis(
+                            &format!(
+                                "{marker} {} ({}){badges} — {description}",
+                                option.display_name,
+                                option.mode.label()
+                            ),
+                            content_width,
                         ),
                         item_style(active, selected, theme),
                     )
@@ -3522,13 +3644,17 @@ fn render_keymap_settings(
 
 fn render_keymap_list(frame: &mut Frame<'_>, area: Rect, settings: &SettingsState, theme: &Theme) {
     let rows = key_action_rows();
+    let content_width = area.width.saturating_sub(2) as usize;
     let visible_height = list_content_height(area).saturating_sub(2).max(1);
     let range = visible_range(settings.keymap_cursor, rows.len(), visible_height);
     let mut lines = vec![Line::styled(
-        format!(
-            "Preset: {} • Chord key: {} • Enter action • g edit chord key • p preset",
-            settings.keymap.preset.label(),
-            settings.keymap.chord_key
+        truncate_with_ellipsis(
+            &format!(
+                "Preset: {} • Chord key: {} • Enter action • g edit chord key • p preset",
+                settings.keymap.preset.label(),
+                settings.keymap.chord_key
+            ),
+            content_width,
         ),
         Style::default().fg(theme.muted),
     )];
@@ -3542,11 +3668,14 @@ fn render_keymap_list(frame: &mut Frame<'_>, area: Rect, settings: &SettingsStat
                 let active = index == settings.keymap_cursor;
                 let marker = arrow_marker(active);
                 let shortcut = settings.keymap.label_for(info.action);
-                let text = format!(
-                    "{marker} [{}] {}  —  {}",
-                    info.context.label(),
-                    info.label,
-                    shortcut
+                let text = truncate_with_ellipsis(
+                    &format!(
+                        "{marker} [{}] {}  —  {}",
+                        info.context.label(),
+                        info.label,
+                        shortcut
+                    ),
+                    content_width,
                 );
                 Line::styled(text, item_style(active, false, theme))
             }),
@@ -3575,12 +3704,16 @@ fn render_keymap_detail(
     let action = settings.current_keymap_action();
     let info = action.info();
     let bindings = settings.current_keymap_bindings();
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![
         Line::styled(
-            format!("{} ({})", info.label, action.id()),
+            truncate_with_ellipsis(&format!("{} ({})", info.label, action.id()), content_width),
             Style::default().fg(theme.focused_border),
         ),
-        Line::styled(info.description, Style::default().fg(theme.muted)),
+        Line::styled(
+            truncate_with_ellipsis(info.description, content_width),
+            Style::default().fg(theme.muted),
+        ),
         Line::from(""),
     ];
     if bindings.is_empty() {
@@ -3590,7 +3723,7 @@ fn render_keymap_detail(
             let active = index == settings.keymap_binding_cursor;
             let marker = selection_marker(active, false);
             Line::styled(
-                format!("{marker} {binding}"),
+                truncate_with_ellipsis(&format!("{marker} {binding}"), content_width),
                 item_style(active, false, theme),
             )
         }));
@@ -3615,9 +3748,13 @@ fn render_keymap_shortcut_type(
     theme: &Theme,
 ) {
     let action = settings.current_keymap_action();
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![
         Line::styled(
-            format!("Choose shortcut type for {}", action.info().label),
+            truncate_with_ellipsis(
+                &format!("Choose shortcut type for {}", action.info().label),
+                content_width,
+            ),
             Style::default().fg(theme.muted),
         ),
         Line::from(""),
@@ -3629,11 +3766,14 @@ fn render_keymap_shortcut_type(
             ShortcutKind::Combination => "one key event, e.g. F2 or Ctrl-S",
         };
         Line::styled(
-            format!(
-                "{} {} — {}",
-                arrow_marker(active),
-                kind.label(),
-                description
+            truncate_with_ellipsis(
+                &format!(
+                    "{} {} — {}",
+                    arrow_marker(active),
+                    kind.label(),
+                    description
+                ),
+                content_width,
             ),
             item_style(active, false, theme),
         )
@@ -3678,21 +3818,22 @@ fn render_keymap_capture(
             "Press the suffix key. The global chord key is prepended. Esc cancels."
         }
     };
+    let content_width = area.width.saturating_sub(2) as usize;
     let lines = vec![
         Line::styled(
-            format!("Assigning {}", action.info().label),
+            truncate_with_ellipsis(&format!("Assigning {}", action.info().label), content_width),
             Style::default().fg(theme.focused_border),
         ),
         Line::styled(
-            format!("Type: {}", kind.label()),
+            truncate_with_ellipsis(&format!("Type: {}", kind.label()), content_width),
             Style::default().fg(theme.muted),
         ),
         Line::styled(
-            format!("Captured: {captured}"),
+            truncate_with_ellipsis(&format!("Captured: {captured}"), content_width),
             Style::default().fg(theme.fg),
         ),
         Line::from(""),
-        Line::styled(prompt, theme.warning),
+        Line::styled(truncate_with_ellipsis(prompt, content_width), theme.warning),
     ];
     frame.render_widget(
         Paragraph::new(lines)
@@ -3713,22 +3854,32 @@ fn render_chord_key_capture(
     settings: &SettingsState,
     theme: &Theme,
 ) {
+    let content_width = area.width.saturating_sub(2) as usize;
     let lines = vec![
         Line::styled(
-            "Set the global chord key",
+            truncate_with_ellipsis("Set the global chord key", content_width),
             Style::default().fg(theme.focused_border),
         ),
         Line::styled(
-            format!("Current: {}", settings.keymap.chord_key),
+            truncate_with_ellipsis(
+                &format!("Current: {}", settings.keymap.chord_key),
+                content_width,
+            ),
             Style::default().fg(theme.muted),
         ),
         Line::from(""),
         Line::styled(
-            "Press one key event such as Ctrl-X, Alt-Space, or F12.",
+            truncate_with_ellipsis(
+                "Press one key event such as Ctrl-X, Alt-Space, or F12.",
+                content_width,
+            ),
             Style::default().fg(theme.fg),
         ),
         Line::styled(
-            "Plain text keys are disallowed so normal typing still works. Esc cancels.",
+            truncate_with_ellipsis(
+                "Plain text keys are disallowed so normal typing still works. Esc cancels.",
+                content_width,
+            ),
             theme.warning,
         ),
     ];
@@ -3751,9 +3902,13 @@ fn render_keymap_preset_select(
     settings: &SettingsState,
     theme: &Theme,
 ) {
+    let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![
         Line::styled(
-            "Select a preset. Applying it resets every keybind after confirmation.",
+            truncate_with_ellipsis(
+                "Select a preset. Applying it resets every keybind after confirmation.",
+                content_width,
+            ),
             theme.warning,
         ),
         Line::from(""),
@@ -3766,7 +3921,10 @@ fn render_keymap_preset_select(
                 let active = index == settings.keymap_preset_cursor;
                 let selected = *preset == settings.keymap.preset;
                 Line::styled(
-                    format!("{} {}", selection_marker(active, selected), preset.label()),
+                    truncate_with_ellipsis(
+                        &format!("{} {}", selection_marker(active, selected), preset.label()),
+                        content_width,
+                    ),
                     item_style(active, selected, theme),
                 )
             }),
@@ -3790,14 +3948,18 @@ fn render_keymap_preset_confirm(
     preset: KeymapPreset,
     theme: &Theme,
 ) {
+    let content_width = area.width.saturating_sub(2) as usize;
     let lines = vec![
         Line::styled(
-            format!("Reset every keybind to the {} preset?", preset.label()),
+            truncate_with_ellipsis(
+                &format!("Reset every keybind to the {} preset?", preset.label()),
+                content_width,
+            ),
             theme.warning.add_modifier(Modifier::BOLD),
         ),
         Line::from(""),
         Line::styled(
-            "Y confirms • N/Esc cancels",
+            truncate_with_ellipsis("Y confirms • N/Esc cancels", content_width),
             Style::default().fg(theme.muted),
         ),
     ];
@@ -3865,8 +4027,17 @@ fn render_settings_footer(
     } else {
         format!("{} • {controls}", settings.status)
     };
+    render_overlay_footer(frame, area, &status, theme.footer);
+}
+
+fn render_overlay_footer(frame: &mut Frame<'_>, area: Rect, text: &str, style: Style) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
     frame.render_widget(
-        Paragraph::new(truncate_to_width(&status, area.width as usize)).style(theme.footer),
+        Paragraph::new(text.to_string())
+            .style(style)
+            .wrap(Wrap { trim: false }),
         area,
     );
 }
@@ -4434,6 +4605,59 @@ mod tests {
         assert!(text.contains("P:OFF G:ON OVR:G"));
         assert!(text.contains("diag"));
         assert!(text.contains("conflict"));
+    }
+
+    #[test]
+    fn extensions_overlay_ellipsizes_install_input_when_narrow() {
+        let mut state = TuiState::new();
+        state.overlay = Some(OverlayKind::Extensions);
+        state
+            .extension_management
+            .begin_install(crate::settings::ToolSettingsScope::Project);
+        state.extension_management.install_input =
+            "https://github.com/example/very-long-extension-package-name-with-extra-tail".into();
+
+        let buffer = draw_state(44, 18, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Install Project package"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("extra-tail"));
+    }
+
+    #[test]
+    fn extension_management_rows_stay_width_bounded_when_very_narrow() {
+        let mut state = TuiState::new();
+        state.set_extension_management_items(vec![ExtensionManagementItem {
+            target: ExtensionManagementTarget::Contribution,
+            id: "ui.very.long.contribution.identifier.with.tail".into(),
+            title: "Very Long Contribution Title That Should Be Ellipsized".into(),
+            family: "ui-with-a-long-family-name".into(),
+            scope: "project".into(),
+            health: "Healthy but verbose".into(),
+            state: "Active".into(),
+            permission: "many permissions with a long label".into(),
+            provenance: "pkg ext".into(),
+            diagnostics: vec!["diagnostic with long details".into()],
+            conflicts: vec!["conflict with long details".into()],
+            entry_key: Some("ui:pkg:ui.very.long.contribution.identifier.with.tail:/tmp".into()),
+            canonical_id: Some("ui.very.long.contribution.identifier.with.tail".into()),
+            global_override: true,
+            project_override: true,
+            global_enabled: false,
+            project_enabled: true,
+        }]);
+        state
+            .extension_management
+            .set_view(ExtensionManagementView::Registry);
+
+        let width = 14;
+        let lines = extension_management_lines(&state, width, 8, &Theme::default());
+        let plain = line_texts(lines);
+
+        assert!(plain.iter().all(|line| line.width() <= width), "{plain:?}");
+        assert!(plain.iter().any(|line| line.contains('…')), "{plain:?}");
+        assert!(!plain.join("\n").contains("identifier.with.tail"));
     }
 
     #[test]
@@ -5112,6 +5336,24 @@ mod tests {
     }
 
     #[test]
+    fn render_inspect_overlay_ellipsizes_export_message_when_narrow() {
+        let mut state = TuiState::new();
+        state.overlay = Some(OverlayKind::Inspect);
+        state.set_inspect_full_prompt("short prompt", 12_345);
+        state.set_inspect_export_message(
+            "Exported to /tmp/very/deep/export/path/chat-with-a-long-file-name-extra-tail.html",
+        );
+
+        let buffer = draw_state(44, 18, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Full prompt"));
+        assert!(text.contains("Exported to"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("extra-tail"));
+    }
+
+    #[test]
     fn render_help_overlay_shows_command_and_file_attach_guidance() {
         let mut state = TuiState::new();
         state.open_help();
@@ -5128,6 +5370,50 @@ mod tests {
         assert!(text.contains("Press / to search help"));
         assert!(text.contains("/ search"));
         assert!(text.contains("Esc/q close"));
+    }
+
+    #[test]
+    fn render_help_overlay_footer_wraps_when_narrow() {
+        let mut state = TuiState::new();
+        state.open_help();
+
+        let buffer = draw_state(44, 16, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("PgUp/PgDn page"));
+        assert!(text.contains("Home/End jump"));
+    }
+
+    #[test]
+    fn render_help_overlay_ellipsizes_long_search_when_narrow() {
+        let mut state = TuiState::new();
+        state.open_help();
+        state.help_search_active = true;
+        state.help_search = "help-search-query-with-a-very-long-tail".into();
+
+        let buffer = draw_state(44, 18, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Search:"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("very-long-tail"));
+    }
+
+    #[test]
+    fn help_entry_line_bounds_long_key_hint_when_narrow() {
+        let line = help_entry_line(
+            &HelpEntry::Item(
+                "Ctrl-Shift-Alt-Super-Enter-Or-A-Very-Long-Shortcut".into(),
+                "description with a long tail that should not leak".into(),
+            ),
+            12,
+            &Theme::default(),
+        );
+        let plain = plain_line(&line);
+
+        assert!(plain.width() <= 12, "{plain}");
+        assert!(plain.contains('…'), "{plain}");
+        assert!(!plain.contains("Shortcut"), "{plain}");
     }
 
     #[test]
@@ -5163,6 +5449,31 @@ mod tests {
     }
 
     #[test]
+    fn send_panel_lines_stay_width_bounded_when_narrow() {
+        let mut state = TuiState::new();
+        state
+            .composer
+            .replace_text("current composer input with a very long tail that should disappear");
+        state
+            .steer_items
+            .push("steer request with a very long tail that should disappear".into());
+        state
+            .queued_items
+            .push("queued request with a very long tail that should disappear".into());
+        state
+            .draft_items
+            .push("draft request with a very long tail that should disappear".into());
+
+        let width = 10;
+        let lines = line_texts(send_panel_lines(&state, width, 20, &Theme::default()));
+        let joined = lines.join("\n");
+
+        assert!(lines.iter().all(|line| line.width() <= width), "{lines:?}");
+        assert!(lines.iter().any(|line| line.contains('…')), "{lines:?}");
+        assert!(!joined.contains("disappear"));
+    }
+
+    #[test]
     fn render_sessions_overlay_ellipsizes_long_rows() {
         let mut state = TuiState::new();
         state.overlay = Some(OverlayKind::Sessions);
@@ -5187,6 +5498,39 @@ mod tests {
     }
 
     #[test]
+    fn browser_search_rows_stay_width_bounded_when_narrow() {
+        let theme = Theme::default();
+        let width = 14;
+
+        let mut state = TuiState::new();
+        state.sessions.search_active = true;
+        state.sessions.search = "session-search-with-a-very-long-tail".into();
+        let session_lines = line_texts(sessions_lines(&state, width, 5, &theme));
+        assert!(
+            session_lines.iter().all(|line| line.width() <= width),
+            "{session_lines:?}"
+        );
+        assert!(session_lines.iter().any(|line| line.contains('…')));
+
+        state.prompts.search_active = true;
+        state.prompts.search = "prompt-search-with-a-very-long-tail".into();
+        let prompt_lines = line_texts(prompts_lines(&state, width, 5, &theme));
+        assert!(
+            prompt_lines.iter().all(|line| line.width() <= width),
+            "{prompt_lines:?}"
+        );
+        assert!(prompt_lines.iter().any(|line| line.contains('…')));
+
+        state.skills.search = "skill-filter-with-a-very-long-tail".into();
+        let skill_lines = line_texts(skills_lines(&state, width, 5, &theme));
+        assert!(
+            skill_lines.iter().all(|line| line.width() <= width),
+            "{skill_lines:?}"
+        );
+        assert!(skill_lines.iter().any(|line| line.contains('…')));
+    }
+
+    #[test]
     fn render_transcript_title_includes_session_title() {
         let mut state = TuiState::new();
         state.set_session_title("Design Review");
@@ -5197,6 +5541,127 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(text.contains("Oino • Design Review"));
+    }
+
+    #[test]
+    fn render_theme_settings_ellipsizes_long_rows_when_narrow() {
+        let mut state = TuiState::new();
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+        state.settings.page = crate::settings::SettingsPage::Theme;
+        state
+            .settings
+            .global_theme
+            .set_active("global-theme-with-a-name-that-would-run-through-the-settings-panel");
+        state
+            .settings
+            .project_theme
+            .set_active("project-theme-with-a-name-that-would-run-through-the-settings-panel");
+        state.settings.theme_options = vec![crate::settings::ThemeOption {
+            id: "very-long-theme".into(),
+            display_name: "Long Theme Name With Far Too Many Words".into(),
+            description: "description with a lot of extra detail that should not fit in a narrow settings overlay".into(),
+            mode: crate::theme::ThemeMode::Dark,
+            source: crate::theme::ThemeSource {
+                kind: crate::theme::ThemeSourceKind::File,
+                scope: crate::theme::ThemeSourceScope::Project,
+            },
+            global_active: true,
+            project_active: true,
+            effective: true,
+        }];
+
+        let buffer = draw_state(44, 22, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Theme 1/1"));
+        assert!(text.contains("Long Theme Name"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("description with a lot of extra detail"));
+    }
+
+    #[test]
+    fn render_keymap_settings_ellipsizes_long_rows_when_narrow() {
+        let mut state = TuiState::new();
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+        state.settings.open_keymaps();
+
+        let width: u16 = 44;
+        let height: u16 = 18;
+        let buffer = draw_state(width, height, &state);
+        let width = usize::from(width);
+        let height = usize::from(height);
+        let lines = (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buffer.content()[y * width + x].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        let preset_line = lines
+            .iter()
+            .find(|line| line.contains("Preset:"))
+            .unwrap_or_else(|| panic!("missing preset line: {lines:?}"));
+        assert!(preset_line.contains('…'), "{preset_line}");
+        let action_line = lines
+            .iter()
+            .find(|line| line.contains("[Common]"))
+            .unwrap_or_else(|| panic!("missing keymap action line: {lines:?}"));
+        assert!(action_line.contains('…'), "{action_line}");
+    }
+
+    #[test]
+    fn render_remaining_settings_pages_ellipsize_when_narrow() {
+        let mut state = TuiState::with_settings("long-model", oino_types::ThinkingLevel::Off);
+        state.set_model_catalog(
+            vec![
+                crate::settings::ModelOption::new("long-model").with_display_name(
+                    "openrouter:provider-with-a-very-long-name/model-with-a-tail-that-should-hide",
+                ),
+            ],
+            "cached models loaded",
+        );
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+
+        state.settings.page = crate::settings::SettingsPage::Thinking;
+        let thinking = buffer_text(&draw_state(44, 18, &state));
+        assert!(thinking.contains("Model:"));
+        assert!(thinking.contains("…"));
+        assert!(!thinking.contains("tail-that-should-hide"));
+
+        state.settings.page = crate::settings::SettingsPage::Collapse;
+        let collapse = buffer_text(&draw_state(44, 18, &state));
+        assert!(collapse.contains("Enter cycles"));
+        assert!(collapse.contains("…"));
+
+        state.settings.page = crate::settings::SettingsPage::ChatStyle;
+        let chat_style = buffer_text(&draw_state(44, 18, &state));
+        assert!(chat_style.contains("Changing style"));
+        assert!(chat_style.contains("…"));
+
+        state.settings.page = crate::settings::SettingsPage::Extensions;
+        let extensions = buffer_text(&draw_state(44, 18, &state));
+        assert!(extensions.contains("Install packages"));
+        assert!(extensions.contains("…"));
+    }
+
+    #[test]
+    fn render_settings_tools_page_ellipsizes_long_rows_when_narrow() {
+        let mut state = TuiState::new();
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+        state.settings.open_tools();
+        state.set_tool_settings(vec![crate::settings::ToolSettingsItem::global("long_tool")
+            .with_display_name(
+                "Very Long Tool Display Name With A Suffix That Would Overflow The Panel",
+            )]);
+
+        let buffer = draw_state(44, 18, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Tools 1/1"));
+        assert!(text.contains("Very Long Tool"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("Overflow The Panel"));
     }
 
     #[test]
@@ -5218,6 +5683,30 @@ mod tests {
         assert!(text.contains("Tools 1/2"));
         assert!(text.contains("Bash - [Global - ON] [Project - OFF]"));
         assert!(text.contains("Set Session Title - [Global - OFF] [Project - OFF]"));
+    }
+
+    #[test]
+    fn render_settings_menu_ellipsizes_long_current_values_when_narrow() {
+        let mut state = TuiState::with_settings("long-model", oino_types::ThinkingLevel::Off);
+        state.set_model_catalog(
+            vec![
+                crate::settings::ModelOption::new("long-model").with_display_name(
+                    "openrouter:provider-with-a-very-long-name/model-with-an-unbounded-long-suffix",
+                ),
+            ],
+            "cached models loaded",
+        );
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+        state.settings.page = crate::settings::SettingsPage::Menu;
+
+        let buffer = draw_state(44, 18, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Settings Pages"));
+        assert!(text.contains("Model Selection"));
+        assert!(text.contains("current:"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("unbounded-long-suffix"));
     }
 
     #[test]
@@ -5260,6 +5749,27 @@ mod tests {
         assert!(text.contains("Model Selection"));
         assert!(text.contains("a"));
         assert!(!text.contains("Settings Pages"));
+    }
+
+    #[test]
+    fn model_selection_ellipsizes_long_rows_when_narrow() {
+        let mut state = TuiState::with_settings("long-model", oino_types::ThinkingLevel::Off);
+        state.set_model_catalog(
+            vec![crate::settings::ModelOption::new("long-model").with_display_name(
+                "openrouter:provider-with-a-very-long-name/model-with-a-very-long-name-and-suffix",
+            )],
+            "cached models loaded",
+        );
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+        state.settings.page = crate::settings::SettingsPage::Models;
+
+        let buffer = draw_state(44, 18, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Model Selection"));
+        assert!(text.contains("openrouter:provider"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("very-long-name-and-suffix"));
     }
 
     #[test]
