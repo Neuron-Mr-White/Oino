@@ -1952,6 +1952,29 @@ impl TuiState {
                 KeymapKeyResult::Consumed
             }
             KeymapMatch::None if !self.key_sequence.is_empty() => {
+                if self.extension_shortcuts_are_active() {
+                    match resolve_extension_shortcut(&self.extension_ui.shortcuts, &sequence) {
+                        ExtensionShortcutMatch::Matched(action) => {
+                            self.key_sequence.clear();
+                            self.chord = ChordState::None;
+                            return KeymapKeyResult::MatchedExtension(action);
+                        }
+                        ExtensionShortcutMatch::Pending => {
+                            self.key_sequence = sequence;
+                            self.chord = ChordState::None;
+                            self.status = format!(
+                                "{} extension prefix active • press next key or Esc cancel",
+                                self.key_sequence
+                                    .iter()
+                                    .map(ToString::to_string)
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            );
+                            return KeymapKeyResult::Consumed;
+                        }
+                        ExtensionShortcutMatch::None => {}
+                    }
+                }
                 self.key_sequence.clear();
                 self.chord = ChordState::None;
                 if stroke.is_escape() {
@@ -1961,7 +1984,7 @@ impl TuiState {
                 }
                 KeymapKeyResult::Consumed
             }
-            KeymapMatch::None => {
+            KeymapMatch::None if self.extension_shortcuts_are_active() => {
                 match resolve_extension_shortcut(&self.extension_ui.shortcuts, &sequence) {
                     ExtensionShortcutMatch::Matched(action) => {
                         self.key_sequence.clear();
@@ -1984,7 +2007,12 @@ impl TuiState {
                     ExtensionShortcutMatch::None => KeymapKeyResult::Unhandled,
                 }
             }
+            KeymapMatch::None => KeymapKeyResult::Unhandled,
         }
+    }
+
+    fn extension_shortcuts_are_active(&self) -> bool {
+        self.overlay.is_none()
     }
 
     fn active_key_contexts(&self) -> Vec<KeyContext> {
@@ -4263,6 +4291,61 @@ mod tests {
                 action: "extension.process.stop".into(),
             }
         );
+    }
+
+    #[test]
+    fn extension_chord_shortcuts_continue_after_builtin_chord_prefix() {
+        let mut state = TuiState::new();
+        let shortcut = "ctrl-o x"
+            .parse::<KeySequence>()
+            .unwrap_or_else(|err| panic!("shortcut parse failed: {err}"));
+        state.set_extension_shortcuts(vec![ExtensionShortcut::new(
+            "extension.example.action",
+            shortcut,
+            "example-extension",
+        )]);
+
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.chord, ChordState::CtrlO);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('x'))),
+            TuiAction::RunExtensionAction {
+                action: "extension.example.action".into(),
+            }
+        );
+        assert!(state.key_sequence.is_empty());
+        assert_eq!(state.chord, ChordState::None);
+    }
+
+    #[test]
+    fn extension_shortcuts_do_not_hijack_extension_overlay_chords() {
+        let mut state = TuiState::new();
+        let shortcut = "ctrl-o x"
+            .parse::<KeySequence>()
+            .unwrap_or_else(|err| panic!("shortcut parse failed: {err}"));
+        state.set_extension_shortcuts(vec![ExtensionShortcut::new(
+            "extension.example.action",
+            shortcut,
+            "example-extension",
+        )]);
+        state.composer.replace_text("/extensions");
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.overlay, Some(OverlayKind::Extensions));
+
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert!(state.key_sequence.is_empty());
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(
+            state.extension_management.view,
+            ExtensionManagementView::Registry
+        );
+        assert_ne!(state.status, "Unknown key chord");
     }
 
     #[test]
