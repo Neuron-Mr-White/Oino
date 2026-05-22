@@ -3,14 +3,13 @@
 use crate::{text::truncate_to_width, theme::Theme};
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::{
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
 };
 use std::{borrow::Cow, sync::OnceLock};
 use syntect::{
-    easy::HighlightLines,
-    highlighting::{FontStyle, Style as SyntectStyle, Theme as SyntectTheme},
-    parsing::{SyntaxReference, SyntaxSet},
+    easy::ScopeRegionIterator,
+    parsing::{ParseState, ScopeStack, SyntaxReference, SyntaxSet},
 };
 use syntect_assets::assets::HighlightingAssets;
 use unicode_segmentation::UnicodeSegmentation;
@@ -34,6 +33,15 @@ struct MarkdownStyles {
     task_done_marker: Style,
     task_pending_marker: Style,
     table_border: Style,
+    syntax_comment: Style,
+    syntax_keyword: Style,
+    syntax_function: Style,
+    syntax_variable: Style,
+    syntax_string: Style,
+    syntax_number: Style,
+    syntax_type: Style,
+    syntax_operator: Style,
+    syntax_punctuation: Style,
 }
 
 impl MarkdownStyles {
@@ -71,6 +79,15 @@ impl MarkdownStyles {
             table_border: Style::default()
                 .fg(theme.markdown_table_border)
                 .add_modifier(Modifier::BOLD),
+            syntax_comment: base.fg(theme.syntax_comment).bg(theme.markdown_code_bg),
+            syntax_keyword: base.fg(theme.syntax_keyword).bg(theme.markdown_code_bg),
+            syntax_function: base.fg(theme.syntax_function).bg(theme.markdown_code_bg),
+            syntax_variable: base.fg(theme.syntax_variable).bg(theme.markdown_code_bg),
+            syntax_string: base.fg(theme.syntax_string).bg(theme.markdown_code_bg),
+            syntax_number: base.fg(theme.syntax_number).bg(theme.markdown_code_bg),
+            syntax_type: base.fg(theme.syntax_type).bg(theme.markdown_code_bg),
+            syntax_operator: base.fg(theme.syntax_operator).bg(theme.markdown_code_bg),
+            syntax_punctuation: base.fg(theme.syntax_punctuation).bg(theme.markdown_code_bg),
         }
     }
 
@@ -902,7 +919,6 @@ fn pad_to_width(text: &str, width: usize) -> String {
 #[derive(Debug)]
 struct SyntectAssets {
     syntaxes: SyntaxSet,
-    theme: SyntectTheme,
 }
 
 static SYNTECT_ASSETS: OnceLock<SyntectAssets> = OnceLock::new();
@@ -913,11 +929,7 @@ fn syntect_assets() -> &'static SyntectAssets {
         let syntaxes = assets
             .get_syntax_set()
             .map_or_else(|_| SyntaxSet::load_defaults_newlines(), Clone::clone);
-        let theme = assets
-            .get_theme(HighlightingAssets::default_theme())
-            .clone();
-
-        SyntectAssets { syntaxes, theme }
+        SyntectAssets { syntaxes }
     })
 }
 
@@ -925,12 +937,9 @@ fn syntect_syntax_set() -> &'static SyntaxSet {
     &syntect_assets().syntaxes
 }
 
-fn syntect_theme() -> &'static SyntectTheme {
-    &syntect_assets().theme
-}
-
 struct CodeHighlighter {
-    highlighter: HighlightLines<'static>,
+    parse_state: ParseState,
+    scope_stack: ScopeStack,
 }
 
 impl CodeHighlighter {
@@ -938,14 +947,30 @@ impl CodeHighlighter {
         let syntaxes = syntect_syntax_set();
         let syntax = syntax_for(syntaxes, lang);
         Self {
-            highlighter: HighlightLines::new(syntax, syntect_theme()),
+            parse_state: ParseState::new(syntax),
+            scope_stack: ScopeStack::new(),
         }
     }
 
     fn highlight_line(&mut self, line: &str, styles: MarkdownStyles) -> Vec<Span<'static>> {
-        match self.highlighter.highlight_line(line, syntect_syntax_set()) {
-            Ok(ranges) => syntect_ranges_to_spans(ranges, styles),
-            Err(_) => vec![Span::styled(line.to_string(), styles.code)],
+        let Ok(ops) = self.parse_state.parse_line(line, syntect_syntax_set()) else {
+            return vec![Span::styled(line.to_string(), styles.code)];
+        };
+        let mut spans = Vec::new();
+        for (region, op) in ScopeRegionIterator::new(&ops, line) {
+            let _ = self.scope_stack.apply(op);
+            if region.is_empty() {
+                continue;
+            }
+            spans.push(Span::styled(
+                region.to_string(),
+                style_for_scope_stack(&self.scope_stack, styles),
+            ));
+        }
+        if spans.is_empty() {
+            vec![Span::styled(String::new(), styles.code)]
+        } else {
+            spans
         }
     }
 }
@@ -986,38 +1011,46 @@ fn syntax_for_common_alias<'a>(
         .or_else(|| syntax_set.find_syntax_by_token(extension))
 }
 
-fn syntect_ranges_to_spans(
-    ranges: Vec<(SyntectStyle, &str)>,
-    styles: MarkdownStyles,
-) -> Vec<Span<'static>> {
-    if ranges.is_empty() {
-        return vec![Span::styled(String::new(), styles.code)];
+fn style_for_scope_stack(scope_stack: &ScopeStack, styles: MarkdownStyles) -> Style {
+    let scopes = scope_stack.to_string();
+    if scopes.contains("comment") {
+        return styles.syntax_comment.add_modifier(Modifier::ITALIC);
     }
-
-    ranges
-        .into_iter()
-        .map(|(style, text)| {
-            Span::styled(
-                text.to_string(),
-                ratatui_style_from_syntect(style, styles.code),
-            )
-        })
-        .collect()
-}
-
-fn ratatui_style_from_syntect(style: SyntectStyle, fallback: Style) -> Style {
-    let color = style.foreground;
-    let mut out = fallback.fg(Color::Rgb(color.r, color.g, color.b));
-    if style.font_style.contains(FontStyle::BOLD) {
-        out = out.add_modifier(Modifier::BOLD);
+    if scopes.contains("string") || scopes.contains("constant.character") {
+        return styles.syntax_string;
     }
-    if style.font_style.contains(FontStyle::ITALIC) {
-        out = out.add_modifier(Modifier::ITALIC);
+    if scopes.contains("constant.numeric") {
+        return styles.syntax_number;
     }
-    if style.font_style.contains(FontStyle::UNDERLINE) {
-        out = out.add_modifier(Modifier::UNDERLINED);
+    if scopes.contains("keyword.operator") || scopes.contains("punctuation.operator") {
+        return styles.syntax_operator;
     }
-    out
+    if scopes.contains("keyword") || scopes.contains("storage") {
+        return styles.syntax_keyword.add_modifier(Modifier::BOLD);
+    }
+    if scopes.contains("entity.name.function")
+        || scopes.contains("support.function")
+        || scopes.contains("variable.function")
+    {
+        return styles.syntax_function;
+    }
+    if scopes.contains("entity.name.type")
+        || scopes.contains("support.type")
+        || scopes.contains("storage.type")
+    {
+        return styles.syntax_type;
+    }
+    if scopes.contains("variable")
+        || scopes.contains("entity.name")
+        || scopes.contains("constant.language")
+        || scopes.contains("constant.other")
+    {
+        return styles.syntax_variable;
+    }
+    if scopes.contains("punctuation") {
+        return styles.syntax_punctuation;
+    }
+    styles.code
 }
 
 fn unwrap_markdown_table_fences(markdown: &str) -> Cow<'_, str> {
@@ -1471,6 +1504,7 @@ fn is_blank_line(line: &Line<'_>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Color;
 
     fn plain(line: &Line<'static>) -> String {
         line.spans
@@ -1575,6 +1609,46 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.spans.iter().any(|span| {
                 span.content.as_ref().contains('╭') && span.style.fg == Some(Color::Red)
+            })
+        }));
+    }
+
+    #[test]
+    fn syntax_component_roles_control_code_spans() {
+        let theme = Theme {
+            syntax_keyword: Color::Blue,
+            syntax_function: Color::Magenta,
+            syntax_string: Color::Green,
+            syntax_comment: Color::Yellow,
+            syntax_operator: Color::Red,
+            syntax_punctuation: Color::Cyan,
+            ..Theme::default()
+        };
+        let lines = render_markdown_lines(
+            "```rust\nfn main() { let name = \"oino\"; // hi\n}\n```",
+            80,
+            Style::default(),
+            &theme,
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("fn") && span.style.fg == Some(Color::Blue)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("main") && span.style.fg == Some(Color::Magenta)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("oino") && span.style.fg == Some(Color::Green)
+            })
+        }));
+        assert!(lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.as_ref().contains("// hi") && span.style.fg == Some(Color::Yellow)
             })
         }));
     }

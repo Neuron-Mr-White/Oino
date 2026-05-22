@@ -70,6 +70,15 @@ pub struct Theme {
     pub markdown_code_bg: Color,
     pub markdown_code_border: Color,
     pub markdown_code_line_number: Color,
+    pub syntax_comment: Color,
+    pub syntax_keyword: Color,
+    pub syntax_function: Color,
+    pub syntax_variable: Color,
+    pub syntax_string: Color,
+    pub syntax_number: Color,
+    pub syntax_type: Color,
+    pub syntax_operator: Color,
+    pub syntax_punctuation: Color,
 }
 
 impl Default for Theme {
@@ -140,6 +149,15 @@ impl Default for Theme {
             markdown_code_bg: Color::Reset,
             markdown_code_border: Color::Cyan,
             markdown_code_line_number: Color::DarkGray,
+            syntax_comment: Color::DarkGray,
+            syntax_keyword: Color::Magenta,
+            syntax_function: Color::Cyan,
+            syntax_variable: Color::Reset,
+            syntax_string: Color::Green,
+            syntax_number: Color::Yellow,
+            syntax_type: Color::Yellow,
+            syntax_operator: Color::Magenta,
+            syntax_punctuation: Color::DarkGray,
         }
     }
 }
@@ -918,6 +936,15 @@ fn default_raw_theme_tokens() -> BTreeMap<String, String> {
         ("markdown.code_bg".into(), "default".into()),
         ("markdown.code_border".into(), "$palette.accent".into()),
         ("markdown.code_line_number".into(), "$palette.muted".into()),
+        ("syntax.comment".into(), "$palette.muted".into()),
+        ("syntax.keyword".into(), "$palette.accent".into()),
+        ("syntax.function".into(), "$palette.assistant".into()),
+        ("syntax.variable".into(), "$palette.text".into()),
+        ("syntax.string".into(), "$palette.success".into()),
+        ("syntax.number".into(), "$palette.warning".into()),
+        ("syntax.type".into(), "$palette.tool".into()),
+        ("syntax.operator".into(), "$palette.accent".into()),
+        ("syntax.punctuation".into(), "$palette.muted".into()),
         ("extension_surface.bg".into(), "$palette.surface".into()),
         ("extension_surface.fg".into(), "$palette.text".into()),
         ("extension_surface.border".into(), "$palette.muted".into()),
@@ -1147,6 +1174,15 @@ fn apply_color_token(theme: &mut Theme, token: &str, color: Color) {
         "markdown.code_bg" => theme.markdown_code_bg = color,
         "markdown.code_border" => theme.markdown_code_border = color,
         "markdown.code_line_number" => theme.markdown_code_line_number = color,
+        "syntax.comment" => theme.syntax_comment = color,
+        "syntax.keyword" => theme.syntax_keyword = color,
+        "syntax.function" => theme.syntax_function = color,
+        "syntax.variable" => theme.syntax_variable = color,
+        "syntax.string" => theme.syntax_string = color,
+        "syntax.number" => theme.syntax_number = color,
+        "syntax.type" => theme.syntax_type = color,
+        "syntax.operator" => theme.syntax_operator = color,
+        "syntax.punctuation" => theme.syntax_punctuation = color,
         "extension_surface.focused_border" => theme.focused_border = color,
         "extension_surface.border" => theme.panel_border = color,
         "extension_surface.fg" => theme.fg = color,
@@ -1421,6 +1457,8 @@ mod tests {
                     ("resource.title".into(), "#0d0e0f".into()),
                     ("markdown.heading_secondary".into(), "#101112".into()),
                     ("markdown.code_bg".into(), "#131415".into()),
+                    ("syntax.keyword".into(), "#161718".into()),
+                    ("syntax.string".into(), "#191a1b".into()),
                 ]),
                 ..ThemeDocument::default()
             },
@@ -1440,5 +1478,7 @@ mod tests {
             Color::Rgb(0x10, 0x11, 0x12)
         );
         assert_eq!(theme.markdown_code_bg, Color::Rgb(0x13, 0x14, 0x15));
+        assert_eq!(theme.syntax_keyword, Color::Rgb(0x16, 0x17, 0x18));
+        assert_eq!(theme.syntax_string, Color::Rgb(0x19, 0x1a, 0x1b));
     }
 }

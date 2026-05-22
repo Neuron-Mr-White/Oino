@@ -72,12 +72,14 @@ pub struct ResourcePaths {
     pub global_system_prompt: PathBuf,
     pub global_settings: PathBuf,
     pub global_skills_dir: PathBuf,
+    pub global_themes_dir: PathBuf,
     pub project_root: PathBuf,
     pub project_dir: PathBuf,
     pub project_settings: PathBuf,
     pub project_agent: PathBuf,
     pub project_prompts_dir: PathBuf,
     pub project_skills_dir: PathBuf,
+    pub project_themes_dir: PathBuf,
     pub project_exports_dir: PathBuf,
 }
 
@@ -101,10 +103,12 @@ impl ResourcePaths {
             global_system_prompt: global_dir.join("SYSTEM.md"),
             global_settings: global_dir.join("settings.json"),
             global_skills_dir: global_dir.join("skills"),
+            global_themes_dir: global_dir.join("themes"),
             project_settings: project_dir.join("settings.json"),
             project_agent: project_dir.join("AGENT.md"),
             project_prompts_dir: project_dir.join("prompts"),
             project_skills_dir: project_dir.join("skills"),
+            project_themes_dir: project_dir.join("themes"),
             project_exports_dir: project_dir.join("exports"),
             home_dir,
             global_dir,
@@ -116,9 +120,11 @@ impl ResourcePaths {
     pub fn ensure_skeleton(&self) -> ResourceResult<()> {
         create_dir(&self.global_dir)?;
         create_dir(&self.global_skills_dir)?;
+        create_dir(&self.global_themes_dir)?;
         create_dir(&self.project_dir)?;
         create_dir(&self.project_prompts_dir)?;
         create_dir(&self.project_skills_dir)?;
+        create_dir(&self.project_themes_dir)?;
         create_dir(&self.project_exports_dir)?;
         write_if_missing(&self.global_system_prompt, SYSTEM_DEFAULT)?;
         write_if_missing(&self.global_settings, SETTINGS_DEFAULT)?;
@@ -775,10 +781,12 @@ mod tests {
         assert!(paths.global_system_prompt.is_file());
         assert!(paths.global_settings.is_file());
         assert!(paths.global_skills_dir.is_dir());
+        assert!(paths.global_themes_dir.is_dir());
         assert!(paths.project_settings.is_file());
         assert!(paths.project_agent.is_file());
         assert!(paths.project_prompts_dir.is_dir());
         assert!(paths.project_skills_dir.is_dir());
+        assert!(paths.project_themes_dir.is_dir());
         assert!(paths.project_exports_dir.is_dir());
 
         fs::write(&paths.global_system_prompt, "custom")?;

@@ -920,12 +920,13 @@ fn apply_extension_snapshot_to_tui_state(
     state: &mut TuiState,
     snapshot: &ExtensionManagerSnapshot,
     settings: &ToolSettingsSnapshot,
+    paths: &ResourcePaths,
 ) {
     state.set_extension_ui_surfaces(extension_ui_surfaces(snapshot));
     state.set_extension_shortcuts(extension_shortcuts(snapshot));
     state.set_extension_autosuggest_items(extension_autosuggest_items(snapshot));
     state.set_theme_catalog(
-        extension_theme_catalog(snapshot),
+        theme_catalog_from_sources(snapshot, paths),
         &settings.global.theme,
         &settings.project.theme,
     );
@@ -1128,8 +1129,19 @@ fn extension_autosuggest_items(
         .collect()
 }
 
-fn extension_theme_catalog(snapshot: &ExtensionManagerSnapshot) -> ThemeCatalog {
+fn theme_catalog_from_sources(
+    snapshot: &ExtensionManagerSnapshot,
+    paths: &ResourcePaths,
+) -> ThemeCatalog {
     let mut catalog = ThemeCatalog::builtins();
+    register_theme_dir(
+        &mut catalog,
+        &paths.global_themes_dir,
+        ThemeSource {
+            kind: ThemeSourceKind::File,
+            scope: ThemeSourceScope::Global,
+        },
+    );
     for active in snapshot
         .registries
         .themes
@@ -1143,7 +1155,78 @@ fn extension_theme_catalog(snapshot: &ExtensionManagerSnapshot) -> ThemeCatalog 
             document,
         ));
     }
+    register_theme_dir(
+        &mut catalog,
+        &paths.project_themes_dir,
+        ThemeSource {
+            kind: ThemeSourceKind::File,
+            scope: ThemeSourceScope::Project,
+        },
+    );
     catalog
+}
+
+fn register_theme_dir(catalog: &mut ThemeCatalog, dir: &Path, source: ThemeSource) {
+    for path in discover_theme_files(dir) {
+        if let Some(document) = read_theme_document_from_path(&path) {
+            catalog.register(ThemeCatalogEntry::new(source, document));
+        }
+    }
+}
+
+fn discover_theme_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    discover_theme_files_into(dir, &mut out);
+    out.sort();
+    out
+}
+
+fn discover_theme_files_into(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut paths = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .collect::<Vec<_>>();
+    paths.sort();
+    for path in paths {
+        if path.is_dir() {
+            discover_theme_files_into(&path, out);
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+            out.push(path);
+        }
+    }
+}
+
+fn read_theme_document_from_path(path: &Path) -> Option<ThemeDocument> {
+    let text = fs::read_to_string(path).ok()?;
+    let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    if let Ok(mut document) = serde_json::from_value::<ThemeDocument>(value.clone()) {
+        if document.normalized_id().is_none() {
+            if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
+                document.id = stem.to_string();
+            }
+        }
+        if document.display_name.trim().is_empty() {
+            document.display_name = document.id.clone();
+        }
+        if document.inherits.is_none() {
+            document.inherits = Some("system".into());
+        }
+        return Some(document);
+    }
+    let tokens = legacy_theme_token_map(&value)?;
+    let id = path.file_stem()?.to_string_lossy().to_string();
+    Some(ThemeDocument {
+        schema_version: 1,
+        display_name: id.clone(),
+        id,
+        description: Some(format!("Theme file {}", path.display())),
+        mode: oino_tui::ThemeMode::Dark,
+        inherits: Some("system".into()),
+        palette: BTreeMap::new(),
+        tokens,
+    })
 }
 
 fn extension_theme_document(
@@ -1906,7 +1989,12 @@ async fn run_tui(
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
     state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
-    apply_extension_snapshot_to_tui_state(&mut state, &extension_snapshot, &tool_settings);
+    apply_extension_snapshot_to_tui_state(
+        &mut state,
+        &extension_snapshot,
+        &tool_settings,
+        &resource_paths,
+    );
     apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
     state.set_file_paths(scan_project_files(&cwd));
     state
@@ -2056,6 +2144,7 @@ async fn run_tui(
                     &mut state,
                     &extension_snapshot,
                     &tool_settings,
+                    &resource_paths,
                 );
                 apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
@@ -2097,6 +2186,7 @@ async fn run_tui(
                     &mut state,
                     &extension_snapshot,
                     &tool_settings,
+                    &resource_paths,
                 );
                 apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
@@ -2116,6 +2206,7 @@ async fn run_tui(
                     &mut state,
                     &extension_snapshot,
                     &tool_settings,
+                    &resource_paths,
                 );
                 apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
@@ -2134,6 +2225,7 @@ async fn run_tui(
                     &mut state,
                     &extension_snapshot,
                     &tool_settings,
+                    &resource_paths,
                 );
                 apply_resource_catalog_to_state(&mut state, &resource_catalog, &extension_snapshot);
             }
@@ -2188,6 +2280,7 @@ async fn run_tui(
                             &mut state,
                             &extension_snapshot,
                             &tool_settings,
+                            &resource_paths,
                         );
                         apply_resource_catalog_to_state(
                             &mut state,
@@ -2245,6 +2338,7 @@ async fn run_tui(
                                     &mut state,
                                     &extension_snapshot,
                                     &tool_settings,
+                                    &resource_paths,
                                 );
                                 apply_resource_catalog_to_state(
                                     &mut state,
@@ -4086,6 +4180,63 @@ mod tests {
     }
 
     #[test]
+    fn theme_catalog_loads_global_and_project_theme_files() {
+        let home = tempfile::tempdir().unwrap_or_else(|err| panic!("home tempdir: {err}"));
+        let project = tempfile::tempdir().unwrap_or_else(|err| panic!("project tempdir: {err}"));
+        let paths = ResourcePaths::from_home_and_cwd(home.path(), project.path())
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        fs::create_dir_all(&paths.global_themes_dir)
+            .unwrap_or_else(|err| panic!("create global themes: {err}"));
+        fs::create_dir_all(&paths.project_themes_dir)
+            .unwrap_or_else(|err| panic!("create project themes: {err}"));
+        fs::write(
+            paths.global_themes_dir.join("team.json"),
+            r##"{
+              "schema_version": 1,
+              "id": "team",
+              "display_name": "Global Team",
+              "mode": "dark",
+              "tokens": { "app.title": "#010203" }
+            }"##,
+        )
+        .unwrap_or_else(|err| panic!("write global theme: {err}"));
+        fs::write(
+            paths.project_themes_dir.join("team.json"),
+            r##"{
+              "schema_version": 1,
+              "id": "team",
+              "display_name": "Project Team",
+              "mode": "dark",
+              "tokens": { "app.title": "#abcdef" }
+            }"##,
+        )
+        .unwrap_or_else(|err| panic!("write project theme: {err}"));
+
+        let snapshot = load_extension_snapshot(&paths, &ToolSettingsSnapshot::default());
+        let catalog = theme_catalog_from_sources(&snapshot, &paths);
+        let selected = catalog
+            .selected_entry("team")
+            .unwrap_or_else(|| panic!("theme file should be catalogued"));
+        assert_eq!(selected.source.kind, ThemeSourceKind::File);
+        assert_eq!(selected.source.scope, ThemeSourceScope::Project);
+        assert_eq!(selected.document.display_name, "Project Team");
+
+        let mut global = oino_tui::ThemeSettings::default();
+        global.set_active("team");
+        let resolved = oino_tui::resolve_effective_theme(
+            &catalog,
+            &global,
+            &oino_tui::ThemeSettings::default(),
+        );
+        assert_eq!(resolved.id, "team");
+        assert_eq!(resolved.source.scope, ThemeSourceScope::Project);
+        assert_eq!(
+            resolved.tokens.get("app.title"),
+            Some(&ratatui::style::Color::Rgb(0xab, 0xcd, 0xef))
+        );
+    }
+
+    #[test]
     fn extension_management_toggle_updates_policy_settings() {
         let mut settings = ToolSettingsSnapshot::default();
         set_extension_enabled(
@@ -4259,7 +4410,7 @@ mod tests {
             .iter()
             .any(|skill| skill.name == "visible_skill" && skill.content.contains("Skill content")));
 
-        let catalog = extension_theme_catalog(&snapshot);
+        let catalog = theme_catalog_from_sources(&snapshot, &paths);
         let theme = catalog
             .selected_entry("visible_theme")
             .unwrap_or_else(|| panic!("missing extension theme"));
