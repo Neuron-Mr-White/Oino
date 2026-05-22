@@ -377,20 +377,26 @@ fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     );
     frame.render_widget(
         Block::default()
-            .title(Span::styled(title, theme.error))
+            .title(Span::styled(
+                title,
+                diagnostic_style(theme.diagnostic_error, theme).add_modifier(Modifier::BOLD),
+            ))
             .borders(Borders::ALL)
-            .border_style(theme.error),
+            .border_style(diagnostic_style(theme.diagnostic_error, theme)),
         area,
     );
 }
 
 fn render_tiny(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
-    let mut lines = vec![Line::from(Span::styled(TINY_MESSAGE, theme.warning))];
+    let mut lines = vec![Line::from(Span::styled(
+        TINY_MESSAGE,
+        diagnostic_style(theme.diagnostic_warning, theme),
+    ))];
     let badges = extension_tiny_fallback_labels(state, area);
     if !badges.is_empty() && area.height > 1 {
         lines.push(Line::from(Span::styled(
             format!("Ext: {}", badges.join(", ")),
-            Style::default().fg(theme.muted),
+            badge_style(theme.badge_muted, theme),
         )));
     }
     let paragraph = Paragraph::new(lines);
@@ -710,7 +716,7 @@ fn render_extension_autosuggest_badges(
             &format!("Ext: {labels}"),
             badge_area.width as usize,
         ))
-        .style(Style::default().fg(theme.muted)),
+        .style(badge_style(theme.badge_accent, theme)),
         badge_area,
     );
 }
@@ -1518,7 +1524,7 @@ fn render_command_suggestions(
     let lines = if suggestions.items.is_empty() {
         vec![Line::styled(
             format!("No suggestion matches `{}`", suggestions.query),
-            Style::default().fg(theme.muted),
+            suggestion_muted_style(theme),
         )]
     } else {
         let range = visible_range(
@@ -1534,7 +1540,7 @@ fn render_command_suggestions(
                 let index = start + offset;
                 let active = index == suggestions.selected;
                 let marker = arrow_marker(active);
-                let style = item_style(active, false, theme);
+                let style = suggestion_item_style(active, theme);
                 let mut spans = vec![Span::styled(marker.to_string(), style)];
                 if let Some(label) = item.category.label() {
                     spans.push(Span::raw(" "));
@@ -1543,10 +1549,13 @@ fn render_command_suggestions(
                         command_category_style(item.category, theme),
                     ));
                 }
-                spans.push(Span::styled(format!(" {}", item.label), style));
+                spans.push(Span::styled(
+                    format!(" {}", item.label),
+                    suggestion_label_style(active, theme),
+                ));
                 spans.push(Span::styled(
                     format!("  {}", item.summary),
-                    Style::default().fg(theme.muted),
+                    suggestion_muted_style(theme),
                 ));
                 Line::from(spans)
             })
@@ -1554,16 +1563,18 @@ fn render_command_suggestions(
     };
 
     frame.render_widget(
-        Paragraph::new(lines).style(elevated_style(theme)).block(
-            Block::default()
-                .title(format!(
-                    " {} ",
-                    command_suggestion_title(suggestions, content_capacity)
-                ))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.focused_border))
-                .style(elevated_style(theme)),
-        ),
+        Paragraph::new(lines)
+            .style(suggestion_panel_style(theme))
+            .block(
+                Block::default()
+                    .title(format!(
+                        " {} ",
+                        command_suggestion_title(suggestions, content_capacity)
+                    ))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.suggestion_border))
+                    .style(suggestion_panel_style(theme)),
+            ),
         area,
     );
 }
@@ -1577,23 +1588,16 @@ fn command_suggestion_max_rows(suggestions: &CommandSuggestionsView) -> usize {
 }
 
 fn command_category_style(category: CommandSuggestionCategory, theme: &Theme) -> Style {
-    match category {
-        CommandSuggestionCategory::System => Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
-        CommandSuggestionCategory::Prompt => Style::default()
-            .fg(Color::Blue)
-            .add_modifier(Modifier::BOLD),
-        CommandSuggestionCategory::Skill => Style::default()
-            .fg(Color::Magenta)
-            .add_modifier(Modifier::BOLD),
-        CommandSuggestionCategory::Extension => Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+    let color = match category {
+        CommandSuggestionCategory::System => theme.badge_warning,
+        CommandSuggestionCategory::Prompt => theme.badge_accent,
+        CommandSuggestionCategory::Skill => theme.badge_error,
+        CommandSuggestionCategory::Extension => theme.badge_success,
         CommandSuggestionCategory::Model
         | CommandSuggestionCategory::File
-        | CommandSuggestionCategory::Value => Style::default().fg(theme.muted),
-    }
+        | CommandSuggestionCategory::Value => theme.badge_muted,
+    };
+    badge_style(color, theme).add_modifier(Modifier::BOLD)
 }
 
 fn command_suggestion_title(
@@ -3870,8 +3874,46 @@ fn panel_style(theme: &Theme) -> Style {
     Style::default().fg(theme.fg).bg(theme.panel_bg)
 }
 
-fn elevated_style(theme: &Theme) -> Style {
-    Style::default().fg(theme.fg).bg(theme.elevated_bg)
+fn suggestion_panel_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.suggestion_fg)
+        .bg(theme.suggestion_bg)
+}
+
+fn suggestion_item_style(active: bool, theme: &Theme) -> Style {
+    if active {
+        Style::default()
+            .fg(theme.suggestion_selected_fg)
+            .bg(theme.suggestion_selected_bg)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        suggestion_panel_style(theme)
+    }
+}
+
+fn suggestion_label_style(active: bool, theme: &Theme) -> Style {
+    if active {
+        suggestion_item_style(true, theme)
+    } else {
+        Style::default()
+            .fg(theme.suggestion_match)
+            .bg(theme.suggestion_bg)
+            .add_modifier(Modifier::BOLD)
+    }
+}
+
+fn suggestion_muted_style(theme: &Theme) -> Style {
+    Style::default()
+        .fg(theme.badge_muted)
+        .bg(theme.suggestion_bg)
+}
+
+fn badge_style(color: Color, theme: &Theme) -> Style {
+    Style::default().fg(color).bg(theme.badge_bg)
+}
+
+fn diagnostic_style(color: Color, theme: &Theme) -> Style {
+    Style::default().fg(color).bg(theme.diagnostic_danger_bg)
 }
 
 fn settings_title_style(theme: &Theme) -> Style {
@@ -4947,7 +4989,8 @@ mod tests {
         assert_eq!(
             skill,
             Style::default()
-                .fg(Color::Magenta)
+                .fg(theme.badge_error)
+                .bg(theme.badge_bg)
                 .add_modifier(Modifier::BOLD)
         );
         assert_ne!(
@@ -4957,6 +5000,44 @@ mod tests {
         assert_ne!(
             skill,
             command_category_style(CommandSuggestionCategory::Prompt, &theme)
+        );
+    }
+
+    #[test]
+    fn suggestion_badge_and_diagnostic_roles_use_theme_fields() {
+        let theme = Theme {
+            suggestion_fg: Color::Blue,
+            suggestion_bg: Color::Red,
+            suggestion_match: Color::Green,
+            suggestion_selected_fg: Color::Yellow,
+            suggestion_selected_bg: Color::Magenta,
+            badge_error: Color::Cyan,
+            badge_bg: Color::White,
+            diagnostic_error: Color::LightRed,
+            diagnostic_danger_bg: Color::DarkGray,
+            ..Theme::default()
+        };
+
+        assert_eq!(suggestion_panel_style(&theme).fg, Some(Color::Blue));
+        assert_eq!(suggestion_panel_style(&theme).bg, Some(Color::Red));
+        assert_eq!(suggestion_item_style(true, &theme).fg, Some(Color::Yellow));
+        assert_eq!(suggestion_item_style(true, &theme).bg, Some(Color::Magenta));
+        assert_eq!(suggestion_label_style(false, &theme).fg, Some(Color::Green));
+        assert_eq!(
+            command_category_style(CommandSuggestionCategory::Skill, &theme).fg,
+            Some(Color::Cyan)
+        );
+        assert_eq!(
+            command_category_style(CommandSuggestionCategory::Skill, &theme).bg,
+            Some(Color::White)
+        );
+        assert_eq!(
+            diagnostic_style(theme.diagnostic_error, &theme).fg,
+            Some(Color::LightRed)
+        );
+        assert_eq!(
+            diagnostic_style(theme.diagnostic_error, &theme).bg,
+            Some(Color::DarkGray)
         );
     }
 

@@ -94,6 +94,25 @@ pub struct Theme {
     pub extension_conflict: Color,
     pub extension_diagnostic: Color,
     pub extension_override: Color,
+    pub suggestion_bg: Color,
+    pub suggestion_fg: Color,
+    pub suggestion_match: Color,
+    pub suggestion_category: Color,
+    pub suggestion_border: Color,
+    pub suggestion_selected_fg: Color,
+    pub suggestion_selected_bg: Color,
+    pub badge_fg: Color,
+    pub badge_bg: Color,
+    pub badge_accent: Color,
+    pub badge_success: Color,
+    pub badge_warning: Color,
+    pub badge_error: Color,
+    pub badge_muted: Color,
+    pub diagnostic_info: Color,
+    pub diagnostic_warning: Color,
+    pub diagnostic_error: Color,
+    pub diagnostic_success: Color,
+    pub diagnostic_danger_bg: Color,
 }
 
 impl Default for Theme {
@@ -188,6 +207,25 @@ impl Default for Theme {
             extension_conflict: Color::Yellow,
             extension_diagnostic: Color::Red,
             extension_override: Color::Magenta,
+            suggestion_bg: Color::Reset,
+            suggestion_fg: Color::Reset,
+            suggestion_match: Color::Cyan,
+            suggestion_category: Color::Cyan,
+            suggestion_border: Color::Cyan,
+            suggestion_selected_fg: Color::Reset,
+            suggestion_selected_bg: Color::DarkGray,
+            badge_fg: Color::Reset,
+            badge_bg: Color::Reset,
+            badge_accent: Color::Cyan,
+            badge_success: Color::Green,
+            badge_warning: Color::Yellow,
+            badge_error: Color::Red,
+            badge_muted: Color::DarkGray,
+            diagnostic_info: Color::Cyan,
+            diagnostic_warning: Color::Yellow,
+            diagnostic_error: Color::Red,
+            diagnostic_success: Color::Green,
+            diagnostic_danger_bg: Color::Reset,
         }
     }
 }
@@ -990,6 +1028,25 @@ fn default_raw_theme_tokens() -> BTreeMap<String, String> {
         ("extension.conflict".into(), "$palette.warning".into()),
         ("extension.diagnostic".into(), "$palette.error".into()),
         ("extension.override".into(), "$palette.accent".into()),
+        ("suggestion.bg".into(), "$palette.elevated".into()),
+        ("suggestion.fg".into(), "$palette.text".into()),
+        ("suggestion.match".into(), "$palette.accent".into()),
+        ("suggestion.category".into(), "$palette.accent".into()),
+        ("suggestion.border".into(), "$palette.accent".into()),
+        ("suggestion.selected_fg".into(), "$palette.text".into()),
+        ("suggestion.selected_bg".into(), "$palette.selection".into()),
+        ("badge.fg".into(), "$palette.text".into()),
+        ("badge.bg".into(), "default".into()),
+        ("badge.accent".into(), "$palette.accent".into()),
+        ("badge.success".into(), "$palette.success".into()),
+        ("badge.warning".into(), "$palette.warning".into()),
+        ("badge.error".into(), "$palette.error".into()),
+        ("badge.muted".into(), "$palette.muted".into()),
+        ("diagnostic.info".into(), "$palette.accent".into()),
+        ("diagnostic.warning".into(), "$palette.warning".into()),
+        ("diagnostic.error".into(), "$palette.error".into()),
+        ("diagnostic.success".into(), "$palette.success".into()),
+        ("diagnostic.danger_bg".into(), "default".into()),
         ("extension_surface.bg".into(), "$palette.surface".into()),
         ("extension_surface.fg".into(), "$palette.text".into()),
         ("extension_surface.border".into(), "$palette.muted".into()),
@@ -1243,6 +1300,28 @@ fn apply_color_token(theme: &mut Theme, token: &str, color: Color) {
         "extension.conflict" => theme.extension_conflict = color,
         "extension.diagnostic" => theme.extension_diagnostic = color,
         "extension.override" => theme.extension_override = color,
+        "suggestion.bg" => theme.suggestion_bg = color,
+        "suggestion.fg" => theme.suggestion_fg = color,
+        "suggestion.match" => theme.suggestion_match = color,
+        "suggestion.category" => theme.suggestion_category = color,
+        "suggestion.border" => theme.suggestion_border = color,
+        "suggestion.selected_fg" => theme.suggestion_selected_fg = color,
+        "suggestion.selected_bg" => theme.suggestion_selected_bg = color,
+        "badge.fg" => theme.badge_fg = color,
+        "badge.bg" => theme.badge_bg = color,
+        "badge.accent" => theme.badge_accent = color,
+        "badge.success" => theme.badge_success = color,
+        "badge.warning" => theme.badge_warning = color,
+        "badge.error" => theme.badge_error = color,
+        "badge.muted" => theme.badge_muted = color,
+        "diagnostic.info" => theme.diagnostic_info = color,
+        "diagnostic.warning" => theme.diagnostic_warning = color,
+        "diagnostic.error" => {
+            theme.diagnostic_error = color;
+            theme.error = theme.error.fg(color);
+        }
+        "diagnostic.success" => theme.diagnostic_success = color,
+        "diagnostic.danger_bg" => theme.diagnostic_danger_bg = color,
         "extension_surface.focused_border" => theme.focused_border = color,
         "extension_surface.border" => theme.panel_border = color,
         "extension_surface.fg" => theme.fg = color,
@@ -1291,6 +1370,18 @@ fn is_known_theme_token(token: &str) -> bool {
             | "suggestion.border"
             | "suggestion.selected_fg"
             | "suggestion.selected_bg"
+            | "badge.fg"
+            | "badge.bg"
+            | "badge.accent"
+            | "badge.success"
+            | "badge.warning"
+            | "badge.error"
+            | "badge.muted"
+            | "diagnostic.info"
+            | "diagnostic.warning"
+            | "diagnostic.error"
+            | "diagnostic.success"
+            | "diagnostic.danger_bg"
             | "status.bg"
             | "status.fg"
             | "status.muted"
@@ -1521,6 +1612,9 @@ mod tests {
                     ("syntax.string".into(), "#191a1b".into()),
                     ("settings.active".into(), "#1c1d1e".into()),
                     ("extension.enabled".into(), "#1f2021".into()),
+                    ("suggestion.selected_bg".into(), "#222324".into()),
+                    ("badge.warning".into(), "#252627".into()),
+                    ("diagnostic.error".into(), "#28292a".into()),
                 ]),
                 ..ThemeDocument::default()
             },
@@ -1544,5 +1638,8 @@ mod tests {
         assert_eq!(theme.syntax_string, Color::Rgb(0x19, 0x1a, 0x1b));
         assert_eq!(theme.settings_active, Color::Rgb(0x1c, 0x1d, 0x1e));
         assert_eq!(theme.extension_enabled, Color::Rgb(0x1f, 0x20, 0x21));
+        assert_eq!(theme.suggestion_selected_bg, Color::Rgb(0x22, 0x23, 0x24));
+        assert_eq!(theme.badge_warning, Color::Rgb(0x25, 0x26, 0x27));
+        assert_eq!(theme.diagnostic_error, Color::Rgb(0x28, 0x29, 0x2a));
     }
 }

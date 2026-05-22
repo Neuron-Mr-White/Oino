@@ -43,6 +43,17 @@
     "tool.border": "$palette.warning",
     "tool.title": "$palette.warning",
     "markdown.link": "$palette.accent_alt",
-    "markdown.code_border": "$palette.accent"
+    "markdown.code_border": "$palette.accent",
+    "syntax.keyword": "$palette.accent",
+    "syntax.string": "$palette.success",
+    "settings.active": "$palette.accent",
+    "extension.enabled": "$palette.success",
+    "extension.disabled": "$palette.muted",
+    "suggestion.bg": "$palette.surface_raised",
+    "suggestion.match": "$palette.accent",
+    "suggestion.border": "$palette.accent_alt",
+    "badge.accent": "$palette.accent",
+    "badge.warning": "$palette.warning",
+    "diagnostic.error": "$palette.error"
   }
 }
