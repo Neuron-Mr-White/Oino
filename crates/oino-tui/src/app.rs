@@ -1548,7 +1548,22 @@ impl TuiState {
     }
 
     pub fn focus_extension_surface(&mut self, surface_id: &ContributionId) -> bool {
-        self.extension_ui.focus_surface(surface_id)
+        if !self.extension_ui.focus_surface(surface_id) {
+            return false;
+        }
+        if let Some(slot) = self
+            .extension_ui
+            .surfaces
+            .iter()
+            .find(|surface| &surface.effective_id == surface_id)
+            .map(|surface| extension_surface_slot_key(&surface.entry.contribution))
+        {
+            self.extension_ui
+                .surface_controller
+                .set_slot_hidden(slot.clone(), false);
+            self.extension_ui.surface_controller.focused_slot = Some(slot);
+        }
+        true
     }
 
     #[must_use]
@@ -1560,6 +1575,7 @@ impl TuiState {
         let slots = self.extension_ui.visible_surface_slot_keys();
         if slots.is_empty() {
             self.extension_ui.surface_controller.focused_slot = None;
+            self.extension_ui.focused_surface = None;
             return false;
         }
         let current = self
@@ -1568,17 +1584,17 @@ impl TuiState {
             .focused_slot
             .as_ref()
             .and_then(|slot| slots.iter().position(|candidate| candidate == slot));
-        let max = slots.len().saturating_sub(1) as isize;
         let next = current.map_or_else(
-            || if delta.is_negative() { max as usize } else { 0 },
-            |current| (current as isize + delta).clamp(0, max) as usize,
+            || {
+                if delta.is_negative() {
+                    slots.len().saturating_sub(1)
+                } else {
+                    0
+                }
+            },
+            |current| (current as isize + delta).rem_euclid(slots.len() as isize) as usize,
         );
-        let slot = slots[next].clone();
-        self.extension_ui.surface_controller.focused_slot = Some(slot.clone());
-        if let Some(surface) = self.extension_ui.active_surface_for_slot(&slot) {
-            self.extension_ui.focused_surface = Some(surface.effective_id.clone());
-        }
-        true
+        self.focus_extension_surface_slot(slots[next].clone())
     }
 
     pub fn advance_extension_surface_tab(&mut self, delta: isize) -> bool {
@@ -1606,16 +1622,11 @@ impl TuiState {
             return false;
         }
         let current = self.extension_ui.surface_controller.active_tab(&slot, len);
-        let max = len.saturating_sub(1) as isize;
-        let next = (current as isize + delta).clamp(0, max) as usize;
+        let next = (current as isize + delta).rem_euclid(len as isize) as usize;
         self.extension_ui
             .surface_controller
             .set_active_tab(slot.clone(), next);
-        self.extension_ui.surface_controller.focused_slot = Some(slot.clone());
-        if let Some(surface) = self.extension_ui.active_surface_for_slot(&slot) {
-            self.extension_ui.focused_surface = Some(surface.effective_id.clone());
-        }
-        true
+        self.focus_extension_surface_slot(slot)
     }
 
     pub fn toggle_extension_surface_kind(&mut self, kind: UiSurfaceKind) -> bool {
@@ -1639,7 +1650,14 @@ impl TuiState {
     }
 
     pub fn close_focused_extension_surface_slot(&mut self) -> bool {
-        let Some(slot) = self.extension_ui.surface_controller.focused_slot.clone() else {
+        let slot = self
+            .extension_ui
+            .surface_controller
+            .focused_slot
+            .clone()
+            .or_else(|| self.first_visible_extension_surface_slot(UiSurfaceKind::FloatingPanel))
+            .or_else(|| self.first_visible_extension_surface_slot(UiSurfaceKind::Overlay));
+        let Some(slot) = slot else {
             return false;
         };
         self.extension_ui
@@ -1648,6 +1666,26 @@ impl TuiState {
         self.extension_ui.surface_controller.focused_slot = None;
         self.extension_ui.focused_surface = None;
         true
+    }
+
+    fn focus_extension_surface_slot(&mut self, slot: String) -> bool {
+        self.extension_ui
+            .surface_controller
+            .set_slot_hidden(slot.clone(), false);
+        self.extension_ui.surface_controller.focused_slot = Some(slot.clone());
+        if let Some(surface) = self.extension_ui.active_surface_for_slot(&slot) {
+            self.extension_ui.focused_surface = Some(surface.effective_id.clone());
+        } else {
+            self.extension_ui.focused_surface = None;
+        }
+        true
+    }
+
+    fn first_visible_extension_surface_slot(&self, kind: UiSurfaceKind) -> Option<String> {
+        self.extension_ui
+            .surface_slot_keys_for_kind(kind)
+            .into_iter()
+            .find(|slot| !self.extension_ui.surface_controller.is_slot_hidden(slot))
     }
 
     pub fn set_keymap(&mut self, keymap: KeymapConfig) {
@@ -4129,6 +4167,12 @@ mod tests {
             test_surface("ui.one", UiSurfaceKind::Sidebar, "One", "sidebar:right"),
             test_surface("ui.two", UiSurfaceKind::Sidebar, "Two", "sidebar:right"),
             test_surface("ui.main", UiSurfaceKind::MainPanel, "Main", "main:primary"),
+            test_surface(
+                "ui.float",
+                UiSurfaceKind::FloatingPanel,
+                "Float",
+                "floating:center",
+            ),
         ]);
 
         assert!(state.focus_next_extension_surface_slot(1));
@@ -4138,9 +4182,27 @@ mod tests {
                 .surface_controller
                 .focused_slot
                 .as_deref(),
-            Some("MainPanel:main:primary")
+            Some("FloatingPanel:floating:center")
         );
         assert!(state.focus_next_extension_surface_slot(1));
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .focused_slot
+                .as_deref(),
+            Some("MainPanel:main:primary")
+        );
+        assert!(state.focus_next_extension_surface_slot(-1));
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .focused_slot
+                .as_deref(),
+            Some("FloatingPanel:floating:center")
+        );
+        assert!(state.focus_next_extension_surface_slot(-1));
         assert_eq!(
             state
                 .extension_ui
@@ -4157,6 +4219,14 @@ mod tests {
                 .active_tab("Sidebar:sidebar:right", 2),
             1
         );
+        assert!(state.advance_extension_surface_tab(1));
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .active_tab("Sidebar:sidebar:right", 2),
+            0
+        );
         assert!(state.close_focused_extension_surface_slot());
         assert!(state
             .extension_ui
@@ -4167,6 +4237,14 @@ mod tests {
             .extension_ui
             .surface_controller
             .is_slot_hidden("Sidebar:sidebar:right"));
+
+        state.extension_ui.surface_controller.focused_slot = None;
+        state.extension_ui.focused_surface = None;
+        assert!(state.close_focused_extension_surface_slot());
+        assert!(state
+            .extension_ui
+            .surface_controller
+            .is_slot_hidden("FloatingPanel:floating:center"));
     }
 
     #[test]

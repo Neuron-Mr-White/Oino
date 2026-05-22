@@ -586,6 +586,7 @@ fn render_extension_sidebar(
         "Extensions",
         surfaces.len(),
         state.extension_ui.conflicts.len(),
+        extension_surfaces_have_focus(state, surfaces),
     );
     let paragraph = Paragraph::new(lines).block(
         Block::default()
@@ -604,7 +605,15 @@ fn render_extension_main_panel(frame: &mut Frame<'_>, area: Rect, state: &TuiSta
     let lines = extension_surface_lines(state, &surfaces, area.width.saturating_sub(2) as usize);
     let paragraph = Paragraph::new(lines).block(
         Block::default()
-            .title(Span::styled(" Extension Main ", theme.title))
+            .title(Span::styled(
+                extension_group_title(
+                    "Extension Main",
+                    surfaces.len(),
+                    0,
+                    extension_surfaces_have_focus(state, &surfaces),
+                ),
+                theme.title,
+            ))
             .borders(Borders::ALL)
             .border_style(theme.panel_border),
     );
@@ -621,6 +630,7 @@ fn render_extension_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
         "Extension Status",
         surfaces.len(),
         state.extension_ui.conflicts.len(),
+        extension_surfaces_have_focus(state, &surfaces),
     );
     let paragraph = Paragraph::new(lines).block(
         Block::default()
@@ -667,7 +677,15 @@ fn render_extension_floating_panels(
     );
     let paragraph = Paragraph::new(lines).block(
         Block::default()
-            .title(Span::styled(" Extension Panel ", theme.title))
+            .title(Span::styled(
+                extension_group_title(
+                    "Extension Panel",
+                    surfaces.len(),
+                    0,
+                    extension_surfaces_have_focus(state, &surfaces),
+                ),
+                theme.title,
+            ))
             .borders(Borders::ALL)
             .border_style(theme.focused_border),
     );
@@ -796,21 +814,17 @@ fn extension_surface_lines(
         }
         if let Some(surface) = group.get(active_index) {
             let label = extension_surface_label(state, surface);
-            let focus = if state
+            let focused = state
                 .extension_ui
                 .surface_controller
                 .focused_slot
                 .as_deref()
                 == Some(slot.as_str())
-                || state.extension_ui.focused_surface.as_ref() == Some(&surface.effective_id)
-            {
-                "› "
-            } else {
-                "  "
-            };
+                || state.extension_ui.focused_surface.as_ref() == Some(&surface.effective_id);
+            let focus = if focused { "▶ " } else { "  " };
             lines.push(Line::from(vec![
                 Span::styled(focus.to_string(), Style::default().fg(Color::Cyan)),
-                Span::raw(truncate_to_width(&label, width.saturating_sub(2))),
+                Span::raw(truncate_to_width(&label, width.saturating_sub(focus.len()))),
             ]));
         }
     }
@@ -850,7 +864,7 @@ fn extension_surface_tab_line(
         .as_deref()
         == Some(slot)
     {
-        text.push_str(" • focused");
+        text.insert_str(0, "FOCUS • ");
     }
     Line::styled(
         truncate_with_ellipsis(&text, width),
@@ -858,15 +872,32 @@ fn extension_surface_tab_line(
     )
 }
 
-fn extension_group_title(label: &str, count: usize, conflicts: usize) -> String {
+fn extension_group_title(label: &str, count: usize, conflicts: usize, focused: bool) -> String {
+    let focus = if focused { " • FOCUSED" } else { "" };
     if conflicts == 0 {
-        format!(" {label} {count} ")
+        format!(" {label} {count}{focus} ")
     } else {
         format!(
-            " {label} {count} • {conflicts} conflict{} ",
+            " {label} {count} • {conflicts} conflict{}{focus} ",
             if conflicts == 1 { "" } else { "s" }
         )
     }
+}
+
+fn extension_surfaces_have_focus(
+    state: &TuiState,
+    surfaces: &[&ActiveContribution<UiSurfaceContribution>],
+) -> bool {
+    surfaces.iter().any(|surface| {
+        let slot = extension_surface_slot_key(&surface.entry.contribution);
+        state
+            .extension_ui
+            .surface_controller
+            .focused_slot
+            .as_deref()
+            == Some(slot.as_str())
+            || state.extension_ui.focused_surface.as_ref() == Some(&surface.effective_id)
+    })
 }
 
 pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> usize {
@@ -2328,6 +2359,13 @@ fn extension_management_lines(
         format!("Filter: {}", state.extension_management.search)
     };
     lines.push(Line::styled(search, Style::default().fg(theme.muted)));
+    if let Some(item) = state.extension_management.selected_item() {
+        lines.push(extension_management_selected_line(
+            item,
+            content_width,
+            theme,
+        ));
+    }
     lines.push(Line::from(""));
     if state.extension_management.items.is_empty() {
         lines.push(Line::styled(
@@ -2372,13 +2410,14 @@ fn extension_management_lines(
                 };
                 let overrides = extension_override_badges(item);
                 let line = format!(
-                    "{marker} [{}] {} — {} [{}] G:{} P:{}{overrides} • {} • {}{}{}",
-                    item.target.label(),
+                    "{marker} P:{} G:{}{overrides} [{}:{}:{}] {} — {} • {} • {}{}{}",
+                    extension_on_off(item.project_enabled),
+                    extension_on_off(item.global_enabled),
+                    extension_management_target_badge(item.target),
+                    item.family,
+                    item.scope,
                     item.id,
                     item.title,
-                    item.scope,
-                    extension_on_off(item.global_enabled),
-                    extension_on_off(item.project_enabled),
                     item.health,
                     item.permission,
                     diagnostics,
@@ -2395,6 +2434,52 @@ fn extension_management_lines(
             }),
     );
     lines
+}
+
+fn extension_management_selected_line(
+    item: &crate::app::ExtensionManagementItem,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let diagnostics = if item.diagnostics.is_empty() {
+        String::new()
+    } else {
+        format!(" • {} diag", item.diagnostics.len())
+    };
+    let conflicts = if item.conflicts.is_empty() {
+        String::new()
+    } else {
+        format!(" • {} conflict", item.conflicts.len())
+    };
+    let text = format!(
+        "Selected: P:{} G:{}{} • [{}:{}:{}] {} — {} • {} • {}{}{}",
+        extension_on_off(item.project_enabled),
+        extension_on_off(item.global_enabled),
+        extension_override_badges(item),
+        extension_management_target_badge(item.target),
+        item.family,
+        item.scope,
+        item.id,
+        item.title,
+        item.health,
+        item.permission,
+        diagnostics,
+        conflicts,
+    );
+    Line::styled(
+        truncate_with_ellipsis(&text, width),
+        Style::default().fg(theme.muted),
+    )
+}
+
+fn extension_management_target_badge(
+    target: crate::app::ExtensionManagementTarget,
+) -> &'static str {
+    match target {
+        crate::app::ExtensionManagementTarget::Package => "pkg",
+        crate::app::ExtensionManagementTarget::Extension => "ext",
+        crate::app::ExtensionManagementTarget::Contribution => "contrib",
+    }
 }
 
 fn extension_on_off(value: bool) -> &'static str {
@@ -3891,7 +3976,7 @@ mod tests {
         let text = buffer_text(&buffer);
         assert!(text.contains("Extensions"));
         assert!(text.contains("ui.processes"));
-        assert!(text.contains("G:ON P:OFF OVR:G"));
+        assert!(text.contains("P:OFF G:ON OVR:G"));
         assert!(text.contains("diag"));
         assert!(text.contains("conflict"));
     }
@@ -3962,6 +4047,7 @@ mod tests {
         let text = buffer_text(&buffer);
         assert!(text.contains("Process Manager"));
         assert!(text.contains("2 running"));
+        assert!(text.contains("FOCUS"));
         assert!(text.contains("Extension Status"));
         assert!(text.contains("jobs healthy"));
         assert!(text.contains("Extension Panel"));
