@@ -127,6 +127,35 @@ pub enum ExtensionManagementTarget {
     Contribution,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionManagementView {
+    Manage,
+    Registry,
+}
+
+impl ExtensionManagementView {
+    pub const ALL: [Self; 2] = [Self::Manage, Self::Registry];
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Manage => "Manage",
+            Self::Registry => "Registered",
+        }
+    }
+
+    #[must_use]
+    pub const fn accepts(self, target: ExtensionManagementTarget) -> bool {
+        match self {
+            Self::Manage => matches!(
+                target,
+                ExtensionManagementTarget::Package | ExtensionManagementTarget::Extension
+            ),
+            Self::Registry => matches!(target, ExtensionManagementTarget::Contribution),
+        }
+    }
+}
+
 impl ExtensionManagementTarget {
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -202,6 +231,7 @@ pub struct ExtensionManagementState {
     pub install_scope: ToolSettingsScope,
     pub install_active: bool,
     pub remove_confirm: Option<ExtensionPackageSelection>,
+    pub view: ExtensionManagementView,
 }
 
 impl Default for ExtensionManagementState {
@@ -216,6 +246,7 @@ impl Default for ExtensionManagementState {
             install_scope: ToolSettingsScope::Project,
             install_active: false,
             remove_confirm: None,
+            view: ExtensionManagementView::Manage,
         }
     }
 }
@@ -228,10 +259,27 @@ impl ExtensionManagementState {
     }
 
     pub fn refresh_filter(&mut self) {
-        self.filtered_indices =
-            fuzzy_indices(&self.items, &self.search, FuzzyMode::Text, None, |item| {
-                item.haystack()
-            });
+        let candidates = self
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| self.view.accepts(item.target))
+            .map(|(index, item)| (index, item.haystack()))
+            .collect::<Vec<_>>();
+        self.filtered_indices = if self.search.trim().is_empty() {
+            candidates.iter().map(|(index, _)| *index).collect()
+        } else {
+            fuzzy_indices(
+                &candidates,
+                &self.search,
+                FuzzyMode::Text,
+                None,
+                |(_, haystack)| haystack.clone(),
+            )
+            .into_iter()
+            .filter_map(|candidate_index| candidates.get(candidate_index).map(|(index, _)| *index))
+            .collect()
+        };
         if self.filtered_indices.is_empty() {
             self.cursor = 0;
         } else {
@@ -239,6 +287,34 @@ impl ExtensionManagementState {
                 .cursor
                 .min(self.filtered_indices.len().saturating_sub(1));
         }
+    }
+
+    pub fn set_view(&mut self, view: ExtensionManagementView) {
+        if self.view == view {
+            return;
+        }
+        self.view = view;
+        self.cursor = 0;
+        self.remove_confirm = None;
+        self.refresh_filter();
+    }
+
+    pub fn cycle_view(&mut self, delta: isize) {
+        let current = ExtensionManagementView::ALL
+            .iter()
+            .position(|view| *view == self.view)
+            .unwrap_or_default();
+        let next = (current as isize + delta)
+            .rem_euclid(ExtensionManagementView::ALL.len() as isize) as usize;
+        self.set_view(ExtensionManagementView::ALL[next]);
+    }
+
+    #[must_use]
+    pub fn count_for_view(&self, view: ExtensionManagementView) -> usize {
+        self.items
+            .iter()
+            .filter(|item| view.accepts(item.target))
+            .count()
     }
 
     pub fn move_cursor(&mut self, delta: isize) {
@@ -253,6 +329,7 @@ impl ExtensionManagementState {
     }
 
     pub fn begin_install(&mut self, scope: ToolSettingsScope) {
+        self.set_view(ExtensionManagementView::Manage);
         self.install_scope = scope;
         self.install_active = true;
         self.install_input.clear();
@@ -2602,6 +2679,14 @@ impl TuiState {
             };
         }
         match key.code {
+            KeyCode::Tab if key.modifiers.is_empty() => self.cycle_extension_management_view(1),
+            KeyCode::BackTab => self.cycle_extension_management_view(-1),
+            KeyCode::Char('1') if key.modifiers.is_empty() => {
+                self.set_extension_management_view(ExtensionManagementView::Manage)
+            }
+            KeyCode::Char('2') if key.modifiers.is_empty() => {
+                self.set_extension_management_view(ExtensionManagementView::Registry)
+            }
             KeyCode::Char('g') if key.modifiers.is_empty() => {
                 self.toggle_selected_extension_scope(ToolSettingsScope::Global)
             }
@@ -2643,6 +2728,26 @@ impl TuiState {
             }
             _ => TuiAction::None,
         }
+    }
+
+    fn cycle_extension_management_view(&mut self, delta: isize) -> TuiAction {
+        self.extension_management.cycle_view(delta);
+        self.status = format!(
+            "Extensions {} tab • {} items",
+            self.extension_management.view.label(),
+            self.extension_management.filtered_indices.len()
+        );
+        TuiAction::None
+    }
+
+    fn set_extension_management_view(&mut self, view: ExtensionManagementView) -> TuiAction {
+        self.extension_management.set_view(view);
+        self.status = format!(
+            "Extensions {} tab • {} items",
+            self.extension_management.view.label(),
+            self.extension_management.filtered_indices.len()
+        );
+        TuiAction::None
     }
 
     fn submit_extension_install(&mut self) -> TuiAction {
@@ -3478,7 +3583,7 @@ impl TuiState {
         self.extension_management.search_active = false;
         self.extension_management.search.clear();
         self.extension_management.refresh_filter();
-        self.status = "Extensions: / search • i/I install • u/x uninstall • g/p toggles • o/O prefer conflict winner • c/C clear override • Esc close".into();
+        self.status = "Extensions: Tab switch Manage/Registered • / search • i/I install • u/x uninstall • g/p toggles • o/O prefer conflict winner • c/C clear override • Esc close".into();
     }
 
     fn open_inspect_overlay(&mut self) {
@@ -4414,6 +4519,11 @@ mod tests {
         }]);
         state.composer.replace_text("/extensions");
         assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(
+            state.extension_management.view,
+            ExtensionManagementView::Registry
+        );
         assert_eq!(
             state.handle_key(key(KeyCode::Char('o'))),
             TuiAction::SetExtensionOverride {

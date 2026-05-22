@@ -84,11 +84,19 @@ Open:
 /extensions
 ```
 
+The panel has two tabs:
+
+- **Manage** — package and extension rows for install, update-by-reinstall, uninstall, and coarse enablement.
+- **Registered** — individual registered contributions such as tools, commands, UI surfaces, themes, resources, hooks, providers, autosuggest, renderers, diagnostics, health, and persistence.
+
 Controls:
 
 | Key | Action |
 |---|---|
-| `/` | Search packages, extensions, and contributions. |
+| `Tab` / `Shift-Tab` | Switch between **Manage** and **Registered** tabs. |
+| `1` | Open **Manage**. |
+| `2` | Open **Registered**. |
+| `/` | Search within the current tab. |
 | `↑` / `↓` | Move selection. |
 | `i` | Install a package into the current project. |
 | `I` | Install a package globally. |

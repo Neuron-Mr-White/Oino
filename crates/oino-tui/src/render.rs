@@ -2,8 +2,8 @@
 
 use crate::{
     app::{
-        extension_surface_slot_key, ChordState, OverlayKind, SendPanelItem, SendPanelSection,
-        SessionListItem, TuiFocus, TuiState,
+        extension_surface_slot_key, ChordState, ExtensionManagementView, OverlayKind,
+        SendPanelItem, SendPanelSection, SessionListItem, TuiFocus, TuiState,
     },
     command::{CommandSuggestionCategory, CommandSuggestionsView},
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
@@ -28,6 +28,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{
         Block, Borders, Clear, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        Wrap,
     },
     Frame,
 };
@@ -2270,39 +2271,13 @@ fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
     });
     let sections = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(8), Constraint::Length(2)])
+        .constraints([Constraint::Min(8), Constraint::Length(4)])
         .split(inner);
     let content_height = list_content_height(sections[0]);
     let content_width = sections[0].width.saturating_sub(2) as usize;
     let lines = extension_management_lines(state, content_width, content_height, theme);
     let filtered = &state.extension_management.filtered_indices;
-    let title = if filtered.is_empty() {
-        format!(
-            " Extension Items 0/{} ",
-            state.extension_management.items.len()
-        )
-    } else if state.extension_management.search.trim().is_empty() {
-        format!(
-            " Extension Items {}/{} ",
-            state
-                .extension_management
-                .cursor
-                .saturating_add(1)
-                .min(filtered.len()),
-            state.extension_management.items.len()
-        )
-    } else {
-        format!(
-            " Extension Items {}/{} ({} total) ",
-            state
-                .extension_management
-                .cursor
-                .saturating_add(1)
-                .min(filtered.len()),
-            filtered.len(),
-            state.extension_management.items.len()
-        )
-    };
+    let title = extension_management_title(state, filtered.len());
     frame.render_widget(
         Paragraph::new(lines).block(
             Block::default()
@@ -2319,13 +2294,39 @@ fn render_extensions_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState
     } else if state.extension_management.search_active {
         "type to fuzzy search • ↑/↓ move • Enter toggle project • Esc clear search"
     } else {
-        "↑/↓ select • / search • i/I install • u/x uninstall • g/p toggles • o/O prefer winner • c/C clear override • Esc close"
+        "Tab switch tab • 1 Manage • 2 Registered • ↑/↓ select • / search • i/I install • u/x uninstall • g/p toggles • o/O prefer winner • c/C clear override • Esc close"
     };
     let status = format!("{} • {controls}", state.status);
     frame.render_widget(
-        Paragraph::new(truncate_to_width(&status, sections[1].width as usize)).style(theme.footer),
+        Paragraph::new(status)
+            .style(theme.footer)
+            .wrap(Wrap { trim: false }),
         sections[1],
     );
+}
+
+fn extension_management_title(state: &TuiState, filtered_len: usize) -> String {
+    let current = if filtered_len == 0 {
+        0
+    } else {
+        state
+            .extension_management
+            .cursor
+            .saturating_add(1)
+            .min(filtered_len)
+    };
+    let total = state
+        .extension_management
+        .count_for_view(state.extension_management.view);
+    let suffix = if state.extension_management.search.trim().is_empty() {
+        format!("{current}/{total}")
+    } else {
+        format!("{current}/{filtered_len} ({total} in tab)")
+    };
+    format!(
+        " Extensions • {} tab • {suffix} ",
+        state.extension_management.view.label()
+    )
 }
 
 fn extension_management_lines(
@@ -2335,6 +2336,7 @@ fn extension_management_lines(
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
+    lines.push(extension_management_tabs_line(state, content_width, theme));
     let search = if state.extension_management.install_active {
         let input = if state.extension_management.install_input.is_empty() {
             "<package path, Git URL, or owner/repo>"
@@ -2434,6 +2436,26 @@ fn extension_management_lines(
             }),
     );
     lines
+}
+
+fn extension_management_tabs_line(state: &TuiState, width: usize, theme: &Theme) -> Line<'static> {
+    let management = &state.extension_management;
+    let segments = ExtensionManagementView::ALL
+        .iter()
+        .map(|view| {
+            let label = format!("{} ({})", view.label(), management.count_for_view(*view));
+            if *view == management.view {
+                format!("[{label}]")
+            } else {
+                label
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("  ");
+    Line::styled(
+        truncate_with_ellipsis(&format!("Tabs: {segments}"), width),
+        Style::default().fg(theme.accent),
+    )
 }
 
 fn extension_management_selected_line(
@@ -3971,6 +3993,9 @@ mod tests {
             global_enabled: true,
             project_enabled: false,
         }]);
+        state
+            .extension_management
+            .set_view(ExtensionManagementView::Registry);
         state.overlay = Some(OverlayKind::Extensions);
         let buffer = draw_state(120, 30, &state);
         let text = buffer_text(&buffer);
