@@ -96,10 +96,33 @@ Controls:
 | `Esc` while install input is active | Cancel install input. |
 | `p` or `Enter` on a row | Toggle project enablement for the selected package/extension/contribution. |
 | `g` on a row | Toggle global enablement for the selected package/extension/contribution. |
+| `o` on a contribution row | Prefer this contribution as the project conflict winner. |
+| `O` on a contribution row | Prefer this contribution as the global conflict winner. |
+| `c` on a contribution row | Clear the project conflict override for this contribution id. |
+| `C` on a contribution row | Clear the global conflict override for this contribution id. |
 | `u` or `x` on a package row | Start uninstall confirmation. |
 | `Enter` or `y` during uninstall confirmation | Remove the selected installed package. |
 | `n` or `Esc` during uninstall confirmation | Cancel uninstall. |
 | `Esc` | Close the panel when not in install/confirm mode. |
+
+## Extension surface controls
+
+Oino owns extension surface navigation. Extensions can register sidebar, main panel, footer/status, header, composer widget, floating, editor-metadata, and working-indicator surfaces, but the host controls focus, tab switching, hide/show, and close behavior.
+
+Global shortcuts:
+
+| Key | Action |
+|---|---|
+| `Ctrl-O Tab` | Focus the next visible extension surface slot. |
+| `Ctrl-O Shift-Tab` | Focus the previous visible extension surface slot. |
+| `Ctrl-O ]` | Switch to the next tab in the focused extension slot. |
+| `Ctrl-O [` | Switch to the previous tab in the focused extension slot. |
+| `Ctrl-O w` | Close/hide the focused extension surface slot. |
+| `Esc` | Also closes the focused extension surface slot before falling through to normal app behavior. |
+| `Ctrl-O b` | Toggle all extension sidebar slots. |
+| `Ctrl-O m` | Toggle all extension main-panel slots. |
+
+If several extensions register the same slot, Oino shows a tab row and lets you switch the active one instead of silently letting extensions override each other.
 
 ## What install does
 
@@ -113,7 +136,7 @@ When you install a package, Oino:
 6. If the package id is already installed in that scope, treats install as an update attempt.
 7. Enables the package in the selected scope's settings.
 8. Reloads the Extension Manager snapshot.
-9. Refreshes model-visible tools, slash commands, UI surfaces, keymaps, themes, providers, autosuggest entries, and management rows.
+9. Refreshes model-visible tools, slash commands, prompt/skill resources, UI surfaces, keymaps, themes, providers, autosuggest entries, and management rows.
 
 ## Updating extensions
 
@@ -151,6 +174,14 @@ Each row shows `G:ON/OFF` and `P:ON/OFF`:
 - `P` is the project setting.
 
 Project settings override global defaults for the current project. If a globally installed package should be unavailable in one project, select its package/extension/contribution row and toggle project off with `p`.
+
+Contribution rows may also show override badges:
+
+- `OVR:G` — this candidate is the global conflict winner.
+- `OVR:P` — this candidate is the project conflict winner.
+- `OVR:G/P` — both scopes prefer this candidate.
+
+Use `o`/`O` to choose a conflict winner and `c`/`C` to clear the override. This works across contribution families such as commands, tools, keymaps, UI surfaces, resources/skills, providers/models, themes, hooks, autosuggest, renderers, diagnostics, health, and persistence.
 
 ## Trust and permissions
 

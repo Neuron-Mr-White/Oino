@@ -100,9 +100,10 @@ Core developer/community install flow from the panel:
 1. Open `/extensions`.
 2. Press `i` to install a package into the current project, or `I` to install globally.
 3. Type a local package path such as `examples/extensions/rust-wasm-fixture`, a GitHub shorthand such as `owner/repo`, or a Git URL such as `https://github.com/owner/repo.git#v1.0.0`, then press Enter.
-4. Oino resolves local paths or clones Git sources, validates, installs, enables the package in the selected scope, reloads the Extension Manager, and refreshes model-visible tools/UI surfaces.
+4. Oino resolves local paths or clones Git sources, validates, installs, enables the package in the selected scope, reloads the Extension Manager, and refreshes model-visible tools, prompt/skill resources, UI surfaces, keymaps, themes, providers, autosuggest entries, and management rows.
 5. Select a package row and press `u` or `x` to uninstall; Enter/Y confirms and Esc/N cancels.
 6. Use `p`/Enter to toggle project enablement and `g` to toggle global enablement for the selected extension, package, or contribution.
+7. On contribution conflicts, use `o`/`O` to prefer the selected contribution as project/global winner and `c`/`C` to clear overrides.
 
 Safe mode disables all non-built-in contributions while retaining diagnostics. Reload APIs return typed registry diffs so package lifecycle, hot reload, and author workflows can explain what changed.
 
@@ -116,7 +117,7 @@ UI contributions are declarative. A surface declares kind, title, state schema, 
 - non-empty action ids/labels
 - declared key scopes
 
-Supported surface kinds cover sidebar, floating panel, footer/status, main panel, settings page, autosuggest, overlay, theme, transcript/message renderers, tool renderers, notification, and health summaries.
+Supported surface kinds cover sidebar, main panel, header, floating panel, footer top/bottom/status, inline status, composer widgets, working indicator, editor metadata, settings page, autosuggest, overlay, theme, transcript/message renderers, tool renderers, notification, and health summaries. The host owns hide/show, focus, tab switching, and global close behavior so multiple extensions cannot silently trap or override each other.
 
 ## WASM ABI and runtime lifecycle
 

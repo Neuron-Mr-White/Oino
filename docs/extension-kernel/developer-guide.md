@@ -213,15 +213,94 @@ Supported contribution families include:
 - **Tools** — model-visible callable tools with JSON input schemas.
 - **Commands** — slash commands bridged into Oino command handling.
 - **Hooks** — host lifecycle or tool-call hooks with priority and mutable/read-only mode.
-- **UI surfaces** — sidebar, floating panel, footer/status, overlays, settings pages, health summaries.
+- **UI surfaces** — sidebar, main panel, header, floating panel, footer top/bottom, inline status, composer widgets, editor metadata, working indicator, overlays, settings pages, health summaries.
 - **Keymaps** — default bindings for extension actions.
-- **Themes** — theme token overrides.
+- **Themes** — semantic theme token overrides using named colors, `#rrggbb`, 256-color indexes, `default`, or `reset`.
 - **Providers/models** — provider/model metadata, privacy and capability descriptors.
 - **Autosuggest** — composer suggestion providers.
 - **Renderers** — transcript/message/tool renderer descriptors.
-- **Resources** — prompt, skill, or other resource descriptors.
+- **Resources** — prompt, skill, system-prompt/project-instruction, theme, or asset descriptors. Active prompt and skill resources appear in Oino's resource browser and slash-resource flow.
 - **Persistence** — typed extension-owned persistence records.
 - **Diagnostics/health** — health metadata and actionable diagnostics.
+
+## Host-owned UI surface model
+
+Extensions declare surfaces; Oino controls where they render and how users navigate them. A surface contribution includes:
+
+```json
+{
+  "id": "example_main_panel",
+  "surface": "main_panel",
+  "title": "Example Main Panel",
+  "state_schema": "object",
+  "layout": {
+    "slot": "main:primary",
+    "priority": 10,
+    "min_width": 40,
+    "min_height": 5,
+    "tiny_terminal": "compact_badge"
+  },
+  "visibility": "visible",
+  "focus": "focusable",
+  "key_dispatch": { "scopes": ["example"], "pass_through": true },
+  "conflict": { "strategy": "namespaced", "priority": 0, "allow_user_override": true }
+}
+```
+
+Useful surface names include:
+
+```text
+sidebar
+main_panel
+header
+floating_panel
+footer
+footer_top
+footer_bottom
+inline_status
+widget_above_composer
+widget_below_composer
+working_indicator
+editor
+settings_page
+autosuggest
+overlay
+transcript_renderer
+message_renderer
+tool_renderer
+theme
+notification
+status
+health
+```
+
+If multiple extensions register the same resolved slot, Oino shows tabs and lets the user switch winners. Do not trap global navigation keys; use contribution keymaps and let Oino's conflict policy decide whether they are active.
+
+## Theme tokens
+
+Oino accepts Oino-native tokens plus Pi-inspired token names. Token names are normalized across snake_case, kebab-case, dotted names, spaces, and camelCase. Supported values include named Ratatui colors (`cyan`, `dark_gray`), `#rrggbb`, 256-color indexes (`242`), `default`, and `reset`.
+
+Common tokens that currently apply at the Ratatui theme boundary:
+
+```text
+accent
+success
+text / fg
+muted
+dim
+focused_border / borderAccent
+panel_border / border / borderMuted
+user_border / userMessageText
+assistant_border / assistantMessageText
+tool_border / toolTitle
+title
+warning
+error
+footer / status / inline_status
+working / working_indicator
+```
+
+Oino recognizes a broader Pi-inspired token vocabulary for forward compatibility; unsupported tokens are accepted but may not visibly affect current built-in widgets yet.
 
 ## Runtime and capability rules
 
@@ -319,7 +398,7 @@ After install, inspect rows in `/extensions`:
 - contribution rows and conflicts
 - `G:ON/OFF` and `P:ON/OFF` enablement
 
-Use `p`/Enter to toggle project enablement and `g` to toggle global enablement.
+Use `p`/Enter to toggle project enablement and `g` to toggle global enablement. For duplicate contributions, use `o`/`O` to prefer the selected contribution as the project/global conflict winner and `c`/`C` to clear overrides.
 
 ## Publish through GitHub
 
