@@ -52,6 +52,9 @@ use uuid::Uuid;
 pub type OinoId = Uuid;
 
 /// A model selected by provider/model identifiers plus opaque metadata.
+///
+/// Identifiers split on the first `:` so provider-specific model names may
+/// contain additional colons (for example OpenRouter `:free` suffixes).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Model {
     pub provider: String,
@@ -84,7 +87,6 @@ impl Model {
             || name.is_empty()
             || provider.chars().any(char::is_whitespace)
             || name.chars().any(char::is_whitespace)
-            || name.contains(':')
         {
             return None;
         }
@@ -299,6 +301,13 @@ mod tests {
             Model::from_identifier("openrouter:xai/glm-5.1"),
             Some(model)
         );
+
+        let suffixed = Model::new("openrouter", "deepseek/deepseek-v4-flash:free");
+        assert_eq!(
+            Model::from_identifier("openrouter:deepseek/deepseek-v4-flash:free"),
+            Some(suffixed)
+        );
+
         assert_eq!(Model::from_identifier("xai/glm-5.1"), None);
         assert_eq!(Model::from_identifier("openrouter:"), None);
         assert_eq!(Model::from_identifier("openrouter:xai/glm 5.1"), None);

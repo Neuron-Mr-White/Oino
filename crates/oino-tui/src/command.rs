@@ -1554,6 +1554,12 @@ mod tests {
             )))
         );
         assert_eq!(
+            parse_command("/model openrouter:deepseek/deepseek-v4-flash:free"),
+            Some(ParsedCommand::Settings(SettingsCommand::SetModel(
+                Model::new("openrouter", "deepseek/deepseek-v4-flash:free")
+            )))
+        );
+        assert_eq!(
             parse_command("/settings thinking high"),
             Some(ParsedCommand::Settings(SettingsCommand::SetThinkingLevel(
                 ThinkingLevel::High

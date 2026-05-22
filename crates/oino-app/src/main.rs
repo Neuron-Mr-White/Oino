@@ -3992,6 +3992,16 @@ mod tests {
     }
 
     #[test]
+    fn model_identifier_accepts_openrouter_suffix_colon() {
+        let model = ensure_model_identifier("openrouter:deepseek/deepseek-v4-flash:free")
+            .unwrap_or_else(|err| panic!("model identifier should parse: {err}"));
+        assert_eq!(
+            model,
+            Model::new("openrouter", "deepseek/deepseek-v4-flash:free")
+        );
+    }
+
+    #[test]
     fn ctrl_left_down_is_required_for_external_mouse_open() {
         assert!(is_external_open_mouse_event(&MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
