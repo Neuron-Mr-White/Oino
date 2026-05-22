@@ -203,6 +203,13 @@ pub enum KeyAction {
     KeymapClearShortcuts,
     KeymapResetAction,
     KeymapSelectPreset,
+    ExtensionSurfaceFocusNext,
+    ExtensionSurfaceFocusPrevious,
+    ExtensionSurfaceTabNext,
+    ExtensionSurfaceTabPrevious,
+    ExtensionSurfaceClose,
+    ExtensionSidebarToggle,
+    ExtensionMainPanelToggle,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -327,6 +334,13 @@ impl KeyAction {
             Self::KeymapClearShortcuts => "settings.keymaps.clear_shortcuts",
             Self::KeymapResetAction => "settings.keymaps.reset_action",
             Self::KeymapSelectPreset => "settings.keymaps.select_preset",
+            Self::ExtensionSurfaceFocusNext => "extensions.surface.focus_next",
+            Self::ExtensionSurfaceFocusPrevious => "extensions.surface.focus_previous",
+            Self::ExtensionSurfaceTabNext => "extensions.surface.tab_next",
+            Self::ExtensionSurfaceTabPrevious => "extensions.surface.tab_previous",
+            Self::ExtensionSurfaceClose => "extensions.surface.close",
+            Self::ExtensionSidebarToggle => "extensions.sidebar.toggle",
+            Self::ExtensionMainPanelToggle => "extensions.main_panel.toggle",
         }
     }
 }
@@ -925,6 +939,48 @@ pub const ACTION_INFOS: &[KeyActionInfo] = &[
         KeyContext::SettingsKeymaps,
         "Select Preset",
         "reset all keybinds to a preset",
+    ),
+    info(
+        KeyAction::ExtensionSurfaceFocusNext,
+        KeyContext::Global,
+        "Focus Next Extension Surface",
+        "move focus to the next visible extension surface slot",
+    ),
+    info(
+        KeyAction::ExtensionSurfaceFocusPrevious,
+        KeyContext::Global,
+        "Focus Previous Extension Surface",
+        "move focus to the previous visible extension surface slot",
+    ),
+    info(
+        KeyAction::ExtensionSurfaceTabNext,
+        KeyContext::Global,
+        "Next Extension Tab",
+        "activate the next extension surface in the focused slot",
+    ),
+    info(
+        KeyAction::ExtensionSurfaceTabPrevious,
+        KeyContext::Global,
+        "Previous Extension Tab",
+        "activate the previous extension surface in the focused slot",
+    ),
+    info(
+        KeyAction::ExtensionSurfaceClose,
+        KeyContext::Global,
+        "Close Extension Surface",
+        "hide the focused extension surface slot",
+    ),
+    info(
+        KeyAction::ExtensionSidebarToggle,
+        KeyContext::Global,
+        "Toggle Extension Sidebar",
+        "show or hide extension sidebar slots",
+    ),
+    info(
+        KeyAction::ExtensionMainPanelToggle,
+        KeyContext::Global,
+        "Toggle Extension Main Panel",
+        "show or hide extension main panel slots",
     ),
 ];
 
@@ -1612,6 +1668,15 @@ fn default_bindings(
         (_, KeyAction::KeymapClearShortcuts) => &["c", "C"],
         (_, KeyAction::KeymapResetAction) => &["r", "R"],
         (_, KeyAction::KeymapSelectPreset) => &["p", "P"],
+        (_, KeyAction::ExtensionSurfaceFocusNext) => return chord_defaults(chord_key, &["tab"]),
+        (_, KeyAction::ExtensionSurfaceFocusPrevious) => {
+            return chord_defaults(chord_key, &["shift-tab"])
+        }
+        (_, KeyAction::ExtensionSurfaceTabNext) => return chord_defaults(chord_key, &["]"]),
+        (_, KeyAction::ExtensionSurfaceTabPrevious) => return chord_defaults(chord_key, &["["]),
+        (_, KeyAction::ExtensionSurfaceClose) => return chord_defaults(chord_key, &["w"]),
+        (_, KeyAction::ExtensionSidebarToggle) => return chord_defaults(chord_key, &["b"]),
+        (_, KeyAction::ExtensionMainPanelToggle) => return chord_defaults(chord_key, &["m"]),
     };
     values
         .iter()

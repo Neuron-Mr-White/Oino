@@ -2,8 +2,8 @@
 
 use crate::{
     app::{
-        ChordState, OverlayKind, SendPanelItem, SendPanelSection, SessionListItem, TuiFocus,
-        TuiState,
+        extension_surface_slot_key, ChordState, OverlayKind, SendPanelItem, SendPanelSection,
+        SessionListItem, TuiFocus, TuiState,
     },
     command::{CommandSuggestionCategory, CommandSuggestionsView},
     composer::{byte_index_at_char, char_count, ComposerState, INPUT_PLACEHOLDER},
@@ -32,7 +32,7 @@ use ratatui::{
     Frame,
 };
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     sync::{Arc, Mutex, OnceLock},
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -388,6 +388,12 @@ fn extension_surfaces(
         .iter()
         .filter(|surface| surface.entry.contribution.surface == surface_kind)
         .filter(|surface| {
+            !state
+                .extension_ui
+                .surface_controller
+                .is_slot_hidden(&extension_surface_slot_key(&surface.entry.contribution))
+        })
+        .filter(|surface| {
             ui_surface_layout_decision(&surface.entry.contribution, area.width, area.height.max(8))
                 == UiSurfaceLayoutDecision::Render
         })
@@ -415,6 +421,12 @@ fn extension_tiny_fallback_labels(state: &TuiState, area: Rect) -> Vec<String> {
         .extension_ui
         .surfaces
         .iter()
+        .filter(|surface| {
+            !state
+                .extension_ui
+                .surface_controller
+                .is_slot_hidden(&extension_surface_slot_key(&surface.entry.contribution))
+        })
         .filter_map(|surface| {
             match ui_surface_layout_decision(&surface.entry.contribution, area.width, area.height) {
                 UiSurfaceLayoutDecision::CompactBadge | UiSurfaceLayoutDecision::StatusLine => {
@@ -678,22 +690,92 @@ fn extension_surface_lines(
     surfaces: &[&ActiveContribution<UiSurfaceContribution>],
     width: usize,
 ) -> Vec<Line<'static>> {
-    surfaces
-        .iter()
-        .map(|surface| {
+    let mut by_slot: BTreeMap<String, Vec<&ActiveContribution<UiSurfaceContribution>>> =
+        BTreeMap::new();
+    for surface in surfaces {
+        by_slot
+            .entry(extension_surface_slot_key(&surface.entry.contribution))
+            .or_default()
+            .push(*surface);
+    }
+
+    let mut lines = Vec::new();
+    for (slot, group) in by_slot {
+        let active_index = state
+            .extension_ui
+            .surface_controller
+            .active_tab(&slot, group.len());
+        if group.len() > 1 {
+            lines.push(extension_surface_tab_line(
+                state,
+                &slot,
+                &group,
+                active_index,
+                width,
+            ));
+        }
+        if let Some(surface) = group.get(active_index) {
             let label = extension_surface_label(state, surface);
-            let focus =
-                if state.extension_ui.focused_surface.as_ref() == Some(&surface.effective_id) {
-                    "› "
-                } else {
-                    "  "
-                };
-            Line::from(vec![
+            let focus = if state
+                .extension_ui
+                .surface_controller
+                .focused_slot
+                .as_deref()
+                == Some(slot.as_str())
+                || state.extension_ui.focused_surface.as_ref() == Some(&surface.effective_id)
+            {
+                "› "
+            } else {
+                "  "
+            };
+            lines.push(Line::from(vec![
                 Span::styled(focus.to_string(), Style::default().fg(Color::Cyan)),
                 Span::raw(truncate_to_width(&label, width.saturating_sub(2))),
-            ])
-        })
-        .collect()
+            ]));
+        }
+    }
+    lines
+}
+
+fn extension_surface_tab_line(
+    state: &TuiState,
+    slot: &str,
+    surfaces: &[&ActiveContribution<UiSurfaceContribution>],
+    active_index: usize,
+    width: usize,
+) -> Line<'static> {
+    let mut text = format!("tabs {slot}: ");
+    for (index, surface) in surfaces.iter().enumerate() {
+        if index > 0 {
+            text.push_str(" | ");
+        }
+        let label = surface.entry.contribution.title.trim();
+        let label = if label.is_empty() {
+            surface.effective_id.as_str()
+        } else {
+            label
+        };
+        if index == active_index {
+            text.push('[');
+            text.push_str(label);
+            text.push(']');
+        } else {
+            text.push_str(label);
+        }
+    }
+    if state
+        .extension_ui
+        .surface_controller
+        .focused_slot
+        .as_deref()
+        == Some(slot)
+    {
+        text.push_str(" • focused");
+    }
+    Line::styled(
+        truncate_with_ellipsis(&text, width),
+        Style::default().fg(Color::DarkGray),
+    )
 }
 
 fn extension_group_title(label: &str, count: usize, conflicts: usize) -> String {

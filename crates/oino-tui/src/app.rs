@@ -24,7 +24,7 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_extension_core::{
     detect_ui_surface_conflicts, validate_ui_surface_update, ActiveContribution, ContributionId,
-    UiSurfaceAction, UiSurfaceConflict, UiSurfaceContribution, UiSurfaceStateUpdate,
+    UiSurfaceAction, UiSurfaceConflict, UiSurfaceContribution, UiSurfaceKind, UiSurfaceStateUpdate,
     UiSurfaceValidationError,
 };
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
@@ -337,11 +337,74 @@ pub struct ExtensionThemeState {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExtensionSurfaceControllerState {
+    pub hidden_slots: BTreeSet<String>,
+    pub active_tabs: BTreeMap<String, usize>,
+    pub focused_slot: Option<String>,
+}
+
+impl ExtensionSurfaceControllerState {
+    #[must_use]
+    pub fn is_slot_hidden(&self, slot: &str) -> bool {
+        self.hidden_slots.contains(slot)
+    }
+
+    pub fn set_slot_hidden(&mut self, slot: impl Into<String>, hidden: bool) {
+        let slot = slot.into();
+        if hidden {
+            self.hidden_slots.insert(slot);
+        } else {
+            self.hidden_slots.remove(&slot);
+        }
+    }
+
+    #[must_use]
+    pub fn active_tab(&self, slot: &str, len: usize) -> usize {
+        if len == 0 {
+            0
+        } else {
+            self.active_tabs
+                .get(slot)
+                .copied()
+                .unwrap_or_default()
+                .min(len.saturating_sub(1))
+        }
+    }
+
+    pub fn set_active_tab(&mut self, slot: impl Into<String>, index: usize) {
+        self.active_tabs.insert(slot.into(), index);
+    }
+
+    pub fn prune(&mut self, slots: &BTreeSet<String>) {
+        self.hidden_slots.retain(|slot| slots.contains(slot));
+        self.active_tabs.retain(|slot, _| slots.contains(slot));
+        if self
+            .focused_slot
+            .as_ref()
+            .is_some_and(|slot| !slots.contains(slot))
+        {
+            self.focused_slot = None;
+        }
+    }
+}
+
+#[must_use]
+pub fn extension_surface_slot_key(surface: &UiSurfaceContribution) -> String {
+    let slot = if surface.layout.slot == "primary" {
+        surface.surface.default_slot()
+    } else {
+        surface.layout.slot.as_str()
+    };
+    format!("{:?}:{slot}", surface.surface)
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExtensionUiState {
     pub surfaces: Vec<ActiveContribution<UiSurfaceContribution>>,
     pub state_summaries: BTreeMap<ContributionId, String>,
     pub actions: BTreeMap<ContributionId, Vec<UiSurfaceAction>>,
     pub focused_surface: Option<ContributionId>,
+    pub surface_controller: ExtensionSurfaceControllerState,
     pub conflicts: Vec<UiSurfaceConflict>,
     pub shortcuts: Vec<ExtensionShortcut>,
     pub autosuggest_items: Vec<ExtensionAutosuggestItem>,
@@ -365,6 +428,11 @@ impl ExtensionUiState {
                 .then_with(|| left.effective_id.cmp(&right.effective_id))
         });
         self.conflicts = detect_ui_surface_conflicts(&surfaces);
+        let slots = surfaces
+            .iter()
+            .map(|surface| extension_surface_slot_key(&surface.entry.contribution))
+            .collect::<BTreeSet<_>>();
+        self.surface_controller.prune(&slots);
         self.state_summaries
             .retain(|id, _| surfaces.iter().any(|surface| &surface.effective_id == id));
         self.actions
@@ -440,6 +508,49 @@ impl ExtensionUiState {
             surface_id: focused.as_str().to_string(),
             action_id: action.id.clone(),
         })
+    }
+
+    #[must_use]
+    pub fn surface_slot_keys(&self) -> Vec<String> {
+        self.surfaces
+            .iter()
+            .map(|surface| extension_surface_slot_key(&surface.entry.contribution))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    #[must_use]
+    pub fn visible_surface_slot_keys(&self) -> Vec<String> {
+        self.surface_slot_keys()
+            .into_iter()
+            .filter(|slot| !self.surface_controller.is_slot_hidden(slot))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn surface_slot_keys_for_kind(&self, kind: UiSurfaceKind) -> Vec<String> {
+        self.surfaces
+            .iter()
+            .filter(|surface| surface.entry.contribution.surface == kind)
+            .map(|surface| extension_surface_slot_key(&surface.entry.contribution))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    #[must_use]
+    pub fn active_surface_for_slot(
+        &self,
+        slot: &str,
+    ) -> Option<&ActiveContribution<UiSurfaceContribution>> {
+        let surfaces = self
+            .surfaces
+            .iter()
+            .filter(|surface| extension_surface_slot_key(&surface.entry.contribution) == slot)
+            .collect::<Vec<_>>();
+        let index = self.surface_controller.active_tab(slot, surfaces.len());
+        surfaces.get(index).copied()
     }
 }
 
@@ -1431,6 +1542,100 @@ impl TuiState {
         self.extension_ui.action_for_scope(scope)
     }
 
+    pub fn focus_next_extension_surface_slot(&mut self, delta: isize) -> bool {
+        let slots = self.extension_ui.visible_surface_slot_keys();
+        if slots.is_empty() {
+            self.extension_ui.surface_controller.focused_slot = None;
+            return false;
+        }
+        let current = self
+            .extension_ui
+            .surface_controller
+            .focused_slot
+            .as_ref()
+            .and_then(|slot| slots.iter().position(|candidate| candidate == slot));
+        let max = slots.len().saturating_sub(1) as isize;
+        let next = current.map_or_else(
+            || if delta.is_negative() { max as usize } else { 0 },
+            |current| (current as isize + delta).clamp(0, max) as usize,
+        );
+        let slot = slots[next].clone();
+        self.extension_ui.surface_controller.focused_slot = Some(slot.clone());
+        if let Some(surface) = self.extension_ui.active_surface_for_slot(&slot) {
+            self.extension_ui.focused_surface = Some(surface.effective_id.clone());
+        }
+        true
+    }
+
+    pub fn advance_extension_surface_tab(&mut self, delta: isize) -> bool {
+        let slot = self
+            .extension_ui
+            .surface_controller
+            .focused_slot
+            .clone()
+            .or_else(|| {
+                self.extension_ui
+                    .visible_surface_slot_keys()
+                    .into_iter()
+                    .next()
+            });
+        let Some(slot) = slot else {
+            return false;
+        };
+        let len = self
+            .extension_ui
+            .surfaces
+            .iter()
+            .filter(|surface| extension_surface_slot_key(&surface.entry.contribution) == slot)
+            .count();
+        if len == 0 {
+            return false;
+        }
+        let current = self.extension_ui.surface_controller.active_tab(&slot, len);
+        let max = len.saturating_sub(1) as isize;
+        let next = (current as isize + delta).clamp(0, max) as usize;
+        self.extension_ui
+            .surface_controller
+            .set_active_tab(slot.clone(), next);
+        self.extension_ui.surface_controller.focused_slot = Some(slot.clone());
+        if let Some(surface) = self.extension_ui.active_surface_for_slot(&slot) {
+            self.extension_ui.focused_surface = Some(surface.effective_id.clone());
+        }
+        true
+    }
+
+    pub fn toggle_extension_surface_kind(&mut self, kind: UiSurfaceKind) -> bool {
+        let slots = self.extension_ui.surface_slot_keys_for_kind(kind);
+        if slots.is_empty() {
+            return false;
+        }
+        let hide = slots
+            .iter()
+            .any(|slot| !self.extension_ui.surface_controller.is_slot_hidden(slot));
+        for slot in slots {
+            self.extension_ui
+                .surface_controller
+                .set_slot_hidden(slot, hide);
+        }
+        if hide {
+            self.extension_ui.surface_controller.focused_slot = None;
+            self.extension_ui.focused_surface = None;
+        }
+        true
+    }
+
+    pub fn close_focused_extension_surface_slot(&mut self) -> bool {
+        let Some(slot) = self.extension_ui.surface_controller.focused_slot.clone() else {
+            return false;
+        };
+        self.extension_ui
+            .surface_controller
+            .set_slot_hidden(slot, true);
+        self.extension_ui.surface_controller.focused_slot = None;
+        self.extension_ui.focused_surface = None;
+        true
+    }
+
     pub fn set_keymap(&mut self, keymap: KeymapConfig) {
         self.settings.set_keymap(keymap);
         let shortcuts = self.extension_ui.shortcuts.clone();
@@ -1518,6 +1723,14 @@ impl TuiState {
             return self.handle_settings_key(key);
         }
 
+        if self.overlay.is_none()
+            && matches!(key.code, KeyCode::Esc)
+            && self.close_focused_extension_surface_slot()
+        {
+            self.status = "Closed focused extension surface slot".into();
+            return TuiAction::None;
+        }
+
         match self.resolve_keymap_key(key) {
             KeymapKeyResult::Matched(action) => return self.execute_key_action(action),
             KeymapKeyResult::MatchedExtension(action) => {
@@ -1553,6 +1766,10 @@ impl TuiState {
         }
 
         if matches!(key.code, KeyCode::Esc) {
+            if self.close_focused_extension_surface_slot() {
+                self.status = "Closed focused extension surface slot".into();
+                return TuiAction::None;
+            }
             if self.working {
                 self.status = "Stopping response…".into();
                 return TuiAction::AbortPrompt;
@@ -1845,6 +2062,13 @@ impl TuiState {
             | KeyAction::KeymapClearShortcuts
             | KeyAction::KeymapResetAction
             | KeyAction::KeymapSelectPreset => self.execute_settings_action(action),
+            KeyAction::ExtensionSurfaceFocusNext
+            | KeyAction::ExtensionSurfaceFocusPrevious
+            | KeyAction::ExtensionSurfaceTabNext
+            | KeyAction::ExtensionSurfaceTabPrevious
+            | KeyAction::ExtensionSurfaceClose
+            | KeyAction::ExtensionSidebarToggle
+            | KeyAction::ExtensionMainPanelToggle => self.execute_extension_surface_action(action),
         }
     }
 
@@ -2562,6 +2786,62 @@ impl TuiState {
     fn execute_settings_action(&mut self, action: KeyAction) -> TuiAction {
         let key = key_event_for_settings_action(action);
         self.handle_settings_key(key)
+    }
+
+    fn execute_extension_surface_action(&mut self, action: KeyAction) -> TuiAction {
+        match action {
+            KeyAction::ExtensionSurfaceFocusNext => {
+                if self.focus_next_extension_surface_slot(1) {
+                    self.status = "Focused next extension surface slot".into();
+                } else {
+                    self.status = "No extension surfaces to focus".into();
+                }
+            }
+            KeyAction::ExtensionSurfaceFocusPrevious => {
+                if self.focus_next_extension_surface_slot(-1) {
+                    self.status = "Focused previous extension surface slot".into();
+                } else {
+                    self.status = "No extension surfaces to focus".into();
+                }
+            }
+            KeyAction::ExtensionSurfaceTabNext => {
+                if self.advance_extension_surface_tab(1) {
+                    self.status = "Activated next extension surface tab".into();
+                } else {
+                    self.status = "No extension surface tabs to switch".into();
+                }
+            }
+            KeyAction::ExtensionSurfaceTabPrevious => {
+                if self.advance_extension_surface_tab(-1) {
+                    self.status = "Activated previous extension surface tab".into();
+                } else {
+                    self.status = "No extension surface tabs to switch".into();
+                }
+            }
+            KeyAction::ExtensionSurfaceClose => {
+                if self.close_focused_extension_surface_slot() {
+                    self.status = "Closed focused extension surface slot".into();
+                } else {
+                    self.status = "No focused extension surface to close".into();
+                }
+            }
+            KeyAction::ExtensionSidebarToggle => {
+                if self.toggle_extension_surface_kind(UiSurfaceKind::Sidebar) {
+                    self.status = "Toggled extension sidebar slots".into();
+                } else {
+                    self.status = "No extension sidebar slots registered".into();
+                }
+            }
+            KeyAction::ExtensionMainPanelToggle => {
+                if self.toggle_extension_surface_kind(UiSurfaceKind::MainPanel) {
+                    self.status = "Toggled extension main panel slots".into();
+                } else {
+                    self.status = "No extension main panel slots registered".into();
+                }
+            }
+            _ => {}
+        }
+        TuiAction::None
     }
 
     fn handle_help_search_text_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -3654,6 +3934,57 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
+    fn test_surface(
+        id: &str,
+        kind: UiSurfaceKind,
+        title: &str,
+        slot: &str,
+    ) -> ActiveContribution<UiSurfaceContribution> {
+        use oino_extension_core::{
+            ContributionMetadata, ExtensionId, RegistryEntry, RegistryEntryKey, SourceDescriptor,
+            SourceKind, SourceScope, UiFocusPolicy, UiKeyDispatchPolicy, UiLayoutPolicy,
+            UiTinyTerminalFallback, UiVisibilityPolicy,
+        };
+
+        let contribution_id = ContributionId::new(id).unwrap_or_else(|err| panic!("bad id: {err}"));
+        let owner = ExtensionId::new(format!("owner.{id}"))
+            .unwrap_or_else(|err| panic!("bad owner id: {err}"));
+        ActiveContribution {
+            effective_id: contribution_id.clone(),
+            entry: RegistryEntry::new(
+                RegistryEntryKey::new(format!("test:{id}")),
+                ContributionMetadata::new(
+                    contribution_id.clone(),
+                    SourceDescriptor {
+                        scope: SourceScope::Project,
+                        kind: SourceKind::LocalPackage,
+                        path: None,
+                        registry: None,
+                    },
+                )
+                .with_extension_id(owner),
+                UiSurfaceContribution {
+                    id: contribution_id,
+                    surface: kind,
+                    title: title.into(),
+                    state_schema: Some("object".into()),
+                    layout: UiLayoutPolicy {
+                        slot: slot.into(),
+                        priority: 0,
+                        min_width: 20,
+                        min_height: 3,
+                        max_width: Some(32),
+                        tiny_terminal: UiTinyTerminalFallback::CompactBadge,
+                    },
+                    visibility: UiVisibilityPolicy::Visible,
+                    focus: UiFocusPolicy::Focusable,
+                    key_dispatch: UiKeyDispatchPolicy::default(),
+                    conflict: Default::default(),
+                },
+            ),
+        }
+    }
+
     fn add_test_resources(state: &mut TuiState) {
         state.set_resources(
             vec![PromptResource {
@@ -3721,6 +4052,93 @@ mod tests {
                 action: "extension.process.stop".into(),
             }
         );
+    }
+
+    #[test]
+    fn extension_surface_controller_tabs_toggles_and_closes_slots() {
+        let mut state = TuiState::new();
+        state.set_extension_ui_surfaces(vec![
+            test_surface("ui.one", UiSurfaceKind::Sidebar, "One", "sidebar:right"),
+            test_surface("ui.two", UiSurfaceKind::Sidebar, "Two", "sidebar:right"),
+            test_surface("ui.main", UiSurfaceKind::MainPanel, "Main", "main:primary"),
+        ]);
+
+        assert!(state.focus_next_extension_surface_slot(1));
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .focused_slot
+                .as_deref(),
+            Some("MainPanel:main:primary")
+        );
+        assert!(state.focus_next_extension_surface_slot(1));
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .focused_slot
+                .as_deref(),
+            Some("Sidebar:sidebar:right")
+        );
+        assert!(state.advance_extension_surface_tab(1));
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .active_tab("Sidebar:sidebar:right", 2),
+            1
+        );
+        assert!(state.close_focused_extension_surface_slot());
+        assert!(state
+            .extension_ui
+            .surface_controller
+            .is_slot_hidden("Sidebar:sidebar:right"));
+        assert!(state.toggle_extension_surface_kind(UiSurfaceKind::Sidebar));
+        assert!(!state
+            .extension_ui
+            .surface_controller
+            .is_slot_hidden("Sidebar:sidebar:right"));
+    }
+
+    #[test]
+    fn extension_surface_keybindings_use_global_chord_controls() {
+        let mut state = TuiState::new();
+        state.set_extension_ui_surfaces(vec![
+            test_surface("ui.one", UiSurfaceKind::Sidebar, "One", "sidebar:right"),
+            test_surface("ui.two", UiSurfaceKind::Sidebar, "Two", "sidebar:right"),
+        ]);
+
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Tab)), TuiAction::None);
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .focused_slot
+                .as_deref(),
+            Some("Sidebar:sidebar:right")
+        );
+        assert_eq!(
+            state.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)),
+            TuiAction::None
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char(']'))), TuiAction::None);
+        assert_eq!(
+            state
+                .extension_ui
+                .surface_controller
+                .active_tab("Sidebar:sidebar:right", 2),
+            1
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
+        assert!(state
+            .extension_ui
+            .surface_controller
+            .is_slot_hidden("Sidebar:sidebar:right"));
     }
 
     #[test]
