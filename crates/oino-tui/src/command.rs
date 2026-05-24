@@ -46,6 +46,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Settings,
     },
     CommandSpec {
+        name: "/login",
+        summary: "Sign in with Claude Code or ChatGPT",
+        kind: CommandKind::Settings,
+    },
+    CommandSpec {
         name: "/title",
         summary: "Set the current session title",
         kind: CommandKind::Session,
@@ -116,7 +121,25 @@ pub enum ParsedCommand {
     Inspect,
     Extensions,
     SetSessionTitle(String),
+    LoginHelp,
+    Login(LoginProvider),
     Settings(SettingsCommand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoginProvider {
+    Claude,
+    ChatGpt,
+}
+
+impl LoginProvider {
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::ChatGpt => "chatgpt",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,6 +346,7 @@ pub fn command_suggestions_for(
             thinking_suggestions(context)
         }
         [thinking] if thinking == "/thinking" => thinking_suggestions(context),
+        [login] if login == "/login" => login_suggestions(context),
         [settings, subject] if settings == "/settings" && subject == "collapse" => {
             collapse_target_suggestions(context)
         }
@@ -440,6 +464,11 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/reload"] => Some(ParsedCommand::ReloadResources),
         ["/inspect"] => Some(ParsedCommand::Inspect),
         ["/extensions"] => Some(ParsedCommand::Extensions),
+        ["/login"] => Some(ParsedCommand::LoginHelp),
+        ["/login", "claude"] => Some(ParsedCommand::Login(LoginProvider::Claude)),
+        ["/login", "chatgpt"] | ["/login", "chat-gpt"] | ["/login", "codex"] => {
+            Some(ParsedCommand::Login(LoginProvider::ChatGpt))
+        }
         ["/settings"] => Some(ParsedCommand::Settings(SettingsCommand::Open)),
         ["/model"] => Some(ParsedCommand::Settings(SettingsCommand::OpenModelSelection)),
         ["/thinking"] => Some(ParsedCommand::Settings(SettingsCommand::OpenThinkingLevel)),
@@ -548,6 +577,36 @@ pub fn chat_style_value(style: ChatStyle) -> &'static str {
 #[must_use]
 pub fn parse_chat_style(value: &str) -> Option<ChatStyle> {
     settings_parse_chat_style(value)
+}
+
+fn login_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    let query = context.active_prefix.as_str();
+    let candidates = [
+        ("claude", "Run Claude Code OAuth login"),
+        ("chatgpt", "Run ChatGPT/Codex OAuth login"),
+    ]
+    .into_iter()
+    .map(|(provider, summary)| CommandSuggestionItem {
+        label: provider.into(),
+        summary: summary.into(),
+        replacement: provider.into(),
+        replace_start: context.replace_start,
+        replace_end: context.replace_end,
+        complete_on_enter: true,
+        category: CommandSuggestionCategory::Value,
+    })
+    .collect::<Vec<_>>();
+    let items = fuzzy_indices(
+        &candidates,
+        query,
+        FuzzyMode::Text,
+        None,
+        suggestion_match_text,
+    )
+    .into_iter()
+    .map(|index| candidates[index].clone())
+    .collect::<Vec<_>>();
+    Some(view("OAuth login", query.to_string(), items))
 }
 
 fn root_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
@@ -1444,12 +1503,17 @@ mod tests {
         assert!(view.items.iter().any(|item| item.label == "/model"));
         assert!(view.items.iter().any(|item| item.label == "/thinking"));
         assert!(view.items.iter().any(|item| item.label == "/theme"));
+        assert!(view.items.iter().any(|item| item.label == "/login"));
         assert!(view.items.iter().any(|item| item.label == "/extensions"));
         assert!(view.items.iter().any(|item| item.label == "/prompts"));
         assert!(view.items.iter().any(|item| item.label == "/skills"));
         assert!(view.items.iter().any(|item| item.label == "/reload"));
         assert!(view.items.iter().any(|item| item.label == "/prompt:"));
         assert!(view.items.iter().any(|item| item.label == "/skill:"));
+        let view = suggestions("/login ", 7).unwrap_or_else(|| panic!("missing login view"));
+        assert_eq!(view.title, "OAuth login");
+        assert!(view.items.iter().any(|item| item.label == "claude"));
+        assert!(view.items.iter().any(|item| item.label == "chatgpt"));
         let view = suggestions("/zzzz", 5).unwrap_or_else(|| panic!("missing view"));
         assert!(view.items.is_empty());
     }
@@ -1540,6 +1604,15 @@ mod tests {
         assert_eq!(
             parse_command("/extensions"),
             Some(ParsedCommand::Extensions)
+        );
+        assert_eq!(parse_command("/login"), Some(ParsedCommand::LoginHelp));
+        assert_eq!(
+            parse_command("/login claude"),
+            Some(ParsedCommand::Login(LoginProvider::Claude))
+        );
+        assert_eq!(
+            parse_command("/login chatgpt"),
+            Some(ParsedCommand::Login(LoginProvider::ChatGpt))
         );
         assert_eq!(
             parse_command("/settings model openrouter:xai/glm-5.1"),

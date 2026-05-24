@@ -76,6 +76,10 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
         HelpEntry::item("/settings", "open settings pages"),
         HelpEntry::item("/theme", "open theme selection"),
         HelpEntry::item(
+            "/login claude|chatgpt",
+            "run the official Claude Code or ChatGPT/Codex OAuth login",
+        ),
+        HelpEntry::item(
             "/extensions",
             "manage installed extensions and contribution toggles",
         ),

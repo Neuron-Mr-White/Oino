@@ -9,6 +9,7 @@ name = "oino"
 path = "src/main.rs"
 
 [dependencies]
+async-trait.workspace = true
 crossterm.workspace = true
 dirs.workspace = true
 oino-agent-loop = { path = "../oino-agent-loop" }

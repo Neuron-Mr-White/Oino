@@ -59,7 +59,7 @@ pub use command::{
     command_suggestions_for, parse_chat_style, parse_collapse_mode, parse_collapse_target,
     parse_command, parse_thinking_level, thinking_level_value, CommandKind, CommandSpec,
     CommandSuggestionCategory, CommandSuggestionItem, CommandSuggestionsState,
-    CommandSuggestionsView, ParsedCommand, SettingsCommand, COMMANDS,
+    CommandSuggestionsView, LoginProvider, ParsedCommand, SettingsCommand, COMMANDS,
 };
 pub use composer::{is_newline_key, is_word_cursor_modifier, ComposerState, INPUT_PLACEHOLDER};
 pub use keymap::{

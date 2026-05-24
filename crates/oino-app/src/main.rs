@@ -58,7 +58,7 @@ use crossterm::{
     },
 };
 use model_catalog::ModelCatalogUpdate;
-use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamProvider, Tool};
+use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamEventSink, StreamProvider, Tool};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 use oino_extension_core::{
     ActiveContribution, ContributionId, ContributionMetadata, DiagnosticContribution, ExtensionId,
@@ -90,7 +90,10 @@ use oino_tui::{
     ThemeSource, ThemeSourceKind, ThemeSourceScope, ToolSettingsItem, ToolSettingsScope, TuiAction,
     TuiState, HELP_STATUS,
 };
-use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
+use oino_types::{
+    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ProviderMetadata, StopReason,
+    ThinkingLevel,
+};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -102,7 +105,11 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::Command as TokioCommand,
+    sync::mpsc,
+};
 use user_settings::UserSettings;
 
 const DEFAULT_OPENROUTER_MODEL: &str = "openrouter:openai/gpt-4o-mini";
@@ -178,7 +185,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /theme\n  /extensions\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings keymaps\n  /settings theme\n  /settings extensions"
+    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /theme\n  /login <claude|chatgpt>\n  /extensions\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings keymaps\n  /settings theme\n  /settings extensions"
 }
 
 #[derive(Debug, Error)]
@@ -340,10 +347,12 @@ async fn main() -> Result<(), AppError> {
         title: config.title.clone(),
         ..OpenRouterConfig::default()
     };
-    let provider = Arc::new(OpenRouterProvider::new(
+    let openrouter = Arc::new(OpenRouterProvider::new(
         auth.clone(),
         provider_config.clone(),
     )?) as Arc<dyn StreamProvider>;
+    let provider =
+        Arc::new(OfficialOAuthRoutingProvider::new(openrouter)) as Arc<dyn StreamProvider>;
     let harness = build_harness(
         config.model.clone(),
         config.thinking_level,
@@ -402,6 +411,245 @@ fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
             });
         fut
     })
+}
+
+#[derive(Clone)]
+struct OfficialOAuthRoutingProvider {
+    openrouter: Arc<dyn StreamProvider>,
+}
+
+impl OfficialOAuthRoutingProvider {
+    fn new(openrouter: Arc<dyn StreamProvider>) -> Self {
+        Self { openrouter }
+    }
+}
+
+#[async_trait::async_trait]
+impl StreamProvider for OfficialOAuthRoutingProvider {
+    async fn stream(
+        &self,
+        request: oino_agent_loop::StreamRequest,
+        signal: oino_agent_loop::AbortSignal,
+    ) -> oino_agent_loop::LoopResult<Vec<AssistantStreamEvent>> {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let sink_events = Arc::clone(&events);
+        let sink = Arc::new(move |event| {
+            let sink_events = Arc::clone(&sink_events);
+            let fut: BoxFuture<'static, oino_agent_loop::LoopResult<()>> = Box::pin(async move {
+                let mut events = sink_events
+                    .lock()
+                    .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?;
+                events.push(event);
+                Ok(())
+            });
+            fut
+        });
+        self.stream_events(request, signal, sink).await?;
+        let events = events
+            .lock()
+            .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?
+            .clone();
+        Ok(events)
+    }
+
+    async fn stream_events(
+        &self,
+        request: oino_agent_loop::StreamRequest,
+        signal: oino_agent_loop::AbortSignal,
+        sink: StreamEventSink,
+    ) -> oino_agent_loop::LoopResult<()> {
+        match request.model.provider.as_str() {
+            "openrouter" => self.openrouter.stream_events(request, signal, sink).await,
+            "claude" => run_official_cli_model_events(request, "claude", sink).await,
+            "chatgpt" => run_official_cli_model_events(request, "chatgpt", sink).await,
+            provider => Err(LoopError::Stream(format!(
+                "unsupported model provider `{provider}`; use openrouter, claude, or chatgpt"
+            ))),
+        }
+    }
+}
+
+async fn run_official_cli_model_events(
+    request: oino_agent_loop::StreamRequest,
+    provider: &str,
+    sink: StreamEventSink,
+) -> oino_agent_loop::LoopResult<()> {
+    let prompt = official_cli_prompt(&request);
+    let model_arg = official_cli_model_arg(provider, &request.model.name);
+    let mut command = match provider {
+        "claude" => {
+            let mut command = TokioCommand::new("claude");
+            let Some(model_arg) = model_arg.as_deref() else {
+                return Err(LoopError::Stream("claude model cannot be empty".into()));
+            };
+            command.args([
+                "--model",
+                model_arg,
+                "--print",
+                "--output-format",
+                "text",
+                "--no-session-persistence",
+                "--tools",
+                "",
+            ]);
+            command
+        }
+        "chatgpt" => {
+            let mut command = TokioCommand::new("codex");
+            command.arg("exec");
+            if let Some(model_arg) = model_arg.as_deref() {
+                command.args(["--model", model_arg]);
+            }
+            command.arg("-");
+            command
+        }
+        other => {
+            return Err(LoopError::Stream(format!(
+                "unsupported official CLI provider `{other}`"
+            )))
+        }
+    };
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|err| {
+        LoopError::Stream(format!("could not start {provider} model command: {err}"))
+    })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(prompt.as_bytes()).await.map_err(|err| {
+            LoopError::Stream(format!("could not write prompt to {provider}: {err}"))
+        })?;
+    }
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| LoopError::Stream(format!("could not read {provider} stdout")))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| LoopError::Stream(format!("could not read {provider} stderr")))?;
+
+    let stderr_task = tokio::spawn(async move {
+        let mut bytes = Vec::new();
+        stderr.read_to_end(&mut bytes).await.map(|_| bytes)
+    });
+
+    let mut emitted_anything = false;
+    let mut buffer = [0u8; 1024];
+    loop {
+        let count = stdout
+            .read(&mut buffer)
+            .await
+            .map_err(|err| LoopError::Stream(format!("could not read {provider} output: {err}")))?;
+        if count == 0 {
+            break;
+        }
+        emitted_anything = true;
+        let delta = String::from_utf8_lossy(&buffer[..count]).to_string();
+        sink(AssistantStreamEvent::TextDelta { delta }).await?;
+    }
+
+    let status = child
+        .wait()
+        .await
+        .map_err(|err| LoopError::Stream(format!("{provider} model command failed: {err}")))?;
+    let stderr = stderr_task
+        .await
+        .map_err(|err| LoopError::Stream(format!("{provider} stderr task failed: {err}")))?
+        .map_err(|err| LoopError::Stream(format!("could not read {provider} stderr: {err}")))?;
+
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr).trim().to_string();
+        return Err(LoopError::Stream(if stderr.is_empty() {
+            format!("{provider} model command exited with {status}")
+        } else {
+            format!("{provider} model command exited with {status}: {stderr}")
+        }));
+    }
+
+    if !emitted_anything {
+        sink(AssistantStreamEvent::TextDelta {
+            delta: "[No output returned by official CLI]".into(),
+        })
+        .await?;
+    }
+    sink(AssistantStreamEvent::Done {
+        stop_reason: StopReason::EndTurn,
+        provider: Some(ProviderMetadata {
+            model: Some(request.model),
+            ..ProviderMetadata::default()
+        }),
+    })
+    .await
+}
+
+fn official_cli_model_arg(provider: &str, model: &str) -> Option<String> {
+    if provider == "chatgpt" && matches!(model, "default" | "auto" | "gpt-5" | "gpt-5-codex") {
+        None
+    } else {
+        Some(model.into())
+    }
+}
+
+fn official_cli_prompt(request: &oino_agent_loop::StreamRequest) -> String {
+    let mut prompt = String::new();
+    if let Some(system_prompt) = &request.system_prompt {
+        prompt.push_str("# System Instructions\n\n");
+        prompt.push_str(system_prompt);
+        prompt.push_str("\n\n");
+    }
+    prompt.push_str("# Conversation\n\n");
+    for message in &request.messages {
+        append_message_for_official_cli(&mut prompt, message);
+    }
+    prompt
+}
+
+fn append_message_for_official_cli(prompt: &mut String, message: &Message) {
+    match message {
+        Message::User { content, .. } => append_role_blocks(prompt, "User", content),
+        Message::Assistant { content, .. } => append_role_blocks(prompt, "Assistant", content),
+        Message::ToolResult {
+            tool_name, content, ..
+        } => {
+            prompt.push_str("Tool result from `");
+            prompt.push_str(tool_name);
+            prompt.push_str("`:\n");
+            prompt.push_str(&content_blocks_text(content));
+            prompt.push_str("\n\n");
+        }
+        Message::CompactionSummary { summary, .. } | Message::BranchSummary { summary, .. } => {
+            prompt.push_str("Conversation summary:\n");
+            prompt.push_str(summary);
+            prompt.push_str("\n\n");
+        }
+        Message::Custom { .. } => {}
+    }
+}
+
+fn append_role_blocks(prompt: &mut String, role: &str, content: &[ContentBlock]) {
+    prompt.push_str(role);
+    prompt.push_str(":\n");
+    prompt.push_str(&content_blocks_text(content));
+    prompt.push_str("\n\n");
+}
+
+fn content_blocks_text(content: &[ContentBlock]) -> String {
+    content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(text.clone()),
+            ContentBlock::Thinking { text, .. } => Some(format!("[thinking]\n{text}")),
+            ContentBlock::Image { media_type, .. } => Some(format!("[image: {media_type}]")),
+            ContentBlock::ToolCall {
+                name, arguments, ..
+            } => Some(format!("[tool call: {name} {arguments}]")),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn build_harness(
@@ -1403,7 +1651,7 @@ const fn extension_theme_source(scope: SourceScope) -> ThemeSource {
 }
 
 fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOption> {
-    snapshot
+    let mut models = snapshot
         .registries
         .providers
         .active
@@ -1429,7 +1677,20 @@ fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOpti
                     })
                 })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    models.extend(official_oauth_model_options());
+    models
+}
+
+fn official_oauth_model_options() -> Vec<ModelOption> {
+    vec![
+        ModelOption::new("claude:sonnet").with_display_name("Claude Code Sonnet (alias)"),
+        ModelOption::new("claude:claude-sonnet-4-6").with_display_name("Claude Sonnet 4.6"),
+        ModelOption::new("claude:claude-sonnet-4-5").with_display_name("Claude Sonnet 4.5"),
+        ModelOption::new("claude:opus").with_display_name("Claude Code Opus (alias)"),
+        ModelOption::new("claude:claude-opus-4-5").with_display_name("Claude Opus 4.5"),
+        ModelOption::new("chatgpt:default").with_display_name("ChatGPT default"),
+    ]
 }
 
 fn merge_extension_models(
@@ -2039,6 +2300,12 @@ async fn run_tui(
         .set_collapse_modes(initial_thinking_collapse_mode, initial_tool_collapse_mode);
     state.settings.set_chat_style(initial_chat_style);
     state.set_keymap(initial_keymap);
+    if !extension_models.is_empty() {
+        state.set_model_catalog(
+            extension_models.clone(),
+            "Loaded official OAuth models; refreshing OpenRouter models…",
+        );
+    }
     if let Ok(messages) = harness.build_context().await {
         state.set_messages_from_oino(&messages);
     }
@@ -2108,6 +2375,10 @@ async fn run_tui(
         match action {
             TuiAction::None => {}
             TuiAction::Quit => break,
+            TuiAction::LoginOAuth(provider) => match terminal.run_login_command(&provider) {
+                Ok(message) => state.status = message,
+                Err(err) => state.set_error(format!("Login failed: {err}")),
+            },
             TuiAction::OpenInspect => match harness.inspect_full_prompt().await {
                 Ok(snapshot) => {
                     state.set_inspect_full_prompt(snapshot.content, snapshot.token_count)
@@ -2750,7 +3021,7 @@ async fn start_prompt(
             "A prompt is already running. Use Enter to steer or Ctrl-O q then q to queue.".into();
         return false;
     }
-    if let Err(message) = preflight_openrouter_credentials(auth).await {
+    if let Err(message) = preflight_model_credentials(auth, &state.settings.selected_model).await {
         state.set_error(message);
         state.status = HELP_STATUS.into();
         return false;
@@ -3207,7 +3478,7 @@ async fn run_non_interactive(
     }
 
     let input = expand_resource_references(&input, &resource_catalog)?;
-    preflight_openrouter_credentials(&auth)
+    preflight_model_credentials(&auth, &config.model)
         .await
         .map_err(AppError::InvalidArguments)?;
     let messages = harness.prompt(Message::user_text(input)).await?;
@@ -3432,6 +3703,37 @@ fn longest_backtick_run(content: &str) -> usize {
     longest
 }
 
+fn oauth_login_program(
+    provider: &str,
+) -> Result<(&'static str, &'static [&'static str], &'static str), AppError> {
+    match provider {
+        "claude" => Ok(("claude", &["auth", "login"], "Claude Code")),
+        "chatgpt" => Ok(("codex", &["login"], "ChatGPT/Codex")),
+        other => Err(AppError::InvalidArguments(format!(
+            "unsupported login provider `{other}`; use `/login claude` or `/login chatgpt`"
+        ))),
+    }
+}
+
+fn run_oauth_login_command(provider: &str) -> Result<String, AppError> {
+    let (program, args, label) = oauth_login_program(provider)?;
+    let status = Command::new(program)
+        .args(args)
+        .status()
+        .map_err(|source| {
+            AppError::InvalidArguments(format!(
+                "could not start {label} OAuth login command `{program}`: {source}"
+            ))
+        })?;
+    if status.success() {
+        Ok(format!("{label} OAuth login completed"))
+    } else {
+        Err(AppError::InvalidArguments(format!(
+            "{label} OAuth login exited with {status}"
+        )))
+    }
+}
+
 async fn execute_runtime_command(
     command: ParsedCommand,
     harness: &Harness,
@@ -3462,6 +3764,12 @@ async fn execute_runtime_command(
             return Err(AppError::InvalidArguments(
                 "`/extensions` opens the interactive extension manager in the TUI".into(),
             ));
+        }
+        ParsedCommand::LoginHelp => {
+            return Ok("Usage: /login claude or /login chatgpt".into());
+        }
+        ParsedCommand::Login(provider) => {
+            return run_oauth_login_command(provider.label());
         }
         ParsedCommand::SetSessionTitle(title) => {
             harness.set_session_title(title.clone()).await?;
@@ -3885,11 +4193,27 @@ fn apply_tui_runtime_event(
     }
 }
 
-async fn preflight_openrouter_credentials(auth: &AuthStorage) -> Result<(), String> {
-    match auth.resolve_openrouter_api_key().await {
-        Ok(_) => Ok(()),
-        Err(AuthError::MissingCredential { .. }) => Err(MISSING_OPENROUTER_API_KEY_MESSAGE.into()),
-        Err(err) => Err(err.to_string()),
+async fn preflight_model_credentials(
+    auth: &AuthStorage,
+    model_identifier: &str,
+) -> Result<(), String> {
+    let Some(model) = Model::from_identifier(model_identifier) else {
+        return Err(format!(
+            "Invalid model identifier `{model_identifier}`; expected provider:model-id"
+        ));
+    };
+    match model.provider.as_str() {
+        "openrouter" => match auth.resolve_openrouter_api_key().await {
+            Ok(_) => Ok(()),
+            Err(AuthError::MissingCredential { .. }) => {
+                Err(MISSING_OPENROUTER_API_KEY_MESSAGE.into())
+            }
+            Err(err) => Err(err.to_string()),
+        },
+        "claude" | "chatgpt" => Ok(()),
+        provider => Err(format!(
+            "unsupported model provider `{provider}`; use openrouter, claude, or chatgpt"
+        )),
     }
 }
 
@@ -3904,6 +4228,7 @@ fn user_facing_error(err: &HarnessError) -> String {
 
 struct TerminalGuard {
     terminal: Terminal<CrosstermBackend<Stdout>>,
+    active: bool,
 }
 
 fn paint_url_overlays(
@@ -3947,7 +4272,10 @@ impl TerminalGuard {
         )?;
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            active: true,
+        })
     }
 
     fn draw(&mut self, state: &TuiState) -> Result<(), AppError> {
@@ -3962,10 +4290,61 @@ impl TerminalGuard {
     fn size(&self) -> io::Result<(u16, u16)> {
         self.terminal.size().map(|size| (size.width, size.height))
     }
+
+    fn run_login_command(&mut self, provider: &str) -> Result<String, AppError> {
+        self.leave_for_external_command()?;
+        let result = run_oauth_login_command(provider);
+        let reenter_result = self.reenter_after_external_command();
+        reenter_result?;
+        result
+    }
+
+    fn leave_for_external_command(&mut self) -> io::Result<()> {
+        if !self.active {
+            return Ok(());
+        }
+        let _ = self.terminal.show_cursor();
+        disable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(
+            stdout,
+            DisableBracketedPaste,
+            DisableMouseCapture,
+            PopKeyboardEnhancementFlags,
+            LeaveAlternateScreen
+        )?;
+        stdout.flush()?;
+        self.active = false;
+        Ok(())
+    }
+
+    fn reenter_after_external_command(&mut self) -> io::Result<()> {
+        if self.active {
+            return Ok(());
+        }
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            Clear(ClearType::All),
+            MoveTo(0, 0),
+            EnableBracketedPaste,
+            EnableMouseCapture,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
+        stdout.flush()?;
+        self.terminal.clear()?;
+        self.active = true;
+        Ok(())
+    }
 }
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
         let _ = disable_raw_mode();
         let _ = execute!(
             self.terminal.backend_mut(),
@@ -3975,6 +4354,7 @@ impl Drop for TerminalGuard {
             LeaveAlternateScreen
         );
         let _ = self.terminal.show_cursor();
+        self.active = false;
     }
 }
 
@@ -4665,7 +5045,7 @@ mod tests {
             AuthConfig::new(std::env::temp_dir().join("oino-app-preflight-missing-auth.json"))
                 .with_process_env(false),
         );
-        let result = preflight_openrouter_credentials(&auth).await;
+        let result = preflight_model_credentials(&auth, "openrouter:test/model").await;
         match result {
             Err(message) => assert_eq!(message, MISSING_OPENROUTER_API_KEY_MESSAGE),
             Ok(()) => panic!("expected missing credential message"),
@@ -4679,8 +5059,22 @@ mod tests {
                 .with_runtime_override("openrouter", "sk-test")
                 .with_process_env(false),
         );
-        if let Err(message) = preflight_openrouter_credentials(&auth).await {
+        if let Err(message) = preflight_model_credentials(&auth, "openrouter:test/model").await {
             panic!("preflight should accept runtime credential: {message}");
+        }
+    }
+
+    #[tokio::test]
+    async fn preflight_skips_openrouter_key_for_official_oauth_models() {
+        let auth = AuthStorage::new(
+            AuthConfig::new(std::env::temp_dir().join("oino-app-preflight-official-auth.json"))
+                .with_process_env(false),
+        );
+        if let Err(message) = preflight_model_credentials(&auth, "claude:sonnet").await {
+            panic!("claude should not require an OpenRouter key: {message}");
+        }
+        if let Err(message) = preflight_model_credentials(&auth, "chatgpt:default").await {
+            panic!("chatgpt should not require an OpenRouter key: {message}");
         }
     }
 

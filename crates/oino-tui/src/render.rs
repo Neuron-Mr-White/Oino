@@ -4931,6 +4931,7 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect::<String>();
+        assert!(!text.contains("Writing"));
         assert!(text.contains("Calling"));
         assert!(text.contains("steer"));
     }

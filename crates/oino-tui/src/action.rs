@@ -17,6 +17,7 @@ pub enum TuiAction {
     ListSessions,
     OpenSession(String),
     ReloadResources,
+    LoginOAuth(String),
     OpenInspect,
     ExportChatHtml,
     SetModel(String),

@@ -1142,7 +1142,7 @@ impl TuiState {
 
     #[must_use]
     pub fn activity_status(&self) -> Option<String> {
-        if self.overlay.is_some() {
+        if self.overlay.is_some() || !self.working {
             return None;
         }
         self.working
@@ -3564,6 +3564,17 @@ impl TuiState {
             ParsedCommand::Extensions => {
                 self.open_extensions_overlay();
                 TuiAction::None
+            }
+            ParsedCommand::LoginHelp => {
+                self.status = "Usage: /login claude or /login chatgpt".into();
+                self.clear_error();
+                TuiAction::None
+            }
+            ParsedCommand::Login(provider) => {
+                let label = provider.label();
+                self.status = format!("Starting {label} OAuth login…");
+                self.clear_error();
+                TuiAction::LoginOAuth(label.into())
             }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();

@@ -27,6 +27,7 @@ Commands are the fastest way to navigate Oino without leaving the composer. For 
 | `/settings keymaps` | Review or change shortcuts. |
 | `/settings theme` or `/theme` | Open theme selection. See [themes](theme-system/README.md). |
 | `/settings extensions` or `/extensions` | Manage installed extensions and contribution toggles. |
+| `/login claude` or `/login chatgpt` | Run the official Claude Code or ChatGPT/Codex OAuth login flow. |
 | `/prompts` | Browse prompt templates. See [resources](resources.md). |
 | `/skills` | Browse skills. |
 | `/reload` | Rescan `SYSTEM.md`, `AGENT.md`, prompts, skills, and extension resources after edits. |
@@ -40,13 +41,15 @@ You can run a command or prompt from the shell:
 oino "/sessions"
 oino --session <uuid> "/title Release notes"
 oino --session <uuid> "/model openrouter:xai/glm-5.1"
+oino "/login claude"
+oino "/login chatgpt"
 oino --session <uuid> "Use /prompt:review to check this plan"
 ```
 
 Rules to remember:
 
 - A shell input that starts with a slash and has no resource tokens runs as a local command instead of calling the provider.
-- `/sessions`, `/prompts`, `/skills`, `/inspect`, `/reload`, `/title <name>`, `/model <provider:model-id>`, `/thinking <level>`, `/settings model ...`, `/settings thinking ...`, `/settings collapse ...`, and `/settings chat-style ...` work from the shell.
+- `/sessions`, `/prompts`, `/skills`, `/inspect`, `/reload`, `/title <name>`, `/login claude`, `/login chatgpt`, `/model <provider:model-id>`, `/thinking <level>`, `/settings model ...`, `/settings thinking ...`, `/settings collapse ...`, and `/settings chat-style ...` work from the shell.
 - Overlay-only commands such as `/settings`, `/model` with no value, `/thinking` with no value, `/settings tools`, `/settings keymaps`, `/settings theme`, `/theme`, `/settings extensions`, `/extensions`, and `/new` need the TUI.
 - Long resource tokens `/prompt:<name>` and `/skill:<name>` expand in shell prompts. Short `/P:` and `/S:` are only composer search shortcuts.
 - Non-interactive prompts print the assistant's final text and write the session id to stderr.
