@@ -1,0 +1,50 @@
+{
+  "id": "oino.footer_status",
+  "display_name": "Oino Footer Status",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Optional built-in composer-adjacent footer lines for model, thinking, working directory, and context usage.",
+  "extensions": [
+    {
+      "manifest": "extensions/footer-status/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [],
+    "commands": [],
+    "host_capabilities": [],
+    "ui": [
+      "footer_top",
+      "footer_bottom"
+    ],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

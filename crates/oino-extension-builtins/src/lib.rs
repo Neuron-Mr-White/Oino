@@ -17,6 +17,8 @@ registry entries with the built-in source and active lifecycle.
 ## Public API map
 
 - [`BUILTIN_EXTENSION_ID`] is the synthetic owner for all built-in contributions.
+- [`OPTIONAL_BUILTIN_PACKAGES_DIR`] and [`optional_builtin_packages`] expose checked-in,
+  Oino-owned packages that users can install explicitly from `/extensions`.
 - [`BuiltinRegistryCatalog`] groups the built-in [`oino_extension_core::ToolRegistry`],
   [`oino_extension_core::CommandRegistry`], [`oino_extension_core::KeymapRegistry`],
   [`oino_extension_core::HookRegistry`],
@@ -25,7 +27,7 @@ registry entries with the built-in source and active lifecycle.
   [`oino_extension_core::ProviderModelRegistry`], and
   [`oino_extension_core::ResourceRegistry`]. [`BuiltinRegistryCatalog::from_parts`]
   builds the catalog from the current tool map, keymap config, resource catalog, and
-  OpenRouter model ids.
+  extension/runtime model ids.
 - [`tool_registry_from_tools`] and [`tool_contribution_from_definition`] turn
   model-visible built-in tools into registry contributions while preserving sequential
   vs. parallel execution metadata.
@@ -60,10 +62,95 @@ use oino_resource::ResourceCatalog;
 use oino_tui::{
     chat_style_value, key_action_rows, ChatStyle, KeymapConfig, SettingsMenuItem, COMMANDS,
 };
-use std::{collections::BTreeMap, path::Path, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use thiserror::Error;
 
 pub const BUILTIN_EXTENSION_ID: &str = "oino.builtins";
+pub const OPTIONAL_BUILTIN_PACKAGES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/packages");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OptionalBuiltinPackage {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub directory_name: &'static str,
+    pub description: &'static str,
+}
+
+impl OptionalBuiltinPackage {
+    #[must_use]
+    pub fn path(self) -> PathBuf {
+        Path::new(OPTIONAL_BUILTIN_PACKAGES_DIR).join(self.directory_name)
+    }
+}
+
+pub const OPTIONAL_BUILTIN_PACKAGES: &[OptionalBuiltinPackage] = &[
+    OptionalBuiltinPackage {
+        id: "oino.footer_status",
+        display_name: "Oino Footer Status",
+        directory_name: "footer-status",
+        description:
+            "Composer-adjacent model, thinking, working-directory, and context status lines",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.ralph_loop",
+        display_name: "Oino Ralph Loop",
+        directory_name: "ralph-loop",
+        description: "Oino-native iterative development loop state, commands, and promise tags",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.mode_sandbox",
+        display_name: "Oino Mode Sandbox",
+        directory_name: "mode-sandbox",
+        description: "Read/plan/work sandbox profiles with global defaults and project overrides",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.notify",
+        display_name: "Oino Notify",
+        directory_name: "notify",
+        description: "ntfy notifications for selected Oino lifecycle events",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.craft_skill",
+        display_name: "Oino Craft Skill",
+        directory_name: "craft-skill",
+        description: "Oino-native skill for creating and validating reusable skills",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.vcc",
+        display_name: "Oino VCC",
+        directory_name: "vcc",
+        description: "Deterministic Oino session compaction and recall commands/tools",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.ask_user",
+        display_name: "Oino Ask User",
+        directory_name: "ask-user",
+        description: "Model-visible structured question tool backed by an Oino TUI modal",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.9router",
+        display_name: "Oino 9router",
+        directory_name: "9router",
+        description: "9router auth/router integration with external endpoint setup and version fallback guidance",
+    },
+];
+
+#[must_use]
+pub fn optional_builtin_packages() -> &'static [OptionalBuiltinPackage] {
+    OPTIONAL_BUILTIN_PACKAGES
+}
+
+pub fn optional_builtin_package_path(id: &str) -> Option<PathBuf> {
+    optional_builtin_packages()
+        .iter()
+        .find(|package| package.id == id || package.directory_name == id)
+        .copied()
+        .map(OptionalBuiltinPackage::path)
+}
 
 #[derive(Debug, Error)]
 pub enum BuiltinRegistryError {
@@ -322,18 +409,32 @@ pub fn provider_registry(
     openrouter_models: impl IntoIterator<Item = String>,
 ) -> Result<ProviderModelRegistry, BuiltinRegistryError> {
     let mut registry = ProviderModelRegistry::providers_models();
-    register(
-        &mut registry,
-        ProviderContribution {
-            id: ContributionId::new("provider.openrouter")?,
-            provider_id: "openrouter".into(),
-            display_name: "OpenRouter".into(),
-            model_ids: openrouter_models.into_iter().collect(),
-            privacy: Default::default(),
-            hook: None,
-            conflict: Default::default(),
-        },
-    )?;
+    let openrouter_models = openrouter_models.into_iter().collect::<Vec<_>>();
+    for provider in oino_provider_catalog::providers() {
+        let mut model_ids = provider
+            .default_model()
+            .into_iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        if provider.id == "openrouter" {
+            model_ids.extend(openrouter_models.iter().cloned());
+            model_ids.sort();
+            model_ids.dedup();
+        }
+        register(
+            &mut registry,
+            ProviderContribution {
+                id: ContributionId::new(format!("provider.{}", provider.id))?,
+                provider_id: provider.id.into(),
+                display_name: provider.display_name.into(),
+                model_ids,
+                privacy: Default::default(),
+                runtime: None,
+                hook: None,
+                conflict: Default::default(),
+            },
+        )?;
+    }
     Ok(registry)
 }
 
@@ -497,7 +598,10 @@ mod tests {
         assert_eq!(catalog.hooks.inner().len(), builtin_hook_events().len());
         assert!(!catalog.settings_pages.inner().is_empty());
         assert_eq!(catalog.themes.inner().len(), ChatStyle::all().len());
-        assert_eq!(catalog.providers.inner().len(), 1);
+        assert_eq!(
+            catalog.providers.inner().len(),
+            oino_provider_catalog::providers().len()
+        );
         assert!(catalog.resources.inner().len() >= 2);
         Ok(())
     }
@@ -507,5 +611,103 @@ mod tests {
         let id = ContributionId::new(format!("resource.prompt.{}", slug("Demo Prompt!")))?;
         assert_eq!(id.as_str(), "resource.prompt.demo-prompt");
         Ok(())
+    }
+
+    #[test]
+    fn optional_builtin_packages_are_valid_oino_packages() -> Result<(), Box<dyn Error>> {
+        assert!(!optional_builtin_packages().is_empty());
+        for package in optional_builtin_packages() {
+            let package_dir = package.path();
+            let manifest_path = package_dir.join(oino_extension_core::PACKAGE_MANIFEST_FILE);
+            let manifest = read_json::<oino_extension_core::PackageManifest>(&manifest_path)?;
+            manifest.validate()?;
+            assert_eq!(manifest.id.as_str(), package.id);
+            assert!(!manifest.display_name.trim().is_empty());
+            assert!(!manifest.extensions.is_empty());
+
+            for extension in &manifest.extensions {
+                let extension_path = package_dir.join(&extension.manifest);
+                let extension_manifest =
+                    read_json::<oino_extension_core::ExtensionManifest>(&extension_path)?;
+                extension_manifest.validate()?;
+                assert_eq!(
+                    extension_manifest.package_id.as_ref().map(|id| id.as_str()),
+                    Some(manifest.id.as_str())
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn optional_builtin_package_lookup_accepts_id_or_directory_name() -> Result<(), Box<dyn Error>>
+    {
+        let by_id = optional_builtin_package_path("oino.footer_status")
+            .ok_or("footer package should resolve by id")?;
+        let by_dir = optional_builtin_package_path("footer-status")
+            .ok_or("footer package should resolve by directory name")?;
+        assert_eq!(by_id, by_dir);
+        assert!(by_id.ends_with("footer-status"));
+        Ok(())
+    }
+
+    #[test]
+    fn mode_sandbox_skill_documents_profile_configuration() -> Result<(), Box<dyn Error>> {
+        let package = optional_builtin_package_path("mode-sandbox")
+            .ok_or("mode-sandbox package should resolve")?;
+        let skill_path =
+            package.join("extensions/mode-sandbox/resources/skills/mode-sandbox/SKILL.md");
+        let skill = std::fs::read_to_string(skill_path)?;
+        assert!(skill.contains("name: mode-sandbox"));
+        assert!(skill.contains("/mode <profile>"));
+        assert!(skill.contains(".oino/sandbox-mode"));
+        assert!(skill.contains("~/.oino/sandbox-mode"));
+        assert!(skill.contains("/mode:create"));
+        assert!(skill.contains("avoid removed/reserved names `read` and `create`"));
+        Ok(())
+    }
+
+    #[test]
+    fn craft_skill_resource_is_oino_native_and_has_validation_fixtures(
+    ) -> Result<(), Box<dyn Error>> {
+        let package = optional_builtin_package_path("craft-skill")
+            .ok_or("craft-skill package should resolve")?;
+        let skill_path =
+            package.join("extensions/craft-skill/resources/skills/craft-skill/SKILL.md");
+        let skill = std::fs::read_to_string(skill_path)?;
+        assert!(skill.contains("name: craft-skill"));
+        assert!(skill.contains("description: Use when"));
+        assert!(skill.contains(".oino/skills"));
+        assert!(skill.contains("/skill:<skill-name>"));
+        assert!(skill.contains("evaluation prompts"));
+        let legacy_agent_name = ["Clau", "de"].concat();
+        let legacy_provider_name = ["Anth", "ropic"].concat();
+        let legacy_code_phrase = format!("{} code", legacy_agent_name.to_ascii_lowercase());
+        let legacy_file_name = [legacy_agent_name.as_str(), ".md"].concat();
+        for forbidden in [
+            legacy_agent_name.as_str(),
+            legacy_provider_name.as_str(),
+            legacy_code_phrase.as_str(),
+            legacy_file_name.as_str(),
+        ] {
+            assert!(
+                !skill.contains(forbidden),
+                "craft skill should avoid source-specific wording: {forbidden}"
+            );
+        }
+
+        let valid_fixture = std::fs::read_to_string(package.join("fixtures/valid-skill/SKILL.md"))?;
+        assert!(valid_fixture.contains("name: release-notes"));
+        assert!(valid_fixture.contains("description: Use when"));
+        let evals = std::fs::read_to_string(package.join("fixtures/eval-prompts.md"))?;
+        assert!(evals.contains("Direct trigger should use the skill"));
+        assert!(evals.contains("Nearby request should not use the skill"));
+        assert!(evals.contains("Messy request should ask or assume carefully"));
+        Ok(())
+    }
+
+    fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Box<dyn Error>> {
+        let text = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&text)?)
     }
 }

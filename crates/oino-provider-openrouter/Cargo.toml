@@ -9,6 +9,7 @@ async-trait.workspace = true
 futures.workspace = true
 oino-agent-loop = { path = "../oino-agent-loop" }
 oino-auth = { path = "../oino-auth" }
+oino-provider-catalog = { path = "../oino-provider-catalog" }
 oino-types = { path = "../oino-types" }
 reqwest.workspace = true
 serde.workspace = true

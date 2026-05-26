@@ -1,0 +1,75 @@
+{
+  "id": "oino.ask_user",
+  "package_id": "oino.ask_user",
+  "display_name": "Oino Ask User",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [
+      "ask_user"
+    ],
+    "commands": [],
+    "host_capabilities": [
+      "ask_user_modal"
+    ],
+    "ui": [
+      "floating_panel"
+    ],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "tools": [
+      {
+        "id": "ask_user",
+        "description": "Ask the user structured questions through an Oino TUI modal and return their answers to the model.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "questions"
+          ],
+          "properties": {
+            "questions": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4
+            }
+          }
+        },
+        "execution_mode": "sequential",
+        "handler": "ask_user.modal"
+      }
+    ],
+    "commands": [],
+    "resources": [],
+    "keymaps": [],
+    "hooks": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "providers": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "Oino owns validation, TUI modal rendering, cancellation, and tool-result details for ask_user. This package only declares the host-owned ask_user tool."
+  }
+}

@@ -38,7 +38,7 @@ use oino_agent_loop::{
     Tool, ToolCall, ToolResult, TransformContext,
 };
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
-use oino_session::{SessionEntryKind, SessionManager};
+use oino_session::{SessionEntry, SessionEntryKind, SessionManager};
 use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, ThinkingLevel};
 use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
@@ -480,16 +480,52 @@ impl Harness {
     }
 
     pub async fn compact(&self, summary: String) -> HarnessResult<()> {
+        self.append_compaction(summary, Vec::new())
+            .await
+            .map(|_| ())
+    }
+
+    #[must_use]
+    pub fn session_handle(&self) -> Arc<Mutex<SessionManager>> {
+        Arc::clone(&self.session)
+    }
+
+    pub async fn active_branch_entries(&self) -> HarnessResult<Vec<SessionEntry>> {
+        let session = self.session.lock().await;
+        Ok(session.get_branch(session.get_leaf_id())?)
+    }
+
+    pub async fn all_session_entries(&self) -> Vec<SessionEntry> {
+        self.session.lock().await.get_entries()
+    }
+
+    pub async fn append_compaction(
+        &self,
+        summary: String,
+        replaces: Vec<oino_types::OinoId>,
+    ) -> HarnessResult<Vec<Message>> {
         let summary = self
             .hooks
             .mutate_before_compaction(summary)
             .await
             .map_err(oino_agent::AgentError::Loop)?;
-        self.session
-            .lock()
-            .await
-            .append_compaction(summary, Vec::new());
-        Ok(())
+        let messages = {
+            let mut session = self.session.lock().await;
+            session.append_compaction(summary, replaces);
+            session.build_session_context()?.messages
+        };
+        self.agent.replace_messages(messages.clone()).await;
+        Ok(messages)
+    }
+
+    pub async fn append_branch_summary(&self, summary: String) -> HarnessResult<Vec<Message>> {
+        let messages = {
+            let mut session = self.session.lock().await;
+            session.append(SessionEntryKind::BranchSummary { summary });
+            session.build_session_context()?.messages
+        };
+        self.agent.replace_messages(messages.clone()).await;
+        Ok(messages)
     }
 
     pub async fn navigate_tree(&self, leaf: Option<oino_types::OinoId>) -> HarnessResult<()> {

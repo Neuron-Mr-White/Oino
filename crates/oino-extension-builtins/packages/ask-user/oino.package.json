@@ -1,0 +1,53 @@
+{
+  "id": "oino.ask_user",
+  "display_name": "Oino Ask User",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Optional built-in model-visible structured question tool with an Oino TUI modal.",
+  "extensions": [
+    {
+      "manifest": "extensions/ask-user/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [
+      "ask_user"
+    ],
+    "commands": [],
+    "host_capabilities": [
+      "ask_user_modal"
+    ],
+    "ui": [
+      "floating_panel"
+    ],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

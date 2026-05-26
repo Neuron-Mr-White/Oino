@@ -59,22 +59,22 @@ wording, update the extension user/developer guides and fixture package validati
 
 use oino_extension_builtins::BuiltinRegistryCatalog;
 use oino_extension_core::{
-    ActiveContribution, AdvisorySeverity, AutosuggestContribution, AutosuggestRegistry,
-    CommandContribution, CommandRegistry, CommunityPackageMetadata, CommunityRegistryIndex,
-    ContributionId, ContributionMetadata, ContributionRegistry, DiagnosticContribution,
-    DiagnosticPhase, DiagnosticRegistry, DiagnosticSeverity, ExtensionContributions,
-    ExtensionCoreError, ExtensionDiagnostic, ExtensionId, ExtensionManifest, ExtensionPermissions,
-    HealthContribution, HealthRegistry, HealthState, HookContribution, HookRegistry,
-    InactiveContribution, InactiveReason, KeymapContribution, KeymapRegistry, LifecycleState,
-    PackageId, PackageManifest, PermissionDecision, PersistenceCleanupPolicy,
-    PersistenceContribution, PersistenceMigrationPolicy, PersistenceRecord, PersistenceRegistry,
-    PersistenceScope, Provenance, ProviderContribution, ProviderModelRegistry,
-    RegistryCompatibility, RegistryDiff, RegistryEntryKey, RegistryFamily, RegistryPolicy,
-    RegistrySnapshot, RendererContribution, ResourceContribution, ResourceRegistry,
-    SecurityAdvisory, SettingsPageContribution, SettingsPageRegistry, SourceDescriptor, SourceKind,
-    SourceScope, ThemeContribution, ThemeRegistry, ToolContribution, ToolRegistry,
-    TypedContributionRegistry, UiSurfaceContribution, UiSurfaceRegistry, MANIFEST_FILE,
-    PACKAGE_MANIFEST_FILE,
+    ActiveContribution, AdvisorySeverity, AuthContribution, AuthProviderRegistry,
+    AutosuggestContribution, AutosuggestRegistry, CommandContribution, CommandRegistry,
+    CommunityPackageMetadata, CommunityRegistryIndex, ContributionId, ContributionMetadata,
+    ContributionRegistry, DiagnosticContribution, DiagnosticPhase, DiagnosticRegistry,
+    DiagnosticSeverity, ExtensionContributions, ExtensionCoreError, ExtensionDiagnostic,
+    ExtensionId, ExtensionManifest, ExtensionPermissions, HealthContribution, HealthRegistry,
+    HealthState, HookContribution, HookRegistry, InactiveContribution, InactiveReason,
+    KeymapContribution, KeymapRegistry, LifecycleState, PackageId, PackageManifest,
+    PermissionDecision, PersistenceCleanupPolicy, PersistenceContribution,
+    PersistenceMigrationPolicy, PersistenceRecord, PersistenceRegistry, PersistenceScope,
+    Provenance, ProviderContribution, ProviderModelRegistry, RegistryCompatibility, RegistryDiff,
+    RegistryEntryKey, RegistryFamily, RegistryPolicy, RegistrySnapshot, RendererContribution,
+    ResourceContribution, ResourceRegistry, SecurityAdvisory, SettingsPageContribution,
+    SettingsPageRegistry, SourceDescriptor, SourceKind, SourceScope, ThemeContribution,
+    ThemeRegistry, ToolContribution, ToolRegistry, TypedContributionRegistry,
+    UiSurfaceContribution, UiSurfaceRegistry, MANIFEST_FILE, PACKAGE_MANIFEST_FILE,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -326,6 +326,7 @@ pub struct ExtensionRegistries {
     pub settings_pages: SettingsPageRegistry,
     pub themes: ThemeRegistry,
     pub providers: ProviderModelRegistry,
+    pub auth_providers: AuthProviderRegistry,
     pub resources: ResourceRegistry,
     pub persistence: PersistenceRegistry,
     pub autosuggest_providers: AutosuggestRegistry,
@@ -354,6 +355,7 @@ impl ExtensionRegistries {
             settings_pages: SettingsPageRegistry::settings_pages(),
             themes: ThemeRegistry::themes(),
             providers: ProviderModelRegistry::providers_models(),
+            auth_providers: AuthProviderRegistry::auth_providers(),
             resources: ResourceRegistry::resources(),
             persistence: PersistenceRegistry::persistence(),
             autosuggest_providers: AutosuggestRegistry::autosuggest_providers(),
@@ -391,6 +393,7 @@ impl ExtensionRegistries {
             settings_pages: self.settings_pages.compose(policy),
             themes: self.themes.compose(policy),
             providers: self.providers.compose(policy),
+            auth_providers: self.auth_providers.compose(policy),
             resources: self.resources.compose(policy),
             persistence: self.persistence.compose(policy),
             autosuggest_providers: self.autosuggest_providers.compose(policy),
@@ -412,6 +415,7 @@ impl ExtensionRegistries {
         collect_external_keys(self.settings_pages.inner(), &mut keys);
         collect_external_keys(self.themes.inner(), &mut keys);
         collect_external_keys(self.providers.inner(), &mut keys);
+        collect_external_keys(self.auth_providers.inner(), &mut keys);
         collect_external_keys(self.resources.inner(), &mut keys);
         collect_external_keys(self.persistence.inner(), &mut keys);
         collect_external_keys(self.autosuggest_providers.inner(), &mut keys);
@@ -434,6 +438,7 @@ pub struct RegistrySnapshotBundle {
     pub settings_pages: RegistrySnapshot<SettingsPageContribution>,
     pub themes: RegistrySnapshot<ThemeContribution>,
     pub providers: RegistrySnapshot<ProviderContribution>,
+    pub auth_providers: RegistrySnapshot<AuthContribution>,
     pub resources: RegistrySnapshot<ResourceContribution>,
     pub persistence: RegistrySnapshot<PersistenceContribution>,
     pub autosuggest_providers: RegistrySnapshot<AutosuggestContribution>,
@@ -455,6 +460,7 @@ impl Default for RegistrySnapshotBundle {
             settings_pages: empty_snapshot(),
             themes: empty_snapshot(),
             providers: empty_snapshot(),
+            auth_providers: empty_snapshot(),
             resources: empty_snapshot(),
             persistence: empty_snapshot(),
             autosuggest_providers: empty_snapshot(),
@@ -487,6 +493,7 @@ impl RegistrySnapshotBundle {
             settings_pages: self.settings_pages.diff(&next.settings_pages),
             themes: self.themes.diff(&next.themes),
             providers: self.providers.diff(&next.providers),
+            auth_providers: self.auth_providers.diff(&next.auth_providers),
             resources: self.resources.diff(&next.resources),
             persistence: self.persistence.diff(&next.persistence),
             autosuggest_providers: self.autosuggest_providers.diff(&next.autosuggest_providers),
@@ -509,6 +516,7 @@ impl RegistrySnapshotBundle {
         diagnostics.extend(self.settings_pages.diagnostics.clone());
         diagnostics.extend(self.themes.diagnostics.clone());
         diagnostics.extend(self.providers.diagnostics.clone());
+        diagnostics.extend(self.auth_providers.diagnostics.clone());
         diagnostics.extend(self.resources.diagnostics.clone());
         diagnostics.extend(self.persistence.diagnostics.clone());
         diagnostics.extend(self.autosuggest_providers.diagnostics.clone());
@@ -531,6 +539,7 @@ pub struct RegistryDiffBundle {
     pub settings_pages: RegistryDiff<SettingsPageContribution>,
     pub themes: RegistryDiff<ThemeContribution>,
     pub providers: RegistryDiff<ProviderContribution>,
+    pub auth_providers: RegistryDiff<AuthContribution>,
     pub resources: RegistryDiff<ResourceContribution>,
     pub persistence: RegistryDiff<PersistenceContribution>,
     pub autosuggest_providers: RegistryDiff<AutosuggestContribution>,
@@ -552,6 +561,7 @@ impl Default for RegistryDiffBundle {
             settings_pages: empty_diff(),
             themes: empty_diff(),
             providers: empty_diff(),
+            auth_providers: empty_diff(),
             resources: empty_diff(),
             persistence: empty_diff(),
             autosuggest_providers: empty_diff(),
@@ -583,6 +593,7 @@ impl RegistryDiffBundle {
             && diff_empty(&self.settings_pages)
             && diff_empty(&self.themes)
             && diff_empty(&self.providers)
+            && diff_empty(&self.auth_providers)
             && diff_empty(&self.resources)
             && diff_empty(&self.persistence)
             && diff_empty(&self.autosuggest_providers)
@@ -2132,6 +2143,15 @@ fn register_all(
             diagnostics,
         );
     }
+    for contribution in contributions.auth_providers {
+        register_contribution(
+            &mut registries.auth_providers,
+            metadata.clone(),
+            contribution,
+            path,
+            diagnostics,
+        );
+    }
     for contribution in contributions.resources {
         register_contribution(
             &mut registries.resources,
@@ -2375,6 +2395,18 @@ fn contribution_records(
     collect_inactive_records(
         RegistryFamily::ProviderModel,
         &snapshots.providers.inactive,
+        diagnostics,
+        &mut records,
+    );
+    collect_active_records(
+        RegistryFamily::AuthProvider,
+        &snapshots.auth_providers.active,
+        diagnostics,
+        &mut records,
+    );
+    collect_inactive_records(
+        RegistryFamily::AuthProvider,
+        &snapshots.auth_providers.inactive,
         diagnostics,
         &mut records,
     );
@@ -2890,8 +2922,8 @@ mod tests {
         assert!(layout.package_assets.ends_with(".oino/extension-assets"));
 
         fs::create_dir_all(&project)?;
-        fs::write(project.join("CLAUDE.md"), "not an Oino extension")?;
-        fs::write(project.join("AGENTS.md"), "not an Oino extension")?;
+        fs::write(project.join("OUTSIDE_TOOL_A.md"), "not an Oino extension")?;
+        fs::write(project.join("OUTSIDE_TOOL_B.md"), "not an Oino extension")?;
         write_json(
             &layout
                 .project_installed_packages
@@ -3077,6 +3109,68 @@ mod tests {
         }));
         assert!(snapshot.contributions.iter().any(|record| {
             record.id.as_str() == "good_tool" && record.state == ContributionState::PendingReview
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn manager_registers_auth_and_runtime_provider_contributions() -> Result<(), Box<dyn Error>> {
+        let temp = tempfile::tempdir()?;
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        write_json(
+            &project.join(".oino/extensions/9router/oino.extension.json"),
+            r#"{
+              "id": "builtin.9router-test",
+              "version": "1.0.0",
+              "oino": "^0.1",
+              "runtime": { "kind": "wasm", "entry": "plugin.wasm" },
+              "contributes": {
+                "providers": [{
+                  "id": "provider.9router",
+                  "provider_id": "9router",
+                  "display_name": "9router",
+                  "model_ids": ["kr/claude-sonnet-4.5"],
+                  "runtime": {
+                    "protocol": "open_ai_chat_completions",
+                    "base_url": "http://localhost:20128/v1",
+                    "health_url": "http://localhost:20128/v1/models",
+                    "api_key": { "kind": "env_var", "name": "NINEROUTER_API_KEY" },
+                    "model_id": "strip_provider_prefix"
+                  }
+                }],
+                "auth_providers": [{
+                  "id": "auth.9router",
+                  "provider_id": "9router",
+                  "display_name": "9router",
+                  "auth_flow": "custom",
+                  "setup_url": "http://localhost:20128/dashboard"
+                }]
+              }
+            }"#,
+        )?;
+
+        let mut policy = RegistryPolicy::safe_defaults();
+        policy
+            .enabled_extensions
+            .insert(ExtensionId::new("builtin.9router-test")?);
+        let config = ExtensionManagerConfig::new(
+            Version::parse("0.1.0")?,
+            ExtensionDiscovery::from_home_and_project(&home, &project),
+        )
+        .with_policy(policy);
+        let mut manager = ExtensionManager::new(config);
+        let snapshot = manager.load();
+
+        assert_eq!(snapshot.registries.providers.active.len(), 1);
+        assert_eq!(snapshot.registries.auth_providers.active.len(), 1);
+        assert!(snapshot.registries.providers.active[0]
+            .entry
+            .contribution
+            .runtime
+            .is_some());
+        assert!(snapshot.contributions.iter().any(|record| {
+            record.family == RegistryFamily::AuthProvider && record.id.as_str() == "auth.9router"
         }));
         Ok(())
     }

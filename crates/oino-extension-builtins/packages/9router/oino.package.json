@@ -1,0 +1,57 @@
+{
+  "id": "oino.9router",
+  "display_name": "Oino 9router",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Optional built-in 9router auth/router integration for routing Oino models through a local or external 9router endpoint.",
+  "extensions": [
+    {
+      "manifest": "extensions/9router/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "9router"
+    ],
+    "host_capabilities": [
+      "9router_external_endpoint"
+    ],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": true,
+      "hosts": [
+        "localhost",
+        "127.0.0.1",
+        "ghcr.io"
+      ]
+    },
+    "secrets": [
+      "ninerouter_api_key"
+    ],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

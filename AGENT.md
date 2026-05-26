@@ -31,8 +31,8 @@ From today onwards, keep all conventions we know so far in this file so future a
 
 ## Oino resource layer direction
 
-- Oino should load Oino-owned paths by default rather than silently coping with external conventions such as `~/.agents`, `.agents/`, `.pi/`, `AGENTS.md`, or `CLAUDE.md`.
-- Future migration/import commands can copy external conventions into Oino paths, but default loading should stay deterministic and explicit.
+- Oino should load Oino-owned paths by default instead of silently copying unrelated tool conventions.
+- Future migration/import commands can copy outside conventions into Oino paths, but default loading should stay deterministic and explicit.
 - Global resources should live under `~/.oino/`:
   - `SYSTEM.md` — global system prompt, created/populated on launch.
   - `settings.json` — existing global user settings.

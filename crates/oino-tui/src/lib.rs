@@ -34,6 +34,7 @@ theme docs live under `docs/resources.md` and `docs/theme-system/`.
 
 pub mod action;
 pub mod app;
+pub mod ask_user;
 pub mod command;
 pub mod composer;
 mod fuzzy;
@@ -52,14 +53,20 @@ pub use action::TuiAction;
 pub use app::{
     ChordState, ExtensionAutosuggestItem, ExtensionManagementItem, ExtensionManagementState,
     ExtensionManagementTarget, ExtensionManagementView, ExtensionShortcut, ExtensionThemeState,
-    OverlayKind, SessionListItem, SessionsState, TuiFocus, TuiState, HELP_STATUS,
+    OverlayKind, SessionListItem, SessionsState, TuiFocus, TuiState, UsagePanelProvider,
+    UsagePanelReport, UsagePanelSession, UsagePanelState, HELP_STATUS,
+};
+pub use ask_user::{
+    AskUserAnswer, AskUserOption, AskUserOutcome, AskUserOverlayState, AskUserQuestion,
+    AskUserRequest,
 };
 pub use command::{
     chat_style_value, collapse_mode_value, collapse_target_value, command_query,
     command_suggestions_for, parse_chat_style, parse_collapse_mode, parse_collapse_target,
-    parse_command, parse_thinking_level, thinking_level_value, CommandKind, CommandSpec,
+    parse_command, parse_thinking_level, thinking_level_value, AgentMode, CommandKind, CommandSpec,
     CommandSuggestionCategory, CommandSuggestionItem, CommandSuggestionsState,
-    CommandSuggestionsView, LoginProvider, ParsedCommand, SettingsCommand, COMMANDS,
+    CommandSuggestionsView, ExtensionCommandSuggestion, ParsedCommand, RalphCommand,
+    RalphRecordPromise, SettingsCommand, COMMANDS,
 };
 pub use composer::{is_newline_key, is_word_cursor_modifier, ComposerState, INPUT_PLACEHOLDER};
 pub use keymap::{
@@ -73,9 +80,10 @@ pub use render::{
 };
 pub use resource::{PromptResource, ResourceBrowserState, SkillResource};
 pub use settings::{
-    all_thinking_levels, chat_style_label, collapse_mode_label, thinking_label, ChatStyle,
-    CollapseMode, CollapseTarget, ModelOption, SettingsAction, SettingsMenuItem, SettingsPage,
-    SettingsState, ToolSettingsItem, ToolSettingsScope,
+    all_thinking_levels, chat_style_label, collapse_mode_label, thinking_label, AuthStatusItem,
+    ChatStyle, CollapseMode, CollapseTarget, ModelAvailability, ModelOption, NotifyEventKind,
+    NotifyField, NotifyScopeSettings, NotifySettingsState, SettingsAction, SettingsMenuItem,
+    SettingsPage, SettingsState, ToolSettingsItem, ToolSettingsScope,
 };
 pub use theme::{
     builtin_theme_documents, normalize_theme_id, normalize_theme_token, parse_theme_color,

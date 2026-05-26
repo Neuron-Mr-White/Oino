@@ -1,0 +1,72 @@
+{
+  "id": "oino.mode_sandbox",
+  "package_id": "oino.mode_sandbox",
+  "display_name": "Oino Mode Sandbox",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "mode_profile"
+    ],
+    "host_capabilities": [
+      "mode_sandbox"
+    ],
+    "ui": [],
+    "filesystem": [
+      {
+        "access": "read_write",
+        "paths": [
+          ".oino/sandbox-mode/**",
+          "~/.oino/sandbox-mode/**"
+        ]
+      }
+    ],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "mode_profile",
+        "description": "Switch Oino into a named sandbox profile with /mode <profile>.",
+        "handler": "mode.profile"
+      }
+    ],
+    "resources": [
+      {
+        "id": "mode-sandbox",
+        "kind": "skill",
+        "path": "resources/skills/mode-sandbox/SKILL.md"
+      }
+    ],
+    "tools": [],
+    "keymaps": [],
+    "hooks": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "providers": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "Oino owns mode state, creates ~/.oino/sandbox-mode/plan.json and work.json defaults, lets project .oino/sandbox-mode/*.json override them, injects profile prompts into model context, prunes visible tools by profile allow-list, and enforces the same allow-list in the host before-tool-call hook. Profile creation is done by editing JSON directly or by using the contributed mode-sandbox skill, not by a slash command."
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "id": "oino.footer_status",
+  "package_id": "oino.footer_status",
+  "display_name": "Oino Footer Status",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [],
+    "commands": [],
+    "host_capabilities": [],
+    "ui": [
+      "footer_top",
+      "footer_bottom"
+    ],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "ui_surfaces": [
+      {
+        "id": "footer_status_top",
+        "surface": "footer_top",
+        "title": "Footer Status Top",
+        "state_schema": "object",
+        "layout": {
+          "slot": "composer:direct-top",
+          "priority": 100,
+          "min_width": 20,
+          "min_height": 1,
+          "tiny_terminal": "status_line"
+        },
+        "visibility": "visible",
+        "focus": "none",
+        "key_dispatch": {
+          "scopes": [],
+          "pass_through": true
+        }
+      },
+      {
+        "id": "footer_status_bottom",
+        "surface": "footer_bottom",
+        "title": "Footer Status Bottom",
+        "state_schema": "object",
+        "layout": {
+          "slot": "composer:direct-bottom",
+          "priority": 100,
+          "min_width": 20,
+          "min_height": 1,
+          "tiny_terminal": "status_line"
+        },
+        "visibility": "visible",
+        "focus": "none",
+        "key_dispatch": {
+          "scopes": [],
+          "pass_through": true
+        }
+      }
+    ],
+    "tools": [],
+    "commands": [],
+    "keymaps": [],
+    "hooks": [],
+    "settings_pages": [],
+    "themes": [],
+    "providers": [],
+    "resources": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "Oino updates footer_status_top and footer_status_bottom summaries from host runtime state when this package is active."
+  }
+}

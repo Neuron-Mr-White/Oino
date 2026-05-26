@@ -1,0 +1,59 @@
+{
+  "id": "oino.mode_sandbox",
+  "display_name": "Oino Mode Sandbox",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Optional built-in /mode <profile> sandbox controls with configurable global/project profile prompts, tool allow-lists, and agent configuration guidance.",
+  "extensions": [
+    {
+      "manifest": "extensions/mode-sandbox/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "mode_profile"
+    ],
+    "host_capabilities": [
+      "mode_sandbox"
+    ],
+    "ui": [],
+    "filesystem": [
+      {
+        "access": "read_write",
+        "paths": [
+          ".oino/sandbox-mode/**",
+          "~/.oino/sandbox-mode/**"
+        ]
+      }
+    ],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

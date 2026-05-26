@@ -66,9 +66,23 @@ run = "cargo test --workspace"
 description = "Build workspace docs without dependencies"
 run = "cargo doc --workspace --no-deps"
 
+[tasks."docs:check"]
+description = "Validate public docs, stale references, and installer shell syntax"
+run = "scripts/docs-check.sh"
+
+[tasks."install:dry-run"]
+description = "Exercise the portable installer without changing the system"
+run = "OINO_DRY_RUN=1 sh scripts/install.sh"
+
+[tasks."install:smoke"]
+description = "Build and install Oino into a temporary prefix/home, then verify the binary and built-ins"
+run = "scripts/install-smoke.sh"
+
 [tasks.quality]
 description = "Run the standard Oino quality gate"
 run = [
+  "scripts/docs-check.sh",
+  "OINO_DRY_RUN=1 sh scripts/install.sh",
   "cargo fmt --all -- --check",
   "cargo clippy --workspace --all-targets -- -D warnings",
   "cargo test --workspace",

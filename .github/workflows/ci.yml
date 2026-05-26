@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  docs-and-install:
+    name: docs and installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check docs and installer syntax
+        run: scripts/docs-check.sh
+      - name: Dry-run installer
+        run: OINO_DRY_RUN=1 sh scripts/install.sh
+      - name: Smoke-test local installer
+        run: scripts/install-smoke.sh
+
+  windows-installer:
+    name: windows installer dry-run
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell installer
+        shell: pwsh
+        run: |
+          $errors = $null
+          $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw scripts/install.ps1), [ref]$errors)
+          if ($errors) { $errors | Format-List; exit 1 }
+      - name: Dry-run PowerShell installer
+        shell: pwsh
+        run: |
+          $env:OINO_DRY_RUN = '1'
+          ./scripts/install.ps1
+
+  rust:
+    name: rust checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Check
+        run: cargo check --workspace
+      - name: Test
+        run: cargo test --workspace

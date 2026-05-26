@@ -1,0 +1,82 @@
+{
+  "id": "oino.notify",
+  "package_id": "oino.notify",
+  "display_name": "Oino Notify",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "notify"
+    ],
+    "host_capabilities": [
+      "notify"
+    ],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": true,
+      "hosts": [
+        "*"
+      ]
+    },
+    "secrets": [
+      "ntfy_token"
+    ],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "notify",
+        "description": "Open the Notify settings page for builtin:notify ntfy configuration.",
+        "handler": "notify.settings"
+      }
+    ],
+    "resources": [],
+    "tools": [],
+    "keymaps": [],
+    "hooks": [
+      {
+        "id": "notify_agent_end",
+        "event": "after_agent_turn",
+        "priority": 0,
+        "mode": "observe",
+        "handler": "notify.agent_end"
+      },
+      {
+        "id": "notify_tool_result",
+        "event": "tool_result",
+        "priority": 0,
+        "mode": "observe",
+        "handler": "notify.tool_result"
+      }
+    ],
+    "ui_surfaces": [],
+    "settings_pages": [
+      {
+        "id": "notify",
+        "title": "Notify"
+      }
+    ],
+    "themes": [],
+    "providers": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "Oino owns ntfy config resolution and sends notifications from host lifecycle hooks when this package is enabled."
+  }
+}

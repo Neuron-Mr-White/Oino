@@ -15,6 +15,7 @@ members = [
   "crates/oino-extension-sdk",
   "crates/oino-auth",
   "crates/oino-provider-openrouter",
+  "crates/oino-provider-catalog",
   "crates/oino-tui",
   "crates/oino-app",
 ]
@@ -23,12 +24,14 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://example.invalid/oino"
+repository = "https://github.com/Neuron-Mr-White/Oino"
 
 [workspace.dependencies]
 async-trait = "0.1"
 futures = "0.3"
 bytes = "1"
+hmac = "0.12"
+sha2 = "0.10"
 crossterm = "0.28"
 dirs = "5"
 pulldown-cmark = "0.12"

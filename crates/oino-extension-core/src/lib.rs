@@ -534,6 +534,8 @@ pub struct ExtensionContributions {
     #[serde(default)]
     pub providers: Vec<ProviderContribution>,
     #[serde(default)]
+    pub auth_providers: Vec<AuthContribution>,
+    #[serde(default)]
     pub resources: Vec<ResourceContribution>,
     #[serde(default)]
     pub persistence: Vec<PersistenceContribution>,
@@ -1124,9 +1126,85 @@ pub struct ProviderContribution {
     #[serde(default)]
     pub privacy: ProviderPrivacyPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<ProviderRuntimeContribution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hook: Option<String>,
     #[serde(default)]
     pub conflict: ConflictPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderRuntimeContribution {
+    #[serde(default)]
+    pub protocol: ProviderRuntimeProtocol,
+    pub base_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub models_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health_url: Option<String>,
+    #[serde(default)]
+    pub api_key: ProviderRuntimeSecret,
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+    #[serde(default)]
+    pub model_id: ProviderRuntimeModelIdPolicy,
+    /// Optional host-side override conventions for runtime endpoint/config discovery.
+    ///
+    /// These fields document and customize how the host may read per-provider
+    /// config from `~/.oino/extensions/<provider-id>/config.json` and environment
+    /// variables before falling back to manifest URLs.
+    #[serde(default)]
+    pub config: ProviderRuntimeConfigContribution,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderRuntimeConfigContribution {
+    /// JSON string key used to override `base_url` in the provider config file.
+    /// Dotted keys are supported by hosts that implement nested config lookup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url_key: Option<String>,
+    /// JSON string key used to override the runtime health/models URL.
+    /// Dotted keys are supported by hosts that implement nested config lookup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health_url_key: Option<String>,
+    /// Additional environment variables checked before generic
+    /// `<PROVIDER_ID>_BASE_URL` resolution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub base_url_env: Vec<String>,
+    /// Additional environment variables checked before generic
+    /// `<PROVIDER_ID>_HEALTH_URL` resolution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub health_url_env: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderRuntimeProtocol {
+    #[default]
+    OpenAiChatCompletions,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProviderRuntimeSecret {
+    #[default]
+    None,
+    EnvVar {
+        name: String,
+    },
+    ExtensionConfig {
+        key: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderRuntimeModelIdPolicy {
+    /// Send the Oino model id without the `provider:` prefix.
+    #[default]
+    StripProviderPrefix,
+    /// Send the full `provider:model` identifier downstream.
+    PreserveFullIdentifier,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1137,6 +1215,49 @@ pub struct ProviderPrivacyPolicy {
     pub can_receive_tools: bool,
     #[serde(default)]
     pub can_mutate_requests: bool,
+}
+
+/// Extension contribution for custom auth providers.
+///
+/// Extensions can register auth providers that support API key, OAuth, or device code flows.
+/// The host will call the extension's handler for credential storage, retrieval, and flow initiation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthContribution {
+    pub id: ContributionId,
+    /// Provider identifier (e.g., "my-custom-provider")
+    pub provider_id: String,
+    /// Human-readable display name
+    #[serde(default)]
+    pub display_name: String,
+    /// Auth flow type
+    #[serde(default)]
+    pub auth_flow: AuthFlowType,
+    /// Environment variable for API key (if applicable)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_var: Option<String>,
+    /// Setup URL for the provider
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup_url: Option<String>,
+    /// Handler function name for custom auth flows
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handler: Option<String>,
+    #[serde(default)]
+    pub conflict: ConflictPolicy,
+}
+
+/// Auth flow type for extension auth contributions.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthFlowType {
+    /// Simple API key storage
+    #[default]
+    ApiKey,
+    /// OAuth 2.0 Authorization Code flow with PKCE
+    OAuth,
+    /// Device Code flow (for GitHub Copilot, etc.)
+    DeviceCode,
+    /// Custom flow handled by extension handler
+    Custom,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2578,6 +2699,7 @@ pub enum RegistryFamily {
     SettingsPage,
     Theme,
     ProviderModel,
+    AuthProvider,
     Resource,
     Persistence,
     Autosuggest,
@@ -2600,6 +2722,7 @@ impl RegistryFamily {
             Self::SettingsPage => "settings_page",
             Self::Theme => "theme",
             Self::ProviderModel => "provider_model",
+            Self::AuthProvider => "auth_provider",
             Self::Resource => "resource",
             Self::Persistence => "persistence",
             Self::Autosuggest => "autosuggest",
@@ -2783,9 +2906,38 @@ impl_registry_contribution!(ThemeContribution, |item: &ThemeContribution, family
 impl_registry_contribution!(
     ProviderContribution,
     |item: &ProviderContribution, family| {
-        validate_required(family, &item.id, "provider_id", &item.provider_id)
+        validate_required(family, &item.id, "provider_id", &item.provider_id).and_then(|()| {
+            if let Some(runtime) = &item.runtime {
+                validate_required(family, &item.id, "runtime.base_url", &runtime.base_url)?;
+                if matches!(runtime.api_key, ProviderRuntimeSecret::EnvVar { ref name } if name.trim().is_empty())
+                    || matches!(runtime.api_key, ProviderRuntimeSecret::ExtensionConfig { ref key } if key.trim().is_empty())
+                {
+                    return Err(RegistryValidationError::new(
+                        family,
+                        item.id.clone(),
+                        "runtime api key reference must not be empty",
+                    ));
+                }
+                if runtime.config.base_url_key.as_deref().is_some_and(|key| key.trim().is_empty())
+                    || runtime.config.health_url_key.as_deref().is_some_and(|key| key.trim().is_empty())
+                    || runtime.config.base_url_env.iter().any(|name| name.trim().is_empty())
+                    || runtime.config.health_url_env.iter().any(|name| name.trim().is_empty())
+                {
+                    return Err(RegistryValidationError::new(
+                        family,
+                        item.id.clone(),
+                        "runtime config override keys and env vars must not be empty",
+                    ));
+                }
+            }
+            Ok(())
+        })
     }
 );
+
+impl_registry_contribution!(AuthContribution, |item: &AuthContribution, family| {
+    validate_required(family, &item.id, "provider_id", &item.provider_id)
+});
 
 impl_registry_contribution!(
     ResourceContribution,
@@ -2902,6 +3054,7 @@ pub type UiSurfaceRegistry = TypedContributionRegistry<UiSurfaceContribution>;
 pub type SettingsPageRegistry = TypedContributionRegistry<SettingsPageContribution>;
 pub type ThemeRegistry = TypedContributionRegistry<ThemeContribution>;
 pub type ProviderModelRegistry = TypedContributionRegistry<ProviderContribution>;
+pub type AuthProviderRegistry = TypedContributionRegistry<AuthContribution>;
 pub type ResourceRegistry = TypedContributionRegistry<ResourceContribution>;
 pub type PersistenceRegistry = TypedContributionRegistry<PersistenceContribution>;
 pub type AutosuggestRegistry = TypedContributionRegistry<AutosuggestContribution>;
@@ -2964,6 +3117,13 @@ impl TypedContributionRegistry<ProviderContribution> {
     #[must_use]
     pub fn providers_models() -> Self {
         Self::new(RegistryFamily::ProviderModel)
+    }
+}
+
+impl TypedContributionRegistry<AuthContribution> {
+    #[must_use]
+    pub fn auth_providers() -> Self {
+        Self::new(RegistryFamily::AuthProvider)
     }
 }
 
@@ -3911,8 +4071,24 @@ mod tests {
                 id: ContributionId::new("provider")?,
                 provider_id: "openrouter".into(),
                 display_name: "OpenRouter".into(),
-                model_ids: vec!["openai/gpt-4o-mini".into()],
-                privacy: ProviderPrivacyPolicy::default(),
+                model_ids: vec!["kr/claude-sonnet-4.5".into()],
+                privacy: ProviderPrivacyPolicy {
+                    can_receive_prompts: true,
+                    can_receive_tools: true,
+                    can_mutate_requests: false,
+                },
+                runtime: Some(ProviderRuntimeContribution {
+                    protocol: ProviderRuntimeProtocol::OpenAiChatCompletions,
+                    base_url: "http://localhost:20128/v1".into(),
+                    models_url: None,
+                    health_url: Some("http://localhost:20128/v1/models".into()),
+                    api_key: ProviderRuntimeSecret::EnvVar {
+                        name: "NINEROUTER_API_KEY".into(),
+                    },
+                    headers: BTreeMap::new(),
+                    model_id: ProviderRuntimeModelIdPolicy::StripProviderPrefix,
+                    config: ProviderRuntimeConfigContribution::default(),
+                }),
                 hook: None,
                 conflict: ConflictPolicy::default(),
             },
@@ -4081,6 +4257,7 @@ mod tests {
                 display_name: String::new(),
                 model_ids: Vec::new(),
                 privacy: ProviderPrivacyPolicy::default(),
+                runtime: None,
                 hook: None,
                 conflict: ConflictPolicy::default(),
             },

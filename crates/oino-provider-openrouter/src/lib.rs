@@ -61,6 +61,7 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 
+pub const OPENROUTER_PROVIDER_ID: &str = "openrouter";
 const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 const CHAT_COMPLETIONS_PATH: &str = "/chat/completions";
 const MODELS_PATH: &str = "/models";
@@ -125,17 +126,179 @@ impl OpenRouterConfig {
     pub fn models_endpoint(&self) -> String {
         format!("{}{}", self.base_url.trim_end_matches('/'), MODELS_PATH)
     }
+
+    #[must_use]
+    pub fn openai_compatible_config(&self) -> OpenAiCompatibleConfig {
+        let mut config = OpenAiCompatibleConfig::new(
+            oino_auth::OPENROUTER_PROVIDER_ID,
+            "OpenRouter",
+            self.base_url.clone(),
+        )
+        .with_auth(OpenAiCompatibleAuth::Bearer {
+            spec: ProviderAuthSpec::openrouter(),
+        })
+        .with_timeout(self.timeout);
+        if let Some(referer) = &self.referer {
+            config = config.with_header("HTTP-Referer", referer.clone());
+        }
+        if let Some(title) = &self.title {
+            config = config.with_header("X-OpenRouter-Title", title.clone());
+        }
+        config
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenAiCompatibleAuth {
+    None,
+    Bearer {
+        spec: ProviderAuthSpec,
+    },
+    OptionalBearer {
+        spec: ProviderAuthSpec,
+    },
+    ApiKeyHeader {
+        spec: ProviderAuthSpec,
+        header_name: String,
+    },
+}
+
+impl OpenAiCompatibleAuth {
+    #[must_use]
+    pub const fn requires_credential(&self) -> bool {
+        matches!(self, Self::Bearer { .. } | Self::ApiKeyHeader { .. })
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct OpenRouterProvider {
-    auth: AuthStorage,
-    client: reqwest::Client,
-    config: OpenRouterConfig,
+pub struct OpenAiCompatibleConfig {
+    pub provider_id: String,
+    pub display_name: String,
+    pub base_url: String,
+    pub timeout: Duration,
+    pub auth: OpenAiCompatibleAuth,
+    pub headers: BTreeMap<String, String>,
+    pub chat_endpoint: Option<String>,
 }
 
-impl OpenRouterProvider {
-    pub fn new(auth: AuthStorage, config: OpenRouterConfig) -> Result<Self, OpenRouterError> {
+impl OpenAiCompatibleConfig {
+    #[must_use]
+    pub fn new(
+        provider_id: impl Into<String>,
+        display_name: impl Into<String>,
+        base_url: impl Into<String>,
+    ) -> Self {
+        Self {
+            provider_id: provider_id.into(),
+            display_name: display_name.into(),
+            base_url: base_url.into(),
+            timeout: Duration::from_secs(120),
+            auth: OpenAiCompatibleAuth::None,
+            headers: BTreeMap::new(),
+            chat_endpoint: None,
+        }
+    }
+
+    #[must_use]
+    pub fn from_profile(profile: oino_provider_catalog::OpenAiCompatibleProfile) -> Self {
+        let credential = profile.credential_spec();
+        let auth = credential
+            .env_var
+            .map(|env_var| {
+                ProviderAuthSpec::new(credential.provider_id, credential.auth_key, env_var)
+            })
+            .map(|spec| {
+                if profile.requires_api_key {
+                    OpenAiCompatibleAuth::Bearer { spec }
+                } else {
+                    OpenAiCompatibleAuth::OptionalBearer { spec }
+                }
+            })
+            .unwrap_or(OpenAiCompatibleAuth::None);
+        Self::new(profile.id, profile.display_name, profile.api_base).with_auth(auth)
+    }
+
+    #[must_use]
+    pub fn from_provider(provider: oino_provider_catalog::ProviderDescriptor) -> Option<Self> {
+        match provider.target {
+            oino_provider_catalog::ProviderTarget::OpenRouter => {
+                Some(OpenRouterConfig::default().openai_compatible_config())
+            }
+            oino_provider_catalog::ProviderTarget::OpenAiApiKey => {
+                let credential = provider.credential_spec();
+                credential.env_var.map(|env_var| {
+                    Self::new(
+                        provider.id,
+                        provider.display_name,
+                        "https://api.openai.com/v1",
+                    )
+                    .with_auth(OpenAiCompatibleAuth::Bearer {
+                        spec: ProviderAuthSpec::new(
+                            credential.provider_id,
+                            credential.auth_key,
+                            env_var,
+                        ),
+                    })
+                })
+            }
+            oino_provider_catalog::ProviderTarget::OpenAiCompatible { profile_id } => {
+                oino_provider_catalog::openai_compatible_profile_by_id(profile_id)
+                    .map(|profile| Self::from_profile(*profile))
+            }
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn endpoint(&self) -> String {
+        self.chat_endpoint.clone().unwrap_or_else(|| {
+            format!(
+                "{}{}",
+                self.base_url.trim_end_matches('/'),
+                CHAT_COMPLETIONS_PATH
+            )
+        })
+    }
+
+    #[must_use]
+    pub fn models_endpoint(&self) -> String {
+        format!("{}{}", self.base_url.trim_end_matches('/'), MODELS_PATH)
+    }
+
+    #[must_use]
+    pub fn with_auth(mut self, auth: OpenAiCompatibleAuth) -> Self {
+        self.auth = auth;
+        self
+    }
+
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    #[must_use]
+    pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.insert(name.into(), value.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_chat_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.chat_endpoint = Some(endpoint.into());
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OpenAiCompatibleProvider {
+    auth: AuthStorage,
+    client: reqwest::Client,
+    config: OpenAiCompatibleConfig,
+}
+
+impl OpenAiCompatibleProvider {
+    pub fn new(auth: AuthStorage, config: OpenAiCompatibleConfig) -> Result<Self, OpenRouterError> {
         let client = reqwest::Client::builder()
             .timeout(config.timeout)
             .build()
@@ -148,8 +311,15 @@ impl OpenRouterProvider {
     }
 
     #[must_use]
-    pub fn config(&self) -> &OpenRouterConfig {
+    pub fn config(&self) -> &OpenAiCompatibleConfig {
         &self.config
+    }
+
+    pub fn build_chat_request(
+        &self,
+        request: &StreamRequest,
+    ) -> Result<OpenRouterChatRequest, OpenRouterError> {
+        build_openai_compatible_chat_request(request, &self.config.provider_id)
     }
 
     async fn stream_events_inner(
@@ -162,21 +332,11 @@ impl OpenRouterProvider {
             emit_to_sink(&sink, AssistantStreamEvent::Aborted).await?;
             return Ok(());
         }
-        let api_key = self
-            .auth
-            .resolve_api_key(&ProviderAuthSpec::openrouter())
-            .await?;
-        let body = build_chat_request(&request)?;
-        let mut builder = self
-            .client
-            .post(self.config.endpoint())
-            .bearer_auth(api_key)
-            .json(&body);
-        if let Some(referer) = &self.config.referer {
-            builder = builder.header("HTTP-Referer", referer);
-        }
-        if let Some(title) = &self.config.title {
-            builder = builder.header("X-OpenRouter-Title", title);
+        let body = self.build_chat_request(&request)?;
+        let mut builder = self.client.post(self.config.endpoint()).json(&body);
+        builder = self.apply_auth(builder).await?;
+        for (name, value) in &self.config.headers {
+            builder = builder.header(name, value);
         }
         let response = builder
             .send()
@@ -190,7 +350,7 @@ impl OpenRouterProvider {
                 sanitize_error_body(&text)
             )));
         }
-        let mut parser = SseEventParser::new();
+        let mut parser = SseEventParser::for_provider(self.config.provider_id.clone());
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             if signal.is_aborted() {
@@ -208,6 +368,101 @@ impl OpenRouterProvider {
             emit_to_sink(&sink, event).await?;
         }
         Ok(())
+    }
+
+    async fn apply_auth(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> Result<reqwest::RequestBuilder, OpenRouterError> {
+        match &self.config.auth {
+            OpenAiCompatibleAuth::None => Ok(builder),
+            OpenAiCompatibleAuth::Bearer { spec } => {
+                let api_key = self.auth.resolve_api_key(spec).await?;
+                Ok(builder.bearer_auth(api_key))
+            }
+            OpenAiCompatibleAuth::OptionalBearer { spec } => match self.auth.resolve(spec).await? {
+                Some(credential) => {
+                    let Some(api_key) = credential.as_api_key() else {
+                        return Err(OpenRouterError::Auth(AuthError::NotApiKey {
+                            provider: spec.provider_id.clone(),
+                        }));
+                    };
+                    Ok(builder.bearer_auth(api_key))
+                }
+                None => Ok(builder),
+            },
+            OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => {
+                let api_key = self.auth.resolve_api_key(spec).await?;
+                Ok(builder.header(header_name.as_str(), api_key))
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl StreamProvider for OpenAiCompatibleProvider {
+    async fn stream(
+        &self,
+        request: StreamRequest,
+        signal: AbortSignal,
+    ) -> LoopResult<Vec<AssistantStreamEvent>> {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let sink_events = Arc::clone(&events);
+        let sink = Arc::new(move |event| {
+            let sink_events = Arc::clone(&sink_events);
+            let fut: BoxFuture<'static, LoopResult<()>> = Box::pin(async move {
+                let mut events = sink_events
+                    .lock()
+                    .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?;
+                events.push(event);
+                Ok(())
+            });
+            fut
+        });
+        self.stream_events(request, signal, sink).await?;
+        let events = events
+            .lock()
+            .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?
+            .clone();
+        Ok(events)
+    }
+
+    async fn stream_events(
+        &self,
+        request: StreamRequest,
+        signal: AbortSignal,
+        sink: StreamEventSink,
+    ) -> LoopResult<()> {
+        self.stream_events_inner(request, signal, sink)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OpenRouterProvider {
+    inner: OpenAiCompatibleProvider,
+    config: OpenRouterConfig,
+}
+
+impl OpenRouterProvider {
+    pub fn new(auth: AuthStorage, config: OpenRouterConfig) -> Result<Self, OpenRouterError> {
+        let inner = OpenAiCompatibleProvider::new(auth, config.openai_compatible_config())?;
+        Ok(Self { inner, config })
+    }
+
+    #[must_use]
+    pub fn config(&self) -> &OpenRouterConfig {
+        &self.config
+    }
+
+    async fn stream_events_inner(
+        &self,
+        request: StreamRequest,
+        signal: AbortSignal,
+        sink: StreamEventSink,
+    ) -> Result<(), OpenRouterError> {
+        self.inner.stream_events_inner(request, signal, sink).await
     }
 }
 
@@ -265,7 +520,11 @@ pub struct OpenRouterModelInfo {
     pub id: String,
     pub name: Option<String>,
     #[serde(default)]
+    pub owned_by: Option<String>,
+    #[serde(default)]
     pub supported_parameters: Vec<String>,
+    #[serde(default)]
+    pub context_length: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -276,16 +535,19 @@ struct OpenRouterModelsResponse {
 pub async fn list_models(
     config: &OpenRouterConfig,
 ) -> Result<Vec<OpenRouterModelInfo>, OpenRouterError> {
+    list_openai_compatible_models(&config.openai_compatible_config()).await
+}
+
+pub async fn list_openai_compatible_models(
+    config: &OpenAiCompatibleConfig,
+) -> Result<Vec<OpenRouterModelInfo>, OpenRouterError> {
     let client = reqwest::Client::builder()
         .timeout(config.timeout)
         .build()
         .map_err(|err| OpenRouterError::Http(err.to_string()))?;
     let mut builder = client.get(config.models_endpoint());
-    if let Some(referer) = &config.referer {
-        builder = builder.header("HTTP-Referer", referer);
-    }
-    if let Some(title) = &config.title {
-        builder = builder.header("X-OpenRouter-Title", title);
+    for (name, value) in &config.headers {
+        builder = builder.header(name, value);
     }
     let response = builder
         .send()
@@ -293,7 +555,8 @@ pub async fn list_models(
         .map_err(|err| OpenRouterError::Http(err.to_string()))?;
     if !response.status().is_success() {
         return Err(OpenRouterError::Http(format!(
-            "OpenRouter models request failed with status {}",
+            "{} models request failed with status {}",
+            config.display_name,
             response.status()
         )));
     }
@@ -367,9 +630,16 @@ pub struct OpenRouterToolCallFunction {
 pub fn build_chat_request(
     request: &StreamRequest,
 ) -> Result<OpenRouterChatRequest, OpenRouterError> {
-    if request.model.provider != oino_auth::OPENROUTER_PROVIDER_ID {
+    build_openai_compatible_chat_request(request, oino_auth::OPENROUTER_PROVIDER_ID)
+}
+
+pub fn build_openai_compatible_chat_request(
+    request: &StreamRequest,
+    provider_id: &str,
+) -> Result<OpenRouterChatRequest, OpenRouterError> {
+    if request.model.provider != provider_id {
         return Err(OpenRouterError::Serialization(format!(
-            "model provider `{}` is not openrouter",
+            "model provider `{}` does not match OpenAI-compatible provider `{provider_id}`",
             request.model.provider
         )));
     }
@@ -522,16 +792,32 @@ fn optional_text_content(content: &[ContentBlock]) -> Result<Option<String>, Ope
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SseEventParser {
+    provider_id: String,
     buffer: String,
     tool_states: BTreeMap<u32, PartialToolState>,
+}
+
+impl Default for SseEventParser {
+    fn default() -> Self {
+        Self::for_provider(oino_auth::OPENROUTER_PROVIDER_ID)
+    }
 }
 
 impl SseEventParser {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[must_use]
+    pub fn for_provider(provider_id: impl Into<String>) -> Self {
+        Self {
+            provider_id: provider_id.into(),
+            buffer: String::new(),
+            tool_states: BTreeMap::new(),
+        }
     }
 
     pub fn push_str(&mut self, text: &str) -> Result<Vec<AssistantStreamEvent>, OpenRouterError> {
@@ -598,7 +884,11 @@ impl SseEventParser {
                 events.extend(self.finish_tool_calls()?);
                 events.push(AssistantStreamEvent::Done {
                     stop_reason: map_finish_reason(reason.as_deref()),
-                    provider: provider_metadata(chunk.id.clone(), chunk.model.clone()),
+                    provider: provider_metadata(
+                        &self.provider_id,
+                        chunk.id.clone(),
+                        chunk.model.clone(),
+                    ),
                 });
             }
         }
@@ -757,7 +1047,11 @@ fn map_finish_reason(reason: Option<&str>) -> StopReason {
     }
 }
 
-fn provider_metadata(id: Option<String>, model: Option<String>) -> Option<ProviderMetadata> {
+fn provider_metadata(
+    provider_id: &str,
+    id: Option<String>,
+    model: Option<String>,
+) -> Option<ProviderMetadata> {
     if id.is_none() && model.is_none() {
         return None;
     }
@@ -767,7 +1061,7 @@ fn provider_metadata(id: Option<String>, model: Option<String>) -> Option<Provid
     }
     Some(ProviderMetadata {
         request_id: None,
-        model: model.map(|name| Model::new(oino_auth::OPENROUTER_PROVIDER_ID, name)),
+        model: model.map(|name| Model::new(provider_id, name)),
         values,
     })
 }
@@ -779,6 +1073,146 @@ fn sanitize_error_body(text: &str) -> String {
     text.chars().take(500).collect()
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenRouterUsageReport {
+    pub limits: Vec<OpenRouterUsageLimit>,
+    pub extra_info: Vec<(String, String)>,
+    pub balance: Option<OpenRouterCreditBalance>,
+    pub hard_limit_reached: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenRouterUsageLimit {
+    pub name: String,
+    pub usage_percent: f64,
+    pub resets_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenRouterCreditBalance {
+    pub amount: f64,
+    pub currency: String,
+    pub total_credits: f64,
+    pub total_usage: f64,
+}
+
+pub fn parse_openrouter_usage_payloads(
+    key_payload: Option<&str>,
+    credits_payload: Option<&str>,
+) -> Result<OpenRouterUsageReport, OpenRouterError> {
+    let key = key_payload
+        .map(|raw| serde_json::from_str::<Value>(raw))
+        .transpose()
+        .map_err(|err| {
+            OpenRouterError::Serialization(format!("invalid key usage fixture: {err}"))
+        })?;
+    let credits = credits_payload
+        .map(|raw| serde_json::from_str::<Value>(raw))
+        .transpose()
+        .map_err(|err| {
+            OpenRouterError::Serialization(format!("invalid credits usage fixture: {err}"))
+        })?;
+    Ok(parse_openrouter_usage_values(
+        key.as_ref(),
+        credits.as_ref(),
+    ))
+}
+
+pub fn parse_openrouter_usage_values(
+    key_payload: Option<&Value>,
+    credits_payload: Option<&Value>,
+) -> OpenRouterUsageReport {
+    let mut report = OpenRouterUsageReport {
+        limits: Vec::new(),
+        extra_info: Vec::new(),
+        balance: None,
+        hard_limit_reached: false,
+    };
+
+    if let Some(data) = credits_payload.and_then(openrouter_data_object) {
+        let total_credits = data
+            .get("total_credits")
+            .and_then(openrouter_f64)
+            .unwrap_or(0.0);
+        let total_usage = data
+            .get("total_usage")
+            .and_then(openrouter_f64)
+            .unwrap_or(0.0);
+        let balance = total_credits - total_usage;
+        if total_credits > 0.0 {
+            report.limits.push(OpenRouterUsageLimit {
+                name: "Credits".into(),
+                usage_percent: usage_percent_from_used_limit(total_usage, total_credits),
+                resets_at: None,
+            });
+            report.balance = Some(OpenRouterCreditBalance {
+                amount: balance,
+                currency: "USD".into(),
+                total_credits,
+                total_usage,
+            });
+            report.extra_info.push((
+                "Balance".into(),
+                format!("${balance:.2} / ${total_credits:.2}"),
+            ));
+        }
+    }
+
+    if let Some(data) = key_payload.and_then(openrouter_data_object) {
+        for (label, key) in [
+            ("Today", "usage_daily"),
+            ("This week", "usage_weekly"),
+            ("This month", "usage_monthly"),
+        ] {
+            if let Some(value) = data.get(key).and_then(openrouter_f64) {
+                report
+                    .extra_info
+                    .push((label.into(), format!("${value:.2}")));
+            }
+        }
+        if let Some(limit) = data
+            .get("limit")
+            .and_then(openrouter_f64)
+            .filter(|value| *value > 0.0)
+        {
+            let remaining = data
+                .get("limit_remaining")
+                .and_then(openrouter_f64)
+                .unwrap_or(0.0);
+            let used = (limit - remaining).max(0.0);
+            report.hard_limit_reached = remaining <= 0.0;
+            report.limits.push(OpenRouterUsageLimit {
+                name: "Key limit".into(),
+                usage_percent: usage_percent_from_used_limit(used, limit),
+                resets_at: None,
+            });
+            report.extra_info.push((
+                "Key limit".into(),
+                format!("${remaining:.2} remaining / ${limit:.2}"),
+            ));
+        }
+    }
+
+    report
+}
+
+fn openrouter_data_object(value: &Value) -> Option<&serde_json::Map<String, Value>> {
+    value.get("data").unwrap_or(value).as_object()
+}
+
+fn openrouter_f64(value: &Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_str()?.trim().parse().ok())
+}
+
+fn usage_percent_from_used_limit(used: f64, limit: f64) -> f64 {
+    if !used.is_finite() || !limit.is_finite() || limit <= 0.0 {
+        return 0.0;
+    }
+    ((used.max(0.0) / limit) * 100.0).clamp(0.0, 100.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,13 +1221,193 @@ mod tests {
     use serde_json::json;
 
     fn request(messages: Vec<Message>) -> StreamRequest {
+        request_for_provider("openrouter", "openai/gpt-4o-mini", messages)
+    }
+
+    fn request_for_provider(
+        provider: impl Into<String>,
+        model: impl Into<String>,
+        messages: Vec<Message>,
+    ) -> StreamRequest {
         StreamRequest {
-            model: Model::new("openrouter", "openai/gpt-4o-mini"),
+            model: Model::new(provider, model),
             thinking_level: ThinkingLevel::Off,
             system_prompt: Some("be kind".into()),
             messages,
             tools: Vec::new(),
         }
+    }
+
+    #[test]
+    fn parses_openrouter_usage_key_and_credit_fixtures() {
+        let report = parse_openrouter_usage_payloads(
+            Some(
+                r#"{
+                    "data": {
+                        "usage_daily": 1.25,
+                        "usage_weekly": "2.50",
+                        "usage_monthly": 3.75,
+                        "limit": 10.0,
+                        "limit_remaining": 4.0
+                    }
+                }"#,
+            ),
+            Some(
+                r#"{
+                    "data": {
+                        "total_credits": 20.0,
+                        "total_usage": 5.0
+                    }
+                }"#,
+            ),
+        )
+        .unwrap_or_else(|err| panic!("usage fixtures should parse: {err}"));
+
+        assert_eq!(
+            report.balance.as_ref().map(|balance| balance.amount),
+            Some(15.0)
+        );
+        assert_eq!(report.limits.len(), 2);
+        assert_eq!(report.limits[0].name, "Credits");
+        assert_eq!(report.limits[0].usage_percent, 25.0);
+        assert_eq!(report.limits[1].name, "Key limit");
+        assert_eq!(report.limits[1].usage_percent, 60.0);
+        assert!(report
+            .extra_info
+            .iter()
+            .any(|(key, value)| key == "This week" && value == "$2.50"));
+        assert!(!report.hard_limit_reached);
+    }
+
+    #[test]
+    fn parses_openrouter_exhausted_key_limit_as_hard_limit() {
+        let report = parse_openrouter_usage_payloads(
+            Some(r#"{"data":{"limit":5,"limit_remaining":0}}"#),
+            None,
+        )
+        .unwrap_or_else(|err| panic!("usage fixture should parse: {err}"));
+
+        assert!(report.hard_limit_reached);
+        assert_eq!(report.limits[0].usage_percent, 100.0);
+    }
+
+    #[test]
+    fn serializes_openai_compatible_profile_request() {
+        let profile = match oino_provider_catalog::openai_compatible_profile_by_id("deepseek") {
+            Some(profile) => *profile,
+            None => panic!("deepseek profile missing"),
+        };
+        let config = OpenAiCompatibleConfig::from_profile(profile);
+        let built = match build_openai_compatible_chat_request(
+            &request_for_provider(
+                "deepseek",
+                "deepseek-chat",
+                vec![Message::user_text("hello")],
+            ),
+            &config.provider_id,
+        ) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        assert_eq!(built.model, "deepseek-chat");
+        assert_eq!(
+            config.endpoint(),
+            "https://api.deepseek.com/chat/completions"
+        );
+        assert!(config.auth.requires_credential());
+    }
+
+    #[test]
+    fn azure_style_config_uses_custom_endpoint_and_api_key_header() {
+        let spec = ProviderAuthSpec::new("azure", "azure", "AZURE_OPENAI_API_KEY");
+        let config = OpenAiCompatibleConfig::new(
+            "azure",
+            "Azure OpenAI",
+            "https://resource.openai.azure.com",
+        )
+        .with_chat_endpoint("https://resource.openai.azure.com/openai/deployments/gpt4/chat/completions?api-version=2024-10-21")
+        .with_auth(OpenAiCompatibleAuth::ApiKeyHeader {
+            spec: spec.clone(),
+            header_name: "api-key".into(),
+        });
+
+        assert_eq!(
+            config.endpoint(),
+            "https://resource.openai.azure.com/openai/deployments/gpt4/chat/completions?api-version=2024-10-21"
+        );
+        assert!(config.auth.requires_credential());
+        match &config.auth {
+            OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => {
+                assert_eq!(spec.env_var, "AZURE_OPENAI_API_KEY");
+                assert_eq!(header_name, "api-key");
+            }
+            other => panic!("expected API-key header auth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_profile_can_build_without_required_auth() {
+        let profile = match oino_provider_catalog::openai_compatible_profile_by_id("ollama") {
+            Some(profile) => *profile,
+            None => panic!("ollama profile missing"),
+        };
+        let config = OpenAiCompatibleConfig::from_profile(profile);
+        let auth = AuthStorage::new(
+            oino_auth::AuthConfig::new(std::env::temp_dir().join("oino-ollama-auth.json"))
+                .with_process_env(false),
+        );
+        let provider = match OpenAiCompatibleProvider::new(auth, config) {
+            Ok(provider) => provider,
+            Err(err) => panic!("provider init failed: {err}"),
+        };
+        let built = match provider.build_chat_request(&request_for_provider(
+            "ollama",
+            "llama3.2",
+            vec![Message::user_text("hello")],
+        )) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        assert_eq!(built.model, "llama3.2");
+        assert!(!provider.config().auth.requires_credential());
+    }
+
+    #[test]
+    fn rejects_model_for_wrong_openai_compatible_provider() {
+        match build_openai_compatible_chat_request(
+            &request_for_provider(
+                "openrouter",
+                "openai/gpt-4o-mini",
+                vec![Message::user_text("hi")],
+            ),
+            "deepseek",
+        ) {
+            Err(OpenRouterError::Serialization(message)) => {
+                assert!(message.contains("does not match"));
+            }
+            other => panic!("expected provider mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sse_metadata_uses_configured_provider_id() {
+        let mut parser = SseEventParser::for_provider("deepseek");
+        let events = match parser.push_str(
+            "data: {\"id\":\"req-1\",\"model\":\"deepseek-chat\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        ) {
+            Ok(events) => events,
+            Err(err) => panic!("parse failed: {err}"),
+        };
+        let provider = events.iter().find_map(|event| match event {
+            AssistantStreamEvent::Done { provider, .. } => provider.as_ref(),
+            _ => None,
+        });
+        assert_eq!(
+            provider
+                .and_then(|metadata| metadata.model.as_ref())
+                .map(|model| model.provider.as_str()),
+            Some("deepseek")
+        );
     }
 
     #[test]
@@ -884,7 +1498,8 @@ mod tests {
             "data": [{
                 "id": "openai/gpt-4o-mini",
                 "name": "GPT 4o Mini",
-                "supported_parameters": ["tools", "reasoning"]
+                "supported_parameters": ["tools", "reasoning"],
+                "context_length": 128000
             }]
         })) {
             Ok(value) => value,
@@ -894,6 +1509,7 @@ mod tests {
         assert!(response.data[0]
             .supported_parameters
             .contains(&"reasoning".to_string()));
+        assert_eq!(response.data[0].context_length, Some(128_000));
     }
 
     #[test]

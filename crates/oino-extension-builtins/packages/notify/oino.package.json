@@ -1,0 +1,55 @@
+{
+  "id": "oino.notify",
+  "display_name": "Oino Notify",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Optional built-in ntfy notifications for selected Oino lifecycle events.",
+  "extensions": [
+    {
+      "manifest": "extensions/notify/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "notify"
+    ],
+    "host_capabilities": [
+      "notify"
+    ],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": true,
+      "hosts": [
+        "*"
+      ]
+    },
+    "secrets": [
+      "ntfy_token"
+    ],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

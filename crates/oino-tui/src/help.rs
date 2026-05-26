@@ -76,12 +76,20 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
         HelpEntry::item("/settings", "open settings pages"),
         HelpEntry::item("/theme", "open theme selection"),
         HelpEntry::item(
-            "/login claude|chatgpt",
-            "run the official Claude Code or ChatGPT/Codex OAuth login",
+            "/9router setup / /9router status / /9router models",
+            "extension command from enabled builtin:9router; provider auth/router setup",
+        ),
+        HelpEntry::item(
+            "/auth / /account / /auth quickstart",
+            "extension auth/runtime readiness plus 9router-first setup guidance",
+        ),
+        HelpEntry::item(
+            "/usage",
+            "open the floating usage panel with session totals and provider readiness",
         ),
         HelpEntry::item(
             "/extensions",
-            "manage installed extensions and contribution toggles",
+            "install optional built-ins; manage extensions and contribution toggles",
         ),
         HelpEntry::item(
             "/prompts",
@@ -95,6 +103,18 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
         HelpEntry::item(
             "/inspect",
             "inspect full prompt; press e there to export chat HTML",
+        ),
+        HelpEntry::item(
+            "/ralph start|continue|once|steer",
+            "run optional Ralph loops with auto-continuation, steering, and promise tags",
+        ),
+        HelpEntry::item(
+            "/compact / /recall <query>",
+            "use optional VCC deterministic session compaction and raw history recall",
+        ),
+        HelpEntry::item(
+            "/mode plan / /mode work / /mode <profile>",
+            "switch optional sandbox profiles; project .oino overrides global ~/.oino files",
         ),
         HelpEntry::item(
             "/skill:<name>",
@@ -117,8 +137,46 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
             "show registered agent tools by global/project scope",
         ),
         HelpEntry::item(
+            "/settings auth",
+            "open provider auth/account status inside settings",
+        ),
+        HelpEntry::item(
             "/settings extensions",
             "open the extension manager from settings",
+        ),
+        HelpEntry::item(
+            "/settings notify",
+            "configure builtin:notify ntfy server, topic, token, priority, tags, and events",
+        ),
+        HelpEntry::Blank,
+        HelpEntry::heading("Optional built-ins"),
+        HelpEntry::item(
+            "builtin:footer-status",
+            "install from /extensions to show composer-adjacent model/context/cwd lines",
+        ),
+        HelpEntry::item(
+            "builtin:ralph-loop",
+            "adds /ralph controller, task files, promise parsing, and loop docs",
+        ),
+        HelpEntry::item(
+            "builtin:mode-sandbox",
+            "adds /mode <profile>, tool allow-lists, prompts, and /skill:mode-sandbox guidance",
+        ),
+        HelpEntry::item(
+            "builtin:notify",
+            "adds ntfy notifications configured through /settings notify",
+        ),
+        HelpEntry::item(
+            "builtin:craft-skill",
+            "adds /skill:craft-skill for authoring Oino skills",
+        ),
+        HelpEntry::item(
+            "builtin:vcc",
+            "adds /compact, /recall, and model-visible vcc_recall history search",
+        ),
+        HelpEntry::item(
+            "builtin:ask-user",
+            "adds model-visible ask_user questions through an Oino TUI modal",
         ),
         HelpEntry::Blank,
         HelpEntry::heading("Transcript"),

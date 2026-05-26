@@ -1,16 +1,25 @@
 #![forbid(unsafe_code)]
 
-use oino_provider_openrouter::{list_models, OpenRouterConfig, OpenRouterModelInfo};
-use oino_tui::{all_thinking_levels, ModelOption};
+use oino_auth::{AuthError, AuthStorage};
+use oino_provider_catalog::{providers, ProviderTarget};
+use oino_provider_openrouter::{
+    OpenAiCompatibleAuth, OpenAiCompatibleConfig, OpenRouterConfig, OpenRouterModelInfo,
+};
+use oino_tui::{all_thinking_levels, ModelAvailability, ModelOption};
 use oino_types::{Model, ThinkingLevel};
 use serde::{Deserialize, Serialize};
 use std::{
-    path::PathBuf,
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::fs;
 
 pub const MODEL_REFRESH_INTERVAL: Duration = Duration::from_secs(60 * 60 * 6);
+const MODEL_CATALOG_FETCH_TIMEOUT: Duration = Duration::from_secs(12);
+const MODEL_CATALOG_FETCH_CONCURRENCY: usize = 8;
+pub const NINE_ROUTER_PROVIDER_ID: &str = "9router";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelCatalogUpdate {
@@ -22,6 +31,8 @@ pub struct ModelCatalogUpdate {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct CachedModelCatalog {
     fetched_at_unix: u64,
+    #[serde(default = "default_provider_id")]
+    provider_id: String,
     models: Vec<CachedModel>,
 }
 
@@ -29,81 +40,730 @@ struct CachedModelCatalog {
 struct CachedModel {
     id: String,
     display_name: String,
+    #[serde(default)]
+    route_provider: Option<String>,
+    #[serde(default)]
+    availability: ModelAvailability,
     supported_parameters: Vec<String>,
+    #[serde(default)]
+    context_length: Option<usize>,
 }
 
+#[allow(dead_code)]
 pub async fn load_cached_update() -> Option<ModelCatalogUpdate> {
-    let path = cache_path().ok()?;
-    let text = fs::read_to_string(path).await.ok()?;
-    let cache = serde_json::from_str::<CachedModelCatalog>(&text).ok()?;
-    let age = cache_age(&cache);
-    let models = cache.models.into_iter().map(cached_to_option).collect();
+    load_cached_update_with_historical_provider_catalog(false).await
+}
+
+pub async fn load_cached_update_with_historical_provider_catalog(
+    include_historical_provider_catalog: bool,
+) -> Option<ModelCatalogUpdate> {
+    let cached = load_all_cached_model_options(include_historical_provider_catalog).await;
+    let models = merge_model_options(
+        cached,
+        static_model_options_with_historical_provider_catalog(include_historical_provider_catalog),
+    );
+    if models.is_empty() {
+        return None;
+    }
     Some(ModelCatalogUpdate {
         models,
-        status: format!("Loaded cached models{}", age_status(age)),
+        status: "Loaded cached/static extension model catalogs".into(),
         refreshing: false,
     })
 }
 
-pub async fn refresh_update(config: &OpenRouterConfig) -> ModelCatalogUpdate {
-    match list_models(config).await {
-        Ok(models) => {
-            let cached = CachedModelCatalog {
-                fetched_at_unix: now_unix(),
-                models: models.into_iter().map(openrouter_to_cached).collect(),
-            };
-            let count = cached.models.len();
-            let options = cached
-                .models
-                .iter()
-                .cloned()
-                .map(cached_to_option)
-                .collect::<Vec<_>>();
-            let save_status = save_cache(&cached).await.map_or_else(
-                |err| format!("cache save failed: {err}"),
-                |_| "cached".into(),
-            );
-            ModelCatalogUpdate {
-                models: options,
-                status: format!("Fetched {count} OpenRouter models ({save_status})"),
-                refreshing: false,
+#[allow(dead_code)]
+pub async fn refresh_all_update(
+    auth: &AuthStorage,
+    openrouter_config: &OpenRouterConfig,
+) -> ModelCatalogUpdate {
+    refresh_all_update_with_historical_provider_catalog(auth, openrouter_config, false).await
+}
+
+pub async fn refresh_all_update_with_historical_provider_catalog(
+    auth: &AuthStorage,
+    openrouter_config: &OpenRouterConfig,
+    include_historical_provider_catalog: bool,
+) -> ModelCatalogUpdate {
+    let configs = all_refresh_configs_with_historical_provider_catalog(
+        openrouter_config,
+        include_historical_provider_catalog,
+    );
+    if configs.is_empty() {
+        return ModelCatalogUpdate {
+            models: static_model_options_with_historical_provider_catalog(
+                include_historical_provider_catalog,
+            ),
+            status: "No fetchable extension model catalogs are registered".into(),
+            refreshing: false,
+        };
+    }
+
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(MODEL_CATALOG_FETCH_CONCURRENCY));
+    let mut tasks = tokio::task::JoinSet::new();
+    for config in configs {
+        let auth = auth.clone();
+        let semaphore = Arc::clone(&semaphore);
+        tasks.spawn(async move {
+            let _permit = semaphore.acquire_owned().await.ok();
+            refresh_one_catalog(&auth, config).await
+        });
+    }
+
+    let mut refreshed = 0usize;
+    let mut skipped = 0usize;
+    let mut failed = Vec::new();
+    while let Some(result) = tasks.join_next().await {
+        match result {
+            Ok(ProviderCatalogRefresh::Refreshed { .. }) => refreshed += 1,
+            Ok(ProviderCatalogRefresh::Skipped { .. }) => skipped += 1,
+            Ok(ProviderCatalogRefresh::Failed { provider_id, error }) => {
+                failed.push(format!("{provider_id}: {error}"));
             }
+            Err(err) => failed.push(format!("task join failed: {err}")),
         }
-        Err(err) => ModelCatalogUpdate {
-            models: Vec::new(),
-            status: format!("Model refresh failed: {err}"),
+    }
+
+    let models = merge_model_options(
+        load_all_cached_model_options(include_historical_provider_catalog).await,
+        static_model_options_with_historical_provider_catalog(include_historical_provider_catalog),
+    );
+    let mut status =
+        format!("Refreshed extension model catalogs: {refreshed} fetched, {skipped} skipped");
+    if !failed.is_empty() {
+        let preview = failed
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("; ");
+        let suffix = if failed.len() > 3 {
+            format!("; +{} more", failed.len() - 3)
+        } else {
+            String::new()
+        };
+        status.push_str(&format!(", {} failed ({preview}{suffix})", failed.len()));
+    }
+
+    ModelCatalogUpdate {
+        models,
+        status,
+        refreshing: false,
+    }
+}
+
+pub async fn refresh_openai_proxy_update(
+    provider_id: &str,
+    display_name: &str,
+    base_url: &str,
+    api_key_env: Option<&str>,
+) -> ModelCatalogUpdate {
+    match refresh_openai_proxy_catalog(provider_id, display_name, base_url, api_key_env).await {
+        ProviderCatalogRefresh::Refreshed { count, .. } => ModelCatalogUpdate {
+            models: merge_model_options(
+                load_all_cached_model_options(true).await,
+                static_model_options(),
+            ),
+            status: format!("Fetched {count} {display_name} models (cached)"),
+            refreshing: false,
+        },
+        ProviderCatalogRefresh::Skipped { reason, .. } => ModelCatalogUpdate {
+            models: merge_model_options(
+                load_all_cached_model_options(true).await,
+                static_model_options(),
+            ),
+            status: format!("Skipped {display_name} model refresh: {reason}"),
+            refreshing: false,
+        },
+        ProviderCatalogRefresh::Failed { error, .. } => ModelCatalogUpdate {
+            models: merge_model_options(
+                load_all_cached_model_options(true).await,
+                static_model_options(),
+            ),
+            status: format!("Model refresh failed for {display_name}: {error}"),
             refreshing: false,
         },
     }
 }
 
-pub async fn cached_is_fresh() -> bool {
-    let Some(path) = cache_path().ok() else {
-        return false;
+async fn refresh_openai_proxy_catalog(
+    provider_id: &str,
+    display_name: &str,
+    base_url: &str,
+    api_key_env: Option<&str>,
+) -> ProviderCatalogRefresh {
+    let provider_id = provider_id.to_string();
+    let models_endpoint = format!("{}{}", base_url.trim_end_matches('/'), "/models");
+    let client = match reqwest::Client::builder()
+        .timeout(MODEL_CATALOG_FETCH_TIMEOUT)
+        .build()
+    {
+        Ok(client) => client,
+        Err(err) => {
+            return ProviderCatalogRefresh::Failed {
+                provider_id,
+                error: err.to_string(),
+            }
+        }
     };
-    let Ok(text) = fs::read_to_string(path).await else {
-        return false;
+    let mut request = client.get(models_endpoint);
+    if let Some(env_var) = api_key_env {
+        if let Ok(api_key) = std::env::var(env_var) {
+            if !api_key.trim().is_empty() {
+                request = request.bearer_auth(api_key);
+            }
+        }
+    }
+    let response = match request.send().await {
+        Ok(response) => response,
+        Err(err) => {
+            return ProviderCatalogRefresh::Failed {
+                provider_id,
+                error: err.to_string(),
+            }
+        }
     };
-    let Ok(cache) = serde_json::from_str::<CachedModelCatalog>(&text) else {
-        return false;
-    };
-    cache_age(&cache).is_some_and(|age| age < MODEL_REFRESH_INTERVAL)
-}
-
-fn openrouter_to_cached(model: OpenRouterModelInfo) -> CachedModel {
-    CachedModel {
-        display_name: model.name.unwrap_or_else(|| model.id.clone()),
-        id: model.id,
-        supported_parameters: model.supported_parameters,
+    let status = response.status();
+    if !status.is_success() {
+        return ProviderCatalogRefresh::Failed {
+            provider_id,
+            error: format!("{display_name} models request failed with status {status}"),
+        };
+    }
+    match response.json::<ModelsResponse>().await {
+        Ok(body) => {
+            let availability = if provider_id == NINE_ROUTER_PROVIDER_ID {
+                fetch_nine_router_configured_routes(&client, base_url, api_key_env).await
+            } else {
+                RouteAvailability::Unknown
+            };
+            let cached = CachedModelCatalog {
+                fetched_at_unix: now_unix(),
+                provider_id: provider_id.clone(),
+                models: body
+                    .data
+                    .into_iter()
+                    .map(|model| {
+                        openai_compatible_to_cached_with_availability(model, &availability)
+                    })
+                    .collect(),
+            };
+            let count = cached.models.len();
+            match save_cache(&cached).await {
+                Ok(()) => ProviderCatalogRefresh::Refreshed { provider_id, count },
+                Err(err) => ProviderCatalogRefresh::Failed {
+                    provider_id,
+                    error: format!("cache save failed: {err}"),
+                },
+            }
+        }
+        Err(err) => ProviderCatalogRefresh::Failed {
+            provider_id,
+            error: err.to_string(),
+        },
     }
 }
 
-fn cached_to_option(model: CachedModel) -> ModelOption {
-    ModelOption::new(Model::new("openrouter", model.id).identifier())
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProviderCatalogRefresh {
+    Refreshed { provider_id: String, count: usize },
+    Skipped { provider_id: String, reason: String },
+    Failed { provider_id: String, error: String },
+}
+
+async fn refresh_one_catalog(
+    auth: &AuthStorage,
+    config: OpenAiCompatibleConfig,
+) -> ProviderCatalogRefresh {
+    let provider_id = config.provider_id.clone();
+    let config = config.with_timeout(MODEL_CATALOG_FETCH_TIMEOUT);
+    if let Err(reason) = ensure_model_catalog_auth(auth, &config).await {
+        return ProviderCatalogRefresh::Skipped {
+            provider_id,
+            reason,
+        };
+    }
+
+    match list_models_with_optional_auth(auth, &config).await {
+        Ok(models) => {
+            let cached = CachedModelCatalog {
+                fetched_at_unix: now_unix(),
+                provider_id: config.provider_id.clone(),
+                models: models
+                    .into_iter()
+                    .map(openai_compatible_to_cached)
+                    .collect(),
+            };
+            let count = cached.models.len();
+            match save_cache(&cached).await {
+                Ok(()) => ProviderCatalogRefresh::Refreshed { provider_id, count },
+                Err(err) => ProviderCatalogRefresh::Failed {
+                    provider_id,
+                    error: format!("cache save failed: {err}"),
+                },
+            }
+        }
+        Err(err) => ProviderCatalogRefresh::Failed {
+            provider_id,
+            error: err.to_string(),
+        },
+    }
+}
+
+async fn ensure_model_catalog_auth(
+    auth: &AuthStorage,
+    config: &OpenAiCompatibleConfig,
+) -> Result<(), String> {
+    match &config.auth {
+        OpenAiCompatibleAuth::None | OpenAiCompatibleAuth::OptionalBearer { .. } => Ok(()),
+        OpenAiCompatibleAuth::Bearer { spec } | OpenAiCompatibleAuth::ApiKeyHeader { spec, .. } => {
+            if config.provider_id == oino_auth::OPENROUTER_PROVIDER_ID {
+                return Ok(());
+            }
+            match auth.resolve_api_key(spec).await {
+                Ok(_) => Ok(()),
+                Err(AuthError::MissingCredential { .. }) => Err("missing credential".into()),
+                Err(AuthError::NotApiKey { .. }) => {
+                    Err("stored credential is not an API key".into())
+                }
+                Err(err) => Err(err.to_string()),
+            }
+        }
+    }
+}
+
+async fn list_models_with_optional_auth(
+    auth: &AuthStorage,
+    config: &OpenAiCompatibleConfig,
+) -> Result<Vec<OpenRouterModelInfo>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(config.timeout)
+        .build()
+        .map_err(|err| err.to_string())?;
+    let mut builder = client.get(config.models_endpoint());
+    for (name, value) in &config.headers {
+        builder = builder.header(name, value);
+    }
+    builder = apply_model_catalog_auth(auth, config, builder).await?;
+    let response = builder.send().await.map_err(|err| err.to_string())?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "{} models request failed with status {status}",
+            config.display_name
+        ));
+    }
+    response
+        .json::<ModelsResponse>()
+        .await
+        .map(|body| body.data)
+        .map_err(|err| err.to_string())
+}
+
+async fn apply_model_catalog_auth(
+    auth: &AuthStorage,
+    config: &OpenAiCompatibleConfig,
+    builder: reqwest::RequestBuilder,
+) -> Result<reqwest::RequestBuilder, String> {
+    match &config.auth {
+        OpenAiCompatibleAuth::None => Ok(builder),
+        OpenAiCompatibleAuth::Bearer { spec } => match auth.resolve_api_key(spec).await {
+            Ok(api_key) => Ok(builder.bearer_auth(api_key)),
+            Err(AuthError::MissingCredential { .. })
+                if config.provider_id == oino_auth::OPENROUTER_PROVIDER_ID =>
+            {
+                Ok(builder)
+            }
+            Err(AuthError::MissingCredential { .. }) => Err("missing credential".into()),
+            Err(err) => Err(err.to_string()),
+        },
+        OpenAiCompatibleAuth::OptionalBearer { spec } => match auth.resolve(spec).await {
+            Ok(Some(credential)) => match credential.as_api_key() {
+                Some(api_key) => Ok(builder.bearer_auth(api_key)),
+                None => Err("stored credential is not an API key".into()),
+            },
+            Ok(None) => Ok(builder),
+            Err(err) => Err(err.to_string()),
+        },
+        OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => auth
+            .resolve_api_key(spec)
+            .await
+            .map(|api_key| builder.header(header_name.as_str(), api_key))
+            .map_err(|err| err.to_string()),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+struct ModelsResponse {
+    data: Vec<OpenRouterModelInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RouteAvailability {
+    Known(BTreeSet<String>),
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+struct NineRouterProvidersResponse {
+    #[serde(default)]
+    connections: Vec<NineRouterProviderConnection>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NineRouterProviderConnection {
+    provider: Option<String>,
+    is_active: Option<bool>,
+    provider_specific_data: Option<serde_json::Value>,
+}
+
+async fn fetch_nine_router_configured_routes(
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key_env: Option<&str>,
+) -> RouteAvailability {
+    let providers_url = format!(
+        "{}/api/providers",
+        openai_compatible_base_to_server_root(base_url)
+    );
+    let mut request = client.get(providers_url);
+    if let Some(env_var) = api_key_env {
+        if let Ok(api_key) = std::env::var(env_var) {
+            if !api_key.trim().is_empty() {
+                request = request.bearer_auth(api_key);
+            }
+        }
+    }
+    let Ok(response) = request.send().await else {
+        return RouteAvailability::Unknown;
+    };
+    if !response.status().is_success() {
+        return RouteAvailability::Unknown;
+    }
+    let Ok(body) = response.json::<NineRouterProvidersResponse>().await else {
+        return RouteAvailability::Unknown;
+    };
+    let mut routes = BTreeSet::new();
+    for connection in body.connections {
+        if connection.is_active == Some(false) {
+            continue;
+        }
+        let Some(provider) = connection.provider.as_deref().map(str::trim) else {
+            continue;
+        };
+        if provider.is_empty() {
+            continue;
+        }
+        add_nine_router_provider_routes(
+            &mut routes,
+            provider,
+            connection.provider_specific_data.as_ref(),
+        );
+    }
+    RouteAvailability::Known(routes)
+}
+
+fn openai_compatible_base_to_server_root(base_url: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    trimmed
+        .strip_suffix("/v1")
+        .unwrap_or(trimmed)
+        .trim_end_matches('/')
+        .to_string()
+}
+
+fn add_nine_router_provider_routes(
+    routes: &mut BTreeSet<String>,
+    provider: &str,
+    provider_specific_data: Option<&serde_json::Value>,
+) {
+    routes.insert(provider.to_string());
+    if let Some(prefix) = provider_specific_data
+        .and_then(|data| data.get("prefix"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|prefix| !prefix.is_empty())
+    {
+        routes.insert(prefix.to_string());
+    }
+    if let Some(alias) = known_nine_router_provider_alias(provider) {
+        routes.insert(alias.to_string());
+    }
+}
+
+fn known_nine_router_provider_alias(provider: &str) -> Option<&'static str> {
+    match provider {
+        "anthropic" => Some("claude"),
+        "google" | "gemini" | "gemini-cli" => Some("gemini"),
+        "kilocode" => Some("kilo"),
+        "huggingface" => Some("hf"),
+        "vercel-ai-gateway" => Some("vercel"),
+        "github" => Some("copilot"),
+        "openrouter" => Some("openrouter"),
+        "openai" => Some("openai"),
+        "deepseek" => Some("deepseek"),
+        "groq" => Some("groq"),
+        "xai" => Some("xai"),
+        "mistral" => Some("mistral"),
+        "ollama-local" => Some("ollama"),
+        _ => None,
+    }
+}
+
+#[allow(dead_code)]
+pub fn all_refresh_configs(openrouter_config: &OpenRouterConfig) -> Vec<OpenAiCompatibleConfig> {
+    all_refresh_configs_with_historical_provider_catalog(openrouter_config, false)
+}
+
+pub fn all_refresh_configs_with_historical_provider_catalog(
+    openrouter_config: &OpenRouterConfig,
+    include_historical_provider_catalog: bool,
+) -> Vec<OpenAiCompatibleConfig> {
+    if !include_historical_provider_catalog {
+        return Vec::new();
+    }
+    let mut configs = BTreeMap::new();
+    for provider in providers() {
+        let config = match provider.target {
+            ProviderTarget::OpenRouter => Some(openrouter_config.openai_compatible_config()),
+            ProviderTarget::OpenAiApiKey | ProviderTarget::OpenAiCompatible { .. } => {
+                OpenAiCompatibleConfig::from_provider(*provider)
+            }
+            // Native providers need provider-specific model catalog APIs. Their
+            // curated static models are still included in `static_model_options`.
+            _ => None,
+        };
+        if let Some(config) = config {
+            configs.insert(config.provider_id.clone(), config);
+        }
+    }
+    configs.into_values().collect()
+}
+
+pub async fn cached_is_fresh(provider_id: &str) -> bool {
+    let Some(cache) = load_provider_cache(provider_id).await else {
+        return false;
+    };
+    let metadata_ok = provider_id == NINE_ROUTER_PROVIDER_ID || cache_has_context_lengths(&cache);
+    metadata_ok && cache_age(&cache).is_some_and(|age| age < MODEL_REFRESH_INTERVAL)
+}
+
+const OPENAI_OAUTH_STATIC_MODELS: &[&str] = &[
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-pro",
+    "gpt-5.3-codex",
+    "gpt-5.3-codex-spark",
+    "gpt-5.2-chat-latest",
+    "gpt-5.2-codex",
+    "gpt-5.2-pro",
+    "gpt-5.1-codex-mini",
+    "gpt-5.1-codex-max",
+    "gpt-5.2",
+    "gpt-5.1-chat-latest",
+    "gpt-5.1",
+    "gpt-5.1-codex",
+    "gpt-5-chat-latest",
+    "gpt-5-codex",
+    "gpt-5-codex-mini",
+    "gpt-5-pro",
+    "gpt-5-mini",
+    "gpt-5-nano",
+    "gpt-5",
+];
+
+pub fn static_model_options() -> Vec<ModelOption> {
+    static_model_options_with_historical_provider_catalog(false)
+}
+
+pub fn static_model_options_with_historical_provider_catalog(
+    include_historical_provider_catalog: bool,
+) -> Vec<ModelOption> {
+    if !include_historical_provider_catalog {
+        return Vec::new();
+    }
+    let default_models = providers().iter().filter_map(|provider| {
+        let model_id = provider.default_model()?;
+        let id = Model::new(provider.id, model_id).identifier();
+        Some(
+            ModelOption::new(id)
+                .with_display_name(format!("{} {model_id}", provider.display_name))
+                .with_provider_label(provider.display_name),
+        )
+    });
+    let openai_oauth_models = OPENAI_OAUTH_STATIC_MODELS.iter().map(|model_id| {
+        ModelOption::new(Model::new("openai", *model_id).identifier())
+            .with_display_name(format!("OpenAI {model_id}"))
+            .with_provider_label("OpenAI")
+            .with_thinking_levels(all_thinking_levels())
+            .with_context_length(Some(128_000))
+    });
+    default_models.chain(openai_oauth_models).collect()
+}
+
+fn default_provider_id() -> String {
+    oino_auth::OPENROUTER_PROVIDER_ID.into()
+}
+
+async fn load_all_cached_model_options(
+    include_historical_provider_catalog: bool,
+) -> Vec<ModelOption> {
+    let mut options = Vec::new();
+    let mut loaded_providers = BTreeSet::new();
+    if let Ok(dir) = cache_dir() {
+        if let Ok(mut entries) = fs::read_dir(dir).await {
+            loop {
+                let entry = match entries.next_entry().await {
+                    Ok(Some(entry)) => entry,
+                    Ok(None) | Err(_) => break,
+                };
+                let path = entry.path();
+                if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                    continue;
+                }
+                if let Some(cache) = read_cache_file(&path).await {
+                    if !include_historical_provider_catalog
+                        && is_historical_provider_catalog_cache(&cache.provider_id)
+                    {
+                        continue;
+                    }
+                    loaded_providers.insert(cache.provider_id.clone());
+                    options.extend(
+                        cache
+                            .models
+                            .into_iter()
+                            .map(|model| cached_to_option(&cache.provider_id, model)),
+                    );
+                }
+            }
+        }
+    }
+    if include_historical_provider_catalog
+        && !loaded_providers.contains(oino_auth::OPENROUTER_PROVIDER_ID)
+    {
+        if let Some(cache) = load_historical_openrouter_cache().await {
+            options.extend(
+                cache
+                    .models
+                    .into_iter()
+                    .map(|model| cached_to_option(oino_auth::OPENROUTER_PROVIDER_ID, model)),
+            );
+        }
+    }
+    options
+}
+
+fn is_historical_provider_catalog_cache(provider_id: &str) -> bool {
+    provider_id != NINE_ROUTER_PROVIDER_ID
+        && oino_provider_catalog::provider_by_id(provider_id).is_some()
+}
+
+async fn load_provider_cache(provider_id: &str) -> Option<CachedModelCatalog> {
+    if let Ok(path) = cache_path(provider_id) {
+        if let Some(cache) = read_cache_file(&path).await {
+            return Some(cache);
+        }
+    }
+    if provider_id == oino_auth::OPENROUTER_PROVIDER_ID {
+        load_historical_openrouter_cache().await
+    } else {
+        None
+    }
+}
+
+async fn read_cache_file(path: &Path) -> Option<CachedModelCatalog> {
+    let text = fs::read_to_string(path).await.ok()?;
+    serde_json::from_str::<CachedModelCatalog>(&text).ok()
+}
+
+async fn load_historical_openrouter_cache() -> Option<CachedModelCatalog> {
+    let path = historical_openrouter_cache_path().ok()?;
+    read_cache_file(&path).await.map(|mut cache| {
+        cache.provider_id = oino_auth::OPENROUTER_PROVIDER_ID.into();
+        cache
+    })
+}
+
+fn openai_compatible_to_cached(model: OpenRouterModelInfo) -> CachedModel {
+    openai_compatible_to_cached_with_availability(model, &RouteAvailability::Unknown)
+}
+
+fn openai_compatible_to_cached_with_availability(
+    model: OpenRouterModelInfo,
+    route_availability: &RouteAvailability,
+) -> CachedModel {
+    let route_provider = model
+        .owned_by
+        .clone()
+        .or_else(|| model.id.split('/').next().map(str::to_string));
+    let availability = match (route_availability, route_provider.as_deref()) {
+        (RouteAvailability::Known(routes), Some(route_provider)) => {
+            if routes.contains(route_provider) {
+                ModelAvailability::Configured
+            } else {
+                ModelAvailability::NeedsProviderKey
+            }
+        }
+        (RouteAvailability::Known(routes), None) if routes.is_empty() => {
+            ModelAvailability::NeedsProviderKey
+        }
+        (RouteAvailability::Known(_), None) => ModelAvailability::Unknown,
+        (RouteAvailability::Unknown, _) => ModelAvailability::Unknown,
+    };
+    CachedModel {
+        display_name: model.name.unwrap_or_else(|| model.id.clone()),
+        route_provider,
+        availability,
+        id: model.id,
+        supported_parameters: model.supported_parameters,
+        context_length: model.context_length,
+    }
+}
+
+fn cached_to_option(provider_id: &str, model: CachedModel) -> ModelOption {
+    let mut provider_label = provider_display_label(provider_id);
+    if provider_id == NINE_ROUTER_PROVIDER_ID {
+        if let Some(route_provider) = model.route_provider.as_deref() {
+            if !route_provider.trim().is_empty() {
+                provider_label = format!("9router/{route_provider}");
+            }
+        }
+    }
+    ModelOption::new(Model::new(provider_id, model.id).identifier())
         .with_display_name(model.display_name)
+        .with_provider_label(provider_label)
+        .with_availability(model.availability)
         .with_thinking_levels(thinking_levels_for_supported_parameters(
             &model.supported_parameters,
         ))
+        .with_context_length(model.context_length)
+}
+
+fn provider_display_label(provider_id: &str) -> String {
+    if provider_id == NINE_ROUTER_PROVIDER_ID {
+        return "9router".into();
+    }
+    oino_provider_catalog::provider_by_id(provider_id).map_or_else(
+        || provider_id.to_string(),
+        |provider| provider.display_name.into(),
+    )
+}
+
+fn merge_model_options(
+    mut primary: Vec<ModelOption>,
+    secondary: Vec<ModelOption>,
+) -> Vec<ModelOption> {
+    let mut seen = primary
+        .iter()
+        .map(|model| model.id.clone())
+        .collect::<BTreeSet<_>>();
+    for model in secondary {
+        if seen.insert(model.id.clone()) {
+            primary.push(model);
+        }
+    }
+    primary
 }
 
 fn thinking_levels_for_supported_parameters(parameters: &[String]) -> Vec<ThinkingLevel> {
@@ -121,7 +781,7 @@ fn thinking_levels_for_supported_parameters(parameters: &[String]) -> Vec<Thinki
 }
 
 async fn save_cache(cache: &CachedModelCatalog) -> std::io::Result<()> {
-    let path = cache_path()?;
+    let path = cache_path(&cache.provider_id)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).await?;
     }
@@ -129,7 +789,21 @@ async fn save_cache(cache: &CachedModelCatalog) -> std::io::Result<()> {
     fs::write(path, text).await
 }
 
-fn cache_path() -> std::io::Result<PathBuf> {
+fn cache_path(provider_id: &str) -> std::io::Result<PathBuf> {
+    Ok(cache_dir()?.join(format!("{}.json", safe_provider_file_stem(provider_id)?)))
+}
+
+fn cache_dir() -> std::io::Result<PathBuf> {
+    let Some(home) = dirs::home_dir() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "home directory unavailable",
+        ));
+    };
+    Ok(home.join(".oino").join("model-catalogs"))
+}
+
+fn historical_openrouter_cache_path() -> std::io::Result<PathBuf> {
     let Some(home) = dirs::home_dir() else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -139,17 +813,31 @@ fn cache_path() -> std::io::Result<PathBuf> {
     Ok(home.join(".oino").join("openrouter-models.json"))
 }
 
-fn age_status(age: Option<Duration>) -> String {
-    match age {
-        Some(age) if age < MODEL_REFRESH_INTERVAL => " (fresh)".into(),
-        Some(_) => " (stale; refresh queued)".into(),
-        None => String::new(),
+fn safe_provider_file_stem(provider_id: &str) -> std::io::Result<String> {
+    if !provider_id.is_empty()
+        && provider_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        Ok(provider_id.to_string())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("unsafe provider id `{provider_id}`"),
+        ))
     }
 }
 
 fn cache_age(cache: &CachedModelCatalog) -> Option<Duration> {
     let fetched_at = UNIX_EPOCH.checked_add(Duration::from_secs(cache.fetched_at_unix))?;
     SystemTime::now().duration_since(fetched_at).ok()
+}
+
+fn cache_has_context_lengths(cache: &CachedModelCatalog) -> bool {
+    cache
+        .models
+        .iter()
+        .any(|model| model.context_length.is_some())
 }
 
 fn now_unix() -> u64 {
@@ -172,5 +860,204 @@ mod tests {
             thinking_levels_for_supported_parameters(&["temperature".into()]),
             vec![ThinkingLevel::Off]
         );
+    }
+
+    #[test]
+    fn provider_context_length_survives_cache_mapping() {
+        let option = cached_to_option(
+            "openrouter",
+            openai_compatible_to_cached(OpenRouterModelInfo {
+                id: "openai/gpt-4o-mini".into(),
+                name: Some("GPT 4o Mini".into()),
+                owned_by: Some("openai".into()),
+                supported_parameters: vec!["reasoning".into()],
+                context_length: Some(128_000),
+            }),
+        );
+
+        assert_eq!(option.id, "openrouter:openai/gpt-4o-mini");
+        assert_eq!(option.context_length, Some(128_000));
+        assert_eq!(option.display_name, "GPT 4o Mini");
+        assert_eq!(option.thinking_levels, all_thinking_levels());
+    }
+
+    #[test]
+    fn static_catalog_can_include_historical_provider_catalog_defaults_when_requested() {
+        let models = static_model_options_with_historical_provider_catalog(true);
+        assert!(models
+            .iter()
+            .any(|model| model.id == "openrouter:openai/gpt-4o-mini"));
+        assert!(models
+            .iter()
+            .any(|model| model.id == "claude:claude-3-5-sonnet-latest"));
+        assert!(models.iter().any(|model| model.id.starts_with("deepseek:")));
+        assert!(models.iter().any(|model| model.id.starts_with("groq:")));
+        assert!(models.iter().any(|model| model.id == "openai:gpt-5.4"));
+        assert!(models
+            .iter()
+            .any(|model| model.id == "openai:gpt-5.3-codex-spark"));
+    }
+
+    #[test]
+    fn static_catalog_excludes_historical_provider_catalog_models_by_default() {
+        assert!(static_model_options().is_empty());
+        assert!(static_model_options_with_historical_provider_catalog(false).is_empty());
+    }
+
+    #[test]
+    fn all_refresh_configs_can_include_historical_openai_compatible_catalogs_when_requested() {
+        assert!(all_refresh_configs(&OpenRouterConfig::default()).is_empty());
+        let configs = all_refresh_configs_with_historical_provider_catalog(
+            &OpenRouterConfig::default(),
+            true,
+        );
+        assert!(configs
+            .iter()
+            .any(|config| config.provider_id == "openrouter"));
+        assert!(configs
+            .iter()
+            .any(|config| config.provider_id == "openai-api"));
+        assert!(configs
+            .iter()
+            .any(|config| config.provider_id == "deepseek"));
+        assert!(configs.iter().any(|config| config.provider_id == "ollama"));
+        assert!(!configs
+            .iter()
+            .any(|config| config.provider_id == "auto-import"));
+        assert!(all_refresh_configs_with_historical_provider_catalog(
+            &OpenRouterConfig::default(),
+            false,
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn merge_model_options_deduplicates_by_identifier() {
+        let merged = merge_model_options(
+            vec![ModelOption::new("openrouter:a").with_display_name("Cached A")],
+            vec![
+                ModelOption::new("openrouter:a").with_display_name("Static A"),
+                ModelOption::new("openrouter:b"),
+            ],
+        );
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].display_name, "Cached A");
+        assert_eq!(merged[1].id, "openrouter:b");
+    }
+
+    #[test]
+    fn cache_without_context_lengths_is_not_usable_for_footer_limits() {
+        let cache = CachedModelCatalog {
+            fetched_at_unix: now_unix(),
+            provider_id: "openrouter".into(),
+            models: vec![CachedModel {
+                id: "openai/gpt-4o-mini".into(),
+                display_name: "GPT 4o Mini".into(),
+                route_provider: Some("openai".into()),
+                availability: ModelAvailability::Unknown,
+                supported_parameters: Vec::new(),
+                context_length: None,
+            }],
+        };
+
+        assert!(!cache_has_context_lengths(&cache));
+    }
+
+    #[test]
+    fn cache_with_any_context_length_is_usable_for_footer_limits() {
+        let cache = CachedModelCatalog {
+            fetched_at_unix: now_unix(),
+            provider_id: "openrouter".into(),
+            models: vec![
+                CachedModel {
+                    id: "legacy/model".into(),
+                    display_name: "Legacy".into(),
+                    route_provider: Some("legacy".into()),
+                    availability: ModelAvailability::Unknown,
+                    supported_parameters: Vec::new(),
+                    context_length: None,
+                },
+                CachedModel {
+                    id: "openai/gpt-4o-mini".into(),
+                    display_name: "GPT 4o Mini".into(),
+                    route_provider: Some("openai".into()),
+                    availability: ModelAvailability::Unknown,
+                    supported_parameters: Vec::new(),
+                    context_length: Some(128_000),
+                },
+            ],
+        };
+
+        assert!(cache_has_context_lengths(&cache));
+    }
+
+    #[test]
+    fn nine_router_cached_models_mark_configured_routes_and_needed_keys() {
+        let availability = RouteAvailability::Known(BTreeSet::from(["openai".to_string()]));
+        let configured = cached_to_option(
+            NINE_ROUTER_PROVIDER_ID,
+            openai_compatible_to_cached_with_availability(
+                OpenRouterModelInfo {
+                    id: "openai/gpt-5".into(),
+                    name: Some("GPT 5".into()),
+                    owned_by: Some("openai".into()),
+                    supported_parameters: Vec::new(),
+                    context_length: None,
+                },
+                &availability,
+            ),
+        );
+        let needs_key = cached_to_option(
+            NINE_ROUTER_PROVIDER_ID,
+            openai_compatible_to_cached_with_availability(
+                OpenRouterModelInfo {
+                    id: "claude/sonnet".into(),
+                    name: Some("Sonnet".into()),
+                    owned_by: Some("claude".into()),
+                    supported_parameters: Vec::new(),
+                    context_length: None,
+                },
+                &availability,
+            ),
+        );
+
+        assert_eq!(configured.availability, ModelAvailability::Configured);
+        assert_eq!(configured.provider_label, "9router/openai");
+        assert_eq!(needs_key.availability, ModelAvailability::NeedsProviderKey);
+        assert_eq!(needs_key.provider_label, "9router/claude");
+    }
+
+    #[test]
+    fn nine_router_provider_api_uses_server_root_not_openai_v1_base() {
+        assert_eq!(
+            openai_compatible_base_to_server_root("http://localhost:20128/v1"),
+            "http://localhost:20128"
+        );
+        assert_eq!(
+            openai_compatible_base_to_server_root("http://localhost:20128"),
+            "http://localhost:20128"
+        );
+    }
+
+    #[test]
+    fn nine_router_provider_routes_include_common_aliases() {
+        let mut routes = BTreeSet::new();
+        add_nine_router_provider_routes(&mut routes, "anthropic", None);
+        add_nine_router_provider_routes(
+            &mut routes,
+            "custom-openai",
+            Some(&serde_json::json!({ "prefix": "custom" })),
+        );
+
+        assert!(routes.contains("anthropic"));
+        assert!(routes.contains("claude"));
+        assert!(routes.contains("custom-openai"));
+        assert!(routes.contains("custom"));
+    }
+
+    #[test]
+    fn unsafe_provider_cache_stem_is_rejected() {
+        assert!(safe_provider_file_stem("deepseek").is_ok());
+        assert!(safe_provider_file_stem("../deepseek").is_err());
     }
 }

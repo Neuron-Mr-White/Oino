@@ -53,17 +53,19 @@ exercise the same path handling authors use.
 #![forbid(unsafe_code)]
 
 use oino_extension_core::{
-    AutosuggestContribution, AutosuggestItem, ChangelogEntry, CommandContribution,
-    CommunityPackageMetadata, ContributionId, ContributionMetadata, ExtensionContributions,
-    ExtensionCoreError, ExtensionId, ExtensionManifest, ExtensionPermissions, HookContribution,
-    HookEventKind, HookMode, KeymapContribution, OinoCompatibility, PackageAssetRef,
-    PackageExtensionRef, PackageId, PackageManifest, PersistenceContribution, PersistenceRecord,
-    PersistenceScope, ProviderContribution, ProviderPrivacyPolicy, RegistryEntryKey,
-    RegistryFamily, RegistryPolicy, RuntimeDescriptor, RuntimeKind, SourceDescriptor, SourceKind,
-    SourceScope, ThemeContribution, ToolContribution, ToolExecutionMode, TrustMetadata,
-    UiFocusPolicy, UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceAction, UiSurfaceContribution,
-    UiSurfaceKind, UiSurfaceRegistry, UiSurfaceStateUpdate, UiSurfaceValidationError,
-    MANIFEST_FILE, PACKAGE_MANIFEST_FILE,
+    AuthContribution, AuthFlowType, AutosuggestContribution, AutosuggestItem, ChangelogEntry,
+    CommandContribution, CommunityPackageMetadata, ContributionId, ContributionMetadata,
+    ExtensionContributions, ExtensionCoreError, ExtensionId, ExtensionManifest,
+    ExtensionPermissions, HookContribution, HookEventKind, HookMode, KeymapContribution,
+    OinoCompatibility, PackageAssetRef, PackageExtensionRef, PackageId, PackageManifest,
+    PersistenceContribution, PersistenceRecord, PersistenceScope, ProviderContribution,
+    ProviderPrivacyPolicy, ProviderRuntimeContribution, ProviderRuntimeModelIdPolicy,
+    ProviderRuntimeProtocol, ProviderRuntimeSecret, RegistryEntryKey, RegistryFamily,
+    RegistryPolicy, RuntimeDescriptor, RuntimeKind, SourceDescriptor, SourceKind, SourceScope,
+    ThemeContribution, ToolContribution, ToolExecutionMode, TrustMetadata, UiFocusPolicy,
+    UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceAction, UiSurfaceContribution, UiSurfaceKind,
+    UiSurfaceRegistry, UiSurfaceStateUpdate, UiSurfaceValidationError, MANIFEST_FILE,
+    PACKAGE_MANIFEST_FILE,
 };
 use oino_extension_manager::{ExtensionPersistenceStore, PackageLifecycleService};
 use oino_extension_runtime::{
@@ -248,9 +250,11 @@ impl ExampleExtensionTemplate {
                     display_name: "Example Provider Metadata".into(),
                     model_ids: vec!["example-provider/example-model".into()],
                     privacy: ProviderPrivacyPolicy::default(),
+                    runtime: None,
                     hook: None,
                     conflict: Default::default(),
                 }],
+                auth_providers: Vec::new(),
                 resources: Vec::new(),
                 persistence: vec![PersistenceContribution {
                     id: persistence_id,
@@ -573,6 +577,97 @@ impl WasmSdk {
     #[must_use]
     pub fn persistence_delete_payload(scope: PersistenceScope, key: impl Into<String>) -> Value {
         serde_json::json!({ "scope": scope_name(scope), "key": key.into() })
+    }
+
+    /// Create an OpenAI-compatible proxy provider contribution.
+    #[must_use]
+    pub fn openai_proxy_provider_contribution(
+        id: ContributionId,
+        provider_id: impl Into<String>,
+        display_name: impl Into<String>,
+        base_url: impl Into<String>,
+    ) -> ProviderContribution {
+        ProviderContribution {
+            id,
+            provider_id: provider_id.into(),
+            display_name: display_name.into(),
+            model_ids: Vec::new(),
+            privacy: ProviderPrivacyPolicy {
+                can_receive_prompts: true,
+                can_receive_tools: true,
+                can_mutate_requests: false,
+            },
+            runtime: Some(ProviderRuntimeContribution {
+                protocol: ProviderRuntimeProtocol::OpenAiChatCompletions,
+                base_url: base_url.into(),
+                models_url: None,
+                health_url: None,
+                api_key: ProviderRuntimeSecret::None,
+                headers: Default::default(),
+                model_id: ProviderRuntimeModelIdPolicy::StripProviderPrefix,
+                config: Default::default(),
+            }),
+            hook: None,
+            conflict: Default::default(),
+        }
+    }
+
+    /// Create an API key auth contribution.
+    #[must_use]
+    pub fn auth_api_key_contribution(
+        id: ContributionId,
+        provider_id: impl Into<String>,
+        display_name: impl Into<String>,
+        env_var: impl Into<String>,
+    ) -> AuthContribution {
+        AuthContribution {
+            id,
+            provider_id: provider_id.into(),
+            display_name: display_name.into(),
+            auth_flow: AuthFlowType::ApiKey,
+            env_var: Some(env_var.into()),
+            setup_url: None,
+            handler: None,
+            conflict: Default::default(),
+        }
+    }
+
+    /// Create an OAuth auth contribution.
+    #[must_use]
+    pub fn auth_oauth_contribution(
+        id: ContributionId,
+        provider_id: impl Into<String>,
+        display_name: impl Into<String>,
+    ) -> AuthContribution {
+        AuthContribution {
+            id,
+            provider_id: provider_id.into(),
+            display_name: display_name.into(),
+            auth_flow: AuthFlowType::OAuth,
+            env_var: None,
+            setup_url: None,
+            handler: None,
+            conflict: Default::default(),
+        }
+    }
+
+    /// Create a device code auth contribution.
+    #[must_use]
+    pub fn auth_device_code_contribution(
+        id: ContributionId,
+        provider_id: impl Into<String>,
+        display_name: impl Into<String>,
+    ) -> AuthContribution {
+        AuthContribution {
+            id,
+            provider_id: provider_id.into(),
+            display_name: display_name.into(),
+            auth_flow: AuthFlowType::DeviceCode,
+            env_var: None,
+            setup_url: None,
+            handler: None,
+            conflict: Default::default(),
+        }
     }
 }
 

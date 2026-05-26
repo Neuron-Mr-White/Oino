@@ -37,9 +37,22 @@ wiring edge that changed.
 "#]
 #![forbid(unsafe_code)]
 
+mod ask_user;
+mod auth_readiness;
+mod extension_provider_runtime;
+mod extension_readiness;
 mod model_catalog;
+mod nine_router;
+mod notify;
+mod provider_runtime;
+mod ralph_loop;
+mod usage;
 mod user_settings;
+mod vcc;
 
+use ask_user::{AskUserRequester, AskUserTool, ASK_USER_TOOL_NAME};
+use async_trait::async_trait;
+use auth_readiness::{format_auth_status, quickstart as format_auth_quickstart};
 use crossterm::{
     cursor::MoveTo,
     event::{
@@ -57,13 +70,40 @@ use crossterm::{
         LeaveAlternateScreen,
     },
 };
+#[cfg(test)]
+use extension_provider_runtime::{
+    extension_config_dir_name, extension_config_string_from_value,
+    extension_runtime_base_url_env_candidates,
+};
+use extension_provider_runtime::{extension_runtime_providers, ExtensionRuntimeHealth};
+#[cfg(test)]
+use extension_readiness::status_items as extension_readiness_status_items;
+use extension_readiness::{
+    provider_matches as extension_readiness_provider_matches,
+    status_items_with_health as extension_readiness_status_items_with_health,
+};
 use model_catalog::ModelCatalogUpdate;
-use oino_agent_loop::{AgentEvent, BoxFuture, LoopError, StreamEventSink, StreamProvider, Tool};
+use nine_router::{
+    execute_nine_router_command_input, load_nine_router_config, resolved_nine_router_base_url,
+};
+#[cfg(test)]
+use nine_router::{
+    format_extension_readiness_detail as format_nine_router_extension_readiness_detail,
+    nine_router_managed_run_command, nine_router_run_args, nine_router_start_candidates,
+    resolved_nine_router_tag, validate_nine_router_tag, NineRouterConfig, NineRouterHealth,
+    NINE_ROUTER_DEFAULT_BASE_URL, NINE_ROUTER_KNOWN_GOOD_TAG,
+};
+use oino_agent_loop::{
+    AbortSignal, AgentEvent, BeforeToolCallResult, BoxFuture, LoopError, StreamProvider, Tool,
+    ToolCall, ToolDefinition, ToolResult, ToolUpdateCallback,
+};
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
+#[cfg(test)]
+use oino_extension_core::ProviderContribution;
 use oino_extension_core::{
     ActiveContribution, ContributionId, ContributionMetadata, DiagnosticContribution, ExtensionId,
-    HealthContribution, PackageId, PolicyToggle, RegistryEntry, RegistryEntryKey, RegistryPolicy,
-    RendererContribution, RendererTarget, ResourceKind, SourceScope, UiFocusPolicy,
+    HealthContribution, PackageId, PackageManifest, PolicyToggle, RegistryEntry, RegistryEntryKey,
+    RegistryPolicy, RendererContribution, RendererTarget, ResourceKind, SourceScope, UiFocusPolicy,
     UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceContribution, UiSurfaceKind,
     UiTinyTerminalFallback, UiVisibilityPolicy,
 };
@@ -77,23 +117,26 @@ use oino_extension_runtime::{
     WASM_JSON_V1_ABI,
 };
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
-use oino_provider_openrouter::{OpenRouterConfig, OpenRouterProvider};
+use oino_provider_catalog::{provider_by_id, resolve_provider, ProviderDescriptor};
+use oino_provider_openrouter::OpenRouterConfig;
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
-    transcript_click_targets, transcript_url_overlays, transcript_visible_lines, CollapseMode,
-    ExtensionAutosuggestItem, ExtensionManagementItem, ExtensionManagementTarget,
+    transcript_click_targets, transcript_url_overlays, transcript_visible_lines, AgentMode,
+    AskUserOutcome, AskUserRequest, AuthStatusItem, CollapseMode, ExtensionAutosuggestItem,
+    ExtensionCommandSuggestion, ExtensionManagementItem, ExtensionManagementTarget,
     ExtensionShortcut, ExtensionThemeState, KeySequence, KeymapConfig, MessageView, ModelOption,
-    ParsedCommand, PromptResource, SessionListItem, SettingsCommand, SkillResource,
-    TerminalClickTarget, TerminalUrlOverlay, ThemeCatalog, ThemeCatalogEntry, ThemeDocument,
-    ThemeSource, ThemeSourceKind, ThemeSourceScope, ToolSettingsItem, ToolSettingsScope, TuiAction,
-    TuiState, HELP_STATUS,
+    NotifyEventKind as TuiNotifyEventKind, NotifyField, NotifyScopeSettings, ParsedCommand,
+    PromptResource, RalphCommand, RalphRecordPromise, SessionListItem, SettingsCommand,
+    SkillResource, TerminalClickTarget, TerminalUrlOverlay, ThemeCatalog, ThemeCatalogEntry,
+    ThemeDocument, ThemeSource, ThemeSourceKind, ThemeSourceScope, ToolSettingsItem,
+    ToolSettingsScope, TuiAction, TuiState, HELP_STATUS,
 };
-use oino_types::{
-    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ProviderMetadata, StopReason,
-    ThinkingLevel,
-};
+use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
+#[cfg(test)]
+use provider_runtime::ProviderRouter;
+use provider_runtime::{build_runtime_provider, provider_status_for_model_identifier};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -105,16 +148,17 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    process::Command as TokioCommand,
-    sync::mpsc,
-};
+use tokio::sync::{mpsc, oneshot};
+use usage::{account_usage_progress_placeholder, UsageReport};
 use user_settings::UserSettings;
 
-const DEFAULT_OPENROUTER_MODEL: &str = "openrouter:openai/gpt-4o-mini";
-const MISSING_OPENROUTER_API_KEY_MESSAGE: &str =
-    "Missing OpenRouter API key. Set OPENROUTER_API_KEY or add ~/.oino/auth.json.";
+const DEFAULT_MODEL: &str = "9router:kr/claude-sonnet-4.5";
+#[cfg(test)]
+const OPENAI_ACCESS_TOKEN_ENV: &str = "OPENAI_ACCESS_TOKEN";
+#[cfg(test)]
+const OPENAI_REFRESH_TOKEN_ENV: &str = "OPENAI_REFRESH_TOKEN";
+#[cfg(test)]
+const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CliArgs {
@@ -185,7 +229,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model openrouter:xai/glm-5.1\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /theme\n  /login <claude|chatgpt>\n  /extensions\n  /prompts\n  /skills\n  /reload\n  /inspect\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings keymaps\n  /settings theme\n  /settings extensions"
+    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify\n\nOptional built-ins: install from /extensions with builtin:9router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
 }
 
 #[derive(Debug, Error)]
@@ -200,6 +244,8 @@ enum AppError {
     Session(#[from] oino_session::SessionError),
     #[error(transparent)]
     Resource(#[from] oino_resource::ResourceError),
+    #[error(transparent)]
+    Ralph(#[from] ralph_loop::RalphLoopError),
     #[error("invalid arguments: {0}")]
     InvalidArguments(String),
     #[error("invalid model identifier `{0}`; expected provider:model-id")]
@@ -265,7 +311,7 @@ impl AppConfig {
         Self {
             model: model_override
                 .or(saved_settings.model)
-                .unwrap_or_else(|| DEFAULT_OPENROUTER_MODEL.into()),
+                .unwrap_or_else(|| DEFAULT_MODEL.into()),
             thinking_level: saved_settings.thinking_level.unwrap_or_default(),
             thinking_collapse_mode: saved_settings.thinking_collapse_mode.unwrap_or_default(),
             tool_collapse_mode: saved_settings.tool_collapse_mode.unwrap_or_default(),
@@ -313,6 +359,118 @@ fn default_session_root() -> Result<PathBuf, AppError> {
     Ok(home.join(".oino").join("sessions"))
 }
 
+async fn auth_status_items(
+    auth: &AuthStorage,
+    provider_filter: Option<&str>,
+    current_model_identifier: &str,
+) -> Result<Vec<AuthStatusItem>, AppError> {
+    let current_provider = Model::from_identifier(current_model_identifier)
+        .map(|model| model.provider)
+        .unwrap_or_else(|| oino_auth::OPENROUTER_PROVIDER_ID.into());
+    let selected_provider = provider_filter
+        .map(|provider| {
+            resolve_provider(provider).ok_or_else(|| {
+                AppError::InvalidArguments(format!(
+                    "unknown provider `{provider}`; use `/auth` to list known providers"
+                ))
+            })
+        })
+        .transpose()?;
+    let _ = auth;
+    Ok(selected_provider.map_or_else(Vec::new, |provider| {
+        vec![removed_builtin_auth_status_item(
+            *provider,
+            provider.id == current_provider,
+        )]
+    }))
+}
+
+fn removed_builtin_auth_status_item(provider: ProviderDescriptor, current: bool) -> AuthStatusItem {
+    AuthStatusItem {
+        provider_id: provider.id.into(),
+        display_name: provider.display_name.into(),
+        auth_kind: "removed built-in auth".into(),
+        runtime: provider.runtime.label().into(),
+        state: "removed".into(),
+        readiness: "use extension auth".into(),
+        source: "core auth removed".into(),
+        detail: auth_readiness::removed_builtin_auth_message("/auth status"),
+        setup_url: None,
+        current,
+    }
+}
+
+async fn auth_status_items_with_extension_readiness(
+    auth: &AuthStorage,
+    provider_filter: Option<&str>,
+    current_model_identifier: &str,
+    snapshot: &ExtensionManagerSnapshot,
+) -> Result<Vec<AuthStatusItem>, AppError> {
+    let current_provider = Model::from_identifier(current_model_identifier)
+        .map(|model| model.provider)
+        .unwrap_or_else(|| oino_auth::OPENROUTER_PROVIDER_ID.into());
+    let historical_provider_known = provider_filter.and_then(resolve_provider).is_some();
+    let extension_known = provider_filter
+        .is_some_and(|provider| extension_readiness_provider_matches(snapshot, provider));
+    if provider_filter.is_some() && !historical_provider_known && !extension_known {
+        let provider = provider_filter.unwrap_or_default();
+        return Err(AppError::InvalidArguments(format!(
+            "unknown provider `{provider}`; use `/auth` to list known providers"
+        )));
+    }
+
+    let mut items = if provider_filter.is_none() || historical_provider_known {
+        auth_status_items(auth, provider_filter, current_model_identifier).await?
+    } else {
+        Vec::new()
+    };
+    items.extend(
+        extension_readiness_status_items_with_health(
+            snapshot,
+            provider_filter,
+            &current_provider,
+            &format_extension_runtime_health_detail,
+        )
+        .await,
+    );
+    Ok(items)
+}
+
+fn format_extension_runtime_health_detail(
+    provider_id: &str,
+    health: &ExtensionRuntimeHealth,
+) -> String {
+    if provider_id == "9router" {
+        nine_router::format_extension_runtime_health_detail(health)
+    } else {
+        extension_provider_runtime::format_extension_runtime_health_detail(health)
+    }
+}
+
+async fn usage_report_for_current_session(
+    harness: &Harness,
+    auth: &AuthStorage,
+    current_model_identifier: &str,
+) -> Result<UsageReport, AppError> {
+    let messages = harness.build_context().await?;
+    let mut report = UsageReport::from_messages(&messages);
+    if let Some(provider) = current_model_provider(current_model_identifier)? {
+        let progress =
+            account_usage_progress_placeholder(auth, provider, report.generated_at_unix).await?;
+        report.upsert_provider_progress(progress);
+    }
+    Ok(report)
+}
+
+fn current_model_provider(
+    current_model_identifier: &str,
+) -> Result<Option<ProviderDescriptor>, AppError> {
+    let Some(model) = Model::from_identifier(current_model_identifier) else {
+        return Ok(None);
+    };
+    Ok(provider_by_id(&model.provider).copied())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
     let cli = CliArgs::parse_from(std::env::args().skip(1))?;
@@ -347,12 +505,13 @@ async fn main() -> Result<(), AppError> {
         title: config.title.clone(),
         ..OpenRouterConfig::default()
     };
-    let openrouter = Arc::new(OpenRouterProvider::new(
+    let tool_settings = load_tool_settings(&resource_paths).await;
+    let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+    let provider = build_runtime_provider(
         auth.clone(),
         provider_config.clone(),
-    )?) as Arc<dyn StreamProvider>;
-    let provider =
-        Arc::new(OfficialOAuthRoutingProvider::new(openrouter)) as Arc<dyn StreamProvider>;
+        extension_runtime_providers(&extension_snapshot),
+    );
     let harness = build_harness(
         config.model.clone(),
         config.thinking_level,
@@ -361,12 +520,38 @@ async fn main() -> Result<(), AppError> {
         session,
         &resource_catalog,
     )?;
-    let tool_settings = load_tool_settings(&resource_paths).await;
-    apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd).await;
+    apply_tool_settings_to_harness(
+        &harness,
+        &tool_settings,
+        &resource_paths,
+        &cwd,
+        AgentMode::Work,
+        None,
+    )
+    .await;
 
     if cli.settings || cli.input.is_some() {
-        return run_non_interactive(cli, harness, auth, config, session_path, resource_catalog)
-            .await;
+        return run_non_interactive(
+            cli,
+            harness,
+            auth,
+            config,
+            session_path,
+            resource_catalog,
+            extension_runtime_provider_ids_from_snapshot(&extension_snapshot),
+        )
+        .await;
+    }
+
+    // First-run onboarding hint
+    let has_any_credentials = match auth.load().await {
+        Ok(entries) => !entries.is_empty(),
+        Err(_) => false,
+    };
+    if !has_any_credentials && std::env::var("OPENROUTER_API_KEY").is_err() {
+        eprintln!("Welcome to Oino! No router/auth configured yet.");
+        eprintln!("Recommended: run `/9router setup` for extension-managed auth/routing.");
+        eprintln!("Configure provider credentials in 9router or an auth extension.\n");
     }
 
     run_tui(
@@ -394,15 +579,24 @@ fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
         let auth = auth.clone();
         let fut: BoxFuture<'static, oino_agent_loop::LoopResult<Option<String>>> =
             Box::pin(async move {
-                let spec = if provider == oino_auth::OPENROUTER_PROVIDER_ID {
-                    ProviderAuthSpec::openrouter()
-                } else {
-                    ProviderAuthSpec::new(
-                        provider.clone(),
-                        provider.clone(),
-                        format!("{}_API_KEY", provider.to_uppercase()),
-                    )
-                };
+                let spec = provider_by_id(&provider)
+                    .and_then(|descriptor| {
+                        descriptor.credential_spec().env_var.map(|env_var| {
+                            let credential = descriptor.credential_spec();
+                            ProviderAuthSpec::new(
+                                credential.provider_id,
+                                credential.auth_key,
+                                env_var,
+                            )
+                        })
+                    })
+                    .unwrap_or_else(|| {
+                        ProviderAuthSpec::new(
+                            provider.clone(),
+                            provider.clone(),
+                            format!("{}_API_KEY", provider.to_uppercase()),
+                        )
+                    });
                 match auth.resolve_api_key(&spec).await {
                     Ok(key) => Ok(Some(key)),
                     Err(AuthError::MissingCredential { .. }) => Ok(None),
@@ -411,245 +605,6 @@ fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
             });
         fut
     })
-}
-
-#[derive(Clone)]
-struct OfficialOAuthRoutingProvider {
-    openrouter: Arc<dyn StreamProvider>,
-}
-
-impl OfficialOAuthRoutingProvider {
-    fn new(openrouter: Arc<dyn StreamProvider>) -> Self {
-        Self { openrouter }
-    }
-}
-
-#[async_trait::async_trait]
-impl StreamProvider for OfficialOAuthRoutingProvider {
-    async fn stream(
-        &self,
-        request: oino_agent_loop::StreamRequest,
-        signal: oino_agent_loop::AbortSignal,
-    ) -> oino_agent_loop::LoopResult<Vec<AssistantStreamEvent>> {
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let sink_events = Arc::clone(&events);
-        let sink = Arc::new(move |event| {
-            let sink_events = Arc::clone(&sink_events);
-            let fut: BoxFuture<'static, oino_agent_loop::LoopResult<()>> = Box::pin(async move {
-                let mut events = sink_events
-                    .lock()
-                    .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?;
-                events.push(event);
-                Ok(())
-            });
-            fut
-        });
-        self.stream_events(request, signal, sink).await?;
-        let events = events
-            .lock()
-            .map_err(|err| LoopError::Stream(format!("event sink lock poisoned: {err}")))?
-            .clone();
-        Ok(events)
-    }
-
-    async fn stream_events(
-        &self,
-        request: oino_agent_loop::StreamRequest,
-        signal: oino_agent_loop::AbortSignal,
-        sink: StreamEventSink,
-    ) -> oino_agent_loop::LoopResult<()> {
-        match request.model.provider.as_str() {
-            "openrouter" => self.openrouter.stream_events(request, signal, sink).await,
-            "claude" => run_official_cli_model_events(request, "claude", sink).await,
-            "chatgpt" => run_official_cli_model_events(request, "chatgpt", sink).await,
-            provider => Err(LoopError::Stream(format!(
-                "unsupported model provider `{provider}`; use openrouter, claude, or chatgpt"
-            ))),
-        }
-    }
-}
-
-async fn run_official_cli_model_events(
-    request: oino_agent_loop::StreamRequest,
-    provider: &str,
-    sink: StreamEventSink,
-) -> oino_agent_loop::LoopResult<()> {
-    let prompt = official_cli_prompt(&request);
-    let model_arg = official_cli_model_arg(provider, &request.model.name);
-    let mut command = match provider {
-        "claude" => {
-            let mut command = TokioCommand::new("claude");
-            let Some(model_arg) = model_arg.as_deref() else {
-                return Err(LoopError::Stream("claude model cannot be empty".into()));
-            };
-            command.args([
-                "--model",
-                model_arg,
-                "--print",
-                "--output-format",
-                "text",
-                "--no-session-persistence",
-                "--tools",
-                "",
-            ]);
-            command
-        }
-        "chatgpt" => {
-            let mut command = TokioCommand::new("codex");
-            command.arg("exec");
-            if let Some(model_arg) = model_arg.as_deref() {
-                command.args(["--model", model_arg]);
-            }
-            command.arg("-");
-            command
-        }
-        other => {
-            return Err(LoopError::Stream(format!(
-                "unsupported official CLI provider `{other}`"
-            )))
-        }
-    };
-    command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|err| {
-        LoopError::Stream(format!("could not start {provider} model command: {err}"))
-    })?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(prompt.as_bytes()).await.map_err(|err| {
-            LoopError::Stream(format!("could not write prompt to {provider}: {err}"))
-        })?;
-    }
-
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| LoopError::Stream(format!("could not read {provider} stdout")))?;
-    let mut stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| LoopError::Stream(format!("could not read {provider} stderr")))?;
-
-    let stderr_task = tokio::spawn(async move {
-        let mut bytes = Vec::new();
-        stderr.read_to_end(&mut bytes).await.map(|_| bytes)
-    });
-
-    let mut emitted_anything = false;
-    let mut buffer = [0u8; 1024];
-    loop {
-        let count = stdout
-            .read(&mut buffer)
-            .await
-            .map_err(|err| LoopError::Stream(format!("could not read {provider} output: {err}")))?;
-        if count == 0 {
-            break;
-        }
-        emitted_anything = true;
-        let delta = String::from_utf8_lossy(&buffer[..count]).to_string();
-        sink(AssistantStreamEvent::TextDelta { delta }).await?;
-    }
-
-    let status = child
-        .wait()
-        .await
-        .map_err(|err| LoopError::Stream(format!("{provider} model command failed: {err}")))?;
-    let stderr = stderr_task
-        .await
-        .map_err(|err| LoopError::Stream(format!("{provider} stderr task failed: {err}")))?
-        .map_err(|err| LoopError::Stream(format!("could not read {provider} stderr: {err}")))?;
-
-    if !status.success() {
-        let stderr = String::from_utf8_lossy(&stderr).trim().to_string();
-        return Err(LoopError::Stream(if stderr.is_empty() {
-            format!("{provider} model command exited with {status}")
-        } else {
-            format!("{provider} model command exited with {status}: {stderr}")
-        }));
-    }
-
-    if !emitted_anything {
-        sink(AssistantStreamEvent::TextDelta {
-            delta: "[No output returned by official CLI]".into(),
-        })
-        .await?;
-    }
-    sink(AssistantStreamEvent::Done {
-        stop_reason: StopReason::EndTurn,
-        provider: Some(ProviderMetadata {
-            model: Some(request.model),
-            ..ProviderMetadata::default()
-        }),
-    })
-    .await
-}
-
-fn official_cli_model_arg(provider: &str, model: &str) -> Option<String> {
-    if provider == "chatgpt" && matches!(model, "default" | "auto" | "gpt-5" | "gpt-5-codex") {
-        None
-    } else {
-        Some(model.into())
-    }
-}
-
-fn official_cli_prompt(request: &oino_agent_loop::StreamRequest) -> String {
-    let mut prompt = String::new();
-    if let Some(system_prompt) = &request.system_prompt {
-        prompt.push_str("# System Instructions\n\n");
-        prompt.push_str(system_prompt);
-        prompt.push_str("\n\n");
-    }
-    prompt.push_str("# Conversation\n\n");
-    for message in &request.messages {
-        append_message_for_official_cli(&mut prompt, message);
-    }
-    prompt
-}
-
-fn append_message_for_official_cli(prompt: &mut String, message: &Message) {
-    match message {
-        Message::User { content, .. } => append_role_blocks(prompt, "User", content),
-        Message::Assistant { content, .. } => append_role_blocks(prompt, "Assistant", content),
-        Message::ToolResult {
-            tool_name, content, ..
-        } => {
-            prompt.push_str("Tool result from `");
-            prompt.push_str(tool_name);
-            prompt.push_str("`:\n");
-            prompt.push_str(&content_blocks_text(content));
-            prompt.push_str("\n\n");
-        }
-        Message::CompactionSummary { summary, .. } | Message::BranchSummary { summary, .. } => {
-            prompt.push_str("Conversation summary:\n");
-            prompt.push_str(summary);
-            prompt.push_str("\n\n");
-        }
-        Message::Custom { .. } => {}
-    }
-}
-
-fn append_role_blocks(prompt: &mut String, role: &str, content: &[ContentBlock]) {
-    prompt.push_str(role);
-    prompt.push_str(":\n");
-    prompt.push_str(&content_blocks_text(content));
-    prompt.push_str("\n\n");
-}
-
-fn content_blocks_text(content: &[ContentBlock]) -> String {
-    content
-        .iter()
-        .filter_map(|block| match block {
-            ContentBlock::Text { text } => Some(text.clone()),
-            ContentBlock::Thinking { text, .. } => Some(format!("[thinking]\n{text}")),
-            ContentBlock::Image { media_type, .. } => Some(format!("[image: {media_type}]")),
-            ContentBlock::ToolCall {
-                name, arguments, ..
-            } => Some(format!("[tool call: {name} {arguments}]")),
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn build_harness(
@@ -792,6 +747,71 @@ fn reset_theme(settings: &mut ToolSettingsSnapshot, scope: ToolSettingsScope) {
             settings.project.theme.overrides.clear();
         }
     }
+}
+
+fn notify_settings_mut(
+    settings: &mut ToolSettingsSnapshot,
+    scope: ToolSettingsScope,
+) -> &mut notify::NotifySettings {
+    match scope {
+        ToolSettingsScope::Global => &mut settings.global.notify,
+        ToolSettingsScope::Project => &mut settings.project.notify,
+    }
+}
+
+fn set_notify_enabled(
+    settings: &mut ToolSettingsSnapshot,
+    scope: ToolSettingsScope,
+    enabled: bool,
+) {
+    notify_settings_mut(settings, scope).enabled = Some(enabled);
+}
+
+fn set_notify_field(
+    settings: &mut ToolSettingsSnapshot,
+    scope: ToolSettingsScope,
+    field: NotifyField,
+    value: Option<String>,
+) {
+    let notify = notify_settings_mut(settings, scope);
+    match field {
+        NotifyField::Server => notify.ntfy.server = value,
+        NotifyField::Topic => notify.ntfy.topic = value,
+        NotifyField::Token => notify.ntfy.token = value,
+        NotifyField::Priority => notify.ntfy.priority = value,
+        NotifyField::Tags => {
+            notify.ntfy.tags = value.map(|value| {
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|tag| !tag.is_empty())
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+            });
+        }
+    }
+}
+
+fn set_notify_event(
+    settings: &mut ToolSettingsSnapshot,
+    scope: ToolSettingsScope,
+    event: TuiNotifyEventKind,
+    enabled: bool,
+) {
+    let notify = notify_settings_mut(settings, scope);
+    let mut events = notify.events.clone().unwrap_or_else(|| {
+        std::collections::BTreeSet::from([
+            notify::NotifyEvent::AgentEnd,
+            notify::NotifyEvent::ToolError,
+        ])
+    });
+    let event = app_notify_event_from_tui(event);
+    if enabled {
+        events.insert(event);
+    } else {
+        events.remove(&event);
+    }
+    notify.events = Some(events);
 }
 
 fn extension_enabled_global(settings: &ToolSettingsSnapshot, id: &ExtensionId) -> bool {
@@ -1004,8 +1024,16 @@ struct GitInstallSource {
 struct PreparedExtensionInstallSource {
     path: PathBuf,
     display: String,
+    update_source: String,
     _temp_checkout: Option<TemporaryDirectory>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct ExtensionPackageSourceRecord {
+    source: String,
+}
+
+const EXTENSION_PACKAGE_SOURCE_RECORD: &str = ".oino-install-source.json";
 
 #[derive(Debug)]
 struct TemporaryDirectory {
@@ -1062,14 +1090,48 @@ fn prepare_install_source(
     cwd: &Path,
     home_dir: &Path,
 ) -> Result<PreparedExtensionInstallSource, String> {
+    if let Some(query) = optional_builtin_install_query(source) {
+        let path =
+            oino_extension_builtins::optional_builtin_package_path(query).ok_or_else(|| {
+                format!(
+                    "unknown optional built-in extension `{query}`; available: {}",
+                    optional_builtin_install_choices()
+                )
+            })?;
+        return Ok(PreparedExtensionInstallSource {
+            display: format!("builtin:{query}"),
+            update_source: format!("builtin:{query}"),
+            path,
+            _temp_checkout: None,
+        });
+    }
+
     match resolve_install_source(source, cwd, home_dir) {
         ExtensionInstallSource::Local(path) => Ok(PreparedExtensionInstallSource {
             display: path.display().to_string(),
+            update_source: source.trim().to_string(),
             path,
             _temp_checkout: None,
         }),
         ExtensionInstallSource::Git(git) => clone_extension_git_source(git),
     }
+}
+
+fn optional_builtin_install_query(source: &str) -> Option<&str> {
+    let source = source.trim();
+    source
+        .strip_prefix("builtin:")
+        .or_else(|| source.strip_prefix("built-in:"))
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+}
+
+fn optional_builtin_install_choices() -> String {
+    oino_extension_builtins::optional_builtin_packages()
+        .iter()
+        .map(|package| format!("{} (alias: {})", package.id, package.directory_name))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn clone_extension_git_source(
@@ -1108,9 +1170,68 @@ fn clone_extension_git_source(
     }
     Ok(PreparedExtensionInstallSource {
         path: checkout.path().to_path_buf(),
+        update_source: source.display.clone(),
         display: source.display,
         _temp_checkout: Some(checkout),
     })
+}
+
+fn write_extension_package_source_record(destination: &Path, source: &str) -> Result<(), AppError> {
+    let record = ExtensionPackageSourceRecord {
+        source: source.to_string(),
+    };
+    let text = serde_json::to_string_pretty(&record).map_err(|err| {
+        AppError::InvalidArguments(format!(
+            "could not serialize extension source record: {err}"
+        ))
+    })?;
+    fs::write(
+        destination.join(EXTENSION_PACKAGE_SOURCE_RECORD),
+        format!("{text}\n"),
+    )?;
+    Ok(())
+}
+
+fn read_extension_package_source_record(package_dir: &Path) -> Option<String> {
+    let text = fs::read_to_string(package_dir.join(EXTENSION_PACKAGE_SOURCE_RECORD)).ok()?;
+    let record = serde_json::from_str::<ExtensionPackageSourceRecord>(&text).ok()?;
+    (!record.source.trim().is_empty()).then_some(record.source)
+}
+
+fn optional_builtin_source_for_package(package_id: &PackageId) -> Option<String> {
+    oino_extension_builtins::optional_builtin_packages()
+        .iter()
+        .find(|package| package.id == package_id.as_str())
+        .map(|package| format!("builtin:{}", package.directory_name))
+}
+
+fn installed_extension_package_dirs(paths: &ResourcePaths) -> Vec<(ToolSettingsScope, PathBuf)> {
+    let layout = extension_layout_paths(paths);
+    [
+        (ToolSettingsScope::Global, layout.global_installed_packages),
+        (
+            ToolSettingsScope::Project,
+            layout.project_installed_packages,
+        ),
+    ]
+    .into_iter()
+    .flat_map(|(scope, root)| {
+        fs::read_dir(root)
+            .ok()
+            .into_iter()
+            .flat_map(move |entries| {
+                entries.filter_map(move |entry| {
+                    let path = entry.ok()?.path();
+                    path.is_dir().then_some((scope, path))
+                })
+            })
+    })
+    .collect()
+}
+
+fn read_package_manifest_from_installed_dir(path: &Path) -> Option<PackageManifest> {
+    let text = fs::read_to_string(path.join("oino.package.json")).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 fn git_install_source(source: &str, local_path_exists: bool) -> Option<GitInstallSource> {
@@ -1201,6 +1322,96 @@ fn looks_like_git_url(source: &str) -> bool {
         || source.ends_with(".git")
 }
 
+fn update_installed_extension_packages(
+    paths: &ResourcePaths,
+    cwd: &Path,
+    settings: &ToolSettingsSnapshot,
+) -> String {
+    let mut manager = extension_manager_with_current_policy(paths, settings);
+    manager.load();
+    let service =
+        PackageLifecycleService::new(extension_layout_paths(paths), current_extension_version());
+    let mut updated = Vec::new();
+    let mut skipped = Vec::new();
+    let mut failed = Vec::new();
+
+    for (scope, package_dir) in installed_extension_package_dirs(paths) {
+        let Some(manifest) = read_package_manifest_from_installed_dir(&package_dir) else {
+            skipped.push(format!(
+                "{}: unreadable package at {}",
+                scope.label(),
+                package_dir.display()
+            ));
+            continue;
+        };
+        let source = read_extension_package_source_record(&package_dir)
+            .or_else(|| optional_builtin_source_for_package(&manifest.id));
+        let Some(source) = source else {
+            skipped.push(format!(
+                "{}:{} (no remembered local/GitHub/built-in source)",
+                scope.label(),
+                manifest.id
+            ));
+            continue;
+        };
+        let prepared = match prepare_install_source(&source, cwd, &paths.home_dir) {
+            Ok(prepared) => prepared,
+            Err(err) => {
+                failed.push(format!(
+                    "{}:{} from `{source}`: {err}",
+                    scope.label(),
+                    manifest.id
+                ));
+                continue;
+            }
+        };
+        match service.update_local(&prepared.path, package_install_scope(scope), &mut manager) {
+            Ok(report) => {
+                if let Err(err) = write_extension_package_source_record(
+                    &report.destination,
+                    &prepared.update_source,
+                ) {
+                    failed.push(format!(
+                        "{}:{} updated but source record failed: {err}",
+                        scope.label(),
+                        report.package_id
+                    ));
+                } else {
+                    updated.push(format!(
+                        "{}:{} from `{}`",
+                        scope.label(),
+                        report.package_id,
+                        prepared.display
+                    ));
+                }
+            }
+            Err(err) => failed.push(format!(
+                "{}:{} from `{}`: {err}",
+                scope.label(),
+                manifest.id,
+                prepared.display
+            )),
+        }
+    }
+
+    let mut lines = vec![format!(
+        "Extension update complete: {} updated, {} skipped, {} failed.",
+        updated.len(),
+        skipped.len(),
+        failed.len()
+    )];
+    if !updated.is_empty() {
+        lines.push(format!("Updated: {}", updated.join(", ")));
+    }
+    if !skipped.is_empty() {
+        lines.push(format!("Skipped: {}", skipped.join(", ")));
+    }
+    if !failed.is_empty() {
+        lines.push(format!("Failed: {}", failed.join(", ")));
+    }
+    lines.join("\n")
+}
+
 fn apply_extension_snapshot_to_tui_state(
     state: &mut TuiState,
     snapshot: &ExtensionManagerSnapshot,
@@ -1208,6 +1419,7 @@ fn apply_extension_snapshot_to_tui_state(
     paths: &ResourcePaths,
 ) {
     state.set_extension_ui_surfaces(extension_ui_surfaces(snapshot));
+    state.set_extension_commands(extension_command_suggestions(snapshot));
     state.set_extension_shortcuts(extension_shortcuts(snapshot));
     state.set_extension_autosuggest_items(extension_autosuggest_items(snapshot));
     state.set_theme_catalog(
@@ -1217,6 +1429,54 @@ fn apply_extension_snapshot_to_tui_state(
     );
     state.set_extension_theme(ExtensionThemeState::default());
     state.set_extension_management_items(extension_management_items(snapshot, settings));
+    state
+        .settings
+        .set_notify_available(extension_settings_page_enabled(snapshot, "notify"));
+    state.settings.set_notify_settings(
+        notify_settings_to_tui(&settings.global.notify),
+        notify_settings_to_tui(&settings.project.notify),
+    );
+}
+
+fn extension_settings_page_enabled(snapshot: &ExtensionManagerSnapshot, id: &str) -> bool {
+    snapshot
+        .registries
+        .settings_pages
+        .active
+        .iter()
+        .any(|active| active.effective_id.as_str() == id)
+}
+
+fn notify_settings_to_tui(settings: &notify::NotifySettings) -> NotifyScopeSettings {
+    NotifyScopeSettings {
+        enabled: settings.enabled,
+        server: settings.ntfy.server.clone(),
+        topic: settings.ntfy.topic.clone(),
+        token: settings.ntfy.token.clone(),
+        priority: settings.ntfy.priority.clone(),
+        tags: settings.ntfy.tags.clone(),
+        events: settings.events.as_ref().map(|events| {
+            events
+                .iter()
+                .copied()
+                .map(tui_notify_event_from_app)
+                .collect::<Vec<_>>()
+        }),
+    }
+}
+
+fn tui_notify_event_from_app(event: notify::NotifyEvent) -> TuiNotifyEventKind {
+    match event {
+        notify::NotifyEvent::AgentEnd => TuiNotifyEventKind::AgentEnd,
+        notify::NotifyEvent::ToolError => TuiNotifyEventKind::ToolError,
+    }
+}
+
+fn app_notify_event_from_tui(event: TuiNotifyEventKind) -> notify::NotifyEvent {
+    match event {
+        TuiNotifyEventKind::AgentEnd => notify::NotifyEvent::AgentEnd,
+        TuiNotifyEventKind::ToolError => notify::NotifyEvent::ToolError,
+    }
 }
 
 fn extension_ui_surfaces(
@@ -1326,6 +1586,56 @@ fn extension_ui_surfaces(
             .map(synthetic_health_surface),
     );
     surfaces
+}
+
+fn extension_command_suggestions(
+    snapshot: &ExtensionManagerSnapshot,
+) -> Vec<ExtensionCommandSuggestion> {
+    let mut commands = snapshot
+        .registries
+        .commands
+        .active
+        .iter()
+        .filter(|active| {
+            active.entry.metadata.source.scope != SourceScope::BuiltIn
+                || active
+                    .entry
+                    .metadata
+                    .package_id
+                    .as_ref()
+                    .is_some_and(|package_id| package_id.as_str() == NINE_ROUTER_PACKAGE_ID)
+        })
+        .filter_map(|active| {
+            let contribution = &active.entry.contribution;
+            let id = contribution.id.as_str();
+            let (label, replacement) =
+                extension_command_label(id, contribution.handler.as_deref())?;
+            Some(ExtensionCommandSuggestion::new(
+                label,
+                contribution.description.clone(),
+                replacement,
+            ))
+        })
+        .collect::<Vec<_>>();
+    commands.sort_by(|left, right| left.label.cmp(&right.label));
+    commands.dedup_by(|left, right| left.label == right.label);
+    commands
+}
+
+fn extension_command_label(id: &str, handler: Option<&str>) -> Option<(String, String)> {
+    let label = match (id, handler) {
+        ("mode_read", _) | (_, Some("mode.read")) => return None,
+        ("mode_create", _) | (_, Some("mode.create")) => return None,
+        ("mode_plan", _) | (_, Some("mode.plan")) => "/mode plan".into(),
+        ("mode_work", _) | (_, Some("mode.work")) => "/mode work".into(),
+        ("mode_profile", _) | (_, Some("mode.profile")) => {
+            return Some(("/mode".into(), "/mode ".into()))
+        }
+        ("notify", _) | (_, Some("notify.settings")) => "/settings notify".into(),
+        _ if id.trim().is_empty() => return None,
+        _ => format!("/{id}"),
+    };
+    Some((label.clone(), label))
 }
 
 fn extension_shortcuts(snapshot: &ExtensionManagerSnapshot) -> Vec<ExtensionShortcut> {
@@ -1650,14 +1960,48 @@ const fn extension_theme_source(scope: SourceScope) -> ThemeSource {
     }
 }
 
+fn extension_runtime_provider_ids_from_snapshot(
+    snapshot: &ExtensionManagerSnapshot,
+) -> BTreeSet<String> {
+    snapshot
+        .registries
+        .providers
+        .active
+        .iter()
+        .filter(|active| active.entry.contribution.runtime.is_some())
+        .map(|active| active.entry.contribution.provider_id.clone())
+        .collect()
+}
+
+fn validate_model_identifier_with_extensions(
+    model_identifier: &str,
+    extension_runtime_provider_ids: &BTreeSet<String>,
+) -> Result<Model, String> {
+    let Some(model) = Model::from_identifier(model_identifier) else {
+        return Err(format!(
+            "Invalid model identifier `{model_identifier}`; expected provider:model-id"
+        ));
+    };
+    if extension_runtime_provider_ids.contains(&model.provider) {
+        return Ok(model);
+    }
+    Err(format!(
+        "Provider `{}` is not provided by an enabled extension runtime. Built-in provider runtime has been removed; run `/9router setup` and select a `9router:<model>` model, or install/enable an extension runtime provider for `{}`.",
+        model.provider, model.provider
+    ))
+}
+
 fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOption> {
-    let mut models = snapshot
+    snapshot
         .registries
         .providers
         .active
         .iter()
         .filter(|active| active.entry.metadata.source.scope != SourceScope::BuiltIn)
-        .filter(|active| !active.entry.contribution.privacy.can_receive_prompts)
+        .filter(|active| {
+            active.entry.contribution.runtime.is_some()
+                || !active.entry.contribution.privacy.can_receive_prompts
+        })
         .flat_map(|active| {
             let provider_id = &active.entry.contribution.provider_id;
             let display = if active.entry.contribution.display_name.trim().is_empty() {
@@ -1673,24 +2017,13 @@ fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOpti
                 .filter_map(move |model_id| {
                     let id = format!("{provider_id}:{model_id}");
                     Model::from_identifier(&id).map(|_| {
-                        ModelOption::new(id).with_display_name(format!("{display} {model_id}"))
+                        ModelOption::new(id)
+                            .with_display_name(format!("{display} {model_id}"))
+                            .with_provider_label(format!("{display} extension"))
                     })
                 })
         })
-        .collect::<Vec<_>>();
-    models.extend(official_oauth_model_options());
-    models
-}
-
-fn official_oauth_model_options() -> Vec<ModelOption> {
-    vec![
-        ModelOption::new("claude:sonnet").with_display_name("Claude Code Sonnet (alias)"),
-        ModelOption::new("claude:claude-sonnet-4-6").with_display_name("Claude Sonnet 4.6"),
-        ModelOption::new("claude:claude-sonnet-4-5").with_display_name("Claude Sonnet 4.5"),
-        ModelOption::new("claude:opus").with_display_name("Claude Code Opus (alias)"),
-        ModelOption::new("claude:claude-opus-4-5").with_display_name("Claude Opus 4.5"),
-        ModelOption::new("chatgpt:default").with_display_name("ChatGPT default"),
-    ]
+        .collect()
 }
 
 fn merge_extension_models(
@@ -1951,7 +2284,16 @@ fn synthetic_ui_surface(
 fn extension_tool_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, Arc<dyn Tool>> {
     let mut tools = BTreeMap::new();
     for active in &snapshot.registries.tools.active {
-        if active.entry.metadata.source.scope == SourceScope::BuiltIn {
+        if active.entry.metadata.source.scope == SourceScope::BuiltIn
+            || active
+                .entry
+                .metadata
+                .package_id
+                .as_ref()
+                .is_some_and(|package_id| {
+                    matches!(package_id.as_str(), VCC_PACKAGE_ID | ASK_USER_PACKAGE_ID)
+                })
+        {
             continue;
         }
         let Some(extension_id) = active.entry.metadata.extension_id.clone() else {
@@ -2006,7 +2348,7 @@ fn fixture_runtime_for_tool(
     Some(Arc::new(Mutex::new(Box::new(runtime))))
 }
 
-fn execute_extension_command(
+async fn execute_extension_command(
     input: &str,
     snapshot: &ExtensionManagerSnapshot,
 ) -> Option<Result<String, AppError>> {
@@ -2019,14 +2361,30 @@ fn execute_extension_command(
     let contribution_id = ContributionId::new(command_name).ok()?;
     let active = snapshot.registries.commands.active.iter().find(|active| {
         active.effective_id == contribution_id
-            && active.entry.metadata.source.scope != SourceScope::BuiltIn
+            && (active.entry.metadata.source.scope != SourceScope::BuiltIn
+                || active
+                    .entry
+                    .metadata
+                    .package_id
+                    .as_ref()
+                    .is_some_and(|package_id| package_id.as_str() == NINE_ROUTER_PACKAGE_ID))
     })?;
-    let extension_id = active.entry.metadata.extension_id.clone()?;
     let contribution = &active.entry.contribution;
     let handler = contribution
         .handler
         .clone()
         .unwrap_or_else(|| contribution.id.to_string());
+    if active
+        .entry
+        .metadata
+        .package_id
+        .as_ref()
+        .is_some_and(|package_id| package_id.as_str() == NINE_ROUTER_PACKAGE_ID)
+        || handler == "9router.command"
+    {
+        return Some(execute_nine_router_command_input(trimmed).await);
+    }
+    let extension_id = active.entry.metadata.extension_id.clone()?;
     let module = FixtureWasmModule::default().with_handler(
         handler.clone(),
         FixtureHandlerBehavior::Success {
@@ -2067,6 +2425,8 @@ async fn apply_tool_settings_to_harness(
     settings: &ToolSettingsSnapshot,
     paths: &ResourcePaths,
     cwd: &Path,
+    mode: AgentMode,
+    ask_user_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
 ) {
     let mut available = oino_tools::default_tools(harness.env(), cwd.to_path_buf());
     available.insert(
@@ -2074,7 +2434,22 @@ async fn apply_tool_settings_to_harness(
         oino_tools::session_title_tool(harness.session_title_setter()),
     );
     let snapshot = load_extension_snapshot(paths, settings);
+    if optional_package_tool_active(&snapshot, VCC_PACKAGE_ID, VCC_RECALL_TOOL_NAME) {
+        available.insert(
+            VCC_RECALL_TOOL_NAME.into(),
+            Arc::new(VccRecallTool::new(harness.session_handle())) as Arc<dyn Tool>,
+        );
+    }
+    if optional_package_tool_active(&snapshot, ASK_USER_PACKAGE_ID, ASK_USER_TOOL_NAME) {
+        let requester = ask_user_tx.map(ask_user_requester);
+        available.insert(
+            ASK_USER_TOOL_NAME.into(),
+            Arc::new(AskUserTool::new(requester)) as Arc<dyn Tool>,
+        );
+    }
     available.extend(extension_tool_map(&snapshot));
+    let mode_profile = mode_sandbox_enabled_in_snapshot(&snapshot)
+        .then(|| load_mode_sandbox_profile(paths, &mode));
     let active_tool_names = match oino_extension_builtins::tool_registry_from_tools(&available) {
         Ok(registry) => {
             let policy = tool_registry_policy_from_settings(settings, available.keys().cloned());
@@ -2094,17 +2469,49 @@ async fn apply_tool_settings_to_harness(
     let tools = available
         .into_iter()
         .filter(|(name, tool)| {
-            active_tool_names.contains(name)
+            let active = active_tool_names.contains(name)
                 || tool.definition().name == *name
                     && snapshot
                         .registries
                         .tools
                         .active
                         .iter()
-                        .any(|active| active.effective_id.as_str() == name)
+                        .any(|active| active.effective_id.as_str() == name);
+            active
+                && mode_profile
+                    .as_ref()
+                    .is_none_or(|profile| profile.allows_tool(name))
         })
         .collect::<BTreeMap<String, Arc<dyn Tool>>>();
     harness.set_tools(tools).await;
+}
+
+fn ask_user_requester(tx: mpsc::UnboundedSender<TuiRuntimeEvent>) -> AskUserRequester {
+    Arc::new(move |request| {
+        let tx = tx.clone();
+        let fut: BoxFuture<'static, oino_agent_loop::LoopResult<AskUserOutcome>> =
+            Box::pin(async move {
+                let (responder, response_rx) = oneshot::channel();
+                if tx
+                    .send(TuiRuntimeEvent::AskUserPrompt { request, responder })
+                    .is_err()
+                {
+                    return Ok(no_ui_ask_user_outcome());
+                }
+                Ok(response_rx
+                    .await
+                    .unwrap_or_else(|_| no_ui_ask_user_outcome()))
+            });
+        fut
+    })
+}
+
+fn no_ui_ask_user_outcome() -> AskUserOutcome {
+    AskUserOutcome {
+        answers: Vec::new(),
+        cancelled: true,
+        error: Some("no_ui".into()),
+    }
 }
 
 fn load_resource_catalog(paths: &ResourcePaths) -> Result<ResourceCatalog, AppError> {
@@ -2280,10 +2687,25 @@ async fn run_tui(
     let mut terminal = TerminalGuard::enter()?;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut tool_settings = load_tool_settings(&resource_paths).await;
-    apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd).await;
-    let mut state = TuiState::with_settings(initial_model, initial_thinking_level);
+    apply_tool_settings_to_harness(
+        &harness,
+        &tool_settings,
+        &resource_paths,
+        &cwd,
+        AgentMode::Work,
+        None,
+    )
+    .await;
+    let mut state = TuiState::with_settings(initial_model.clone(), initial_thinking_level);
+    state.set_working_directory(path_to_string(&cwd));
+    let agent_mode = Arc::new(Mutex::new(state.agent_mode.clone()));
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+    if mode_sandbox_enabled_in_snapshot(&extension_snapshot) {
+        let _ = ensure_mode_sandbox_profiles(&resource_paths);
+    }
     let mut extension_models = extension_model_options(&extension_snapshot);
+    let mut extension_runtime_provider_ids =
+        extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
     state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
@@ -2300,14 +2722,27 @@ async fn run_tui(
         .set_collapse_modes(initial_thinking_collapse_mode, initial_tool_collapse_mode);
     state.settings.set_chat_style(initial_chat_style);
     state.set_keymap(initial_keymap);
-    if !extension_models.is_empty() {
-        state.set_model_catalog(
-            extension_models.clone(),
-            "Loaded official OAuth models; refreshing OpenRouter models…",
-        );
-    }
     if let Ok(messages) = harness.build_context().await {
         state.set_messages_from_oino(&messages);
+    }
+    if let Ok(report) = usage_report_for_current_session(&harness, &auth, &initial_model).await {
+        state.set_usage_report(report.to_tui_report());
+    }
+    refresh_tui_context_status(&mut state, &harness, &cwd).await;
+    if let Ok(items) =
+        auth_status_items_with_extension_readiness(&auth, None, &initial_model, &extension_snapshot)
+            .await
+    {
+        // First-run onboarding: if no credentials configured, show setup hint
+        let has_configured = items.iter().any(|item| {
+            item.readiness == "configured"
+                || item.source == "stored"
+                || item.source == "environment"
+        });
+        state.set_auth_status_items(items, None);
+        if !has_configured {
+            state.status = "No router/auth configured. Type /9router setup to get started, or /auth quickstart for the extension setup guide.".into();
+        }
     }
     if open_settings {
         state.open_settings();
@@ -2315,18 +2750,68 @@ async fn run_tui(
     let mut applied_thinking_level = initial_thinking_level;
     let harness = Arc::new(harness);
     let (tx, mut rx) = mpsc::unbounded_channel();
+    apply_tool_settings_to_harness(
+        &harness,
+        &tool_settings,
+        &resource_paths,
+        &cwd,
+        state.agent_mode.clone(),
+        Some(tx.clone()),
+    )
+    .await;
     register_tui_stream_hooks(&harness, tx.clone()).await;
-    spawn_model_catalog_task(tx.clone(), provider_config);
+    register_mode_hooks(&harness, Arc::clone(&agent_mode), resource_paths.clone()).await;
+    register_notify_hooks(&harness, resource_paths.clone()).await;
+    spawn_model_catalog_task(tx.clone(), auth.clone(), provider_config, initial_model);
     let mut prompt_in_flight = false;
+    let mut ralph_controller = RalphRunController::default();
+    let mut pending_ask_user: Option<oneshot::Sender<AskUserOutcome>> = None;
     loop {
         let mut prompt_finished = false;
+        let mut finished_prompt_result: Option<Result<Vec<Message>, String>> = None;
         while let Ok(event) = rx.try_recv() {
-            if matches!(event, TuiRuntimeEvent::PromptFinished(_)) {
-                prompt_finished = true;
+            match event {
+                TuiRuntimeEvent::AskUserPrompt { request, responder } => {
+                    if let Some(previous) = pending_ask_user.take() {
+                        let _ = previous.send(AskUserOutcome {
+                            answers: Vec::new(),
+                            cancelled: true,
+                            error: Some("replaced".into()),
+                        });
+                    }
+                    pending_ask_user = Some(responder);
+                    state.open_ask_user_overlay(request);
+                }
+                other => {
+                    if let TuiRuntimeEvent::PromptFinished(result) = &other {
+                        prompt_finished = true;
+                        finished_prompt_result = Some(result.clone());
+                    }
+                    apply_tui_runtime_event(
+                        &mut state,
+                        other,
+                        &mut prompt_in_flight,
+                        &extension_models,
+                    );
+                }
             }
-            apply_tui_runtime_event(&mut state, event, &mut prompt_in_flight, &extension_models);
         }
         if prompt_finished {
+            if let Some(Ok(messages)) = finished_prompt_result {
+                continue_ralph_after_prompt_if_needed(
+                    &mut state,
+                    &mut ralph_controller,
+                    &auth,
+                    &harness,
+                    &tx,
+                    &session_path,
+                    &resource_paths,
+                    &mut prompt_in_flight,
+                    &extension_runtime_provider_ids,
+                    &messages,
+                )
+                .await;
+            }
             start_next_queued_prompt_if_idle(
                 &mut state,
                 &auth,
@@ -2334,8 +2819,10 @@ async fn run_tui(
                 &tx,
                 &session_path,
                 &mut prompt_in_flight,
+                &extension_runtime_provider_ids,
             )
             .await;
+            refresh_tui_context_status(&mut state, &harness, &cwd).await;
         }
         if applied_thinking_level != state.settings.selected_thinking_level {
             applied_thinking_level = state.settings.selected_thinking_level;
@@ -2375,10 +2862,6 @@ async fn run_tui(
         match action {
             TuiAction::None => {}
             TuiAction::Quit => break,
-            TuiAction::LoginOAuth(provider) => match terminal.run_login_command(&provider) {
-                Ok(message) => state.status = message,
-                Err(err) => state.set_error(format!("Login failed: {err}")),
-            },
             TuiAction::OpenInspect => match harness.inspect_full_prompt().await {
                 Ok(snapshot) => {
                     state.set_inspect_full_prompt(snapshot.content, snapshot.token_count)
@@ -2411,6 +2894,13 @@ async fn run_tui(
                     ));
                     continue;
                 };
+                if let Err(message) = validate_model_identifier_with_extensions(
+                    &model,
+                    &extension_runtime_provider_ids,
+                ) {
+                    state.set_error(message);
+                    continue;
+                }
                 if let Err(err) = harness.set_model(parsed_model).await {
                     state.set_error(err.to_string());
                 } else if let Err(err) = harness.set_thinking_level(thinking_level).await {
@@ -2443,10 +2933,19 @@ async fn run_tui(
             } => {
                 set_tool_enabled(&mut tool_settings, scope, name, enabled);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
-                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
-                    .await;
+                apply_tool_settings_to_harness(
+                    &harness,
+                    &tool_settings,
+                    &resource_paths,
+                    &cwd,
+                    state.agent_mode.clone(),
+                    Some(tx.clone()),
+                )
+                .await;
                 let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
                 extension_models = extension_model_options(&extension_snapshot);
+                extension_runtime_provider_ids =
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -2468,6 +2967,38 @@ async fn run_tui(
                 state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
                 state.status = format!("{} theme reset", scope.label());
             }
+            TuiAction::SetNotifyEnabled { scope, enabled } => {
+                set_notify_enabled(&mut tool_settings, scope, enabled);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                state.settings.set_notify_settings(
+                    notify_settings_to_tui(&tool_settings.global.notify),
+                    notify_settings_to_tui(&tool_settings.project.notify),
+                );
+            }
+            TuiAction::SetNotifyField {
+                scope,
+                field,
+                value,
+            } => {
+                set_notify_field(&mut tool_settings, scope, field, value);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                state.settings.set_notify_settings(
+                    notify_settings_to_tui(&tool_settings.global.notify),
+                    notify_settings_to_tui(&tool_settings.project.notify),
+                );
+            }
+            TuiAction::SetNotifyEvent {
+                scope,
+                event,
+                enabled,
+            } => {
+                set_notify_event(&mut tool_settings, scope, event, enabled);
+                save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                state.settings.set_notify_settings(
+                    notify_settings_to_tui(&tool_settings.global.notify),
+                    notify_settings_to_tui(&tool_settings.project.notify),
+                );
+            }
             TuiAction::RunExtensionUiAction {
                 surface_id,
                 action_id,
@@ -2477,6 +3008,186 @@ async fn run_tui(
             TuiAction::RunExtensionAction { action } => {
                 state.status = format!("Extension shortcut action `{action}` queued");
             }
+            TuiAction::AnswerAskUser(outcome) => {
+                if let Some(responder) = pending_ask_user.take() {
+                    let _ = responder.send(outcome);
+                } else {
+                    state.status = "No ask-user request is waiting".into();
+                }
+            }
+            TuiAction::RefreshAuthStatus { provider } => {
+                match auth_status_items_with_extension_readiness(
+                    &auth,
+                    provider.as_deref(),
+                    &state.settings.selected_model,
+                    &extension_snapshot,
+                )
+                .await
+                {
+                    Ok(items) => {
+                        let count = items.len();
+                        state.set_auth_status_items(items, provider.as_deref());
+                        state.set_auth_status_message(format!(
+                            "Loaded auth status for {count} provider(s)"
+                        ));
+                    }
+                    Err(err) => state.set_auth_status_error(err.to_string()),
+                }
+            }
+            TuiAction::AuthQuickstart => {
+                let message = format_auth_quickstart();
+                match auth_status_items_with_extension_readiness(
+                    &auth,
+                    None,
+                    &state.settings.selected_model,
+                    &extension_snapshot,
+                )
+                .await
+                {
+                    Ok(items) => state.set_auth_status_items(items, None),
+                    Err(err) => state.set_auth_status_error(err.to_string()),
+                }
+                state.set_auth_status_message(message);
+            }
+            TuiAction::Compact => {
+                if vcc_command_enabled(&resource_paths, &tool_settings, "compact") {
+                    match compact_session_with_vcc(&harness).await {
+                        Ok((message, messages)) => {
+                            state.set_messages_from_oino(&messages);
+                            save_tui_session(&mut state, &harness, &session_path).await;
+                            state.clear_error();
+                            state.status = message;
+                            refresh_tui_context_status(&mut state, &harness, &cwd).await;
+                        }
+                        Err(err) => {
+                            state.set_error(err.to_string());
+                            state.status = HELP_STATUS.into();
+                        }
+                    }
+                } else {
+                    state.set_error(
+                        "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`",
+                    );
+                    state.status = HELP_STATUS.into();
+                }
+            }
+            TuiAction::Recall { query } => {
+                if vcc_command_enabled(&resource_paths, &tool_settings, "recall") {
+                    match recall_session_with_vcc(&harness, query, true).await {
+                        Ok((output, Some(messages))) => {
+                            state.set_messages_from_oino(&messages);
+                            save_tui_session(&mut state, &harness, &session_path).await;
+                            state.clear_error();
+                            state.status = first_line_or_default(&output, "VCC recall complete");
+                        }
+                        Ok((output, None)) => {
+                            state.clear_error();
+                            state.status = first_line_or_default(&output, "VCC recall complete");
+                        }
+                        Err(err) => {
+                            state.set_error(err.to_string());
+                            state.status = HELP_STATUS.into();
+                        }
+                    }
+                } else {
+                    state.set_error(
+                        "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/recall`",
+                    );
+                    state.status = HELP_STATUS.into();
+                }
+            }
+            TuiAction::RefreshUsage => {
+                match usage_report_for_current_session(
+                    &harness,
+                    &auth,
+                    &state.settings.selected_model,
+                )
+                .await
+                {
+                    Ok(report) => {
+                        let status = report.status_line();
+                        state.set_usage_report(report.to_tui_report());
+                        state.clear_error();
+                        state.status = status;
+                    }
+                    Err(err) => state.set_usage_error(format!("Usage refresh failed: {err}")),
+                }
+            }
+            TuiAction::Ralph(command) => {
+                match handle_tui_ralph_command(
+                    &mut state,
+                    &mut ralph_controller,
+                    &auth,
+                    &harness,
+                    &tx,
+                    &session_path,
+                    &resource_paths,
+                    &tool_settings,
+                    &mut prompt_in_flight,
+                    &extension_runtime_provider_ids,
+                    command,
+                )
+                .await
+                {
+                    Ok(message) => {
+                        state.clear_error();
+                        state.status = message;
+                    }
+                    Err(err) => {
+                        state.set_error(err.to_string());
+                        state.status = HELP_STATUS.into();
+                    }
+                }
+            }
+            TuiAction::RunExtensionCommand { input } => {
+                let snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                match execute_extension_command(&input, &snapshot).await {
+                    Some(Ok(message)) => {
+                        let refresh_models = input.trim_start().starts_with("/9router models");
+                        state.clear_error();
+                        state.status = compact_status_line(&message);
+                        state.append_command_output(input, message);
+                        if refresh_models {
+                            apply_cached_model_catalog_to_tui_state(&mut state, &extension_models)
+                                .await;
+                        }
+                    }
+                    Some(Err(err)) => {
+                        state.set_error(err.to_string());
+                        state.status = HELP_STATUS.into();
+                    }
+                    None => {
+                        state.set_error(format!("Extension command is not enabled: {input}"));
+                        state.status = HELP_STATUS.into();
+                    }
+                }
+            }
+            TuiAction::SetAgentMode(mode) => {
+                if mode_sandbox_command_enabled(&mode, &resource_paths, &tool_settings) {
+                    if let Err(err) = ensure_mode_sandbox_profiles(&resource_paths) {
+                        state.set_error(format!("Mode profile setup failed: {err}"));
+                    }
+                    state.set_agent_mode(mode.clone());
+                    if let Ok(mut guard) = agent_mode.lock() {
+                        *guard = mode.clone();
+                    }
+                    apply_tool_settings_to_harness(
+                        &harness,
+                        &tool_settings,
+                        &resource_paths,
+                        &cwd,
+                        mode,
+                        Some(tx.clone()),
+                    )
+                    .await;
+                } else {
+                    state.set_error(format!(
+                        "Mode sandbox extension is not enabled; install `builtin:mode-sandbox` from `/extensions` before using `/mode {}`",
+                        mode.value()
+                    ));
+                    state.status = HELP_STATUS.into();
+                }
+            }
             TuiAction::SetExtensionEnabled {
                 target,
                 id,
@@ -2485,10 +3196,19 @@ async fn run_tui(
             } => {
                 set_extension_enabled(&mut tool_settings, target, id, scope, enabled);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
-                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
-                    .await;
+                apply_tool_settings_to_harness(
+                    &harness,
+                    &tool_settings,
+                    &resource_paths,
+                    &cwd,
+                    state.agent_mode.clone(),
+                    Some(tx.clone()),
+                )
+                .await;
                 let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
                 extension_models = extension_model_options(&extension_snapshot);
+                extension_runtime_provider_ids =
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -2505,10 +3225,19 @@ async fn run_tui(
             } => {
                 set_extension_override(&mut tool_settings, contribution_id, entry_key, scope);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
-                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
-                    .await;
+                apply_tool_settings_to_harness(
+                    &harness,
+                    &tool_settings,
+                    &resource_paths,
+                    &cwd,
+                    state.agent_mode.clone(),
+                    Some(tx.clone()),
+                )
+                .await;
                 let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
                 extension_models = extension_model_options(&extension_snapshot);
+                extension_runtime_provider_ids =
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -2524,10 +3253,19 @@ async fn run_tui(
             } => {
                 clear_extension_override(&mut tool_settings, contribution_id, scope);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
-                apply_tool_settings_to_harness(&harness, &tool_settings, &resource_paths, &cwd)
-                    .await;
+                apply_tool_settings_to_harness(
+                    &harness,
+                    &tool_settings,
+                    &resource_paths,
+                    &cwd,
+                    state.agent_mode.clone(),
+                    Some(tx.clone()),
+                )
+                .await;
                 let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
                 extension_models = extension_model_options(&extension_snapshot);
+                extension_runtime_provider_ids =
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -2559,7 +3297,14 @@ async fn run_tui(
                             other => Err(other),
                         })
                         .map_err(|err| err.to_string());
-                    lifecycle.map(|report| (report, prepared.display))
+                    lifecycle.and_then(|report| {
+                        write_extension_package_source_record(
+                            &report.destination,
+                            &prepared.update_source,
+                        )
+                        .map_err(|err| err.to_string())?;
+                        Ok((report, prepared.display))
+                    })
                 });
                 match lifecycle {
                     Ok((report, source_display)) => {
@@ -2573,16 +3318,25 @@ async fn run_tui(
                         );
                         save_tool_settings(&tool_settings, &resource_paths, scope, &mut state)
                             .await;
+                        if package_id == MODE_SANDBOX_PACKAGE_ID {
+                            if let Err(err) = ensure_mode_sandbox_profiles(&resource_paths) {
+                                state.set_error(format!("Mode profile setup failed: {err}"));
+                            }
+                        }
                         apply_tool_settings_to_harness(
                             &harness,
                             &tool_settings,
                             &resource_paths,
                             &cwd,
+                            state.agent_mode.clone(),
+                            Some(tx.clone()),
                         )
                         .await;
                         let extension_snapshot =
                             load_extension_snapshot(&resource_paths, &tool_settings);
                         extension_models = extension_model_options(&extension_snapshot);
+                        extension_runtime_provider_ids =
+                            extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
                         state.set_tool_settings(tool_settings_items(&tool_settings));
                         apply_extension_snapshot_to_tui_state(
                             &mut state,
@@ -2604,6 +3358,23 @@ async fn run_tui(
                     }
                     Err(err) => state.set_error(format!("Extension install failed: {err}")),
                 }
+            }
+            TuiAction::UpdateExtensionPackages => {
+                let message =
+                    update_installed_extension_packages(&resource_paths, &cwd, &tool_settings);
+                reload_tui_everything(
+                    &mut state,
+                    &harness,
+                    &resource_paths,
+                    &cwd,
+                    &mut tool_settings,
+                    &mut extension_models,
+                    &mut extension_runtime_provider_ids,
+                    Some(tx.clone()),
+                )
+                .await;
+                state.append_command_output("/extensions update", message.clone());
+                state.status = compact_status_line(&message);
             }
             TuiAction::RemoveExtensionPackage { package_id, scope } => {
                 let mut manager =
@@ -2636,11 +3407,17 @@ async fn run_tui(
                                     &tool_settings,
                                     &resource_paths,
                                     &cwd,
+                                    state.agent_mode.clone(),
+                                    Some(tx.clone()),
                                 )
                                 .await;
                                 let extension_snapshot =
                                     load_extension_snapshot(&resource_paths, &tool_settings);
                                 extension_models = extension_model_options(&extension_snapshot);
+                                extension_runtime_provider_ids =
+                                    extension_runtime_provider_ids_from_snapshot(
+                                        &extension_snapshot,
+                                    );
                                 state.set_tool_settings(tool_settings_items(&tool_settings));
                                 apply_extension_snapshot_to_tui_state(
                                     &mut state,
@@ -2691,6 +3468,7 @@ async fn run_tui(
                     &tx,
                     &session_path,
                     &mut prompt_in_flight,
+                    &extension_runtime_provider_ids,
                     prompt,
                 )
                 .await;
@@ -2710,6 +3488,7 @@ async fn run_tui(
                         &tx,
                         &session_path,
                         &mut prompt_in_flight,
+                        &extension_runtime_provider_ids,
                         prompt,
                     )
                     .await;
@@ -2723,6 +3502,7 @@ async fn run_tui(
                     &tx,
                     &session_path,
                     &mut prompt_in_flight,
+                    &extension_runtime_provider_ids,
                 )
                 .await;
             }
@@ -2746,8 +3526,18 @@ async fn run_tui(
                 }
             }
             TuiAction::ReloadResources => {
-                reload_tui_resources(&mut state, &harness, &resource_paths, &cwd, &tool_settings)
-                    .await;
+                reload_tui_everything(
+                    &mut state,
+                    &harness,
+                    &resource_paths,
+                    &cwd,
+                    &mut tool_settings,
+                    &mut extension_models,
+                    &mut extension_runtime_provider_ids,
+                    Some(tx.clone()),
+                )
+                .await;
+                apply_cached_model_catalog_to_tui_state(&mut state, &extension_models).await;
             }
         }
     }
@@ -2888,34 +3678,124 @@ fn extension_resource_path(
 }
 
 fn extension_resource_description(content: &str, id: &ContributionId) -> String {
+    if let Some(description) = frontmatter_description(content) {
+        return description;
+    }
     content
         .lines()
+        .skip(body_start_line(content))
         .map(str::trim)
-        .find(|line| !line.is_empty() && !line.starts_with("---"))
+        .find(|line| !line.is_empty())
         .map(|line| line.trim_start_matches('#').trim().to_string())
         .filter(|line| !line.is_empty())
         .unwrap_or_else(|| format!("Extension resource `{id}`"))
 }
 
-async fn reload_tui_resources(
+fn frontmatter_description(content: &str) -> Option<String> {
+    let mut lines = content.lines().map(str::trim);
+    if lines.next()? != "---" {
+        return None;
+    }
+    for line in lines {
+        if line == "---" {
+            return None;
+        }
+        let Some(description) = line.strip_prefix("description:") else {
+            continue;
+        };
+        let description = description
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .trim()
+            .to_string();
+        if !description.is_empty() {
+            return Some(description);
+        }
+    }
+    None
+}
+
+fn body_start_line(content: &str) -> usize {
+    let mut lines = content.lines();
+    if lines.next().map(str::trim) != Some("---") {
+        return 0;
+    }
+    for (index, line) in lines.enumerate() {
+        if line.trim() == "---" {
+            return index + 2;
+        }
+    }
+    0
+}
+
+async fn apply_cached_model_catalog_to_tui_state(
+    state: &mut TuiState,
+    extension_models: &[ModelOption],
+) {
+    if let Some(update) =
+        model_catalog::load_cached_update_with_historical_provider_catalog(false).await
+    {
+        state.set_model_catalog(
+            merge_extension_models(update.models, extension_models),
+            update.status,
+        );
+        state.set_model_catalog_refreshing(update.refreshing);
+    }
+}
+
+async fn reload_tui_everything(
     state: &mut TuiState,
     harness: &Harness,
     resource_paths: &ResourcePaths,
     cwd: &Path,
-    tool_settings: &ToolSettingsSnapshot,
+    tool_settings: &mut ToolSettingsSnapshot,
+    extension_models: &mut Vec<ModelOption>,
+    extension_runtime_provider_ids: &mut BTreeSet<String>,
+    ask_user_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
 ) {
+    *tool_settings = load_tool_settings(resource_paths).await;
+    apply_tool_settings_to_harness(
+        harness,
+        tool_settings,
+        resource_paths,
+        cwd,
+        state.agent_mode.clone(),
+        ask_user_tx,
+    )
+    .await;
+
     match load_resource_catalog(resource_paths) {
         Ok(catalog) => {
             harness
                 .set_system_prompt(Some(default_system_prompt(cwd, &catalog)))
                 .await;
             let extension_snapshot = load_extension_snapshot(resource_paths, tool_settings);
+            *extension_models = extension_model_options(&extension_snapshot);
+            *extension_runtime_provider_ids =
+                extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+            state.set_tool_settings(tool_settings_items(tool_settings));
+            state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
+            apply_extension_snapshot_to_tui_state(
+                state,
+                &extension_snapshot,
+                tool_settings,
+                resource_paths,
+            );
             apply_resource_catalog_to_state(state, &catalog, &extension_snapshot);
+            state.set_file_paths(scan_project_files(cwd));
             if let Some(summary) = catalog.diagnostics_summary() {
                 state.set_error(format!("Resource warnings: {summary}"));
+            } else {
+                state.clear_error();
+                state.status = format!(
+                    "Reloaded {} prompts, {} skills, extensions, tools, themes, and file index",
+                    catalog.prompts.len(),
+                    catalog.skills.len()
+                );
             }
         }
-        Err(err) => state.set_error(format!("Resource reload failed: {err}")),
+        Err(err) => state.set_error(format!("Reload failed: {err}")),
     }
 }
 
@@ -2978,6 +3858,292 @@ async fn open_tui_session(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn handle_tui_ralph_command(
+    state: &mut TuiState,
+    controller: &mut RalphRunController,
+    auth: &AuthStorage,
+    harness: &Arc<Harness>,
+    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
+    session_path: &Path,
+    paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
+    prompt_in_flight: &mut bool,
+    extension_runtime_provider_ids: &BTreeSet<String>,
+    command: RalphCommand,
+) -> Result<String, AppError> {
+    if !ralph_loop_command_enabled(paths, settings) {
+        return Err(AppError::InvalidArguments(
+            "Ralph loop extension is not enabled; install `builtin:ralph-loop` from `/extensions` first".into(),
+        ));
+    }
+    match command {
+        RalphCommand::Start { name, task } => {
+            let state_loop = ralph_loop::start_loop(
+                &paths.project_root,
+                ralph_loop::RalphLoopStart::new(name, task),
+            )?;
+            controller.active_loop = Some(state_loop.name.clone());
+            controller.auto_continue = true;
+            start_ralph_iteration_prompt(
+                state,
+                controller,
+                auth,
+                harness,
+                tx,
+                session_path,
+                &paths.project_root,
+                prompt_in_flight,
+                extension_runtime_provider_ids,
+                &state_loop,
+                true,
+            )
+            .await?;
+            Ok(format!(
+                "Started Ralph loop `{}` and queued iteration {}/{}",
+                state_loop.name,
+                state_loop.iteration.saturating_add(1),
+                state_loop.max_iterations
+            ))
+        }
+        RalphCommand::Resume { name } => {
+            let state_loop = ralph_loop::resume_loop(&paths.project_root, &name)?;
+            controller.active_loop = Some(state_loop.name.clone());
+            controller.auto_continue = true;
+            start_ralph_iteration_prompt(
+                state,
+                controller,
+                auth,
+                harness,
+                tx,
+                session_path,
+                &paths.project_root,
+                prompt_in_flight,
+                extension_runtime_provider_ids,
+                &state_loop,
+                true,
+            )
+            .await?;
+            Ok(format!("Resumed Ralph loop `{}`", state_loop.name))
+        }
+        RalphCommand::Continue { name } => {
+            let state_loop = load_ralph_target(&paths.project_root, name.as_deref())?;
+            controller.active_loop = Some(state_loop.name.clone());
+            controller.auto_continue = true;
+            start_ralph_iteration_prompt(
+                state,
+                controller,
+                auth,
+                harness,
+                tx,
+                session_path,
+                &paths.project_root,
+                prompt_in_flight,
+                extension_runtime_provider_ids,
+                &state_loop,
+                true,
+            )
+            .await?;
+            Ok(format!("Continuing Ralph loop `{}`", state_loop.name))
+        }
+        RalphCommand::Once { name } => {
+            let state_loop = load_ralph_target(&paths.project_root, name.as_deref())?;
+            controller.active_loop = Some(state_loop.name.clone());
+            controller.auto_continue = false;
+            start_ralph_iteration_prompt(
+                state,
+                controller,
+                auth,
+                harness,
+                tx,
+                session_path,
+                &paths.project_root,
+                prompt_in_flight,
+                extension_runtime_provider_ids,
+                &state_loop,
+                false,
+            )
+            .await?;
+            Ok(format!(
+                "Running one Ralph iteration for `{}`",
+                state_loop.name
+            ))
+        }
+        RalphCommand::Steer { name, note } => {
+            let state_loop = ralph_loop::append_steering(&paths.project_root, &name, &note)?;
+            Ok(format!(
+                "Added steering to Ralph loop `{}` ({})",
+                state_loop.name, state_loop.steering_file
+            ))
+        }
+        RalphCommand::Pause { name } => {
+            let state_loop = ralph_loop::pause_loop(&paths.project_root, &name)?;
+            if controller.active_loop.as_deref() == Some(state_loop.name.as_str()) {
+                controller.auto_continue = false;
+                controller.prompt_loop_in_flight = None;
+            }
+            Ok(format!("Paused Ralph loop `{}`", state_loop.name))
+        }
+        RalphCommand::Cancel { name } => {
+            let state_loop = ralph_loop::cancel_loop(&paths.project_root, &name)?;
+            if controller.active_loop.as_deref() == Some(state_loop.name.as_str()) {
+                controller.active_loop = None;
+                controller.auto_continue = false;
+                controller.prompt_loop_in_flight = None;
+            }
+            Ok(format!("Cancelled Ralph loop `{}`", state_loop.name))
+        }
+        other => execute_ralph_command_if_enabled(other, paths, settings),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn continue_ralph_after_prompt_if_needed(
+    state: &mut TuiState,
+    controller: &mut RalphRunController,
+    auth: &AuthStorage,
+    harness: &Arc<Harness>,
+    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
+    session_path: &Path,
+    paths: &ResourcePaths,
+    prompt_in_flight: &mut bool,
+    extension_runtime_provider_ids: &BTreeSet<String>,
+    messages: &[Message],
+) {
+    let Some(loop_name) = controller.prompt_loop_in_flight.take() else {
+        return;
+    };
+    let output = last_assistant_text(messages).unwrap_or_default();
+    match ralph_loop::record_iteration_output(&paths.project_root, &loop_name, &output) {
+        Ok(state_loop) => {
+            state.status = format!(
+                "Ralph `{}` recorded iteration {}/{} ({:?})",
+                state_loop.name, state_loop.iteration, state_loop.max_iterations, state_loop.status
+            );
+            if state_loop.status == ralph_loop::RalphLoopStatus::Active && controller.auto_continue
+            {
+                if let Err(err) = start_ralph_iteration_prompt(
+                    state,
+                    controller,
+                    auth,
+                    harness,
+                    tx,
+                    session_path,
+                    &paths.project_root,
+                    prompt_in_flight,
+                    extension_runtime_provider_ids,
+                    &state_loop,
+                    true,
+                )
+                .await
+                {
+                    state.set_error(format!("Ralph continue failed: {err}"));
+                    controller.auto_continue = false;
+                }
+            } else if state_loop.status != ralph_loop::RalphLoopStatus::Active {
+                controller.auto_continue = false;
+                controller.active_loop = Some(state_loop.name);
+            }
+        }
+        Err(err) => {
+            controller.auto_continue = false;
+            state.set_error(format!("Ralph record failed: {err}"));
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn start_ralph_iteration_prompt(
+    state: &mut TuiState,
+    controller: &mut RalphRunController,
+    auth: &AuthStorage,
+    harness: &Arc<Harness>,
+    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
+    session_path: &Path,
+    project_root: &Path,
+    prompt_in_flight: &mut bool,
+    extension_runtime_provider_ids: &BTreeSet<String>,
+    loop_state: &ralph_loop::RalphLoopState,
+    auto_continue: bool,
+) -> Result<(), AppError> {
+    if loop_state.status != ralph_loop::RalphLoopStatus::Active {
+        return Err(AppError::InvalidArguments(format!(
+            "Ralph loop `{}` is {:?}; resume it before continuing",
+            loop_state.name, loop_state.status
+        )));
+    }
+    let prompt = ralph_loop::build_iteration_prompt(project_root, loop_state)?;
+    if start_prompt(
+        state,
+        auth,
+        harness,
+        tx,
+        session_path,
+        prompt_in_flight,
+        extension_runtime_provider_ids,
+        prompt,
+    )
+    .await
+    {
+        controller.active_loop = Some(loop_state.name.clone());
+        controller.auto_continue = auto_continue;
+        controller.prompt_loop_in_flight = Some(loop_state.name.clone());
+        Ok(())
+    } else {
+        Err(AppError::InvalidArguments(
+            "Could not start Ralph iteration because another prompt is running or credentials are missing".into(),
+        ))
+    }
+}
+
+fn load_ralph_target(
+    project_root: &Path,
+    name: Option<&str>,
+) -> Result<ralph_loop::RalphLoopState, AppError> {
+    if let Some(name) = name {
+        return Ok(ralph_loop::load_state(project_root, name)?);
+    }
+    let active = ralph_loop::list_states(project_root)?
+        .into_iter()
+        .find(|state| state.status == ralph_loop::RalphLoopStatus::Active)
+        .ok_or_else(|| {
+            AppError::InvalidArguments(
+                "No active Ralph loop found; pass a loop name or start one with `/ralph start <name> <task>`".into(),
+            )
+        })?;
+    Ok(active)
+}
+
+fn last_assistant_text(messages: &[Message]) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            Message::Assistant { content, .. } => Some(content_text(content)),
+            _ => None,
+        })
+        .filter(|text| !text.trim().is_empty())
+}
+
+fn content_text(content: &[ContentBlock]) -> String {
+    content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn first_line_or_default(text: &str, fallback: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
 async fn start_next_queued_prompt_if_idle(
     state: &mut TuiState,
     auth: &AuthStorage,
@@ -2985,6 +4151,7 @@ async fn start_next_queued_prompt_if_idle(
     tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
     session_path: &Path,
     prompt_in_flight: &mut bool,
+    extension_runtime_provider_ids: &BTreeSet<String>,
 ) {
     if *prompt_in_flight {
         return;
@@ -2999,6 +4166,7 @@ async fn start_next_queued_prompt_if_idle(
         tx,
         session_path,
         prompt_in_flight,
+        extension_runtime_provider_ids,
         prompt,
     )
     .await
@@ -3014,6 +4182,7 @@ async fn start_prompt(
     tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
     session_path: &Path,
     prompt_in_flight: &mut bool,
+    extension_runtime_provider_ids: &BTreeSet<String>,
     prompt: String,
 ) -> bool {
     if *prompt_in_flight {
@@ -3021,7 +4190,13 @@ async fn start_prompt(
             "A prompt is already running. Use Enter to steer or Ctrl-O q then q to queue.".into();
         return false;
     }
-    if let Err(message) = preflight_model_credentials(auth, &state.settings.selected_model).await {
+    if let Err(message) = preflight_model_credentials(
+        auth,
+        &state.settings.selected_model,
+        extension_runtime_provider_ids,
+    )
+    .await
+    {
         state.set_error(message);
         state.status = HELP_STATUS.into();
         return false;
@@ -3032,6 +4207,8 @@ async fn start_prompt(
     let task_harness = Arc::clone(harness);
     let task_tx = tx.clone();
     let task_session_path = session_path.to_path_buf();
+    let task_auth = auth.clone();
+    let task_model_identifier = state.settings.selected_model.clone();
     tokio::spawn(async move {
         let result = match task_harness.prompt(prompt_message).await {
             Ok(messages) => match task_harness.save_session_jsonl(&task_session_path).await {
@@ -3045,7 +4222,28 @@ async fn start_prompt(
                 task_harness.session_title().await,
             ));
         }
+        let usage_report = match result.as_ref().ok() {
+            Some(messages) => {
+                let mut report = UsageReport::from_messages(messages);
+                if let Ok(Some(provider)) = current_model_provider(&task_model_identifier) {
+                    if let Ok(progress) = account_usage_progress_placeholder(
+                        &task_auth,
+                        provider,
+                        report.generated_at_unix,
+                    )
+                    .await
+                    {
+                        report.upsert_provider_progress(progress);
+                    }
+                }
+                Some(report)
+            }
+            None => None,
+        };
         let _ = task_tx.send(TuiRuntimeEvent::PromptFinished(result));
+        if let Some(report) = usage_report {
+            let _ = task_tx.send(TuiRuntimeEvent::UsageProgress(report));
+        }
     });
     true
 }
@@ -3407,6 +4605,7 @@ async fn run_non_interactive(
     mut config: AppConfig,
     session_path: PathBuf,
     resource_catalog: ResourceCatalog,
+    extension_runtime_provider_ids: BTreeSet<String>,
 ) -> Result<(), AppError> {
     if let Some(model) = cli.model.clone() {
         let command =
@@ -3414,9 +4613,11 @@ async fn run_non_interactive(
         let message = execute_runtime_command(
             command,
             &harness,
+            &auth,
             &mut config,
             &session_path,
             &resource_catalog,
+            &extension_runtime_provider_ids,
         )
         .await?;
         if cli.input.is_none() {
@@ -3458,9 +4659,11 @@ async fn run_non_interactive(
             let message = execute_runtime_command(
                 command,
                 &harness,
+                &auth,
                 &mut config,
                 &session_path,
                 &resource_catalog,
+                &extension_runtime_provider_ids,
             )
             .await?;
             println!("{message}");
@@ -3468,7 +4671,7 @@ async fn run_non_interactive(
         }
         let tool_settings = load_tool_settings(&resource_catalog.paths).await;
         let snapshot = load_extension_snapshot(&resource_catalog.paths, &tool_settings);
-        if let Some(message) = execute_extension_command(&input, &snapshot) {
+        if let Some(message) = execute_extension_command(&input, &snapshot).await {
             println!("{}", message?);
             return Ok(());
         }
@@ -3478,7 +4681,7 @@ async fn run_non_interactive(
     }
 
     let input = expand_resource_references(&input, &resource_catalog)?;
-    preflight_model_credentials(&auth, &config.model)
+    preflight_model_credentials(&auth, &config.model, &extension_runtime_provider_ids)
         .await
         .map_err(AppError::InvalidArguments)?;
     let messages = harness.prompt(Message::user_text(input)).await?;
@@ -3703,43 +4906,556 @@ fn longest_backtick_run(content: &str) -> usize {
     longest
 }
 
-fn oauth_login_program(
-    provider: &str,
-) -> Result<(&'static str, &'static [&'static str], &'static str), AppError> {
-    match provider {
-        "claude" => Ok(("claude", &["auth", "login"], "Claude Code")),
-        "chatgpt" => Ok(("codex", &["login"], "ChatGPT/Codex")),
-        other => Err(AppError::InvalidArguments(format!(
-            "unsupported login provider `{other}`; use `/login claude` or `/login chatgpt`"
-        ))),
+const NINE_ROUTER_PACKAGE_ID: &str = "oino.9router";
+const RALPH_LOOP_PACKAGE_ID: &str = "oino.ralph_loop";
+const RALPH_LOOP_COMMAND_ID: &str = "ralph";
+const MODE_SANDBOX_PACKAGE_ID: &str = "oino.mode_sandbox";
+const NOTIFY_PACKAGE_ID: &str = "oino.notify";
+const VCC_PACKAGE_ID: &str = "oino.vcc";
+const VCC_RECALL_TOOL_NAME: &str = "vcc_recall";
+const ASK_USER_PACKAGE_ID: &str = "oino.ask_user";
+
+#[derive(Clone)]
+struct VccRecallTool {
+    session: Arc<tokio::sync::Mutex<SessionManager>>,
+}
+
+impl VccRecallTool {
+    fn new(session: Arc<tokio::sync::Mutex<SessionManager>>) -> Self {
+        Self { session }
     }
 }
 
-fn run_oauth_login_command(provider: &str) -> Result<String, AppError> {
-    let (program, args, label) = oauth_login_program(provider)?;
-    let status = Command::new(program)
-        .args(args)
-        .status()
-        .map_err(|source| {
-            AppError::InvalidArguments(format!(
-                "could not start {label} OAuth login command `{program}`: {source}"
-            ))
-        })?;
-    if status.success() {
-        Ok(format!("{label} OAuth login completed"))
-    } else {
-        Err(AppError::InvalidArguments(format!(
-            "{label} OAuth login exited with {status}"
-        )))
+#[async_trait]
+impl Tool for VccRecallTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: VCC_RECALL_TOOL_NAME.into(),
+            description: "Search raw Oino session history outside the compacted model context. Use this when prior details may have been compacted away.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "query": {"type": "string", "description": "Words to search for. Omit or leave empty to browse recent history."},
+                    "scope": {"type": "string", "enum": ["active", "all"], "description": "Search the active branch by default, or all session entries."},
+                    "offset": {"type": "number", "description": "Pagination offset, zero-based."},
+                    "limit": {"type": "number", "description": "Maximum results to return, capped at 20."},
+                    "expand": {"type": "boolean", "description": "Return full matching entries instead of snippets."}
+                }
+            }),
+        }
     }
+
+    async fn execute(
+        &self,
+        call: ToolCall,
+        _updates: ToolUpdateCallback,
+        signal: AbortSignal,
+    ) -> oino_agent_loop::LoopResult<ToolResult> {
+        if signal.is_aborted() {
+            return Err(LoopError::Aborted);
+        }
+        let options = recall_options_from_value(&call.arguments);
+        let session = self.session.lock().await;
+        let branch = session
+            .get_branch(session.get_leaf_id())
+            .map_err(|err| LoopError::Tool(err.to_string()))?;
+        let all_entries = session.get_entries();
+        drop(session);
+        if signal.is_aborted() {
+            return Err(LoopError::Aborted);
+        }
+        let result = vcc::recall(&branch, &all_entries, options);
+        let mut tool_result = ToolResult::text(&call, result.output);
+        tool_result.details = Some(serde_json::json!({
+            "total": result.total,
+            "offset": result.offset,
+            "limit": result.limit
+        }));
+        Ok(tool_result)
+    }
+}
+
+fn recall_options_from_value(value: &serde_json::Value) -> vcc::VccRecallOptions {
+    let mut options = vcc::VccRecallOptions::default();
+    if let Some(query) = value.get("query").and_then(serde_json::Value::as_str) {
+        if !query.trim().is_empty() {
+            options.query = Some(query.trim().to_string());
+        }
+    }
+    if value
+        .get("scope")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|scope| scope.eq_ignore_ascii_case("all"))
+    {
+        options.scope_all = true;
+    }
+    if let Some(offset) = value.get("offset").and_then(serde_json::Value::as_u64) {
+        options.offset = offset as usize;
+    }
+    if let Some(limit) = value.get("limit").and_then(serde_json::Value::as_u64) {
+        options.limit = limit as usize;
+    }
+    if let Some(expand) = value.get("expand").and_then(serde_json::Value::as_bool) {
+        options.expand = expand;
+    }
+    options
+}
+
+fn package_contribution_active<T>(
+    active: &ActiveContribution<T>,
+    package: &str,
+    contribution: &str,
+) -> bool {
+    active.effective_id.as_str() == contribution
+        && active
+            .entry
+            .metadata
+            .package_id
+            .as_ref()
+            .is_some_and(|package_id| package_id.as_str() == package)
+}
+
+fn optional_package_command_enabled(
+    paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
+    package: &str,
+    command: &str,
+) -> bool {
+    let snapshot = load_extension_snapshot(paths, settings);
+    snapshot
+        .registries
+        .commands
+        .active
+        .iter()
+        .any(|active| package_contribution_active(active, package, command))
+}
+
+fn optional_package_tool_active(
+    snapshot: &ExtensionManagerSnapshot,
+    package: &str,
+    tool: &str,
+) -> bool {
+    snapshot
+        .registries
+        .tools
+        .active
+        .iter()
+        .any(|active| package_contribution_active(active, package, tool))
+}
+
+fn ralph_loop_command_enabled(paths: &ResourcePaths, settings: &ToolSettingsSnapshot) -> bool {
+    optional_package_command_enabled(
+        paths,
+        settings,
+        RALPH_LOOP_PACKAGE_ID,
+        RALPH_LOOP_COMMAND_ID,
+    )
+}
+
+fn vcc_command_enabled(
+    paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
+    command: &str,
+) -> bool {
+    optional_package_command_enabled(paths, settings, VCC_PACKAGE_ID, command)
+}
+
+fn notify_extension_enabled(paths: &ResourcePaths, settings: &ToolSettingsSnapshot) -> bool {
+    let snapshot = load_extension_snapshot(paths, settings);
+    snapshot.registries.hooks.active.iter().any(|active| {
+        active
+            .entry
+            .metadata
+            .package_id
+            .as_ref()
+            .is_some_and(|package_id| package_id.as_str() == NOTIFY_PACKAGE_ID)
+    })
+}
+
+const MODE_SANDBOX_DIR: &str = "sandbox-mode";
+const LEGACY_PLAN_SANDBOX_PROMPT: &str = "Sandbox mode: PLAN. Treat the workspace as read-only planning context. Use read freely, use bash only for inspection, and do not perform mutating bash/edit/write actions unless the user switches to work mode or changes this profile.";
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+struct ModeSandboxProfile {
+    allowed_tools: Vec<String>,
+    prompt: String,
+}
+
+impl ModeSandboxProfile {
+    fn allows_tool(&self, tool: &str) -> bool {
+        self.allowed_tools.iter().any(|allowed| {
+            let allowed = allowed.trim();
+            allowed == "*" || allowed == tool
+        })
+    }
+}
+
+impl Default for ModeSandboxProfile {
+    fn default() -> Self {
+        default_mode_sandbox_profile(&AgentMode::Work)
+    }
+}
+
+fn default_mode_sandbox_profile(mode: &AgentMode) -> ModeSandboxProfile {
+    match mode {
+        AgentMode::Plan => ModeSandboxProfile {
+            allowed_tools: vec!["read".into(), "bash".into()],
+            prompt: "Sandbox mode: PLAN. Treat the workspace as read-only planning context. Use read freely and bash only for inspection. Do not edit/write files or run mutating shell commands unless the user switches to work mode or changes this profile.".into(),
+        },
+        AgentMode::Work => ModeSandboxProfile {
+            allowed_tools: vec!["*".into()],
+            prompt: "Sandbox mode: WORK. Normal enabled Oino tools are available; still follow project instructions and ask before risky or destructive actions.".into(),
+        },
+        AgentMode::Custom(name) => ModeSandboxProfile {
+            allowed_tools: vec!["read".into(), "bash".into()],
+            prompt: format!(
+                "Sandbox mode: {}. Custom profile; edit allowed_tools and prompt in sandbox-mode/{}.json to change this mode. Default is read plus inspection-only bash.",
+                mode.label(),
+                name
+            ),
+        },
+    }
+}
+
+fn normalize_loaded_mode_sandbox_profile(
+    mode: &AgentMode,
+    profile: ModeSandboxProfile,
+) -> ModeSandboxProfile {
+    if is_legacy_autogenerated_mode_sandbox_profile(mode, &profile) {
+        default_mode_sandbox_profile(mode)
+    } else {
+        profile
+    }
+}
+
+fn is_legacy_autogenerated_mode_sandbox_profile(
+    mode: &AgentMode,
+    profile: &ModeSandboxProfile,
+) -> bool {
+    matches!(mode, AgentMode::Plan)
+        && profile
+            .allowed_tools
+            .iter()
+            .map(String::as_str)
+            .eq(["read", "bash", "edit"])
+        && profile.prompt == LEGACY_PLAN_SANDBOX_PROMPT
+}
+
+fn write_mode_sandbox_profile(path: &Path, profile: &ModeSandboxProfile) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let text = serde_json::to_string_pretty(profile).map_err(io::Error::other)?;
+    fs::write(path, format!("{text}\n"))
+}
+
+fn sandbox_mode_dir_for_scope(paths: &ResourcePaths, scope: ToolSettingsScope) -> PathBuf {
+    match scope {
+        ToolSettingsScope::Global => paths.global_dir.join(MODE_SANDBOX_DIR),
+        ToolSettingsScope::Project => paths.project_dir.join(MODE_SANDBOX_DIR),
+    }
+}
+
+fn mode_sandbox_profile_path(
+    paths: &ResourcePaths,
+    scope: ToolSettingsScope,
+    mode: &AgentMode,
+) -> PathBuf {
+    sandbox_mode_dir_for_scope(paths, scope).join(format!("{}.json", mode.value()))
+}
+
+fn load_mode_sandbox_profile(paths: &ResourcePaths, mode: &AgentMode) -> ModeSandboxProfile {
+    for scope in [ToolSettingsScope::Project, ToolSettingsScope::Global] {
+        let path = mode_sandbox_profile_path(paths, scope, mode);
+        if let Ok(text) = fs::read_to_string(path) {
+            return serde_json::from_str(&text)
+                .map(|profile| normalize_loaded_mode_sandbox_profile(mode, profile))
+                .unwrap_or_else(|_| default_mode_sandbox_profile(mode));
+        }
+    }
+    default_mode_sandbox_profile(mode)
+}
+
+fn ensure_mode_sandbox_profiles(paths: &ResourcePaths) -> io::Result<()> {
+    let dir = sandbox_mode_dir_for_scope(paths, ToolSettingsScope::Global);
+    fs::create_dir_all(&dir)?;
+    for mode in [AgentMode::Plan, AgentMode::Work] {
+        let default_profile = default_mode_sandbox_profile(&mode);
+        let global_path = mode_sandbox_profile_path(paths, ToolSettingsScope::Global, &mode);
+        if global_path.exists() {
+            upgrade_legacy_mode_sandbox_profile(&global_path, &mode)?;
+        } else {
+            write_mode_sandbox_profile(&global_path, &default_profile)?;
+        }
+
+        let project_path = mode_sandbox_profile_path(paths, ToolSettingsScope::Project, &mode);
+        if project_path.exists() {
+            upgrade_legacy_mode_sandbox_profile(&project_path, &mode)?;
+        }
+    }
+    Ok(())
+}
+
+fn upgrade_legacy_mode_sandbox_profile(path: &Path, mode: &AgentMode) -> io::Result<()> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Ok(());
+    };
+    let Ok(profile) = serde_json::from_str::<ModeSandboxProfile>(&text) else {
+        return Ok(());
+    };
+    if is_legacy_autogenerated_mode_sandbox_profile(mode, &profile) {
+        write_mode_sandbox_profile(path, &default_mode_sandbox_profile(mode))?;
+    }
+    Ok(())
+}
+
+fn mode_sandbox_enabled_in_snapshot(snapshot: &ExtensionManagerSnapshot) -> bool {
+    snapshot.registries.commands.active.iter().any(|active| {
+        active
+            .entry
+            .metadata
+            .package_id
+            .as_ref()
+            .is_some_and(|package_id| package_id.as_str() == MODE_SANDBOX_PACKAGE_ID)
+    })
+}
+
+fn mode_sandbox_context_message(paths: &ResourcePaths, mode: &AgentMode) -> Option<Message> {
+    let profile = load_mode_sandbox_profile(paths, mode);
+    let prompt = profile.prompt.trim();
+    if prompt.is_empty() {
+        return None;
+    }
+    Some(Message::CompactionSummary {
+        id: OinoId::nil(),
+        summary: format!(
+            "# Oino sandbox mode\n\nMode: {}\nProfile: {}\nAllowed tools: {}\n\n{}",
+            mode.label(),
+            mode.value(),
+            profile.allowed_tools.join(", "),
+            prompt
+        ),
+    })
+}
+
+fn mode_sandbox_command_enabled(
+    _mode: &AgentMode,
+    paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
+) -> bool {
+    optional_package_command_enabled(paths, settings, MODE_SANDBOX_PACKAGE_ID, "mode_profile")
+}
+
+fn mode_before_tool_call_result(
+    mode: &AgentMode,
+    profile: &ModeSandboxProfile,
+    call: ToolCall,
+) -> BeforeToolCallResult {
+    if profile.allows_tool(&call.name) {
+        return BeforeToolCallResult::Allow(call);
+    }
+    BeforeToolCallResult::Block(format!(
+        "{} mode blocked tool `{}`. Allowed tools for this profile: {}. Edit `~/.oino/sandbox-mode/{}.json`, add a project override at `.oino/sandbox-mode/{}.json`, or switch modes before using this tool.",
+        mode.label(),
+        call.name,
+        profile.allowed_tools.join(", "),
+        mode.value(),
+        mode.value()
+    ))
+}
+
+fn execute_ralph_command_if_enabled(
+    command: RalphCommand,
+    paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
+) -> Result<String, AppError> {
+    if !ralph_loop_command_enabled(paths, settings) {
+        return Err(AppError::InvalidArguments(
+            "Ralph loop extension is not enabled; install `builtin:ralph-loop` from `/extensions` first".into(),
+        ));
+    }
+    execute_ralph_command(command, &paths.project_root)
+}
+
+fn execute_ralph_command(command: RalphCommand, project_root: &Path) -> Result<String, AppError> {
+    match command {
+        RalphCommand::Help => Ok(ralph_help_text()),
+        RalphCommand::List => {
+            let states = ralph_loop::list_states(project_root)?;
+            if states.is_empty() {
+                Ok("No Ralph loops found; start one with `/ralph start <name> <task>`".into())
+            } else {
+                Ok(states
+                    .iter()
+                    .map(ralph_loop::status_line)
+                    .collect::<Vec<_>>()
+                    .join("\n"))
+            }
+        }
+        RalphCommand::Status { name } => {
+            if let Some(name) = name {
+                let state = ralph_loop::load_state(project_root, &name)?;
+                Ok(ralph_loop::status_line(&state))
+            } else {
+                execute_ralph_command(RalphCommand::List, project_root)
+            }
+        }
+        RalphCommand::Start { name, task } => {
+            let state =
+                ralph_loop::start_loop(project_root, ralph_loop::RalphLoopStart::new(name, task))?;
+            Ok(format!(
+                "Started Ralph loop `{}` at {}",
+                state.name, state.task_file
+            ))
+        }
+        RalphCommand::Pause { name } => {
+            let state = ralph_loop::pause_loop(project_root, &name)?;
+            Ok(format!("Paused Ralph loop `{}`", state.name))
+        }
+        RalphCommand::Resume { name } => {
+            let state = ralph_loop::resume_loop(project_root, &name)?;
+            Ok(format!("Resumed Ralph loop `{}`", state.name))
+        }
+        RalphCommand::Continue { name } | RalphCommand::Once { name } => {
+            let state = load_ralph_target(project_root, name.as_deref())?;
+            let prompt = ralph_loop::build_iteration_prompt(project_root, &state)?;
+            Ok(format!(
+                "Ralph loop `{}` is ready for iteration {}/{}. In the TUI, `/ralph continue {}` auto-runs it. Iteration prompt:\n\n{}",
+                state.name,
+                state.iteration.saturating_add(1).min(state.max_iterations),
+                state.max_iterations,
+                state.name,
+                prompt
+            ))
+        }
+        RalphCommand::Steer { name, note } => {
+            let state = ralph_loop::append_steering(project_root, &name, note)?;
+            Ok(format!("Added steering to Ralph loop `{}`", state.name))
+        }
+        RalphCommand::Cancel { name } => {
+            let state = ralph_loop::cancel_loop(project_root, &name)?;
+            Ok(format!("Cancelled Ralph loop `{}`", state.name))
+        }
+        RalphCommand::Archive { name } => {
+            let state = ralph_loop::archive_loop(project_root, &name)?;
+            Ok(format!("Archived Ralph loop `{}`", state.name))
+        }
+        RalphCommand::CleanArchive => {
+            let count = ralph_loop::clean_archive(project_root)?;
+            Ok(format!(
+                "Removed {count} archived Ralph loop file{}",
+                if count == 1 { "" } else { "s" }
+            ))
+        }
+        RalphCommand::Record {
+            name,
+            promise,
+            note,
+        } => {
+            let promise = ralph_promise_from_command(promise);
+            let note = if note.trim().is_empty() {
+                format!("recorded {promise:?}")
+            } else {
+                note
+            };
+            let state = ralph_loop::record_iteration(project_root, &name, promise, note)?;
+            Ok(format!(
+                "Recorded Ralph loop `{}` iteration {} ({:?})",
+                state.name, state.iteration, state.status
+            ))
+        }
+    }
+}
+
+async fn compact_session_with_vcc(harness: &Harness) -> Result<(String, Vec<Message>), AppError> {
+    let branch = harness.active_branch_entries().await?;
+    let compaction = vcc::compact_branch(&branch).ok_or_else(|| {
+        AppError::InvalidArguments(
+            "Nothing to compact yet; VCC needs at least one earlier entry before the latest user message".into(),
+        )
+    })?;
+    let compacted_entries = compaction.compacted_entries;
+    let kept_entries = compaction.kept_entries;
+    let messages = harness
+        .append_compaction(compaction.summary, compaction.replaces)
+        .await?;
+    Ok((
+        format!(
+            "VCC compacted {compacted_entries} session entries and kept {kept_entries} live tail entries"
+        ),
+        messages,
+    ))
+}
+
+async fn recall_session_with_vcc(
+    harness: &Harness,
+    query: Option<String>,
+    append_to_context: bool,
+) -> Result<(String, Option<Vec<Message>>), AppError> {
+    let branch = harness.active_branch_entries().await?;
+    let all_entries = harness.all_session_entries().await;
+    let options = vcc::VccRecallOptions {
+        query,
+        ..Default::default()
+    };
+    let result = vcc::recall(&branch, &all_entries, options);
+    let messages = if append_to_context {
+        Some(harness.append_branch_summary(result.output.clone()).await?)
+    } else {
+        None
+    };
+    Ok((result.output, messages))
+}
+
+fn ralph_promise_from_command(promise: RalphRecordPromise) -> ralph_loop::RalphPromise {
+    match promise {
+        RalphRecordPromise::Continue => ralph_loop::RalphPromise::Continue,
+        RalphRecordPromise::Complete => ralph_loop::RalphPromise::Complete,
+        RalphRecordPromise::Blocked(reason) => ralph_loop::RalphPromise::Blocked(reason),
+        RalphRecordPromise::Decide(question) => ralph_loop::RalphPromise::Decide(question),
+        RalphRecordPromise::TaskDone(task_id) => ralph_loop::RalphPromise::TaskDone(task_id),
+    }
+}
+
+fn compact_status_line(message: &str) -> String {
+    message
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("Done")
+        .chars()
+        .take(160)
+        .collect()
+}
+
+fn ralph_help_text() -> String {
+    [
+        "Ralph loop commands:",
+        "  /ralph start <name> <task>",
+        "  /ralph list",
+        "  /ralph status [name]",
+        "  /ralph resume <name>",
+        "  /ralph continue [name]",
+        "  /ralph once [name]",
+        "  /ralph steer <name> <urgent instruction>",
+        "  /ralph pause <name>",
+        "  /ralph cancel <name>",
+        "  /ralph archive <name>",
+        "  /ralph clean",
+        "  /ralph record <name> <continue|complete|blocked|decide|done> [note/task-id]",
+    ]
+    .join("\n")
 }
 
 async fn execute_runtime_command(
     command: ParsedCommand,
     harness: &Harness,
+    auth: &AuthStorage,
     config: &mut AppConfig,
     session_path: &std::path::Path,
     resource_catalog: &ResourceCatalog,
+    extension_runtime_provider_ids: &BTreeSet<String>,
 ) -> Result<String, AppError> {
     let message = match command {
         ParsedCommand::Help => {
@@ -3762,14 +5478,76 @@ async fn execute_runtime_command(
         }
         ParsedCommand::Extensions => {
             return Err(AppError::InvalidArguments(
-                "`/extensions` opens the interactive extension manager in the TUI".into(),
+                "`/extensions` opens the interactive extension manager in the TUI; use `/extensions update` to update installed packages from the shell".into(),
             ));
         }
-        ParsedCommand::LoginHelp => {
-            return Ok("Usage: /login claude or /login chatgpt".into());
+        ParsedCommand::ExtensionsUpdate => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            let cwd = std::env::current_dir()
+                .unwrap_or_else(|_| resource_catalog.paths.project_root.clone());
+            return Ok(update_installed_extension_packages(
+                &resource_catalog.paths,
+                &cwd,
+                &settings,
+            ));
         }
-        ParsedCommand::Login(provider) => {
-            return run_oauth_login_command(provider.label());
+        ParsedCommand::Compact => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            if vcc_command_enabled(&resource_catalog.paths, &settings, "compact") {
+                let (message, _messages) = compact_session_with_vcc(harness).await?;
+                harness.save_session_jsonl(session_path).await?;
+                return Ok(message);
+            }
+            return Err(AppError::InvalidArguments(
+                "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`".into(),
+            ));
+        }
+        ParsedCommand::Recall { query } => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            if vcc_command_enabled(&resource_catalog.paths, &settings, "recall") {
+                let (output, _messages) = recall_session_with_vcc(harness, query, false).await?;
+                return Ok(output);
+            }
+            return Err(AppError::InvalidArguments(
+                "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/recall`".into(),
+            ));
+        }
+        ParsedCommand::Usage => {
+            let report = usage_report_for_current_session(harness, auth, &config.model).await?;
+            return Ok(report.format_text());
+        }
+        ParsedCommand::AuthStatus { provider } => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            let snapshot = load_extension_snapshot(&resource_catalog.paths, &settings);
+            let items = auth_status_items_with_extension_readiness(
+                auth,
+                provider.as_deref(),
+                &config.model,
+                &snapshot,
+            )
+            .await?;
+            return Ok(format_auth_status(&items));
+        }
+        ParsedCommand::AuthQuickstart => {
+            return Ok(format_auth_quickstart());
+        }
+        ParsedCommand::Ralph(command) => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            return execute_ralph_command_if_enabled(command, &resource_catalog.paths, &settings);
+        }
+        ParsedCommand::ShowAgentModeUsage => {
+            return Ok("Usage: /mode plan | /mode work | /mode <profile>".into());
+        }
+        ParsedCommand::SetAgentMode(mode) => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            if mode_sandbox_command_enabled(&mode, &resource_catalog.paths, &settings) {
+                ensure_mode_sandbox_profiles(&resource_catalog.paths)?;
+                return Ok(format!("Mode set to {}", mode.label()));
+            }
+            return Err(AppError::InvalidArguments(format!(
+                "Mode sandbox extension is not enabled; install `builtin:mode-sandbox` from `/extensions` before using `/mode {}`",
+                mode.value()
+            )));
         }
         ParsedCommand::SetSessionTitle(title) => {
             harness.set_session_title(title.clone()).await?;
@@ -3784,11 +5562,23 @@ async fn execute_runtime_command(
                     &catalog,
                 )))
                 .await;
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            let snapshot = load_extension_snapshot(&resource_catalog.paths, &settings);
             return Ok(format!(
-                "Reloaded {} prompts and {} skills",
+                "Reloaded {} prompts, {} skills, {} packages, {} extensions, and extension contributions",
                 catalog.prompts.len(),
-                catalog.skills.len()
+                catalog.skills.len(),
+                snapshot.packages.len(),
+                snapshot.extensions.len()
             ));
+        }
+        ParsedCommand::Settings(SettingsCommand::OpenAuth) => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            let snapshot = load_extension_snapshot(&resource_catalog.paths, &settings);
+            let items =
+                auth_status_items_with_extension_readiness(auth, None, &config.model, &snapshot)
+                    .await?;
+            return Ok(format_auth_status(&items));
         }
         ParsedCommand::Settings(
             SettingsCommand::Open
@@ -3798,14 +5588,17 @@ async fn execute_runtime_command(
             | SettingsCommand::OpenTools
             | SettingsCommand::OpenKeymaps
             | SettingsCommand::OpenTheme
-            | SettingsCommand::OpenExtensions,
+            | SettingsCommand::OpenExtensions
+            | SettingsCommand::OpenNotify,
         ) => {
             return Err(AppError::InvalidArguments(
-                "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model openrouter:xai/glm-5.1` or `/thinking high`".into(),
+                "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model 9router:kr/claude-sonnet-4.5` or `/thinking high`".into(),
             ));
         }
         ParsedCommand::Settings(SettingsCommand::SetModel(model)) => {
             let identifier = model.identifier();
+            validate_model_identifier_with_extensions(&identifier, extension_runtime_provider_ids)
+                .map_err(AppError::InvalidArguments)?;
             harness.set_model(model).await?;
             config.model = identifier.clone();
             format!("Model set to {identifier}")
@@ -3844,27 +5637,6 @@ async fn execute_runtime_command(
     user_settings::save_to_path(&settings, &resource_catalog.paths.global_settings).await?;
     harness.save_session_jsonl(session_path).await?;
     Ok(message)
-}
-
-fn last_assistant_text(messages: &[Message]) -> Option<String> {
-    messages.iter().rev().find_map(|message| {
-        let Message::Assistant { content, .. } = message else {
-            return None;
-        };
-        let text = content
-            .iter()
-            .filter_map(|block| match block {
-                ContentBlock::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("");
-        if text.trim().is_empty() {
-            None
-        } else {
-            Some(text)
-        }
-    })
 }
 
 fn session_id_from_path(path: &std::path::Path) -> String {
@@ -4022,23 +5794,36 @@ fn format_skill_list(catalog: &ResourceCatalog) -> String {
         .join("\n")
 }
 
+#[derive(Debug, Default)]
+struct RalphRunController {
+    active_loop: Option<String>,
+    auto_continue: bool,
+    prompt_loop_in_flight: Option<String>,
+}
+
 #[derive(Debug)]
 enum TuiRuntimeEvent {
     Agent(AgentEvent),
     PromptFinished(Result<Vec<Message>, String>),
     SessionTitle(String),
     ModelCatalog(ModelCatalogUpdate),
+    UsageProgress(UsageReport),
+    AskUserPrompt {
+        request: AskUserRequest,
+        responder: oneshot::Sender<AskUserOutcome>,
+    },
 }
 
 async fn persist_current_settings(state: &mut TuiState) {
-    let mut settings = UserSettings::from_current(
+    let mut settings = UserSettings::load_default().await.unwrap_or_default();
+    settings.apply_current(
         state.settings.selected_model.clone(),
         state.settings.selected_thinking_level,
         state.settings.thinking_collapse_mode,
         state.settings.tool_collapse_mode,
         state.settings.chat_style,
-    )
-    .with_tools(tool_map_from_state(state, ToolSettingsScope::Global));
+    );
+    settings.tools = tool_map_from_state(state, ToolSettingsScope::Global);
     settings.keymap = Some(state.settings.keymap.clone());
     settings.theme = state.settings.global_theme.clone();
     if let Err(err) = settings.save_default().await {
@@ -4054,16 +5839,40 @@ async fn save_tui_session(state: &mut TuiState, harness: &Harness, path: &std::p
     }
 }
 
+async fn refresh_tui_context_status(state: &mut TuiState, harness: &Harness, cwd: &Path) {
+    state.set_working_directory(path_to_string(cwd));
+    match harness.inspect_full_prompt().await {
+        Ok(snapshot) => state.set_context_tokens(Some(snapshot.token_count)),
+        Err(_) => state.set_context_tokens(None),
+    }
+}
+
 fn spawn_model_catalog_task(
     tx: mpsc::UnboundedSender<TuiRuntimeEvent>,
-    provider_config: OpenRouterConfig,
+    auth: AuthStorage,
+    openrouter_config: OpenRouterConfig,
+    _initial_model: String,
 ) {
     tokio::spawn(async move {
-        if let Some(update) = model_catalog::load_cached_update().await {
+        if let Some(update) =
+            model_catalog::load_cached_update_with_historical_provider_catalog(false).await
+        {
             let _ = tx.send(TuiRuntimeEvent::ModelCatalog(update));
         }
 
-        let fresh = model_catalog::cached_is_fresh().await;
+        let refresh_configs = model_catalog::all_refresh_configs_with_historical_provider_catalog(
+            &openrouter_config,
+            false,
+        );
+        let mut freshness_checks = futures::future::join_all(
+            refresh_configs
+                .iter()
+                .map(|config| model_catalog::cached_is_fresh(&config.provider_id)),
+        )
+        .await;
+        freshness_checks
+            .push(model_catalog::cached_is_fresh(model_catalog::NINE_ROUTER_PROVIDER_ID).await);
+        let fresh = !freshness_checks.is_empty() && freshness_checks.into_iter().all(|fresh| fresh);
         let initial_delay = if fresh {
             model_catalog::MODEL_REFRESH_INTERVAL
         } else {
@@ -4074,14 +5883,115 @@ fn spawn_model_catalog_task(
         loop {
             let _ = tx.send(TuiRuntimeEvent::ModelCatalog(ModelCatalogUpdate {
                 models: Vec::new(),
-                status: "Refreshing OpenRouter models…".into(),
+                status: "Refreshing provider model catalogs…".into(),
                 refreshing: true,
             }));
-            let update = model_catalog::refresh_update(&provider_config).await;
+            let update = model_catalog::refresh_all_update_with_historical_provider_catalog(
+                &auth,
+                &openrouter_config,
+                false,
+            )
+            .await;
             let _ = tx.send(TuiRuntimeEvent::ModelCatalog(update));
+            if let Ok(config) = load_nine_router_config() {
+                let base_url = resolved_nine_router_base_url(&config);
+                let update = model_catalog::refresh_openai_proxy_update(
+                    model_catalog::NINE_ROUTER_PROVIDER_ID,
+                    "9router",
+                    &base_url,
+                    Some("NINEROUTER_API_KEY"),
+                )
+                .await;
+                let _ = tx.send(TuiRuntimeEvent::ModelCatalog(update));
+            }
             tokio::time::sleep(model_catalog::MODEL_REFRESH_INTERVAL).await;
         }
     });
+}
+
+async fn register_mode_hooks(harness: &Harness, mode: Arc<Mutex<AgentMode>>, paths: ResourcePaths) {
+    let guard_mode = Arc::clone(&mode);
+    let guard_paths = paths.clone();
+    harness
+        .hooks()
+        .on_before_tool_call(Arc::new(move |call| {
+            let mode = guard_mode
+                .lock()
+                .map_or_else(|_| AgentMode::Work, |guard| guard.clone());
+            let profile = load_mode_sandbox_profile(&guard_paths, &mode);
+            Box::pin(async move { Ok(mode_before_tool_call_result(&mode, &profile, call)) })
+        }))
+        .await;
+
+    let context_mode = Arc::clone(&mode);
+    let context_paths = paths;
+    harness
+        .hooks()
+        .on_context(Arc::new(move |mut messages| {
+            let mode = context_mode
+                .lock()
+                .map_or_else(|_| AgentMode::Work, |guard| guard.clone());
+            let paths = context_paths.clone();
+            Box::pin(async move {
+                let settings = load_tool_settings(&paths).await;
+                if mode_sandbox_command_enabled(&mode, &paths, &settings) {
+                    if let Some(message) = mode_sandbox_context_message(&paths, &mode) {
+                        messages.insert(0, message);
+                    }
+                }
+                Ok(messages)
+            })
+        }))
+        .await;
+}
+
+async fn register_notify_hooks(harness: &Harness, paths: ResourcePaths) {
+    let client = Arc::new(reqwest::Client::new());
+    for hook in [
+        NotificationHook::AgentEnd,
+        NotificationHook::ToolExecutionEnd,
+    ] {
+        let paths = paths.clone();
+        let client = Arc::clone(&client);
+        harness
+            .hooks()
+            .on_notification(
+                hook,
+                Arc::new(move |event| {
+                    let paths = paths.clone();
+                    let client = Arc::clone(&client);
+                    Box::pin(async move {
+                        send_notify_event_if_enabled(paths, client, event).await;
+                    })
+                }),
+            )
+            .await;
+    }
+}
+
+async fn send_notify_event_if_enabled(
+    paths: ResourcePaths,
+    client: Arc<reqwest::Client>,
+    event: AgentEvent,
+) {
+    let settings = load_tool_settings(&paths).await;
+    if !notify_extension_enabled(&paths, &settings) {
+        return;
+    }
+    let Some(config) =
+        notify::resolve_notify_config(&settings.global.notify, &settings.project.notify)
+    else {
+        return;
+    };
+    let Some(message) = notify::notify_message_for_event(&event) else {
+        return;
+    };
+    if !config.events.contains(&message.event) {
+        return;
+    }
+    if let Err(err) = notify::send_ntfy_notification(&client, &config, &message).await {
+        eprintln!("Oino notify failed: {err}");
+    }
 }
 
 async fn register_tui_stream_hooks(harness: &Harness, tx: mpsc::UnboundedSender<TuiRuntimeEvent>) {
@@ -4190,37 +6100,44 @@ fn apply_tui_runtime_event(
                 }
             }
         }
+        TuiRuntimeEvent::UsageProgress(report) => {
+            let status = report.status_line();
+            state.set_usage_report(report.to_tui_report());
+            if !state.working && state.error.is_none() {
+                state.status = status;
+            }
+        }
+        TuiRuntimeEvent::AskUserPrompt { .. } => {}
     }
 }
 
 async fn preflight_model_credentials(
     auth: &AuthStorage,
     model_identifier: &str,
+    extension_runtime_provider_ids: &BTreeSet<String>,
 ) -> Result<(), String> {
     let Some(model) = Model::from_identifier(model_identifier) else {
         return Err(format!(
             "Invalid model identifier `{model_identifier}`; expected provider:model-id"
         ));
     };
-    match model.provider.as_str() {
-        "openrouter" => match auth.resolve_openrouter_api_key().await {
-            Ok(_) => Ok(()),
-            Err(AuthError::MissingCredential { .. }) => {
-                Err(MISSING_OPENROUTER_API_KEY_MESSAGE.into())
-            }
-            Err(err) => Err(err.to_string()),
-        },
-        "claude" | "chatgpt" => Ok(()),
-        provider => Err(format!(
-            "unsupported model provider `{provider}`; use openrouter, claude, or chatgpt"
-        )),
+    if extension_runtime_provider_ids.contains(&model.provider) {
+        return Ok(());
     }
+    if provider_by_id(&model.provider).is_none() {
+        return Err(format!(
+            "Provider `{}` is not registered. Install/enable an extension runtime provider for `{}` or run `/9router setup` and select a `9router:<model>` model.",
+            model.provider, model.provider
+        ));
+    }
+    let _ = auth;
+    Err(provider_status_for_model_identifier(model_identifier).unwrap_err())
 }
 
 fn user_facing_error(err: &HarnessError) -> String {
     let message = err.to_string();
     if message.contains("missing credential") || message.contains("OPENROUTER_API_KEY") {
-        MISSING_OPENROUTER_API_KEY_MESSAGE.into()
+        "Provider credential is missing, but built-in provider auth/runtime has been removed from Oino core. Run `/9router setup` and select a `9router:<model>` model, or install/enable an extension runtime provider.".into()
     } else {
         message
     }
@@ -4228,7 +6145,6 @@ fn user_facing_error(err: &HarnessError) -> String {
 
 struct TerminalGuard {
     terminal: Terminal<CrosstermBackend<Stdout>>,
-    active: bool,
 }
 
 fn paint_url_overlays(
@@ -4272,10 +6188,7 @@ impl TerminalGuard {
         )?;
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
-        Ok(Self {
-            terminal,
-            active: true,
-        })
+        Ok(Self { terminal })
     }
 
     fn draw(&mut self, state: &TuiState) -> Result<(), AppError> {
@@ -4290,61 +6203,10 @@ impl TerminalGuard {
     fn size(&self) -> io::Result<(u16, u16)> {
         self.terminal.size().map(|size| (size.width, size.height))
     }
-
-    fn run_login_command(&mut self, provider: &str) -> Result<String, AppError> {
-        self.leave_for_external_command()?;
-        let result = run_oauth_login_command(provider);
-        let reenter_result = self.reenter_after_external_command();
-        reenter_result?;
-        result
-    }
-
-    fn leave_for_external_command(&mut self) -> io::Result<()> {
-        if !self.active {
-            return Ok(());
-        }
-        let _ = self.terminal.show_cursor();
-        disable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(
-            stdout,
-            DisableBracketedPaste,
-            DisableMouseCapture,
-            PopKeyboardEnhancementFlags,
-            LeaveAlternateScreen
-        )?;
-        stdout.flush()?;
-        self.active = false;
-        Ok(())
-    }
-
-    fn reenter_after_external_command(&mut self) -> io::Result<()> {
-        if self.active {
-            return Ok(());
-        }
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(
-            stdout,
-            EnterAlternateScreen,
-            Clear(ClearType::All),
-            MoveTo(0, 0),
-            EnableBracketedPaste,
-            EnableMouseCapture,
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-        )?;
-        stdout.flush()?;
-        self.terminal.clear()?;
-        self.active = true;
-        Ok(())
-    }
 }
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        if !self.active {
-            return;
-        }
         let _ = disable_raw_mode();
         let _ = execute!(
             self.terminal.backend_mut(),
@@ -4354,7 +6216,6 @@ impl Drop for TerminalGuard {
             LeaveAlternateScreen
         );
         let _ = self.terminal.show_cursor();
-        self.active = false;
     }
 }
 
@@ -4367,8 +6228,239 @@ mod tests {
     use oino_types::{AssistantStreamEvent, StopReason};
 
     #[test]
-    fn default_model_is_openrouter_model() {
-        assert_eq!(DEFAULT_OPENROUTER_MODEL, "openrouter:openai/gpt-4o-mini");
+    fn default_model_is_9router_model() {
+        assert_eq!(DEFAULT_MODEL, "9router:kr/claude-sonnet-4.5");
+    }
+
+    #[test]
+    fn extension_runtime_provider_is_used_without_builtin_runtime_fallback() {
+        let provider: ProviderContribution = serde_json::from_value(serde_json::json!({
+            "id": "provider.9router",
+            "provider_id": "9router",
+            "display_name": "9router",
+            "privacy": { "can_receive_prompts": true },
+            "runtime": {
+                "protocol": "open_ai_chat_completions",
+                "base_url": "http://localhost:20128/v1",
+                "api_key": { "kind": "none" },
+                "model_id": "strip_provider_prefix"
+            }
+        }))
+        .unwrap_or_else(|err| panic!("extension provider should parse: {err}"));
+        let auth = AuthStorage::new(
+            AuthConfig::new(std::env::temp_dir().join("oino-app-extension-runtime-auth.json"))
+                .with_process_env(false),
+        );
+        let router = ProviderRouter::new(auth, vec![provider]);
+        let model = Model::from_identifier("9router:kr/test-model")
+            .unwrap_or_else(|| panic!("model should parse"));
+        let result = router.provider_for_model(&model);
+        assert!(
+            result.is_ok(),
+            "extension runtime should be selected without built-in runtime fallback"
+        );
+    }
+
+    #[test]
+    fn model_validation_accepts_extension_runtime_provider_prefixes() {
+        let extension_providers = BTreeSet::from(["9router".to_string()]);
+        let model = validate_model_identifier_with_extensions(
+            "9router:kr/test-model",
+            &extension_providers,
+        )
+        .unwrap_or_else(|err| panic!("extension model should validate: {err}"));
+        assert_eq!(model.provider, "9router");
+
+        let err = validate_model_identifier_with_extensions(
+            "not-installed:test-model",
+            &extension_providers,
+        )
+        .expect_err("unknown non-extension provider should be rejected");
+        assert!(err.contains("extension runtime"));
+        assert!(err.contains("/9router setup"));
+    }
+
+    #[test]
+    fn auth_quickstart_is_9router_first_after_builtin_auth_removal() {
+        let guide = format_auth_quickstart();
+        assert!(guide.contains("Recommended path: 9router extension"));
+        assert!(guide.contains("/9router setup"));
+        assert!(guide.contains("Built-in provider OAuth/API-key commands have been removed"));
+    }
+
+    #[test]
+    fn nine_router_default_config_resolves_known_good_tag() {
+        let config = NineRouterConfig::default();
+        assert_eq!(
+            resolved_nine_router_base_url(&config),
+            NINE_ROUTER_DEFAULT_BASE_URL
+        );
+        assert_eq!(
+            resolved_nine_router_tag(&config),
+            NINE_ROUTER_KNOWN_GOOD_TAG
+        );
+        assert!(
+            nine_router_managed_run_command(&config, NINE_ROUTER_KNOWN_GOOD_TAG)
+                .contains("ghcr.io/decolua/9router:0.4.59")
+        );
+    }
+
+    #[test]
+    fn nine_router_tag_validation_rejects_unsafe_values() {
+        assert_eq!(validate_nine_router_tag("0.4.59").unwrap(), "0.4.59");
+        assert!(validate_nine_router_tag("../latest").is_err());
+        assert!(validate_nine_router_tag("").is_err());
+    }
+
+    #[test]
+    fn nine_router_start_candidates_deduplicate_fallback_order() {
+        let config = NineRouterConfig {
+            pinned_tag: Some("0.4.60".into()),
+            last_good_tag: Some("0.4.59".into()),
+            known_good_tag: "0.4.59".into(),
+            ..NineRouterConfig::default()
+        };
+        assert_eq!(
+            nine_router_start_candidates(&config),
+            vec!["0.4.60", "0.4.59"]
+        );
+    }
+
+    #[test]
+    fn nine_router_run_args_include_pinned_image_and_data_dir() {
+        let config = NineRouterConfig::default();
+        let args = nine_router_run_args(&config, "0.4.59").join(" ");
+        assert!(args.contains("--name oino-9router"));
+        assert!(args.contains("20128:20128"));
+        assert!(args.contains("ghcr.io/decolua/9router:0.4.59"));
+    }
+
+    #[test]
+    fn nine_router_extension_readiness_detail_includes_live_health_and_fallback_state() {
+        let config = NineRouterConfig::default();
+        let health = NineRouterHealth {
+            reachable: true,
+            status: Some("200 OK".into()),
+            model_count: Some(42),
+            error: None,
+        };
+        let detail = format_nine_router_extension_readiness_detail(
+            &config,
+            "/tmp/oino-9router-config.json",
+            &health,
+        );
+        assert!(detail.contains("mode External"));
+        assert!(detail.contains("http://localhost:20128/v1"));
+        assert!(detail.contains("ghcr.io/decolua/9router:0.4.59"));
+        assert!(detail.contains("last-good 0.4.59"));
+        assert!(detail
+            .contains("Live health: reachable at http://localhost:20128/v1/models · 42 models"));
+    }
+
+    #[test]
+    fn extension_config_helpers_support_dotted_keys_and_safe_provider_ids() {
+        let value = serde_json::json!({
+            "base_url": "http://localhost:20128/v1",
+            "secrets": { "api_key": "secret-token" }
+        });
+        assert_eq!(
+            extension_config_string_from_value(&value, "base_url").as_deref(),
+            Some("http://localhost:20128/v1")
+        );
+        assert_eq!(
+            extension_config_string_from_value(&value, "secrets.api_key").as_deref(),
+            Some("secret-token")
+        );
+        assert!(extension_config_string_from_value(&value, "missing.key").is_none());
+        assert_eq!(
+            extension_config_dir_name("provider.test-1").unwrap(),
+            "provider.test-1"
+        );
+        assert!(extension_config_dir_name("../provider").is_err());
+        assert_eq!(
+            extension_runtime_base_url_env_candidates("9router"),
+            vec![
+                "NINEROUTER_BASE_URL".to_string(),
+                "9ROUTER_BASE_URL".to_string()
+            ]
+        );
+        let runtime: oino_extension_core::ProviderRuntimeContribution =
+            serde_json::from_value(serde_json::json!({
+                "protocol": "open_ai_chat_completions",
+                "base_url": "http://localhost:20128/v1",
+                "config": {
+                    "base_url_key": "runtime.base_url",
+                    "health_url_key": "runtime.health_url",
+                    "base_url_env": ["NINEROUTER_BASE_URL"],
+                    "health_url_env": ["NINEROUTER_HEALTH_URL"]
+                }
+            }))
+            .unwrap_or_else(|err| panic!("runtime config metadata should parse: {err}"));
+        assert_eq!(
+            runtime.config.base_url_key.as_deref(),
+            Some("runtime.base_url")
+        );
+        assert_eq!(
+            runtime.config.health_url_key.as_deref(),
+            Some("runtime.health_url")
+        );
+        assert_eq!(runtime.config.base_url_env, vec!["NINEROUTER_BASE_URL"]);
+        assert_eq!(runtime.config.health_url_env, vec!["NINEROUTER_HEALTH_URL"]);
+    }
+
+    #[test]
+    fn removed_provider_runtime_info_documents_openai_split_and_oauth_usage() {
+        let openai = provider_by_id("openai")
+            .and_then(|provider| auth_readiness::removed_provider_runtime_info(*provider))
+            .unwrap_or_else(|| panic!("openai removed-runtime info missing"));
+        assert!(openai
+            .historical_optional_env
+            .contains(&OPENAI_ACCESS_TOKEN_ENV));
+        assert!(openai
+            .historical_optional_env
+            .contains(&OPENAI_REFRESH_TOKEN_ENV));
+        assert!(openai.historical_optional_env.contains(&OPENAI_API_KEY_ENV));
+        assert_eq!(
+            openai.historical_example_model,
+            Some("openai-api:gpt-4o-mini")
+        );
+        assert!(openai.hint.contains("removed from core"));
+    }
+
+    #[test]
+    fn removed_provider_runtime_info_documents_azure_and_bedrock_config_shapes() {
+        let azure = provider_by_id("azure")
+            .and_then(|provider| auth_readiness::removed_provider_runtime_info(*provider))
+            .unwrap_or_else(|| panic!("azure removed-runtime info missing"));
+        assert!(azure
+            .historical_required_env
+            .contains(&"AZURE_OPENAI_ENDPOINT"));
+        assert!(azure
+            .historical_required_env
+            .contains(&"AZURE_OPENAI_DEPLOYMENT"));
+        assert!(azure
+            .historical_required_env
+            .contains(&"AZURE_OPENAI_API_KEY"));
+        assert!(azure
+            .historical_optional_env
+            .contains(&"AZURE_OPENAI_API_VERSION"));
+        assert_eq!(
+            azure.historical_example_model,
+            Some("azure:<deployment-or-model>")
+        );
+
+        let bedrock = provider_by_id("bedrock")
+            .and_then(|provider| auth_readiness::removed_provider_runtime_info(*provider))
+            .unwrap_or_else(|| panic!("bedrock removed-runtime info missing"));
+        assert!(bedrock.historical_required_env.contains(&"AWS_REGION"));
+        assert!(bedrock
+            .historical_optional_env
+            .contains(&"AWS_ACCESS_KEY_ID"));
+        assert!(bedrock
+            .historical_optional_env
+            .contains(&"AWS_BEARER_TOKEN_BEDROCK"));
+        assert!(bedrock.hint.contains("removed from core"));
+        assert_eq!(bedrock.historical_example_model, Some("bedrock:<model-id>"));
     }
 
     #[test]
@@ -4465,6 +6557,483 @@ mod tests {
                 reference: Some("main".into()),
             })
         );
+    }
+
+    #[test]
+    fn mode_profile_filters_tools_and_defaults_to_plan_allowlist() {
+        let read = ToolCall {
+            id: OinoId::nil(),
+            name: "read".into(),
+            arguments: serde_json::json!({"path":"README.md"}),
+        };
+        let bash = ToolCall {
+            id: OinoId::nil(),
+            name: "bash".into(),
+            arguments: serde_json::json!({"command":"pwd"}),
+        };
+        let edit = ToolCall {
+            id: OinoId::nil(),
+            name: "edit".into(),
+            arguments: serde_json::json!({"path":"README.md"}),
+        };
+        let write = ToolCall {
+            id: OinoId::nil(),
+            name: "write".into(),
+            arguments: serde_json::json!({"path":"README.md"}),
+        };
+        let plan = default_mode_sandbox_profile(&AgentMode::Plan);
+        let work = default_mode_sandbox_profile(&AgentMode::Work);
+        assert!(matches!(
+            mode_before_tool_call_result(&AgentMode::Plan, &plan, read),
+            BeforeToolCallResult::Allow(_)
+        ));
+        assert!(matches!(
+            mode_before_tool_call_result(&AgentMode::Plan, &plan, bash),
+            BeforeToolCallResult::Allow(_)
+        ));
+        match mode_before_tool_call_result(&AgentMode::Plan, &plan, edit) {
+            BeforeToolCallResult::Block(reason) => {
+                assert!(reason.contains("Plan mode blocked tool `edit`"));
+                assert!(reason.contains(".oino/sandbox-mode/plan.json"));
+            }
+            BeforeToolCallResult::Allow(_) => panic!("plan profile should block edit"),
+        }
+        match mode_before_tool_call_result(&AgentMode::Plan, &plan, write.clone()) {
+            BeforeToolCallResult::Block(reason) => {
+                assert!(reason.contains("Plan mode blocked tool `write`"));
+                assert!(reason.contains(".oino/sandbox-mode/plan.json"));
+            }
+            BeforeToolCallResult::Allow(_) => panic!("plan profile should block write"),
+        }
+        assert!(matches!(
+            mode_before_tool_call_result(&AgentMode::Work, &work, write),
+            BeforeToolCallResult::Allow(_)
+        ));
+    }
+
+    #[test]
+    fn mode_profiles_are_created_globally_and_project_can_override() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        fs::create_dir_all(&project).unwrap_or_else(|err| panic!("project dir failed: {err}"));
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths failed: {err}"));
+        ensure_mode_sandbox_profiles(&paths)
+            .unwrap_or_else(|err| panic!("ensure profiles failed: {err}"));
+        let read_path = paths.global_dir.join("sandbox-mode/read.json");
+        let plan_path = paths.global_dir.join("sandbox-mode/plan.json");
+        let work_path = paths.global_dir.join("sandbox-mode/work.json");
+        assert!(!read_path.exists());
+        assert!(plan_path.is_file());
+        assert!(work_path.is_file());
+        let plan = load_mode_sandbox_profile(&paths, &AgentMode::Plan);
+        assert_eq!(plan.allowed_tools, vec!["read", "bash"]);
+        assert!(plan.prompt.contains("PLAN"));
+
+        let project_plan_path = paths.project_dir.join("sandbox-mode/plan.json");
+        let project_plan_dir = project_plan_path
+            .parent()
+            .unwrap_or_else(|| panic!("project plan path should have a parent"));
+        fs::create_dir_all(project_plan_dir)
+            .unwrap_or_else(|err| panic!("project profile dir failed: {err}"));
+        fs::write(
+            &project_plan_path,
+            serde_json::json!({
+                "allowed_tools": ["read", "bash", "edit"],
+                "prompt": LEGACY_PLAN_SANDBOX_PROMPT,
+            })
+            .to_string(),
+        )
+        .unwrap_or_else(|err| panic!("write legacy profile failed: {err}"));
+        ensure_mode_sandbox_profiles(&paths)
+            .unwrap_or_else(|err| panic!("legacy profile upgrade failed: {err}"));
+        let plan = load_mode_sandbox_profile(&paths, &AgentMode::Plan);
+        assert_eq!(plan.allowed_tools, vec!["read", "bash"]);
+
+        fs::write(
+            &project_plan_path,
+            r#"{"allowed_tools":["read"],"prompt":"custom plan"}"#,
+        )
+        .unwrap_or_else(|err| panic!("write profile failed: {err}"));
+        let plan = load_mode_sandbox_profile(&paths, &AgentMode::Plan);
+        assert_eq!(plan.allowed_tools, vec!["read"]);
+        assert_eq!(plan.prompt, "custom plan");
+        let message = mode_sandbox_context_message(&paths, &AgentMode::Plan)
+            .unwrap_or_else(|| panic!("missing context message"));
+        assert!(matches!(
+            message,
+            Message::CompactionSummary { summary, .. } if summary.contains("custom plan")
+        ));
+
+        let custom = AgentMode::Custom("review".into());
+        let custom_profile = load_mode_sandbox_profile(&paths, &custom);
+        assert_eq!(custom_profile.allowed_tools, vec!["read", "bash"]);
+        assert!(custom_profile.prompt.contains("Custom profile"));
+        let custom_path = mode_sandbox_profile_path(&paths, ToolSettingsScope::Project, &custom);
+        assert!(custom_path.ends_with(".oino/sandbox-mode/review.json"));
+        let custom_dir = custom_path
+            .parent()
+            .unwrap_or_else(|| panic!("custom profile path should have a parent"));
+        fs::create_dir_all(custom_dir)
+            .unwrap_or_else(|err| panic!("custom profile dir failed: {err}"));
+        fs::write(
+            &custom_path,
+            r#"{"allowed_tools":["read"],"prompt":"custom review"}"#,
+        )
+        .unwrap_or_else(|err| panic!("write custom profile failed: {err}"));
+        let custom_profile = load_mode_sandbox_profile(&paths, &custom);
+        assert_eq!(custom_profile.allowed_tools, vec!["read"]);
+        assert_eq!(custom_profile.prompt, "custom review");
+    }
+
+    #[test]
+    fn executes_ralph_commands_against_project_state() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let help = execute_ralph_command(RalphCommand::Help, temp.path())
+            .unwrap_or_else(|err| panic!("help failed: {err}"));
+        assert!(help.contains("/ralph start"));
+
+        let started = execute_ralph_command(
+            RalphCommand::Start {
+                name: "Demo Loop".into(),
+                task: "Build iterative feature".into(),
+            },
+            temp.path(),
+        )
+        .unwrap_or_else(|err| panic!("start failed: {err}"));
+        assert!(started.contains("demo-loop"));
+        assert!(temp.path().join(".oino/ralph/demo-loop.json").is_file());
+
+        let recorded = execute_ralph_command(
+            RalphCommand::Record {
+                name: "demo-loop".into(),
+                promise: RalphRecordPromise::TaskDone("TASK-1".into()),
+                note: "scaffolded".into(),
+            },
+            temp.path(),
+        )
+        .unwrap_or_else(|err| panic!("record failed: {err}"));
+        assert!(recorded.contains("iteration 1"));
+
+        let status = execute_ralph_command(
+            RalphCommand::Status {
+                name: Some("demo-loop".into()),
+            },
+            temp.path(),
+        )
+        .unwrap_or_else(|err| panic!("status failed: {err}"));
+        assert!(status.contains("demo-loop: Active iteration 1/60"));
+
+        execute_ralph_command(
+            RalphCommand::Archive {
+                name: "demo-loop".into(),
+            },
+            temp.path(),
+        )
+        .unwrap_or_else(|err| panic!("archive failed: {err}"));
+        let cleaned = execute_ralph_command(RalphCommand::CleanArchive, temp.path())
+            .unwrap_or_else(|err| panic!("clean failed: {err}"));
+        assert!(cleaned.contains("Removed 4 archived Ralph loop files"));
+    }
+
+    #[test]
+    fn prepares_optional_builtin_extension_install_sources() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let prepared = prepare_install_source("builtin:footer-status", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("builtin package should resolve: {err}"));
+        let by_id = prepare_install_source("builtin:oino.footer_status", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("builtin package id should resolve: {err}"));
+
+        assert_eq!(prepared.display, "builtin:footer-status");
+        assert!(prepared.path.ends_with("footer-status"));
+        assert!(prepared.path.join("oino.package.json").is_file());
+        assert_eq!(prepared.path, by_id.path);
+        let ralph = prepare_install_source("builtin:ralph-loop", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("ralph builtin package should resolve: {err}"));
+        assert!(ralph.path.ends_with("ralph-loop"));
+        assert!(ralph.path.join("oino.package.json").is_file());
+        let mode = prepare_install_source("builtin:mode-sandbox", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("mode builtin package should resolve: {err}"));
+        assert!(mode.path.ends_with("mode-sandbox"));
+        assert!(mode.path.join("oino.package.json").is_file());
+        let notify = prepare_install_source("builtin:notify", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("notify builtin package should resolve: {err}"));
+        assert!(notify.path.ends_with("notify"));
+        assert!(notify.path.join("oino.package.json").is_file());
+        let craft = prepare_install_source("builtin:craft-skill", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("craft-skill builtin package should resolve: {err}"));
+        assert!(craft.path.ends_with("craft-skill"));
+        assert!(craft.path.join("oino.package.json").is_file());
+        let vcc = prepare_install_source("builtin:vcc", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("vcc builtin package should resolve: {err}"));
+        assert!(vcc.path.ends_with("vcc"));
+        assert!(vcc.path.join("oino.package.json").is_file());
+        let ask_user = prepare_install_source("builtin:ask-user", temp.path(), temp.path())
+            .unwrap_or_else(|err| panic!("ask-user builtin package should resolve: {err}"));
+        assert!(ask_user.path.ends_with("ask-user"));
+        assert!(ask_user.path.join("oino.package.json").is_file());
+
+        let err = prepare_install_source("builtin:missing", temp.path(), temp.path())
+            .err()
+            .unwrap_or_else(|| panic!("missing builtin should fail"));
+        assert!(err.contains("unknown optional built-in extension `missing`"));
+        assert!(err.contains("oino.footer_status"));
+        assert!(err.contains("oino.ralph_loop"));
+        assert!(err.contains("oino.mode_sandbox"));
+        assert!(err.contains("oino.notify"));
+        assert!(err.contains("oino.craft_skill"));
+        assert!(err.contains("oino.vcc"));
+        assert!(err.contains("oino.ask_user"));
+    }
+
+    #[test]
+    fn extensions_update_refreshes_installed_builtin_packages() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths failed: {err}"));
+        paths
+            .ensure_skeleton()
+            .unwrap_or_else(|err| panic!("resource skeleton failed: {err}"));
+        let settings = ToolSettingsSnapshot::default();
+        let mut manager = extension_manager_with_current_policy(&paths, &settings);
+        manager.load();
+        let service = PackageLifecycleService::new(
+            extension_layout_paths(&paths),
+            current_extension_version(),
+        );
+        let package = oino_extension_builtins::optional_builtin_packages()
+            .iter()
+            .find(|package| package.id == "oino.9router")
+            .unwrap_or_else(|| panic!("missing 9router optional builtin"));
+        service
+            .install_local(package.path(), PackageInstallScope::Project, &mut manager)
+            .unwrap_or_else(|err| panic!("install failed: {err}"));
+        let manifest_path = project
+            .join(".oino/extension-packages")
+            .join(package.id)
+            .join("oino.package.json");
+        let mut installed = serde_json::from_str::<serde_json::Value>(
+            &fs::read_to_string(&manifest_path)
+                .unwrap_or_else(|err| panic!("read manifest failed: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("parse manifest failed: {err}"));
+        installed["version"] = serde_json::json!("0.0.1");
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&installed).unwrap(),
+        )
+        .unwrap_or_else(|err| panic!("write downgraded manifest failed: {err}"));
+
+        let report = update_installed_extension_packages(&paths, &project, &settings);
+        assert!(report.contains("1 updated"), "{report}");
+        assert!(report.contains("oino.9router"), "{report}");
+        let refreshed = serde_json::from_str::<PackageManifest>(
+            &fs::read_to_string(&manifest_path)
+                .unwrap_or_else(|err| panic!("read refreshed manifest failed: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("parse refreshed manifest failed: {err}"));
+        let source_manifest = serde_json::from_str::<PackageManifest>(
+            &fs::read_to_string(package.path().join("oino.package.json"))
+                .unwrap_or_else(|err| panic!("read source manifest failed: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("parse source manifest failed: {err}"));
+        assert_eq!(refreshed.version, source_manifest.version);
+    }
+
+    #[tokio::test]
+    async fn optional_builtin_packages_install_activate_and_toggle() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths failed: {err}"));
+        paths
+            .ensure_skeleton()
+            .unwrap_or_else(|err| panic!("resource skeleton failed: {err}"));
+
+        let mut settings = ToolSettingsSnapshot::default();
+        let mut manager = extension_manager_with_current_policy(&paths, &settings);
+        manager.load();
+        let service = PackageLifecycleService::new(
+            extension_layout_paths(&paths),
+            current_extension_version(),
+        );
+
+        for package in oino_extension_builtins::optional_builtin_packages() {
+            let report = service
+                .install_local(package.path(), PackageInstallScope::Project, &mut manager)
+                .unwrap_or_else(|err| panic!("install {} failed: {err}", package.id));
+            assert_eq!(report.package_id.as_str(), package.id);
+            assert!(project
+                .join(".oino/extension-packages")
+                .join(package.id)
+                .join("oino.package.json")
+                .is_file());
+            set_extension_enabled(
+                &mut settings,
+                ExtensionManagementTarget::Package,
+                report.package_id.to_string(),
+                ToolSettingsScope::Project,
+                true,
+            );
+        }
+
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let packages = snapshot
+            .packages
+            .iter()
+            .map(|package| package.id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        for package in oino_extension_builtins::optional_builtin_packages() {
+            assert!(
+                packages.contains(package.id),
+                "missing package {}",
+                package.id
+            );
+        }
+
+        let ui_surfaces = snapshot
+            .registries
+            .ui_surfaces
+            .active
+            .iter()
+            .map(|active| active.effective_id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        assert!(ui_surfaces.contains("footer_status_top"));
+        assert!(ui_surfaces.contains("footer_status_bottom"));
+
+        let commands = snapshot
+            .registries
+            .commands
+            .active
+            .iter()
+            .map(|active| active.effective_id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        assert!(commands.contains("ralph"));
+        assert!(commands.contains("mode_profile"));
+        assert!(!commands.contains("mode_read"));
+        assert!(!commands.contains("mode_create"));
+        assert!(commands.contains("notify"));
+        assert!(commands.contains("compact"));
+        assert!(commands.contains("recall"));
+
+        let settings_pages = snapshot
+            .registries
+            .settings_pages
+            .active
+            .iter()
+            .map(|active| active.effective_id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        assert!(settings_pages.contains("notify"));
+
+        let command_suggestions = extension_command_suggestions(&snapshot)
+            .into_iter()
+            .map(|command| command.label)
+            .collect::<BTreeSet<_>>();
+        assert!(command_suggestions.contains("/9router"));
+        let nine_router_setup = execute_extension_command("/9router setup", &snapshot)
+            .await
+            .unwrap_or_else(|| panic!("9router extension command should be known"))
+            .unwrap_or_else(|err| panic!("9router extension command failed: {err}"));
+        assert!(nine_router_setup.contains("9router setup"));
+        assert!(nine_router_setup.contains("Managed data dir"));
+
+        assert!(command_suggestions.contains("/ralph"));
+        assert!(command_suggestions.contains("/mode"));
+        assert!(!command_suggestions.contains("/mode:read"));
+        assert!(!command_suggestions.contains("/mode:plan"));
+        assert!(!command_suggestions.contains("/mode:work"));
+        assert!(!command_suggestions.contains("/mode:create"));
+        assert!(command_suggestions.contains("/settings notify"));
+        assert!(command_suggestions.contains("/compact"));
+        assert!(command_suggestions.contains("/recall"));
+
+        let hooks = snapshot
+            .registries
+            .hooks
+            .active
+            .iter()
+            .map(|active| active.effective_id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        assert!(hooks.contains("notify_agent_end"));
+        assert!(hooks.contains("notify_tool_result"));
+
+        let tools = snapshot
+            .registries
+            .tools
+            .active
+            .iter()
+            .map(|active| active.effective_id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        assert!(tools.contains("vcc_recall"));
+        assert!(tools.contains("ask_user"));
+
+        let resources = snapshot
+            .registries
+            .resources
+            .active
+            .iter()
+            .map(|active| active.effective_id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        let nine_router_status =
+            extension_readiness_status_items(&snapshot, Some("9router"), "9router");
+        assert!(nine_router_status
+            .iter()
+            .any(|item| item.auth_kind == "extension custom"
+                && item.readiness == "extension-managed"));
+        assert!(nine_router_status
+            .iter()
+            .any(|item| item.auth_kind == "extension provider"
+                && item.readiness == "runtime registered"));
+        assert!(nine_router_status.iter().all(|item| item.current));
+        assert!(resources.contains("ralph_loop_skill"));
+        assert!(resources.contains("mode-sandbox"));
+        assert!(resources.contains("craft-skill"));
+        let (_prompts, skills, diagnostics) = extension_resource_items(&snapshot);
+        assert!(
+            diagnostics.is_empty(),
+            "resource diagnostics: {diagnostics:?}"
+        );
+        assert!(skills.iter().any(|skill| {
+            skill.name == "mode-sandbox" && skill.description.starts_with("Use when")
+        }));
+        assert!(skills.iter().any(|skill| {
+            skill.name == "craft-skill" && skill.description.starts_with("Use when")
+        }));
+
+        set_extension_enabled(
+            &mut settings,
+            ExtensionManagementTarget::Package,
+            "oino.9router".into(),
+            ToolSettingsScope::Project,
+            false,
+        );
+        let nine_router_disabled = load_extension_snapshot(&paths, &settings);
+        let inactive_nine_router_status =
+            extension_readiness_status_items(&nine_router_disabled, Some("9router"), "openrouter");
+        assert!(inactive_nine_router_status
+            .iter()
+            .any(|item| item.provider_id == "9router"
+                && item.readiness == "inactive"
+                && item.detail.contains("Remediation")));
+
+        set_extension_enabled(
+            &mut settings,
+            ExtensionManagementTarget::Package,
+            "oino.craft_skill".into(),
+            ToolSettingsScope::Project,
+            false,
+        );
+        let disabled = load_extension_snapshot(&paths, &settings);
+        assert!(!disabled
+            .registries
+            .resources
+            .active
+            .iter()
+            .any(|active| active.effective_id.as_str() == "craft-skill"));
     }
 
     #[test]
@@ -4755,6 +7324,20 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn extension_resource_description_prefers_frontmatter_description() {
+        let id = ContributionId::new("craft-skill")
+            .unwrap_or_else(|err| panic!("valid contribution id: {err}"));
+        let description = extension_resource_description(
+            "---\nname: craft-skill\ndescription: Use when creating Oino skills\n---\n\n# Craft Skill",
+            &id,
+        );
+        assert_eq!(description, "Use when creating Oino skills");
+
+        let fallback = extension_resource_description("# Visible Skill\n\nBody", &id);
+        assert_eq!(fallback, "Visible Skill");
+    }
+
     #[tokio::test]
     async fn extension_snapshot_exposes_enabled_project_tools_and_commands() {
         let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
@@ -4811,7 +7394,11 @@ mod tests {
             .unwrap_or_else(|err| panic!("paths failed: {err}"));
         let disabled_snapshot = load_extension_snapshot(&paths, &ToolSettingsSnapshot::default());
         assert!(disabled_snapshot.registries.tools.active.is_empty());
-        assert!(execute_extension_command("/visible_command now", &disabled_snapshot).is_none());
+        assert!(
+            execute_extension_command("/visible_command now", &disabled_snapshot)
+                .await
+                .is_none()
+        );
 
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
@@ -4825,6 +7412,7 @@ mod tests {
         let tools = extension_tool_map(&snapshot);
         assert!(tools.contains_key("visible_tool"));
         let command = execute_extension_command("/visible_command now", &snapshot)
+            .await
             .unwrap_or_else(|| panic!("extension command should be known"))
             .unwrap_or_else(|err| panic!("extension command failed: {err}"));
         assert!(command.contains("visible_command"));
@@ -4873,6 +7461,7 @@ mod tests {
                 chat_style: Some(oino_tui::ChatStyle::Minimal),
                 keymap: None,
                 theme: oino_tui::ThemeSettings::default(),
+                notify: notify::NotifySettings::default(),
                 tools: BTreeMap::new(),
                 extensions: oino_extension_core::ExtensionPolicySettings::default(),
             },
@@ -4979,12 +7568,13 @@ mod tests {
             Err(err) => panic!("harness build failed: {err}"),
         };
         let system_prompt = harness.get_system_prompt().await.unwrap_or_default();
-        assert!(system_prompt.contains("## Available tools"));
-        assert!(system_prompt.contains("read"));
-        assert!(system_prompt.contains("bash"));
-        assert!(system_prompt.contains("edit"));
-        assert!(system_prompt.contains("write"));
+        assert!(system_prompt.contains("You are Oino"));
+        assert!(system_prompt.contains("## Karpathy Guidelines"));
+        assert!(system_prompt.contains("Simplicity First"));
+        assert!(system_prompt.contains("Surgical Changes"));
         assert!(system_prompt.contains("Oino Resource Inclusion Policy"));
+        assert!(!system_prompt.contains("Claude"));
+        assert!(!system_prompt.contains("Anthropic"));
         assert!(!system_prompt.contains("<available_skills>"));
         let messages = match harness.prompt(Message::user_text("hi")).await {
             Ok(messages) => messages,
@@ -5037,58 +7627,5 @@ mod tests {
         assert!(prompt.contains("# User Request\n\nfix crash"));
         assert!(!prompt.contains("<skill"));
         assert_eq!(prompt.matches("## Included Skill: `debug`").count(), 1);
-    }
-
-    #[tokio::test]
-    async fn preflight_reports_missing_openrouter_key_as_tui_message() {
-        let auth = AuthStorage::new(
-            AuthConfig::new(std::env::temp_dir().join("oino-app-preflight-missing-auth.json"))
-                .with_process_env(false),
-        );
-        let result = preflight_model_credentials(&auth, "openrouter:test/model").await;
-        match result {
-            Err(message) => assert_eq!(message, MISSING_OPENROUTER_API_KEY_MESSAGE),
-            Ok(()) => panic!("expected missing credential message"),
-        }
-    }
-
-    #[tokio::test]
-    async fn preflight_accepts_runtime_openrouter_key() {
-        let auth = AuthStorage::new(
-            AuthConfig::new(std::env::temp_dir().join("oino-app-preflight-auth.json"))
-                .with_runtime_override("openrouter", "sk-test")
-                .with_process_env(false),
-        );
-        if let Err(message) = preflight_model_credentials(&auth, "openrouter:test/model").await {
-            panic!("preflight should accept runtime credential: {message}");
-        }
-    }
-
-    #[tokio::test]
-    async fn preflight_skips_openrouter_key_for_official_oauth_models() {
-        let auth = AuthStorage::new(
-            AuthConfig::new(std::env::temp_dir().join("oino-app-preflight-official-auth.json"))
-                .with_process_env(false),
-        );
-        if let Err(message) = preflight_model_credentials(&auth, "claude:sonnet").await {
-            panic!("claude should not require an OpenRouter key: {message}");
-        }
-        if let Err(message) = preflight_model_credentials(&auth, "chatgpt:default").await {
-            panic!("chatgpt should not require an OpenRouter key: {message}");
-        }
-    }
-
-    #[tokio::test]
-    async fn auth_resolver_returns_none_for_missing_credentials() {
-        let auth = AuthStorage::new(
-            AuthConfig::new(std::env::temp_dir().join("oino-app-missing-auth.json"))
-                .with_process_env(false),
-        );
-        let resolver = build_auth_resolver(auth);
-        let result = resolver("openrouter".into()).await;
-        match result {
-            Ok(None) => {}
-            other => panic!("expected none, got {other:?}"),
-        }
     }
 }

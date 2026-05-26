@@ -45,6 +45,11 @@ const MAX_COMPOSER_HEIGHT: u16 = 9;
 const INPUT_PROMPT: &str = "› ";
 const TINY_MESSAGE: &str = "Oino needs at least 20x8";
 const TRANSCRIPT_LEFT_PADDING: u16 = 1;
+const FOOTER_STATUS_TOP_ID: &str = "footer_status_top";
+const FOOTER_STATUS_BOTTOM_ID: &str = "footer_status_bottom";
+const FOOTER_STATUS_PACKAGE_ID: &str = "oino.footer_status";
+const COMPOSER_DIRECT_TOP_SLOT: &str = "composer:direct-top";
+const COMPOSER_DIRECT_BOTTOM_SLOT: &str = "composer:direct-bottom";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalClickTargetKind {
@@ -257,6 +262,96 @@ fn normalize_theme_token(token: &str) -> String {
     normalized
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AppLayout {
+    main_panel: Option<Rect>,
+    transcript: Rect,
+    extension_footer: Option<Rect>,
+    composer_top: Option<Rect>,
+    composer: Rect,
+    composer_bottom: Option<Rect>,
+}
+
+fn app_layout(state: &TuiState, area: Rect) -> AppLayout {
+    let composer_height = composer_height(state.composer.text(), area.width, area.height);
+    let main_panel_count = extension_main_panel_surfaces(state, area)
+        .into_iter()
+        .take(1)
+        .count();
+    let footer_count = extension_status_footer_surfaces(state, area)
+        .into_iter()
+        .take(3)
+        .count();
+    let composer_top_count = extension_composer_top_surfaces(state, area)
+        .into_iter()
+        .take(1)
+        .count();
+    let composer_bottom_count = extension_composer_bottom_surfaces(state, area)
+        .into_iter()
+        .take(1)
+        .count();
+    let main_height = if main_panel_count == 0 { 0 } else { 4 };
+    let footer_height = if footer_count == 0 {
+        0
+    } else {
+        footer_count as u16 + 2
+    };
+    let composer_top_height = composer_top_count as u16;
+    let composer_bottom_height = composer_bottom_count as u16;
+
+    let mut constraints = Vec::new();
+    if main_height > 0 {
+        constraints.push(Constraint::Length(main_height));
+    }
+    constraints.push(Constraint::Min(MIN_TRANSCRIPT_HEIGHT));
+    if footer_height > 0 {
+        constraints.push(Constraint::Length(footer_height));
+    }
+    if composer_top_height > 0 {
+        constraints.push(Constraint::Length(composer_top_height));
+    }
+    constraints.push(Constraint::Length(composer_height));
+    if composer_bottom_height > 0 {
+        constraints.push(Constraint::Length(composer_bottom_height));
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(area);
+
+    let mut index = 0;
+    let main_panel = (main_height > 0).then(|| {
+        let rect = chunks[index];
+        index += 1;
+        rect
+    });
+    let transcript = chunks[index];
+    index += 1;
+    let extension_footer = (footer_height > 0).then(|| {
+        let rect = chunks[index];
+        index += 1;
+        rect
+    });
+    let composer_top = (composer_top_height > 0).then(|| {
+        let rect = chunks[index];
+        index += 1;
+        rect
+    });
+    let composer = chunks[index];
+    index += 1;
+    let composer_bottom = (composer_bottom_height > 0).then(|| chunks[index]);
+
+    AppLayout {
+        main_panel,
+        transcript,
+        extension_footer,
+        composer_top,
+        composer,
+        composer_bottom,
+    }
+}
+
 pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme) {
     let area = frame.area();
     frame.render_widget(
@@ -268,55 +363,12 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         return;
     }
 
-    let composer_height = composer_height(state.composer.text(), area.width, area.height);
-    let main_panel_count = extension_main_panel_surfaces(state, area)
-        .into_iter()
-        .take(1)
-        .count();
-    let footer_count = extension_footer_surfaces(state, area)
-        .into_iter()
-        .take(3)
-        .count();
-    let main_height = if main_panel_count == 0 { 0 } else { 4 };
-    let footer_height = footer_count as u16;
-    let constraints = if main_height == 0 && footer_height == 0 {
-        vec![
-            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
-            Constraint::Length(composer_height),
-        ]
-    } else if main_height == 0 {
-        vec![
-            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
-            Constraint::Length(footer_height.saturating_add(2)),
-            Constraint::Length(composer_height),
-        ]
-    } else if footer_height == 0 {
-        vec![
-            Constraint::Length(main_height),
-            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
-            Constraint::Length(composer_height),
-        ]
-    } else {
-        vec![
-            Constraint::Length(main_height),
-            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
-            Constraint::Length(footer_height.saturating_add(2)),
-            Constraint::Length(composer_height),
-        ]
-    };
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(constraints)
-        .split(area);
-
-    let mut chunk_index = 0;
-    if main_height > 0 {
-        render_extension_main_panel(frame, chunks[chunk_index], state, theme);
-        chunk_index += 1;
+    let layout = app_layout(state, area);
+    if let Some(main_panel_area) = layout.main_panel {
+        render_extension_main_panel(frame, main_panel_area, state, theme);
     }
 
-    let transcript_area = chunks[chunk_index];
-    chunk_index += 1;
+    let transcript_area = layout.transcript;
     let sidebar_surfaces = extension_surfaces(state, UiSurfaceKind::Sidebar, transcript_area);
     if sidebar_surfaces.is_empty() || transcript_area.width < 64 {
         render_transcript(frame, transcript_area, state, theme);
@@ -330,13 +382,20 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         render_extension_sidebar(frame, panes[1], state, theme, &sidebar_surfaces);
     }
 
-    if footer_height > 0 {
-        render_extension_footer(frame, chunks[chunk_index], state, theme);
-        chunk_index += 1;
+    if let Some(footer_area) = layout.extension_footer {
+        render_extension_footer(frame, footer_area, state, theme);
     }
 
-    let composer_area = chunks[chunk_index];
+    if let Some(composer_top_area) = layout.composer_top {
+        render_extension_composer_top(frame, composer_top_area, state, theme);
+    }
+
+    let composer_area = layout.composer;
     render_composer(frame, composer_area, state, theme);
+
+    if let Some(composer_bottom_area) = layout.composer_bottom {
+        render_extension_composer_bottom(frame, composer_bottom_area, state, theme);
+    }
 
     if state.overlay.is_none() {
         if let Some(suggestions) = state.command_suggestions_view() {
@@ -358,6 +417,8 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         Some(OverlayKind::Skills) => render_skills_overlay(frame, area, state, theme),
         Some(OverlayKind::Extensions) => render_extensions_overlay(frame, area, state, theme),
         Some(OverlayKind::Inspect) => render_inspect_overlay(frame, area, state, theme),
+        Some(OverlayKind::Usage) => render_usage_overlay(frame, area, state, theme),
+        Some(OverlayKind::AskUser) => render_ask_user_overlay(frame, area, state, theme),
         None => {}
     }
 
@@ -441,7 +502,27 @@ fn extension_main_panel_surfaces(
     .collect()
 }
 
-fn extension_footer_surfaces(
+fn extension_composer_top_surfaces(
+    state: &TuiState,
+    area: Rect,
+) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
+    extension_surfaces(state, UiSurfaceKind::FooterTop, area)
+        .into_iter()
+        .filter(|surface| surface_slot(&surface.entry.contribution) == COMPOSER_DIRECT_TOP_SLOT)
+        .collect()
+}
+
+fn extension_composer_bottom_surfaces(
+    state: &TuiState,
+    area: Rect,
+) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
+    extension_surfaces(state, UiSurfaceKind::FooterBottom, area)
+        .into_iter()
+        .filter(|surface| surface_slot(&surface.entry.contribution) == COMPOSER_DIRECT_BOTTOM_SLOT)
+        .collect()
+}
+
+fn extension_status_footer_surfaces(
     state: &TuiState,
     area: Rect,
 ) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
@@ -458,7 +539,19 @@ fn extension_footer_surfaces(
     ]
     .into_iter()
     .flat_map(|kind| extension_surfaces(state, kind, area))
+    .filter(|surface| {
+        let slot = surface_slot(&surface.entry.contribution);
+        slot != COMPOSER_DIRECT_TOP_SLOT && slot != COMPOSER_DIRECT_BOTTOM_SLOT
+    })
     .collect()
+}
+
+fn surface_slot(surface: &UiSurfaceContribution) -> &str {
+    if surface.layout.slot == "primary" {
+        surface.surface.default_slot()
+    } else {
+        surface.layout.slot.as_str()
+    }
 }
 
 fn extension_tiny_fallback_labels(state: &TuiState, area: Rect) -> Vec<String> {
@@ -488,6 +581,9 @@ fn extension_surface_label(
     state: &TuiState,
     surface: &ActiveContribution<UiSurfaceContribution>,
 ) -> String {
+    if let Some(label) = builtin_footer_status_label(state, surface) {
+        return label;
+    }
     let title = surface.entry.contribution.title.trim();
     let mut label = if title.is_empty() {
         surface.effective_id.as_str().to_string()
@@ -508,6 +604,76 @@ fn extension_surface_label(
         label.push_str(" ⚠ conflict");
     }
     label
+}
+
+fn builtin_footer_status_label(
+    state: &TuiState,
+    surface: &ActiveContribution<UiSurfaceContribution>,
+) -> Option<String> {
+    let id = surface.entry.contribution.id.as_str();
+    let owner_is_builtin_footer = surface
+        .entry
+        .metadata
+        .package_id
+        .as_ref()
+        .is_some_and(|package_id| package_id.as_str() == FOOTER_STATUS_PACKAGE_ID)
+        || surface
+            .entry
+            .metadata
+            .extension_id
+            .as_ref()
+            .is_some_and(|extension_id| extension_id.as_str() == FOOTER_STATUS_PACKAGE_ID);
+    if owner_is_builtin_footer
+        && (id == FOOTER_STATUS_TOP_ID || surface.effective_id.as_str() == FOOTER_STATUS_TOP_ID)
+    {
+        return Some(format!(
+            "model: {} • thinking: {}",
+            state.settings.selected_model_label(),
+            thinking_label(state.settings.selected_thinking_level)
+        ));
+    }
+    if owner_is_builtin_footer
+        && (id == FOOTER_STATUS_BOTTOM_ID
+            || surface.effective_id.as_str() == FOOTER_STATUS_BOTTOM_ID)
+    {
+        let cwd = state.runtime_status.working_directory.trim();
+        let cwd = if cwd.is_empty() { "." } else { cwd };
+        return Some(format!("cwd: {cwd} • {}", context_status_label(state)));
+    }
+    None
+}
+
+fn context_status_label(state: &TuiState) -> String {
+    match (
+        state.runtime_status.context_tokens,
+        state.settings.selected_model_context_length(),
+    ) {
+        (Some(used), Some(limit)) if limit > 0 => {
+            let percent = (used as f64 / limit as f64 * 100.0).clamp(0.0, 999.0);
+            format!("context: {:.0}%/{}", percent, compact_count(limit))
+        }
+        (Some(_), _) => "context: --%/unknown".into(),
+        (None, Some(limit)) if limit > 0 => format!("context: --%/{}", compact_count(limit)),
+        _ => "context: --%/unknown".into(),
+    }
+}
+
+fn compact_count(value: usize) -> String {
+    if value >= 1_000_000 {
+        compact_scaled_count(value, 1_000_000, "m")
+    } else if value >= 1_000 {
+        compact_scaled_count(value, 1_000, "k")
+    } else {
+        value.to_string()
+    }
+}
+
+fn compact_scaled_count(value: usize, unit: usize, suffix: &str) -> String {
+    let mut scaled = format!("{:.1}", value as f64 / unit as f64);
+    if scaled.ends_with(".0") {
+        scaled.truncate(scaled.len() - 2);
+    }
+    format!("{scaled}{suffix}")
 }
 
 fn surface_has_conflict(
@@ -589,7 +755,7 @@ fn render_extension_main_panel(frame: &mut Frame<'_>, area: Rect, state: &TuiSta
 }
 
 fn render_extension_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
-    let surfaces = extension_footer_surfaces(state, area);
+    let surfaces = extension_status_footer_surfaces(state, area);
     if surfaces.is_empty() {
         return;
     }
@@ -608,6 +774,49 @@ fn render_extension_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, 
             .style(panel_style(theme)),
     );
     frame.render_widget(paragraph, area);
+}
+
+fn render_extension_composer_top(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+) {
+    let surfaces = extension_composer_top_surfaces(state, area);
+    render_extension_composer_status_line(frame, area, state, theme, &surfaces);
+}
+
+fn render_extension_composer_bottom(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+) {
+    let surfaces = extension_composer_bottom_surfaces(state, area);
+    render_extension_composer_status_line(frame, area, state, theme, &surfaces);
+}
+
+fn render_extension_composer_status_line(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+    surfaces: &[&ActiveContribution<UiSurfaceContribution>],
+) {
+    if surfaces.is_empty() || area.width == 0 || area.height == 0 {
+        return;
+    }
+    let text = surfaces
+        .iter()
+        .map(|surface| extension_surface_label(state, surface))
+        .collect::<Vec<_>>()
+        .join(" • ");
+    let text = truncate_with_ellipsis(&text, area.width as usize);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(text, theme.footer)))
+            .style(Style::default().fg(theme.muted).bg(theme.bg)),
+        area,
+    );
 }
 
 fn render_extension_floating_panels(
@@ -874,11 +1083,16 @@ pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> us
     if width < 20 || height < 8 {
         return 1;
     }
-    let composer_height = composer_height(state.composer.text(), width, height);
-    height
-        .saturating_sub(composer_height)
-        .saturating_sub(2)
-        .max(1) as usize
+    let layout = app_layout(
+        state,
+        Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+    );
+    layout.transcript.height.saturating_sub(2).max(1) as usize
 }
 
 pub fn terminal_cursor_position(state: &TuiState, width: u16, height: u16) -> Option<(u16, u16)> {
@@ -886,20 +1100,16 @@ pub fn terminal_cursor_position(state: &TuiState, width: u16, height: u16) -> Op
     {
         return None;
     }
-    let composer_height = composer_height(state.composer.text(), width, height);
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(MIN_TRANSCRIPT_HEIGHT),
-            Constraint::Length(composer_height),
-        ])
-        .split(Rect {
+    let layout = app_layout(
+        state,
+        Rect {
             x: 0,
             y: 0,
             width,
             height,
-        });
-    let position = composer_cursor_position(chunks[1], &state.composer);
+        },
+    );
+    let position = composer_cursor_position(layout.composer, &state.composer);
     Some((position.x, position.y))
 }
 
@@ -934,13 +1144,16 @@ pub fn transcript_click_targets(
         return Vec::new();
     }
 
-    let composer_height = composer_height(state.composer.text(), width, height);
-    let area = Rect {
-        x: 0,
-        y: 0,
-        width,
-        height: height.saturating_sub(composer_height),
-    };
+    let layout = app_layout(
+        state,
+        Rect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+    );
+    let area = layout.transcript;
     let inner_height = area.height.saturating_sub(2) as usize;
     if inner_height == 0 {
         return Vec::new();
@@ -1466,9 +1679,12 @@ fn render_transcript_scrollbar(
 
 fn render_composer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
     let title = if state.working {
-        " Task • steer while streaming "
+        format!(
+            " Task • {} mode • steer while streaming ",
+            state.agent_mode.label()
+        )
     } else {
-        " Task "
+        format!(" Task • {} mode ", state.agent_mode.label())
     };
     let border_style = if state.focus == TuiFocus::Composer && state.composer.is_enabled() {
         Style::default().fg(theme.focused_border)
@@ -1744,6 +1960,503 @@ fn render_inspect_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, t
         sections[2],
         &footer,
         Style::default().fg(theme.muted),
+    );
+}
+
+fn render_usage_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 86, 74);
+    frame.render_widget(Clear, overlay);
+
+    let block = Block::default()
+        .title(Span::styled(" Usage ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
+    frame.render_widget(block, overlay);
+
+    let inner = overlay.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4),
+            Constraint::Min(6),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(usage_summary_lines(
+            state,
+            sections[0].width as usize,
+            theme,
+        )),
+        sections[0],
+    );
+
+    let body_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+        .split(sections[1]);
+    render_usage_provider_list(frame, body_chunks[0], state, theme);
+    render_usage_detail(frame, body_chunks[1], state, theme);
+
+    let controls = if state.usage.search_active {
+        "type to filter • ↑/↓ move • Enter accept • Esc clear"
+    } else {
+        "↑/↓ providers • PgUp/PgDn page • / filter • r refresh • Esc/q close"
+    };
+    render_overlay_footer(
+        frame,
+        sections[2],
+        &format!("{} • {controls}", state.status),
+        theme.footer,
+    );
+}
+
+fn usage_summary_lines(state: &TuiState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    let Some(report) = &state.usage.report else {
+        let message = if state.usage.loading {
+            "Loading usage report…"
+        } else if let Some(error) = &state.usage.error {
+            error.as_str()
+        } else {
+            "No usage report loaded yet. Press r or run /usage to refresh."
+        };
+        return vec![Line::styled(
+            truncate_with_ellipsis(message, width),
+            Style::default().fg(theme.muted),
+        )];
+    };
+    let mut lines = vec![Line::styled(
+        truncate_with_ellipsis(&report.status_line, width),
+        theme.title,
+    )];
+    let token_line = format!(
+        "Session: {} assistant turn(s), {} reported • {} total tokens ({} in / {} out / {} cache read / {} cache write)",
+        report.session.assistant_turns,
+        report.session.reported_turns,
+        report.session.total_tokens,
+        report.session.input_tokens,
+        report.session.output_tokens,
+        report.session.cache_read_tokens,
+        report.session.cache_write_tokens
+    );
+    lines.push(Line::styled(
+        truncate_with_ellipsis(&token_line, width),
+        Style::default().fg(theme.fg),
+    ));
+    let cost_line = if report.session.costs.is_empty() {
+        "Cost: no provider cost data reported".into()
+    } else {
+        format!("Cost: {}", report.session.costs.join(", "))
+    };
+    lines.push(Line::styled(
+        truncate_with_ellipsis(&cost_line, width),
+        Style::default().fg(theme.muted),
+    ));
+    lines
+}
+
+fn render_usage_provider_list(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let content_width = area.width.saturating_sub(2) as usize;
+    let content_height = list_content_height(area).max(1);
+    let title = usage_provider_list_title(state);
+    frame.render_widget(
+        Paragraph::new(usage_provider_lines(
+            state,
+            content_width,
+            content_height,
+            theme,
+        ))
+        .block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(section_border_style(true, theme)),
+        ),
+        area,
+    );
+}
+
+fn usage_provider_list_title(state: &TuiState) -> String {
+    let Some(report) = &state.usage.report else {
+        return " Providers ".into();
+    };
+    let filtered = state.usage.filtered_provider_indices();
+    if report.providers.is_empty() {
+        " Providers 0/0 ".into()
+    } else if filtered.is_empty() {
+        format!(" Providers 0/{} ", report.providers.len())
+    } else {
+        let position = filtered
+            .iter()
+            .position(|index| *index == state.usage.cursor)
+            .unwrap_or(0);
+        if state.usage.search.trim().is_empty() {
+            format!(" Providers {}/{} ", position + 1, report.providers.len())
+        } else {
+            format!(
+                " Providers {}/{} ({} total) ",
+                position + 1,
+                filtered.len(),
+                report.providers.len()
+            )
+        }
+    }
+}
+
+fn usage_provider_lines(
+    state: &TuiState,
+    width: usize,
+    height: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![usage_search_line(state, width, theme), Line::from("")];
+    let remaining_height = height.saturating_sub(lines.len()).max(1);
+    if state.usage.loading {
+        lines.push(Line::styled(
+            truncate_with_ellipsis("Refreshing provider usage…", width),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    if let Some(error) = &state.usage.error {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(&format!("Error: {error}"), width),
+            diagnostic_style(theme.diagnostic_error, theme),
+        ));
+        return lines;
+    }
+    let Some(report) = &state.usage.report else {
+        lines.push(Line::styled(
+            truncate_with_ellipsis("No usage report loaded.", width),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    };
+    if report.providers.is_empty() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                "No provider rows yet. Send a prompt or refresh usage after selecting a model.",
+                width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let filtered = state.usage.filtered_provider_indices();
+    if filtered.is_empty() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!("No providers match `{}`", state.usage.search),
+                width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        return lines;
+    }
+    let filtered_position = filtered
+        .iter()
+        .position(|index| *index == state.usage.cursor)
+        .unwrap_or(0);
+    let range = visible_range(filtered_position, filtered.len(), remaining_height);
+    for (offset, provider_index) in filtered[range.clone()].iter().enumerate() {
+        if let Some(provider) = report.providers.get(*provider_index) {
+            let display_index = range.start + offset;
+            let active = *provider_index == state.usage.cursor;
+            lines.push(usage_provider_line(
+                display_index,
+                provider,
+                active,
+                width,
+                theme,
+            ));
+        }
+    }
+    lines
+}
+
+fn usage_search_line(state: &TuiState, width: usize, theme: &Theme) -> Line<'static> {
+    if state.usage.search_active {
+        return Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Filter: ", Style::default().fg(theme.focused_border)),
+                Span::raw(state.usage.search.clone()),
+                Span::styled("█", Style::default().fg(theme.focused_border)),
+            ],
+            width,
+        ));
+    }
+    if state.usage.search.is_empty() {
+        Line::styled(
+            truncate_with_ellipsis("Press / to filter providers", width),
+            Style::default().fg(theme.muted),
+        )
+    } else {
+        Line::from(truncate_spans_to_width(
+            vec![
+                Span::styled("Filter: ", Style::default().fg(theme.muted)),
+                Span::raw(state.usage.search.clone()),
+            ],
+            width,
+        ))
+    }
+}
+
+fn usage_provider_line(
+    index: usize,
+    provider: &crate::app::UsagePanelProvider,
+    active: bool,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let marker = arrow_marker(active);
+    let prefix = format!("{marker} {}. ", index.saturating_add(1));
+    let tokens = if provider.reported_turns == 0 {
+        "no token report".into()
+    } else {
+        format!("{} tokens", provider.total_tokens)
+    };
+    let summary = format!(
+        "{} ({}) • {} • {}",
+        provider.display_name, provider.provider_id, provider.status, tokens
+    );
+    let available = width.saturating_sub(prefix.width()).max(1);
+    let row_style = item_style(active, provider.status == "available", theme);
+    Line::from(vec![
+        Span::styled(prefix, row_style),
+        Span::styled(truncate_with_ellipsis(&summary, available), row_style),
+    ])
+}
+
+fn render_usage_detail(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let content_width = area.width.saturating_sub(2) as usize;
+    let mut lines = Vec::new();
+    if let Some(error) = &state.usage.error {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(&format!("Error: {error}"), content_width),
+            diagnostic_style(theme.diagnostic_error, theme),
+        ));
+    } else if state.usage.loading {
+        lines.push(Line::styled(
+            "Refreshing usage report…",
+            Style::default().fg(theme.muted),
+        ));
+    } else if let Some(provider) = state.usage.selected_provider() {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(&provider.display_name, content_width),
+            theme.title,
+        ));
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!("{} • {}", provider.provider_id, provider.status),
+                content_width,
+            ),
+            Style::default().fg(theme.muted),
+        ));
+        lines.push(Line::from(""));
+        for line in wrap_text(&provider.message, content_width.max(1))
+            .into_iter()
+            .take(6)
+        {
+            lines.push(Line::styled(line, Style::default().fg(theme.fg)));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!(
+                    "Session: {} assistant turn(s), {} reported turn(s), {} tokens",
+                    provider.assistant_turns, provider.reported_turns, provider.total_tokens
+                ),
+                content_width,
+            ),
+            Style::default().fg(theme.fg),
+        ));
+        if provider.costs.is_empty() {
+            lines.push(Line::styled(
+                truncate_with_ellipsis("Cost: no provider cost data", content_width),
+                Style::default().fg(theme.muted),
+            ));
+        } else {
+            lines.push(Line::styled(
+                truncate_with_ellipsis(
+                    &format!("Cost: {}", provider.costs.join(", ")),
+                    content_width,
+                ),
+                Style::default().fg(theme.muted),
+            ));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::styled("Account usage", theme.title));
+        if let Some(source) = &provider.account_source {
+            lines.push(Line::styled(
+                truncate_with_ellipsis(source, content_width),
+                Style::default().fg(theme.muted),
+            ));
+            if let Some(balance) = &provider.account_balance {
+                lines.push(Line::styled(
+                    truncate_with_ellipsis(&format!("Balance: {balance}"), content_width),
+                    Style::default().fg(theme.fg),
+                ));
+            }
+            if provider.account_limits.is_empty() {
+                lines.push(Line::styled(
+                    truncate_with_ellipsis("No account limits reported.", content_width),
+                    Style::default().fg(theme.muted),
+                ));
+            } else {
+                for limit in provider.account_limits.iter().take(5) {
+                    lines.push(Line::styled(
+                        truncate_with_ellipsis(limit, content_width),
+                        Style::default().fg(theme.fg),
+                    ));
+                }
+            }
+        } else {
+            lines.push(Line::styled(
+                truncate_with_ellipsis(
+                    "No live account usage fetched yet; provider readiness is shown above.",
+                    content_width,
+                ),
+                Style::default().fg(theme.muted),
+            ));
+        }
+    } else {
+        lines.push(Line::styled(
+            truncate_with_ellipsis("No provider usage row selected.", content_width),
+            Style::default().fg(theme.muted),
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .title(" Details ")
+                .borders(Borders::ALL)
+                .border_style(section_border_style(false, theme)),
+        ),
+        area,
+    );
+}
+
+fn render_ask_user_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 82, 72);
+    frame.render_widget(Clear, overlay);
+    let block = Block::default()
+        .title(Span::styled(" Ask User ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.panel_border))
+        .padding(Padding::new(1, 1, 0, 0));
+    frame.render_widget(block, overlay);
+    let inner = overlay.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
+        .split(inner);
+    let mut lines = Vec::new();
+    if let Some(ask) = &state.ask_user {
+        if let Some(question) = ask.question() {
+            let header = if question.header.trim().is_empty() {
+                format!(
+                    "Question {}/{}",
+                    ask.current + 1,
+                    ask.request.questions.len()
+                )
+            } else {
+                format!(
+                    "{} · {}/{}",
+                    question.header.trim(),
+                    ask.current + 1,
+                    ask.request.questions.len()
+                )
+            };
+            lines.push(Line::styled(header, theme.title));
+            lines.push(Line::from(question.question.clone()));
+            lines.push(Line::from(""));
+            for (index, option) in question.options.iter().enumerate() {
+                let cursor = if index == ask.cursor { "›" } else { " " };
+                let checked = if ask.selected[ask.current].contains(&index) {
+                    if question.multi_select {
+                        "[x]"
+                    } else {
+                        "(*)"
+                    }
+                } else if question.multi_select {
+                    "[ ]"
+                } else {
+                    "( )"
+                };
+                let style = if index == ask.cursor {
+                    Style::default()
+                        .fg(theme.selected_fg)
+                        .bg(theme.selection_bg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(theme.fg)
+                };
+                lines.push(Line::styled(
+                    format!("{cursor} {checked} {}", option.label),
+                    style,
+                ));
+                if !option.description.trim().is_empty() {
+                    lines.push(Line::styled(
+                        format!(
+                            "      {}",
+                            truncate_to_width(
+                                &option.description,
+                                inner.width.saturating_sub(8) as usize
+                            )
+                        ),
+                        Style::default().fg(theme.muted),
+                    ));
+                }
+            }
+            if let Some(preview) = ask
+                .selected_option()
+                .and_then(|option| option.preview.as_deref())
+            {
+                lines.push(Line::from(""));
+                lines.push(Line::styled("Preview", theme.title));
+                for line in preview.lines().take(8) {
+                    lines.push(Line::styled(
+                        truncate_to_width(line, inner.width.saturating_sub(2) as usize),
+                        Style::default().fg(theme.muted),
+                    ));
+                }
+            }
+            if ask.custom_active {
+                lines.push(Line::from(""));
+                lines.push(Line::styled(
+                    format!("Custom: {}", ask.custom_input),
+                    Style::default()
+                        .fg(theme.selected_fg)
+                        .bg(theme.selection_bg)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+        }
+    } else {
+        lines.push(Line::from("Waiting for question data…"));
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(theme.fg))
+            .wrap(Wrap { trim: false }),
+        sections[0],
+    );
+    render_overlay_footer(
+        frame,
+        sections[1],
+        "↑/↓ move • Space toggle • Enter select/next • c custom • t chat • Esc cancel",
+        theme.footer,
     );
 }
 
@@ -3041,8 +3754,10 @@ fn render_settings_overlay(
         SettingsPage::Collapse => render_collapse_settings(frame, sections[0], settings, theme),
         SettingsPage::ChatStyle => render_chat_style_settings(frame, sections[0], settings, theme),
         SettingsPage::Tools => render_tools_settings(frame, sections[0], settings, theme),
+        SettingsPage::Auth => render_auth_settings(frame, sections[0], settings, theme),
         SettingsPage::Keymaps => render_keymap_settings(frame, sections[0], settings, theme),
         SettingsPage::Theme => render_theme_settings(frame, sections[0], settings, theme),
+        SettingsPage::Notify => render_notify_settings(frame, sections[0], settings, theme),
         SettingsPage::Extensions => render_settings_extensions_page(frame, sections[0], theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
@@ -3081,6 +3796,7 @@ fn render_settings_menu(
                 format!("current: {}", chat_style_label(settings.chat_style))
             }
             SettingsMenuItem::Tools => format!("{} registered", settings.tools.len()),
+            SettingsMenuItem::Auth => format!("{} provider(s)", settings.auth_items.len()),
             SettingsMenuItem::Keymaps => format!("preset: {}", settings.keymap.preset.label()),
             SettingsMenuItem::Theme => settings.effective_theme.as_ref().map_or_else(
                 || "current: system".into(),
@@ -3092,6 +3808,18 @@ fn render_settings_menu(
                     )
                 },
             ),
+            SettingsMenuItem::Notify => {
+                let status = if settings.notify.effective_enabled() {
+                    "on"
+                } else {
+                    "off"
+                };
+                let topic = settings
+                    .notify
+                    .effective_text(crate::settings::NotifyField::Topic)
+                    .unwrap_or_else(|| "missing topic".into());
+                format!("{status}, topic: {topic}")
+            }
             SettingsMenuItem::Extensions => "open extension manager".into(),
         };
         let text = truncate_with_ellipsis(
@@ -3194,6 +3922,7 @@ fn render_model_settings(
     } else {
         let visible_height = list_content_height(area).saturating_sub(2).max(1);
         let range = visible_range(filtered_position, filtered_indices.len(), visible_height);
+        let mut last_provider = "";
         lines.extend(
             filtered_indices
                 .iter()
@@ -3206,14 +3935,50 @@ fn render_model_settings(
                     let selected = model.id == settings.selected_model;
                     let marker = selection_marker(active, selected);
                     let style = settings_item_style(active, selected, theme);
-                    Some(Line::styled(
-                        truncate_with_ellipsis(
-                            &format!("{marker} {}", model.display_name),
-                            content_width,
-                        ),
+                    // Add provider group header when provider changes and search is not active
+                    let show_group = !settings.model_search_active
+                        && !model.provider.is_empty()
+                        && model.provider != "unknown"
+                        && model.provider != last_provider;
+                    if show_group {
+                        last_provider = &model.provider;
+                    }
+                    let provider_label = if model.provider_label.trim().is_empty() {
+                        model.provider.as_str()
+                    } else {
+                        model.provider_label.as_str()
+                    };
+                    let availability_label = match model.availability {
+                        crate::settings::ModelAvailability::Unknown => None,
+                        availability => Some(availability.label()),
+                    };
+                    let label = if model.provider == model.id || model.provider == "unknown" {
+                        availability_label.map_or_else(
+                            || model.display_name.clone(),
+                            |availability| format!("{} ({availability})", model.display_name),
+                        )
+                    } else if let Some(availability) = availability_label {
+                        format!(
+                            "[{} • {}] {}",
+                            provider_label, availability, model.display_name
+                        )
+                    } else {
+                        format!("[{}] {}", provider_label, model.display_name)
+                    };
+                    let mut result = Vec::new();
+                    if show_group && !active {
+                        result.push(Line::styled(
+                            truncate_with_ellipsis(&format!(" {}", provider_label), content_width),
+                            Style::default().fg(theme.muted),
+                        ));
+                    }
+                    result.push(Line::styled(
+                        truncate_with_ellipsis(&format!("{marker} {label}"), content_width),
                         style,
-                    ))
-                }),
+                    ));
+                    Some(result)
+                })
+                .flatten(),
         );
     }
     frame.render_widget(
@@ -3344,8 +4109,8 @@ fn render_chat_style_settings(
 ) {
     let descriptions = [
         (ChatStyle::Chat, "current rounded chat bubbles"),
-        (ChatStyle::Agentic, "Codex-like activity transcript"),
-        (ChatStyle::Minimal, "jcode-like compact transcript"),
+        (ChatStyle::Agentic, "Activity-focused transcript"),
+        (ChatStyle::Minimal, "Compact transcript for small terminals"),
     ];
     let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![Line::styled(
@@ -3456,6 +4221,274 @@ fn render_tools_settings(
             .alignment(Alignment::Left),
         area,
     );
+}
+
+fn render_auth_settings(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let title = if settings.auth_items.is_empty() {
+        " Auth & Providers ".to_string()
+    } else {
+        format!(
+            " Auth & Providers {}/{} ",
+            settings
+                .auth_cursor
+                .saturating_add(1)
+                .min(settings.auth_items.len()),
+            settings.auth_items.len()
+        )
+    };
+    let content_width = area.width.saturating_sub(2) as usize;
+    let mut lines = vec![Line::styled(
+        truncate_with_ellipsis(
+            "Extension auth/runtime readiness. Recommended: /9router setup. Built-in provider auth commands have been removed.",
+            content_width,
+        ),
+        Style::default().fg(theme.muted),
+    )];
+    lines.push(Line::from(""));
+    if settings.auth_items.is_empty() {
+        lines.push(Line::styled(
+            "No provider auth status loaded.",
+            Style::default().fg(theme.muted),
+        ));
+    } else {
+        let visible_height = list_content_height(area).saturating_sub(2).max(1);
+        let range = visible_range(
+            settings.auth_cursor,
+            settings.auth_items.len(),
+            visible_height,
+        );
+        lines.extend(
+            settings
+                .auth_items
+                .iter()
+                .enumerate()
+                .skip(range.start)
+                .take(range.end.saturating_sub(range.start))
+                .map(|(index, item)| {
+                    let active = index == settings.auth_cursor;
+                    let marker = arrow_marker(active);
+                    let setup = item
+                        .setup_url
+                        .as_ref()
+                        .map_or(String::new(), |url| format!(" • setup: {url}"));
+                    Line::styled(
+                        truncate_with_ellipsis(
+                            &format!("{marker} {}{}", item.label(), setup),
+                            content_width,
+                        ),
+                        item_style(active, item.current, theme),
+                    )
+                }),
+        );
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_notify_settings(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    use crate::settings::{NotifyField, NotifySettingsState};
+
+    let content_width = area.width.saturating_sub(2) as usize;
+    let active_scope = settings.notify.scope;
+    let scope = settings.notify.scope_settings(active_scope);
+    let title = format!(" Notify • editing {} ", active_scope.label());
+    let effective_server = settings
+        .notify
+        .effective_text(NotifyField::Server)
+        .unwrap_or_else(|| "https://ntfy.sh".into());
+    let effective_topic = settings
+        .notify
+        .effective_text(NotifyField::Topic)
+        .unwrap_or_else(|| "<topic required>".into());
+    let mut lines = vec![Line::styled(
+        truncate_with_ellipsis(
+            &format!(
+                "Effective: {} • {}/{}",
+                if settings.notify.effective_enabled() {
+                    "ON"
+                } else {
+                    "OFF"
+                },
+                effective_server,
+                effective_topic
+            ),
+            content_width,
+        ),
+        theme.title,
+    )];
+    if !settings.notify.available {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                "Install builtin:notify from /extensions to activate host notification hooks.",
+                content_width,
+            ),
+            settings_muted_style(theme),
+        ));
+    } else {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                "Enter edits/toggles selected row • p project • g global • x clears the scoped value",
+                content_width,
+            ),
+            settings_muted_style(theme),
+        ));
+    }
+    if let Some(edit) = &settings.notify.edit {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!(
+                    "Editing {} {}: {}█",
+                    edit.scope.label(),
+                    edit.field.label(),
+                    edit.input
+                ),
+                content_width,
+            ),
+            Style::default().fg(theme.focused_border),
+        ));
+    } else {
+        lines.push(Line::styled(
+            truncate_with_ellipsis(
+                &format!(
+                    "Scoped {} values below; blank project values inherit global.",
+                    active_scope.label()
+                ),
+                content_width,
+            ),
+            settings_muted_style(theme),
+        ));
+    }
+    lines.push(Line::from(""));
+
+    let visible_height = list_content_height(area).saturating_sub(lines.len()).max(1);
+    let range = visible_range(
+        settings.notify.cursor,
+        NotifySettingsState::ROWS.len(),
+        visible_height,
+    );
+    lines.extend(
+        NotifySettingsState::ROWS
+            .iter()
+            .enumerate()
+            .skip(range.start)
+            .take(range.end.saturating_sub(range.start))
+            .map(|(index, row)| {
+                let active = index == settings.notify.cursor;
+                notify_settings_row_line(*row, scope, active, content_width, theme)
+            }),
+    );
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(title)
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn notify_settings_row_line(
+    row: crate::settings::NotifyRow,
+    scope: &crate::settings::NotifyScopeSettings,
+    active: bool,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    use crate::settings::{NotifyEventKind, NotifyField, NotifyRow};
+
+    let value = match row {
+        NotifyRow::Enabled => scope
+            .enabled
+            .map(|enabled| if enabled { "ON" } else { "OFF" }.to_string())
+            .unwrap_or_else(|| "inherit".into()),
+        NotifyRow::Server => notify_row_text(scope.server.as_deref(), "inherit https://ntfy.sh"),
+        NotifyRow::Topic => notify_row_text(scope.topic.as_deref(), "inherit / missing"),
+        NotifyRow::Token => scope
+            .token
+            .as_ref()
+            .filter(|token| !token.trim().is_empty())
+            .map(|_| "••••••".into())
+            .unwrap_or_else(|| "inherit / none".into()),
+        NotifyRow::Priority => notify_row_text(scope.priority.as_deref(), "inherit / default"),
+        NotifyRow::Tags => scope
+            .tags
+            .as_ref()
+            .filter(|tags| !tags.is_empty())
+            .map(|tags| tags.join(","))
+            .unwrap_or_else(|| "inherit / none".into()),
+        NotifyRow::AgentEnd => notify_event_row_value(scope, NotifyEventKind::AgentEnd),
+        NotifyRow::ToolError => notify_event_row_value(scope, NotifyEventKind::ToolError),
+    };
+    let marker = arrow_marker(active);
+    let text = truncate_with_ellipsis(&format!("{marker} {}: {value}", row.label()), width);
+    let selected = match row {
+        NotifyRow::Enabled => scope.enabled.unwrap_or(false),
+        NotifyRow::AgentEnd => scope
+            .events
+            .as_ref()
+            .is_some_and(|events| events.contains(&NotifyEventKind::AgentEnd)),
+        NotifyRow::ToolError => scope
+            .events
+            .as_ref()
+            .is_some_and(|events| events.contains(&NotifyEventKind::ToolError)),
+        _ => row
+            .field()
+            .and_then(|field| match field {
+                NotifyField::Server => scope.server.as_ref(),
+                NotifyField::Topic => scope.topic.as_ref(),
+                NotifyField::Token => scope.token.as_ref(),
+                NotifyField::Priority => scope.priority.as_ref(),
+                NotifyField::Tags => None,
+            })
+            .is_some(),
+    };
+    Line::styled(text, item_style(active, selected, theme))
+}
+
+fn notify_row_text(value: Option<&str>, fallback: &str) -> String {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| fallback.into())
+}
+
+fn notify_event_row_value(
+    scope: &crate::settings::NotifyScopeSettings,
+    event: crate::settings::NotifyEventKind,
+) -> String {
+    scope.events.as_ref().map_or_else(
+        || "inherit / ON".into(),
+        |events| {
+            if events.contains(&event) {
+                "ON".into()
+            } else {
+                "OFF".into()
+            }
+        },
+    )
 }
 
 fn render_theme_settings(
@@ -3994,7 +5027,10 @@ fn render_settings_footer(
         SettingsPage::Tools => {
             "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
         }
+        SettingsPage::Auth => "arrows/jk move • recommended /9router setup • extension readiness only • Esc/← back",
         SettingsPage::Theme => "arrows/jk move • Enter preview • p project • g global • r reset project • R reset global • Esc/← back",
+        SettingsPage::Notify if settings.notify.edit.is_some() => "type value • Enter save • Esc cancel edit",
+        SettingsPage::Notify => "arrows/jk move • Enter edit/toggle • p project • g global • x clear • Esc/← back",
         SettingsPage::Extensions => "Enter open extension manager • Esc/← back",
         SettingsPage::Keymaps => match settings.keymaps_mode {
             KeymapsMode::List => {
@@ -4022,6 +5058,8 @@ fn render_settings_footer(
             );
             format!("Theme: {effective} • {controls}")
         }
+    } else if settings.page == SettingsPage::Notify {
+        format!("Notify ({}) • {controls}", settings.notify.scope.label())
     } else if settings.page == SettingsPage::Extensions {
         format!("Extensions • {controls}")
     } else {
@@ -4390,7 +5428,7 @@ mod tests {
     use crate::{
         app::{
             ExtensionManagementItem, ExtensionManagementTarget, OverlayKind, SessionListItem,
-            TuiState,
+            TuiState, UsagePanelProvider, UsagePanelReport, UsagePanelSession,
         },
         message::{MessageView, ToolCallView},
         settings::CollapseMode,
@@ -4843,6 +5881,135 @@ mod tests {
     }
 
     #[test]
+    fn footer_status_surfaces_render_directly_around_composer() -> Result<(), Box<dyn Error>> {
+        let mut state =
+            TuiState::with_settings("openrouter:test/model", oino_types::ThinkingLevel::High);
+        state.set_model_catalog(
+            vec![crate::settings::ModelOption::new("openrouter:test/model")
+                .with_display_name("Test Model")
+                .with_thinking_levels(crate::settings::all_thinking_levels())
+                .with_context_length(Some(100_000))],
+            "loaded",
+        );
+        state.set_working_directory("/repo/oino");
+        state.set_context_tokens(Some(10_000));
+        state.set_extension_ui_surfaces(vec![
+            extension_surface(
+                FOOTER_STATUS_TOP_ID,
+                "oino.footer_status",
+                UiSurfaceKind::FooterTop,
+                "Footer Status Top",
+                COMPOSER_DIRECT_TOP_SLOT,
+                100,
+            )?,
+            extension_surface(
+                FOOTER_STATUS_BOTTOM_ID,
+                "oino.footer_status",
+                UiSurfaceKind::FooterBottom,
+                "Footer Status Bottom",
+                COMPOSER_DIRECT_BOTTOM_SLOT,
+                100,
+            )?,
+        ]);
+
+        let layout = app_layout(
+            &state,
+            Rect {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 24,
+            },
+        );
+        let Some(composer_top) = layout.composer_top else {
+            panic!("footer-status top line should reserve a direct composer-top row");
+        };
+        let Some(composer_bottom) = layout.composer_bottom else {
+            panic!("footer-status bottom line should reserve a direct composer-bottom row");
+        };
+        assert_eq!(composer_top.y + 1, layout.composer.y);
+        assert_eq!(
+            layout.composer.y + layout.composer.height,
+            composer_bottom.y
+        );
+
+        let buffer = draw_state(100, 24, &state);
+        let text = buffer_text(&buffer);
+        assert!(text.contains("model: Test Model"));
+        assert!(text.contains("thinking: High"));
+        assert!(text.contains("cwd: /repo/oino"));
+        assert!(text.contains("context: 10%/100k"));
+        assert!(!text.contains("Extension Status"));
+        assert_eq!(transcript_visible_lines(&state, 100, 24), 15);
+        Ok(())
+    }
+
+    #[test]
+    fn footer_status_without_surfaces_keeps_normal_composer_layout() {
+        let mut state =
+            TuiState::with_settings("openrouter:test/model", oino_types::ThinkingLevel::High);
+        state.set_working_directory("/repo/oino");
+        state.set_context_tokens(Some(10_000));
+
+        let layout = app_layout(
+            &state,
+            Rect {
+                x: 0,
+                y: 0,
+                width: 80,
+                height: 20,
+            },
+        );
+        assert!(layout.composer_top.is_none());
+        assert!(layout.composer_bottom.is_none());
+        assert_eq!(layout.composer.y + layout.composer.height, 20);
+
+        let text = buffer_text(&draw_state(80, 20, &state));
+        assert!(!text.contains("model: openrouter:test/model"));
+        assert!(!text.contains("cwd: /repo/oino"));
+    }
+
+    #[test]
+    fn footer_status_lines_ellipsize_in_narrow_terminals() -> Result<(), Box<dyn Error>> {
+        let mut state =
+            TuiState::with_settings("openrouter:test/model", oino_types::ThinkingLevel::High);
+        state.set_model_catalog(
+            vec![crate::settings::ModelOption::new("openrouter:test/model")
+                .with_display_name("A Very Long Model Display Name")
+                .with_thinking_levels(crate::settings::all_thinking_levels())
+                .with_context_length(Some(1_000_000))],
+            "loaded",
+        );
+        state.set_working_directory("/very/long/path/to/the/current/oino/project");
+        state.set_context_tokens(Some(543_210));
+        state.set_extension_ui_surfaces(vec![
+            extension_surface(
+                FOOTER_STATUS_TOP_ID,
+                "oino.footer_status",
+                UiSurfaceKind::FooterTop,
+                "Footer Status Top",
+                COMPOSER_DIRECT_TOP_SLOT,
+                100,
+            )?,
+            extension_surface(
+                FOOTER_STATUS_BOTTOM_ID,
+                "oino.footer_status",
+                UiSurfaceKind::FooterBottom,
+                "Footer Status Bottom",
+                COMPOSER_DIRECT_BOTTOM_SLOT,
+                100,
+            )?,
+        ]);
+
+        let text = buffer_text(&draw_state(30, 12, &state));
+        assert!(text.contains("model: A Very Long"));
+        assert!(text.contains("cwd: /very/long"));
+        assert!(text.contains('…'));
+        assert_eq!(transcript_visible_lines(&state, 30, 12), 3);
+        Ok(())
+    }
+
+    #[test]
     fn registry_backed_extension_surfaces_show_conflict_badges() -> Result<(), Box<dyn Error>> {
         let mut state = TuiState::new();
         state.set_extension_ui_surfaces(vec![
@@ -5177,7 +6344,7 @@ mod tests {
             tool_calls: Vec::new(),
             is_error: false,
         });
-        let buffer = draw_state(90, 24, &state);
+        let buffer = draw_state(90, 32, &state);
         let text = buffer
             .content()
             .iter()
@@ -5317,12 +6484,12 @@ mod tests {
     #[test]
     fn command_suggestion_lines_stay_width_bounded_when_narrow() {
         let view = CommandSuggestionsView {
-            query: "deepseek".into(),
+            query: "longmodel".into(),
             title: "Models".into(),
             items: vec![crate::command::CommandSuggestionItem {
-                label: "openrouter:deepseek/deepseek-v4-flash:free-with-a-long-tail".into(),
+                label: "openrouter:example/longmodel-free-with-a-long-tail".into(),
                 summary: "Display name with another long tail".into(),
-                replacement: "openrouter:deepseek/deepseek-v4-flash:free-with-a-long-tail".into(),
+                replacement: "openrouter:example/longmodel-free-with-a-long-tail".into(),
                 replace_start: 7,
                 replace_end: 15,
                 complete_on_enter: true,
@@ -5344,7 +6511,7 @@ mod tests {
         state.composer.replace_text("/model ");
         state.set_model_catalog(
             vec![crate::settings::ModelOption::new(
-                "openrouter:deepseek/deepseek-v4-flash:free-with-a-long-tail",
+                "openrouter:example/longmodel-free-with-a-long-tail",
             )],
             "loaded",
         );
@@ -5377,6 +6544,75 @@ mod tests {
         assert!(text.contains("Models 40/60"));
         assert!(text.contains("› openrouter:model-39"));
         assert!(!text.contains("openrouter:model-0"));
+    }
+
+    #[test]
+    fn render_usage_overlay_shows_session_and_provider_details() {
+        let mut state = TuiState::new();
+        state.overlay = Some(OverlayKind::Usage);
+        state.set_usage_report(UsagePanelReport {
+            generated_at_unix: 123,
+            status_line: "Usage: 1 reported turn, 42 tokens".into(),
+            session: UsagePanelSession {
+                assistant_turns: 1,
+                reported_turns: 1,
+                input_tokens: 20,
+                output_tokens: 22,
+                total_tokens: 42,
+                costs: vec!["0.0042 USD".into()],
+                ..UsagePanelSession::default()
+            },
+            providers: vec![UsagePanelProvider {
+                provider_id: "openrouter".into(),
+                display_name: "OpenRouter".into(),
+                status: "available".into(),
+                message: "available: 1 reported turn, 42 tokens".into(),
+                assistant_turns: 1,
+                reported_turns: 1,
+                total_tokens: 42,
+                costs: vec!["0.0042 USD".into()],
+                account_source: Some("fixture • refreshed at 123".into()),
+                account_balance: Some("1.5000 USD".into()),
+                account_limits: vec!["daily tokens: 25.00/100.00 tokens".into()],
+            }],
+        });
+
+        let buffer = draw_state(90, 32, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Usage"));
+        assert!(text.contains("OpenRouter"));
+        assert!(text.contains("42 tokens"));
+        assert!(text.contains("0.0042 USD"));
+        assert!(text.contains("Account usage"));
+        assert!(text.contains("1.5000 USD"));
+        assert!(text.contains("daily tokens"));
+        assert!(text.contains("r refresh"));
+    }
+
+    #[test]
+    fn render_usage_overlay_ellipsizes_rows_when_narrow() {
+        let mut state = TuiState::new();
+        state.overlay = Some(OverlayKind::Usage);
+        state.set_usage_report(UsagePanelReport {
+            generated_at_unix: 123,
+            status_line: "Usage: one extremely long status line that should be clipped".into(),
+            session: UsagePanelSession::default(),
+            providers: vec![UsagePanelProvider {
+                provider_id: "provider-with-a-very-long-tail".into(),
+                display_name: "Provider Name With A Very Long Tail".into(),
+                status: "not configured".into(),
+                message: "message with details that should not run through the border".into(),
+                ..UsagePanelProvider::default()
+            }],
+        });
+
+        let buffer = draw_state(44, 16, &state);
+        let text = buffer_text(&buffer);
+
+        assert!(text.contains("Usage"));
+        assert!(text.contains("…"));
+        assert!(!text.contains("very-long-tail"));
     }
 
     #[test]

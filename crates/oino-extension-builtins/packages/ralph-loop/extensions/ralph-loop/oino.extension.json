@@ -1,0 +1,73 @@
+{
+  "id": "oino.ralph_loop",
+  "package_id": "oino.ralph_loop",
+  "display_name": "Oino Ralph Loop",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "ralph"
+    ],
+    "host_capabilities": [
+      "ralph_loop"
+    ],
+    "ui": [],
+    "filesystem": [
+      {
+        "access": "read_write",
+        "paths": [
+          ".oino/ralph/**"
+        ]
+      }
+    ],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [
+      "project"
+    ],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "ralph",
+        "description": "Manage Oino Ralph loops: start, auto-continue, run once, steer, status, list, resume, pause, cancel, archive, and record iteration promise tags.",
+        "handler": "ralph.command"
+      }
+    ],
+    "resources": [
+      {
+        "id": "ralph_loop_skill",
+        "kind": "skill",
+        "path": "resources/skills/ralph-loop/SKILL.md"
+      }
+    ],
+    "tools": [],
+    "keymaps": [],
+    "hooks": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "providers": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "Oino owns Ralph loop state under <project>/.oino/ralph, injects task/steering/log context into iteration prompts, records history, and interprets promise tags without depending on external ralph-loop packages."
+  }
+}

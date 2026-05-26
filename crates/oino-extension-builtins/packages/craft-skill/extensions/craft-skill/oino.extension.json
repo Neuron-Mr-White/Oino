@@ -1,0 +1,54 @@
+{
+  "id": "oino.craft_skill",
+  "package_id": "oino.craft_skill",
+  "display_name": "Oino Craft Skill",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [],
+    "commands": [],
+    "host_capabilities": [],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "commands": [],
+    "resources": [
+      {
+        "id": "craft-skill",
+        "kind": "skill",
+        "path": "resources/skills/craft-skill/SKILL.md"
+      }
+    ],
+    "tools": [],
+    "keymaps": [],
+    "hooks": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "providers": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "This package contributes only an Oino skill resource. Any file creation happens through normal user-approved Oino tools and modes."
+  }
+}

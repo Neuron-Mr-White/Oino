@@ -2,8 +2,12 @@
 
 use crate::{
     app::ExtensionManagementTarget,
+    ask_user::AskUserOutcome,
+    command::{AgentMode, RalphCommand},
     keymap::KeymapConfig,
-    settings::{ChatStyle, CollapseMode, CollapseTarget, ToolSettingsScope},
+    settings::{
+        ChatStyle, CollapseMode, CollapseTarget, NotifyEventKind, NotifyField, ToolSettingsScope,
+    },
 };
 use oino_types::ThinkingLevel;
 
@@ -17,7 +21,6 @@ pub enum TuiAction {
     ListSessions,
     OpenSession(String),
     ReloadResources,
-    LoginOAuth(String),
     OpenInspect,
     ExportChatHtml,
     SetModel(String),
@@ -37,6 +40,20 @@ pub enum TuiAction {
     ResetTheme {
         scope: ToolSettingsScope,
     },
+    SetNotifyEnabled {
+        scope: ToolSettingsScope,
+        enabled: bool,
+    },
+    SetNotifyField {
+        scope: ToolSettingsScope,
+        field: NotifyField,
+        value: Option<String>,
+    },
+    SetNotifyEvent {
+        scope: ToolSettingsScope,
+        event: NotifyEventKind,
+        enabled: bool,
+    },
     RunExtensionUiAction {
         surface_id: String,
         action_id: String,
@@ -44,6 +61,17 @@ pub enum TuiAction {
     RunExtensionAction {
         action: String,
     },
+    Compact,
+    Recall {
+        query: Option<String>,
+    },
+    RefreshUsage,
+    RefreshAuthStatus {
+        provider: Option<String>,
+    },
+    AnswerAskUser(AskUserOutcome),
+    Ralph(RalphCommand),
+    SetAgentMode(AgentMode),
     SetExtensionEnabled {
         target: ExtensionManagementTarget,
         id: String,
@@ -63,11 +91,16 @@ pub enum TuiAction {
         source: String,
         scope: ToolSettingsScope,
     },
+    UpdateExtensionPackages,
     RemoveExtensionPackage {
         package_id: String,
         scope: ToolSettingsScope,
     },
     SetSessionTitle(String),
+    AuthQuickstart,
+    RunExtensionCommand {
+        input: String,
+    },
     AbortPrompt,
     Quit,
 }

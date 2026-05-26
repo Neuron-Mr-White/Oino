@@ -1070,6 +1070,7 @@ dependencies = [
  "async-trait",
  "crossterm",
  "dirs",
+ "futures",
  "oino-agent-loop",
  "oino-auth",
  "oino-extension-builtins",
@@ -1077,6 +1078,7 @@ dependencies = [
  "oino-extension-manager",
  "oino-extension-runtime",
  "oino-harness",
+ "oino-provider-catalog",
  "oino-provider-openrouter",
  "oino-resource",
  "oino-session",
@@ -1084,12 +1086,14 @@ dependencies = [
  "oino-tui",
  "oino-types",
  "ratatui",
+ "reqwest",
  "semver",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "uuid",
  "webbrowser",
 ]
 
@@ -1123,9 +1127,12 @@ dependencies = [
  "oino-agent-loop",
  "oino-env",
  "oino-extension-core",
+ "oino-provider-catalog",
  "oino-resource",
  "oino-tools",
  "oino-tui",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -1201,6 +1208,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "oino-provider-catalog"
+version = "0.1.0"
+
+[[package]]
 name = "oino-provider-openrouter"
 version = "0.1.0"
 dependencies = [
@@ -1208,6 +1219,7 @@ dependencies = [
  "futures",
  "oino-agent-loop",
  "oino-auth",
+ "oino-provider-catalog",
  "oino-types",
  "reqwest",
  "serde",
@@ -1264,6 +1276,7 @@ dependencies = [
  "crossterm",
  "nucleo",
  "oino-extension-core",
+ "oino-provider-catalog",
  "oino-types",
  "pulldown-cmark",
  "ratatui",

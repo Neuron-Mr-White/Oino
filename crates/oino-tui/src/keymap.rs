@@ -1190,7 +1190,17 @@ impl FromStr for KeyStroke {
             _ => {
                 let mut chars = key.chars();
                 match (chars.next(), chars.next()) {
-                    (Some(ch), None) => StrokeCode::Char(ch),
+                    (Some(ch), None) => {
+                        let ch = if !parsed_modifiers.shift
+                            && !parsed_modifiers.is_empty()
+                            && ch.is_ascii_alphabetic()
+                        {
+                            ch.to_ascii_lowercase()
+                        } else {
+                            ch
+                        };
+                        StrokeCode::Char(ch)
+                    }
                     _ => return Err(format!("unknown key `{key}`")),
                 }
             }
@@ -1715,6 +1725,22 @@ mod tests {
     }
 
     #[test]
+    fn parses_displayed_modified_letters_as_runtime_strokes() {
+        let parsed = match "Ctrl-O".parse::<KeyStroke>() {
+            Ok(stroke) => stroke,
+            Err(err) => panic!("parse ctrl-o failed: {err}"),
+        };
+        let runtime =
+            match KeyStroke::from_event(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)) {
+                Some(stroke) => stroke,
+                None => panic!("missing ctrl-o stroke"),
+            };
+
+        assert_eq!(parsed, runtime);
+        assert_eq!(parsed.to_string(), "Ctrl-O");
+    }
+
+    #[test]
     fn resolves_default_chord_prefix_and_action() {
         let keymap = KeymapConfig::default();
         let ctrl_o =
@@ -1732,6 +1758,33 @@ mod tests {
         };
         assert_eq!(
             keymap.resolve(&[KeyContext::Global], &[ctrl_o, s]),
+            KeymapMatch::Matched(KeyAction::SettingsOpen)
+        );
+    }
+
+    #[test]
+    fn serialized_default_keymap_chords_resolve_after_reload() {
+        let keymap = KeymapConfig::default();
+        let text = serde_json::to_string(&keymap)
+            .unwrap_or_else(|err| panic!("serialize keymap failed: {err}"));
+        let reloaded = serde_json::from_str::<KeymapConfig>(&text)
+            .unwrap_or_else(|err| panic!("deserialize keymap failed: {err}"));
+        let ctrl_o =
+            match KeyStroke::from_event(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)) {
+                Some(stroke) => stroke,
+                None => panic!("missing ctrl-o stroke"),
+            };
+        let s = match KeyStroke::from_event(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE)) {
+            Some(stroke) => stroke,
+            None => panic!("missing s stroke"),
+        };
+
+        assert_eq!(
+            reloaded.resolve(&[KeyContext::Global], &[ctrl_o]),
+            KeymapMatch::Pending
+        );
+        assert_eq!(
+            reloaded.resolve(&[KeyContext::Global], &[ctrl_o, s]),
             KeymapMatch::Matched(KeyAction::SettingsOpen)
         );
     }

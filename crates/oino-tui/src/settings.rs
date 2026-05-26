@@ -10,22 +10,107 @@ use crate::{
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::ThinkingLevel;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelAvailability {
+    Configured,
+    Unknown,
+    NeedsProviderKey,
+}
+
+impl Default for ModelAvailability {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+impl ModelAvailability {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Configured => "configured",
+            Self::Unknown => "unknown",
+            Self::NeedsProviderKey => "needs key",
+        }
+    }
+
+    const fn display_rank(self) -> u8 {
+        match self {
+            Self::Configured => 0,
+            Self::Unknown => 1,
+            Self::NeedsProviderKey => 2,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelOption {
     pub id: String,
     pub display_name: String,
+    pub provider: String,
+    pub provider_label: String,
+    pub availability: ModelAvailability,
     pub thinking_levels: Vec<ThinkingLevel>,
+    pub context_length: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthStatusItem {
+    pub provider_id: String,
+    pub display_name: String,
+    pub auth_kind: String,
+    pub runtime: String,
+    pub state: String,
+    pub readiness: String,
+    pub source: String,
+    pub detail: String,
+    pub setup_url: Option<String>,
+    pub current: bool,
+}
+
+impl AuthStatusItem {
+    #[must_use]
+    pub fn label(&self) -> String {
+        let current = if self.current { "current" } else { "" };
+        let suffix = [
+            current,
+            self.auth_kind.as_str(),
+            self.runtime.as_str(),
+            self.source.as_str(),
+        ]
+        .into_iter()
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join(" • ");
+        if suffix.is_empty() {
+            format!(
+                "{} ({}) — {} / {}",
+                self.display_name, self.provider_id, self.state, self.readiness
+            )
+        } else {
+            format!(
+                "{} ({}) — {} / {} — {}",
+                self.display_name, self.provider_id, self.state, self.readiness, suffix
+            )
+        }
+    }
 }
 
 impl ModelOption {
     #[must_use]
     pub fn new(id: impl Into<String>) -> Self {
         let id = id.into();
+        let provider = id.split(':').next().unwrap_or("unknown").to_string();
         Self {
             display_name: id.clone(),
             id,
+            provider_label: provider.clone(),
+            provider,
+            availability: ModelAvailability::Unknown,
             thinking_levels: vec![ThinkingLevel::Off],
+            context_length: None,
         }
     }
 
@@ -36,8 +121,32 @@ impl ModelOption {
     }
 
     #[must_use]
+    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+        self.provider = provider.into();
+        self
+    }
+
+    #[must_use]
+    pub fn with_provider_label(mut self, provider_label: impl Into<String>) -> Self {
+        self.provider_label = provider_label.into();
+        self
+    }
+
+    #[must_use]
+    pub const fn with_availability(mut self, availability: ModelAvailability) -> Self {
+        self.availability = availability;
+        self
+    }
+
+    #[must_use]
     pub fn with_thinking_levels(mut self, thinking_levels: Vec<ThinkingLevel>) -> Self {
         self.thinking_levels = normalize_thinking_levels(thinking_levels);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_context_length(mut self, context_length: Option<usize>) -> Self {
+        self.context_length = context_length;
         self
     }
 }
@@ -125,8 +234,10 @@ pub enum SettingsPage {
     Collapse,
     ChatStyle,
     Tools,
+    Auth,
     Keymaps,
     Theme,
+    Notify,
     Extensions,
 }
 
@@ -198,8 +309,10 @@ pub enum SettingsMenuItem {
     CollapseMode,
     ChatStyle,
     Tools,
+    Auth,
     Keymaps,
     Theme,
+    Notify,
     Extensions,
 }
 
@@ -212,8 +325,10 @@ impl SettingsMenuItem {
             Self::CollapseMode => "Collapse Mode",
             Self::ChatStyle => "Chat Style",
             Self::Tools => "Tools",
+            Self::Auth => "Auth & Providers",
             Self::Keymaps => "Keymaps",
             Self::Theme => "Theme",
+            Self::Notify => "Notify",
             Self::Extensions => "Extensions",
         }
     }
@@ -226,8 +341,10 @@ impl SettingsMenuItem {
             Self::CollapseMode => SettingsPage::Collapse,
             Self::ChatStyle => SettingsPage::ChatStyle,
             Self::Tools => SettingsPage::Tools,
+            Self::Auth => SettingsPage::Auth,
             Self::Keymaps => SettingsPage::Keymaps,
             Self::Theme => SettingsPage::Theme,
+            Self::Notify => SettingsPage::Notify,
             Self::Extensions => SettingsPage::Extensions,
         }
     }
@@ -259,6 +376,20 @@ pub enum SettingsAction {
     ResetTheme {
         scope: ToolSettingsScope,
     },
+    SetNotifyEnabled {
+        scope: ToolSettingsScope,
+        enabled: bool,
+    },
+    SetNotifyField {
+        scope: ToolSettingsScope,
+        field: NotifyField,
+        value: Option<String>,
+    },
+    SetNotifyEvent {
+        scope: ToolSettingsScope,
+        event: NotifyEventKind,
+        enabled: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -273,6 +404,230 @@ pub struct ThemeOption {
     pub effective: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotifyField {
+    Server,
+    Topic,
+    Token,
+    Priority,
+    Tags,
+}
+
+impl NotifyField {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Server => "server",
+            Self::Topic => "topic",
+            Self::Token => "token",
+            Self::Priority => "priority",
+            Self::Tags => "tags",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotifyEventKind {
+    AgentEnd,
+    ToolError,
+}
+
+impl NotifyEventKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AgentEnd => "agent_end",
+            Self::ToolError => "tool_error",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NotifyScopeSettings {
+    pub enabled: Option<bool>,
+    pub server: Option<String>,
+    pub topic: Option<String>,
+    pub token: Option<String>,
+    pub priority: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub events: Option<Vec<NotifyEventKind>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotifyEditState {
+    pub scope: ToolSettingsScope,
+    pub field: NotifyField,
+    pub input: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotifySettingsState {
+    pub global: NotifyScopeSettings,
+    pub project: NotifyScopeSettings,
+    pub cursor: usize,
+    pub scope: ToolSettingsScope,
+    pub edit: Option<NotifyEditState>,
+    pub available: bool,
+}
+
+impl Default for NotifySettingsState {
+    fn default() -> Self {
+        Self {
+            global: NotifyScopeSettings::default(),
+            project: NotifyScopeSettings::default(),
+            cursor: 0,
+            scope: ToolSettingsScope::Project,
+            edit: None,
+            available: false,
+        }
+    }
+}
+
+impl NotifySettingsState {
+    pub const ROWS: [NotifyRow; 8] = [
+        NotifyRow::Enabled,
+        NotifyRow::Server,
+        NotifyRow::Topic,
+        NotifyRow::Token,
+        NotifyRow::Priority,
+        NotifyRow::Tags,
+        NotifyRow::AgentEnd,
+        NotifyRow::ToolError,
+    ];
+
+    #[must_use]
+    pub fn scope_settings(&self, scope: ToolSettingsScope) -> &NotifyScopeSettings {
+        match scope {
+            ToolSettingsScope::Global => &self.global,
+            ToolSettingsScope::Project => &self.project,
+        }
+    }
+
+    #[must_use]
+    pub fn effective_enabled(&self) -> bool {
+        self.project
+            .enabled
+            .or(self.global.enabled)
+            .unwrap_or(false)
+    }
+
+    #[must_use]
+    pub fn effective_text(&self, field: NotifyField) -> Option<String> {
+        choose_notify_text(
+            project_field(&self.project, field),
+            project_field(&self.global, field),
+        )
+    }
+
+    #[must_use]
+    pub fn effective_events(&self) -> Vec<NotifyEventKind> {
+        self.project
+            .events
+            .clone()
+            .or_else(|| self.global.events.clone())
+            .unwrap_or_else(|| vec![NotifyEventKind::AgentEnd, NotifyEventKind::ToolError])
+    }
+
+    #[must_use]
+    pub fn effective_event_enabled(&self, event: NotifyEventKind) -> bool {
+        self.effective_events().contains(&event)
+    }
+
+    pub fn set_available(&mut self, available: bool) {
+        self.available = available;
+    }
+
+    pub fn set_config(&mut self, global: NotifyScopeSettings, project: NotifyScopeSettings) {
+        self.global = global;
+        self.project = project;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotifyRow {
+    Enabled,
+    Server,
+    Topic,
+    Token,
+    Priority,
+    Tags,
+    AgentEnd,
+    ToolError,
+}
+
+impl NotifyRow {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Server => "Server",
+            Self::Topic => "Topic",
+            Self::Token => "Token",
+            Self::Priority => "Priority",
+            Self::Tags => "Tags",
+            Self::AgentEnd => "Event: agent_end",
+            Self::ToolError => "Event: tool_error",
+        }
+    }
+
+    #[must_use]
+    pub const fn field(self) -> Option<NotifyField> {
+        match self {
+            Self::Server => Some(NotifyField::Server),
+            Self::Topic => Some(NotifyField::Topic),
+            Self::Token => Some(NotifyField::Token),
+            Self::Priority => Some(NotifyField::Priority),
+            Self::Tags => Some(NotifyField::Tags),
+            Self::Enabled | Self::AgentEnd | Self::ToolError => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn event(self) -> Option<NotifyEventKind> {
+        match self {
+            Self::AgentEnd => Some(NotifyEventKind::AgentEnd),
+            Self::ToolError => Some(NotifyEventKind::ToolError),
+            _ => None,
+        }
+    }
+}
+
+fn choose_notify_text(project: Option<String>, global: Option<String>) -> Option<String> {
+    project
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| global.filter(|value| !value.trim().is_empty()))
+}
+
+fn project_field(settings: &NotifyScopeSettings, field: NotifyField) -> Option<String> {
+    match field {
+        NotifyField::Server => settings.server.clone(),
+        NotifyField::Topic => settings.topic.clone(),
+        NotifyField::Token => settings.token.clone(),
+        NotifyField::Priority => settings.priority.clone(),
+        NotifyField::Tags => settings.tags.as_ref().map(|tags| tags.join(",")),
+    }
+}
+
+fn notify_scope_enabled(settings: &NotifyScopeSettings) -> bool {
+    settings.enabled.unwrap_or(false)
+}
+
+fn notify_scope_text(settings: &NotifyScopeSettings, field: NotifyField) -> Option<String> {
+    project_field(settings, field).filter(|value| !value.trim().is_empty())
+}
+
+fn notify_scope_event_enabled(settings: &NotifyScopeSettings, event: NotifyEventKind) -> bool {
+    settings
+        .events
+        .as_ref()
+        .is_none_or(|events| events.contains(&event))
+}
+
+fn normalize_optional_text(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
     pub models: Vec<ModelOption>,
@@ -285,6 +640,7 @@ pub struct SettingsState {
     pub collapse_cursor: usize,
     pub chat_style_cursor: usize,
     pub tool_cursor: usize,
+    pub auth_cursor: usize,
     pub theme_cursor: usize,
     pub keymap_cursor: usize,
     pub keymap_binding_cursor: usize,
@@ -295,7 +651,9 @@ pub struct SettingsState {
     pub tool_collapse_mode: CollapseMode,
     pub chat_style: ChatStyle,
     pub tools: Vec<ToolSettingsItem>,
+    pub auth_items: Vec<AuthStatusItem>,
     pub theme_options: Vec<ThemeOption>,
+    pub notify: NotifySettingsState,
     pub global_theme: ThemeSettings,
     pub project_theme: ThemeSettings,
     pub effective_theme: Option<ResolvedTheme>,
@@ -322,6 +680,7 @@ impl SettingsState {
             collapse_cursor: 0,
             chat_style_cursor: 0,
             tool_cursor: 0,
+            auth_cursor: 0,
             theme_cursor: 0,
             keymap_cursor: 0,
             keymap_binding_cursor: 0,
@@ -332,7 +691,9 @@ impl SettingsState {
             tool_collapse_mode: CollapseMode::Full,
             chat_style: ChatStyle::Chat,
             tools: Vec::new(),
+            auth_items: Vec::new(),
             theme_options: Vec::new(),
+            notify: NotifySettingsState::default(),
             global_theme: ThemeSettings::default(),
             project_theme: ThemeSettings::default(),
             effective_theme: None,
@@ -364,13 +725,27 @@ impl SettingsState {
             thinking_index(self.selected_thinking_level, &self.thinking_levels());
     }
 
-    pub fn set_models(&mut self, models: Vec<ModelOption>, status: impl Into<String>) {
+    pub fn set_models(&mut self, mut models: Vec<ModelOption>, status: impl Into<String>) {
+        let browsing_model = (self.page == SettingsPage::Models)
+            .then(|| {
+                self.models
+                    .get(self.model_cursor)
+                    .map(|model| model.id.clone())
+            })
+            .flatten();
+        sort_model_options_for_display(&mut models);
         self.models = models;
         self.status = status.into();
+        let cursor_target = browsing_model.as_deref().unwrap_or(&self.selected_model);
         self.model_cursor = self
             .models
             .iter()
-            .position(|model| model.id == self.selected_model)
+            .position(|model| model.id == cursor_target)
+            .or_else(|| {
+                self.models
+                    .iter()
+                    .position(|model| model.id == self.selected_model)
+            })
             .unwrap_or_else(|| self.model_cursor.min(self.models.len().saturating_sub(1)));
         self.clamp_thinking_to_selected_model();
         self.refresh_model_filter();
@@ -468,6 +843,30 @@ impl SettingsState {
         self.tool_cursor = self.tool_cursor.min(self.tools.len().saturating_sub(1));
     }
 
+    pub fn open_auth(&mut self) {
+        self.page = SettingsPage::Auth;
+        self.auth_cursor = self
+            .auth_cursor
+            .min(self.auth_items.len().saturating_sub(1));
+    }
+
+    pub fn set_auth_items(&mut self, items: Vec<AuthStatusItem>) {
+        self.auth_items = items;
+        self.auth_cursor = self
+            .auth_cursor
+            .min(self.auth_items.len().saturating_sub(1));
+    }
+
+    pub fn select_auth_provider(&mut self, provider_id: &str) {
+        if let Some(index) = self
+            .auth_items
+            .iter()
+            .position(|item| item.provider_id == provider_id)
+        {
+            self.auth_cursor = index;
+        }
+    }
+
     pub fn open_keymaps(&mut self) {
         self.page = SettingsPage::Keymaps;
         self.keymaps_mode = KeymapsMode::List;
@@ -481,6 +880,33 @@ impl SettingsState {
         self.theme_cursor = self
             .theme_cursor
             .min(self.theme_options.len().saturating_sub(1));
+    }
+
+    pub fn open_notify(&mut self) {
+        self.page = SettingsPage::Notify;
+        self.notify.cursor = self
+            .notify
+            .cursor
+            .min(NotifySettingsState::ROWS.len().saturating_sub(1));
+        self.notify.edit = None;
+    }
+
+    pub fn set_notify_available(&mut self, available: bool) {
+        self.notify.set_available(available);
+        if !available && self.page == SettingsPage::Notify {
+            self.page = SettingsPage::Menu;
+        }
+        self.menu_cursor = self
+            .menu_cursor
+            .min(self.menu_items().len().saturating_sub(1));
+    }
+
+    pub fn set_notify_settings(
+        &mut self,
+        global: NotifyScopeSettings,
+        project: NotifyScopeSettings,
+    ) {
+        self.notify.set_config(global, project);
     }
 
     pub fn set_theme_preview(&mut self, preview: Option<ResolvedTheme>) {
@@ -531,17 +957,22 @@ impl SettingsState {
     }
 
     #[must_use]
-    pub fn menu_items(&self) -> [SettingsMenuItem; 8] {
-        [
+    pub fn menu_items(&self) -> Vec<SettingsMenuItem> {
+        let mut items = vec![
             SettingsMenuItem::ModelSelection,
             SettingsMenuItem::ThinkingLevel,
             SettingsMenuItem::CollapseMode,
             SettingsMenuItem::ChatStyle,
             SettingsMenuItem::Tools,
+            SettingsMenuItem::Auth,
             SettingsMenuItem::Keymaps,
             SettingsMenuItem::Theme,
-            SettingsMenuItem::Extensions,
-        ]
+        ];
+        if self.notify.available {
+            items.push(SettingsMenuItem::Notify);
+        }
+        items.push(SettingsMenuItem::Extensions);
+        items
     }
 
     #[must_use]
@@ -601,6 +1032,14 @@ impl SettingsState {
     }
 
     #[must_use]
+    pub fn selected_model_context_length(&self) -> Option<usize> {
+        self.models
+            .iter()
+            .find(|model| model.id == self.selected_model)
+            .and_then(|model| model.context_length)
+    }
+
+    #[must_use]
     pub fn filtered_model_indices(&self) -> &[usize] {
         &self.filtered_model_indices
     }
@@ -616,6 +1055,9 @@ impl SettingsState {
     pub fn handle_key(&mut self, key: KeyEvent) -> SettingsAction {
         if self.page == SettingsPage::Keymaps {
             return self.handle_keymaps_key(key);
+        }
+        if self.page == SettingsPage::Notify {
+            return self.handle_notify_key(key);
         }
         if self.page == SettingsPage::Models && self.model_search_active {
             return self.handle_model_search_key(key);
@@ -698,6 +1140,138 @@ impl SettingsState {
             }
             KeyCode::Enter => self.apply_or_open(),
             _ => SettingsAction::None,
+        }
+    }
+
+    fn handle_notify_key(&mut self, key: KeyEvent) -> SettingsAction {
+        if self.notify.edit.is_some() {
+            return self.handle_notify_edit_key(key);
+        }
+        match key.code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => {
+                self.page = SettingsPage::Menu;
+                SettingsAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers.is_empty() => {
+                self.notify.cursor =
+                    move_index(self.notify.cursor, NotifySettingsState::ROWS.len(), -1);
+                SettingsAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers.is_empty() => {
+                self.notify.cursor =
+                    move_index(self.notify.cursor, NotifySettingsState::ROWS.len(), 1);
+                SettingsAction::None
+            }
+            KeyCode::Tab | KeyCode::Char('p') if key.modifiers.is_empty() => {
+                self.notify.scope = ToolSettingsScope::Project;
+                self.status = "Editing project notify settings".into();
+                SettingsAction::None
+            }
+            KeyCode::BackTab | KeyCode::Char('g') if key.modifiers.is_empty() => {
+                self.notify.scope = ToolSettingsScope::Global;
+                self.status = "Editing global notify settings".into();
+                SettingsAction::None
+            }
+            KeyCode::Char('x') if key.modifiers.is_empty() => self.clear_notify_value(),
+            KeyCode::Enter | KeyCode::Right => self.apply_notify_row(),
+            _ => SettingsAction::None,
+        }
+    }
+
+    fn handle_notify_edit_key(&mut self, key: KeyEvent) -> SettingsAction {
+        let Some(mut edit) = self.notify.edit.clone() else {
+            return SettingsAction::None;
+        };
+        match key.code {
+            KeyCode::Esc => {
+                self.notify.edit = None;
+                SettingsAction::None
+            }
+            KeyCode::Enter => {
+                self.notify.edit = None;
+                let value = normalize_optional_text(&edit.input);
+                SettingsAction::SetNotifyField {
+                    scope: edit.scope,
+                    field: edit.field,
+                    value,
+                }
+            }
+            KeyCode::Backspace => {
+                edit.input.pop();
+                self.notify.edit = Some(edit);
+                SettingsAction::None
+            }
+            KeyCode::Char(ch)
+                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+            {
+                edit.input.push(ch);
+                self.notify.edit = Some(edit);
+                SettingsAction::None
+            }
+            _ => SettingsAction::None,
+        }
+    }
+
+    fn apply_notify_row(&mut self) -> SettingsAction {
+        let row = NotifySettingsState::ROWS
+            .get(self.notify.cursor)
+            .copied()
+            .unwrap_or(NotifyRow::Enabled);
+        match row {
+            NotifyRow::Enabled => SettingsAction::SetNotifyEnabled {
+                scope: self.notify.scope,
+                enabled: !notify_scope_enabled(self.notify.scope_settings(self.notify.scope)),
+            },
+            NotifyRow::AgentEnd | NotifyRow::ToolError => {
+                let event = row.event().unwrap_or(NotifyEventKind::AgentEnd);
+                SettingsAction::SetNotifyEvent {
+                    scope: self.notify.scope,
+                    event,
+                    enabled: !notify_scope_event_enabled(
+                        self.notify.scope_settings(self.notify.scope),
+                        event,
+                    ),
+                }
+            }
+            _ => {
+                let field = row.field().unwrap_or(NotifyField::Topic);
+                let input = notify_scope_text(self.notify.scope_settings(self.notify.scope), field)
+                    .unwrap_or_default();
+                self.notify.edit = Some(NotifyEditState {
+                    scope: self.notify.scope,
+                    field,
+                    input,
+                });
+                SettingsAction::None
+            }
+        }
+    }
+
+    fn clear_notify_value(&mut self) -> SettingsAction {
+        let row = NotifySettingsState::ROWS
+            .get(self.notify.cursor)
+            .copied()
+            .unwrap_or(NotifyRow::Enabled);
+        if row == NotifyRow::Enabled {
+            return SettingsAction::SetNotifyEnabled {
+                scope: self.notify.scope,
+                enabled: false,
+            };
+        }
+        if let Some(event) = row.event() {
+            return SettingsAction::SetNotifyEvent {
+                scope: self.notify.scope,
+                event,
+                enabled: false,
+            };
+        }
+        let Some(field) = row.field() else {
+            return SettingsAction::None;
+        };
+        SettingsAction::SetNotifyField {
+            scope: self.notify.scope,
+            field,
+            value: None,
         }
     }
 
@@ -1084,6 +1658,7 @@ impl SettingsState {
             let was_theme = self.page == SettingsPage::Theme;
             self.model_search_active = false;
             self.model_search.clear();
+            self.notify.edit = None;
             self.refresh_model_filter();
             self.page = SettingsPage::Menu;
             if was_theme {
@@ -1110,8 +1685,10 @@ impl SettingsState {
             SettingsPage::Collapse => self.apply_collapse_mode(),
             SettingsPage::ChatStyle => self.apply_chat_style(),
             SettingsPage::Tools => self.toggle_tool(ToolSettingsScope::Project),
+            SettingsPage::Auth => SettingsAction::None,
             SettingsPage::Keymaps => self.open_keymap_detail(),
             SettingsPage::Theme => self.preview_selected_theme(),
+            SettingsPage::Notify => self.apply_notify_row(),
             SettingsPage::Extensions => SettingsAction::OpenExtensions,
         }
     }
@@ -1138,8 +1715,15 @@ impl SettingsState {
             SettingsPage::Tools => {
                 self.tool_cursor = move_index(self.tool_cursor, self.tools.len(), delta);
             }
+            SettingsPage::Auth => {
+                self.auth_cursor = move_index(self.auth_cursor, self.auth_items.len(), delta);
+            }
             SettingsPage::Theme => {
                 self.theme_cursor = move_index(self.theme_cursor, self.theme_options.len(), delta);
+            }
+            SettingsPage::Notify => {
+                self.notify.cursor =
+                    move_index(self.notify.cursor, NotifySettingsState::ROWS.len(), delta);
             }
             SettingsPage::Extensions => {}
             SettingsPage::Keymaps => {
@@ -1172,7 +1756,7 @@ impl SettingsState {
             let candidate_indices = model_filter_candidate_indices(&self.models, query);
             fuzzy_indices(&candidate_indices, query, FuzzyMode::Text, None, |index| {
                 let model = &self.models[*index];
-                format!("{} {}", model.id, model.display_name)
+                format!("{} {} {}", model.provider, model.id, model.display_name)
             })
             .into_iter()
             .map(|candidate_index| candidate_indices[candidate_index])
@@ -1385,16 +1969,49 @@ fn display_tool_name(name: &str) -> String {
         .join(" ")
 }
 
+fn sort_model_options_for_display(models: &mut [ModelOption]) {
+    // Keep the provider/catalog order inside each bucket so large model lists stay
+    // predictable, but make models that are definitely unusable fall to the bottom.
+    models.sort_by(|left, right| {
+        left.availability
+            .display_rank()
+            .cmp(&right.availability.display_rank())
+    });
+}
+
 fn model_filter_candidate_indices(models: &[ModelOption], query: &str) -> Vec<usize> {
     if !query.is_ascii() {
         return (0..models.len()).collect();
+    }
+    // Support provider prefix filtering (e.g., "openai:" filters to OpenAI models)
+    if let Some(provider_prefix) = query.strip_suffix(':') {
+        let provider_lower = provider_prefix.to_lowercase();
+        return models
+            .iter()
+            .enumerate()
+            .filter_map(|(index, model)| {
+                model
+                    .provider
+                    .to_lowercase()
+                    .starts_with(&provider_lower)
+                    .then_some(index)
+            })
+            .collect();
     }
     models
         .iter()
         .enumerate()
         .filter_map(|(index, model)| {
             ascii_subsequence_match_parts(
-                [model.id.as_str(), " ", model.display_name.as_str()],
+                [
+                    model.provider.as_str(),
+                    " ",
+                    model.provider_label.as_str(),
+                    " ",
+                    model.id.as_str(),
+                    " ",
+                    model.display_name.as_str(),
+                ],
                 query,
             )
             .then_some(index)
@@ -1597,10 +2214,100 @@ mod tests {
     }
 
     #[test]
-    fn model_filter_prefilter_checks_id_and_display_name() {
+    fn notify_page_is_registered_when_available_and_edits_project_topic() {
+        let mut settings = SettingsState::new("a", ThinkingLevel::Off);
+        assert!(!settings.menu_items().contains(&SettingsMenuItem::Notify));
+        settings.set_notify_available(true);
+        assert!(settings.menu_items().contains(&SettingsMenuItem::Notify));
+        while settings.current_menu_item() != SettingsMenuItem::Notify {
+            settings.handle_key(key(KeyCode::Down));
+        }
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::None
+        );
+        assert_eq!(settings.page, SettingsPage::Notify);
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::SetNotifyEnabled {
+                scope: ToolSettingsScope::Project,
+                enabled: true,
+            }
+        );
+        settings.handle_key(key(KeyCode::Down));
+        settings.handle_key(key(KeyCode::Down));
+        assert_eq!(
+            NotifySettingsState::ROWS[settings.notify.cursor],
+            NotifyRow::Topic
+        );
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::None
+        );
+        assert!(settings.notify.edit.is_some());
+        for ch in "oino-topic".chars() {
+            settings.handle_key(key(KeyCode::Char(ch)));
+        }
+        assert_eq!(
+            settings.handle_key(key(KeyCode::Enter)),
+            SettingsAction::SetNotifyField {
+                scope: ToolSettingsScope::Project,
+                field: NotifyField::Topic,
+                value: Some("oino-topic".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn model_catalog_refresh_preserves_browsing_cursor_on_model_page() {
+        let mut settings = SettingsState::new("model-a", ThinkingLevel::Off);
+        settings.set_models(
+            vec![ModelOption::new("model-a"), ModelOption::new("model-b")],
+            "loaded",
+        );
+        settings.page = SettingsPage::Models;
+        settings.model_cursor = 1;
+
+        settings.set_models(
+            vec![
+                ModelOption::new("model-a"),
+                ModelOption::new("model-b"),
+                ModelOption::new("model-c"),
+            ],
+            "refreshed",
+        );
+
+        assert_eq!(settings.model_cursor, 1);
+        assert_eq!(settings.models[settings.model_cursor].id, "model-b");
+    }
+
+    #[test]
+    fn model_list_sorts_definitely_unconfigured_models_to_bottom() {
+        let mut settings = SettingsState::new("9router:openai/a", ThinkingLevel::Off);
+        settings.set_models(
+            vec![
+                ModelOption::new("9router:openai/a")
+                    .with_availability(ModelAvailability::NeedsProviderKey),
+                ModelOption::new("9router:anthropic/b")
+                    .with_availability(ModelAvailability::Configured),
+                ModelOption::new("extension:model").with_availability(ModelAvailability::Unknown),
+            ],
+            "loaded",
+        );
+
+        assert_eq!(settings.models[0].id, "9router:anthropic/b");
+        assert_eq!(settings.models[1].id, "extension:model");
+        assert_eq!(settings.models[2].id, "9router:openai/a");
+    }
+
+    #[test]
+    fn model_filter_prefilter_checks_provider_label_id_and_display_name() {
         let models = vec![
             ModelOption::new("openrouter:a/alpha"),
             ModelOption::new("openrouter:b/bravo").with_display_name("Displayed Model"),
+            ModelOption::new("9router:kr/test")
+                .with_display_name("KR Test")
+                .with_provider_label("9router extension"),
         ];
 
         assert_eq!(
@@ -1608,6 +2315,10 @@ mod tests {
             vec![1]
         );
         assert_eq!(model_filter_candidate_indices(&models, "alpha"), vec![0]);
+        assert_eq!(
+            model_filter_candidate_indices(&models, "extension"),
+            vec![2]
+        );
     }
 
     #[test]

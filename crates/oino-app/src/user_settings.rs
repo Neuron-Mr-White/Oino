@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use crate::notify::NotifySettings;
 use oino_extension_core::ExtensionPolicySettings;
 use oino_tui::{ChatStyle, CollapseMode, KeymapConfig, ThemeSettings};
 use oino_types::ThinkingLevel;
@@ -21,11 +22,13 @@ pub struct UserSettings {
     pub chat_style: Option<ChatStyle>,
     pub keymap: Option<KeymapConfig>,
     pub theme: ThemeSettings,
+    pub notify: NotifySettings,
     pub tools: BTreeMap<String, bool>,
     pub extensions: ExtensionPolicySettings,
 }
 
 impl UserSettings {
+    #[cfg(test)]
     #[must_use]
     pub fn from_current(
         model: impl Into<String>,
@@ -42,15 +45,10 @@ impl UserSettings {
             chat_style: Some(chat_style),
             keymap: None,
             theme: ThemeSettings::default(),
+            notify: NotifySettings::default(),
             tools: BTreeMap::new(),
             extensions: ExtensionPolicySettings::default(),
         }
-    }
-
-    #[must_use]
-    pub fn with_tools(mut self, tools: BTreeMap<String, bool>) -> Self {
-        self.tools = tools;
-        self
     }
 
     pub fn apply_current(

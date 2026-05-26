@@ -2,10 +2,11 @@
 
 use crate::{
     action::TuiAction,
+    ask_user::{AskUserOutcome, AskUserOverlayState, AskUserRequest},
     command::{
-        command_suggestions_for, file_suggestions_for, parse_command, CommandSuggestionCategory,
-        CommandSuggestionItem, CommandSuggestionsState, CommandSuggestionsView, ParsedCommand,
-        SettingsCommand,
+        command_suggestions_for, file_suggestions_for, parse_command, AgentMode,
+        CommandSuggestionCategory, CommandSuggestionItem, CommandSuggestionsState,
+        CommandSuggestionsView, ExtensionCommandSuggestion, ParsedCommand, SettingsCommand,
     },
     composer::{
         char_count, collapsed_paste_summary, normalize_paste_text, should_collapse_paste,
@@ -46,6 +47,8 @@ pub enum OverlayKind {
     Skills,
     Extensions,
     Inspect,
+    Usage,
+    AskUser,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -833,6 +836,143 @@ impl TranscriptScroll {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RuntimeStatusState {
+    pub working_directory: String,
+    pub context_tokens: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UsagePanelState {
+    pub loading: bool,
+    pub error: Option<String>,
+    pub report: Option<UsagePanelReport>,
+    pub cursor: usize,
+    pub search: String,
+    pub search_active: bool,
+    pub filtered_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsagePanelReport {
+    pub generated_at_unix: u64,
+    pub status_line: String,
+    pub session: UsagePanelSession,
+    pub providers: Vec<UsagePanelProvider>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UsagePanelSession {
+    pub assistant_turns: u64,
+    pub reported_turns: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub total_tokens: u64,
+    pub costs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UsagePanelProvider {
+    pub provider_id: String,
+    pub display_name: String,
+    pub status: String,
+    pub message: String,
+    pub assistant_turns: u64,
+    pub reported_turns: u64,
+    pub total_tokens: u64,
+    pub costs: Vec<String>,
+    pub account_source: Option<String>,
+    pub account_balance: Option<String>,
+    pub account_limits: Vec<String>,
+}
+
+impl UsagePanelState {
+    pub fn set_loading(&mut self) {
+        self.loading = true;
+        self.error = None;
+    }
+
+    pub fn set_report(&mut self, report: UsagePanelReport) {
+        self.loading = false;
+        self.error = None;
+        self.report = Some(report);
+        self.refresh_filter();
+    }
+
+    pub fn set_error(&mut self, error: impl Into<String>) {
+        self.loading = false;
+        self.error = Some(error.into());
+    }
+
+    pub fn refresh_filter(&mut self) {
+        let Some(report) = &self.report else {
+            self.filtered_indices.clear();
+            self.cursor = 0;
+            return;
+        };
+        let query = self.search.trim().to_ascii_lowercase();
+        self.filtered_indices = report
+            .providers
+            .iter()
+            .enumerate()
+            .filter_map(|(index, provider)| {
+                (query.is_empty() || usage_provider_matches(provider, &query)).then_some(index)
+            })
+            .collect();
+        if let Some(cursor) = self
+            .filtered_indices
+            .iter()
+            .position(|index| *index == self.cursor)
+        {
+            self.cursor = self.filtered_indices[cursor];
+        } else {
+            self.cursor = self.filtered_indices.first().copied().unwrap_or(0);
+        }
+    }
+
+    pub fn move_cursor(&mut self, delta: isize) {
+        if self.filtered_indices.is_empty() {
+            self.cursor = 0;
+            return;
+        }
+        let position = self
+            .filtered_indices
+            .iter()
+            .position(|index| *index == self.cursor)
+            .unwrap_or(0);
+        let len = self.filtered_indices.len();
+        let next = if delta.is_negative() {
+            position.saturating_sub(delta.unsigned_abs())
+        } else {
+            position
+                .saturating_add(delta as usize)
+                .min(len.saturating_sub(1))
+        };
+        self.cursor = self.filtered_indices[next];
+    }
+
+    #[must_use]
+    pub fn selected_provider(&self) -> Option<&UsagePanelProvider> {
+        self.report
+            .as_ref()
+            .and_then(|report| report.providers.get(self.cursor))
+    }
+
+    #[must_use]
+    pub fn filtered_provider_indices(&self) -> &[usize] {
+        &self.filtered_indices
+    }
+}
+
+fn usage_provider_matches(provider: &UsagePanelProvider, query: &str) -> bool {
+    provider.provider_id.to_ascii_lowercase().contains(query)
+        || provider.display_name.to_ascii_lowercase().contains(query)
+        || provider.status.to_ascii_lowercase().contains(query)
+        || provider.message.to_ascii_lowercase().contains(query)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TuiState {
     pub messages: Vec<MessageView>,
@@ -844,6 +984,7 @@ pub struct TuiState {
     pub error: Option<String>,
     pub overlay: Option<OverlayKind>,
     pub settings: SettingsState,
+    pub agent_mode: AgentMode,
     pub theme_catalog: ThemeCatalog,
     pub resolved_theme: ResolvedTheme,
     pub preview_theme: Option<ResolvedTheme>,
@@ -854,13 +995,17 @@ pub struct TuiState {
     pub send_panel: SendPanelState,
     pub sessions: SessionsState,
     pub inspect: InspectState,
+    pub ask_user: Option<AskUserOverlayState>,
     pub prompts: ResourceBrowserState,
     pub skills: ResourceBrowserState,
     pub prompt_resources: Vec<PromptResource>,
     pub skill_resources: Vec<SkillResource>,
     pub resource_diagnostics: Vec<String>,
+    pub extension_commands: Vec<ExtensionCommandSuggestion>,
     pub extension_ui: ExtensionUiState,
     pub extension_management: ExtensionManagementState,
+    pub runtime_status: RuntimeStatusState,
+    pub usage: UsagePanelState,
     pub help_scroll: usize,
     pub help_search: String,
     pub help_search_active: bool,
@@ -897,6 +1042,7 @@ impl Default for TuiState {
             error: None,
             overlay: None,
             settings,
+            agent_mode: AgentMode::default(),
             theme_catalog,
             resolved_theme,
             preview_theme: None,
@@ -907,13 +1053,17 @@ impl Default for TuiState {
             send_panel: SendPanelState::default(),
             sessions: SessionsState::default(),
             inspect: InspectState::default(),
+            ask_user: None,
             prompts: ResourceBrowserState::default(),
             skills: ResourceBrowserState::default(),
             prompt_resources: Vec::new(),
             skill_resources: Vec::new(),
             resource_diagnostics: Vec::new(),
+            extension_commands: Vec::new(),
             extension_ui: ExtensionUiState::default(),
             extension_management: ExtensionManagementState::default(),
+            runtime_status: RuntimeStatusState::default(),
+            usage: UsagePanelState::default(),
             help_scroll: 0,
             help_search: String::new(),
             help_search_active: false,
@@ -1142,7 +1292,7 @@ impl TuiState {
 
     #[must_use]
     pub fn activity_status(&self) -> Option<String> {
-        if self.overlay.is_some() || !self.working {
+        if self.overlay.is_some() {
             return None;
         }
         self.working
@@ -1420,6 +1570,7 @@ impl TuiState {
             &self.settings.models,
             &self.prompt_resources,
             &self.skill_resources,
+            &self.extension_commands,
         )
         .or_else(|| self.extension_autosuggestions(input, cursor))
         .or_else(|| file_suggestions_for(input, cursor, &self.file_paths))
@@ -1475,6 +1626,11 @@ impl TuiState {
             items,
             selected: 0,
         })
+    }
+
+    pub fn set_extension_commands(&mut self, commands: Vec<ExtensionCommandSuggestion>) {
+        self.extension_commands = commands;
+        self.refresh_command_suggestions();
     }
 
     pub(crate) fn refresh_command_suggestions(&mut self) {
@@ -1620,8 +1776,74 @@ impl TuiState {
         self.refresh_command_suggestions();
     }
 
+    pub fn set_working_directory(&mut self, working_directory: impl Into<String>) {
+        self.runtime_status.working_directory = working_directory.into();
+    }
+
+    pub const fn set_context_tokens(&mut self, context_tokens: Option<usize>) {
+        self.runtime_status.context_tokens = context_tokens;
+    }
+
+    pub fn set_usage_loading(&mut self) {
+        self.usage.set_loading();
+    }
+
+    pub fn set_usage_report(&mut self, report: UsagePanelReport) {
+        self.usage.set_report(report);
+    }
+
+    pub fn set_usage_error(&mut self, message: impl Into<String>) {
+        let message = message.into();
+        self.usage.set_error(message.clone());
+        self.set_error(message);
+        self.status = HELP_STATUS.into();
+    }
+
+    pub fn set_agent_mode(&mut self, mode: AgentMode) {
+        let label = mode.label();
+        self.agent_mode = mode;
+        self.status = format!("Mode set to {label}");
+    }
+
     pub fn set_tool_settings(&mut self, tools: Vec<ToolSettingsItem>) {
         self.settings.set_tools(tools);
+    }
+
+    pub fn set_auth_status_items(
+        &mut self,
+        items: Vec<crate::settings::AuthStatusItem>,
+        selected_provider: Option<&str>,
+    ) {
+        self.settings.set_auth_items(items);
+        if let Some(provider) = selected_provider {
+            self.settings.select_auth_provider(provider);
+        }
+    }
+
+    pub fn set_auth_status_message(&mut self, message: impl Into<String>) {
+        self.clear_error();
+        self.status = message.into();
+    }
+
+    pub fn set_auth_status_error(&mut self, message: impl Into<String>) {
+        self.set_error(message.into());
+        self.status = HELP_STATUS.into();
+    }
+
+    pub fn append_command_output(&mut self, title: impl Into<String>, content: impl Into<String>) {
+        self.messages.push(MessageView {
+            id: OinoId::new_v4(),
+            role: "assistant".into(),
+            title: Some(title.into()),
+            content: content.into(),
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        });
+        self.transcript_scroll.jump_bottom();
+        self.mark_transcript_changed();
     }
 
     pub fn set_theme_settings(&mut self, global: &ThemeSettings, project: &ThemeSettings) {
@@ -1923,6 +2145,13 @@ impl TuiState {
             return self.handle_settings_key(key);
         }
 
+        if self.overlay == Some(OverlayKind::AskUser) {
+            return self.handle_ask_user_key(key);
+        }
+        if self.overlay == Some(OverlayKind::Usage) {
+            return self.handle_usage_key(key);
+        }
+
         if self.overlay.is_none()
             && matches!(key.code, KeyCode::Esc)
             && self.close_focused_extension_surface_slot()
@@ -1984,6 +2213,183 @@ impl TuiState {
             self.after_composer_edit(&before);
         }
         TuiAction::None
+    }
+
+    fn handle_usage_key(&mut self, key: KeyEvent) -> TuiAction {
+        if self.usage.search_active {
+            return match key.code {
+                KeyCode::Esc => {
+                    self.usage.search_active = false;
+                    self.usage.search.clear();
+                    self.usage.refresh_filter();
+                    self.status = "Usage search cleared".into();
+                    TuiAction::None
+                }
+                KeyCode::Enter => {
+                    self.usage.search_active = false;
+                    self.status = usage_panel_status(&self.usage);
+                    TuiAction::None
+                }
+                KeyCode::Backspace => {
+                    self.usage.search.pop();
+                    self.usage.refresh_filter();
+                    self.status = usage_search_status(&self.usage.search);
+                    TuiAction::None
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.usage.move_cursor(-1);
+                    TuiAction::None
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.usage.move_cursor(1);
+                    TuiAction::None
+                }
+                KeyCode::Char(ch) if key.modifiers.is_empty() => {
+                    self.usage.search.push(ch);
+                    self.usage.refresh_filter();
+                    self.status = usage_search_status(&self.usage.search);
+                    TuiAction::None
+                }
+                _ => TuiAction::None,
+            };
+        }
+
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.overlay = None;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.usage.move_cursor(-1);
+                self.status = usage_panel_status(&self.usage);
+                TuiAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.usage.move_cursor(1);
+                self.status = usage_panel_status(&self.usage);
+                TuiAction::None
+            }
+            KeyCode::PageUp => {
+                self.usage.move_cursor(-5);
+                self.status = usage_panel_status(&self.usage);
+                TuiAction::None
+            }
+            KeyCode::PageDown => {
+                self.usage.move_cursor(5);
+                self.status = usage_panel_status(&self.usage);
+                TuiAction::None
+            }
+            KeyCode::Home => {
+                self.usage.cursor = self.usage.filtered_indices.first().copied().unwrap_or(0);
+                self.status = usage_panel_status(&self.usage);
+                TuiAction::None
+            }
+            KeyCode::End => {
+                self.usage.cursor = self.usage.filtered_indices.last().copied().unwrap_or(0);
+                self.status = usage_panel_status(&self.usage);
+                TuiAction::None
+            }
+            KeyCode::Char('/') => {
+                self.usage.search_active = true;
+                self.usage.search.clear();
+                self.usage.refresh_filter();
+                self.status = "Usage search active".into();
+                TuiAction::None
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                self.set_usage_loading();
+                self.status = "Refreshing usage report…".into();
+                TuiAction::RefreshUsage
+            }
+            _ => TuiAction::None,
+        }
+    }
+
+    fn handle_ask_user_key(&mut self, key: KeyEvent) -> TuiAction {
+        let Some(state) = &mut self.ask_user else {
+            self.overlay = None;
+            return TuiAction::None;
+        };
+        if state.custom_active {
+            match key.code {
+                KeyCode::Esc => {
+                    state.custom_active = false;
+                    state.custom_input.clear();
+                    self.status = "Ask user: custom answer canceled".into();
+                }
+                KeyCode::Enter => {
+                    if let Some(outcome) = state.answer_custom() {
+                        self.ask_user = None;
+                        self.overlay = None;
+                        self.status = "Ask user answered".into();
+                        return TuiAction::AnswerAskUser(outcome);
+                    }
+                    self.status = "Type a custom answer before pressing Enter".into();
+                }
+                KeyCode::Backspace => {
+                    state.custom_input.pop();
+                }
+                KeyCode::Char(ch) if state.custom_input.len() < 2_000 => {
+                    state.custom_input.push(ch);
+                }
+                _ => {}
+            }
+            return TuiAction::None;
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                self.ask_user = None;
+                self.overlay = None;
+                self.status = "Ask user canceled".into();
+                TuiAction::AnswerAskUser(AskUserOutcome {
+                    answers: Vec::new(),
+                    cancelled: true,
+                    error: None,
+                })
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                state.move_cursor(-1);
+                TuiAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                state.move_cursor(1);
+                TuiAction::None
+            }
+            KeyCode::Char(' ') => {
+                state.toggle_current();
+                TuiAction::None
+            }
+            KeyCode::Char('c') => {
+                state.custom_active = true;
+                state.custom_input.clear();
+                self.status = "Ask user: type custom answer • Enter submit • Esc cancel".into();
+                TuiAction::None
+            }
+            KeyCode::Char('t') => {
+                if let Some(outcome) = state.answer_chat() {
+                    self.ask_user = None;
+                    self.overlay = None;
+                    self.status = "Ask user answered".into();
+                    TuiAction::AnswerAskUser(outcome)
+                } else {
+                    TuiAction::None
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(outcome) = state.answer_current_option() {
+                    self.ask_user = None;
+                    self.overlay = None;
+                    self.status = "Ask user answered".into();
+                    TuiAction::AnswerAskUser(outcome)
+                } else {
+                    self.status = "Ask user: select an option or type c for custom".into();
+                    TuiAction::None
+                }
+            }
+            _ => TuiAction::None,
+        }
     }
 
     fn resolve_keymap_key(&mut self, key: KeyEvent) -> KeymapKeyResult {
@@ -2117,6 +2523,8 @@ impl TuiState {
             }
             Some(OverlayKind::Extensions) => contexts.push(KeyContext::Sessions),
             Some(OverlayKind::Inspect) => contexts.push(KeyContext::Inspect),
+            Some(OverlayKind::Usage) => contexts.push(KeyContext::Sessions),
+            Some(OverlayKind::AskUser) => contexts.push(KeyContext::Sessions),
             None => {
                 if self.command_suggestions_view().is_some() {
                     contexts.push(KeyContext::CommandSuggestions);
@@ -3432,6 +3840,45 @@ impl TuiState {
                 self.status = format!("{} theme reset", scope.label());
                 TuiAction::ResetTheme { scope }
             }
+            SettingsAction::SetNotifyEnabled { scope, enabled } => {
+                let status = if enabled { "enabled" } else { "disabled" };
+                self.status = format!("{} notify {status}", scope.label());
+                TuiAction::SetNotifyEnabled { scope, enabled }
+            }
+            SettingsAction::SetNotifyField {
+                scope,
+                field,
+                value,
+            } => {
+                self.status = format!(
+                    "{} notify {} {}",
+                    scope.label(),
+                    field.label(),
+                    if value.as_ref().is_some_and(|value| !value.trim().is_empty()) {
+                        "updated"
+                    } else {
+                        "cleared"
+                    }
+                );
+                TuiAction::SetNotifyField {
+                    scope,
+                    field,
+                    value,
+                }
+            }
+            SettingsAction::SetNotifyEvent {
+                scope,
+                event,
+                enabled,
+            } => {
+                let status = if enabled { "enabled" } else { "disabled" };
+                self.status = format!("{} notify event {} {status}", scope.label(), event.label());
+                TuiAction::SetNotifyEvent {
+                    scope,
+                    event,
+                    enabled,
+                }
+            }
         }
     }
 
@@ -3449,6 +3896,11 @@ impl TuiState {
         }
 
         if prompt.trim_start().starts_with('/') {
+            if self.extension_command_matches_prompt(&prompt) {
+                self.clear_error();
+                self.status = "Running extension command…".into();
+                return TuiAction::RunExtensionCommand { input: prompt };
+            }
             self.error = Some(format!("Unknown command `{prompt}`"));
             self.set_calling_status();
             return TuiAction::None;
@@ -3469,6 +3921,11 @@ impl TuiState {
         }
 
         if prompt.starts_with('/') {
+            if self.extension_command_matches_prompt(&prompt) {
+                self.clear_error();
+                self.status = "Running extension command…".into();
+                return TuiAction::RunExtensionCommand { input: prompt };
+            }
             self.set_error(format!("Unknown command `{prompt}`"));
             self.status = HELP_STATUS.into();
             return TuiAction::None;
@@ -3524,6 +3981,17 @@ impl TuiState {
         Some(TuiAction::SubmitPrompt(prompt))
     }
 
+    fn extension_command_matches_prompt(&self, prompt: &str) -> bool {
+        let trimmed = prompt.trim();
+        self.extension_commands.iter().any(|command| {
+            let label = command.label.trim();
+            trimmed == label
+                || trimmed
+                    .strip_prefix(label)
+                    .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+        })
+    }
+
     fn execute_command(&mut self, command: ParsedCommand) -> TuiAction {
         match command {
             ParsedCommand::Help => {
@@ -3565,16 +4033,54 @@ impl TuiState {
                 self.open_extensions_overlay();
                 TuiAction::None
             }
-            ParsedCommand::LoginHelp => {
-                self.status = "Usage: /login claude or /login chatgpt".into();
+            ParsedCommand::ExtensionsUpdate => {
                 self.clear_error();
+                self.status = "Updating installed extension packages…".into();
+                TuiAction::UpdateExtensionPackages
+            }
+            ParsedCommand::Compact => {
+                self.clear_error();
+                self.status = "Compacting session…".into();
+                TuiAction::Compact
+            }
+            ParsedCommand::Recall { query } => {
+                self.clear_error();
+                self.status = "Searching session history…".into();
+                TuiAction::Recall { query }
+            }
+            ParsedCommand::Usage => {
+                self.open_usage_overlay();
+                self.set_usage_loading();
+                self.status = "Refreshing usage report…".into();
+                TuiAction::RefreshUsage
+            }
+            ParsedCommand::AuthStatus { provider } => {
+                self.open_auth_overlay();
+                self.status = provider.as_ref().map_or_else(
+                    || "Refreshing provider auth status…".to_string(),
+                    |provider| format!("Refreshing auth status for `{provider}`…"),
+                );
+                TuiAction::RefreshAuthStatus { provider }
+            }
+            ParsedCommand::AuthQuickstart => {
+                self.open_auth_overlay();
+                self.status = "Showing 9router-first auth quickstart guide…".into();
+                TuiAction::AuthQuickstart
+            }
+            ParsedCommand::Ralph(command) => {
+                self.clear_error();
+                self.status = "Running Ralph command…".into();
+                TuiAction::Ralph(command)
+            }
+            ParsedCommand::ShowAgentModeUsage => {
+                self.clear_error();
+                self.status = "Usage: /mode plan | /mode work | /mode <profile>".into();
                 TuiAction::None
             }
-            ParsedCommand::Login(provider) => {
-                let label = provider.label();
-                self.status = format!("Starting {label} OAuth login…");
+            ParsedCommand::SetAgentMode(mode) => {
                 self.clear_error();
-                TuiAction::LoginOAuth(label.into())
+                self.status = format!("Switching to {} mode…", mode.label());
+                TuiAction::SetAgentMode(mode)
             }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();
@@ -3596,6 +4102,10 @@ impl TuiState {
                 self.open_tools_overlay();
                 TuiAction::None
             }
+            ParsedCommand::Settings(SettingsCommand::OpenAuth) => {
+                self.open_auth_overlay();
+                TuiAction::RefreshAuthStatus { provider: None }
+            }
             ParsedCommand::Settings(SettingsCommand::OpenKeymaps) => {
                 self.open_keymaps_overlay();
                 TuiAction::None
@@ -3606,6 +4116,10 @@ impl TuiState {
             }
             ParsedCommand::Settings(SettingsCommand::OpenExtensions) => {
                 self.open_extensions_overlay();
+                TuiAction::None
+            }
+            ParsedCommand::Settings(SettingsCommand::OpenNotify) => {
+                self.open_notify_overlay();
                 TuiAction::None
             }
             ParsedCommand::SetSessionTitle(title) => {
@@ -3667,6 +4181,7 @@ impl TuiState {
         self.composer.clear();
         self.focus = TuiFocus::Composer;
         self.working = false;
+        self.agent_mode = AgentMode::default();
         self.error = None;
         self.overlay = None;
         self.command_suggestions = CommandSuggestionsState::new();
@@ -3746,6 +4261,19 @@ impl TuiState {
         self.status = "Inspect: loading full prompt…".into();
     }
 
+    fn open_usage_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Usage);
+        self.status = "Usage: ↑/↓ providers • / filter • r refresh • Esc/q close".into();
+    }
+
+    pub fn open_ask_user_overlay(&mut self, request: AskUserRequest) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::AskUser);
+        self.ask_user = Some(AskUserOverlayState::new(request));
+        self.status = "Ask user: ↑/↓ move • Space toggle • Enter select/next • c custom • t chat • Esc cancel".into();
+    }
+
     pub fn set_inspect_full_prompt(&mut self, content: impl Into<String>, token_count: usize) {
         self.inspect.full_prompt = content.into();
         self.inspect.token_count = token_count;
@@ -3802,6 +4330,14 @@ impl TuiState {
         self.status = "Tools: arrows/jk move • g global • p/Enter project • Esc back".into();
     }
 
+    fn open_auth_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_auth();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status =
+            "Auth: arrows/jk move • recommended /9router setup • extension readiness only".into();
+    }
+
     fn open_keymaps_overlay(&mut self) {
         self.clear_error();
         self.settings.open_keymaps();
@@ -3814,6 +4350,15 @@ impl TuiState {
         self.settings.open_theme();
         self.overlay = Some(OverlayKind::Settings);
         self.status = "Theme: Enter/p project • g global • r/R reset • Esc back".into();
+    }
+
+    fn open_notify_overlay(&mut self) {
+        self.clear_error();
+        self.settings.open_notify();
+        self.overlay = Some(OverlayKind::Settings);
+        self.status =
+            "Notify: ↑/↓ row • Enter edit/toggle • p project • g global • x clear • Esc back"
+                .into();
     }
 
     fn open_settings_overlay(&mut self) {
@@ -4018,6 +4563,30 @@ fn session_search_status(query: &str) -> String {
     } else {
         format!("Searching sessions for `{query}`")
     }
+}
+
+fn usage_search_status(query: &str) -> String {
+    if query.is_empty() {
+        "Usage search active".into()
+    } else {
+        format!("Searching usage providers for `{query}`")
+    }
+}
+
+fn usage_panel_status(usage: &UsagePanelState) -> String {
+    if usage.loading {
+        return "Refreshing usage report…".into();
+    }
+    if let Some(error) = &usage.error {
+        return format!("Usage error: {error}");
+    }
+    if let Some(provider) = usage.selected_provider() {
+        return format!("Usage: {} — {}", provider.display_name, provider.message);
+    }
+    usage.report.as_ref().map_or_else(
+        || "Usage: no report loaded".into(),
+        |report| report.status_line.clone(),
+    )
 }
 
 fn prompt_search_status(query: &str) -> String {
@@ -5228,7 +5797,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_composer_arrows_scroll_transcript_like_deepseek() {
+    fn empty_composer_arrows_scroll_transcript() {
         let mut state = TuiState::new();
         assert_eq!(state.handle_key(key(KeyCode::Up)), TuiAction::None);
         assert_eq!(state.transcript_scroll.offset_from_bottom(), 1);
@@ -5249,6 +5818,29 @@ mod tests {
         assert_eq!(state.transcript_scroll.offset_from_bottom(), 1);
         assert_eq!(state.handle_key(key(KeyCode::Esc)), TuiAction::None);
         assert_eq!(state.focus, TuiFocus::Composer);
+    }
+
+    #[test]
+    fn extension_command_submission_returns_extension_action() {
+        let mut state = TuiState::new();
+        state.set_extension_commands(vec![ExtensionCommandSuggestion::new(
+            "/9router",
+            "Set up 9router",
+            "/9router ",
+        )]);
+
+        for ch in "/9router setup".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::RunExtensionCommand {
+                input: "/9router setup".into(),
+            }
+        );
+        assert_eq!(state.input(), "");
+        assert!(state.status.contains("Running extension command"));
     }
 
     #[test]
@@ -5656,6 +6248,76 @@ mod tests {
             state.settings.chat_style,
             crate::settings::ChatStyle::Minimal
         );
+    }
+
+    #[test]
+    fn usage_command_requests_usage_refresh() {
+        let mut state = TuiState::new();
+        for ch in "/usage".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+
+        assert_eq!(
+            state.handle_key(key(KeyCode::Enter)),
+            TuiAction::RefreshUsage
+        );
+        assert!(state.usage.loading);
+        assert_eq!(state.overlay, Some(OverlayKind::Usage));
+        assert!(state.status.contains("Refreshing usage"));
+    }
+
+    #[test]
+    fn usage_overlay_filters_and_refreshes() {
+        let mut state = TuiState::new();
+        state.overlay = Some(OverlayKind::Usage);
+        state.set_usage_report(UsagePanelReport {
+            generated_at_unix: 1,
+            status_line: "Usage: 2 turns".into(),
+            session: UsagePanelSession {
+                assistant_turns: 2,
+                reported_turns: 2,
+                total_tokens: 30,
+                ..UsagePanelSession::default()
+            },
+            providers: vec![
+                UsagePanelProvider {
+                    provider_id: "openrouter".into(),
+                    display_name: "OpenRouter".into(),
+                    status: "available".into(),
+                    message: "available: 1 turn".into(),
+                    reported_turns: 1,
+                    total_tokens: 10,
+                    ..UsagePanelProvider::default()
+                },
+                UsagePanelProvider {
+                    provider_id: "local-proxy".into(),
+                    display_name: "Local Proxy".into(),
+                    status: "not configured".into(),
+                    message: "run /9router setup".into(),
+                    ..UsagePanelProvider::default()
+                },
+            ],
+        });
+
+        assert_eq!(state.handle_key(key(KeyCode::Down)), TuiAction::None);
+        assert_eq!(
+            state
+                .usage
+                .selected_provider()
+                .map(|item| item.provider_id.as_str()),
+            Some("local-proxy")
+        );
+        assert_eq!(state.handle_key(key(KeyCode::Char('/'))), TuiAction::None);
+        for ch in "open".chars() {
+            assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
+        }
+        assert_eq!(state.usage.filtered_provider_indices(), &[0]);
+        assert_eq!(state.handle_key(key(KeyCode::Enter)), TuiAction::None);
+        assert_eq!(
+            state.handle_key(key(KeyCode::Char('r'))),
+            TuiAction::RefreshUsage
+        );
+        assert!(state.usage.loading);
     }
 
     #[test]

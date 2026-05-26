@@ -1,0 +1,60 @@
+{
+  "id": "oino.ralph_loop",
+  "display_name": "Oino Ralph Loop",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Optional built-in iterative development loop controller with Oino-native auto-continue, steering, history, state files, and promise tags.",
+  "extensions": [
+    {
+      "manifest": "extensions/ralph-loop/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "ralph"
+    ],
+    "host_capabilities": [
+      "ralph_loop"
+    ],
+    "ui": [],
+    "filesystem": [
+      {
+        "access": "read_write",
+        "paths": [
+          ".oino/ralph/**"
+        ]
+      }
+    ],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [
+      "project"
+    ],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "id": "oino.craft_skill",
+  "display_name": "Oino Craft Skill",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Optional built-in skill for designing, writing, and validating Oino skills.",
+  "extensions": [
+    {
+      "manifest": "extensions/craft-skill/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [
+    {
+      "path": "fixtures/valid-skill/SKILL.md"
+    },
+    {
+      "path": "fixtures/eval-prompts.md"
+    }
+  ],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [],
+    "commands": [],
+    "host_capabilities": [],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

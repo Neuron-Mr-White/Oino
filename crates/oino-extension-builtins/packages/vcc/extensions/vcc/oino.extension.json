@@ -1,0 +1,101 @@
+{
+  "id": "oino.vcc",
+  "package_id": "oino.vcc",
+  "display_name": "Oino VCC",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [
+      "vcc_recall"
+    ],
+    "commands": [
+      "compact",
+      "recall"
+    ],
+    "host_capabilities": [
+      "vcc_compaction",
+      "vcc_recall"
+    ],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": []
+    },
+    "secrets": [],
+    "session_persistence": [
+      "session"
+    ],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "tools": [
+      {
+        "id": "vcc_recall",
+        "description": "Search raw Oino session history outside the compacted model context.",
+        "input_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "active",
+                "all"
+              ]
+            },
+            "offset": {
+              "type": "number"
+            },
+            "limit": {
+              "type": "number"
+            },
+            "expand": {
+              "type": "boolean"
+            }
+          }
+        },
+        "execution_mode": "parallel",
+        "handler": "vcc.recall"
+      }
+    ],
+    "commands": [
+      {
+        "id": "compact",
+        "description": "Compact older active-branch session history with deterministic Oino VCC sections.",
+        "handler": "vcc.compact"
+      },
+      {
+        "id": "recall",
+        "description": "Search raw Oino session history and optionally inject the recall result as context.",
+        "handler": "vcc.recall_command"
+      }
+    ],
+    "resources": [],
+    "keymaps": [],
+    "hooks": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "providers": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "Oino owns deterministic session compaction and recall through host session APIs. This package only declares the /compact, /recall, and vcc_recall surfaces."
+  }
+}

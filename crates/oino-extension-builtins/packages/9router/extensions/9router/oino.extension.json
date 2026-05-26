@@ -1,0 +1,118 @@
+{
+  "id": "oino.9router",
+  "package_id": "oino.9router",
+  "display_name": "Oino 9router",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [],
+    "commands": [
+      "9router"
+    ],
+    "host_capabilities": [
+      "9router_external_endpoint"
+    ],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": true,
+      "hosts": [
+        "localhost",
+        "127.0.0.1",
+        "ghcr.io"
+      ]
+    },
+    "secrets": [
+      "ninerouter_api_key"
+    ],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "9router",
+        "description": "Set up, inspect, and manage the Oino 9router auth/router endpoint.",
+        "handler": "9router.command"
+      }
+    ],
+    "auth_providers": [
+      {
+        "id": "auth.9router",
+        "provider_id": "9router",
+        "display_name": "9router",
+        "auth_flow": "custom",
+        "setup_url": "http://localhost:20128/dashboard",
+        "handler": "9router.setup"
+      }
+    ],
+    "providers": [
+      {
+        "id": "provider.9router",
+        "provider_id": "9router",
+        "display_name": "9router",
+        "model_ids": [
+          "kr/claude-sonnet-4.5",
+          "kr/glm-5",
+          "oc/auto",
+          "cc/claude-opus-4-7",
+          "cx/gpt-5.5",
+          "glm/glm-5.1",
+          "minimax/MiniMax-M2.7"
+        ],
+        "privacy": {
+          "can_receive_prompts": true,
+          "can_receive_tools": true,
+          "can_mutate_requests": true
+        },
+        "runtime": {
+          "protocol": "open_ai_chat_completions",
+          "base_url": "http://localhost:20128/v1",
+          "models_url": "http://localhost:20128/v1/models",
+          "health_url": "http://localhost:20128/v1/models",
+          "api_key": {
+            "kind": "env_var",
+            "name": "NINEROUTER_API_KEY"
+          },
+          "model_id": "strip_provider_prefix",
+          "config": {
+            "base_url_key": "base_url",
+            "health_url_key": "health_url",
+            "base_url_env": ["NINEROUTER_BASE_URL"],
+            "health_url_env": ["NINEROUTER_HEALTH_URL"]
+          }
+        }
+      }
+    ],
+    "resources": [
+      {
+        "id": "9router_setup_skill",
+        "kind": "skill",
+        "path": "resources/skills/9router-setup/SKILL.md"
+      }
+    ],
+    "tools": [],
+    "keymaps": [],
+    "hooks": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "known_good_image": "ghcr.io/decolua/9router:0.4.59",
+    "runtime_contract": "Oino routes provider prefix 9router:* to an OpenAI-compatible 9router endpoint. Current iteration supports external endpoint mode; managed sidecar, persistent pinning, and automatic rollback are implemented in later iterations."
+  }
+}
