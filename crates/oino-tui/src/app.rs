@@ -4145,6 +4145,33 @@ impl TuiState {
                 self.status = "Compacting session…".into();
                 TuiAction::Compact
             }
+            ParsedCommand::CompactMethod(method) => {
+                self.clear_error();
+                self.status = format!(
+                    "Compacting session with {}…",
+                    match &method {
+                        crate::command::CompactMethodOverride::Vcc => "VCC",
+                        crate::command::CompactMethodOverride::Llm => "LLM",
+                    }
+                );
+                TuiAction::CompactMethodOverride { method }
+            }
+            ParsedCommand::CompactThreshold(pct) => {
+                self.clear_error();
+                TuiAction::CompactThreshold { pct }
+            }
+            ParsedCommand::CompactAuto(enabled) => {
+                self.clear_error();
+                TuiAction::CompactAuto { enabled }
+            }
+            ParsedCommand::CompactModel(model) => {
+                self.clear_error();
+                TuiAction::CompactModel { model }
+            }
+            ParsedCommand::CompactPrompt(path) => {
+                self.clear_error();
+                TuiAction::CompactPrompt { path }
+            }
             ParsedCommand::Recall { query } => {
                 self.clear_error();
                 self.status = "Searching session history…".into();

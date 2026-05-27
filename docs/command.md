@@ -16,6 +16,13 @@ Type `/` at the start of the composer to see Oino commands. Suggestions update a
 /usage       show usage totals
 /btw         open the side plan chat panel
 /btw new     open a fresh side plan chat panel
+/compact     compact session with configured method (VCC or LLM)
+/compact vcc     compact with deterministic VCC
+/compact llm    compact with LLM summarization
+/compact threshold [pct]   set/show auto-compact threshold %
+/compact auto <on|off>     enable/disable auto-compaction
+/compact model [inherit|<provider:model>]   set/show LLM compact model
+/compact prompt [path]     set/show LLM compact prompt
 /reload      rescan resources, extensions, themes, and cached model lists
 ```
 

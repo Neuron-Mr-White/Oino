@@ -3,7 +3,7 @@
 use crate::notify::NotifySettings;
 use oino_extension_core::ExtensionPolicySettings;
 use oino_tui::{ChatStyle, CollapseMode, KeymapConfig, ThemeSettings};
-use oino_types::ThinkingLevel;
+use oino_types::{CompactMethod, ThinkingLevel};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -11,6 +11,35 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::fs;
+
+/// Compaction settings controlling auto-compaction behaviour.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CompactSettings {
+    /// Auto-compact when context exceeds this percentage of the model's context window.
+    /// `None` disables auto-compaction.
+    pub threshold_pct: Option<u8>,
+    /// Compaction method: `vcc` (deterministic) or `llm` (LLM-based summarization).
+    pub method: CompactMethod,
+    /// Whether auto-compaction is enabled.
+    pub auto: bool,
+    /// Model for LLM compaction. `None` or `"inherit"` means use the main chat model.
+    pub model: Option<String>,
+    /// Path to a custom LLM compaction prompt file. `None` uses the built-in default.
+    pub prompt: Option<String>,
+}
+
+impl Default for CompactSettings {
+    fn default() -> Self {
+        Self {
+            threshold_pct: Some(80),
+            method: CompactMethod::Vcc,
+            auto: true,
+            model: None,
+            prompt: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -26,6 +55,7 @@ pub struct UserSettings {
     pub btw_model: Option<String>,
     pub tools: BTreeMap<String, bool>,
     pub extensions: ExtensionPolicySettings,
+    pub compact: CompactSettings,
 }
 
 impl UserSettings {
@@ -50,6 +80,7 @@ impl UserSettings {
             btw_model: None,
             tools: BTreeMap::new(),
             extensions: ExtensionPolicySettings::default(),
+            compact: CompactSettings::default(),
         }
     }
 
@@ -107,6 +138,16 @@ fn settings_path() -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_settings_default() {
+        let settings = CompactSettings::default();
+        assert_eq!(settings.threshold_pct, Some(80));
+        assert_eq!(settings.method, CompactMethod::Vcc);
+        assert!(settings.auto);
+        assert_eq!(settings.model, None);
+        assert_eq!(settings.prompt, None);
+    }
 
     #[tokio::test]
     async fn settings_round_trip_to_json_file() {

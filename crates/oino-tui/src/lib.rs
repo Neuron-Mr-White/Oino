@@ -65,8 +65,8 @@ pub use command::{
     command_suggestions_for, parse_chat_style, parse_collapse_mode, parse_collapse_target,
     parse_command, parse_thinking_level, thinking_level_value, AgentMode, CommandKind, CommandSpec,
     CommandSuggestionCategory, CommandSuggestionItem, CommandSuggestionsState,
-    CommandSuggestionsView, ExtensionCommandSuggestion, ParsedCommand, RalphCommand,
-    RalphRecordPromise, SettingsCommand, COMMANDS,
+    CommandSuggestionsView, CompactMethodOverride, ExtensionCommandSuggestion, ParsedCommand,
+    RalphCommand, RalphRecordPromise, SettingsCommand, COMMANDS,
 };
 pub use composer::{is_newline_key, is_word_cursor_modifier, ComposerState, INPUT_PLACEHOLDER};
 pub use keymap::{

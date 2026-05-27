@@ -109,8 +109,8 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
             "run optional Ralph loops with auto-continuation, steering, and promise tags",
         ),
         HelpEntry::item(
-            "/compact / /recall <query>",
-            "use optional VCC deterministic session compaction and raw history recall",
+            "/compact [vcc|llm]",
+            "compact session; override method; configure threshold, auto, model, prompt",
         ),
         HelpEntry::item(
             "/mode plan / /mode work / /mode <profile>",

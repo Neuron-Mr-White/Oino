@@ -41,6 +41,7 @@ mod ask_user;
 mod auth_readiness;
 mod extension_provider_runtime;
 mod extension_readiness;
+mod llm_compact;
 mod model_catalog;
 mod nine_router;
 mod notify;
@@ -124,14 +125,14 @@ use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
     collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
     transcript_click_targets, transcript_url_overlays, transcript_visible_lines, AgentMode,
-    AskUserOutcome, AskUserRequest, AuthStatusItem, CollapseMode, ExtensionAutosuggestItem,
-    ExtensionCommandSuggestion, ExtensionManagementItem, ExtensionManagementTarget,
-    ExtensionShortcut, ExtensionThemeState, KeySequence, KeymapConfig, MessageView, ModelOption,
-    NotifyEventKind as TuiNotifyEventKind, NotifyField, NotifyScopeSettings, ParsedCommand,
-    PromptResource, RalphCommand, RalphRecordPromise, SessionListItem, SettingsCommand,
-    SkillResource, TerminalClickTarget, TerminalUrlOverlay, ThemeCatalog, ThemeCatalogEntry,
-    ThemeDocument, ThemeSource, ThemeSourceKind, ThemeSourceScope, ToolSettingsItem,
-    ToolSettingsScope, TuiAction, TuiState, HELP_STATUS,
+    AskUserOutcome, AskUserRequest, AuthStatusItem, CollapseMode, CompactMethodOverride,
+    ExtensionAutosuggestItem, ExtensionCommandSuggestion, ExtensionManagementItem,
+    ExtensionManagementTarget, ExtensionShortcut, ExtensionThemeState, KeySequence, KeymapConfig,
+    MessageView, ModelOption, NotifyEventKind as TuiNotifyEventKind, NotifyField,
+    NotifyScopeSettings, ParsedCommand, PromptResource, RalphCommand, RalphRecordPromise,
+    SessionListItem, SettingsCommand, SkillResource, TerminalClickTarget, TerminalUrlOverlay,
+    ThemeCatalog, ThemeCatalogEntry, ThemeDocument, ThemeSource, ThemeSourceKind, ThemeSourceScope,
+    ToolSettingsItem, ToolSettingsScope, TuiAction, TuiState, HELP_STATUS,
 };
 use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ThinkingLevel};
 #[cfg(test)]
@@ -229,7 +230,12 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /btw | /btw new | /btw configure inherit|<provider:model>\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id] | /model btw inherit|<provider:model> | /model notify-summary inherit|<provider:model>\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify\n\nOptional built-ins: install from /extensions with builtin:9router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
+    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /btw | /btw new | /btw configure inherit|<provider:model>\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact                        (compact session with configured method)
+  /compact vcc | /compact llm     (override method for one-shot)
+  /compact threshold [pct]        (set/show auto-compact threshold %)
+  /compact auto <on|off>           (enable/disable auto-compact)
+  /compact model [inherit|<m>]     (set/show LLM compact model)
+  /compact prompt [path]           (set/show LLM compact prompt)\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id] | /model btw inherit|<provider:model> | /model notify-summary inherit|<provider:model>\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify\n\nOptional built-ins: install from /extensions with builtin:9router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
 }
 
 #[derive(Debug, Error)]
@@ -2794,7 +2800,12 @@ async fn run_tui(
         extension_runtime_providers(&extension_snapshot),
     );
     register_notify_hooks(&harness, resource_paths.clone(), notify_stream).await;
-    spawn_model_catalog_task(tx.clone(), auth.clone(), provider_config, initial_model);
+    spawn_model_catalog_task(
+        tx.clone(),
+        auth.clone(),
+        provider_config.clone(),
+        initial_model,
+    );
     let mut prompt_in_flight = false;
     let mut btw_harness: Option<Arc<Harness>> = None;
     let mut btw_in_flight = false;
@@ -2871,6 +2882,16 @@ async fn run_tui(
             )
             .await;
             refresh_tui_context_status(&mut state, &harness, &cwd).await;
+            try_auto_compact(
+                &mut state,
+                &harness,
+                &auth,
+                &provider_config,
+                &extension_snapshot,
+                &session_path,
+                &cwd,
+            )
+            .await;
         }
         if applied_thinking_level != state.settings.selected_thinking_level {
             applied_thinking_level = state.settings.selected_thinking_level;
@@ -3103,25 +3124,74 @@ async fn run_tui(
                 state.set_auth_status_message(message);
             }
             TuiAction::Compact => {
-                if vcc_command_enabled(&resource_paths, &tool_settings, "compact") {
-                    match compact_session_with_vcc(&harness).await {
-                        Ok((message, messages)) => {
-                            state.set_messages_from_oino(&messages);
-                            save_tui_session(&mut state, &harness, &session_path).await;
-                            state.clear_error();
-                            state.status = message;
-                            refresh_tui_context_status(&mut state, &harness, &cwd).await;
-                        }
-                        Err(err) => {
-                            state.set_error(err.to_string());
+                let user_settings = user_settings::UserSettings::load_default()
+                    .await
+                    .unwrap_or_default();
+                match user_settings.compact.method {
+                    oino_types::CompactMethod::Vcc => {
+                        if vcc_command_enabled(&resource_paths, &tool_settings, "compact") {
+                            match compact_session_with_vcc(&harness).await {
+                                Ok((message, messages)) => {
+                                    state.set_messages_from_oino(&messages);
+                                    save_tui_session(&mut state, &harness, &session_path).await;
+                                    state.clear_error();
+                                    state.status = message;
+                                    refresh_tui_context_status(&mut state, &harness, &cwd).await;
+                                }
+                                Err(err) => {
+                                    state.set_error(err.to_string());
+                                    state.status = HELP_STATUS.into();
+                                }
+                            }
+                        } else {
+                            state.set_error(
+                                "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`",
+                            );
                             state.status = HELP_STATUS.into();
                         }
                     }
-                } else {
-                    state.set_error(
-                        "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`",
-                    );
-                    state.status = HELP_STATUS.into();
+                    oino_types::CompactMethod::Llm => {
+                        let model_id = user_settings
+                            .compact
+                            .model
+                            .as_deref()
+                            .filter(|m| *m != "inherit")
+                            .unwrap_or(&state.settings.selected_model);
+                        let model = match Model::from_identifier(model_id) {
+                            Some(m) => m,
+                            None => {
+                                state.set_error(format!("Invalid compact model: {model_id}"));
+                                state.status = HELP_STATUS.into();
+                                return Ok(());
+                            }
+                        };
+                        let compact_stream = build_runtime_provider(
+                            auth.clone(),
+                            provider_config.clone(),
+                            extension_runtime_providers(&extension_snapshot),
+                        );
+                        match compact_session_with_llm(
+                            &harness,
+                            &compact_stream,
+                            &model,
+                            user_settings.compact.prompt.as_deref(),
+                            &cwd,
+                        )
+                        .await
+                        {
+                            Ok((message, messages)) => {
+                                state.set_messages_from_oino(&messages);
+                                save_tui_session(&mut state, &harness, &session_path).await;
+                                state.clear_error();
+                                state.status = message;
+                                refresh_tui_context_status(&mut state, &harness, &cwd).await;
+                            }
+                            Err(err) => {
+                                state.set_error(err.to_string());
+                                state.status = HELP_STATUS.into();
+                            }
+                        }
+                    }
                 }
             }
             TuiAction::Recall { query } => {
@@ -3147,6 +3217,170 @@ async fn run_tui(
                         "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/recall`",
                     );
                     state.status = HELP_STATUS.into();
+                }
+            }
+            TuiAction::CompactMethodOverride { method } => {
+                let method_name = match &method {
+                    CompactMethodOverride::Vcc => "VCC",
+                    CompactMethodOverride::Llm => "LLM",
+                };
+                match method {
+                    CompactMethodOverride::Vcc => {
+                        if vcc_command_enabled(&resource_paths, &tool_settings, "compact") {
+                            match compact_session_with_vcc(&harness).await {
+                                Ok((message, messages)) => {
+                                    state.set_messages_from_oino(&messages);
+                                    save_tui_session(&mut state, &harness, &session_path).await;
+                                    state.clear_error();
+                                    state.status = format!("{method_name}: {message}");
+                                    refresh_tui_context_status(&mut state, &harness, &cwd).await;
+                                }
+                                Err(err) => {
+                                    state.set_error(err.to_string());
+                                    state.status = HELP_STATUS.into();
+                                }
+                            }
+                        } else {
+                            state.set_error("VCC extension is not enabled; install `builtin:vcc` from `/extensions`");
+                            state.status = HELP_STATUS.into();
+                        }
+                    }
+                    CompactMethodOverride::Llm => {
+                        let user_settings = user_settings::UserSettings::load_default()
+                            .await
+                            .unwrap_or_default();
+                        let model_id = user_settings
+                            .compact
+                            .model
+                            .as_deref()
+                            .filter(|m| *m != "inherit")
+                            .unwrap_or(&state.settings.selected_model);
+                        let model = match Model::from_identifier(model_id) {
+                            Some(m) => m,
+                            None => {
+                                state.set_error(format!("Invalid compact model: {model_id}"));
+                                state.status = HELP_STATUS.into();
+                                return Ok(());
+                            }
+                        };
+                        let compact_stream = build_runtime_provider(
+                            auth.clone(),
+                            provider_config.clone(),
+                            extension_runtime_providers(&extension_snapshot),
+                        );
+                        match compact_session_with_llm(
+                            &harness,
+                            &compact_stream,
+                            &model,
+                            user_settings.compact.prompt.as_deref(),
+                            &cwd,
+                        )
+                        .await
+                        {
+                            Ok((message, messages)) => {
+                                state.set_messages_from_oino(&messages);
+                                save_tui_session(&mut state, &harness, &session_path).await;
+                                state.clear_error();
+                                state.status = format!("{method_name}: {message}");
+                                refresh_tui_context_status(&mut state, &harness, &cwd).await;
+                            }
+                            Err(err) => {
+                                state.set_error(err.to_string());
+                                state.status = HELP_STATUS.into();
+                            }
+                        }
+                    }
+                }
+            }
+            TuiAction::CompactThreshold { pct } => {
+                let mut settings = user_settings::UserSettings::load_default()
+                    .await
+                    .unwrap_or_default();
+                match pct {
+                    Some(p) => {
+                        settings.compact.threshold_pct = Some(p);
+                        if let Err(err) = settings.save_default().await {
+                            state.set_error(format!("Failed to save settings: {err}"));
+                        } else {
+                            state.clear_error();
+                            state.status = format!("Auto-compact threshold set to {p}%");
+                        }
+                    }
+                    None => {
+                        let current = settings
+                            .compact
+                            .threshold_pct
+                            .map(|p| format!("{p}%"))
+                            .unwrap_or_else(|| "disabled".to_string());
+                        state.clear_error();
+                        state.status = format!("Current auto-compact threshold: {current}");
+                    }
+                }
+            }
+            TuiAction::CompactAuto { enabled } => {
+                let mut settings = user_settings::UserSettings::load_default()
+                    .await
+                    .unwrap_or_default();
+                settings.compact.auto = enabled;
+                if let Err(err) = settings.save_default().await {
+                    state.set_error(format!("Failed to save settings: {err}"));
+                } else {
+                    state.clear_error();
+                    state.status = format!(
+                        "Auto-compact {}",
+                        if enabled { "enabled" } else { "disabled" }
+                    );
+                }
+            }
+            TuiAction::CompactModel { model } => {
+                let mut settings = user_settings::UserSettings::load_default()
+                    .await
+                    .unwrap_or_default();
+                match model {
+                    Some(Some(m)) => {
+                        settings.compact.model = Some(m.clone());
+                        if let Err(err) = settings.save_default().await {
+                            state.set_error(format!("Failed to save settings: {err}"));
+                        } else {
+                            state.clear_error();
+                            state.status = format!("LLM compact model set to {m}");
+                        }
+                    }
+                    Some(None) => {
+                        settings.compact.model = None;
+                        if let Err(err) = settings.save_default().await {
+                            state.set_error(format!("Failed to save settings: {err}"));
+                        } else {
+                            state.clear_error();
+                            state.status = "LLM compact model set to inherit".into();
+                        }
+                    }
+                    None => {
+                        let current = settings.compact.model.as_deref().unwrap_or("inherit");
+                        state.clear_error();
+                        state.status = format!("Current LLM compact model: {current}");
+                    }
+                }
+            }
+            TuiAction::CompactPrompt { path } => {
+                let mut settings = user_settings::UserSettings::load_default()
+                    .await
+                    .unwrap_or_default();
+                match path {
+                    Some(p) => {
+                        settings.compact.prompt = Some(p.clone());
+                        if let Err(err) = settings.save_default().await {
+                            state.set_error(format!("Failed to save settings: {err}"));
+                        } else {
+                            state.clear_error();
+                            state.status = format!("LLM compact prompt set to {p}");
+                        }
+                    }
+                    None => {
+                        let current = settings.compact.prompt.as_deref().unwrap_or("default");
+                        state.clear_error();
+                        state.status = format!("Current LLM compact prompt: {current}");
+                    }
                 }
             }
             TuiAction::RefreshUsage => {
@@ -5615,6 +5849,44 @@ async fn compact_session_with_vcc(harness: &Harness) -> Result<(String, Vec<Mess
     ))
 }
 
+async fn compact_session_with_llm(
+    harness: &Harness,
+    stream: &Arc<dyn StreamProvider>,
+    model: &Model,
+    custom_prompt: Option<&str>,
+    cwd: &std::path::Path,
+) -> Result<(String, Vec<Message>), AppError> {
+    let branch = harness.active_branch_entries().await?;
+
+    // Try loading custom prompt from settings, then from project .oino/prompts/compact.md
+    let prompt = match custom_prompt {
+        Some(p) => llm_compact::load_custom_prompt(std::path::Path::new(p)).await,
+        None => llm_compact::load_project_compact_prompt(cwd).await,
+    };
+
+    let compaction = llm_compact::compact_with_llm(
+        &branch,
+        stream.as_ref(),
+        model.clone(),
+        prompt.as_deref(),
+        AbortSignal::new(),
+    )
+    .await
+    .map_err(AppError::InvalidArguments)?;
+
+    let compacted_entries = compaction.compacted_entries;
+    let kept_entries = compaction.kept_entries;
+    let messages = harness
+        .append_compaction(compaction.summary, compaction.replaces)
+        .await?;
+    Ok((
+        format!(
+            "LLM compacted {compacted_entries} session entries and kept {kept_entries} live tail entries"
+        ),
+        messages,
+    ))
+}
+
 async fn recall_session_with_vcc(
     harness: &Harness,
     query: Option<String>,
@@ -5719,14 +5991,123 @@ async fn execute_runtime_command(
         }
         ParsedCommand::Compact => {
             let settings = load_tool_settings(&resource_catalog.paths).await;
-            if vcc_command_enabled(&resource_catalog.paths, &settings, "compact") {
-                let (message, _messages) = compact_session_with_vcc(harness).await?;
-                harness.save_session_jsonl(session_path).await?;
-                return Ok(message);
+            let user_settings = user_settings::UserSettings::load_default()
+                .await
+                .unwrap_or_default();
+            match user_settings.compact.method {
+                oino_types::CompactMethod::Vcc => {
+                    if vcc_command_enabled(&resource_catalog.paths, &settings, "compact") {
+                        let (message, _messages) = compact_session_with_vcc(harness).await?;
+                        harness.save_session_jsonl(session_path).await?;
+                        return Ok(message);
+                    }
+                    return Err(AppError::InvalidArguments(
+                        "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`".into(),
+                    ));
+                }
+                oino_types::CompactMethod::Llm => {
+                    return Err(AppError::InvalidArguments(
+                        "LLM compaction requires the TUI. Use `/compact` inside an interactive session".into(),
+                    ));
+                }
             }
-            return Err(AppError::InvalidArguments(
-                "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`".into(),
+        }
+        ParsedCommand::CompactMethod(method) => match method {
+            CompactMethodOverride::Vcc => {
+                let settings = load_tool_settings(&resource_catalog.paths).await;
+                if vcc_command_enabled(&resource_catalog.paths, &settings, "compact") {
+                    let (message, _messages) = compact_session_with_vcc(harness).await?;
+                    harness.save_session_jsonl(session_path).await?;
+                    return Ok(message);
+                }
+                return Err(AppError::InvalidArguments(
+                        "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`".into(),
+                    ));
+            }
+            CompactMethodOverride::Llm => {
+                return Err(AppError::InvalidArguments(
+                        "LLM compaction requires the TUI. Use `/compact llm` inside an interactive session".into(),
+                    ));
+            }
+        },
+        ParsedCommand::CompactThreshold(pct) => {
+            let mut settings = user_settings::UserSettings::load_default()
+                .await
+                .unwrap_or_default();
+            match pct {
+                Some(p) => {
+                    settings.compact.threshold_pct = Some(p);
+                    settings.save_default().await.map_err(|e| {
+                        AppError::InvalidArguments(format!("Failed to save settings: {e}"))
+                    })?;
+                    return Ok(format!("Auto-compact threshold set to {p}%"));
+                }
+                None => {
+                    let current = settings
+                        .compact
+                        .threshold_pct
+                        .map(|p| format!("{p}%"))
+                        .unwrap_or_else(|| "disabled".to_string());
+                    return Ok(format!("Current auto-compact threshold: {current}"));
+                }
+            }
+        }
+        ParsedCommand::CompactAuto(enabled) => {
+            let mut settings = user_settings::UserSettings::load_default()
+                .await
+                .unwrap_or_default();
+            settings.compact.auto = enabled;
+            settings
+                .save_default()
+                .await
+                .map_err(|e| AppError::InvalidArguments(format!("Failed to save settings: {e}")))?;
+            return Ok(format!(
+                "Auto-compact {}",
+                if enabled { "enabled" } else { "disabled" }
             ));
+        }
+        ParsedCommand::CompactModel(model) => {
+            let mut settings = user_settings::UserSettings::load_default()
+                .await
+                .unwrap_or_default();
+            match model {
+                Some(Some(m)) => {
+                    settings.compact.model = Some(m.clone());
+                    settings.save_default().await.map_err(|e| {
+                        AppError::InvalidArguments(format!("Failed to save settings: {e}"))
+                    })?;
+                    return Ok(format!("LLM compact model set to {m}"));
+                }
+                Some(None) => {
+                    settings.compact.model = None;
+                    settings.save_default().await.map_err(|e| {
+                        AppError::InvalidArguments(format!("Failed to save settings: {e}"))
+                    })?;
+                    return Ok("LLM compact model set to inherit".into());
+                }
+                None => {
+                    let current = settings.compact.model.as_deref().unwrap_or("inherit");
+                    return Ok(format!("Current LLM compact model: {current}"));
+                }
+            }
+        }
+        ParsedCommand::CompactPrompt(path) => {
+            let mut settings = user_settings::UserSettings::load_default()
+                .await
+                .unwrap_or_default();
+            match path {
+                Some(p) => {
+                    settings.compact.prompt = Some(p.clone());
+                    settings.save_default().await.map_err(|e| {
+                        AppError::InvalidArguments(format!("Failed to save settings: {e}"))
+                    })?;
+                    return Ok(format!("LLM compact prompt set to {p}"));
+                }
+                None => {
+                    let current = settings.compact.prompt.as_deref().unwrap_or("default");
+                    return Ok(format!("Current LLM compact prompt: {current}"));
+                }
+            }
         }
         ParsedCommand::Recall { query } => {
             let settings = load_tool_settings(&resource_catalog.paths).await;
@@ -6131,6 +6512,103 @@ async fn refresh_tui_context_status(state: &mut TuiState, harness: &Harness, cwd
     match harness.inspect_full_prompt().await {
         Ok(snapshot) => state.set_context_tokens(Some(snapshot.token_count)),
         Err(_) => state.set_context_tokens(None),
+    }
+}
+
+/// Check if auto-compaction should trigger based on settings and current context usage.
+/// Returns true if compaction was performed.
+async fn try_auto_compact(
+    state: &mut TuiState,
+    harness: &Harness,
+    auth: &AuthStorage,
+    provider_config: &OpenRouterConfig,
+    extension_snapshot: &ExtensionManagerSnapshot,
+    session_path: &std::path::Path,
+    cwd: &Path,
+) -> bool {
+    let user_settings = match user_settings::UserSettings::load_default().await {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    if !user_settings.compact.auto {
+        return false;
+    }
+
+    let threshold_pct = match user_settings.compact.threshold_pct {
+        Some(p) if p > 0 && p <= 100 => p,
+        _ => return false,
+    };
+
+    let context_tokens = match state.runtime_status.context_tokens {
+        Some(t) => t,
+        None => return false,
+    };
+
+    let context_length = match state.settings.selected_model_context_length() {
+        Some(l) => l,
+        None => return false,
+    };
+
+    if context_length == 0 {
+        return false;
+    }
+
+    let usage_pct = (context_tokens as f64 / context_length as f64 * 100.0) as u8;
+    if usage_pct < threshold_pct {
+        return false;
+    }
+
+    // Auto-compact triggered
+    let method = user_settings.compact.method;
+    match method {
+        oino_types::CompactMethod::Vcc => match compact_session_with_vcc(harness).await {
+            Ok((message, messages)) => {
+                state.set_messages_from_oino(&messages);
+                let _ = harness.save_session_jsonl(session_path).await;
+                state.clear_error();
+                state.status = format!("Auto-compacted (VCC): {message}");
+                refresh_tui_context_status(state, harness, cwd).await;
+                true
+            }
+            Err(_) => false,
+        },
+        oino_types::CompactMethod::Llm => {
+            let model_id = user_settings
+                .compact
+                .model
+                .as_deref()
+                .filter(|m| *m != "inherit")
+                .unwrap_or(&state.settings.selected_model);
+            let model = match Model::from_identifier(model_id) {
+                Some(m) => m,
+                None => return false,
+            };
+            let compact_stream = build_runtime_provider(
+                auth.clone(),
+                provider_config.clone(),
+                extension_runtime_providers(extension_snapshot),
+            );
+            match compact_session_with_llm(
+                harness,
+                &compact_stream,
+                &model,
+                user_settings.compact.prompt.as_deref(),
+                cwd,
+            )
+            .await
+            {
+                Ok((message, messages)) => {
+                    state.set_messages_from_oino(&messages);
+                    let _ = harness.save_session_jsonl(session_path).await;
+                    state.clear_error();
+                    state.status = format!("Auto-compacted (LLM): {message}");
+                    refresh_tui_context_status(state, harness, cwd).await;
+                    true
+                }
+                Err(_) => false,
+            }
+        }
     }
 }
 
@@ -7853,8 +8331,10 @@ mod tests {
                 keymap: None,
                 theme: oino_tui::ThemeSettings::default(),
                 notify: notify::NotifySettings::default(),
+                btw_model: None,
                 tools: BTreeMap::new(),
                 extensions: oino_extension_core::ExtensionPolicySettings::default(),
+                compact: user_settings::CompactSettings::default(),
             },
             None,
             None,

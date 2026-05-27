@@ -175,6 +175,13 @@ const RESOURCE_PREFIX_SUGGESTIONS: &[(&str, &str, CommandSuggestionCategory)] = 
     ),
 ];
 
+/// Override the compaction method for a single `/compact` invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompactMethodOverride {
+    Vcc,
+    Llm,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParsedCommand {
     Help,
@@ -187,6 +194,11 @@ pub enum ParsedCommand {
     Extensions,
     ExtensionsUpdate,
     Compact,
+    CompactMethod(CompactMethodOverride),
+    CompactThreshold(Option<u8>),
+    CompactAuto(bool),
+    CompactModel(Option<Option<String>>),
+    CompactPrompt(Option<String>),
     Recall { query: Option<String> },
     Ralph(RalphCommand),
     BtwOpen,
@@ -519,6 +531,13 @@ pub fn command_suggestions_for(
         [btw, configure] if btw == "/btw" && configure == "configure" => {
             model_or_inherit_suggestions(context, models)
         }
+        [compact] if compact == "/compact" => compact_subcommand_suggestions(context),
+        [compact, sub]
+            if compact == "/compact"
+                && matches!(sub.as_str(), "threshold" | "auto" | "model" | "prompt") =>
+        {
+            compact_value_suggestions(context.clone(), sub.as_str(), models)
+        }
         [mode] if mode == "/mode" => mode_suggestions(context),
         [auth] if auth == "/auth" => auth_subcommand_suggestions(context),
         [extensions] if extensions == "/extensions" => extensions_suggestions(context),
@@ -668,6 +687,36 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         }
         ["/usage"] => Some(ParsedCommand::Usage),
         ["/compact"] => Some(ParsedCommand::Compact),
+        ["/compact", "vcc"] => Some(ParsedCommand::CompactMethod(CompactMethodOverride::Vcc)),
+        ["/compact", "llm"] => Some(ParsedCommand::CompactMethod(CompactMethodOverride::Llm)),
+        ["/compact", "method", method @ ("vcc" | "llm")] => {
+            Some(ParsedCommand::CompactMethod(match *method {
+                "vcc" => CompactMethodOverride::Vcc,
+                "llm" => CompactMethodOverride::Llm,
+                _ => unreachable!(),
+            }))
+        }
+        ["/compact", "threshold"] => Some(ParsedCommand::CompactThreshold(None)),
+        ["/compact", "threshold", pct] => pct
+            .parse::<u8>()
+            .ok()
+            .filter(|&p| p > 0 && p <= 100)
+            .map(|p| ParsedCommand::CompactThreshold(Some(p)))
+            .or_else(|| Some(ParsedCommand::CompactThreshold(None))),
+        ["/compact", "auto", "on"] => Some(ParsedCommand::CompactAuto(true)),
+        ["/compact", "auto", "off"] => Some(ParsedCommand::CompactAuto(false)),
+        ["/compact", "model"] => Some(ParsedCommand::CompactModel(Some(None))),
+        ["/compact", "model", "inherit"] => Some(ParsedCommand::CompactModel(Some(None))),
+        ["/compact", "model", model] => {
+            Some(ParsedCommand::CompactModel(Some(Some(model.to_string()))))
+        }
+        ["/compact", "prompt"] => Some(ParsedCommand::CompactPrompt(None)),
+        ["/compact", "prompt", ..] => input
+            .strip_prefix("/compact prompt")
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(|p| ParsedCommand::CompactPrompt(Some(p.to_string())))
+            .or_else(|| Some(ParsedCommand::CompactPrompt(None))),
         ["/recall"] => Some(ParsedCommand::Recall { query: None }),
         ["/recall", ..] => input
             .strip_prefix("/recall")
@@ -1584,6 +1633,86 @@ fn btw_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView>
     Some(view("BTW", context.active_prefix, items))
 }
 
+fn compact_subcommand_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    let actions = [
+        ("vcc", "compact with VCC (deterministic)"),
+        ("llm", "compact with LLM (summarization)"),
+        ("threshold", "set auto-compact threshold percentage"),
+        ("auto", "enable/disable auto-compact"),
+        ("model", "set LLM compact model"),
+        ("prompt", "set LLM compact prompt"),
+    ];
+    let items = fuzzy_indices(
+        &actions,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (value, summary) = actions[index];
+        CommandSuggestionItem {
+            label: value.into(),
+            summary: summary.into(),
+            replacement: value.into(),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: true,
+            category: CommandSuggestionCategory::System,
+        }
+    })
+    .collect::<Vec<_>>();
+    Some(view("Compact", context.active_prefix, items))
+}
+
+fn compact_value_suggestions(
+    context: SuggestionContext,
+    sub: &str,
+    models: &[ModelOption],
+) -> Option<CommandSuggestionsView> {
+    match sub {
+        "auto" => {
+            let actions = [
+                ("on", "enable auto-compact"),
+                ("off", "disable auto-compact"),
+            ];
+            let items = actions
+                .iter()
+                .filter(|(value, _)| value.starts_with(&context.active_prefix))
+                .map(|(value, summary)| CommandSuggestionItem {
+                    label: value.to_string(),
+                    summary: summary.to_string(),
+                    replacement: value.to_string(),
+                    replace_start: context.replace_start,
+                    replace_end: context.replace_end,
+                    complete_on_enter: true,
+                    category: CommandSuggestionCategory::System,
+                })
+                .collect::<Vec<_>>();
+            Some(view("Compact auto", context.active_prefix, items))
+        }
+        "model" => model_or_inherit_suggestions(context, models),
+        "threshold" => {
+            let items = ["50", "60", "70", "80", "90"]
+                .iter()
+                .filter(|v| v.starts_with(&context.active_prefix))
+                .map(|v| CommandSuggestionItem {
+                    label: v.to_string(),
+                    summary: format!("{v}% of context window"),
+                    replacement: v.to_string(),
+                    replace_start: context.replace_start,
+                    replace_end: context.replace_end,
+                    complete_on_enter: true,
+                    category: CommandSuggestionCategory::System,
+                })
+                .collect::<Vec<_>>();
+            Some(view("Compact threshold", context.active_prefix, items))
+        }
+        _ => None,
+    }
+}
+
 fn mode_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     let actions = [
         ("plan", "plan with read and inspection-only bash"),
@@ -2327,6 +2456,28 @@ mod tests {
                 "/settings notify",
             ),
             ExtensionCommandSuggestion::new("/compact", "Compact session", "/compact"),
+            ExtensionCommandSuggestion::new("/compact vcc", "Compact with VCC", "/compact vcc"),
+            ExtensionCommandSuggestion::new("/compact llm", "Compact with LLM", "/compact llm"),
+            ExtensionCommandSuggestion::new(
+                "/compact threshold <pct>",
+                "Set auto-compact threshold",
+                "/compact threshold ",
+            ),
+            ExtensionCommandSuggestion::new(
+                "/compact auto <on|off>",
+                "Toggle auto-compact",
+                "/compact auto ",
+            ),
+            ExtensionCommandSuggestion::new(
+                "/compact model <m>",
+                "Set LLM compact model",
+                "/compact model ",
+            ),
+            ExtensionCommandSuggestion::new(
+                "/compact prompt <path>",
+                "Set LLM compact prompt",
+                "/compact prompt ",
+            ),
             ExtensionCommandSuggestion::new("/recall", "Recall history", "/recall"),
         ];
         let view = suggestions_with_extensions("/mode", 5, &extension_commands)
@@ -2419,6 +2570,36 @@ mod tests {
         assert_eq!(parse_command("/inspect"), Some(ParsedCommand::Inspect));
         assert_eq!(parse_command("/usage"), Some(ParsedCommand::Usage));
         assert_eq!(parse_command("/compact"), Some(ParsedCommand::Compact));
+        assert_eq!(
+            parse_command("/compact vcc"),
+            Some(ParsedCommand::CompactMethod(CompactMethodOverride::Vcc))
+        );
+        assert_eq!(
+            parse_command("/compact llm"),
+            Some(ParsedCommand::CompactMethod(CompactMethodOverride::Llm))
+        );
+        assert_eq!(
+            parse_command("/compact threshold 80"),
+            Some(ParsedCommand::CompactThreshold(Some(80)))
+        );
+        assert_eq!(
+            parse_command("/compact auto on"),
+            Some(ParsedCommand::CompactAuto(true))
+        );
+        assert_eq!(
+            parse_command("/compact auto off"),
+            Some(ParsedCommand::CompactAuto(false))
+        );
+        assert_eq!(
+            parse_command("/compact model inherit"),
+            Some(ParsedCommand::CompactModel(Some(None)))
+        );
+        assert_eq!(
+            parse_command("/compact model openrouter:anthropic/claude-3.5-sonnet"),
+            Some(ParsedCommand::CompactModel(Some(Some(
+                "openrouter:anthropic/claude-3.5-sonnet".into()
+            ))))
+        );
         assert_eq!(
             parse_command("/recall"),
             Some(ParsedCommand::Recall { query: None })

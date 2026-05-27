@@ -66,6 +66,21 @@ pub enum TuiAction {
         action: String,
     },
     Compact,
+    CompactMethodOverride {
+        method: crate::command::CompactMethodOverride,
+    },
+    CompactThreshold {
+        pct: Option<u8>,
+    },
+    CompactAuto {
+        enabled: bool,
+    },
+    CompactModel {
+        model: Option<Option<String>>,
+    },
+    CompactPrompt {
+        path: Option<String>,
+    },
     Recall {
         query: Option<String>,
     },

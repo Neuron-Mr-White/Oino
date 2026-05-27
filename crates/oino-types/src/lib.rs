@@ -107,6 +107,15 @@ pub enum ThinkingLevel {
     XHigh,
 }
 
+/// Compaction method used when compacting session history.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum CompactMethod {
+    #[default]
+    Vcc,
+    Llm,
+}
+
 /// Token/cost usage reported by a provider adapter.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Usage {
