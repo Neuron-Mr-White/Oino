@@ -3904,6 +3904,7 @@ fn render_settings_overlay(
         SettingsPage::Keymaps => render_keymap_settings(frame, sections[0], settings, theme),
         SettingsPage::Theme => render_theme_settings(frame, sections[0], settings, theme),
         SettingsPage::Notify => render_notify_settings(frame, sections[0], settings, theme),
+        SettingsPage::Compaction => render_compaction_settings(frame, sections[0], settings, theme),
         SettingsPage::Extensions => render_settings_extensions_page(frame, sections[0], theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
@@ -3967,6 +3968,7 @@ fn render_settings_menu(
                 format!("{status}, topic: {topic}")
             }
             SettingsMenuItem::Extensions => "open extension manager".into(),
+            SettingsMenuItem::Compaction => "configure session compaction".into(),
         };
         let text = truncate_with_ellipsis(
             &format!("{marker} {}  {}", item.label(), detail),
@@ -3980,6 +3982,90 @@ fn render_settings_menu(
             .block(
                 Block::default()
                     .title(" Settings Pages ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            )
+            .alignment(Alignment::Left),
+        area,
+    );
+}
+
+fn render_compaction_settings(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    settings: &SettingsState,
+    theme: &Theme,
+) {
+    let content_width = area.width.saturating_sub(2) as usize;
+    let compact = &settings.compact;
+    let method_label = if compact.method_is_llm { "LLM" } else { "VCC" };
+    let model_display = compact.model.as_deref().unwrap_or("inherit");
+    let prompt_display = compact
+        .prompt
+        .as_deref()
+        .unwrap_or("default (.oino/prompts/compact.md)");
+    let threshold_display = compact
+        .threshold_pct
+        .map(|p| format!("{p}%"))
+        .unwrap_or_else(|| "disabled".to_string());
+
+    let rows: [(String, String); 5] = [
+        (
+            "Method".into(),
+            format!(
+                "{method_label} — use Left/Right to toggle. VCC is deterministic, LLM summarizes with an AI model."
+            ),
+        ),
+        (
+            "Auto-compact".into(),
+            format!(
+                "{} — use Left/Right to toggle. Triggers when context exceeds threshold.",
+                if compact.auto_enabled { "on" } else { "off" }
+            ),
+        ),
+        (
+            "Threshold".into(),
+            format!(
+                "{threshold_display} — use /compact threshold <pct> to change"
+            ),
+        ),
+        (
+            "LLM Model".into(),
+            format!(
+                "{model_display} — use /compact model <provider:model> to change"
+            ),
+        ),
+        (
+            "LLM Prompt".into(),
+            format!(
+                "{prompt_display} — use /compact prompt <path> to change"
+            ),
+        ),
+    ];
+
+    let mut lines = vec![Line::styled(
+        truncate_with_ellipsis(
+            "Configure session compaction behaviour. Use /compact commands to change values.",
+            content_width,
+        ),
+        Style::default().fg(theme.muted),
+    )];
+    lines.push(Line::from(""));
+
+    for (index, (label, description)) in rows.iter().enumerate() {
+        let active = index == compact.cursor;
+        let marker = if active { "\u{25b6} " } else { "  " };
+        lines.push(Line::styled(
+            truncate_with_ellipsis(&format!("{marker}{label}: {description}"), content_width),
+            item_style(active, false, theme),
+        ));
+    }
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title(" Compaction ")
                     .borders(Borders::ALL)
                     .border_style(section_border_style(true, theme)),
             )
@@ -5196,6 +5282,7 @@ fn render_settings_footer(
         SettingsPage::Notify if settings.notify.edit.is_some() => "type value • Enter save • Esc cancel edit",
         SettingsPage::Notify => "arrows/jk move • Enter edit/toggle • p project • g global • x clear • Esc/← back",
         SettingsPage::Extensions => "Enter open extension manager • Esc/← back",
+        SettingsPage::Compaction => "arrows/jk move • Enter/←→ toggle • Esc/← back • use /compact commands for threshold/model/prompt",
         SettingsPage::Keymaps => match settings.keymaps_mode {
             KeymapsMode::List => {
                 "arrows/jk move • Enter detail • g chord key • p preset • Esc/← back"

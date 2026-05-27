@@ -3981,6 +3981,23 @@ impl TuiState {
                     enabled,
                 }
             }
+            SettingsAction::SetCompactSettings {
+                method_is_llm,
+                auto_enabled,
+                threshold_pct,
+            } => {
+                let method = if method_is_llm { "LLM" } else { "VCC" };
+                let auto_str = if auto_enabled { "on" } else { "off" };
+                self.status = format!(
+                    "Compaction: method={method}, auto={auto_str}, threshold={:?}",
+                    threshold_pct
+                );
+                TuiAction::SetCompactSettings {
+                    method_is_llm,
+                    auto_enabled,
+                    threshold_pct,
+                }
+            }
         }
     }
 

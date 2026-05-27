@@ -238,6 +238,7 @@ pub enum SettingsPage {
     Keymaps,
     Theme,
     Notify,
+    Compaction,
     Extensions,
 }
 
@@ -313,6 +314,7 @@ pub enum SettingsMenuItem {
     Keymaps,
     Theme,
     Notify,
+    Compaction,
     Extensions,
 }
 
@@ -329,6 +331,7 @@ impl SettingsMenuItem {
             Self::Keymaps => "Keymaps",
             Self::Theme => "Theme",
             Self::Notify => "Notify",
+            Self::Compaction => "Compaction",
             Self::Extensions => "Extensions",
         }
     }
@@ -345,6 +348,7 @@ impl SettingsMenuItem {
             Self::Keymaps => SettingsPage::Keymaps,
             Self::Theme => SettingsPage::Theme,
             Self::Notify => SettingsPage::Notify,
+            Self::Compaction => SettingsPage::Compaction,
             Self::Extensions => SettingsPage::Extensions,
         }
     }
@@ -389,6 +393,11 @@ pub enum SettingsAction {
         scope: ToolSettingsScope,
         event: NotifyEventKind,
         enabled: bool,
+    },
+    SetCompactSettings {
+        method_is_llm: bool,
+        auto_enabled: bool,
+        threshold_pct: Option<u8>,
     },
 }
 
@@ -656,6 +665,55 @@ fn normalize_optional_text(input: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
+/// State for the Compaction settings page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactionSettingsState {
+    pub cursor: usize,
+    /// Loaded from ~/.oino/settings.json
+    pub threshold_pct: Option<u8>,
+    pub method_is_llm: bool,
+    pub auto_enabled: bool,
+    pub model: Option<String>,
+    pub prompt: Option<String>,
+}
+
+impl Default for CompactionSettingsState {
+    fn default() -> Self {
+        Self {
+            cursor: 0,
+            threshold_pct: Some(80),
+            method_is_llm: false,
+            auto_enabled: true,
+            model: None,
+            prompt: None,
+        }
+    }
+}
+
+impl CompactionSettingsState {
+    pub const ROW_COUNT: usize = 5;
+
+    /// Update state from loaded user settings.
+    pub fn update_from_settings(
+        &mut self,
+        threshold_pct: Option<u8>,
+        method_is_llm: bool,
+        auto_enabled: bool,
+        model: Option<String>,
+        prompt: Option<String>,
+    ) {
+        self.threshold_pct = threshold_pct;
+        self.method_is_llm = method_is_llm;
+        self.auto_enabled = auto_enabled;
+        self.model = model;
+        self.prompt = prompt;
+    }
+
+    pub fn clamp_cursor(&mut self) {
+        self.cursor = self.cursor.min(Self::ROW_COUNT.saturating_sub(1));
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
     pub models: Vec<ModelOption>,
@@ -682,6 +740,7 @@ pub struct SettingsState {
     pub auth_items: Vec<AuthStatusItem>,
     pub theme_options: Vec<ThemeOption>,
     pub notify: NotifySettingsState,
+    pub compact: CompactionSettingsState,
     pub global_theme: ThemeSettings,
     pub project_theme: ThemeSettings,
     pub effective_theme: Option<ResolvedTheme>,
@@ -722,6 +781,7 @@ impl SettingsState {
             auth_items: Vec::new(),
             theme_options: Vec::new(),
             notify: NotifySettingsState::default(),
+            compact: CompactionSettingsState::default(),
             global_theme: ThemeSettings::default(),
             project_theme: ThemeSettings::default(),
             effective_theme: None,
@@ -999,6 +1059,7 @@ impl SettingsState {
         if self.notify.available {
             items.push(SettingsMenuItem::Notify);
         }
+        items.push(SettingsMenuItem::Compaction);
         items.push(SettingsMenuItem::Extensions);
         items
     }
@@ -1105,6 +1166,12 @@ impl SettingsState {
             KeyCode::Right if self.page == SettingsPage::Collapse => self.apply_collapse_mode(),
             KeyCode::Right if self.page == SettingsPage::Tools => {
                 self.toggle_tool(ToolSettingsScope::Project)
+            }
+            KeyCode::Right if self.page == SettingsPage::Compaction => {
+                self.toggle_compaction_field()
+            }
+            KeyCode::Left if self.page == SettingsPage::Compaction => {
+                self.toggle_compaction_field_left()
             }
             KeyCode::Char('g' | 'G')
                 if self.page == SettingsPage::Tools && key.modifiers.is_empty() =>
@@ -1238,6 +1305,30 @@ impl SettingsState {
             }
             _ => SettingsAction::None,
         }
+    }
+
+    fn toggle_compaction_field(&mut self) -> SettingsAction {
+        match self.compact.cursor {
+            0 => {
+                // Toggle method: VCC <-> LLM
+                self.compact.method_is_llm = !self.compact.method_is_llm;
+            }
+            1 => {
+                // Toggle auto on/off
+                self.compact.auto_enabled = !self.compact.auto_enabled;
+            }
+            _ => return SettingsAction::None,
+        }
+        SettingsAction::SetCompactSettings {
+            method_is_llm: self.compact.method_is_llm,
+            auto_enabled: self.compact.auto_enabled,
+            threshold_pct: self.compact.threshold_pct,
+        }
+    }
+
+    fn toggle_compaction_field_left(&mut self) -> SettingsAction {
+        // Same as right for toggle fields
+        self.toggle_compaction_field()
     }
 
     fn apply_notify_row(&mut self) -> SettingsAction {
@@ -1754,6 +1845,7 @@ impl SettingsState {
             SettingsPage::Keymaps => self.open_keymap_detail(),
             SettingsPage::Theme => self.preview_selected_theme(),
             SettingsPage::Notify => self.apply_notify_row(),
+            SettingsPage::Compaction => SettingsAction::None,
             SettingsPage::Extensions => SettingsAction::OpenExtensions,
         }
     }
@@ -1789,6 +1881,13 @@ impl SettingsState {
             SettingsPage::Notify => {
                 self.notify.cursor =
                     move_index(self.notify.cursor, NotifySettingsState::ROWS.len(), delta);
+            }
+            SettingsPage::Compaction => {
+                self.compact.cursor = move_index(
+                    self.compact.cursor,
+                    CompactionSettingsState::ROW_COUNT,
+                    delta,
+                );
             }
             SettingsPage::Extensions => {}
             SettingsPage::Keymaps => {

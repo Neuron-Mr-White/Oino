@@ -58,6 +58,11 @@ pub enum TuiAction {
         event: NotifyEventKind,
         enabled: bool,
     },
+    SetCompactSettings {
+        method_is_llm: bool,
+        auto_enabled: bool,
+        threshold_pct: Option<u8>,
+    },
     RunExtensionUiAction {
         surface_id: String,
         action_id: String,

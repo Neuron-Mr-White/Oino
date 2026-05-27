@@ -2741,6 +2741,18 @@ async fn run_tui(
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
     state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
+    {
+        let user_settings = user_settings::UserSettings::load_default()
+            .await
+            .unwrap_or_default();
+        state.settings.compact.update_from_settings(
+            user_settings.compact.threshold_pct,
+            matches!(user_settings.compact.method, oino_types::CompactMethod::Llm),
+            user_settings.compact.auto,
+            user_settings.compact.model.clone(),
+            user_settings.compact.prompt.clone(),
+        );
+    }
     apply_extension_snapshot_to_tui_state(
         &mut state,
         &extension_snapshot,
@@ -3072,6 +3084,30 @@ async fn run_tui(
                     notify_settings_to_tui(&tool_settings.global.notify),
                     notify_settings_to_tui(&tool_settings.project.notify),
                 );
+            }
+            TuiAction::SetCompactSettings {
+                method_is_llm,
+                auto_enabled,
+                threshold_pct,
+            } => {
+                let mut settings = user_settings::UserSettings::load_default()
+                    .await
+                    .unwrap_or_default();
+                settings.compact.method = if method_is_llm {
+                    oino_types::CompactMethod::Llm
+                } else {
+                    oino_types::CompactMethod::Vcc
+                };
+                settings.compact.auto = auto_enabled;
+                settings.compact.threshold_pct = threshold_pct;
+                if let Err(err) = settings.save_default().await {
+                    state.set_error(format!("Failed to save compaction settings: {err}"));
+                } else {
+                    state.settings.compact.method_is_llm = method_is_llm;
+                    state.settings.compact.auto_enabled = auto_enabled;
+                    state.settings.compact.threshold_pct = threshold_pct;
+                    state.clear_error();
+                }
             }
             TuiAction::RunExtensionUiAction {
                 surface_id,
