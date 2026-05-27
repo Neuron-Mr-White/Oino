@@ -51,6 +51,7 @@ tempfile = "3"
 unicode-segmentation = "1"
 unicode-width = "0.2"
 webbrowser = "1.2.1"
+mmdflux = { version = "2", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

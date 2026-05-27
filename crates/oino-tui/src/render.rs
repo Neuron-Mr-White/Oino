@@ -470,13 +470,15 @@ fn extension_surfaces(
     surface_kind: UiSurfaceKind,
     area: Rect,
 ) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
-    let mut seen = std::collections::BTreeSet::new();
+    let mut seen_effective_id = std::collections::BTreeSet::new();
+    let mut seen_contribution_id = std::collections::BTreeSet::new();
     state
         .extension_ui
         .surfaces
         .iter()
         .filter(|surface| surface.entry.contribution.surface == surface_kind)
-        .filter(|surface| seen.insert(surface.effective_id.as_str().to_string()))
+        .filter(|surface| seen_effective_id.insert(surface.effective_id.as_str().to_string()))
+        .filter(|surface| seen_contribution_id.insert(surface.entry.contribution.id.as_str().to_string()))
         .filter(|surface| {
             !state
                 .extension_ui
@@ -5800,6 +5802,20 @@ mod tests {
         })
     }
 
+    fn extension_surface_with_effective_id(
+        effective_id: &str,
+        contribution_id: &str,
+        owner: &str,
+        surface: UiSurfaceKind,
+        title: &str,
+        slot: &str,
+        priority: i32,
+    ) -> Result<ActiveContribution<UiSurfaceContribution>, Box<dyn Error>> {
+        let mut s = extension_surface(contribution_id, owner, surface, title, slot, priority)?;
+        s.effective_id = ContributionId::new(effective_id)?;
+        Ok(s)
+    }
+
     #[test]
     fn prepared_transcript_materializes_requested_slice() {
         let prepared = PreparedTranscript::from_blocks(vec![
@@ -6244,6 +6260,71 @@ mod tests {
         let text = buffer_text(&draw_state(80, 20, &state));
         assert!(!text.contains("model: openrouter:test/model"));
         assert!(!text.contains("cwd: /repo/oino"));
+    }
+
+    #[test]
+    fn footer_status_deduplicates_same_contribution_from_global_and_project(
+    ) -> Result<(), Box<dyn Error>> {
+        // When the same footer-status package is installed in both global and project
+        // locations, the namespaced conflict strategy gives them different effective_ids
+        // but the same contribution id. The renderer must deduplicate by contribution id
+        // to avoid showing the footer twice.
+        let mut state =
+            TuiState::with_settings("openrouter:test/model", oino_types::ThinkingLevel::Off);
+        state.set_working_directory("/repo/oino");
+        state.set_context_tokens(Some(1_200));
+        state.set_extension_ui_surfaces(vec![
+            extension_surface(
+                FOOTER_STATUS_TOP_ID,
+                "oino.footer_status",
+                UiSurfaceKind::FooterTop,
+                "Footer Status Top",
+                COMPOSER_DIRECT_TOP_SLOT,
+                100,
+            )?,
+            // Simulate the namespaced duplicate (different effective_id, same contribution id)
+            extension_surface_with_effective_id(
+                "oino.footer_status.footer_status_top",
+                FOOTER_STATUS_TOP_ID,
+                "oino.footer_status",
+                UiSurfaceKind::FooterTop,
+                "Footer Status Top",
+                COMPOSER_DIRECT_TOP_SLOT,
+                100,
+            )?,
+            extension_surface(
+                FOOTER_STATUS_BOTTOM_ID,
+                "oino.footer_status",
+                UiSurfaceKind::FooterBottom,
+                "Footer Status Bottom",
+                COMPOSER_DIRECT_BOTTOM_SLOT,
+                100,
+            )?,
+        ]);
+
+        let layout = app_layout(
+            &state,
+            Rect {
+                x: 0,
+                y: 0,
+                width: 80,
+                height: 24,
+            },
+        );
+        // Only one composer-top row despite two entries for footer_status_top
+        assert!(layout.composer_top.is_some());
+        assert!(layout.composer_bottom.is_some());
+
+        let buffer = draw_state(80, 24, &state);
+        let text = buffer_text(&buffer);
+        // The model line should appear exactly once, not duplicated
+        let model_count = text.matches("model: openrouter:test/model").count();
+        assert_eq!(
+            model_count, 1,
+            "footer status line should appear exactly once, but found {model_count} occurrences"
+        );
+        assert!(!text.contains("Extension Status"));
+        Ok(())
     }
 
     #[test]

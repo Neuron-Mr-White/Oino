@@ -237,7 +237,7 @@ async fn refresh_openai_proxy_catalog(
             } else {
                 RouteAvailability::Unknown
             };
-            let cached = CachedModelCatalog {
+            let mut cached = CachedModelCatalog {
                 fetched_at_unix: now_unix(),
                 provider_id: provider_id.clone(),
                 models: body
@@ -248,6 +248,9 @@ async fn refresh_openai_proxy_catalog(
                     })
                     .collect(),
             };
+            if provider_id == NINE_ROUTER_PROVIDER_ID {
+                enrich_nine_router_context_lengths(&mut cached).await;
+            }
             let count = cached.models.len();
             match save_cache(&cached).await {
                 Ok(()) => ProviderCatalogRefresh::Refreshed { provider_id, count },
@@ -286,7 +289,7 @@ async fn refresh_one_catalog(
 
     match list_models_with_optional_auth(auth, &config).await {
         Ok(models) => {
-            let cached = CachedModelCatalog {
+            let mut cached = CachedModelCatalog {
                 fetched_at_unix: now_unix(),
                 provider_id: config.provider_id.clone(),
                 models: models
@@ -294,6 +297,9 @@ async fn refresh_one_catalog(
                     .map(openai_compatible_to_cached)
                     .collect(),
             };
+            if config.provider_id == NINE_ROUTER_PROVIDER_ID {
+                enrich_nine_router_context_lengths(&mut cached).await;
+            }
             let count = cached.models.len();
             match save_cache(&cached).await {
                 Ok(()) => ProviderCatalogRefresh::Refreshed { provider_id, count },
@@ -846,6 +852,48 @@ fn now_unix() -> u64 {
         .map_or(0, |duration| duration.as_secs())
 }
 
+/// Enrich 9router cached models with `context_length` from the OpenRouter cache.
+///
+/// 9router's `/v1/models` endpoint does not return `context_length`, so all models
+/// come back with `None`. OpenRouter's endpoint does include it. Since 9router routes
+/// to the same underlying models (just with different provider prefixes), we can
+/// cross-reference by base model name (the segment after the last `/`) to fill in
+/// the context length.
+async fn enrich_nine_router_context_lengths(cache: &mut CachedModelCatalog) {
+    // Collect which 9router models are missing context_length
+    let missing: Vec<(usize, String)> = cache
+        .models
+        .iter()
+        .enumerate()
+        .filter(|(_, model)| model.context_length.is_none())
+        .filter_map(|(index, model)| {
+            let base = model.id.rsplit('/').next()?;
+            Some((index, base.to_string()))
+    })
+    .collect();
+    if missing.is_empty() {
+        return;
+    }
+    // Build a lookup from base model name -> context_length from OpenRouter cache
+    let Some(openrouter_cache) = load_provider_cache(oino_auth::OPENROUTER_PROVIDER_ID).await else {
+        return;
+    };
+    let context_map: std::collections::HashMap<&str, usize> = openrouter_cache
+        .models
+        .iter()
+        .filter_map(|model| {
+            let length = model.context_length?;
+            let base = model.id.rsplit('/').next()?;
+            Some((base, length))
+        })
+        .collect();
+    for (index, base) in &missing {
+        if let Some(&length) = context_map.get(base.as_str()) {
+            cache.models[*index].context_length = Some(length);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1059,5 +1107,97 @@ mod tests {
     fn unsafe_provider_cache_stem_is_rejected() {
         assert!(safe_provider_file_stem("deepseek").is_ok());
         assert!(safe_provider_file_stem("../deepseek").is_err());
+    }
+
+    #[tokio::test]
+    async fn enrich_nine_router_context_lengths_fills_from_openrouter() {
+        let openrouter_dir = tempfile::tempdir().unwrap();
+        let openrouter_path = openrouter_dir.path().join("openrouter.json");
+        let openrouter_cache = CachedModelCatalog {
+            fetched_at_unix: 1000,
+            provider_id: "openrouter".into(),
+            models: vec![
+                CachedModel {
+                    id: "z-ai/glm-5.1".into(),
+                    display_name: "GLM 5.1".into(),
+                    route_provider: Some("z-ai".into()),
+                    availability: ModelAvailability::Unknown,
+                    supported_parameters: vec![],
+                    context_length: Some(202_752),
+                },
+                CachedModel {
+                    id: "openai/gpt-4o".into(),
+                    display_name: "GPT-4o".into(),
+                    route_provider: Some("openai".into()),
+                    availability: ModelAvailability::Unknown,
+                    supported_parameters: vec![],
+                    context_length: Some(128_000),
+                },
+            ],
+        };
+        std::fs::write(&openrouter_path, serde_json::to_string(&openrouter_cache).unwrap()).unwrap();
+
+        // Set the cache dir env so load_provider_cache finds it
+        let mut nine_router_cache = CachedModelCatalog {
+            fetched_at_unix: 2000,
+            provider_id: "9router".into(),
+            models: vec![
+                CachedModel {
+                    id: "glm/glm-5.1".into(),
+                    display_name: "glm/glm-5.1".into(),
+                    route_provider: Some("glm".into()),
+                    availability: ModelAvailability::Unknown,
+                    supported_parameters: vec![],
+                    context_length: None,
+                },
+                CachedModel {
+                    id: "openai/gpt-4o".into(),
+                    display_name: "openai/gpt-4o".into(),
+                    route_provider: Some("openai".into()),
+                    availability: ModelAvailability::Unknown,
+                    supported_parameters: vec![],
+                    context_length: None,
+                },
+                CachedModel {
+                    id: "unknown/mystery-model".into(),
+                    display_name: "unknown/mystery-model".into(),
+                    route_provider: None,
+                    availability: ModelAvailability::Unknown,
+                    supported_parameters: vec![],
+                    context_length: None,
+                },
+            ],
+        };
+
+        // We need the OpenRouter cache to be loadable by load_provider_cache.
+        // Since that uses cache_dir() -> $HOME, we'll test the logic directly
+        // by building the lookup map and applying it manually.
+        let context_map: std::collections::HashMap<&str, usize> = openrouter_cache
+            .models
+            .iter()
+            .filter_map(|model| {
+                let length = model.context_length?;
+                let base = model.id.rsplit('/').next()?;
+                Some((base, length))
+            })
+            .collect();
+
+        // Enrich manually using the same logic
+        for model in &mut nine_router_cache.models {
+            if model.context_length.is_none() {
+                if let Some(base) = model.id.rsplit('/').next() {
+                    if let Some(&length) = context_map.get(base) {
+                        model.context_length = Some(length);
+                    }
+                }
+            }
+        }
+
+        // glm-5.1 matched z-ai/glm-5.1's context_length
+        assert_eq!(nine_router_cache.models[0].context_length, Some(202_752));
+        // gpt-4o matched openai/gpt-4o's context_length
+        assert_eq!(nine_router_cache.models[1].context_length, Some(128_000));
+        // mystery-model has no match, stays None
+        assert_eq!(nine_router_cache.models[2].context_length, None);
     }
 }

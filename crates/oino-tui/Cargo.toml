@@ -25,6 +25,7 @@ syntect.workspace = true
 syntect-assets.workspace = true
 unicode-segmentation.workspace = true
 unicode-width.workspace = true
+mmdflux.workspace = true
 
 [lints]
 workspace = true

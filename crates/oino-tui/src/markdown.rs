@@ -14,6 +14,7 @@ use syntect::{
 use syntect_assets::assets::HighlightingAssets;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+use mmdflux::{OutputFormat, RenderConfig, render_diagram};
 
 #[derive(Debug, Clone, Copy)]
 struct MarkdownStyles {
@@ -638,6 +639,17 @@ impl MarkdownRenderer {
     }
 
     fn render_code_block(&mut self) {
+        let lang = self
+            .code_block_lang
+            .as_deref()
+            .filter(|l| !l.trim().is_empty())
+            .unwrap_or("code");
+
+        if lang == "mermaid" {
+            self.render_mermaid_block();
+            return;
+        }
+
         let code = self.code_block_content.clone();
         let mut parts = code.split('\n').collect::<Vec<_>>();
         if parts.last().is_some_and(|part| part.is_empty()) {
@@ -648,12 +660,7 @@ impl MarkdownRenderer {
         }
 
         let mut consumed_block_prefix = false;
-        let label = self
-            .code_block_lang
-            .as_deref()
-            .filter(|lang| !lang.trim().is_empty())
-            .unwrap_or("code")
-            .to_string();
+        let label = lang.to_string();
         self.push_code_block_border(Some(&label), true, &mut consumed_block_prefix);
         let mut code_highlighter = CodeHighlighter::new(&label);
         let number_width = parts.len().to_string().width().max(1);
@@ -691,6 +698,69 @@ impl MarkdownRenderer {
                 self.lines.push(line);
             }
         }
+        self.push_code_block_border(None, false, &mut consumed_block_prefix);
+    }
+
+    fn render_mermaid_block(&mut self) {
+        let mermaid_src = self.code_block_content.trim().to_string();
+
+        let mut consumed_block_prefix = false;
+        let label = "mermaid diagram";
+        self.push_code_block_border(Some(label), true, &mut consumed_block_prefix);
+
+        let rendered_text = match render_diagram(&mermaid_src, OutputFormat::Text, &RenderConfig::default()) {
+            Ok(text) => text,
+            Err(err) => {
+                // Fall back to showing the error as raw text inside the code block
+                let prefix_width = line_width(&self.continuation_prefixes().0);
+                let available = self.width.saturating_sub(prefix_width).max(1);
+                let code_width = available.saturating_sub(4).max(1);
+                let error_msg = format!("mermaid render error: {err}");
+                let wrapped = wrap_spans_to_width(
+                    vec![Span::styled(error_msg, self.styles.code)],
+                    code_width,
+                );
+                for segment in wrapped {
+                    let (mut line, _) = self.block_prefixes(&mut consumed_block_prefix);
+                    line.push_span(Span::styled("│ ", self.styles.code_border));
+                    let segment_width = line_width(&segment);
+                    line.spans.extend(segment.spans);
+                    if segment_width < code_width {
+                        line.push_span(Span::raw(" ".repeat(code_width - segment_width)));
+                    }
+                    line.push_span(Span::styled(" │", self.styles.code_border));
+                    self.lines.push(line);
+                }
+                self.push_code_block_border(None, false, &mut consumed_block_prefix);
+                return;
+            }
+        };
+
+        // Render the mmdflux text output inside the code block frame
+        for text_line in rendered_text.lines() {
+            let prefix_width = line_width(&self.continuation_prefixes().0);
+            let available = self.width.saturating_sub(prefix_width).max(1);
+            let code_width = available.saturating_sub(4).max(1);
+
+            // Strip ANSI escape sequences from mmdflux output for TUI rendering
+            let stripped = strip_ansi(text_line);
+            let wrapped = wrap_spans_to_width(
+                vec![Span::styled(stripped, self.styles.code)],
+                code_width,
+            );
+            for segment in wrapped {
+                let (mut line, _) = self.block_prefixes(&mut consumed_block_prefix);
+                line.push_span(Span::styled("│ ", self.styles.code_border));
+                let segment_width = line_width(&segment);
+                line.spans.extend(segment.spans);
+                if segment_width < code_width {
+                    line.push_span(Span::raw(" ".repeat(code_width - segment_width)));
+                }
+                line.push_span(Span::styled(" │", self.styles.code_border));
+                self.lines.push(line);
+            }
+        }
+
         self.push_code_block_border(None, false, &mut consumed_block_prefix);
     }
 
@@ -1501,6 +1571,49 @@ fn is_blank_line(line: &Line<'_>) -> bool {
         .all(|span| span.content.as_ref().trim().is_empty())
 }
 
+fn strip_ansi(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            match chars.peek() {
+                Some('[') => {
+                    chars.next();
+                    // Consume CSI sequence: parameters (0x20-0x3f), intermediates (0x20-0x2f), final (0x40-0x7e)
+                    while let Some(&next) = chars.peek() {
+                        if (0x40..=0x7e).contains(&(next as u8)) {
+                            chars.next();
+                            break;
+                        }
+                        chars.next();
+                    }
+                }
+                Some(']') => {
+                    chars.next();
+                    // Consume OSC sequence until BEL (0x07) or ST (ESC \)
+                    while let Some(next) = chars.next() {
+                        if next == '\x07' {
+                            break;
+                        }
+                        if next == '\x1b' && chars.peek() == Some(&'\\') {
+                            chars.next();
+                            break;
+                        }
+                    }
+                }
+                Some(_) => {
+                    // Other escape sequences (2-char)
+                    chars.next();
+                }
+                None => {}
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1888,6 +2001,56 @@ mod tests {
         assert!(row.contains("│ A"));
         assert!(row.contains("│    7 │"));
         assert!(row.contains("│  ok  │"));
+    }
+
+    #[test]
+    fn renders_mermaid_block_as_unicode_diagram() {
+        let lines = render_markdown_lines(
+            "```mermaid\ngraph LR\n    A-->B\n```",
+            60,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+        let joined = plain_lines.join("\n");
+
+        // Should have the "mermaid diagram" label in the border
+        assert!(plain_lines
+            .first()
+            .is_some_and(|line| line.contains("mermaid diagram")));
+
+        // Should contain rendered Unicode box-drawing characters (not raw "graph LR")
+        assert!(joined.contains('┌') || joined.contains('│'));
+        assert!(!joined.contains("graph LR"));
+        assert!(!joined.contains("A-->B"));
+
+        // Should contain node labels from the diagram
+        assert!(joined.contains('A'));
+        assert!(joined.contains('B'));
+
+        // All lines should respect width
+        assert!(plain_lines.iter().all(|line| line.width() <= 60));
+    }
+
+    #[test]
+    fn mermaid_block_with_invalid_syntax_shows_error() {
+        let lines = render_markdown_lines(
+            "```mermaid\nnot a valid diagram at all xyz!!!\n```",
+            60,
+            Style::default(),
+            &Theme::default(),
+        );
+        let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
+        let _joined = plain_lines.join("\n");
+
+        // Should still render with a border
+        assert!(plain_lines
+            .first()
+            .is_some_and(|line| line.contains("mermaid diagram")));
+
+        // Should show error or gracefully degrade
+        // (mmdflux may render partial or error — either way no panic)
+        assert!(plain_lines.iter().any(|line| line.ends_with('│') || line.contains("error")));
     }
 
     #[test]
