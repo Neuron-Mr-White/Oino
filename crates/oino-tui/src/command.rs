@@ -106,6 +106,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Session,
     },
     CommandSpec {
+        name: "/btw",
+        summary: "Open side plan chat",
+        kind: CommandKind::Session,
+    },
+    CommandSpec {
         name: "/sessions",
         summary: "Browse saved sessions",
         kind: CommandKind::Session,
@@ -184,6 +189,10 @@ pub enum ParsedCommand {
     Compact,
     Recall { query: Option<String> },
     Ralph(RalphCommand),
+    BtwOpen,
+    BtwReset,
+    BtwConfigure { model: Option<Option<String>> },
+    SetNotifySummaryModel { model: Option<Option<String>> },
     ShowAgentModeUsage,
     SetAgentMode(AgentMode),
     AuthStatus { provider: Option<String> },
@@ -467,7 +476,12 @@ pub fn command_suggestions_for(
         [settings, subject] if settings == "/settings" && subject == "model" => {
             model_suggestions(context, models)
         }
-        [model] if model == "/model" => model_suggestions(context, models),
+        [model] if model == "/model" => model_subject_or_model_suggestions(context, models),
+        [model, subject]
+            if model == "/model" && matches!(subject.as_str(), "btw" | "notify-summary") =>
+        {
+            model_or_inherit_suggestions(context, models)
+        }
         [settings, subject] if settings == "/settings" && subject == "thinking" => {
             thinking_suggestions(context)
         }
@@ -500,6 +514,10 @@ pub fn command_suggestions_for(
                 && extension_command_available(extension_commands, "/9router") =>
         {
             nine_router_version_suggestions(context)
+        }
+        [btw] if btw == "/btw" => btw_suggestions(context),
+        [btw, configure] if btw == "/btw" && configure == "configure" => {
+            model_or_inherit_suggestions(context, models)
         }
         [mode] if mode == "/mode" => mode_suggestions(context),
         [auth] if auth == "/auth" => auth_subcommand_suggestions(context),
@@ -620,6 +638,25 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
     match tokens.as_slice() {
         ["/help"] => Some(ParsedCommand::Help),
         ["/new"] => Some(ParsedCommand::NewSession),
+        ["/btw"] => Some(ParsedCommand::BtwOpen),
+        ["/btw", "new"] => Some(ParsedCommand::BtwReset),
+        ["/btw", "configure"] => Some(ParsedCommand::BtwConfigure { model: None }),
+        ["/btw", "configure", "inherit"] => Some(ParsedCommand::BtwConfigure { model: Some(None) }),
+        ["/btw", "configure", model] => Some(ParsedCommand::BtwConfigure {
+            model: Some(Some((*model).to_string())),
+        }),
+        ["/model", "btw"] => Some(ParsedCommand::BtwConfigure { model: None }),
+        ["/model", "btw", "inherit"] => Some(ParsedCommand::BtwConfigure { model: Some(None) }),
+        ["/model", "btw", model] => Some(ParsedCommand::BtwConfigure {
+            model: Some(Some((*model).to_string())),
+        }),
+        ["/model", "notify-summary"] => Some(ParsedCommand::SetNotifySummaryModel { model: None }),
+        ["/model", "notify-summary", "inherit" | "off" | "none"] => {
+            Some(ParsedCommand::SetNotifySummaryModel { model: Some(None) })
+        }
+        ["/model", "notify-summary", model] => Some(ParsedCommand::SetNotifySummaryModel {
+            model: Some(Some((*model).to_string())),
+        }),
         ["/sessions"] => Some(ParsedCommand::Sessions),
         ["/prompts"] => Some(ParsedCommand::Prompts),
         ["/skills"] => Some(ParsedCommand::Skills),
@@ -1219,6 +1256,38 @@ fn settings_subject_suggestions(context: SuggestionContext) -> Option<CommandSug
     Some(view("Settings", context.active_prefix, items))
 }
 
+fn model_subject_or_model_suggestions(
+    context: SuggestionContext,
+    models: &[ModelOption],
+) -> Option<CommandSuggestionsView> {
+    let mut view = model_suggestions(context.clone(), models)?;
+    let subjects = [
+        ("btw", "set BTW panel model (or inherit)"),
+        (
+            "notify-summary",
+            "set notification summary model (or inherit/off)",
+        ),
+    ];
+    for (value, summary) in subjects.into_iter().rev() {
+        if ascii_subsequence_match(value, &context.active_prefix) {
+            view.items.insert(
+                0,
+                CommandSuggestionItem {
+                    label: value.into(),
+                    summary: summary.into(),
+                    replacement: value.into(),
+                    replace_start: context.replace_start,
+                    replace_end: context.replace_end,
+                    complete_on_enter: context.active_prefix == value,
+                    category: CommandSuggestionCategory::Value,
+                },
+            );
+        }
+    }
+    view.title = "Models / model settings".into();
+    Some(view)
+}
+
 fn model_suggestions(
     context: SuggestionContext,
     models: &[ModelOption],
@@ -1279,6 +1348,29 @@ fn model_suggestions(
     })
     .collect::<Vec<_>>();
     Some(view("Models", context.active_prefix, items))
+}
+
+fn model_or_inherit_suggestions(
+    context: SuggestionContext,
+    models: &[ModelOption],
+) -> Option<CommandSuggestionsView> {
+    let mut view = model_suggestions(context.clone(), models)?;
+    if ascii_subsequence_match("inherit", &context.active_prefix) {
+        view.items.insert(
+            0,
+            CommandSuggestionItem {
+                label: "inherit".into(),
+                summary: "inherit the current chat model".into(),
+                replacement: "inherit".into(),
+                replace_start: context.replace_start,
+                replace_end: context.replace_end,
+                complete_on_enter: true,
+                category: CommandSuggestionCategory::Value,
+            },
+        );
+    }
+    view.title = "Models (or inherit)".into();
+    Some(view)
 }
 
 fn model_suggestion_candidate_indices(models: &[ModelOption], query: &str) -> Vec<usize> {
@@ -1461,6 +1553,35 @@ fn ralph_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsVie
     })
     .collect::<Vec<_>>();
     Some(view("Ralph", context.active_prefix, items))
+}
+
+fn btw_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    let actions = [
+        ("configure", "configure /btw startup model"),
+        ("new", "wipe BTW and start a fresh side session"),
+    ];
+    let items = fuzzy_indices(
+        &actions,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (value, summary) = actions[index];
+        CommandSuggestionItem {
+            label: value.into(),
+            summary: summary.into(),
+            replacement: value.into(),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: true,
+            category: CommandSuggestionCategory::System,
+        }
+    })
+    .collect::<Vec<_>>();
+    Some(view("BTW", context.active_prefix, items))
 }
 
 fn mode_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
@@ -1939,7 +2060,7 @@ mod tests {
     fn model_and_thinking_aliases_suggest_direct_values() {
         let view = suggestions("/model openrouter:xai", 21)
             .unwrap_or_else(|| panic!("missing model alias suggestions"));
-        assert_eq!(view.title, "Models");
+        assert_eq!(view.title, "Models / model settings");
         assert_eq!(view.items[0].label, "openrouter:xai/glm-5.1");
 
         let view = suggestions("/thinking h", 11)
@@ -2060,6 +2181,31 @@ mod tests {
             "crates/Oino-Tui/src/App.rs",
             "TUI/App"
         ));
+    }
+
+    #[test]
+    fn model_first_configuration_suggestions_reuse_model_catalog() {
+        let view =
+            suggestions("/model ", 7).unwrap_or_else(|| panic!("missing /model suggestions"));
+        assert!(view.items.iter().any(|item| item.label == "btw"));
+        assert!(view.items.iter().any(|item| item.label == "notify-summary"));
+        assert!(view
+            .items
+            .iter()
+            .any(|item| item.label == "openrouter:xai/glm-5.1"));
+
+        let view = suggestions("/model btw ", 11)
+            .unwrap_or_else(|| panic!("missing /model btw suggestions"));
+        assert_eq!(view.title, "Models (or inherit)");
+        assert_eq!(view.items[0].label, "inherit");
+        assert!(view
+            .items
+            .iter()
+            .any(|item| item.label == "openrouter:xai/glm-5.1"));
+
+        let view = suggestions("/model notify-summary inherit", 29)
+            .unwrap_or_else(|| panic!("missing /model notify-summary suggestions"));
+        assert_eq!(view.items[0].label, "inherit");
     }
 
     #[test]
@@ -2430,6 +2576,29 @@ mod tests {
             Some(ParsedCommand::Settings(SettingsCommand::SetModel(
                 Model::new("openrouter", "example/example-chat:free")
             )))
+        );
+        assert_eq!(parse_command("/btw"), Some(ParsedCommand::BtwOpen));
+        assert_eq!(parse_command("/btw new"), Some(ParsedCommand::BtwReset));
+        assert!(parse_command("/btw reset").is_none());
+        assert_eq!(
+            parse_command("/model btw inherit"),
+            Some(ParsedCommand::BtwConfigure { model: Some(None) })
+        );
+        assert_eq!(
+            parse_command("/model btw openrouter:xai/glm-5.1"),
+            Some(ParsedCommand::BtwConfigure {
+                model: Some(Some("openrouter:xai/glm-5.1".into()))
+            })
+        );
+        assert_eq!(
+            parse_command("/model notify-summary off"),
+            Some(ParsedCommand::SetNotifySummaryModel { model: Some(None) })
+        );
+        assert_eq!(
+            parse_command("/model notify-summary openrouter:xai/glm-5.1"),
+            Some(ParsedCommand::SetNotifySummaryModel {
+                model: Some(Some("openrouter:xai/glm-5.1".into()))
+            })
         );
         assert_eq!(
             parse_command("/settings thinking high"),

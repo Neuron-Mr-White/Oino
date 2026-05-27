@@ -23,6 +23,7 @@ pub struct UserSettings {
     pub keymap: Option<KeymapConfig>,
     pub theme: ThemeSettings,
     pub notify: NotifySettings,
+    pub btw_model: Option<String>,
     pub tools: BTreeMap<String, bool>,
     pub extensions: ExtensionPolicySettings,
 }
@@ -46,6 +47,7 @@ impl UserSettings {
             keymap: None,
             theme: ThemeSettings::default(),
             notify: NotifySettings::default(),
+            btw_model: None,
             tools: BTreeMap::new(),
             extensions: ExtensionPolicySettings::default(),
         }

@@ -411,6 +411,9 @@ pub enum NotifyField {
     Token,
     Priority,
     Tags,
+    SummaryModel,
+    SummaryPrompt,
+    SummaryMaxChars,
 }
 
 impl NotifyField {
@@ -422,6 +425,9 @@ impl NotifyField {
             Self::Token => "token",
             Self::Priority => "priority",
             Self::Tags => "tags",
+            Self::SummaryModel => "summary model",
+            Self::SummaryPrompt => "summary prompt",
+            Self::SummaryMaxChars => "summary max chars",
         }
     }
 }
@@ -451,6 +457,10 @@ pub struct NotifyScopeSettings {
     pub priority: Option<String>,
     pub tags: Option<Vec<String>>,
     pub events: Option<Vec<NotifyEventKind>>,
+    pub summary_enabled: Option<bool>,
+    pub summary_model: Option<String>,
+    pub summary_prompt: Option<String>,
+    pub summary_max_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -484,7 +494,7 @@ impl Default for NotifySettingsState {
 }
 
 impl NotifySettingsState {
-    pub const ROWS: [NotifyRow; 8] = [
+    pub const ROWS: [NotifyRow; 12] = [
         NotifyRow::Enabled,
         NotifyRow::Server,
         NotifyRow::Topic,
@@ -493,6 +503,10 @@ impl NotifySettingsState {
         NotifyRow::Tags,
         NotifyRow::AgentEnd,
         NotifyRow::ToolError,
+        NotifyRow::SummaryEnabled,
+        NotifyRow::SummaryModel,
+        NotifyRow::SummaryPrompt,
+        NotifyRow::SummaryMaxChars,
     ];
 
     #[must_use]
@@ -553,6 +567,10 @@ pub enum NotifyRow {
     Tags,
     AgentEnd,
     ToolError,
+    SummaryEnabled,
+    SummaryModel,
+    SummaryPrompt,
+    SummaryMaxChars,
 }
 
 impl NotifyRow {
@@ -567,6 +585,10 @@ impl NotifyRow {
             Self::Tags => "Tags",
             Self::AgentEnd => "Event: agent_end",
             Self::ToolError => "Event: tool_error",
+            Self::SummaryEnabled => "Summarizer",
+            Self::SummaryModel => "Summary model",
+            Self::SummaryPrompt => "Summary prompt",
+            Self::SummaryMaxChars => "Summary max chars",
         }
     }
 
@@ -578,7 +600,10 @@ impl NotifyRow {
             Self::Token => Some(NotifyField::Token),
             Self::Priority => Some(NotifyField::Priority),
             Self::Tags => Some(NotifyField::Tags),
-            Self::Enabled | Self::AgentEnd | Self::ToolError => None,
+            Self::SummaryModel => Some(NotifyField::SummaryModel),
+            Self::SummaryPrompt => Some(NotifyField::SummaryPrompt),
+            Self::SummaryMaxChars => Some(NotifyField::SummaryMaxChars),
+            Self::Enabled | Self::AgentEnd | Self::ToolError | Self::SummaryEnabled => None,
         }
     }
 
@@ -605,6 +630,9 @@ fn project_field(settings: &NotifyScopeSettings, field: NotifyField) -> Option<S
         NotifyField::Token => settings.token.clone(),
         NotifyField::Priority => settings.priority.clone(),
         NotifyField::Tags => settings.tags.as_ref().map(|tags| tags.join(",")),
+        NotifyField::SummaryModel => settings.summary_model.clone(),
+        NotifyField::SummaryPrompt => settings.summary_prompt.clone(),
+        NotifyField::SummaryMaxChars => settings.summary_max_chars.map(|value| value.to_string()),
     }
 }
 
@@ -1222,6 +1250,22 @@ impl SettingsState {
                 scope: self.notify.scope,
                 enabled: !notify_scope_enabled(self.notify.scope_settings(self.notify.scope)),
             },
+            NotifyRow::SummaryEnabled => SettingsAction::SetNotifyField {
+                scope: self.notify.scope,
+                field: NotifyField::SummaryPrompt,
+                value: Some(
+                    if self
+                        .notify
+                        .scope_settings(self.notify.scope)
+                        .summary_enabled
+                        .unwrap_or(true)
+                    {
+                        "__summary_enabled:false".into()
+                    } else {
+                        "__summary_enabled:true".into()
+                    },
+                ),
+            },
             NotifyRow::AgentEnd | NotifyRow::ToolError => {
                 let event = row.event().unwrap_or(NotifyEventKind::AgentEnd);
                 SettingsAction::SetNotifyEvent {
@@ -1232,6 +1276,20 @@ impl SettingsState {
                         event,
                     ),
                 }
+            }
+            NotifyRow::SummaryModel => {
+                let input = self
+                    .notify
+                    .scope_settings(self.notify.scope)
+                    .summary_model
+                    .clone()
+                    .unwrap_or_default();
+                self.notify.edit = Some(NotifyEditState {
+                    scope: self.notify.scope,
+                    field: NotifyField::SummaryModel,
+                    input,
+                });
+                SettingsAction::None
             }
             _ => {
                 let field = row.field().unwrap_or(NotifyField::Topic);
@@ -1256,6 +1314,13 @@ impl SettingsState {
             return SettingsAction::SetNotifyEnabled {
                 scope: self.notify.scope,
                 enabled: false,
+            };
+        }
+        if row == NotifyRow::SummaryEnabled {
+            return SettingsAction::SetNotifyField {
+                scope: self.notify.scope,
+                field: NotifyField::SummaryPrompt,
+                value: Some("__summary_enabled:false".into()),
             };
         }
         if let Some(event) = row.event() {

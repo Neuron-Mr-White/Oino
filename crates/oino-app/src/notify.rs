@@ -14,6 +14,16 @@ pub struct NotifySettings {
     pub enabled: Option<bool>,
     pub ntfy: NtfySettings,
     pub events: Option<BTreeSet<NotifyEvent>>,
+    pub summarizer: NotifySummarizerSettings,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotifySummarizerSettings {
+    pub enabled: Option<bool>,
+    pub model: Option<String>,
+    pub prompt: Option<String>,
+    pub max_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +51,15 @@ pub struct EffectiveNotifyConfig {
     pub priority: Option<String>,
     pub tags: Vec<String>,
     pub events: BTreeSet<NotifyEvent>,
+    pub summarizer: EffectiveNotifySummarizerConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveNotifySummarizerConfig {
+    pub enabled: bool,
+    pub model: Option<String>,
+    pub prompt: String,
+    pub max_chars: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,13 +114,15 @@ pub fn resolve_notify_config(
         .clone()
         .or_else(|| global.events.clone())
         .unwrap_or_else(default_notify_events);
+    let summarizer = resolve_summarizer_config(&global.summarizer, &project.summarizer);
     Some(EffectiveNotifyConfig {
         server,
         topic,
         token,
-        priority,
+        priority: priority.and_then(|value| normalize_ntfy_priority(&value)),
         tags,
         events,
+        summarizer,
     })
 }
 
@@ -111,7 +132,10 @@ pub fn notify_message_for_event(event: &AgentEvent) -> Option<NotifyMessage> {
         AgentEvent::AgentEnd { stop_reason, .. } => Some(NotifyMessage {
             event: NotifyEvent::AgentEnd,
             title: "Oino run finished".into(),
-            body: format!("Agent ended with stop reason {stop_reason:?}."),
+            body: match stop_reason {
+                oino_types::StopReason::EndTurn => "Agent run finished.".into(),
+                other => format!("Agent run finished ({other:?})."),
+            },
         }),
         AgentEvent::ToolExecutionEnd { result, .. } if result.is_error => Some(NotifyMessage {
             event: NotifyEvent::ToolError,
@@ -186,8 +210,54 @@ fn choose_string(project: Option<&str>, global: Option<&str>) -> Option<String> 
         .map(|value| value.trim().to_string())
 }
 
+pub fn normalize_ntfy_priority(value: &str) -> Option<String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "min" | "1" => Some("min".into()),
+        "low" | "2" => Some("low".into()),
+        "default" | "3" => Some("default".into()),
+        "high" | "4" => Some("high".into()),
+        "max" | "urgent" | "5" => Some("max".into()),
+        _ => None,
+    }
+}
+
+#[must_use]
+pub fn notification_summary_from_text(text: &str, max_chars: usize) -> String {
+    let cleaned = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if cleaned.is_empty() {
+        return "Agent run finished.".into();
+    }
+    truncate_to(cleaned.as_str(), max_chars.clamp(80, 2000))
+}
+
 fn default_notify_events() -> BTreeSet<NotifyEvent> {
     BTreeSet::from([NotifyEvent::AgentEnd, NotifyEvent::ToolError])
+}
+
+fn resolve_summarizer_config(
+    global: &NotifySummarizerSettings,
+    project: &NotifySummarizerSettings,
+) -> EffectiveNotifySummarizerConfig {
+    EffectiveNotifySummarizerConfig {
+        enabled: project.enabled.or(global.enabled).unwrap_or(true),
+        model: choose_string(project.model.as_deref(), global.model.as_deref()),
+        prompt: choose_string(project.prompt.as_deref(), global.prompt.as_deref())
+            .unwrap_or_else(default_summary_prompt),
+        max_chars: project
+            .max_chars
+            .or(global.max_chars)
+            .unwrap_or(280)
+            .clamp(80, 2000),
+    }
+}
+
+fn default_summary_prompt() -> String {
+    "Summarize this Oino run for a notification. Keep it concise, factual, and under the configured character limit.".into()
 }
 
 fn first_text_block(content: &[ContentBlock]) -> Option<&str> {
@@ -198,12 +268,15 @@ fn first_text_block(content: &[ContentBlock]) -> Option<&str> {
 }
 
 fn truncate_body(text: &str) -> String {
-    const LIMIT: usize = 500;
+    truncate_to(text, 500)
+}
+
+fn truncate_to(text: &str, limit: usize) -> String {
     let trimmed = text.trim();
-    if trimmed.chars().count() <= LIMIT {
+    if trimmed.chars().count() <= limit {
         return trimmed.to_string();
     }
-    let mut out = trimmed.chars().take(LIMIT).collect::<String>();
+    let mut out = trimmed.chars().take(limit).collect::<String>();
     out.push('…');
     out
 }
@@ -227,6 +300,7 @@ mod tests {
                 tags: Some(vec!["global".into()]),
             },
             events: Some(BTreeSet::from([NotifyEvent::AgentEnd])),
+            summarizer: NotifySummarizerSettings::default(),
         };
         let project = NotifySettings {
             enabled: None,
@@ -236,6 +310,7 @@ mod tests {
                 ..NtfySettings::default()
             },
             events: Some(BTreeSet::from([NotifyEvent::ToolError])),
+            summarizer: NotifySummarizerSettings::default(),
         };
 
         let resolved = resolve_notify_config(&global, &project)
@@ -280,6 +355,10 @@ mod tests {
             priority: Some("high".into()),
             tags: vec!["oino".into(), "done".into()],
             events: BTreeSet::from([NotifyEvent::AgentEnd]),
+            summarizer: resolve_summarizer_config(
+                &NotifySummarizerSettings::default(),
+                &NotifySummarizerSettings::default(),
+            ),
         };
         let message = NotifyMessage {
             event: NotifyEvent::AgentEnd,
@@ -313,7 +392,7 @@ mod tests {
         let message = notify_message_for_event(&agent_end)
             .unwrap_or_else(|| panic!("agent end should notify"));
         assert_eq!(message.event, NotifyEvent::AgentEnd);
-        assert!(message.body.contains("EndTurn"));
+        assert_eq!(message.body, "Agent run finished.");
 
         let call = ToolCall {
             id: OinoId::nil(),

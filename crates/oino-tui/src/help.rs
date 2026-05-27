@@ -122,7 +122,15 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
         ),
         HelpEntry::item(
             "/model <provider:model>",
-            "change model directly, or /model to open model selection",
+            "change main chat model directly, or /model to open model selection",
+        ),
+        HelpEntry::item(
+            "/model btw|notify-summary <model>",
+            "configure model-backed features using the shared searchable model catalog",
+        ),
+        HelpEntry::item(
+            "/btw / /btw new",
+            "open a fresh side plan chat panel; type /new inside BTW to reset it",
         ),
         HelpEntry::item(
             "/thinking <level>",

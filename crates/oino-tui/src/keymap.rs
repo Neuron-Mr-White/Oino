@@ -123,6 +123,7 @@ pub enum KeyAction {
     HelpOpen,
     SettingsOpen,
     SendPanelOpen,
+    BtwOpen,
     TranscriptFocus,
     ComposerExpandReference,
     ComposerSubmit,
@@ -254,6 +255,7 @@ impl KeyAction {
             Self::HelpOpen => "help.open",
             Self::SettingsOpen => "settings.open",
             Self::SendPanelOpen => "send_panel.open",
+            Self::BtwOpen => "btw.open",
             Self::TranscriptFocus => "transcript.focus",
             Self::ComposerExpandReference => "composer.expand_reference",
             Self::ComposerSubmit => "composer.submit",
@@ -459,6 +461,12 @@ pub const ACTION_INFOS: &[KeyActionInfo] = &[
         KeyContext::Global,
         "Open Send Panel",
         "open steering, queue, and draft panel",
+    ),
+    info(
+        KeyAction::BtwOpen,
+        KeyContext::Global,
+        "Open BTW",
+        "open the side plan chat panel",
     ),
     info(
         KeyAction::TranscriptFocus,
@@ -1592,6 +1600,8 @@ fn default_bindings(
             return chord_defaults(chord_key, &["q"])
         }
         (KeymapPreset::Combination, KeyAction::SendPanelOpen) => &["f4"],
+        (KeymapPreset::Chord, KeyAction::BtwOpen) => return chord_defaults(chord_key, &["b"]),
+        (KeymapPreset::Combination, KeyAction::BtwOpen) => &["f6"],
         (KeymapPreset::Chord, KeyAction::TranscriptFocus) => {
             return chord_defaults(chord_key, &["t"])
         }

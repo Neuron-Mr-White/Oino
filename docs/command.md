@@ -6,7 +6,7 @@ Type `/` at the start of the composer to see Oino commands. Suggestions update a
 
 ```text
 /help        show help and key hints
-/model       choose a model
+/model       choose a model; also configure model-backed features
 /thinking    choose the thinking level
 /theme       choose a theme
 /settings    open settings
@@ -14,7 +14,21 @@ Type `/` at the start of the composer to see Oino commands. Suggestions update a
 /sessions    browse saved sessions
 /title       rename the current session
 /usage       show usage totals
+/btw         open the side plan chat panel
+/btw new     open a fresh side plan chat panel
 /reload      rescan resources, extensions, themes, and cached model lists
+```
+
+## Model-first configuration
+
+Use `/model` for any model-backed selection so the same cached catalog and search behavior is reused:
+
+```text
+/model <provider:model>                    set the main chat model
+/model btw inherit|<provider:model>        configure the BTW side panel model
+
+Inside the BTW panel, submit `/new` with no other text to reset that panel.
+/model notify-summary off|<provider:model> configure notification summarization
 ```
 
 ## Auth and provider commands

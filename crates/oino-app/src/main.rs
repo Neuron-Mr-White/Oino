@@ -94,8 +94,8 @@ use nine_router::{
     NINE_ROUTER_DEFAULT_BASE_URL, NINE_ROUTER_KNOWN_GOOD_TAG,
 };
 use oino_agent_loop::{
-    AbortSignal, AgentEvent, BeforeToolCallResult, BoxFuture, LoopError, StreamProvider, Tool,
-    ToolCall, ToolDefinition, ToolResult, ToolUpdateCallback,
+    AbortSignal, AgentEvent, BeforeToolCallResult, BoxFuture, LoopError, StreamProvider,
+    StreamRequest, Tool, ToolCall, ToolDefinition, ToolResult, ToolUpdateCallback,
 };
 use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
 #[cfg(test)]
@@ -133,7 +133,7 @@ use oino_tui::{
     ThemeDocument, ThemeSource, ThemeSourceKind, ThemeSourceScope, ToolSettingsItem,
     ToolSettingsScope, TuiAction, TuiState, HELP_STATUS,
 };
-use oino_types::{ContentBlock, Message, Model, OinoId, ThinkingLevel};
+use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ThinkingLevel};
 #[cfg(test)]
 use provider_runtime::ProviderRouter;
 use provider_runtime::{build_runtime_provider, provider_status_for_model_identifier};
@@ -229,7 +229,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id]\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify\n\nOptional built-ins: install from /extensions with builtin:9router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
+    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /btw | /btw new | /btw configure inherit|<provider:model>\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id] | /model btw inherit|<provider:model> | /model notify-summary inherit|<provider:model>\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify\n\nOptional built-ins: install from /extensions with builtin:9router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
 }
 
 #[derive(Debug, Error)]
@@ -778,7 +778,24 @@ fn set_notify_field(
         NotifyField::Server => notify.ntfy.server = value,
         NotifyField::Topic => notify.ntfy.topic = value,
         NotifyField::Token => notify.ntfy.token = value,
-        NotifyField::Priority => notify.ntfy.priority = value,
+        NotifyField::Priority => {
+            notify.ntfy.priority = value.and_then(|value| notify::normalize_ntfy_priority(&value));
+        }
+        NotifyField::SummaryModel => notify.summarizer.model = value,
+        NotifyField::SummaryPrompt => {
+            if let Some(value) = value.as_deref() {
+                if value == "__summary_enabled:true" || value == "__summary_enabled:false" {
+                    notify.summarizer.enabled = Some(value.ends_with("true"));
+                    return;
+                }
+            }
+            notify.summarizer.prompt = value;
+        }
+        NotifyField::SummaryMaxChars => {
+            notify.summarizer.max_chars = value
+                .and_then(|value| value.parse::<usize>().ok())
+                .map(|value| value.clamp(80, 2000));
+        }
         NotifyField::Tags => {
             notify.ntfy.tags = value.map(|value| {
                 value
@@ -1462,6 +1479,10 @@ fn notify_settings_to_tui(settings: &notify::NotifySettings) -> NotifyScopeSetti
                 .map(tui_notify_event_from_app)
                 .collect::<Vec<_>>()
         }),
+        summary_enabled: settings.summarizer.enabled,
+        summary_model: settings.summarizer.model.clone(),
+        summary_prompt: settings.summarizer.prompt.clone(),
+        summary_max_chars: settings.summarizer.max_chars,
     }
 }
 
@@ -2017,9 +2038,13 @@ fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOpti
                 .filter_map(move |model_id| {
                     let id = format!("{provider_id}:{model_id}");
                     Model::from_identifier(&id).map(|_| {
-                        ModelOption::new(id)
+                        let mut option = ModelOption::new(id)
                             .with_display_name(format!("{display} {model_id}"))
-                            .with_provider_label(format!("{display} extension"))
+                            .with_provider_label(format!("{display} extension"));
+                        if provider_id.as_str() == model_catalog::NINE_ROUTER_PROVIDER_ID {
+                            option = option.with_context_length(Some(200_000));
+                        }
+                        option
                     })
                 })
         })
@@ -2697,6 +2722,7 @@ async fn run_tui(
     )
     .await;
     let mut state = TuiState::with_settings(initial_model.clone(), initial_thinking_level);
+    state.set_btw_configured_model(tool_settings.global.btw_model.clone(), &initial_model);
     state.set_working_directory(path_to_string(&cwd));
     let agent_mode = Arc::new(Mutex::new(state.agent_mode.clone()));
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
@@ -2761,9 +2787,17 @@ async fn run_tui(
     .await;
     register_tui_stream_hooks(&harness, tx.clone()).await;
     register_mode_hooks(&harness, Arc::clone(&agent_mode), resource_paths.clone()).await;
-    register_notify_hooks(&harness, resource_paths.clone()).await;
+    let btw_provider_config = provider_config.clone();
+    let notify_stream = build_runtime_provider(
+        auth.clone(),
+        provider_config.clone(),
+        extension_runtime_providers(&extension_snapshot),
+    );
+    register_notify_hooks(&harness, resource_paths.clone(), notify_stream).await;
     spawn_model_catalog_task(tx.clone(), auth.clone(), provider_config, initial_model);
     let mut prompt_in_flight = false;
+    let mut btw_harness: Option<Arc<Harness>> = None;
+    let mut btw_in_flight = false;
     let mut ralph_controller = RalphRunController::default();
     let mut pending_ask_user: Option<oneshot::Sender<AskUserOutcome>> = None;
     loop {
@@ -2783,6 +2817,20 @@ async fn run_tui(
                     state.open_ask_user_overlay(request);
                 }
                 other => {
+                    if let TuiRuntimeEvent::BtwFinished(result) = &other {
+                        btw_in_flight = false;
+                        match result {
+                            Ok(messages) => {
+                                state.set_btw_messages_from_oino(messages);
+                                state.status = "BTW complete".into();
+                            }
+                            Err(message) => {
+                                state.set_btw_error(message.clone());
+                                state.status = HELP_STATUS.into();
+                            }
+                        }
+                        continue;
+                    }
                     if let TuiRuntimeEvent::PromptFinished(result) = &other {
                         prompt_finished = true;
                         finished_prompt_result = Some(result.clone());
@@ -2907,6 +2955,11 @@ async fn run_tui(
                     state.set_error(err.to_string());
                 } else {
                     applied_thinking_level = thinking_level;
+                    if state.btw.configured_model.is_none() {
+                        state
+                            .set_btw_configured_model(None, &state.settings.selected_model.clone());
+                        btw_harness = None;
+                    }
                     persist_current_settings(&mut state).await;
                     save_tui_session(&mut state, &harness, &session_path).await;
                 }
@@ -3112,6 +3165,115 @@ async fn run_tui(
                     }
                     Err(err) => state.set_usage_error(format!("Usage refresh failed: {err}")),
                 }
+            }
+            TuiAction::OpenBtw => {
+                if btw_harness.is_none() {
+                    match create_btw_harness(
+                        &harness,
+                        &auth,
+                        &resource_catalog,
+                        &resource_paths,
+                        &tool_settings,
+                        &cwd,
+                        &btw_provider_config,
+                        &extension_snapshot,
+                        state.btw.configured_model.clone(),
+                        &state.settings.selected_model,
+                        true,
+                    )
+                    .await
+                    {
+                        Ok(created) => {
+                            btw_harness = Some(created);
+                            state.set_btw_configured_model(
+                                tool_settings.global.btw_model.clone(),
+                                &state.settings.selected_model.clone(),
+                            );
+                        }
+                        Err(err) => state.set_btw_error(err.to_string()),
+                    }
+                }
+            }
+            TuiAction::SubmitBtwPrompt(prompt) => {
+                if btw_in_flight {
+                    state.status = "BTW prompt is already running".into();
+                } else {
+                    if btw_harness.is_none() {
+                        match create_btw_harness(
+                            &harness,
+                            &auth,
+                            &resource_catalog,
+                            &resource_paths,
+                            &tool_settings,
+                            &cwd,
+                            &btw_provider_config,
+                            &extension_snapshot,
+                            state.btw.configured_model.clone(),
+                            &state.settings.selected_model,
+                            true,
+                        )
+                        .await
+                        {
+                            Ok(created) => btw_harness = Some(created),
+                            Err(err) => {
+                                state.set_btw_error(err.to_string());
+                                continue;
+                            }
+                        }
+                    }
+                    if let Some(created) = &btw_harness {
+                        btw_in_flight = true;
+                        start_btw_prompt(Arc::clone(created), tx.clone(), prompt);
+                    }
+                }
+            }
+            TuiAction::ResetBtwSession => {
+                btw_in_flight = false;
+                match create_btw_harness(
+                    &harness,
+                    &auth,
+                    &resource_catalog,
+                    &resource_paths,
+                    &tool_settings,
+                    &cwd,
+                    &btw_provider_config,
+                    &extension_snapshot,
+                    state.btw.configured_model.clone(),
+                    &state.settings.selected_model,
+                    false,
+                )
+                .await
+                {
+                    Ok(created) => btw_harness = Some(created),
+                    Err(err) => state.set_btw_error(err.to_string()),
+                }
+            }
+            TuiAction::ConfigureBtwModel(model) => {
+                if let Some(model_id) = &model {
+                    if Model::from_identifier(model_id).is_none() {
+                        state.set_error(format!(
+                            "Invalid BTW model `{model_id}`; expected provider:model-id"
+                        ));
+                        continue;
+                    }
+                }
+                tool_settings.global.btw_model = model.clone();
+                save_tool_settings(
+                    &tool_settings,
+                    &resource_paths,
+                    ToolSettingsScope::Global,
+                    &mut state,
+                )
+                .await;
+                state.set_btw_configured_model(
+                    model.clone(),
+                    &state.settings.selected_model.clone(),
+                );
+                btw_harness = None;
+                state.status = match model {
+                    Some(model) => format!("BTW model set to `{model}`"),
+                    None => "BTW model set to inherit current chat model".into(),
+                };
             }
             TuiAction::Ralph(command) => {
                 match handle_tui_ralph_command(
@@ -4173,6 +4335,70 @@ async fn start_next_queued_prompt_if_idle(
     {
         let _ = state.pop_next_queued_prompt();
     }
+}
+
+async fn create_btw_harness(
+    main_harness: &Arc<Harness>,
+    auth: &AuthStorage,
+    resource_catalog: &ResourceCatalog,
+    resource_paths: &ResourcePaths,
+    tool_settings: &ToolSettingsSnapshot,
+    cwd: &Path,
+    provider_config: &OpenRouterConfig,
+    extension_snapshot: &ExtensionManagerSnapshot,
+    configured_model: Option<String>,
+    current_model: &str,
+    inherit_history: bool,
+) -> Result<Arc<Harness>, AppError> {
+    let effective_model = configured_model.unwrap_or_else(|| current_model.to_string());
+    let mut session = if inherit_history {
+        main_harness.session_handle().lock().await.clone()
+    } else {
+        SessionManager::new(SessionHeader::new("btw", cwd.to_path_buf()))
+    };
+    session.append_model(
+        Model::from_identifier(&effective_model)
+            .ok_or_else(|| AppError::InvalidModelIdentifier(effective_model.clone()))?,
+    );
+    let provider = build_runtime_provider(
+        auth.clone(),
+        provider_config.clone(),
+        extension_runtime_providers(extension_snapshot),
+    );
+    let harness = Arc::new(build_harness(
+        effective_model,
+        ThinkingLevel::Off,
+        provider,
+        auth.clone(),
+        session,
+        resource_catalog,
+    )?);
+    apply_tool_settings_to_harness(
+        &harness,
+        tool_settings,
+        resource_paths,
+        cwd,
+        AgentMode::Plan,
+        None,
+    )
+    .await;
+    let mode = Arc::new(Mutex::new(AgentMode::Plan));
+    register_mode_hooks(&harness, mode, resource_paths.clone()).await;
+    Ok(harness)
+}
+
+fn start_btw_prompt(
+    harness: Arc<Harness>,
+    tx: mpsc::UnboundedSender<TuiRuntimeEvent>,
+    prompt: String,
+) {
+    tokio::spawn(async move {
+        let result = harness
+            .prompt(Message::user_text(prompt))
+            .await
+            .map_err(|err| user_facing_error(&err));
+        let _ = tx.send(TuiRuntimeEvent::BtwFinished(result));
+    });
 }
 
 async fn start_prompt(
@@ -5516,6 +5742,66 @@ async fn execute_runtime_command(
             let report = usage_report_for_current_session(harness, auth, &config.model).await?;
             return Ok(report.format_text());
         }
+        ParsedCommand::BtwOpen => {
+            return Err(AppError::InvalidArguments(
+                "`/btw` opens an interactive side panel in the TUI".into(),
+            ));
+        }
+        ParsedCommand::BtwReset => {
+            return Err(AppError::InvalidArguments(
+                "`/btw new` opens a fresh interactive BTW panel in the TUI".into(),
+            ));
+        }
+        ParsedCommand::BtwConfigure { model } => {
+            let mut settings =
+                user_settings::load_from_path(&resource_catalog.paths.global_settings)
+                    .await
+                    .unwrap_or_default();
+            match model {
+                None => {
+                    return Ok("Usage: /model btw inherit OR /model btw <provider:model>".into())
+                }
+                Some(None) => settings.btw_model = None,
+                Some(Some(model)) => {
+                    if Model::from_identifier(&model).is_none() {
+                        return Err(AppError::InvalidArguments(format!(
+                            "invalid BTW model `{model}`"
+                        )));
+                    }
+                    settings.btw_model = Some(model);
+                }
+            }
+            user_settings::save_to_path(&settings, &resource_catalog.paths.global_settings).await?;
+            return Ok(settings.btw_model.as_ref().map_or_else(
+                || "BTW model set to inherit".into(),
+                |model| format!("BTW model set to `{model}`"),
+            ));
+        }
+        ParsedCommand::SetNotifySummaryModel { model } => {
+            let mut settings =
+                user_settings::load_from_path(&resource_catalog.paths.global_settings)
+                    .await
+                    .unwrap_or_default();
+            match model {
+                None => {
+                    return Ok("Usage: /model notify-summary inherit|off OR /model notify-summary <provider:model>".into())
+                }
+                Some(None) => settings.notify.summarizer.model = None,
+                Some(Some(model)) => {
+                    if Model::from_identifier(&model).is_none() {
+                        return Err(AppError::InvalidArguments(format!(
+                            "invalid notify summary model `{model}`"
+                        )));
+                    }
+                    settings.notify.summarizer.model = Some(model);
+                }
+            }
+            user_settings::save_to_path(&settings, &resource_catalog.paths.global_settings).await?;
+            return Ok(settings.notify.summarizer.model.as_ref().map_or_else(
+                || "Notify summary model set to inherit/default".into(),
+                |model| format!("Notify summary model set to `{model}`"),
+            ));
+        }
         ParsedCommand::AuthStatus { provider } => {
             let settings = load_tool_settings(&resource_catalog.paths).await;
             let snapshot = load_extension_snapshot(&resource_catalog.paths, &settings);
@@ -5805,6 +6091,7 @@ struct RalphRunController {
 enum TuiRuntimeEvent {
     Agent(AgentEvent),
     PromptFinished(Result<Vec<Message>, String>),
+    BtwFinished(Result<Vec<Message>, String>),
     SessionTitle(String),
     ModelCatalog(ModelCatalogUpdate),
     UsageProgress(UsageReport),
@@ -5945,14 +6232,22 @@ async fn register_mode_hooks(harness: &Harness, mode: Arc<Mutex<AgentMode>>, pat
         .await;
 }
 
-async fn register_notify_hooks(harness: &Harness, paths: ResourcePaths) {
+async fn register_notify_hooks(
+    harness: &Harness,
+    paths: ResourcePaths,
+    stream: Arc<dyn StreamProvider>,
+) {
     let client = Arc::new(reqwest::Client::new());
+    let last_assistant_message = Arc::new(Mutex::new(None::<String>));
     for hook in [
+        NotificationHook::MessageEnd,
         NotificationHook::AgentEnd,
         NotificationHook::ToolExecutionEnd,
     ] {
         let paths = paths.clone();
         let client = Arc::clone(&client);
+        let last_assistant_message = Arc::clone(&last_assistant_message);
+        let stream = Arc::clone(&stream);
         harness
             .hooks()
             .on_notification(
@@ -5960,8 +6255,23 @@ async fn register_notify_hooks(harness: &Harness, paths: ResourcePaths) {
                 Arc::new(move |event| {
                     let paths = paths.clone();
                     let client = Arc::clone(&client);
+                    let last_assistant_message = Arc::clone(&last_assistant_message);
+                    let stream = Arc::clone(&stream);
                     Box::pin(async move {
-                        send_notify_event_if_enabled(paths, client, event).await;
+                        if let AgentEvent::MessageEnd { message } = &event {
+                            if let Some(text) = assistant_message_text(message) {
+                                if let Ok(mut guard) = last_assistant_message.lock() {
+                                    *guard = Some(text);
+                                }
+                            }
+                            return;
+                        }
+                        let summary_source = last_assistant_message
+                            .lock()
+                            .ok()
+                            .and_then(|guard| guard.clone());
+                        send_notify_event_if_enabled(paths, client, event, summary_source, stream)
+                            .await;
                     })
                 }),
             )
@@ -5969,10 +6279,28 @@ async fn register_notify_hooks(harness: &Harness, paths: ResourcePaths) {
     }
 }
 
+fn assistant_message_text(message: &Message) -> Option<String> {
+    let Message::Assistant { content, .. } = message else {
+        return None;
+    };
+    let text = content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(text.trim()),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    (!text.trim().is_empty()).then_some(text)
+}
+
 async fn send_notify_event_if_enabled(
     paths: ResourcePaths,
     client: Arc<reqwest::Client>,
     event: AgentEvent,
+    summary_source: Option<String>,
+    stream: Arc<dyn StreamProvider>,
 ) {
     let settings = load_tool_settings(&paths).await;
     if !notify_extension_enabled(&paths, &settings) {
@@ -5983,14 +6311,61 @@ async fn send_notify_event_if_enabled(
     else {
         return;
     };
-    let Some(message) = notify::notify_message_for_event(&event) else {
+    let Some(mut message) = notify::notify_message_for_event(&event) else {
         return;
     };
     if !config.events.contains(&message.event) {
         return;
     }
+    if message.event == notify::NotifyEvent::AgentEnd {
+        if let Some(source) = summary_source.filter(|source| !source.trim().is_empty()) {
+            if config.summarizer.enabled {
+                message.body = summarize_notify_body(&config, &source, stream).await;
+            }
+        }
+    }
     if let Err(err) = notify::send_ntfy_notification(&client, &config, &message).await {
         eprintln!("Oino notify failed: {err}");
+    }
+}
+
+async fn summarize_notify_body(
+    config: &notify::EffectiveNotifyConfig,
+    source: &str,
+    stream: Arc<dyn StreamProvider>,
+) -> String {
+    let fallback = notify::notification_summary_from_text(source, config.summarizer.max_chars);
+    let Some(model_id) = config.summarizer.model.as_deref() else {
+        return fallback;
+    };
+    let Some(model) = Model::from_identifier(model_id) else {
+        return fallback;
+    };
+    let prompt = format!(
+        "{}\n\nReturn only the notification body. Maximum characters: {}.\n\nRun output:\n{}",
+        config.summarizer.prompt, config.summarizer.max_chars, source
+    );
+    let request = StreamRequest {
+        model,
+        thinking_level: ThinkingLevel::Off,
+        system_prompt: Some("You write concise desktop/mobile notification summaries.".into()),
+        messages: vec![Message::user_text(prompt)],
+        tools: Vec::new(),
+    };
+    let Ok(events) = stream.stream(request, AbortSignal::new()).await else {
+        return fallback;
+    };
+    let text = events
+        .into_iter()
+        .filter_map(|event| match event {
+            AssistantStreamEvent::TextDelta { delta } => Some(delta),
+            _ => None,
+        })
+        .collect::<String>();
+    if text.trim().is_empty() {
+        fallback
+    } else {
+        notify::notification_summary_from_text(&text, config.summarizer.max_chars)
     }
 }
 
@@ -6107,7 +6482,7 @@ fn apply_tui_runtime_event(
                 state.status = status;
             }
         }
-        TuiRuntimeEvent::AskUserPrompt { .. } => {}
+        TuiRuntimeEvent::AskUserPrompt { .. } | TuiRuntimeEvent::BtwFinished(_) => {}
     }
 }
 
@@ -6145,6 +6520,7 @@ fn user_facing_error(err: &HarnessError) -> String {
 
 struct TerminalGuard {
     terminal: Terminal<CrosstermBackend<Stdout>>,
+    mouse_capture_enabled: bool,
 }
 
 fn paint_url_overlays(
@@ -6173,22 +6549,35 @@ fn osc8_link(label: &str, url: &str) -> String {
     format!("\x1b]8;;{url}\x1b\\{label}\x1b]8;;\x1b\\")
 }
 
+fn terminal_mouse_capture_enabled() -> bool {
+    matches!(
+        std::env::var("OINO_ENABLE_MOUSE_CAPTURE").ok().as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
 impl TerminalGuard {
     fn enter() -> Result<Self, AppError> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
+        let mouse_capture_enabled = terminal_mouse_capture_enabled();
         execute!(
             stdout,
             EnterAlternateScreen,
             Clear(ClearType::All),
             MoveTo(0, 0),
             EnableBracketedPaste,
-            EnableMouseCapture,
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
         )?;
+        if mouse_capture_enabled {
+            execute!(stdout, EnableMouseCapture)?;
+        }
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            mouse_capture_enabled,
+        })
     }
 
     fn draw(&mut self, state: &TuiState) -> Result<(), AppError> {
@@ -6208,10 +6597,12 @@ impl TerminalGuard {
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
+        if self.mouse_capture_enabled {
+            let _ = execute!(self.terminal.backend_mut(), DisableMouseCapture);
+        }
         let _ = execute!(
             self.terminal.backend_mut(),
             DisableBracketedPaste,
-            DisableMouseCapture,
             PopKeyboardEnhancementFlags,
             LeaveAlternateScreen
         );

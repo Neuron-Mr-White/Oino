@@ -30,12 +30,16 @@ use oino_extension_core::{
     UiSurfaceValidationError,
 };
 use oino_types::{ContentBlock, Message, OinoId, ThinkingLevel};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    time::{Duration, Instant},
+};
 
 pub const HELP_STATUS: &str = "Type /help for shortcuts and commands";
 
 const DEFAULT_TRANSCRIPT_PAGE_LINES: usize = 10;
 const TRANSCRIPT_SCROLL_LINE_STEP: usize = 1;
+const QUIT_ARM_WINDOW: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayKind {
@@ -49,6 +53,7 @@ pub enum OverlayKind {
     Inspect,
     Usage,
     AskUser,
+    Btw,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -974,6 +979,30 @@ fn usage_provider_matches(provider: &UsagePanelProvider, query: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BtwState {
+    pub input: String,
+    pub messages: Vec<MessageView>,
+    pub working: bool,
+    pub error: Option<String>,
+    pub configured_model: Option<String>,
+    pub effective_model: String,
+    pub inherited: bool,
+}
+
+impl Default for BtwState {
+    fn default() -> Self {
+        Self {
+            input: String::new(),
+            messages: Vec::new(),
+            working: false,
+            error: None,
+            configured_model: None,
+            effective_model: String::new(),
+            inherited: true,
+        }
+    }
+}
+
 pub struct TuiState {
     pub messages: Vec<MessageView>,
     pub session_title: String,
@@ -996,6 +1025,7 @@ pub struct TuiState {
     pub sessions: SessionsState,
     pub inspect: InspectState,
     pub ask_user: Option<AskUserOverlayState>,
+    pub btw: BtwState,
     pub prompts: ResourceBrowserState,
     pub skills: ResourceBrowserState,
     pub prompt_resources: Vec<PromptResource>,
@@ -1016,6 +1046,7 @@ pub struct TuiState {
     transcript_page_lines: usize,
     transcript_version: u64,
     quit_pending: bool,
+    quit_armed_at: Option<Instant>,
     file_paths: Vec<String>,
 }
 
@@ -1054,6 +1085,7 @@ impl Default for TuiState {
             sessions: SessionsState::default(),
             inspect: InspectState::default(),
             ask_user: None,
+            btw: BtwState::default(),
             prompts: ResourceBrowserState::default(),
             skills: ResourceBrowserState::default(),
             prompt_resources: Vec::new(),
@@ -1074,6 +1106,7 @@ impl Default for TuiState {
             transcript_page_lines: DEFAULT_TRANSCRIPT_PAGE_LINES,
             transcript_version: 0,
             quit_pending: false,
+            quit_armed_at: None,
             file_paths: Vec::new(),
         }
     }
@@ -2130,17 +2163,15 @@ impl TuiState {
 
     pub fn handle_key(&mut self, key: KeyEvent) -> TuiAction {
         if is_force_quit_key(key) {
-            if self.quit_pending {
-                return TuiAction::Quit;
-            }
-            self.quit_pending = true;
-            self.status = "Press Ctrl-C again to quit • Esc stops a running response".into();
-            return TuiAction::None;
+            return self.arm_or_quit_with_status(
+                "Press Ctrl-C again to quit • Esc stops a running response",
+            );
         }
-        self.quit_pending = false;
+        self.expire_quit_pending();
 
         if self.overlay == Some(OverlayKind::Settings)
-            && matches!(self.settings.keymaps_mode, KeymapsMode::Capture { .. })
+            && (matches!(self.settings.keymaps_mode, KeymapsMode::Capture { .. })
+                || self.settings.notify.edit.is_some())
         {
             return self.handle_settings_key(key);
         }
@@ -2150,6 +2181,9 @@ impl TuiState {
         }
         if self.overlay == Some(OverlayKind::Usage) {
             return self.handle_usage_key(key);
+        }
+        if self.overlay == Some(OverlayKind::Btw) {
+            return self.handle_btw_key(key);
         }
 
         if self.overlay.is_none()
@@ -2213,6 +2247,53 @@ impl TuiState {
             self.after_composer_edit(&before);
         }
         TuiAction::None
+    }
+
+    fn handle_btw_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.overlay = None;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.btw.input.push('\n');
+                TuiAction::None
+            }
+            KeyCode::Enter => {
+                let prompt = self.btw.input.trim().to_string();
+                if prompt == "/new" {
+                    self.btw.input.clear();
+                    self.btw.messages.clear();
+                    self.btw.error = None;
+                    self.status = "BTW session reset".into();
+                    TuiAction::ResetBtwSession
+                } else if prompt.is_empty() {
+                    self.status = "BTW: type a prompt before pressing Enter".into();
+                    TuiAction::None
+                } else if self.btw.working {
+                    self.status = "BTW prompt is already running".into();
+                    TuiAction::None
+                } else {
+                    self.btw.input.clear();
+                    self.btw.working = true;
+                    self.btw.error = None;
+                    self.status = "BTW running…".into();
+                    TuiAction::SubmitBtwPrompt(prompt)
+                }
+            }
+            KeyCode::Backspace => {
+                self.btw.input.pop();
+                TuiAction::None
+            }
+            KeyCode::Char(ch)
+                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+            {
+                self.btw.input.push(ch);
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
     }
 
     fn handle_usage_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -2525,6 +2606,7 @@ impl TuiState {
             Some(OverlayKind::Inspect) => contexts.push(KeyContext::Inspect),
             Some(OverlayKind::Usage) => contexts.push(KeyContext::Sessions),
             Some(OverlayKind::AskUser) => contexts.push(KeyContext::Sessions),
+            Some(OverlayKind::Btw) => contexts.push(KeyContext::Sessions),
             None => {
                 if self.command_suggestions_view().is_some() {
                     contexts.push(KeyContext::CommandSuggestions);
@@ -2599,6 +2681,10 @@ impl TuiState {
             KeyAction::SendPanelOpen => {
                 self.open_send_panel();
                 TuiAction::None
+            }
+            KeyAction::BtwOpen => {
+                self.open_btw_overlay();
+                TuiAction::OpenBtw
             }
             KeyAction::TranscriptFocus => {
                 self.focus = TuiFocus::Transcript;
@@ -2709,12 +2795,28 @@ impl TuiState {
     }
 
     fn arm_or_quit(&mut self) -> TuiAction {
+        self.arm_or_quit_with_status("Press quit again to exit • Esc stops a running response")
+    }
+
+    fn arm_or_quit_with_status(&mut self, status: &'static str) -> TuiAction {
+        self.expire_quit_pending();
         if self.quit_pending {
             TuiAction::Quit
         } else {
             self.quit_pending = true;
-            self.status = "Press quit again to exit • Esc stops a running response".into();
+            self.quit_armed_at = Some(Instant::now());
+            self.status = status.into();
             TuiAction::None
+        }
+    }
+
+    fn expire_quit_pending(&mut self) {
+        if self
+            .quit_armed_at
+            .is_some_and(|armed_at| armed_at.elapsed() > QUIT_ARM_WINDOW)
+        {
+            self.quit_pending = false;
+            self.quit_armed_at = None;
         }
     }
 
@@ -4054,6 +4156,35 @@ impl TuiState {
                 self.status = "Refreshing usage report…".into();
                 TuiAction::RefreshUsage
             }
+            ParsedCommand::BtwOpen => {
+                self.open_btw_overlay();
+                TuiAction::OpenBtw
+            }
+            ParsedCommand::BtwReset => {
+                self.open_btw_overlay();
+                self.btw.messages.clear();
+                self.btw.error = None;
+                self.status = "BTW session reset".into();
+                TuiAction::ResetBtwSession
+            }
+            ParsedCommand::BtwConfigure { model } => match model {
+                None => {
+                    self.status = "Usage: /model btw inherit OR /model btw <provider:model>".into();
+                    TuiAction::None
+                }
+                Some(model) => TuiAction::ConfigureBtwModel(model),
+            },
+            ParsedCommand::SetNotifySummaryModel { model } => match model {
+                None => {
+                    self.status = "Usage: /model notify-summary inherit|off OR /model notify-summary <provider:model>".into();
+                    TuiAction::None
+                }
+                Some(model) => TuiAction::SetNotifyField {
+                    scope: ToolSettingsScope::Global,
+                    field: crate::settings::NotifyField::SummaryModel,
+                    value: model,
+                },
+            },
             ParsedCommand::AuthStatus { provider } => {
                 self.open_auth_overlay();
                 self.status = provider.as_ref().map_or_else(
@@ -4201,6 +4332,7 @@ impl TuiState {
         self.queued_items.clear();
         self.draft_items.clear();
         self.quit_pending = false;
+        self.quit_armed_at = None;
     }
 
     pub fn open_send_panel(&mut self) {
@@ -4259,6 +4391,33 @@ impl TuiState {
         self.inspect.token_count = 0;
         self.inspect.export_message = None;
         self.status = "Inspect: loading full prompt…".into();
+    }
+
+    fn open_btw_overlay(&mut self) {
+        self.clear_error();
+        self.overlay = Some(OverlayKind::Btw);
+        self.status = "BTW: Enter send • Ctrl-Enter newline • blank /new resets • Esc close".into();
+    }
+
+    pub fn set_btw_configured_model(&mut self, model: Option<String>, current_model: &str) {
+        self.btw.configured_model = model;
+        self.btw.inherited = self.btw.configured_model.is_none();
+        self.btw.effective_model = self
+            .btw
+            .configured_model
+            .clone()
+            .unwrap_or_else(|| current_model.to_string());
+    }
+
+    pub fn set_btw_messages_from_oino(&mut self, messages: &[Message]) {
+        self.btw.messages = project_messages(messages);
+        self.btw.working = false;
+        self.btw.error = None;
+    }
+
+    pub fn set_btw_error(&mut self, error: impl Into<String>) {
+        self.btw.working = false;
+        self.btw.error = Some(error.into());
     }
 
     fn open_usage_overlay(&mut self) {
@@ -6186,6 +6345,15 @@ mod tests {
         let mut state = TuiState::new();
         let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         assert_eq!(state.handle_key(ctrl_c), TuiAction::None);
+        assert_eq!(state.handle_key(ctrl_c), TuiAction::Quit);
+    }
+
+    #[test]
+    fn ctrl_c_quits_even_if_input_arrives_between_presses() {
+        let mut state = TuiState::new();
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(state.handle_key(ctrl_c), TuiAction::None);
+        assert_eq!(state.handle_key(key(KeyCode::Char(';'))), TuiAction::None);
         assert_eq!(state.handle_key(ctrl_c), TuiAction::Quit);
     }
 

@@ -419,6 +419,7 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         Some(OverlayKind::Inspect) => render_inspect_overlay(frame, area, state, theme),
         Some(OverlayKind::Usage) => render_usage_overlay(frame, area, state, theme),
         Some(OverlayKind::AskUser) => render_ask_user_overlay(frame, area, state, theme),
+        Some(OverlayKind::Btw) => render_btw_overlay(frame, area, state, theme),
         None => {}
     }
 
@@ -433,7 +434,7 @@ fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     }
     let keymap = &state.settings.keymap;
     let title = format!(
-        " {}: Enter queue • / draft • s settings • q send panel • Esc cancel ",
+        " {}: Enter queue • / draft • s settings • q send panel • b btw • Esc cancel ",
         keymap.chord_key
     );
     frame.render_widget(
@@ -469,11 +470,13 @@ fn extension_surfaces(
     surface_kind: UiSurfaceKind,
     area: Rect,
 ) -> Vec<&ActiveContribution<UiSurfaceContribution>> {
+    let mut seen = std::collections::BTreeSet::new();
     state
         .extension_ui
         .surfaces
         .iter()
         .filter(|surface| surface.entry.contribution.surface == surface_kind)
+        .filter(|surface| seen.insert(surface.effective_id.as_str().to_string()))
         .filter(|surface| {
             !state
                 .extension_ui
@@ -522,6 +525,14 @@ fn extension_composer_bottom_surfaces(
         .collect()
 }
 
+fn is_composer_direct_surface(surface: &UiSurfaceContribution) -> bool {
+    matches!(
+        (surface.surface, surface_slot(surface)),
+        (UiSurfaceKind::FooterTop, COMPOSER_DIRECT_TOP_SLOT)
+            | (UiSurfaceKind::FooterBottom, COMPOSER_DIRECT_BOTTOM_SLOT)
+    )
+}
+
 fn extension_status_footer_surfaces(
     state: &TuiState,
     area: Rect,
@@ -539,10 +550,7 @@ fn extension_status_footer_surfaces(
     ]
     .into_iter()
     .flat_map(|kind| extension_surfaces(state, kind, area))
-    .filter(|surface| {
-        let slot = surface_slot(&surface.entry.contribution);
-        slot != COMPOSER_DIRECT_TOP_SLOT && slot != COMPOSER_DIRECT_BOTTOM_SLOT
-    })
+    .filter(|surface| !is_composer_direct_surface(&surface.entry.contribution))
     .collect()
 }
 
@@ -652,9 +660,9 @@ fn context_status_label(state: &TuiState) -> String {
             let percent = (used as f64 / limit as f64 * 100.0).clamp(0.0, 999.0);
             format!("context: {:.0}%/{}", percent, compact_count(limit))
         }
-        (Some(_), _) => "context: --%/unknown".into(),
-        (None, Some(limit)) if limit > 0 => format!("context: --%/{}", compact_count(limit)),
-        _ => "context: --%/unknown".into(),
+        (Some(used), _) => format!("context: {}/unknown", compact_count(used)),
+        (None, Some(limit)) if limit > 0 => format!("context: unknown/{}", compact_count(limit)),
+        _ => "context: unknown".into(),
     }
 }
 
@@ -1096,8 +1104,49 @@ pub fn transcript_visible_lines(state: &TuiState, width: u16, height: u16) -> us
 }
 
 pub fn terminal_cursor_position(state: &TuiState, width: u16, height: u16) -> Option<(u16, u16)> {
-    if width < 20 || height < 8 || state.focus != TuiFocus::Composer || !state.composer.is_enabled()
-    {
+    if width < 20 || height < 8 {
+        return None;
+    }
+    if state.overlay == Some(OverlayKind::Btw) {
+        let overlay = centered_rect(
+            Rect {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+            86,
+            72,
+        );
+        let inner = overlay.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+        let sections = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(6),
+                Constraint::Length(5),
+                Constraint::Length(2),
+            ])
+            .split(inner);
+        let input_inner = sections[1].inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+        let last_line = state.btw.input.rsplit('\n').next().unwrap_or("");
+        let line_count = state.btw.input.matches('\n').count() as u16;
+        let x = input_inner
+            .x
+            .saturating_add(last_line.width() as u16)
+            .min(input_inner.right().saturating_sub(1));
+        let y = input_inner
+            .y
+            .saturating_add(line_count)
+            .min(input_inner.bottom().saturating_sub(1));
+        return Some((x, y));
+    }
+    if state.focus != TuiFocus::Composer || !state.composer.is_enabled() {
         return None;
     }
     let layout = app_layout(
@@ -2610,6 +2659,103 @@ fn help_entry_line(entry: &HelpEntry, width: usize, theme: &Theme) -> Line<'stat
         ),
         HelpEntry::Blank => Line::from(""),
     }
+}
+
+fn render_btw_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
+    let overlay = centered_rect(area, 86, 72);
+    frame.render_widget(Clear, overlay);
+    let model_label = if state.btw.inherited {
+        "inherit"
+    } else {
+        "configured"
+    };
+    let title = format!(
+        " BTW • plan • {model_label}: {} ",
+        state.btw.effective_model
+    );
+    let block = Block::default()
+        .title(Span::styled(title, theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
+    frame.render_widget(block, overlay);
+    let inner = overlay.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(6),
+            Constraint::Length(5),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
+    let mut lines = Vec::new();
+    if state.btw.messages.is_empty() {
+        lines.push(Line::styled("No BTW messages yet.", theme.placeholder));
+    } else {
+        for message in &state.btw.messages {
+            let title = message.title.as_deref().unwrap_or(&message.role);
+            lines.push(Line::styled(format!("{title}:"), theme.title));
+            for line in wrap_text(
+                &message.content,
+                sections[0].width.saturating_sub(2) as usize,
+            ) {
+                lines.push(Line::from(line));
+            }
+            lines.push(Line::from(""));
+        }
+    }
+    if let Some(error) = &state.btw.error {
+        lines.push(Line::styled(
+            format!("Error: {error}"),
+            diagnostic_style(theme.diagnostic_error, theme),
+        ));
+    } else if state.btw.working {
+        lines.push(Line::styled(
+            "Running…",
+            diagnostic_style(theme.diagnostic_warning, theme),
+        ));
+    }
+    let height = sections[0].height.saturating_sub(2) as usize;
+    let start = lines.len().saturating_sub(height.max(1));
+    frame.render_widget(
+        Paragraph::new(lines[start..].to_vec())
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .title(" Side conversation ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            ),
+        sections[0],
+    );
+
+    let input = if state.btw.input.is_empty() {
+        "Type a BTW prompt…"
+    } else {
+        state.btw.input.as_str()
+    };
+    let input_style = if state.btw.input.is_empty() {
+        theme.placeholder
+    } else {
+        Style::default().fg(theme.fg)
+    };
+    frame.render_widget(
+        Paragraph::new(input.to_string())
+            .style(input_style)
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .title(" Input ")
+                    .borders(Borders::ALL)
+                    .border_style(section_border_style(true, theme)),
+            ),
+        sections[1],
+    );
+    render_overlay_footer(frame, sections[2], "Enter send • Ctrl-Enter newline • type /new to reset here • /btw new opens a fresh BTW panel • /model btw inherit|<model> • Esc close", theme.footer);
 }
 
 fn render_send_panel_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -4441,6 +4587,20 @@ fn notify_settings_row_line(
             .unwrap_or_else(|| "inherit / none".into()),
         NotifyRow::AgentEnd => notify_event_row_value(scope, NotifyEventKind::AgentEnd),
         NotifyRow::ToolError => notify_event_row_value(scope, NotifyEventKind::ToolError),
+        NotifyRow::SummaryEnabled => scope
+            .summary_enabled
+            .map(|enabled| if enabled { "ON" } else { "OFF" }.to_string())
+            .unwrap_or_else(|| "inherit / ON".into()),
+        NotifyRow::SummaryModel => {
+            notify_row_text(scope.summary_model.as_deref(), "inherit / heuristic")
+        }
+        NotifyRow::SummaryPrompt => {
+            notify_row_text(scope.summary_prompt.as_deref(), "inherit default prompt")
+        }
+        NotifyRow::SummaryMaxChars => scope
+            .summary_max_chars
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "inherit / 280".into()),
     };
     let marker = arrow_marker(active);
     let text = truncate_with_ellipsis(&format!("{marker} {}: {value}", row.label()), width);
@@ -4454,6 +4614,7 @@ fn notify_settings_row_line(
             .events
             .as_ref()
             .is_some_and(|events| events.contains(&NotifyEventKind::ToolError)),
+        NotifyRow::SummaryEnabled => scope.summary_enabled.unwrap_or(true),
         _ => row
             .field()
             .and_then(|field| match field {
@@ -4462,6 +4623,9 @@ fn notify_settings_row_line(
                 NotifyField::Token => scope.token.as_ref(),
                 NotifyField::Priority => scope.priority.as_ref(),
                 NotifyField::Tags => None,
+                NotifyField::SummaryModel => scope.summary_model.as_ref(),
+                NotifyField::SummaryPrompt => scope.summary_prompt.as_ref(),
+                NotifyField::SummaryMaxChars => None,
             })
             .is_some(),
     };
