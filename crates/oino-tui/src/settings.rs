@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 
 use crate::{
-    fuzzy::{ascii_subsequence_match_parts, fuzzy_indices, FuzzyMode},
     keymap::{
         key_action_rows, KeyAction, KeySequence, KeyStroke, KeymapConfig, KeymapPreset,
         ShortcutKind,
     },
+    model_selector::{ModelSelector, ModelSelectorAction, ModelSelectorContext},
     theme::{ResolvedTheme, ThemeCatalog, ThemeMode, ThemeSettings, ThemeSource},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -36,7 +36,7 @@ impl ModelAvailability {
         }
     }
 
-    const fn display_rank(self) -> u8 {
+    pub const fn display_rank(self) -> u8 {
         match self {
             Self::Configured => 0,
             Self::Unknown => 1,
@@ -240,6 +240,10 @@ pub enum SettingsPage {
     Notify,
     Compaction,
     Extensions,
+    /// Sub-page: picking a model for the notify summary.
+    NotifyModelPicker,
+    /// Sub-page: picking a model for compaction LLM.
+    CompactionModelPicker,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -398,6 +402,9 @@ pub enum SettingsAction {
         method_is_llm: bool,
         auto_enabled: bool,
         threshold_pct: Option<u8>,
+    },
+    SetCompactModel {
+        id: String,
     },
 }
 
@@ -716,12 +723,12 @@ impl CompactionSettingsState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
-    pub models: Vec<ModelOption>,
-    pub selected_model: String,
+    pub model_selector: ModelSelector,
+    /// Reusable sub-page picker for Notify summary model and Compaction LLM model.
+    pub sub_model_picker: ModelSelector,
     pub selected_thinking_level: ThinkingLevel,
     pub page: SettingsPage,
     pub menu_cursor: usize,
-    pub model_cursor: usize,
     pub thinking_cursor: usize,
     pub collapse_cursor: usize,
     pub chat_style_cursor: usize,
@@ -746,9 +753,6 @@ pub struct SettingsState {
     pub effective_theme: Option<ResolvedTheme>,
     pub preview_theme: Option<ResolvedTheme>,
     pub keymap: KeymapConfig,
-    pub model_search: String,
-    pub model_search_active: bool,
-    pub filtered_model_indices: Vec<usize>,
     pub status: String,
     pub refreshing: bool,
 }
@@ -756,13 +760,13 @@ pub struct SettingsState {
 impl SettingsState {
     #[must_use]
     pub fn new(model: impl Into<String>, thinking_level: ThinkingLevel) -> Self {
+        let model_string = model.into();
         Self {
-            models: Vec::new(),
-            selected_model: model.into(),
+            model_selector: ModelSelector::new(ModelSelectorContext::Main, model_string.clone()),
+            sub_model_picker: ModelSelector::new(ModelSelectorContext::NotifySummary, model_string),
             selected_thinking_level: thinking_level,
             page: SettingsPage::Menu,
             menu_cursor: 0,
-            model_cursor: 0,
             thinking_cursor: thinking_index(thinking_level, &all_thinking_levels()),
             collapse_cursor: 0,
             chat_style_cursor: 0,
@@ -787,9 +791,6 @@ impl SettingsState {
             effective_theme: None,
             preview_theme: None,
             keymap: KeymapConfig::default(),
-            model_search: String::new(),
-            model_search_active: false,
-            filtered_model_indices: Vec::new(),
             status: "Model catalog not loaded yet".into(),
             refreshing: false,
         }
@@ -802,9 +803,7 @@ impl SettingsState {
 
     pub fn open_model_selection(&mut self) {
         self.page = SettingsPage::Models;
-        self.model_search_active = false;
-        self.model_search.clear();
-        self.refresh_model_filter();
+        self.model_selector.open();
     }
 
     pub fn open_thinking_level(&mut self) {
@@ -813,34 +812,18 @@ impl SettingsState {
             thinking_index(self.selected_thinking_level, &self.thinking_levels());
     }
 
-    pub fn set_models(&mut self, mut models: Vec<ModelOption>, status: impl Into<String>) {
-        let browsing_model = (self.page == SettingsPage::Models)
-            .then(|| {
-                self.models
-                    .get(self.model_cursor)
-                    .map(|model| model.id.clone())
-            })
-            .flatten();
-        sort_model_options_for_display(&mut models);
-        self.models = models;
-        self.status = status.into();
-        let cursor_target = browsing_model.as_deref().unwrap_or(&self.selected_model);
-        self.model_cursor = self
-            .models
-            .iter()
-            .position(|model| model.id == cursor_target)
-            .or_else(|| {
-                self.models
-                    .iter()
-                    .position(|model| model.id == self.selected_model)
-            })
-            .unwrap_or_else(|| self.model_cursor.min(self.models.len().saturating_sub(1)));
+    pub fn set_models(&mut self, models: Vec<ModelOption>, status: impl Into<String>) {
+        let status_str = status.into();
+        self.model_selector.set_models(models.clone(), &status_str);
+        self.sub_model_picker.set_models(models, &status_str);
+        self.status = self.model_selector.status.clone();
         self.clamp_thinking_to_selected_model();
-        self.refresh_model_filter();
     }
 
     pub fn set_refreshing(&mut self, refreshing: bool) {
         self.refreshing = refreshing;
+        self.model_selector.set_refreshing(refreshing);
+        self.sub_model_picker.set_refreshing(refreshing);
     }
 
     pub fn set_collapse_modes(&mut self, thinking: CollapseMode, tool: CollapseMode) {
@@ -1032,10 +1015,13 @@ impl SettingsState {
     }
 
     pub fn select_model_identifier(&mut self, model: &str) {
-        self.selected_model = model.to_string();
-        if let Some(index) = self.models.iter().position(|option| option.id == model) {
-            self.model_cursor = index;
-        }
+        self.model_selector.initial_model = model.to_string();
+        self.model_selector.cursor = self
+            .model_selector
+            .models
+            .iter()
+            .position(|m| m.id == model)
+            .unwrap_or(self.model_selector.cursor);
         self.clamp_thinking_to_selected_model();
     }
 
@@ -1102,43 +1088,33 @@ impl SettingsState {
 
     #[must_use]
     pub fn thinking_levels(&self) -> Vec<ThinkingLevel> {
-        self.models
+        self.model_selector
+            .models
             .iter()
-            .find(|model| model.id == self.selected_model)
+            .find(|model| model.id == self.model_selector.initial_model)
             .map_or_else(all_thinking_levels, |model| {
                 normalize_thinking_levels(model.thinking_levels.clone())
             })
     }
 
+    /// The currently selected model ID (primary convenience accessor used throughout the app).
+    #[must_use]
+    pub fn selected_model(&self) -> &str {
+        &self.model_selector.initial_model
+    }
+
     #[must_use]
     pub fn selected_model_label(&self) -> &str {
-        self.models
-            .iter()
-            .find(|model| model.id == self.selected_model)
-            .map_or(self.selected_model.as_str(), |model| {
-                model.display_name.as_str()
-            })
+        self.model_selector.selected_model_label()
     }
 
     #[must_use]
     pub fn selected_model_context_length(&self) -> Option<usize> {
-        self.models
+        self.model_selector
+            .models
             .iter()
-            .find(|model| model.id == self.selected_model)
+            .find(|model| model.id == self.model_selector.initial_model)
             .and_then(|model| model.context_length)
-    }
-
-    #[must_use]
-    pub fn filtered_model_indices(&self) -> &[usize] {
-        &self.filtered_model_indices
-    }
-
-    #[must_use]
-    pub fn model_cursor_filtered_position(&self) -> usize {
-        self.filtered_model_indices
-            .iter()
-            .position(|index| *index == self.model_cursor)
-            .unwrap_or(0)
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> SettingsAction {
@@ -1148,8 +1124,22 @@ impl SettingsState {
         if self.page == SettingsPage::Notify {
             return self.handle_notify_key(key);
         }
-        if self.page == SettingsPage::Models && self.model_search_active {
-            return self.handle_model_search_key(key);
+        if self.page == SettingsPage::Models {
+            return self.handle_model_page_key(key);
+        }
+        if self.page == SettingsPage::NotifyModelPicker {
+            return self.handle_sub_model_picker_key(key, SettingsPage::Notify, |id, settings| {
+                SettingsAction::SetNotifyField {
+                    scope: settings.notify.scope,
+                    field: NotifyField::SummaryModel,
+                    value: Some(id),
+                }
+            });
+        }
+        if self.page == SettingsPage::CompactionModelPicker {
+            return self.handle_sub_model_picker_key(key, SettingsPage::Compaction, |id, _settings| {
+                SettingsAction::SetCompactModel { id }
+            });
         }
 
         match key.code {
@@ -1202,12 +1192,6 @@ impl SettingsState {
                 SettingsAction::ResetTheme {
                     scope: ToolSettingsScope::Global,
                 }
-            }
-            KeyCode::Char('/') if self.page == SettingsPage::Models && key.modifiers.is_empty() => {
-                self.model_search_active = true;
-                self.model_search.clear();
-                self.refresh_model_filter();
-                SettingsAction::None
             }
             KeyCode::Up => {
                 self.move_cursor(-1);
@@ -1331,6 +1315,19 @@ impl SettingsState {
         self.toggle_compaction_field()
     }
 
+    fn open_compaction_model_picker(&mut self) -> SettingsAction {
+        let current = self
+            .compact
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model_selector.initial_model.clone());
+        self.sub_model_picker.context = ModelSelectorContext::CompactionModel;
+        self.sub_model_picker.initial_model = current;
+        self.sub_model_picker.open();
+        self.page = SettingsPage::CompactionModelPicker;
+        SettingsAction::None
+    }
+
     fn apply_notify_row(&mut self) -> SettingsAction {
         let row = NotifySettingsState::ROWS
             .get(self.notify.cursor)
@@ -1369,17 +1366,16 @@ impl SettingsState {
                 }
             }
             NotifyRow::SummaryModel => {
-                let input = self
+                let current = self
                     .notify
                     .scope_settings(self.notify.scope)
                     .summary_model
                     .clone()
-                    .unwrap_or_default();
-                self.notify.edit = Some(NotifyEditState {
-                    scope: self.notify.scope,
-                    field: NotifyField::SummaryModel,
-                    input,
-                });
+                    .unwrap_or_else(|| self.model_selector.initial_model.clone());
+                self.sub_model_picker.context = ModelSelectorContext::NotifySummary;
+                self.sub_model_picker.initial_model = current;
+                self.sub_model_picker.open();
+                self.page = SettingsPage::NotifyModelPicker;
                 SettingsAction::None
             }
             _ => {
@@ -1765,44 +1761,82 @@ impl SettingsState {
         SettingsAction::SetKeymap(self.keymap.clone())
     }
 
-    fn handle_model_search_key(&mut self, key: KeyEvent) -> SettingsAction {
-        match key.code {
-            KeyCode::Esc => {
-                self.model_search_active = false;
-                self.model_search.clear();
-                self.refresh_model_filter();
-                self.model_cursor = self
-                    .models
-                    .iter()
-                    .position(|model| model.id == self.selected_model)
-                    .unwrap_or_else(|| self.model_cursor.min(self.models.len().saturating_sub(1)));
+    fn handle_model_page_key(&mut self, key: KeyEvent) -> SettingsAction {
+        // Esc/Backspace/Left at top level means "return to menu"
+        let is_escape = matches!(key.code, KeyCode::Esc);
+        let is_back = matches!(key.code, KeyCode::Backspace | KeyCode::Left) && !self.model_selector.search_active;
+        if is_escape {
+            self.model_selector.cancel();
+            self.page = SettingsPage::Menu;
+            return SettingsAction::None;
+        }
+        if is_back {
+            self.model_selector.cancel();
+            self.page = SettingsPage::Menu;
+            return SettingsAction::None;
+        }
+        match self.model_selector.handle_key(key) {
+            ModelSelectorAction::Select { id } => {
+                self.model_selector.initial_model = id.clone();
+                self.clamp_thinking_to_selected_model();
+                self.page = SettingsPage::Menu;
+                SettingsAction::SetModel(id)
+            }
+            ModelSelectorAction::Cancel => {
+                // Cancel was already handled above for Esc/Back; but the selector
+                // can also cancel on Enter with the same model.
+                self.page = SettingsPage::Menu;
                 SettingsAction::None
             }
-            KeyCode::Enter => {
-                self.model_search_active = false;
+            ModelSelectorAction::None => SettingsAction::None,
+        }
+    }
+
+    fn apply_model_from_selector(&mut self) -> SettingsAction {
+        match self.model_selector.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)) {
+            ModelSelectorAction::Select { id } => {
+                self.model_selector.initial_model = id.clone();
+                self.clamp_thinking_to_selected_model();
+                self.page = SettingsPage::Menu;
+                SettingsAction::SetModel(id)
+            }
+            ModelSelectorAction::Cancel => {
+                self.page = SettingsPage::Menu;
                 SettingsAction::None
             }
-            KeyCode::Backspace => {
-                self.model_search.pop();
-                self.refresh_model_filter();
+            ModelSelectorAction::None => SettingsAction::None,
+        }
+    }
+
+    /// Handle keys for the sub-page model picker (Notify summary model, Compaction model).
+    /// `return_page` is the page to go back to on cancel/select.
+    /// `make_action` constructs the appropriate [`SettingsAction`] from the selected model id.
+    fn handle_sub_model_picker_key(
+        &mut self,
+        key: KeyEvent,
+        return_page: SettingsPage,
+        make_action: impl FnOnce(String, &Self) -> SettingsAction,
+    ) -> SettingsAction {
+        let is_escape = matches!(key.code, KeyCode::Esc);
+        let is_back = matches!(key.code, KeyCode::Backspace | KeyCode::Left)
+            && !self.sub_model_picker.search_active;
+        if is_escape || is_back {
+            self.sub_model_picker.cancel();
+            self.page = return_page;
+            return SettingsAction::None;
+        }
+        match self.sub_model_picker.handle_key(key) {
+            ModelSelectorAction::Select { id } => {
+                self.sub_model_picker.initial_model = id.clone();
+                let action = make_action(id, self);
+                self.page = return_page;
+                action
+            }
+            ModelSelectorAction::Cancel => {
+                self.page = return_page;
                 SettingsAction::None
             }
-            KeyCode::Up => {
-                self.move_model_cursor_filtered(-1);
-                SettingsAction::None
-            }
-            KeyCode::Down => {
-                self.move_model_cursor_filtered(1);
-                SettingsAction::None
-            }
-            KeyCode::Char(ch)
-                if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() =>
-            {
-                self.model_search.push(ch);
-                self.refresh_model_filter();
-                SettingsAction::None
-            }
-            _ => SettingsAction::None,
+            ModelSelectorAction::None => SettingsAction::None,
         }
     }
 
@@ -1810,12 +1844,21 @@ impl SettingsState {
         if self.page == SettingsPage::Menu {
             self.clear_theme_preview();
             SettingsAction::Close
+        } else if self.page == SettingsPage::Models {
+            self.model_selector.cancel();
+            self.page = SettingsPage::Menu;
+            SettingsAction::None
+        } else if self.page == SettingsPage::NotifyModelPicker {
+            self.sub_model_picker.cancel();
+            self.page = SettingsPage::Notify;
+            SettingsAction::None
+        } else if self.page == SettingsPage::CompactionModelPicker {
+            self.sub_model_picker.cancel();
+            self.page = SettingsPage::Compaction;
+            SettingsAction::None
         } else {
             let was_theme = self.page == SettingsPage::Theme;
-            self.model_search_active = false;
-            self.model_search.clear();
             self.notify.edit = None;
-            self.refresh_model_filter();
             self.page = SettingsPage::Menu;
             if was_theme {
                 SettingsAction::ClearThemePreview
@@ -1836,7 +1879,7 @@ impl SettingsState {
     fn apply_or_open(&mut self) -> SettingsAction {
         match self.page {
             SettingsPage::Menu => self.open_current_menu_item(),
-            SettingsPage::Models => self.apply_model(),
+            SettingsPage::Models => self.apply_model_from_selector(),
             SettingsPage::Thinking => self.apply_thinking_level(),
             SettingsPage::Collapse => self.apply_collapse_mode(),
             SettingsPage::ChatStyle => self.apply_chat_style(),
@@ -1845,8 +1888,28 @@ impl SettingsState {
             SettingsPage::Keymaps => self.open_keymap_detail(),
             SettingsPage::Theme => self.preview_selected_theme(),
             SettingsPage::Notify => self.apply_notify_row(),
-            SettingsPage::Compaction => SettingsAction::None,
+            SettingsPage::Compaction => {
+                if self.compact.cursor == 3 {
+                    self.open_compaction_model_picker()
+                } else {
+                    self.toggle_compaction_field()
+                }
+            }
             SettingsPage::Extensions => SettingsAction::OpenExtensions,
+            SettingsPage::NotifyModelPicker => self.handle_sub_model_picker_key(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                SettingsPage::Notify,
+                |id, settings| SettingsAction::SetNotifyField {
+                    scope: settings.notify.scope,
+                    field: NotifyField::SummaryModel,
+                    value: Some(id),
+                },
+            ),
+            SettingsPage::CompactionModelPicker => self.handle_sub_model_picker_key(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                SettingsPage::Compaction,
+                |id, _settings| SettingsAction::SetCompactModel { id },
+            ),
         }
     }
 
@@ -1856,7 +1919,11 @@ impl SettingsState {
                 self.menu_cursor = move_index(self.menu_cursor, self.menu_items().len(), delta);
             }
             SettingsPage::Models => {
-                self.move_model_cursor_filtered(delta);
+                if delta < 0 {
+                    self.model_selector.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+                } else {
+                    self.model_selector.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                }
             }
             SettingsPage::Thinking => {
                 let levels = self.thinking_levels();
@@ -1890,6 +1957,13 @@ impl SettingsState {
                 );
             }
             SettingsPage::Extensions => {}
+            SettingsPage::NotifyModelPicker | SettingsPage::CompactionModelPicker => {
+                if delta < 0 {
+                    self.sub_model_picker.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+                } else {
+                    self.sub_model_picker.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                }
+            }
             SettingsPage::Keymaps => {
                 self.keymap_cursor = move_index(self.keymap_cursor, key_action_rows().len(), delta);
                 self.keymap_binding_cursor = self
@@ -1897,60 +1971,6 @@ impl SettingsState {
                     .min(self.current_keymap_bindings().len().saturating_sub(1));
             }
         }
-    }
-
-    fn move_model_cursor_filtered(&mut self, delta: isize) {
-        let indices = &self.filtered_model_indices;
-        if indices.is_empty() {
-            return;
-        }
-        let current = indices
-            .iter()
-            .position(|index| *index == self.model_cursor)
-            .unwrap_or(0);
-        let next = move_index(current, indices.len(), delta);
-        self.model_cursor = indices[next];
-    }
-
-    fn refresh_model_filter(&mut self) {
-        let query = self.model_search.trim();
-        self.filtered_model_indices = if query.is_empty() {
-            (0..self.models.len()).collect()
-        } else {
-            let candidate_indices = model_filter_candidate_indices(&self.models, query);
-            fuzzy_indices(&candidate_indices, query, FuzzyMode::Text, None, |index| {
-                let model = &self.models[*index];
-                format!("{} {} {}", model.provider, model.id, model.display_name)
-            })
-            .into_iter()
-            .map(|candidate_index| candidate_indices[candidate_index])
-            .collect()
-        };
-        self.sync_model_cursor_to_filter();
-    }
-
-    fn sync_model_cursor_to_filter(&mut self) {
-        let indices = &self.filtered_model_indices;
-        if let Some(index) = indices.first().copied() {
-            if !indices.contains(&self.model_cursor) {
-                self.model_cursor = index;
-            }
-        }
-    }
-
-    fn apply_model(&mut self) -> SettingsAction {
-        if self.model_search_active {
-            self.model_search_active = false;
-        }
-        let Some(model) = self.models.get(self.model_cursor) else {
-            return SettingsAction::None;
-        };
-        if self.selected_model == model.id {
-            return SettingsAction::None;
-        }
-        self.selected_model = model.id.clone();
-        self.clamp_thinking_to_selected_model();
-        SettingsAction::SetModel(self.selected_model.clone())
     }
 
     fn apply_thinking_level(&mut self) -> SettingsAction {
@@ -2131,56 +2151,6 @@ fn display_tool_name(name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn sort_model_options_for_display(models: &mut [ModelOption]) {
-    // Keep the provider/catalog order inside each bucket so large model lists stay
-    // predictable, but make models that are definitely unusable fall to the bottom.
-    models.sort_by(|left, right| {
-        left.availability
-            .display_rank()
-            .cmp(&right.availability.display_rank())
-    });
-}
-
-fn model_filter_candidate_indices(models: &[ModelOption], query: &str) -> Vec<usize> {
-    if !query.is_ascii() {
-        return (0..models.len()).collect();
-    }
-    // Support provider prefix filtering (e.g., "openai:" filters to OpenAI models)
-    if let Some(provider_prefix) = query.strip_suffix(':') {
-        let provider_lower = provider_prefix.to_lowercase();
-        return models
-            .iter()
-            .enumerate()
-            .filter_map(|(index, model)| {
-                model
-                    .provider
-                    .to_lowercase()
-                    .starts_with(&provider_lower)
-                    .then_some(index)
-            })
-            .collect();
-    }
-    models
-        .iter()
-        .enumerate()
-        .filter_map(|(index, model)| {
-            ascii_subsequence_match_parts(
-                [
-                    model.provider.as_str(),
-                    " ",
-                    model.provider_label.as_str(),
-                    " ",
-                    model.id.as_str(),
-                    " ",
-                    model.display_name.as_str(),
-                ],
-                query,
-            )
-            .then_some(index)
-        })
-        .collect()
 }
 
 fn move_index(current: usize, len: usize, delta: isize) -> usize {
@@ -2430,7 +2400,7 @@ mod tests {
             "loaded",
         );
         settings.page = SettingsPage::Models;
-        settings.model_cursor = 1;
+        settings.model_selector.cursor = 1;
 
         settings.set_models(
             vec![
@@ -2441,8 +2411,8 @@ mod tests {
             "refreshed",
         );
 
-        assert_eq!(settings.model_cursor, 1);
-        assert_eq!(settings.models[settings.model_cursor].id, "model-b");
+        assert_eq!(settings.model_selector.cursor, 1);
+        assert_eq!(settings.model_selector.models[settings.model_selector.cursor].id, "model-b");
     }
 
     #[test]
@@ -2459,9 +2429,9 @@ mod tests {
             "loaded",
         );
 
-        assert_eq!(settings.models[0].id, "9router:anthropic/b");
-        assert_eq!(settings.models[1].id, "extension:model");
-        assert_eq!(settings.models[2].id, "9router:openai/a");
+        assert_eq!(settings.model_selector.models[0].id, "9router:anthropic/b");
+        assert_eq!(settings.model_selector.models[1].id, "extension:model");
+        assert_eq!(settings.model_selector.models[2].id, "9router:openai/a");
     }
 
     #[test]
@@ -2475,12 +2445,15 @@ mod tests {
         ];
 
         assert_eq!(
-            model_filter_candidate_indices(&models, "displayed"),
+            crate::model_selector::model_filter_candidate_indices(&models, "displayed"),
             vec![1]
         );
-        assert_eq!(model_filter_candidate_indices(&models, "alpha"), vec![0]);
         assert_eq!(
-            model_filter_candidate_indices(&models, "extension"),
+            crate::model_selector::model_filter_candidate_indices(&models, "alpha"),
+            vec![0]
+        );
+        assert_eq!(
+            crate::model_selector::model_filter_candidate_indices(&models, "extension"),
             vec![2]
         );
     }
@@ -2501,19 +2474,19 @@ mod tests {
             settings.handle_key(key(KeyCode::Char('/'))),
             SettingsAction::None
         );
-        assert!(settings.model_search_active);
+        assert!(settings.model_selector.search_active);
         assert_eq!(
             settings.handle_key(key(KeyCode::Char('g'))),
             SettingsAction::None
         );
-        assert_eq!(settings.model_search, "g");
-        assert_eq!(settings.filtered_model_indices().len(), 2);
-        assert!(settings.filtered_model_indices().contains(&1));
-        assert!(settings.filtered_model_indices().contains(&2));
-        assert!(matches!(settings.model_cursor, 1 | 2));
+        assert_eq!(settings.model_selector.search, "g");
+        assert_eq!(settings.model_selector.filtered_indices.len(), 2);
+        assert!(settings.model_selector.filtered_indices.contains(&1));
+        assert!(settings.model_selector.filtered_indices.contains(&2));
+        assert!(matches!(settings.model_selector.cursor, 1 | 2));
         assert_eq!(settings.handle_key(key(KeyCode::Esc)), SettingsAction::None);
-        assert!(!settings.model_search_active);
-        assert_eq!(settings.model_search, "");
-        assert_eq!(settings.model_cursor, 1);
+        assert!(!settings.model_selector.search_active);
+        assert_eq!(settings.model_selector.search, "");
+        assert_eq!(settings.model_selector.cursor, 1);
     }
 }

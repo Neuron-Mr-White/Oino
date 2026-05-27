@@ -2989,8 +2989,9 @@ async fn run_tui(
                 } else {
                     applied_thinking_level = thinking_level;
                     if state.btw.configured_model.is_none() {
+                        let chat_model = state.settings.selected_model().to_string();
                         state
-                            .set_btw_configured_model(None, &state.settings.selected_model.clone());
+                            .set_btw_configured_model(None, &chat_model);
                         btw_harness = None;
                     }
                     persist_current_settings(&mut state).await;
@@ -3129,7 +3130,7 @@ async fn run_tui(
                 match auth_status_items_with_extension_readiness(
                     &auth,
                     provider.as_deref(),
-                    &state.settings.selected_model,
+                    &state.settings.selected_model(),
                     &extension_snapshot,
                 )
                 .await
@@ -3149,7 +3150,7 @@ async fn run_tui(
                 match auth_status_items_with_extension_readiness(
                     &auth,
                     None,
-                    &state.settings.selected_model,
+                    &state.settings.selected_model(),
                     &extension_snapshot,
                 )
                 .await
@@ -3192,7 +3193,7 @@ async fn run_tui(
                             .model
                             .as_deref()
                             .filter(|m| *m != "inherit")
-                            .unwrap_or(&state.settings.selected_model);
+                            .unwrap_or(&state.settings.selected_model());
                         let model = match Model::from_identifier(model_id) {
                             Some(m) => m,
                             None => {
@@ -3290,7 +3291,7 @@ async fn run_tui(
                             .model
                             .as_deref()
                             .filter(|m| *m != "inherit")
-                            .unwrap_or(&state.settings.selected_model);
+                            .unwrap_or(&state.settings.selected_model());
                         let model = match Model::from_identifier(model_id) {
                             Some(m) => m,
                             None => {
@@ -3423,7 +3424,7 @@ async fn run_tui(
                 match usage_report_for_current_session(
                     &harness,
                     &auth,
-                    &state.settings.selected_model,
+                    &state.settings.selected_model(),
                 )
                 .await
                 {
@@ -3448,16 +3449,17 @@ async fn run_tui(
                         &btw_provider_config,
                         &extension_snapshot,
                         state.btw.configured_model.clone(),
-                        &state.settings.selected_model,
+                        &state.settings.selected_model(),
                         true,
                     )
                     .await
                     {
                         Ok(created) => {
                             btw_harness = Some(created);
+                            let chat_model = state.settings.selected_model().to_string();
                             state.set_btw_configured_model(
                                 tool_settings.global.btw_model.clone(),
-                                &state.settings.selected_model.clone(),
+                                &chat_model,
                             );
                         }
                         Err(err) => state.set_btw_error(err.to_string()),
@@ -3479,7 +3481,7 @@ async fn run_tui(
                             &btw_provider_config,
                             &extension_snapshot,
                             state.btw.configured_model.clone(),
-                            &state.settings.selected_model,
+                            &state.settings.selected_model(),
                             true,
                         )
                         .await
@@ -3509,7 +3511,7 @@ async fn run_tui(
                     &btw_provider_config,
                     &extension_snapshot,
                     state.btw.configured_model.clone(),
-                    &state.settings.selected_model,
+                    &state.settings.selected_model(),
                     false,
                 )
                 .await
@@ -3535,9 +3537,10 @@ async fn run_tui(
                     &mut state,
                 )
                 .await;
+                let chat_model = state.settings.selected_model().to_string();
                 state.set_btw_configured_model(
                     model.clone(),
-                    &state.settings.selected_model.clone(),
+                    &chat_model,
                 );
                 btw_harness = None;
                 state.status = match model {
@@ -4688,7 +4691,7 @@ async fn start_prompt(
     }
     if let Err(message) = preflight_model_credentials(
         auth,
-        &state.settings.selected_model,
+        &state.settings.selected_model(),
         extension_runtime_provider_ids,
     )
     .await
@@ -4704,7 +4707,10 @@ async fn start_prompt(
     let task_tx = tx.clone();
     let task_session_path = session_path.to_path_buf();
     let task_auth = auth.clone();
-    let task_model_identifier = state.settings.selected_model.clone();
+    let task_model_identifier;
+    {
+        task_model_identifier = state.settings.selected_model().to_string();
+    }
     tokio::spawn(async move {
         let result = match task_harness.prompt(prompt_message).await {
             Ok(messages) => match task_harness.save_session_jsonl(&task_session_path).await {
@@ -6521,7 +6527,7 @@ enum TuiRuntimeEvent {
 async fn persist_current_settings(state: &mut TuiState) {
     let mut settings = UserSettings::load_default().await.unwrap_or_default();
     settings.apply_current(
-        state.settings.selected_model.clone(),
+        state.settings.selected_model().to_string(),
         state.settings.selected_thinking_level,
         state.settings.thinking_collapse_mode,
         state.settings.tool_collapse_mode,
@@ -6615,7 +6621,7 @@ async fn try_auto_compact(
                 .model
                 .as_deref()
                 .filter(|m| *m != "inherit")
-                .unwrap_or(&state.settings.selected_model);
+                .unwrap_or(&state.settings.selected_model());
             let model = match Model::from_identifier(model_id) {
                 Some(m) => m,
                 None => return false,

@@ -42,6 +42,7 @@ mod help;
 pub mod keymap;
 mod markdown;
 pub mod message;
+mod model_selector;
 pub mod render;
 pub mod resource;
 pub mod settings;
@@ -85,6 +86,7 @@ pub use settings::{
     NotifyField, NotifyScopeSettings, NotifySettingsState, SettingsAction, SettingsMenuItem,
     SettingsPage, SettingsState, ToolSettingsItem, ToolSettingsScope,
 };
+pub use model_selector::{ModelSelector, ModelSelectorAction, ModelSelectorContext};
 pub use theme::{
     builtin_theme_documents, normalize_theme_id, normalize_theme_token, parse_theme_color,
     resolve_effective_theme, EffectiveThemeScope, ResolvedTheme, Theme, ThemeCatalog,

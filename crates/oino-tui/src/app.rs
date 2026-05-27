@@ -1600,7 +1600,7 @@ impl TuiState {
         command_suggestions_for(
             input,
             cursor,
-            &self.settings.models,
+            &self.settings.model_selector.models,
             &self.prompt_resources,
             &self.skill_resources,
             &self.extension_commands,
@@ -2629,7 +2629,7 @@ impl TuiState {
 
     fn push_settings_key_contexts(&self, contexts: &mut Vec<KeyContext>) {
         if self.settings.page == crate::settings::SettingsPage::Models
-            && self.settings.model_search_active
+            && self.settings.model_selector.search_active
         {
             contexts.push(KeyContext::Search);
         }
@@ -3702,7 +3702,7 @@ impl TuiState {
 
     fn handle_settings_text_key(&mut self, key: KeyEvent) -> TuiAction {
         if self.settings.page == crate::settings::SettingsPage::Models
-            && self.settings.model_search_active
+            && self.settings.model_selector.search_active
         {
             if let KeyCode::Char(ch) = key.code {
                 if !key.modifiers.contains(KeyModifiers::CONTROL) && !ch.is_control() {
@@ -3997,6 +3997,11 @@ impl TuiState {
                     auto_enabled,
                     threshold_pct,
                 }
+            }
+            SettingsAction::SetCompactModel { id } => {
+                self.settings.compact.model = Some(id.clone());
+                self.status = format!("Compaction model set to {id}");
+                TuiAction::None
             }
         }
     }
@@ -6418,7 +6423,7 @@ mod tests {
             state.handle_key(key(KeyCode::Enter)),
             TuiAction::SetModel("openrouter:xai/glm-5.1".into())
         );
-        assert_eq!(state.settings.selected_model, "openrouter:xai/glm-5.1");
+        assert_eq!(state.settings.selected_model(), "openrouter:xai/glm-5.1");
     }
 
     #[test]

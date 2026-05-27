@@ -3905,6 +3905,8 @@ fn render_settings_overlay(
         SettingsPage::Theme => render_theme_settings(frame, sections[0], settings, theme),
         SettingsPage::Notify => render_notify_settings(frame, sections[0], settings, theme),
         SettingsPage::Compaction => render_compaction_settings(frame, sections[0], settings, theme),
+        SettingsPage::NotifyModelPicker => render_sub_model_panel(frame, sections[0], &settings.sub_model_picker, " Summary Model ", theme),
+        SettingsPage::CompactionModelPicker => render_sub_model_panel(frame, sections[0], &settings.sub_model_picker, " Compaction Model ", theme),
         SettingsPage::Extensions => render_settings_extensions_page(frame, sections[0], theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
@@ -4110,35 +4112,59 @@ fn render_model_settings(
     settings: &SettingsState,
     theme: &Theme,
 ) {
-    let filtered_indices = settings.filtered_model_indices();
-    let filtered_position = settings.model_cursor_filtered_position();
-    let title = if settings.models.is_empty() {
-        " Model Selection ".to_string()
-    } else if settings.refreshing {
+    let sel = &settings.model_selector;
+    render_model_panel(frame, area, sel, " Model Selection ", theme);
+}
+
+fn render_sub_model_panel(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    selector: &crate::model_selector::ModelSelector,
+    title: &str,
+    theme: &Theme,
+) {
+    render_model_panel(frame, area, selector, title, theme);
+}
+
+/// Reusable model selector panel renderer. Used for all model picker contexts.
+pub(crate) fn render_model_panel(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    selector: &crate::model_selector::ModelSelector,
+    default_title: &str,
+    theme: &Theme,
+) {
+    let filtered_indices = selector.filtered_indices();
+    let filtered_position = selector.cursor_filtered_position();
+    let title = if selector.models.is_empty() {
+        default_title.to_string()
+    } else if selector.refreshing {
         format!(
-            " Model Selection {}/{} ({} total, refreshing) ",
+            "{} {}/{} ({} total, refreshing) ",
+            default_title.trim_end(),
             filtered_position
                 .saturating_add(1)
                 .min(filtered_indices.len()),
             filtered_indices.len(),
-            settings.models.len()
+            selector.models.len()
         )
     } else {
         format!(
-            " Model Selection {}/{} ({} total) ",
+            "{} {}/{} ({} total) ",
+            default_title.trim_end(),
             filtered_position
                 .saturating_add(1)
                 .min(filtered_indices.len()),
             filtered_indices.len(),
-            settings.models.len()
+            selector.models.len()
         )
     };
     let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![
-        model_search_line(settings, content_width, theme),
+        model_search_line(selector, content_width, theme),
         Line::from(""),
     ];
-    if settings.models.is_empty() {
+    if selector.models.is_empty() {
         lines.push(Line::styled(
             "Loading model catalog…",
             settings_muted_style(theme),
@@ -4146,7 +4172,7 @@ fn render_model_settings(
     } else if filtered_indices.is_empty() {
         lines.push(Line::styled(
             truncate_with_ellipsis(
-                &format!("No models match `{}`", settings.model_search),
+                &format!("No models match `{}`", selector.search),
                 content_width,
             ),
             Style::default().fg(theme.muted),
@@ -4162,13 +4188,12 @@ fn render_model_settings(
                 .skip(range.start)
                 .take(range.end.saturating_sub(range.start))
                 .filter_map(|(_, model_index)| {
-                    let model = settings.models.get(*model_index)?;
-                    let active = *model_index == settings.model_cursor;
-                    let selected = model.id == settings.selected_model;
+                    let model = selector.models.get(*model_index)?;
+                    let active = *model_index == selector.cursor;
+                    let selected = model.id == selector.initial_model;
                     let marker = selection_marker(active, selected);
                     let style = settings_item_style(active, selected, theme);
-                    // Add provider group header when provider changes and search is not active
-                    let show_group = !settings.model_search_active
+                    let show_group = !selector.search_active
                         && !model.provider.is_empty()
                         && model.provider != "unknown"
                         && model.provider != last_provider;
@@ -4224,18 +4249,18 @@ fn render_model_settings(
     );
 }
 
-fn model_search_line(settings: &SettingsState, width: usize, theme: &Theme) -> Line<'static> {
-    if settings.model_search_active {
+fn model_search_line(selector: &crate::model_selector::ModelSelector, width: usize, theme: &Theme) -> Line<'static> {
+    if selector.search_active {
         return Line::from(truncate_spans_to_width(
             vec![
                 Span::styled("Search: ", Style::default().fg(theme.focused_border)),
-                Span::raw(settings.model_search.clone()),
+                Span::raw(selector.search.clone()),
                 Span::styled("█", Style::default().fg(theme.focused_border)),
             ],
             width,
         ));
     }
-    if settings.model_search.is_empty() {
+    if selector.search.is_empty() {
         Line::styled(
             truncate_with_ellipsis("Press / to search models", width),
             settings_muted_style(theme),
@@ -4244,7 +4269,7 @@ fn model_search_line(settings: &SettingsState, width: usize, theme: &Theme) -> L
         Line::from(truncate_spans_to_width(
             vec![
                 Span::styled("Search: ", Style::default().fg(theme.muted)),
-                Span::raw(settings.model_search.clone()),
+                Span::raw(selector.search.clone()),
             ],
             width,
         ))
@@ -5267,10 +5292,11 @@ fn render_settings_footer(
 ) {
     let controls = match settings.page {
         SettingsPage::Menu => "arrows/jk move • Enter/→ open • Esc close",
-        SettingsPage::Models if settings.model_search_active => {
+        SettingsPage::Models if settings.model_selector.search_active => {
             "type to search • arrows move matches • Enter keep search • Esc clear search"
         }
         SettingsPage::Models => "arrows/jk move • / search • Enter apply • Esc/← back",
+        SettingsPage::NotifyModelPicker | SettingsPage::CompactionModelPicker => "arrows/jk move • / search • Enter select • Esc/← back",
         SettingsPage::Thinking => "arrows/jk move • Enter apply • Esc/← back • Ctrl-C twice quit",
         SettingsPage::Collapse => "arrows/jk move • Enter/→ cycle • Esc/← back",
         SettingsPage::ChatStyle => "arrows/jk move • Enter apply • Esc/← back",
@@ -5282,7 +5308,7 @@ fn render_settings_footer(
         SettingsPage::Notify if settings.notify.edit.is_some() => "type value • Enter save • Esc cancel edit",
         SettingsPage::Notify => "arrows/jk move • Enter edit/toggle • p project • g global • x clear • Esc/← back",
         SettingsPage::Extensions => "Enter open extension manager • Esc/← back",
-        SettingsPage::Compaction => "arrows/jk move • Enter/←→ toggle • Esc/← back • use /compact commands for threshold/model/prompt",
+        SettingsPage::Compaction => "arrows/jk move • Enter/←→ toggle • Enter on LLM Model row opens model picker • Esc/← back • use /compact commands for threshold/prompt",
         SettingsPage::Keymaps => match settings.keymaps_mode {
             KeymapsMode::List => {
                 "arrows/jk move • Enter detail • g chord key • p preset • Esc/← back"
@@ -7312,7 +7338,7 @@ mod tests {
         state.set_model_catalog(models, "cached models loaded");
         state.overlay = Some(crate::app::OverlayKind::Settings);
         state.settings.page = crate::settings::SettingsPage::Models;
-        state.settings.model_cursor = 39;
+        state.settings.model_selector.cursor = 39;
         let buffer = draw_state(80, 16, &state);
         let text = buffer
             .content()
