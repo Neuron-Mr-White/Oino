@@ -106,8 +106,8 @@ if ((Test-Path "Cargo.toml") -and (Select-String -Path "Cargo.toml" -Pattern "oi
     }
     $RefEnv = EnvValue "OINO_REF"
     if ($RefEnv) {
-        Run git -C $Src fetch --all --tags
-        Run git -C $Src checkout $RefEnv
+        Run git "-C" $Src fetch "--all" "--tags"
+        Run git "-C" $Src checkout $RefEnv
     }
 }
 
@@ -117,13 +117,13 @@ if (-not (Have "cargo")) {
     } else {
         if (Have "winget") {
             Say "Installing Rust with winget..."
-            Run winget install --id Rustlang.Rustup -e --accept-package-agreements --accept-source-agreements
+            Run winget install "--id" Rustlang.Rustup "-e" "--accept-package-agreements" "--accept-source-agreements"
         } elseif (Have "curl") {
             Say "Installing Rust with rustup-init..."
             $TempDir = if (EnvValue "TEMP") { EnvValue "TEMP" } else { [System.IO.Path]::GetTempPath() }
             $RustupInit = Join-Path $TempDir "rustup-init.exe"
-            Run curl.exe -fsSL https://win.rustup.rs/x86_64 -o $RustupInit
-            Run $RustupInit -y --profile minimal
+            Run curl.exe "-fsSL" https://win.rustup.rs/x86_64 "-o" $RustupInit
+            Run $RustupInit "-y" "--profile" minimal
         } else {
             throw "cargo is missing and neither winget nor curl is available. Install Rust from https://rustup.rs/ and rerun."
         }
@@ -132,7 +132,7 @@ if (-not (Have "cargo")) {
     if ((-not $DryRun) -and (Test-Path $CargoEnv)) { . $CargoEnv }
 }
 
-Run cargo build --manifest-path (Join-Path $Src "Cargo.toml") -p oino-app --bin oino --release
+Run cargo build "--manifest-path" (Join-Path $Src "Cargo.toml") "-p" oino-app "--bin" oino "--release"
 EnsureDir $BinDir
 
 $BuiltExe = Join-Path $Src "target\release\oino.exe"
