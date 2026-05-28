@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: dist/artifacts
+          path: dist
           merge-multiple: true
       - name: Bundle extension packages
         run: |

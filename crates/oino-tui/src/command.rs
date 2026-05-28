@@ -223,6 +223,7 @@ pub enum ParsedCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OinoUpdateCommand {
     Check,
+    CheckTag(Option<String>),
     Core { tag: Option<String>, source: bool },
     Extensions,
     All { tag: Option<String>, source: bool },
@@ -556,7 +557,10 @@ pub fn command_suggestions_for(
         [auth] if auth == "/auth" => auth_subcommand_suggestions(context),
         [extensions] if extensions == "/extensions" => extensions_suggestions(context),
         [update] if update == "/update" => update_suggestions(context),
-        [update, sub] if update == "/update" && matches!(sub.as_str(), "all" | "tag" | "--tag") => {
+        [update, sub]
+            if update == "/update"
+                && matches!(sub.as_str(), "check" | "--check" | "all" | "tag" | "--tag") =>
+        {
             update_value_suggestions(context.clone(), sub)
         }
         [auth] if auth == "/account" => provider_id_suggestions(context),
@@ -710,6 +714,10 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/update", "check" | "--check"] => {
             Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Check))
         }
+        ["/update", "check" | "--check", "--tag", tag]
+        | ["/update", "check" | "--check", "tag", tag] => Some(ParsedCommand::OinoUpdate(
+            OinoUpdateCommand::CheckTag(Some((*tag).to_string())),
+        )),
         ["/update", "extensions" | "extension" | "--extensions"] => {
             Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Extensions))
         }
@@ -2009,12 +2017,16 @@ fn update_value_suggestions(
     subcommand: &str,
 ) -> Option<CommandSuggestionsView> {
     let actions: &[(&str, &str)] = match subcommand {
+        "check" | "--check" => &[
+            ("--tag", "Check a specific release tag"),
+            ("tag", "Check a specific release tag"),
+        ],
         "all" => &[
             ("--tag", "Use a specific release tag for the core update"),
             ("tag", "Use a specific release tag for the core update"),
             ("--source", "Show source/cargo fallback update guidance"),
         ],
-        "tag" | "--tag" => &[("v", "Enter release tag, for example v0.1.0")],
+        "tag" | "--tag" => &[("v", "Enter release tag, for example v0.0.1-alpha.1")],
         _ => return None,
     };
     let items = fuzzy_indices(
@@ -2820,6 +2832,12 @@ mod tests {
         assert_eq!(
             parse_command("/update check"),
             Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Check))
+        );
+        assert_eq!(
+            parse_command("/update check --tag v1.2.3"),
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::CheckTag(
+                Some("v1.2.3".into())
+            )))
         );
         assert_eq!(
             parse_command("/update --tag v1.2.3"),

@@ -1360,6 +1360,11 @@ async fn execute_oino_update_command(
             mode: updater::OinoUpdateMode::Check,
             ..Default::default()
         },
+        OinoUpdateCommand::CheckTag(tag) => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Check,
+            tag,
+            ..Default::default()
+        },
         OinoUpdateCommand::Core { tag, source } => updater::OinoUpdatePlan {
             mode: updater::OinoUpdateMode::Core,
             tag,
@@ -5228,7 +5233,7 @@ async fn run_non_interactive(
             let args = rest.split_whitespace().collect::<Vec<_>>();
             let plan = updater::parse_oino_update_args(&args)?;
             let command = match plan.mode {
-                updater::OinoUpdateMode::Check => OinoUpdateCommand::Check,
+                updater::OinoUpdateMode::Check => OinoUpdateCommand::CheckTag(plan.tag),
                 updater::OinoUpdateMode::Core => OinoUpdateCommand::Core {
                     tag: plan.tag,
                     source: plan.force_source,
