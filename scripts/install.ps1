@@ -17,7 +17,11 @@ function Have([string]$Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
-$DryRun = $env:OINO_DRY_RUN -eq "1"
+function EnvValue([string]$Name) {
+    return [System.Environment]::GetEnvironmentVariable($Name)
+}
+
+$DryRun = (EnvValue "OINO_DRY_RUN") -eq "1"
 
 function ConvertTo-PlainHashtable($Value) {
     if ($null -eq $Value) { return $null }
@@ -80,10 +84,13 @@ function CopyPath([string]$Source, [string]$Destination) {
     }
 }
 
-$Repo = if ($env:OINO_REPO) { $env:OINO_REPO } else { "https://github.com/Neuron-Mr-White/Oino.git" }
-$Prefix = if ($env:OINO_PREFIX) { $env:OINO_PREFIX } else { Join-Path $HOME ".local" }
+$RepoEnv = EnvValue "OINO_REPO"
+$PrefixEnv = EnvValue "OINO_PREFIX"
+$DirEnv = EnvValue "OINO_DIR"
+$Repo = if ($RepoEnv) { $RepoEnv } else { "https://github.com/Neuron-Mr-White/Oino.git" }
+$Prefix = if ($PrefixEnv) { $PrefixEnv } else { Join-Path $HOME ".local" }
 $BinDir = Join-Path $Prefix "bin"
-$SrcDir = if ($env:OINO_DIR) { $env:OINO_DIR } else { Join-Path $HOME ".cache\oino\source" }
+$SrcDir = if ($DirEnv) { $DirEnv } else { Join-Path $HOME ".cache\oino\source" }
 
 if ((Test-Path "Cargo.toml") -and (Select-String -Path "Cargo.toml" -Pattern "oino-app" -Quiet)) {
     $Src = (Get-Location).Path
@@ -97,9 +104,10 @@ if ((Test-Path "Cargo.toml") -and (Select-String -Path "Cargo.toml" -Pattern "oi
         if ($Parent) { EnsureDir $Parent }
         Run git clone $Repo $Src
     }
-    if ($env:OINO_REF) {
+    $RefEnv = EnvValue "OINO_REF"
+    if ($RefEnv) {
         Run git -C $Src fetch --all --tags
-        Run git -C $Src checkout $env:OINO_REF
+        Run git -C $Src checkout $RefEnv
     }
 }
 
@@ -112,7 +120,8 @@ if (-not (Have "cargo")) {
             Run winget install --id Rustlang.Rustup -e --accept-package-agreements --accept-source-agreements
         } elseif (Have "curl") {
             Say "Installing Rust with rustup-init..."
-            $RustupInit = Join-Path $env:TEMP "rustup-init.exe"
+            $TempDir = if (EnvValue "TEMP") { EnvValue "TEMP" } else { [System.IO.Path]::GetTempPath() }
+            $RustupInit = Join-Path $TempDir "rustup-init.exe"
             Run curl.exe -fsSL https://win.rustup.rs/x86_64 -o $RustupInit
             Run $RustupInit -y --profile minimal
         } else {
@@ -130,9 +139,10 @@ $BuiltExe = Join-Path $Src "target\release\oino.exe"
 $InstalledExe = Join-Path $BinDir "oino.exe"
 CopyPath $BuiltExe $InstalledExe
 
-$PackagesDir = Join-Path $Src "crates\oino-extension-builtins\packages"
+$PackagesDir = Join-Path $Src "extensions\built-in"
 if (Test-Path $PackagesDir) {
-    $OinoHome = if ($env:OINO_HOME) { $env:OINO_HOME } else { $HOME }
+    $OinoHomeEnv = EnvValue "OINO_HOME"
+    $OinoHome = if ($OinoHomeEnv) { $OinoHomeEnv } else { $HOME }
     $TargetDir = Join-Path $OinoHome ".oino\extension-packages"
     $SettingsPath = Join-Path $OinoHome ".oino\settings.json"
     $PackageIds = @(
