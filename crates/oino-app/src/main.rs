@@ -47,6 +47,7 @@ mod nine_router;
 mod notify;
 mod provider_runtime;
 mod ralph_loop;
+mod updater;
 mod usage;
 mod user_settings;
 mod vcc;
@@ -129,10 +130,11 @@ use oino_tui::{
     ExtensionAutosuggestItem, ExtensionCommandSuggestion, ExtensionManagementItem,
     ExtensionManagementTarget, ExtensionShortcut, ExtensionThemeState, KeySequence, KeymapConfig,
     MessageView, ModelOption, NotifyEventKind as TuiNotifyEventKind, NotifyField,
-    NotifyScopeSettings, ParsedCommand, PromptResource, RalphCommand, RalphRecordPromise,
-    SessionListItem, SettingsCommand, SkillResource, TerminalClickTarget, TerminalUrlOverlay,
-    ThemeCatalog, ThemeCatalogEntry, ThemeDocument, ThemeSource, ThemeSourceKind, ThemeSourceScope,
-    ToolSettingsItem, ToolSettingsScope, TuiAction, TuiState, HELP_STATUS,
+    NotifyScopeSettings, OinoUpdateCommand, ParsedCommand, PromptResource, RalphCommand,
+    RalphRecordPromise, SessionListItem, SettingsCommand, SkillResource, TerminalClickTarget,
+    TerminalUrlOverlay, ThemeCatalog, ThemeCatalogEntry, ThemeDocument, ThemeSource,
+    ThemeSourceKind, ThemeSourceScope, ToolSettingsItem, ToolSettingsScope, TuiAction, TuiState,
+    HELP_STATUS,
 };
 use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ThinkingLevel};
 #[cfg(test)]
@@ -230,7 +232,7 @@ impl CliArgs {
 }
 
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /btw | /btw new | /btw configure inherit|<provider:model>\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact                        (compact session with configured method)
+    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /btw | /btw new | /btw configure inherit|<provider:model>\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /update [check|extensions|all|--tag <tag>|--source]\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact                        (compact session with configured method)
   /compact vcc | /compact llm     (override method for one-shot)
   /compact threshold [pct]        (set/show auto-compact threshold %)
   /compact auto <on|off>           (enable/disable auto-compact)
@@ -252,6 +254,8 @@ enum AppError {
     Resource(#[from] oino_resource::ResourceError),
     #[error(transparent)]
     Ralph(#[from] ralph_loop::RalphLoopError),
+    #[error(transparent)]
+    Update(#[from] updater::UpdateError),
     #[error("invalid arguments: {0}")]
     InvalidArguments(String),
     #[error("invalid model identifier `{0}`; expected provider:model-id")]
@@ -1343,6 +1347,51 @@ fn looks_like_git_url(source: &str) -> bool {
         || source.starts_with("git://")
         || source.starts_with("git@")
         || source.ends_with(".git")
+}
+
+async fn execute_oino_update_command(
+    command: OinoUpdateCommand,
+    paths: &ResourcePaths,
+    cwd: &Path,
+    settings: &ToolSettingsSnapshot,
+) -> Result<String, AppError> {
+    let plan = match command {
+        OinoUpdateCommand::Check => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Check,
+            ..Default::default()
+        },
+        OinoUpdateCommand::Core { tag, source } => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Core,
+            tag,
+            force_source: source,
+        },
+        OinoUpdateCommand::Extensions => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Extensions,
+            ..Default::default()
+        },
+        OinoUpdateCommand::All { tag, source } => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::All,
+            tag,
+            force_source: source,
+        },
+    };
+
+    match plan.mode {
+        updater::OinoUpdateMode::Check => updater::check_for_update(&plan)
+            .await
+            .map_err(AppError::from),
+        updater::OinoUpdateMode::Extensions => {
+            Ok(update_installed_extension_packages(paths, cwd, settings))
+        }
+        updater::OinoUpdateMode::Core => updater::install_core_update(&plan)
+            .await
+            .map_err(AppError::from),
+        updater::OinoUpdateMode::All => {
+            let core = updater::install_core_update(&plan).await?;
+            let extensions = update_installed_extension_packages(paths, cwd, settings);
+            Ok(format!("{core}\n\n{extensions}"))
+        }
+    }
 }
 
 fn update_installed_extension_packages(
@@ -2990,8 +3039,7 @@ async fn run_tui(
                     applied_thinking_level = thinking_level;
                     if state.btw.configured_model.is_none() {
                         let chat_model = state.settings.selected_model().to_string();
-                        state
-                            .set_btw_configured_model(None, &chat_model);
+                        state.set_btw_configured_model(None, &chat_model);
                         btw_harness = None;
                     }
                     persist_current_settings(&mut state).await;
@@ -3538,10 +3586,7 @@ async fn run_tui(
                 )
                 .await;
                 let chat_model = state.settings.selected_model().to_string();
-                state.set_btw_configured_model(
-                    model.clone(),
-                    &chat_model,
-                );
+                state.set_btw_configured_model(model.clone(), &chat_model);
                 btw_harness = None;
                 state.status = match model {
                     Some(model) => format!("BTW model set to `{model}`"),
@@ -3810,6 +3855,28 @@ async fn run_tui(
                 .await;
                 state.append_command_output("/extensions update", message.clone());
                 state.status = compact_status_line(&message);
+            }
+            TuiAction::UpdateOino(command) => {
+                match execute_oino_update_command(command, &resource_paths, &cwd, &tool_settings)
+                    .await
+                {
+                    Ok(message) => {
+                        reload_tui_everything(
+                            &mut state,
+                            &harness,
+                            &resource_paths,
+                            &cwd,
+                            &mut tool_settings,
+                            &mut extension_models,
+                            &mut extension_runtime_provider_ids,
+                            Some(tx.clone()),
+                        )
+                        .await;
+                        state.append_command_output("/update", message.clone());
+                        state.status = compact_status_line(&message);
+                    }
+                    Err(err) => state.set_error(format!("Oino update failed: {err}")),
+                }
             }
             TuiAction::RemoveExtensionPackage { package_id, scope } => {
                 let mut manager =
@@ -5156,6 +5223,33 @@ async fn run_non_interactive(
         return Ok(());
     };
 
+    if let Some(rest) = input.trim_start().strip_prefix("update") {
+        if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+            let args = rest.split_whitespace().collect::<Vec<_>>();
+            let plan = updater::parse_oino_update_args(&args)?;
+            let command = match plan.mode {
+                updater::OinoUpdateMode::Check => OinoUpdateCommand::Check,
+                updater::OinoUpdateMode::Core => OinoUpdateCommand::Core {
+                    tag: plan.tag,
+                    source: plan.force_source,
+                },
+                updater::OinoUpdateMode::Extensions => OinoUpdateCommand::Extensions,
+                updater::OinoUpdateMode::All => OinoUpdateCommand::All {
+                    tag: plan.tag,
+                    source: plan.force_source,
+                },
+            };
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            let cwd = std::env::current_dir()
+                .unwrap_or_else(|_| resource_catalog.paths.project_root.clone());
+            let message =
+                execute_oino_update_command(command, &resource_catalog.paths, &cwd, &settings)
+                    .await?;
+            println!("{message}");
+            return Ok(());
+        }
+    }
+
     if input.trim_start().starts_with('/') && !contains_resource_reference(&input) {
         if let Some(command) = parse_command(&input) {
             let message = execute_runtime_command(
@@ -6030,6 +6124,13 @@ async fn execute_runtime_command(
                 &cwd,
                 &settings,
             ));
+        }
+        ParsedCommand::OinoUpdate(command) => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            let cwd = std::env::current_dir()
+                .unwrap_or_else(|_| resource_catalog.paths.project_root.clone());
+            return execute_oino_update_command(command, &resource_catalog.paths, &cwd, &settings)
+                .await;
         }
         ParsedCommand::Compact => {
             let settings = load_tool_settings(&resource_catalog.paths).await;

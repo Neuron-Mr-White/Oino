@@ -23,7 +23,7 @@ builtin:footer-status
 During development, the package can also be installed directly from its repository path:
 
 ```text
-crates/oino-extension-builtins/packages/footer-status
+extensions/built-in/footer-status
 ```
 
 After install, use the `/extensions` project/global toggles to enable or disable the package, extension, or individual footer contributions.

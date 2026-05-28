@@ -6,14 +6,15 @@ set -euo pipefail
 #   bash scripts/install-all-builtins.sh
 # Optional:
 #   OINO_HOME=/custom/home bash scripts/install-all-builtins.sh
+#   OINO_BUILTINS=9router,footer-status,vcc bash scripts/install-all-builtins.sh
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OINO_HOME="${OINO_HOME:-$HOME}"
-PACKAGES_DIR="$ROOT/crates/oino-extension-builtins/packages"
+PACKAGES_DIR="$ROOT/extensions/built-in"
 TARGET_DIR="$OINO_HOME/.oino/extension-packages"
 SETTINGS_PATH="$OINO_HOME/.oino/settings.json"
 
-python3 - "$PACKAGES_DIR" "$TARGET_DIR" "$SETTINGS_PATH" <<'PY'
+python3 - "$PACKAGES_DIR" "$TARGET_DIR" "$SETTINGS_PATH" "${OINO_BUILTINS:-}" <<'PY'
 import json
 import shutil
 import sys
@@ -22,8 +23,9 @@ from pathlib import Path
 packages_dir = Path(sys.argv[1])
 target_dir = Path(sys.argv[2])
 settings_path = Path(sys.argv[3])
+requested = [item.strip() for item in sys.argv[4].split(",") if item.strip()]
 
-package_ids = [
+all_package_ids = [
     "oino.9router",
     "oino.footer_status",
     "oino.ralph_loop",
@@ -33,6 +35,24 @@ package_ids = [
     "oino.vcc",
     "oino.ask_user",
 ]
+aliases = {
+    "9router": "oino.9router",
+    "footer-status": "oino.footer_status",
+    "ralph-loop": "oino.ralph_loop",
+    "mode-sandbox": "oino.mode_sandbox",
+    "notify": "oino.notify",
+    "craft-skill": "oino.craft_skill",
+    "vcc": "oino.vcc",
+    "ask-user": "oino.ask_user",
+}
+package_ids = all_package_ids
+if requested:
+    package_ids = []
+    for item in requested:
+        package_id = aliases.get(item, item)
+        if package_id not in all_package_ids:
+            raise SystemExit(f"unknown built-in package {item}; available: {', '.join(aliases)}")
+        package_ids.append(package_id)
 
 target_dir.mkdir(parents=True, exist_ok=True)
 for package_id in package_ids:

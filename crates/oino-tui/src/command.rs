@@ -193,6 +193,7 @@ pub enum ParsedCommand {
     Inspect,
     Extensions,
     ExtensionsUpdate,
+    OinoUpdate(OinoUpdateCommand),
     Compact,
     CompactMethod(CompactMethodOverride),
     CompactThreshold(Option<u8>),
@@ -212,6 +213,14 @@ pub enum ParsedCommand {
     Usage,
     SetSessionTitle(String),
     Settings(SettingsCommand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OinoUpdateCommand {
+    Check,
+    Core { tag: Option<String>, source: bool },
+    Extensions,
+    All { tag: Option<String>, source: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -684,6 +693,40 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/extensions"] => Some(ParsedCommand::Extensions),
         ["/extensions", "update"] | ["/extensions", "upgrade"] => {
             Some(ParsedCommand::ExtensionsUpdate)
+        }
+        ["/update"] => Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
+            tag: None,
+            source: false,
+        })),
+        ["/update", "check" | "--check"] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Check))
+        }
+        ["/update", "extensions" | "extension" | "--extensions"] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Extensions))
+        }
+        ["/update", "all" | "--all"] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::All {
+                tag: None,
+                source: false,
+            }))
+        }
+        ["/update", "source" | "--source"] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
+                tag: None,
+                source: true,
+            }))
+        }
+        ["/update", "--tag", tag] | ["/update", "tag", tag] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
+                tag: Some((*tag).to_string()),
+                source: false,
+            }))
+        }
+        ["/update", "all", "--tag", tag] | ["/update", "all", "tag", tag] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::All {
+                tag: Some((*tag).to_string()),
+                source: false,
+            }))
         }
         ["/usage"] => Some(ParsedCommand::Usage),
         ["/compact"] => Some(ParsedCommand::Compact),
@@ -2672,6 +2715,21 @@ mod tests {
         assert_eq!(
             parse_command("/extensions update"),
             Some(ParsedCommand::ExtensionsUpdate)
+        );
+        assert_eq!(
+            parse_command("/update check"),
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Check))
+        );
+        assert_eq!(
+            parse_command("/update --tag v1.2.3"),
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
+                tag: Some("v1.2.3".into()),
+                source: false,
+            }))
+        );
+        assert_eq!(
+            parse_command("/update extensions"),
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Extensions))
         );
         assert_eq!(
             parse_command("/ralph"),

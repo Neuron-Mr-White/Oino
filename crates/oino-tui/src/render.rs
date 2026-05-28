@@ -434,7 +434,7 @@ fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     }
     let keymap = &state.settings.keymap;
     let title = format!(
-        " {}: Enter queue • / draft • s settings • q send panel • b btw • Esc cancel ",
+        " {}: Enter queue • / draft • s settings • q send panel • Esc cancel ",
         keymap.chord_key
     );
     frame.render_widget(
@@ -478,7 +478,9 @@ fn extension_surfaces(
         .iter()
         .filter(|surface| surface.entry.contribution.surface == surface_kind)
         .filter(|surface| seen_effective_id.insert(surface.effective_id.as_str().to_string()))
-        .filter(|surface| seen_contribution_id.insert(surface.entry.contribution.id.as_str().to_string()))
+        .filter(|surface| {
+            seen_contribution_id.insert(surface.entry.contribution.id.as_str().to_string())
+        })
         .filter(|surface| {
             !state
                 .extension_ui
@@ -3907,8 +3909,20 @@ fn render_settings_overlay(
         SettingsPage::Theme => render_theme_settings(frame, sections[0], settings, theme),
         SettingsPage::Notify => render_notify_settings(frame, sections[0], settings, theme),
         SettingsPage::Compaction => render_compaction_settings(frame, sections[0], settings, theme),
-        SettingsPage::NotifyModelPicker => render_sub_model_panel(frame, sections[0], &settings.sub_model_picker, " Summary Model ", theme),
-        SettingsPage::CompactionModelPicker => render_sub_model_panel(frame, sections[0], &settings.sub_model_picker, " Compaction Model ", theme),
+        SettingsPage::NotifyModelPicker => render_sub_model_panel(
+            frame,
+            sections[0],
+            &settings.sub_model_picker,
+            " Summary Model ",
+            theme,
+        ),
+        SettingsPage::CompactionModelPicker => render_sub_model_panel(
+            frame,
+            sections[0],
+            &settings.sub_model_picker,
+            " Compaction Model ",
+            theme,
+        ),
         SettingsPage::Extensions => render_settings_extensions_page(frame, sections[0], theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
@@ -4251,7 +4265,11 @@ pub(crate) fn render_model_panel(
     );
 }
 
-fn model_search_line(selector: &crate::model_selector::ModelSelector, width: usize, theme: &Theme) -> Line<'static> {
+fn model_search_line(
+    selector: &crate::model_selector::ModelSelector,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
     if selector.search_active {
         return Line::from(truncate_spans_to_width(
             vec![

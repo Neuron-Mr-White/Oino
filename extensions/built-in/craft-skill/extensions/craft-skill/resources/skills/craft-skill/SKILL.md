@@ -25,7 +25,7 @@ Use one of these locations:
 
 - Project skill: `<project>/.oino/skills/<skill-name>/SKILL.md`
 - Global skill: `~/.oino/skills/<skill-name>/SKILL.md`
-- Optional built-in extension resource: `crates/oino-extension-builtins/packages/<package>/extensions/<extension>/resources/skills/<skill-name>/SKILL.md`
+- Optional built-in extension resource: `extensions/built-in/<package>/extensions/<extension>/resources/skills/<skill-name>/SKILL.md`
 - External extension resource: `<package>/extensions/<extension>/resources/skills/<skill-name>/SKILL.md`
 
 Skill names should be lowercase and use hyphens for words. For project/global skills, the front matter `name` must match the folder name.

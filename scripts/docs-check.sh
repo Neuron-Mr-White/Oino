@@ -10,7 +10,8 @@ docs/dev/extension-dev.md
 docs/dev/theme.md
 docs/dev/tui.md
 docs/extension.md
-docs/keymap.md'
+docs/keymap.md
+docs/update.md'
 
 actual=$(find docs -type f -name '*.md' | sort)
 if [ "$actual" != "$expected" ]; then
@@ -66,6 +67,7 @@ if yaml is not None:
 PY
 
 sh -n scripts/install.sh
+sh -n scripts/install-interactive.sh
 sh -n scripts/install-smoke.sh
 sh -n scripts/docs-check.sh
 bash -n scripts/install-all-builtins.sh

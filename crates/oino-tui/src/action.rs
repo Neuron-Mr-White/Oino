@@ -3,7 +3,7 @@
 use crate::{
     app::ExtensionManagementTarget,
     ask_user::AskUserOutcome,
-    command::{AgentMode, RalphCommand},
+    command::{AgentMode, OinoUpdateCommand, RalphCommand},
     keymap::KeymapConfig,
     settings::{
         ChatStyle, CollapseMode, CollapseTarget, NotifyEventKind, NotifyField, ToolSettingsScope,
@@ -116,6 +116,7 @@ pub enum TuiAction {
         scope: ToolSettingsScope,
     },
     UpdateExtensionPackages,
+    UpdateOino(OinoUpdateCommand),
     RemoveExtensionPackage {
         package_id: String,
         scope: ToolSettingsScope,

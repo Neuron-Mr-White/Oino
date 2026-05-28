@@ -19,7 +19,7 @@ trap cleanup EXIT INT TERM
 mkdir -p "$TMP"
 cd "$ROOT"
 
-OINO_PREFIX="$PREFIX" OINO_HOME="$HOME_DIR" sh scripts/install.sh >"$LOG" 2>&1
+OINO_FROM_SOURCE=1 OINO_PREFIX="$PREFIX" OINO_HOME="$HOME_DIR" sh scripts/install.sh >"$LOG" 2>&1
 
 test -x "$PREFIX/bin/oino"
 "$PREFIX/bin/oino" --help >/dev/null

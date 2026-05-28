@@ -66,8 +66,8 @@ pub use command::{
     command_suggestions_for, parse_chat_style, parse_collapse_mode, parse_collapse_target,
     parse_command, parse_thinking_level, thinking_level_value, AgentMode, CommandKind, CommandSpec,
     CommandSuggestionCategory, CommandSuggestionItem, CommandSuggestionsState,
-    CommandSuggestionsView, CompactMethodOverride, ExtensionCommandSuggestion, ParsedCommand,
-    RalphCommand, RalphRecordPromise, SettingsCommand, COMMANDS,
+    CommandSuggestionsView, CompactMethodOverride, ExtensionCommandSuggestion, OinoUpdateCommand,
+    ParsedCommand, RalphCommand, RalphRecordPromise, SettingsCommand, COMMANDS,
 };
 pub use composer::{is_newline_key, is_word_cursor_modifier, ComposerState, INPUT_PLACEHOLDER};
 pub use keymap::{
@@ -75,6 +75,7 @@ pub use keymap::{
     KeymapMatch, KeymapPreset, ShortcutKind,
 };
 pub use message::{project_message, project_messages, MessageView, ToolCallView};
+pub use model_selector::{ModelSelector, ModelSelectorAction, ModelSelectorContext};
 pub use render::{
     render, terminal_cursor_position, transcript_click_targets, transcript_url_overlays,
     transcript_visible_lines, TerminalClickTarget, TerminalClickTargetKind, TerminalUrlOverlay,
@@ -86,7 +87,6 @@ pub use settings::{
     NotifyField, NotifyScopeSettings, NotifySettingsState, SettingsAction, SettingsMenuItem,
     SettingsPage, SettingsState, ToolSettingsItem, ToolSettingsScope,
 };
-pub use model_selector::{ModelSelector, ModelSelectorAction, ModelSelectorContext};
 pub use theme::{
     builtin_theme_documents, normalize_theme_id, normalize_theme_token, parse_theme_color,
     resolve_effective_theme, EffectiveThemeScope, ResolvedTheme, Theme, ThemeCatalog,
