@@ -4519,14 +4519,7 @@ fn render_auth_settings(
         )
     };
     let content_width = area.width.saturating_sub(2) as usize;
-    let mut lines = vec![Line::styled(
-        truncate_with_ellipsis(
-            "Extension auth/runtime readiness. Recommended: /9router setup. Built-in provider auth commands have been removed.",
-            content_width,
-        ),
-        Style::default().fg(theme.muted),
-    )];
-    lines.push(Line::from(""));
+    let mut lines = Vec::new();
     if settings.auth_items.is_empty() {
         lines.push(Line::styled(
             "No provider auth status loaded.",

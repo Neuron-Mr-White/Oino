@@ -162,6 +162,24 @@ fn looks_like_tag(value: &str) -> bool {
     value.starts_with('v') && value.chars().skip(1).any(|ch| ch.is_ascii_digit())
 }
 
+fn manifest_not_found(err: &UpdateError) -> bool {
+    matches!(
+        err,
+        UpdateError::HttpStatus { status, .. } if *status == reqwest::StatusCode::NOT_FOUND
+    )
+}
+
+fn missing_manifest_message(plan: &OinoUpdatePlan) -> String {
+    let target = plan
+        .tag
+        .as_deref()
+        .map(|tag| format!("release tag `{tag}`"))
+        .unwrap_or_else(|| "latest GitHub release".into());
+    format!(
+        "No Oino release manifest is published for {target} yet. Use `oino update --source` for source/cargo guidance, run `OINO_FROM_SOURCE=1 sh scripts/install.sh`, or publish a `v*` release tag with `release-manifest.json`."
+    )
+}
+
 pub fn release_manifest_url(tag: Option<&str>) -> String {
     if let Ok(url) = env::var("OINO_UPDATE_MANIFEST_URL") {
         if !url.trim().is_empty() {
@@ -254,15 +272,22 @@ pub fn format_check_result(manifest_url: &str, manifest: &ReleaseManifest) -> St
 }
 
 pub async fn check_for_update(plan: &OinoUpdatePlan) -> Result<String, UpdateError> {
-    let (url, manifest) = fetch_release_manifest(plan.tag.as_deref()).await?;
-    Ok(format_check_result(&url, &manifest))
+    match fetch_release_manifest(plan.tag.as_deref()).await {
+        Ok((url, manifest)) => Ok(format_check_result(&url, &manifest)),
+        Err(err) if manifest_not_found(&err) => Ok(missing_manifest_message(plan)),
+        Err(err) => Err(err),
+    }
 }
 
 pub async fn install_core_update(plan: &OinoUpdatePlan) -> Result<String, UpdateError> {
     if cfg!(windows) {
         return Err(UpdateError::WindowsHotUpdateUnsupported);
     }
-    let (manifest_url, manifest) = fetch_release_manifest(plan.tag.as_deref()).await?;
+    let (manifest_url, manifest) = match fetch_release_manifest(plan.tag.as_deref()).await {
+        Ok(result) => result,
+        Err(err) if manifest_not_found(&err) => return Ok(missing_manifest_message(plan)),
+        Err(err) => return Err(err),
+    };
     let target = current_target();
     if plan.force_source {
         return Ok(format_source_fallback_message(
@@ -396,6 +421,14 @@ mod tests {
         assert_eq!(plan.mode, OinoUpdateMode::All);
         assert_eq!(plan.tag.as_deref(), Some("v1.2.3"));
         assert!(plan.force_source);
+    }
+
+    #[test]
+    fn missing_manifest_message_is_actionable() {
+        let message = missing_manifest_message(&OinoUpdatePlan::default());
+        assert!(message.contains("No Oino release manifest"));
+        assert!(message.contains("OINO_FROM_SOURCE=1 sh scripts/install.sh"));
+        assert!(message.contains("v*"));
     }
 
     #[test]

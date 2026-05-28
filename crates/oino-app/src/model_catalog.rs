@@ -869,13 +869,14 @@ async fn enrich_nine_router_context_lengths(cache: &mut CachedModelCatalog) {
         .filter_map(|(index, model)| {
             let base = model.id.rsplit('/').next()?;
             Some((index, base.to_string()))
-    })
-    .collect();
+        })
+        .collect();
     if missing.is_empty() {
         return;
     }
     // Build a lookup from base model name -> context_length from OpenRouter cache
-    let Some(openrouter_cache) = load_provider_cache(oino_auth::OPENROUTER_PROVIDER_ID).await else {
+    let Some(openrouter_cache) = load_provider_cache(oino_auth::OPENROUTER_PROVIDER_ID).await
+    else {
         return;
     };
     let context_map: std::collections::HashMap<&str, usize> = openrouter_cache
@@ -1135,7 +1136,11 @@ mod tests {
                 },
             ],
         };
-        std::fs::write(&openrouter_path, serde_json::to_string(&openrouter_cache).unwrap()).unwrap();
+        std::fs::write(
+            &openrouter_path,
+            serde_json::to_string(&openrouter_cache).unwrap(),
+        )
+        .unwrap();
 
         // Set the cache dir env so load_provider_cache finds it
         let mut nine_router_cache = CachedModelCatalog {

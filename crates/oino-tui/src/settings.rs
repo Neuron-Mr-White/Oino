@@ -1137,9 +1137,11 @@ impl SettingsState {
             });
         }
         if self.page == SettingsPage::CompactionModelPicker {
-            return self.handle_sub_model_picker_key(key, SettingsPage::Compaction, |id, _settings| {
-                SettingsAction::SetCompactModel { id }
-            });
+            return self.handle_sub_model_picker_key(
+                key,
+                SettingsPage::Compaction,
+                |id, _settings| SettingsAction::SetCompactModel { id },
+            );
         }
 
         match key.code {
@@ -1764,7 +1766,8 @@ impl SettingsState {
     fn handle_model_page_key(&mut self, key: KeyEvent) -> SettingsAction {
         // Esc/Backspace/Left at top level means "return to menu"
         let is_escape = matches!(key.code, KeyCode::Esc);
-        let is_back = matches!(key.code, KeyCode::Backspace | KeyCode::Left) && !self.model_selector.search_active;
+        let is_back = matches!(key.code, KeyCode::Backspace | KeyCode::Left)
+            && !self.model_selector.search_active;
         if is_escape {
             self.model_selector.cancel();
             self.page = SettingsPage::Menu;
@@ -1793,7 +1796,10 @@ impl SettingsState {
     }
 
     fn apply_model_from_selector(&mut self) -> SettingsAction {
-        match self.model_selector.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)) {
+        match self
+            .model_selector
+            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        {
             ModelSelectorAction::Select { id } => {
                 self.model_selector.initial_model = id.clone();
                 self.clamp_thinking_to_selected_model();
@@ -1920,9 +1926,11 @@ impl SettingsState {
             }
             SettingsPage::Models => {
                 if delta < 0 {
-                    self.model_selector.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+                    self.model_selector
+                        .handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
                 } else {
-                    self.model_selector.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                    self.model_selector
+                        .handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
                 }
             }
             SettingsPage::Thinking => {
@@ -1959,9 +1967,11 @@ impl SettingsState {
             SettingsPage::Extensions => {}
             SettingsPage::NotifyModelPicker | SettingsPage::CompactionModelPicker => {
                 if delta < 0 {
-                    self.sub_model_picker.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+                    self.sub_model_picker
+                        .handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
                 } else {
-                    self.sub_model_picker.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                    self.sub_model_picker
+                        .handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
                 }
             }
             SettingsPage::Keymaps => {
@@ -2412,7 +2422,10 @@ mod tests {
         );
 
         assert_eq!(settings.model_selector.cursor, 1);
-        assert_eq!(settings.model_selector.models[settings.model_selector.cursor].id, "model-b");
+        assert_eq!(
+            settings.model_selector.models[settings.model_selector.cursor].id,
+            "model-b"
+        );
     }
 
     #[test]

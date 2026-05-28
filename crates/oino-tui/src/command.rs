@@ -146,6 +146,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Settings,
     },
     CommandSpec {
+        name: "/update",
+        summary: "Check, update Oino, or hot-update extensions",
+        kind: CommandKind::Settings,
+    },
+    CommandSpec {
         name: "/prompts",
         summary: "Browse prompt templates",
         kind: CommandKind::Resource,
@@ -550,6 +555,10 @@ pub fn command_suggestions_for(
         [mode] if mode == "/mode" => mode_suggestions(context),
         [auth] if auth == "/auth" => auth_subcommand_suggestions(context),
         [extensions] if extensions == "/extensions" => extensions_suggestions(context),
+        [update] if update == "/update" => update_suggestions(context),
+        [update, sub] if update == "/update" && matches!(sub.as_str(), "all" | "tag" | "--tag") => {
+            update_value_suggestions(context.clone(), sub)
+        }
         [auth] if auth == "/account" => provider_id_suggestions(context),
         [auth, _provider] if auth == "/account" => None,
         [settings, subject]
@@ -704,12 +713,10 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/update", "extensions" | "extension" | "--extensions"] => {
             Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Extensions))
         }
-        ["/update", "all" | "--all"] => {
-            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::All {
-                tag: None,
-                source: false,
-            }))
-        }
+        ["/update", "all" | "--all"] => Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::All {
+            tag: None,
+            source: false,
+        })),
         ["/update", "source" | "--source"] => {
             Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
                 tag: None,
@@ -1965,6 +1972,75 @@ fn nine_router_version_suggestions(context: SuggestionContext) -> Option<Command
     ))
 }
 
+fn update_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    static ACTIONS: &[(&str, &str)] = &[
+        (
+            "check",
+            "Check latest tagged Oino release without installing",
+        ),
+        ("extensions", "Hot-update installed extension packages"),
+        (
+            "all",
+            "Update core binary, then hot-update installed extensions",
+        ),
+        ("source", "Show source/cargo fallback update guidance"),
+        ("--source", "Show source/cargo fallback update guidance"),
+        ("--tag", "Update from a specific release tag"),
+        ("tag", "Update from a specific release tag"),
+    ];
+    let items = fuzzy_indices(
+        ACTIONS,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (value, summary) = ACTIONS[index];
+        incomplete_item(value, summary, &context)
+    })
+    .collect::<Vec<_>>();
+    Some(view("Update", context.active_prefix, items))
+}
+
+fn update_value_suggestions(
+    context: SuggestionContext,
+    subcommand: &str,
+) -> Option<CommandSuggestionsView> {
+    let actions: &[(&str, &str)] = match subcommand {
+        "all" => &[
+            ("--tag", "Use a specific release tag for the core update"),
+            ("tag", "Use a specific release tag for the core update"),
+            ("--source", "Show source/cargo fallback update guidance"),
+        ],
+        "tag" | "--tag" => &[("v", "Enter release tag, for example v0.1.0")],
+        _ => return None,
+    };
+    let items = fuzzy_indices(
+        actions,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (value, summary) = actions[index];
+        CommandSuggestionItem {
+            label: value.into(),
+            summary: summary.into(),
+            replacement: value.into(),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: !matches!(subcommand, "tag" | "--tag"),
+            category: CommandSuggestionCategory::System,
+        }
+    })
+    .collect::<Vec<_>>();
+    Some(view("Update", context.active_prefix, items))
+}
+
 fn extensions_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     let actions = [("update", "Update all installed extension packages from their remembered local/GitHub/built-in sources")];
     let items = fuzzy_indices(
@@ -2583,6 +2659,31 @@ mod tests {
             .items
             .iter()
             .all(|item| item.category == CommandSuggestionCategory::Extension));
+    }
+
+    #[test]
+    fn update_command_suggestions_cover_subcommands_and_parameters() {
+        let root = suggestions("/upd", 4).unwrap_or_else(|| panic!("missing root suggestions"));
+        assert!(root.items.iter().any(|item| item.label == "/update"));
+
+        let view =
+            suggestions("/update ", 8).unwrap_or_else(|| panic!("missing update suggestions"));
+        for label in ["check", "extensions", "all", "--tag", "--source"] {
+            assert!(
+                view.items.iter().any(|item| item.label == label),
+                "missing {label} in {:?}",
+                view.items
+            );
+        }
+
+        let all = suggestions("/update all ", 12)
+            .unwrap_or_else(|| panic!("missing update all suggestions"));
+        assert!(all.items.iter().any(|item| item.label == "--tag"));
+        assert!(all.items.iter().any(|item| item.label == "--source"));
+
+        let tag = suggestions("/update --tag ", 14)
+            .unwrap_or_else(|| panic!("missing update tag suggestions"));
+        assert!(tag.items.iter().any(|item| item.label == "v"));
     }
 
     #[test]
