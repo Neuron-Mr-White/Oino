@@ -692,7 +692,10 @@ impl MarkdownRenderer {
                 let segment_width = line_width(&segment);
                 line.spans.extend(segment.spans);
                 if segment_width < code_width {
-                    line.push_span(Span::raw(" ".repeat(code_width - segment_width)));
+                    line.push_span(Span::styled(
+                        " ".repeat(code_width - segment_width),
+                        self.styles.code,
+                    ));
                 }
                 line.push_span(Span::styled(" │", self.styles.code_border));
                 self.lines.push(line);
@@ -726,7 +729,10 @@ impl MarkdownRenderer {
                     let segment_width = line_width(&segment);
                     line.spans.extend(segment.spans);
                     if segment_width < code_width {
-                        line.push_span(Span::raw(" ".repeat(code_width - segment_width)));
+                        line.push_span(Span::styled(
+                            " ".repeat(code_width - segment_width),
+                            self.styles.code,
+                        ));
                     }
                     line.push_span(Span::styled(" │", self.styles.code_border));
                     self.lines.push(line);
@@ -754,7 +760,10 @@ impl MarkdownRenderer {
                 let segment_width = line_width(&segment);
                 line.spans.extend(segment.spans);
                 if segment_width < code_width {
-                    line.push_span(Span::raw(" ".repeat(code_width - segment_width)));
+                    line.push_span(Span::styled(
+                        " ".repeat(code_width - segment_width),
+                        self.styles.code,
+                    ));
                 }
                 line.push_span(Span::styled(" │", self.styles.code_border));
                 self.lines.push(line);
