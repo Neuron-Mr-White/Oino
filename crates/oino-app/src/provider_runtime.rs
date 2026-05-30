@@ -76,7 +76,7 @@ pub(crate) fn build_runtime_provider(
 #[must_use]
 pub(crate) fn extension_runtime_missing_message(provider_id: &str) -> String {
     format!(
-        "Provider `{provider_id}` is not available through Oino core. Built-in provider runtime has been removed; run `/9router setup` and select a `9router:<model>` model, or install/enable an extension runtime provider for `{provider_id}`."
+        "Provider `{provider_id}` is not available through Oino core. Built-in provider runtime has been removed; run `/router setup` and select a `router:<model>` model, or install/enable an extension runtime provider for `{provider_id}`."
     )
 }
 

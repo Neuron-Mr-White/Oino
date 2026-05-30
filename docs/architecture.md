@@ -14,7 +14,7 @@ TUI/composer ──> app runtime ──> harness ──> agent loop ──> prov
 
 ## Core crates
 
-- `oino-app` — binary wiring, TUI loop, extension loading, 9router commands, model cache.
+- `oino-app` — binary wiring, TUI loop, extension loading, OmniRoute commands, model cache.
 - `oino-tui` — Ratatui state, rendering, commands, settings, keymaps, themes.
 - `oino-harness` — connects agent, sessions, resources, tools, and providers.
 - `oino-agent-loop` / `oino-agent` — model event loop, tool calls, cancellation, streaming.
@@ -23,11 +23,11 @@ TUI/composer ──> app runtime ──> harness ──> agent loop ──> prov
 - `oino-tools` / `oino-env` — local read/bash/edit/write tools on an execution environment.
 - `oino-extension-*` — manifests, manager, runtime boundary, SDK, and built-ins.
 - `oino-auth` — provider-neutral credential document primitives used by extensions.
-- `oino-provider-openrouter` — OpenAI-compatible transport used by extension providers such as 9router.
+- `oino-provider-openrouter` — OpenAI-compatible transport used by extension providers such as OmniRoute.
 
 ## Design rules
 
 - Providers and auth are extension/router concerns, not hard-coded TUI behavior.
 - Rendering is state-driven; slow work happens outside render paths.
 - Oino loads Oino-owned paths by default: `~/.oino/` and project `.oino/`.
-- Model identifiers use `provider:model`, for example `9router:openai/gpt-4.1`.
+- Model identifiers use `provider:model`, for example `router:openai/gpt-4.1`.

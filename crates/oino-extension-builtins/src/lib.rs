@@ -132,10 +132,10 @@ pub const OPTIONAL_BUILTIN_PACKAGES: &[OptionalBuiltinPackage] = &[
         description: "Model-visible structured question tool backed by an Oino TUI modal",
     },
     OptionalBuiltinPackage {
-        id: "oino.9router",
-        display_name: "Oino 9router",
-        directory_name: "9router",
-        description: "9router auth/router integration with external endpoint setup and version fallback guidance",
+        id: "oino.router",
+        display_name: "Oino OmniRoute",
+        directory_name: "router",
+        description: "OmniRoute auth/router integration with external endpoint setup and version fallback guidance",
     },
 ];
 

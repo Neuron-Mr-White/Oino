@@ -127,10 +127,7 @@ impl ModelSelector {
     /// Update the model catalog (e.g., after a provider refresh). Preserves
     /// the cursor position when possible.
     pub fn set_models(&mut self, mut models: Vec<ModelOption>, status: impl Into<String>) {
-        let browsing_id = self
-            .models
-            .get(self.cursor)
-            .map(|m| m.id.clone());
+        let browsing_id = self.models.get(self.cursor).map(|m| m.id.clone());
         sort_model_options_for_display(&mut models);
         self.models = models;
         self.status = status.into();
@@ -139,11 +136,7 @@ impl ModelSelector {
             .models
             .iter()
             .position(|m| m.id == target)
-            .or_else(|| {
-                self.models
-                    .iter()
-                    .position(|m| m.id == self.initial_model)
-            })
+            .or_else(|| self.models.iter().position(|m| m.id == self.initial_model))
             .unwrap_or_else(|| self.cursor.min(self.models.len().saturating_sub(1)));
         self.refresh_filter();
     }
@@ -329,11 +322,7 @@ impl ModelSelector {
     }
 
     fn reposition_cursor_to_initial(&mut self) {
-        if let Some(idx) = self
-            .models
-            .iter()
-            .position(|m| m.id == self.initial_model)
-        {
+        if let Some(idx) = self.models.iter().position(|m| m.id == self.initial_model) {
             self.cursor = idx;
         }
     }
@@ -358,9 +347,7 @@ pub(super) fn model_filter_candidate_indices(models: &[ModelOption], query: &str
         return models
             .iter()
             .enumerate()
-            .filter_map(|(i, m)| {
-                m.provider.to_lowercase().starts_with(&lower).then_some(i)
-            })
+            .filter_map(|(i, m)| m.provider.to_lowercase().starts_with(&lower).then_some(i))
             .collect();
     }
     models
@@ -500,7 +487,9 @@ mod tests {
     #[test]
     fn context_titles_are_distinct() {
         assert!(ModelSelectorContext::Main.title().contains("Selection"));
-        assert!(ModelSelectorContext::NotifySummary.title().contains("Summary"));
+        assert!(ModelSelectorContext::NotifySummary
+            .title()
+            .contains("Summary"));
         assert!(ModelSelectorContext::CompactionModel
             .title()
             .contains("Compaction"));

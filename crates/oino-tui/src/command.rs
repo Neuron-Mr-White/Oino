@@ -6,7 +6,8 @@ use crate::fuzzy::{
 use crate::resource::{PromptResource, SkillResource};
 use crate::settings::{
     chat_style_value as settings_chat_style_value, parse_chat_style as settings_parse_chat_style,
-    ChatStyle, CollapseMode, CollapseTarget, ModelOption,
+    ChatStyle, CollapseMode, CollapseTarget, ModelOption, NotifyEventKind, NotifyField,
+    ToolSettingsScope,
 };
 use oino_types::{Model, ThinkingLevel};
 
@@ -205,6 +206,7 @@ pub enum ParsedCommand {
     BtwReset,
     BtwConfigure { model: Option<Option<String>> },
     SetNotifySummaryModel { model: Option<Option<String>> },
+    CommandHelp(String),
     ShowAgentModeUsage,
     SetAgentMode(AgentMode),
     AuthStatus { provider: Option<String> },
@@ -283,6 +285,20 @@ pub enum SettingsCommand {
         mode: CollapseMode,
     },
     SetChatStyle(ChatStyle),
+    SetNotifyEnabled {
+        scope: ToolSettingsScope,
+        enabled: bool,
+    },
+    SetNotifyField {
+        scope: ToolSettingsScope,
+        field: NotifyField,
+        value: Option<String>,
+    },
+    SetNotifyEvent {
+        scope: ToolSettingsScope,
+        event: NotifyEventKind,
+        enabled: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -409,6 +425,7 @@ pub enum CommandSuggestionCategory {
     File,
     Value,
     Extension,
+    Hint,
 }
 
 impl CommandSuggestionCategory {
@@ -419,7 +436,7 @@ impl CommandSuggestionCategory {
             Self::Prompt => Some("[PROMPT]"),
             Self::Skill => Some("[SKILL]"),
             Self::Extension => Some("[EXT]"),
-            Self::Model | Self::File | Self::Value => None,
+            Self::Model | Self::File | Self::Value | Self::Hint => None,
         }
     }
 }
@@ -482,6 +499,9 @@ pub fn command_suggestions_for(
     }
 
     let context = suggestion_context(input, cursor)?;
+    if let Some(help) = command_help_suggestions(context.clone()) {
+        return Some(help);
+    }
     match context.completed.as_slice() {
         [] => root_suggestions(context, extension_commands),
         [settings] if settings == "/settings" => settings_subject_suggestions(context),
@@ -513,19 +533,72 @@ pub fn command_suggestions_for(
         {
             chat_style_suggestions(context)
         }
-        [ralph] if ralph == "/ralph" => ralph_suggestions(context),
-        [nine]
-            if nine == "/9router"
-                && extension_command_available(extension_commands, "/9router") =>
+        [settings, subject] if settings == "/settings" && subject == "notify" => {
+            notify_subject_suggestions(context)
+        }
+        [settings, subject, field] if settings == "/settings" && subject == "notify" => {
+            notify_value_suggestions(context.clone(), field, models)
+        }
+        [settings, subject, scope, field]
+            if settings == "/settings"
+                && subject == "notify"
+                && parse_tool_settings_scope(scope).is_some() =>
         {
-            nine_router_suggestions(context)
+            notify_value_suggestions(context.clone(), field, models)
+        }
+        [title] if title == "/title" => hint_suggestion(
+            "Session title",
+            context,
+            "<session-title>",
+            "new title for the current session",
+        ),
+        [recall] if recall == "/recall" => hint_suggestion(
+            "Recall query",
+            context,
+            "<query>",
+            "search text for session history",
+        ),
+        [ralph] if ralph == "/ralph" => ralph_suggestions(context),
+        [ralph, sub] if ralph == "/ralph" => ralph_value_suggestions(context.clone(), sub, None),
+        [ralph, sub, name] if ralph == "/ralph" => {
+            ralph_value_suggestions(context.clone(), sub, Some(name))
+        }
+        [nine]
+            if nine == "/router" && extension_command_available(extension_commands, "/router") =>
+        {
+            router_suggestions(context)
         }
         [nine, sub]
-            if nine == "/9router"
+            if nine == "/router"
                 && sub == "version"
-                && extension_command_available(extension_commands, "/9router") =>
+                && extension_command_available(extension_commands, "/router") =>
         {
-            nine_router_version_suggestions(context)
+            router_version_suggestions(context)
+        }
+        [nine, sub, action]
+            if nine == "/router"
+                && sub == "version"
+                && action == "pin"
+                && extension_command_available(extension_commands, "/router") =>
+        {
+            hint_suggestion(
+                "OmniRoute tag",
+                context,
+                "<tag>",
+                "container version tag to pin",
+            )
+        }
+        [nine, action]
+            if nine == "/router"
+                && action == "rollback"
+                && extension_command_available(extension_commands, "/router") =>
+        {
+            hint_suggestion(
+                "OmniRoute rollback",
+                context,
+                "[tag]",
+                "optional tag to roll back to",
+            )
         }
         [btw] if btw == "/btw" => btw_suggestions(context),
         [btw, configure] if btw == "/btw" && configure == "configure" => {
@@ -556,7 +629,6 @@ pub fn command_suggestions_for(
                         | "theme"
                         | "extensions"
                         | "extension"
-                        | "notify"
                 ) =>
         {
             None
@@ -644,6 +716,9 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
             return Some(ParsedCommand::SetSessionTitle(title.to_string()));
         }
     }
+    if let Some(command) = parse_command_help(input) {
+        return Some(command);
+    }
     if let Some(command) = parse_mode_command(input) {
         return Some(command);
     }
@@ -654,6 +729,9 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         return Some(command);
     }
     let tokens = input.split_whitespace().collect::<Vec<_>>();
+    if let Some(command) = parse_notify_command(input) {
+        return Some(command);
+    }
     match tokens.as_slice() {
         ["/help"] => Some(ParsedCommand::Help),
         ["/new"] => Some(ParsedCommand::NewSession),
@@ -768,6 +846,361 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
     }
 }
 
+fn parse_command_help(input: &str) -> Option<ParsedCommand> {
+    let input = input.trim();
+    let path = input.strip_suffix(" --help")?.trim();
+    if path.starts_with('/') && !path.is_empty() {
+        Some(ParsedCommand::CommandHelp(path.to_string()))
+    } else {
+        None
+    }
+}
+
+#[must_use]
+pub fn format_command_help(path: &str) -> Option<String> {
+    let tokens = path.split_whitespace().collect::<Vec<_>>();
+    match tokens.as_slice() {
+        ["/help"] => Some("Help command:
+  /help
+
+Open keyboard and command help in the TUI.".into()),
+        ["/new"] => Some("New session command:
+  /new
+
+Starts a new session in the TUI.".into()),
+        ["/sessions"] => Some("Sessions command:
+  /sessions
+
+Browse saved sessions.".into()),
+        ["/prompts"] => Some("Prompts command:
+  /prompts
+
+Browse prompt templates.".into()),
+        ["/skills"] => Some("Skills command:
+  /skills
+
+Browse skills.".into()),
+        ["/reload"] => Some("Reload command:
+  /reload
+
+Reload resources, extensions, tools, themes, and file index.".into()),
+        ["/inspect"] => Some("Inspect command:
+  /inspect
+
+Inspect debug runtime state and full prompt.".into()),
+        ["/usage"] => Some("Usage command:
+  /usage
+
+Show session/provider usage totals.".into()),
+        ["/title"] => Some(descriptive_command_help("Title", "/title <session-title>", "Set the current session title.")),
+        ["/recall"] => Some(descriptive_command_help("Recall", "/recall [query]", "Search session history. Omit query to show recall usage/status.")),
+        ["/settings"] => Some(settings_help()),
+        ["/settings", "notify"] => Some(notify_help()),
+        ["/settings", "notify", field] => notify_field_help(field),
+        ["/settings", "notify", scope, field] if parse_tool_settings_scope(scope).is_some() => notify_field_help(field),
+        ["/settings", "thinking"] | ["/thinking"] => Some(thinking_help()),
+        ["/settings", "collapse"] => Some(collapse_target_help()),
+        ["/settings", "collapse", "thinking" | "tool"] => Some(collapse_mode_help()),
+        ["/settings", "chat-style"] | ["/settings", "chat_style"] => Some(chat_style_help()),
+        ["/settings", "model"] | ["/model"] => Some(model_help()),
+        ["/model", "btw"] | ["/btw", "configure"] => Some(model_or_inherit_help("BTW model", "/model btw <inherit|provider:model-id>")),
+        ["/model", "notify-summary"] => Some(model_or_inherit_help("Notify summary model", "/model notify-summary <inherit|off|provider:model-id>")),
+        ["/btw"] => Some(enum_help("BTW commands", "/btw <subcommand>", &[("configure", "configure /btw startup model"), ("new", "wipe BTW and start a fresh side session")])),
+        ["/compact"] => Some(compact_help()),
+        ["/compact", "method"] => Some(compact_method_help()),
+        ["/compact", "auto"] => Some(enum_help("Compact auto", "/compact auto <value>", &[("on", "enable auto-compact"), ("off", "disable auto-compact") ])),
+        ["/compact", "threshold"] => Some(descriptive_command_help("Compact threshold", "/compact threshold <pct>", "Auto-compact threshold percentage. Common values: 50, 60, 70, 80, 90.")),
+        ["/compact", "model"] => Some(model_or_inherit_help("Compact model", "/compact model <inherit|provider:model-id>")),
+        ["/compact", "prompt"] => Some(descriptive_command_help("Compact prompt", "/compact prompt <path>", "Path to LLM compaction prompt text.")),
+        ["/mode"] => Some(enum_help("Mode", "/mode <profile>", &[("plan", "plan with read and inspection-only bash"), ("work", "allow all normally enabled tools"), ("<profile>", "custom mode-sandbox profile name") ])),
+        ["/auth"] => Some(auth_help()),
+        ["/account"] => Some(descriptive_command_help("Account", "/account [provider]", "Show current extension/provider status. Provider is a provider id such as openrouter or router.")),
+        ["/extensions"] => Some(enum_help("Extensions", "/extensions <subcommand>", &[("update", "Update installed extension packages") ])),
+        ["/ralph"] => Some(ralph_command_help()),
+        ["/ralph", "record"] => Some(enum_help("Ralph record", "/ralph record <name> <promise> [note]", &[("continue", "record a continue promise"), ("complete", "record completion"), ("blocked", "record blocked state with reason"), ("decide", "record decision needed"), ("done", "record a completed task id") ])),
+        ["/router"] => Some(router_help()),
+        ["/router", "version"] => Some(enum_help("OmniRoute version", "/router version <subcommand>", &[("list", "List known/published OmniRoute tags"), ("pin", "Pin a specific OmniRoute container tag") ])),
+        ["/prompt:"] | ["/prompt"] => Some(descriptive_command_help("Prompt resource", "/prompt:<name>", "Include a prompt template by name.")),
+        ["/skill:"] | ["/skill"] => Some(descriptive_command_help("Skill resource", "/skill:<name>", "Include a skill by name.")),
+        _ => None,
+    }
+}
+
+fn command_help_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    if !context.active_prefix.starts_with('-') {
+        return None;
+    }
+    let path = context.completed.join(" ");
+    if path.is_empty()
+        || format_command_help(&path).is_none()
+        || !"--help".starts_with(&context.active_prefix)
+    {
+        return None;
+    }
+    Some(view(
+        "Command help",
+        context.active_prefix.clone(),
+        vec![CommandSuggestionItem {
+            label: "--help".into(),
+            summary: "show command options and value descriptions".into(),
+            replacement: "--help".into(),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: true,
+            category: CommandSuggestionCategory::Value,
+        }],
+    ))
+}
+
+fn model_help() -> String {
+    descriptive_command_help(
+        "Model setting",
+        "/model <provider:model-id>",
+        "Value: model identifiers are provider-scoped, for example `router:kr/claude-sonnet-4.5`. `/model` also supports `btw` and `notify-summary` subcommands.",
+    )
+}
+
+fn thinking_help() -> String {
+    enum_help(
+        "Thinking",
+        "/thinking <value>",
+        &[
+            ("off", "Disable provider reasoning"),
+            ("minimal", "Minimal reasoning"),
+            ("low", "Low reasoning"),
+            ("medium", "Medium reasoning"),
+            ("high", "High reasoning"),
+            ("xhigh", "Extra-high reasoning"),
+        ],
+    )
+}
+
+fn collapse_target_help() -> String {
+    enum_help(
+        "Collapse",
+        "/settings collapse <target> <mode>",
+        &[
+            ("thinking", "Thinking section"),
+            ("tool", "Tool result bubbles"),
+        ],
+    )
+}
+
+fn collapse_mode_help() -> String {
+    enum_help(
+        "Collapse mode",
+        "/settings collapse <target> <mode>",
+        &[
+            ("full", "Show full content"),
+            ("truncate", "Show short preview"),
+            ("collapse", "Hide detailed content"),
+        ],
+    )
+}
+
+fn chat_style_help() -> String {
+    enum_help(
+        "Chat style",
+        "/settings chat-style <value>",
+        &[
+            ("chat", "Bubble-style transcript"),
+            ("agentic", "Activity-focused transcript"),
+            ("minimal", "Compact transcript for small terminals"),
+        ],
+    )
+}
+
+fn model_or_inherit_help(title: &str, usage: &str) -> String {
+    enum_help(
+        title,
+        usage,
+        &[
+            ("inherit", "inherit/default current model"),
+            ("<provider:model-id>", "provider-scoped model identifier"),
+        ],
+    )
+}
+
+fn compact_method_help() -> String {
+    enum_help(
+        "Compact method",
+        "/compact <method>",
+        &[
+            ("vcc", "compact with VCC deterministic compaction"),
+            ("llm", "compact with LLM summarization"),
+        ],
+    )
+}
+
+fn compact_help() -> String {
+    [
+        "Compact commands:",
+        "  /compact                         compact session with configured method",
+        "  /compact vcc                     compact with VCC",
+        "  /compact llm                     compact with LLM",
+        "  /compact threshold <pct>         set/show auto-compact threshold %",
+        "  /compact auto <on|off>           enable/disable auto-compact",
+        "  /compact model <inherit|model>   set/show LLM compact model",
+        "  /compact prompt <path>           set/show LLM compact prompt",
+    ]
+    .join(
+        "
+",
+    )
+}
+
+fn auth_help() -> String {
+    [
+        "Auth commands:",
+        "  /auth [provider]",
+        "  /auth quickstart",
+        "",
+        "Provider may be a provider id such as router, ext:<id>, or extension:<id>.",
+    ]
+    .join(
+        "
+",
+    )
+}
+
+fn ralph_command_help() -> String {
+    enum_help(
+        "Ralph",
+        "/ralph <subcommand>",
+        &[
+            ("start", "create a project-scoped Ralph loop"),
+            ("list", "list project Ralph loops"),
+            ("status", "show one loop or all loops"),
+            ("resume", "resume a paused/blocked loop"),
+            ("continue", "continue auto-running a loop"),
+            ("once", "run exactly one iteration"),
+            ("steer", "append urgent steering"),
+            ("pause", "pause a loop"),
+            ("cancel", "cancel a loop"),
+            ("archive", "archive a loop"),
+            ("clean", "remove archived loop files"),
+            ("record", "record an iteration promise"),
+            ("help", "show Ralph usage"),
+        ],
+    )
+}
+
+fn router_help() -> String {
+    enum_help(
+        "router",
+        "/router <subcommand>",
+        &[
+            ("setup", "Initialize and start managed OmniRoute"),
+            ("guide", "Show setup guide"),
+            ("status", "Check endpoint and extension status"),
+            ("models", "Fetch model catalog"),
+            ("dashboard", "Open dashboard"),
+            ("stop", "Stop sidecar"),
+            ("restart", "Restart sidecar"),
+            ("use-external", "Use external endpoint mode"),
+            ("use-managed", "Use managed sidecar mode"),
+            ("version", "List or pin versions"),
+            ("rollback", "Roll back tag"),
+            ("install-podman", "Install Podman"),
+            ("reset-password", "Reset dashboard password"),
+        ],
+    )
+}
+
+fn descriptive_command_help(title: &str, usage: &str, description: &str) -> String {
+    format!(
+        "{title}:
+  {usage}
+
+{description}"
+    )
+}
+
+fn settings_help() -> String {
+    [
+        "Settings commands:",
+        "  /settings model <provider:model-id>        Set selected model",
+        "  /settings thinking <off|minimal|low|medium|high|xhigh>",
+        "  /settings collapse <thinking|tool> <full|truncate|collapse>",
+        "  /settings chat-style <chat|agentic|minimal>",
+        "  /settings tools                            Show registered agent tools by scope",
+        "  /settings auth                             Show provider auth and setup status",
+        "  /settings keymaps                          Configure keyboard shortcuts",
+        "  /settings theme                            Choose global or project theme",
+        "  /settings extensions                       Manage installed extensions",
+        "  /settings notify [project|global] <field> <value>",
+        "",
+        "Use `/settings <subject> --help` for one more level of enum values or field descriptions.",
+    ]
+    .join("\n")
+}
+
+fn notify_help() -> String {
+    [
+        "Notify settings:",
+        "  /settings notify [project|global] enabled <true|false>",
+        "  /settings notify [project|global] server <ntfy server URL>",
+        "  /settings notify [project|global] topic <topic>",
+        "  /settings notify [project|global] token <token>",
+        "  /settings notify [project|global] priority <min|low|default|high|urgent>",
+        "  /settings notify [project|global] tags <tag,tag>",
+        "  /settings notify [project|global] agent_end <true|false>",
+        "  /settings notify [project|global] tool_error <true|false>",
+        "  /settings notify [project|global] summary_enabled <true|false>",
+        "  /settings notify [project|global] summary_model <inherit|off|provider:model-id>",
+        "  /settings notify [project|global] summary_prompt <prompt>",
+        "  /settings notify [project|global] summary_max_chars <number>",
+        "",
+        "Project scope is used when scope is omitted.",
+    ]
+    .join("\n")
+}
+
+fn notify_field_help(field: &str) -> Option<String> {
+    match field {
+        "enabled" | "enable" | "agent_end" | "agent-end" | "tool_error" | "tool-error"
+        | "summary_enabled" | "summary-enabled" | "summarizer" => Some(enum_help(
+            "Boolean value",
+            "/settings notify <field> <value>",
+            &[("true", "Enable / yes"), ("false", "Disable / no")],
+        )),
+        "priority" => Some(enum_help(
+            "Notify priority",
+            "/settings notify priority <value>",
+            &[("min", "Lowest ntfy priority"), ("low", "Low ntfy priority"), ("default", "Default ntfy priority"), ("high", "High ntfy priority"), ("urgent", "Urgent ntfy priority")],
+        )),
+        "summary_model" | "summary-model" => Some(
+            "Notify summary model:\n  /settings notify summary_model <inherit|off|provider:model-id>\n\nUse `inherit`, `off`, or `none` to clear the override; otherwise provide a model identifier.".into(),
+        ),
+        "server" => Some(descriptive_value_help("Notify server", "<ntfy server URL>", "Example: https://ntfy.sh")),
+        "topic" => Some(descriptive_value_help("Notify topic", "<topic>", "ntfy topic name to publish to")),
+        "token" => Some(descriptive_value_help("Notify token", "<token>", "ntfy access token")),
+        "tags" => Some(descriptive_value_help("Notify tags", "<tag,tag>", "comma-separated ntfy tags")),
+        "summary_prompt" | "summary-prompt" => Some(descriptive_value_help("Notify summary prompt", "<prompt>", "custom prompt text for the notification summarizer")),
+        "summary_max_chars" | "summary-max-chars" => Some(descriptive_value_help("Notify summary max chars", "<number>", "summary length, clamped to 80..2000")),
+        _ => None,
+    }
+}
+
+fn enum_help(title: &str, usage: &str, values: &[(&str, &str)]) -> String {
+    let mut lines = vec![
+        format!("{title}:"),
+        format!("  {usage}"),
+        String::new(),
+        "Values:".into(),
+    ];
+    lines.extend(
+        values
+            .iter()
+            .map(|(value, description)| format!("  {value:<12} {description}")),
+    );
+    lines.join("\n")
+}
+
+fn descriptive_value_help(title: &str, value_hint: &str, description: &str) -> String {
+    format!("{title}:\n  /settings notify <field> {value_hint}\n\n{description}")
+}
+
 fn parse_mode_command(input: &str) -> Option<ParsedCommand> {
     let tokens = input.trim().split_whitespace().collect::<Vec<_>>();
     match tokens.as_slice() {
@@ -804,7 +1237,7 @@ fn parse_auth_tail(tail: &str) -> Option<ParsedCommand> {
 
 fn is_provider_like_auth_filter(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
-    lower == "9router" || lower.starts_with("ext:") || lower.starts_with("extension:")
+    lower == "router" || lower.starts_with("ext:") || lower.starts_with("extension:")
 }
 
 fn parse_ralph_command(input: &str) -> Option<RalphCommand> {
@@ -907,6 +1340,124 @@ fn optional_single_arg(input: &str) -> Option<Option<String>> {
     } else {
         single_arg(input).map(Some)
     }
+}
+
+fn parse_notify_command(input: &str) -> Option<ParsedCommand> {
+    let tail = input.strip_prefix("/settings notify")?;
+    if !tail.is_empty() && !tail.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let tail = tail.trim();
+    if tail.is_empty() {
+        return None;
+    }
+    let (first, rest) = split_head(tail);
+    let (scope, field, value) = if let Some(scope) = parse_tool_settings_scope(first) {
+        let (field, value) = split_head(rest);
+        (Some(scope), field, value)
+    } else {
+        let (field, value) = (first, rest);
+        (None, field, value)
+    };
+    if field.is_empty() || value.trim().is_empty() {
+        return None;
+    }
+    parse_notify_setting(scope, field, value.trim())
+}
+
+#[must_use]
+pub fn parse_tool_settings_scope(value: &str) -> Option<ToolSettingsScope> {
+    match value {
+        "global" => Some(ToolSettingsScope::Global),
+        "project" => Some(ToolSettingsScope::Project),
+        _ => None,
+    }
+}
+
+fn parse_bool_value(value: &str) -> Option<bool> {
+    match value {
+        "true" | "on" | "yes" | "enabled" | "enable" => Some(true),
+        "false" | "off" | "no" | "disabled" | "disable" => Some(false),
+        _ => None,
+    }
+}
+
+fn parse_notify_setting(
+    scope: Option<ToolSettingsScope>,
+    field: &str,
+    value: &str,
+) -> Option<ParsedCommand> {
+    let scope = scope.unwrap_or(ToolSettingsScope::Project);
+    let command = match field {
+        "enabled" | "enable" => SettingsCommand::SetNotifyEnabled {
+            scope,
+            enabled: parse_bool_value(value)?,
+        },
+        "agent_end" | "agent-end" => SettingsCommand::SetNotifyEvent {
+            scope,
+            event: NotifyEventKind::AgentEnd,
+            enabled: parse_bool_value(value)?,
+        },
+        "tool_error" | "tool-error" => SettingsCommand::SetNotifyEvent {
+            scope,
+            event: NotifyEventKind::ToolError,
+            enabled: parse_bool_value(value)?,
+        },
+        "summary_enabled" | "summary-enabled" | "summarizer" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::SummaryPrompt,
+            value: Some(format!("__summary_enabled:{}", parse_bool_value(value)?)),
+        },
+        "server" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::Server,
+            value: Some(value.to_string()),
+        },
+        "topic" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::Topic,
+            value: Some(value.to_string()),
+        },
+        "token" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::Token,
+            value: Some(value.to_string()),
+        },
+        "priority" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::Priority,
+            value: Some(value.to_string()),
+        },
+        "tags" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::Tags,
+            value: Some(value.to_string()),
+        },
+        "summary_model" | "summary-model" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::SummaryModel,
+            value: if matches!(value, "inherit" | "off" | "none") {
+                None
+            } else {
+                Some(value.to_string())
+            },
+        },
+        "summary_prompt" | "summary-prompt" => SettingsCommand::SetNotifyField {
+            scope,
+            field: NotifyField::SummaryPrompt,
+            value: Some(value.to_string()),
+        },
+        "summary_max_chars" | "summary-max-chars" => {
+            value.parse::<usize>().ok()?;
+            SettingsCommand::SetNotifyField {
+                scope,
+                field: NotifyField::SummaryMaxChars,
+                value: Some(value.to_string()),
+            }
+        }
+        _ => return None,
+    };
+    Some(ParsedCommand::Settings(command))
 }
 
 #[must_use]
@@ -1564,6 +2115,143 @@ fn chat_style_suggestions(context: SuggestionContext) -> Option<CommandSuggestio
     Some(view("Chat Style", context.active_prefix, items))
 }
 
+fn notify_subject_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    let subjects = [
+        ("enabled", "bool: enable notify for project scope"),
+        ("server", "ntfy server URL"),
+        ("topic", "ntfy topic name"),
+        ("token", "ntfy bearer token"),
+        ("priority", "ntfy priority"),
+        ("tags", "comma-separated ntfy tags"),
+        ("agent_end", "bool: notify when agent ends"),
+        ("tool_error", "bool: notify when a tool errors"),
+        ("summary_enabled", "bool: summarize completion notices"),
+        ("summary_model", "model or inherit/off"),
+        ("summary_prompt", "custom summarizer prompt"),
+        ("summary_max_chars", "number of chars in summary"),
+        ("global", "choose global settings scope"),
+        ("project", "choose project settings scope"),
+    ];
+    let items = fuzzy_indices(
+        &subjects,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (value, summary) = subjects[index];
+        incomplete_item(value, summary, &context)
+    })
+    .collect::<Vec<_>>();
+    Some(view("Notify settings", context.active_prefix, items))
+}
+
+fn notify_value_suggestions(
+    context: SuggestionContext,
+    field: &str,
+    models: &[ModelOption],
+) -> Option<CommandSuggestionsView> {
+    match field {
+        "enabled" | "enable" | "agent_end" | "agent-end" | "tool_error" | "tool-error"
+        | "summary_enabled" | "summary-enabled" | "summarizer" => bool_suggestions(context),
+        "priority" => fixed_value_suggestions(
+            "Notify priority",
+            context,
+            &[
+                ("min", "lowest ntfy priority"),
+                ("low", "low ntfy priority"),
+                ("default", "default ntfy priority"),
+                ("high", "high ntfy priority"),
+                ("urgent", "urgent ntfy priority"),
+            ],
+        ),
+        "summary_model" | "summary-model" => model_or_inherit_suggestions(context, models),
+        "summary_max_chars" | "summary-max-chars" => fixed_value_suggestions(
+            "Notify summary max chars",
+            context,
+            &[
+                ("200", "short"),
+                ("500", "default"),
+                ("1000", "long"),
+                ("2000", "maximum"),
+            ],
+        ),
+        "server" => hint_suggestion(
+            "Notify server",
+            context,
+            "<ntfy server URL>",
+            "example: https://ntfy.sh",
+        ),
+        "topic" => hint_suggestion("Notify topic", context, "<topic>", "ntfy topic name"),
+        "token" => hint_suggestion("Notify token", context, "<token>", "ntfy access token"),
+        "tags" => hint_suggestion("Notify tags", context, "<tag,tag>", "comma-separated tags"),
+        "summary_prompt" | "summary-prompt" => hint_suggestion(
+            "Notify summary prompt",
+            context,
+            "<prompt>",
+            "custom summarizer prompt",
+        ),
+        _ => None,
+    }
+}
+
+fn bool_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+    fixed_value_suggestions(
+        "Boolean",
+        context,
+        &[("true", "enable / yes"), ("false", "disable / no")],
+    )
+}
+
+fn fixed_value_suggestions(
+    title: &str,
+    context: SuggestionContext,
+    values: &[(&str, &str)],
+) -> Option<CommandSuggestionsView> {
+    let items = fuzzy_indices(
+        values,
+        &context.active_prefix,
+        FuzzyMode::Text,
+        None,
+        |entry| format!("{} {}", entry.0, entry.1),
+    )
+    .into_iter()
+    .map(|index| {
+        let (value, summary) = values[index];
+        CommandSuggestionItem {
+            label: value.into(),
+            summary: summary.into(),
+            replacement: value.into(),
+            replace_start: context.replace_start,
+            replace_end: context.replace_end,
+            complete_on_enter: true,
+            category: CommandSuggestionCategory::Value,
+        }
+    })
+    .collect::<Vec<_>>();
+    Some(view(title, context.active_prefix, items))
+}
+
+fn hint_suggestion(
+    title: &str,
+    context: SuggestionContext,
+    label: &str,
+    summary: &str,
+) -> Option<CommandSuggestionsView> {
+    let item = CommandSuggestionItem {
+        label: label.into(),
+        summary: summary.into(),
+        replacement: String::new(),
+        replace_start: context.replace_start,
+        replace_end: context.replace_end,
+        complete_on_enter: false,
+        category: CommandSuggestionCategory::Hint,
+    };
+    Some(view(title, context.active_prefix, vec![item]))
+}
+
 fn ralph_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     let actions = [
         ("start", "create a project-scoped Ralph loop"),
@@ -1602,6 +2290,55 @@ fn ralph_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsVie
     })
     .collect::<Vec<_>>();
     Some(view("Ralph", context.active_prefix, items))
+}
+
+fn ralph_value_suggestions(
+    context: SuggestionContext,
+    sub: &str,
+    previous: Option<&str>,
+) -> Option<CommandSuggestionsView> {
+    match (sub, previous) {
+        ("start", None) => hint_suggestion("Ralph loop name", context, "<name>", "new loop name"),
+        ("start", Some(_)) => hint_suggestion(
+            "Ralph task",
+            context,
+            "<task>",
+            "task description for the new loop",
+        ),
+        ("status" | "continue" | "run" | "once", None) => hint_suggestion(
+            "Ralph loop name",
+            context,
+            "[name]",
+            "optional loop name; omit to use current/default behavior",
+        ),
+        ("pause" | "stop" | "resume" | "cancel" | "archive", None) => {
+            hint_suggestion("Ralph loop name", context, "<name>", "target loop name")
+        }
+        ("steer", None) => {
+            hint_suggestion("Ralph loop name", context, "<name>", "target loop name")
+        }
+        ("steer", Some(_)) => hint_suggestion(
+            "Ralph steering note",
+            context,
+            "<urgent instruction>",
+            "instruction to append to the loop",
+        ),
+        ("record", None) => {
+            hint_suggestion("Ralph loop name", context, "<name>", "target loop name")
+        }
+        ("record", Some(_)) => fixed_value_suggestions(
+            "Ralph promise",
+            context,
+            &[
+                ("continue", "record a continue promise"),
+                ("complete", "record completion"),
+                ("blocked", "record blocked state with reason"),
+                ("decide", "record decision needed"),
+                ("done", "record a completed task id"),
+            ],
+        ),
+        _ => None,
+    }
 }
 
 fn btw_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
@@ -1693,6 +2430,12 @@ fn compact_value_suggestions(
             Some(view("Compact auto", context.active_prefix, items))
         }
         "model" => model_or_inherit_suggestions(context, models),
+        "prompt" => hint_suggestion(
+            "Compact prompt",
+            context,
+            "<path>",
+            "path to LLM compaction prompt text",
+        ),
         "threshold" => {
             let items = ["50", "60", "70", "80", "90"]
                 .iter()
@@ -1836,8 +2579,8 @@ fn resource_suggestion_context(
 }
 
 fn auth_subcommand_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
-    let subcommands = [("quickstart", "Show 9router-first auth migration guide")];
-    let items = fuzzy_indices(
+    let subcommands = [("quickstart", "Show OmniRoute-first auth migration guide")];
+    let mut items = fuzzy_indices(
         &subcommands,
         &context.active_prefix,
         FuzzyMode::Text,
@@ -1850,6 +2593,10 @@ fn auth_subcommand_suggestions(context: SuggestionContext) -> Option<CommandSugg
         incomplete_item(value, summary, &context)
     })
     .collect::<Vec<_>>();
+
+    if let Some(mut providers) = provider_id_suggestions(context.clone()) {
+        items.append(&mut providers.items);
+    }
     Some(view("Auth", context.active_prefix, items))
 }
 
@@ -1882,22 +2629,22 @@ fn fixed_extension_suggestions(
     view(title, context.active_prefix, items)
 }
 
-fn nine_router_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+fn router_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     static SUBCOMMANDS: &[(&str, &str)] = &[
-        ("setup", "Initialize and start managed 9router"),
+        ("setup", "Initialize and start managed OmniRoute"),
         (
             "guide",
-            "Show 9router setup guide without changing anything",
+            "Show OmniRoute setup guide without changing anything",
         ),
-        ("status", "Check 9router endpoint and extension status"),
-        ("models", "Fetch 9router model catalog"),
-        ("dashboard", "Open the 9router dashboard"),
-        ("stop", "Stop managed 9router sidecar"),
-        ("restart", "Restart managed 9router sidecar with fallback"),
+        ("status", "Check OmniRoute endpoint and extension status"),
+        ("models", "Fetch OmniRoute model catalog"),
+        ("dashboard", "Open the OmniRoute dashboard"),
+        ("stop", "Stop managed OmniRoute sidecar"),
+        ("restart", "Restart managed OmniRoute sidecar with fallback"),
         ("use-external", "Use external endpoint mode"),
         ("use-managed", "Use managed sidecar mode"),
-        ("version", "List or pin 9router versions"),
-        ("rollback", "Roll back to last-known-good 9router tag"),
+        ("version", "List or pin OmniRoute versions"),
+        ("rollback", "Roll back to last-known-good OmniRoute tag"),
         (
             "install-podman",
             "Install Podman if Docker/Podman is missing",
@@ -1907,16 +2654,16 @@ fn nine_router_suggestions(context: SuggestionContext) -> Option<CommandSuggesti
             "Reset dashboard password to Oino initial password",
         ),
     ];
-    Some(fixed_extension_suggestions("9router", context, SUBCOMMANDS))
+    Some(fixed_extension_suggestions("router", context, SUBCOMMANDS))
 }
 
-fn nine_router_version_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
+fn router_version_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsView> {
     static SUBCOMMANDS: &[(&str, &str)] = &[
-        ("list", "List known/published 9router tags"),
-        ("pin", "Pin a specific 9router container tag"),
+        ("list", "List known/published OmniRoute tags"),
+        ("pin", "Pin a specific OmniRoute container tag"),
     ];
     Some(fixed_extension_suggestions(
-        "9router version",
+        "OmniRoute version",
         context,
         SUBCOMMANDS,
     ))
@@ -2239,6 +2986,53 @@ mod tests {
             .find(|item| item.label == "extensions")
             .unwrap_or_else(|| panic!("missing extensions settings item"));
         assert!(extensions.complete_on_enter);
+
+        let view = suggestions("/settings notify ", 17)
+            .unwrap_or_else(|| panic!("missing notify settings suggestions"));
+        assert_eq!(view.title, "Notify settings");
+        assert!(view.items.iter().any(|item| item.label == "enabled"));
+        assert!(view.items.iter().any(|item| item.label == "summary_model"));
+
+        let view = suggestions("/settings notify enabled ", 25)
+            .unwrap_or_else(|| panic!("missing notify bool value suggestions"));
+        assert_eq!(
+            view.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["true", "false"]
+        );
+
+        let view = suggestions("/settings notify priority h", 27)
+            .unwrap_or_else(|| panic!("missing notify priority suggestions"));
+        assert_eq!(view.items[0].label, "high");
+
+        let view = suggestions("/settings notify topic ", 23)
+            .unwrap_or_else(|| panic!("missing notify topic hint"));
+        assert_eq!(view.items[0].category, CommandSuggestionCategory::Hint);
+        assert_eq!(view.items[0].label, "<topic>");
+
+        let view = suggestions("/compact -", 10)
+            .unwrap_or_else(|| panic!("missing compact help suggestion"));
+        assert_eq!(view.title, "Command help");
+        assert_eq!(view.items[0].label, "--help");
+
+        let view = suggestions("/compact prompt ", 16)
+            .unwrap_or_else(|| panic!("missing compact prompt hint"));
+        assert_eq!(view.items[0].category, CommandSuggestionCategory::Hint);
+        assert_eq!(view.items[0].label, "<path>");
+
+        let view = suggestions("/title ", 7).unwrap_or_else(|| panic!("missing title hint"));
+        assert_eq!(view.items[0].label, "<session-title>");
+
+        let view = suggestions("/ralph record build ", 20)
+            .unwrap_or_else(|| panic!("missing ralph promise suggestions"));
+        assert!(view.items.iter().any(|item| item.label == "continue"));
+        assert!(view.items.iter().any(|item| item.label == "done"));
+
+        let view = suggestions("/auth open", 10)
+            .unwrap_or_else(|| panic!("missing auth provider suggestions"));
+        assert!(view.items.iter().any(|item| item.label == "openai"));
     }
 
     #[test]
@@ -2342,9 +3136,9 @@ mod tests {
         let models = vec![
             ModelOption::new("openrouter:a/alpha"),
             ModelOption::new("openrouter:b/bravo").with_display_name("Displayed Model"),
-            ModelOption::new("9router:kr/test")
+            ModelOption::new("router:kr/test")
                 .with_display_name("KR Test")
-                .with_provider_label("9router extension"),
+                .with_provider_label("OmniRoute extension"),
         ];
         let view = command_suggestions_for("/model displayed", 16, &models, &[], &[], &[])
             .unwrap_or_else(|| panic!("missing model suggestions"));
@@ -2364,8 +3158,8 @@ mod tests {
 
         let view = command_suggestions_for("/model extension", 16, &models, &[], &[], &[])
             .unwrap_or_else(|| panic!("missing extension model suggestions"));
-        assert_eq!(view.items[0].label, "9router:kr/test");
-        assert!(view.items[0].summary.contains("9router extension"));
+        assert_eq!(view.items[0].label, "router:kr/test");
+        assert!(view.items[0].summary.contains("OmniRoute extension"));
     }
 
     #[test]
@@ -2501,15 +3295,15 @@ mod tests {
     }
 
     #[test]
-    fn nine_router_command_suggestions_are_nested_extension_commands() {
+    fn router_command_suggestions_are_nested_extension_commands() {
         let extension_commands = vec![ExtensionCommandSuggestion::new(
-            "/9router",
-            "Set up 9router",
-            "/9router ",
+            "/router",
+            "Set up OmniRoute",
+            "/router ",
         )];
-        let view = suggestions_with_extensions("/9router ", 9, &extension_commands)
-            .unwrap_or_else(|| panic!("missing 9router suggestions"));
-        assert_eq!(view.title, "9router");
+        let view = suggestions_with_extensions("/router ", 9, &extension_commands)
+            .unwrap_or_else(|| panic!("missing OmniRoute suggestions"));
+        assert_eq!(view.title, "router");
         assert!(view.items.iter().any(|item| item.label == "setup"));
         assert!(view.items.iter().any(|item| item.label == "guide"));
         assert!(view.items.iter().any(|item| item.label == "models"));
@@ -2521,13 +3315,13 @@ mod tests {
             .iter()
             .all(|item| item.category == CommandSuggestionCategory::Extension));
 
-        let version = suggestions_with_extensions("/9router version ", 17, &extension_commands)
-            .unwrap_or_else(|| panic!("missing 9router version suggestions"));
-        assert_eq!(version.title, "9router version");
+        let version = suggestions_with_extensions("/router version ", 17, &extension_commands)
+            .unwrap_or_else(|| panic!("missing OmniRoute version suggestions"));
+        assert_eq!(version.title, "OmniRoute version");
         assert!(version.items.iter().any(|item| item.label == "list"));
         assert!(version.items.iter().any(|item| item.label == "pin"));
 
-        assert!(suggestions("/9router ", 9).is_none());
+        assert!(suggestions("/router ", 9).is_none());
     }
 
     #[test]
@@ -2639,6 +3433,41 @@ mod tests {
             Some(ParsedCommand::Settings(SettingsCommand::OpenNotify))
         );
         assert_eq!(
+            parse_command("/settings notify enabled true"),
+            Some(ParsedCommand::Settings(SettingsCommand::SetNotifyEnabled {
+                scope: ToolSettingsScope::Project,
+                enabled: true,
+            }))
+        );
+        assert_eq!(
+            parse_command("/settings notify global priority high"),
+            Some(ParsedCommand::Settings(SettingsCommand::SetNotifyField {
+                scope: ToolSettingsScope::Global,
+                field: NotifyField::Priority,
+                value: Some("high".into()),
+            }))
+        );
+        assert_eq!(
+            parse_command("/settings notify agent_end off"),
+            Some(ParsedCommand::Settings(SettingsCommand::SetNotifyEvent {
+                scope: ToolSettingsScope::Project,
+                event: NotifyEventKind::AgentEnd,
+                enabled: false,
+            }))
+        );
+        assert_eq!(
+            parse_command("/settings notify summary_prompt Summarize in one sentence"),
+            Some(ParsedCommand::Settings(SettingsCommand::SetNotifyField {
+                scope: ToolSettingsScope::Project,
+                field: NotifyField::SummaryPrompt,
+                value: Some("Summarize in one sentence".into()),
+            }))
+        );
+        assert_eq!(
+            parse_command("/settings --help"),
+            Some(ParsedCommand::CommandHelp("/settings".into()))
+        );
+        assert_eq!(
             parse_command("/settings auth"),
             Some(ParsedCommand::Settings(SettingsCommand::OpenAuth))
         );
@@ -2698,11 +3527,11 @@ mod tests {
                 note: "prioritize docs".into(),
             }))
         );
-        assert!(parse_command("/9router status").is_none());
-        assert!(parse_command("/9router start").is_none());
-        assert!(parse_command("/9router use-managed").is_none());
-        assert!(parse_command("/9router version pin 0.4.59").is_none());
-        assert!(parse_command("/9router rollback").is_none());
+        assert!(parse_command("/router status").is_none());
+        assert!(parse_command("/router start").is_none());
+        assert!(parse_command("/router use-managed").is_none());
+        assert!(parse_command("/router version pin 3.8.7").is_none());
+        assert!(parse_command("/router rollback").is_none());
         assert_eq!(
             parse_command("/mode"),
             Some(ParsedCommand::ShowAgentModeUsage)
@@ -2820,5 +3649,26 @@ mod tests {
         );
         assert!(parse_command("/settings model xai/glm-5.1").is_none());
         assert!(parse_command("/set").is_none());
+    }
+
+    #[test]
+    fn command_help_expands_enums_one_level_and_describes_open_values() {
+        let settings = format_command_help("/settings").unwrap_or_else(|| panic!("settings help"));
+        assert!(settings.contains("/settings thinking <off|minimal|low|medium|high|xhigh>"));
+        assert!(settings.contains("/settings notify [project|global] <field> <value>"));
+
+        let notify =
+            format_command_help("/settings notify").unwrap_or_else(|| panic!("notify help"));
+        assert!(notify.contains("priority <min|low|default|high|urgent>"));
+        assert!(notify.contains("topic <topic>"));
+
+        let priority = format_command_help("/settings notify priority")
+            .unwrap_or_else(|| panic!("priority help"));
+        assert!(priority.contains("urgent"));
+
+        let topic =
+            format_command_help("/settings notify topic").unwrap_or_else(|| panic!("topic help"));
+        assert!(topic.contains("<topic>"));
+        assert!(topic.contains("ntfy topic name"));
     }
 }

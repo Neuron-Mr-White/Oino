@@ -1,10 +1,10 @@
 # Auth and Models
 
-Oino uses extensions for provider setup. The recommended path is the built-in 9router extension: Oino talks to 9router, and 9router holds your provider keys.
+Oino uses extensions for provider setup. The recommended path is the built-in OmniRoute extension: Oino talks to OmniRoute, and OmniRoute holds your provider keys.
 
 ## First setup
 
-1. Install Oino. The main installer enables the 9router extension automatically. From a source checkout, you can also refresh built-ins manually:
+1. Install Oino. The main installer enables the OmniRoute extension automatically. From a source checkout, you can also refresh built-ins manually:
 
    ```bash
    bash scripts/install-all-builtins.sh
@@ -19,13 +19,13 @@ Oino uses extensions for provider setup. The recommended path is the built-in 9r
 3. In Oino, run:
 
    ```text
-   /9router setup
+   /router setup
    ```
 
 4. Open the dashboard:
 
    ```text
-   /9router dashboard
+   /router dashboard
    ```
 
 5. Log in with the local default password:
@@ -34,12 +34,12 @@ Oino uses extensions for provider setup. The recommended path is the built-in 9r
    oino
    ```
 
-6. Add provider keys in the 9router dashboard.
+6. Add provider keys in the OmniRoute dashboard.
 
 7. Refresh models:
 
    ```text
-   /9router models
+   /router models
    ```
 
 8. Pick a model:
@@ -53,22 +53,22 @@ Oino uses extensions for provider setup. The recommended path is the built-in 9r
 ```text
 /auth              show auth/readiness status
 /account           show current provider/runtime status
-/9router status    check the local 9router sidecar
-/9router models    fetch and cache 9router models
-/9router restart   restart the managed sidecar
+/router status    check the local OmniRoute sidecar
+/router models    fetch and cache OmniRoute models
+/router restart   restart the managed sidecar
 ```
 
 ## Model cache
 
-Oino caches fetched model lists under `~/.oino/model-catalogs/`. `/9router models` fetches fresh 9router models and updates the visible list immediately. `/reload` reloads the cached list; it does not fetch from the network.
+Oino caches fetched model lists under `~/.oino/model-catalogs/`. `/router models` fetches fresh OmniRoute models and updates the visible list immediately. `/reload` reloads the cached list; it does not fetch from the network.
 
 ## If login fails
 
-If the 9router dashboard rejects the password after an old setup, run:
+If the OmniRoute dashboard rejects the password after an old setup, run:
 
 ```text
-/9router reset-password
-/9router restart
+/router reset-password
+/router restart
 ```
 
 Then log in with `oino`.

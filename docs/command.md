@@ -43,9 +43,9 @@ Inside the BTW panel, submit `/new` with no other text to reset that panel.
 ```text
 /auth              show readiness status
 /account           show provider/runtime status
-/9router setup     set up the recommended local router
-/9router dashboard open the dashboard URL
-/9router models    fetch and cache models
+/router setup     set up the recommended local router
+/router dashboard open the dashboard URL
+/router models    fetch and cache models
 ```
 
 ## Prompts and skills

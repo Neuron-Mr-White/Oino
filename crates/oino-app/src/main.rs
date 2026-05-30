@@ -43,10 +43,10 @@ mod extension_provider_runtime;
 mod extension_readiness;
 mod llm_compact;
 mod model_catalog;
-mod nine_router;
 mod notify;
 mod provider_runtime;
 mod ralph_loop;
+mod router;
 mod usage;
 mod user_settings;
 mod vcc;
@@ -84,16 +84,6 @@ use extension_readiness::{
     status_items_with_health as extension_readiness_status_items_with_health,
 };
 use model_catalog::ModelCatalogUpdate;
-use nine_router::{
-    execute_nine_router_command_input, load_nine_router_config, resolved_nine_router_base_url,
-};
-#[cfg(test)]
-use nine_router::{
-    format_extension_readiness_detail as format_nine_router_extension_readiness_detail,
-    nine_router_managed_run_command, nine_router_run_args, nine_router_start_candidates,
-    resolved_nine_router_tag, validate_nine_router_tag, NineRouterConfig, NineRouterHealth,
-    NINE_ROUTER_DEFAULT_BASE_URL, NINE_ROUTER_KNOWN_GOOD_TAG,
-};
 use oino_agent_loop::{
     AbortSignal, AgentEvent, BeforeToolCallResult, BoxFuture, LoopError, StreamProvider,
     StreamRequest, Tool, ToolCall, ToolDefinition, ToolResult, ToolUpdateCallback,
@@ -123,22 +113,31 @@ use oino_provider_openrouter::OpenRouterConfig;
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
-    collapse_mode_value, collapse_target_value, parse_command, render, terminal_cursor_position,
-    transcript_click_targets, transcript_url_overlays, transcript_visible_lines, AgentMode,
-    AskUserOutcome, AskUserRequest, AuthStatusItem, CollapseMode, CompactMethodOverride,
-    ExtensionAutosuggestItem, ExtensionCommandSuggestion, ExtensionManagementItem,
-    ExtensionManagementTarget, ExtensionShortcut, ExtensionThemeState, KeySequence, KeymapConfig,
-    MessageView, ModelOption, NotifyEventKind as TuiNotifyEventKind, NotifyField,
-    NotifyScopeSettings, ParsedCommand, PromptResource, RalphCommand, RalphRecordPromise,
-    SessionListItem, SettingsCommand, SkillResource, TerminalClickTarget, TerminalUrlOverlay,
-    ThemeCatalog, ThemeCatalogEntry, ThemeDocument, ThemeSource, ThemeSourceKind, ThemeSourceScope,
-    ToolSettingsItem, ToolSettingsScope, TuiAction, TuiState, HELP_STATUS,
+    collapse_mode_value, collapse_target_value, format_command_help, parse_command, render,
+    terminal_cursor_position, transcript_click_targets, transcript_url_overlays,
+    transcript_visible_lines, AgentMode, AskUserOutcome, AskUserRequest, AuthStatusItem,
+    CollapseMode, CompactMethodOverride, ExtensionAutosuggestItem, ExtensionCommandSuggestion,
+    ExtensionManagementItem, ExtensionManagementTarget, ExtensionShortcut, ExtensionThemeState,
+    KeySequence, KeymapConfig, MessageView, ModelOption, NotifyEventKind as TuiNotifyEventKind,
+    NotifyField, NotifyScopeSettings, ParsedCommand, PromptResource, RalphCommand,
+    RalphRecordPromise, SessionListItem, SettingsCommand, SkillResource, TerminalClickTarget,
+    TerminalUrlOverlay, ThemeCatalog, ThemeCatalogEntry, ThemeDocument, ThemeSource,
+    ThemeSourceKind, ThemeSourceScope, ToolSettingsItem, ToolSettingsScope, TuiAction, TuiState,
+    HELP_STATUS,
 };
 use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ThinkingLevel};
 #[cfg(test)]
 use provider_runtime::ProviderRouter;
 use provider_runtime::{build_runtime_provider, provider_status_for_model_identifier};
 use ratatui::{backend::CrosstermBackend, Terminal};
+use router::{execute_router_command_input, load_router_config, resolved_router_base_url};
+#[cfg(test)]
+use router::{
+    format_extension_readiness_detail as format_router_extension_readiness_detail,
+    resolved_router_tag, router_managed_run_command, router_run_args, router_start_candidates,
+    validate_router_tag, RouterConfig, RouterHealth, ROUTER_DEFAULT_BASE_URL,
+    ROUTER_KNOWN_GOOD_TAG,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -153,7 +152,7 @@ use tokio::sync::{mpsc, oneshot};
 use usage::{account_usage_progress_placeholder, UsageReport};
 use user_settings::UserSettings;
 
-const DEFAULT_MODEL: &str = "9router:kr/claude-sonnet-4.5";
+const DEFAULT_MODEL: &str = "router:kr/claude-sonnet-4.5";
 #[cfg(test)]
 const OPENAI_ACCESS_TOKEN_ENV: &str = "OPENAI_ACCESS_TOKEN";
 #[cfg(test)]
@@ -220,7 +219,8 @@ impl CliArgs {
             }
         }
         if !input_parts.is_empty() {
-            parsed.input = Some(input_parts.join(" "));
+            let input = input_parts.join(" ");
+            parsed.input = Some(normalize_cli_command_input(&input));
         }
         if parsed.model.is_some() {
             parsed.settings = true;
@@ -229,13 +229,31 @@ impl CliArgs {
     }
 }
 
+fn normalize_cli_command_input(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.starts_with('/') {
+        return trimmed.to_string();
+    }
+    let head = trimmed
+        .split_once(char::is_whitespace)
+        .map_or(trimmed, |(head, _)| head);
+    match head {
+        "settings" | "model" | "thinking" | "theme" | "extensions" | "auth" | "account"
+        | "usage" | "prompts" | "skills" | "reload" | "inspect" | "compact" | "recall"
+        | "ralph" | "mode" | "btw" | "new" | "sessions" | "help" | "title" | "router" => {
+            format!("/{trimmed}")
+        }
+        _ => trimmed.to_string(),
+    }
+}
+
 fn usage() -> &'static str {
-    "Usage:\n  oino\n  oino --settings --model 9router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n\nCommands:\n  /new\n  /btw | /btw new | /btw configure inherit|<provider:model>\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /9router setup|guide|status|models|stop|restart    (enabled builtin:9router extension)\n  /9router version list|pin <tag> | /9router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact                        (compact session with configured method)
+    "Usage:\n  oino\n  oino --settings --model router:kr/claude-sonnet-4.5\n  oino --session <uuid> <message-or-command>\n  oino settings notify enabled true\n\nCommands:\n  /new\n  /btw | /btw new | /btw configure inherit|<provider:model>\n  /sessions\n  /settings\n  /theme\n  /extensions | /extensions update\n  /router setup|guide|status|models|stop|restart    (enabled builtin:router extension)\n  /router version list|pin <tag> | /router rollback [tag]\n  /auth [provider]   (extension readiness/status)\n  /account [provider]\n  /usage\n  /prompts\n  /skills\n  /reload                 (resources, extensions, tools, themes, file index)\n  /inspect\n  /compact                        (compact session with configured method)
   /compact vcc | /compact llm     (override method for one-shot)
   /compact threshold [pct]        (set/show auto-compact threshold %)
   /compact auto <on|off>           (enable/disable auto-compact)
   /compact model [inherit|<m>]     (set/show LLM compact model)
-  /compact prompt [path]           (set/show LLM compact prompt)\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id] | /model btw inherit|<provider:model> | /model notify-summary inherit|<provider:model>\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify\n\nOptional built-ins: install from /extensions with builtin:9router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
+  /compact prompt [path]           (set/show LLM compact prompt)\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id] | /model btw inherit|<provider:model> | /model notify-summary inherit|<provider:model>\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify [project|global] <field> <value>\n    fields: enabled, server, topic, token, priority, tags, agent_end, tool_error, summary_enabled, summary_model, summary_prompt, summary_max_chars\n\nOptional built-ins: install from /extensions with builtin:router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
 }
 
 #[derive(Debug, Error)]
@@ -446,8 +464,8 @@ fn format_extension_runtime_health_detail(
     provider_id: &str,
     health: &ExtensionRuntimeHealth,
 ) -> String {
-    if provider_id == "9router" {
-        nine_router::format_extension_runtime_health_detail(health)
+    if provider_id == "router" {
+        router::format_extension_runtime_health_detail(health)
     } else {
         extension_provider_runtime::format_extension_runtime_health_detail(health)
     }
@@ -494,6 +512,7 @@ async fn main() -> Result<(), AppError> {
     let auth = AuthStorage::default_file()?;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let resource_paths = ResourcePaths::for_cwd(&cwd)?;
+    migrate_legacy_router_builtin(&resource_paths).await;
     let resource_catalog = load_resource_catalog(&resource_paths)?;
     let (session_path, session) = load_or_create_session(cli.session, cwd.clone()).await?;
     let session_context = session.build_session_context()?;
@@ -556,8 +575,8 @@ async fn main() -> Result<(), AppError> {
     };
     if !has_any_credentials && std::env::var("OPENROUTER_API_KEY").is_err() {
         eprintln!("Welcome to Oino! No router/auth configured yet.");
-        eprintln!("Recommended: run `/9router setup` for extension-managed auth/routing.");
-        eprintln!("Configure provider credentials in 9router or an auth extension.\n");
+        eprintln!("Recommended: run `/router setup` for extension-managed auth/routing.");
+        eprintln!("Configure provider credentials in OmniRoute or an auth extension.\n");
     }
 
     run_tui(
@@ -971,6 +990,22 @@ fn set_extension_enabled(
     }
 }
 
+async fn save_tool_settings_for_scope(
+    settings: &ToolSettingsSnapshot,
+    paths: &ResourcePaths,
+    scope: ToolSettingsScope,
+) -> Result<(), AppError> {
+    match scope {
+        ToolSettingsScope::Global => {
+            user_settings::save_to_path(&settings.global, &paths.global_settings).await?
+        }
+        ToolSettingsScope::Project => {
+            user_settings::save_to_path(&settings.project, &paths.project_settings).await?
+        }
+    }
+    Ok(())
+}
+
 async fn save_tool_settings(
     settings: &ToolSettingsSnapshot,
     paths: &ResourcePaths,
@@ -1021,6 +1056,96 @@ fn load_extension_snapshot(
 
 fn extension_layout_paths(paths: &ResourcePaths) -> ExtensionLayoutPaths {
     ExtensionLayoutPaths::for_home_and_project(&paths.home_dir, &paths.project_root)
+}
+
+const LEGACY_ROUTER_PACKAGE_ID: &str = "oino.9router";
+const ROUTER_PACKAGE_ID: &str = "oino.router";
+
+async fn migrate_legacy_router_builtin(paths: &ResourcePaths) {
+    let layout = extension_layout_paths(paths);
+    let scopes = [
+        (
+            ToolSettingsScope::Global,
+            layout.global_installed_packages.clone(),
+            paths.global_settings.clone(),
+        ),
+        (
+            ToolSettingsScope::Project,
+            layout.project_installed_packages.clone(),
+            paths.project_settings.clone(),
+        ),
+    ];
+
+    let settings = load_tool_settings(paths).await;
+    let mut manager = extension_manager_with_current_policy(paths, &settings);
+    manager.load();
+    let service = PackageLifecycleService::new(layout, current_extension_version());
+
+    for (scope, package_root, settings_path) in scopes {
+        let legacy_dir = package_root.join(LEGACY_ROUTER_PACKAGE_ID);
+        if legacy_dir.exists() {
+            let router_dir = package_root.join(ROUTER_PACKAGE_ID);
+            if !router_dir.exists() {
+                if let Some(source) =
+                    oino_extension_builtins::optional_builtin_package_path(ROUTER_PACKAGE_ID)
+                {
+                    if let Ok(report) =
+                        service.install_local(source, package_install_scope(scope), &mut manager)
+                    {
+                        let _ = write_extension_package_source_record(
+                            &report.destination,
+                            "builtin:router",
+                        );
+                    }
+                }
+            }
+            let _ = fs::remove_dir_all(&legacy_dir);
+        }
+        let _ = migrate_legacy_router_policy_settings(&settings_path).await;
+    }
+}
+
+async fn migrate_legacy_router_policy_settings(settings_path: &Path) -> io::Result<()> {
+    if !settings_path.exists() {
+        return Ok(());
+    }
+    let mut settings = user_settings::load_from_path(settings_path).await?;
+    let mut changed = false;
+
+    let legacy_package = PackageId::new(LEGACY_ROUTER_PACKAGE_ID)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    let router_package = PackageId::new(ROUTER_PACKAGE_ID)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    if let Some(toggle) = settings.extensions.packages.remove(&legacy_package) {
+        if toggle == PolicyToggle::Enabled {
+            settings
+                .extensions
+                .packages
+                .entry(router_package)
+                .or_insert(PolicyToggle::Enabled);
+        }
+        changed = true;
+    }
+
+    let legacy_extension = ExtensionId::new(LEGACY_ROUTER_PACKAGE_ID)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    let router_extension = ExtensionId::new(ROUTER_PACKAGE_ID)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    if let Some(toggle) = settings.extensions.extensions.remove(&legacy_extension) {
+        if toggle == PolicyToggle::Enabled {
+            settings
+                .extensions
+                .extensions
+                .entry(router_extension)
+                .or_insert(PolicyToggle::Enabled);
+        }
+        changed = true;
+    }
+
+    if changed {
+        user_settings::save_to_path(&settings, settings_path).await?;
+    }
+    Ok(())
 }
 
 fn package_install_scope(scope: ToolSettingsScope) -> PackageInstallScope {
@@ -1630,7 +1755,7 @@ fn extension_command_suggestions(
                     .metadata
                     .package_id
                     .as_ref()
-                    .is_some_and(|package_id| package_id.as_str() == NINE_ROUTER_PACKAGE_ID)
+                    .is_some_and(|package_id| package_id.as_str() == ROUTER_PACKAGE_ID)
         })
         .filter_map(|active| {
             let contribution = &active.entry.contribution;
@@ -2013,7 +2138,7 @@ fn validate_model_identifier_with_extensions(
         return Ok(model);
     }
     Err(format!(
-        "Provider `{}` is not provided by an enabled extension runtime. Built-in provider runtime has been removed; run `/9router setup` and select a `9router:<model>` model, or install/enable an extension runtime provider for `{}`.",
+        "Provider `{}` is not provided by an enabled extension runtime. Built-in provider runtime has been removed; run `/router setup` and select a `router:<model>` model, or install/enable an extension runtime provider for `{}`.",
         model.provider, model.provider
     ))
 }
@@ -2047,7 +2172,7 @@ fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOpti
                         let mut option = ModelOption::new(id)
                             .with_display_name(format!("{display} {model_id}"))
                             .with_provider_label(format!("{display} extension"));
-                        if provider_id.as_str() == model_catalog::NINE_ROUTER_PROVIDER_ID {
+                        if provider_id.as_str() == model_catalog::ROUTER_PROVIDER_ID {
                             option = option.with_context_length(Some(200_000));
                         }
                         option
@@ -2398,7 +2523,7 @@ async fn execute_extension_command(
                     .metadata
                     .package_id
                     .as_ref()
-                    .is_some_and(|package_id| package_id.as_str() == NINE_ROUTER_PACKAGE_ID))
+                    .is_some_and(|package_id| package_id.as_str() == ROUTER_PACKAGE_ID))
     })?;
     let contribution = &active.entry.contribution;
     let handler = contribution
@@ -2410,10 +2535,10 @@ async fn execute_extension_command(
         .metadata
         .package_id
         .as_ref()
-        .is_some_and(|package_id| package_id.as_str() == NINE_ROUTER_PACKAGE_ID)
-        || handler == "9router.command"
+        .is_some_and(|package_id| package_id.as_str() == ROUTER_PACKAGE_ID)
+        || handler == "router.command"
     {
-        return Some(execute_nine_router_command_input(trimmed).await);
+        return Some(execute_router_command_input(trimmed).await);
     }
     let extension_id = active.entry.metadata.extension_id.clone()?;
     let module = FixtureWasmModule::default().with_handler(
@@ -2785,7 +2910,7 @@ async fn run_tui(
         });
         state.set_auth_status_items(items, None);
         if !has_configured {
-            state.status = "No router/auth configured. Type /9router setup to get started, or /auth quickstart for the extension setup guide.".into();
+            state.status = "No router/auth configured. Type /router setup to get started, or /auth quickstart for the extension setup guide.".into();
         }
     }
     if open_settings {
@@ -2990,8 +3115,7 @@ async fn run_tui(
                     applied_thinking_level = thinking_level;
                     if state.btw.configured_model.is_none() {
                         let chat_model = state.settings.selected_model().to_string();
-                        state
-                            .set_btw_configured_model(None, &chat_model);
+                        state.set_btw_configured_model(None, &chat_model);
                         btw_harness = None;
                     }
                     persist_current_settings(&mut state).await;
@@ -3538,10 +3662,7 @@ async fn run_tui(
                 )
                 .await;
                 let chat_model = state.settings.selected_model().to_string();
-                state.set_btw_configured_model(
-                    model.clone(),
-                    &chat_model,
-                );
+                state.set_btw_configured_model(model.clone(), &chat_model);
                 btw_harness = None;
                 state.status = match model {
                     Some(model) => format!("BTW model set to `{model}`"),
@@ -3578,7 +3699,7 @@ async fn run_tui(
                 let snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
                 match execute_extension_command(&input, &snapshot).await {
                     Some(Ok(message)) => {
-                        let refresh_models = input.trim_start().starts_with("/9router models");
+                        let refresh_models = input.trim_start().starts_with("/router models");
                         state.clear_error();
                         state.status = compact_status_line(&message);
                         state.append_command_output(input, message);
@@ -5408,7 +5529,6 @@ fn longest_backtick_run(content: &str) -> usize {
     longest
 }
 
-const NINE_ROUTER_PACKAGE_ID: &str = "oino.9router";
 const RALPH_LOOP_PACKAGE_ID: &str = "oino.ralph_loop";
 const RALPH_LOOP_COMMAND_ID: &str = "ralph";
 const MODE_SANDBOX_PACKAGE_ID: &str = "oino.mode_sandbox";
@@ -6258,6 +6378,11 @@ async fn execute_runtime_command(
                 mode.value()
             )));
         }
+        ParsedCommand::CommandHelp(path) => {
+            return format_command_help(&path).ok_or_else(|| {
+                AppError::InvalidArguments(format!("no command help for `{path}`"))
+            });
+        }
         ParsedCommand::SetSessionTitle(title) => {
             harness.set_session_title(title.clone()).await?;
             harness.save_session_jsonl(session_path).await?;
@@ -6301,7 +6426,7 @@ async fn execute_runtime_command(
             | SettingsCommand::OpenNotify,
         ) => {
             return Err(AppError::InvalidArguments(
-                "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model 9router:kr/claude-sonnet-4.5` or `/thinking high`".into(),
+                "interactive settings pages cannot be opened in non-interactive mode; provide a setting path such as `/model router:kr/claude-sonnet-4.5` or `/thinking high`".into(),
             ));
         }
         ParsedCommand::Settings(SettingsCommand::SetModel(model)) => {
@@ -6331,6 +6456,40 @@ async fn execute_runtime_command(
         ParsedCommand::Settings(SettingsCommand::SetChatStyle(style)) => {
             config.chat_style = style;
             format!("Chat style set to {}", oino_tui::chat_style_label(style))
+        }
+        ParsedCommand::Settings(SettingsCommand::SetNotifyEnabled { scope, enabled }) => {
+            let mut settings = load_tool_settings(&resource_catalog.paths).await;
+            set_notify_enabled(&mut settings, scope, enabled);
+            save_tool_settings_for_scope(&settings, &resource_catalog.paths, scope).await?;
+            return Ok(format!("{} notify enabled set to {enabled}", scope.label()));
+        }
+        ParsedCommand::Settings(SettingsCommand::SetNotifyField {
+            scope,
+            field,
+            value,
+        }) => {
+            let mut settings = load_tool_settings(&resource_catalog.paths).await;
+            set_notify_field(&mut settings, scope, field, value);
+            save_tool_settings_for_scope(&settings, &resource_catalog.paths, scope).await?;
+            return Ok(format!(
+                "{} notify {} updated",
+                scope.label(),
+                field.label()
+            ));
+        }
+        ParsedCommand::Settings(SettingsCommand::SetNotifyEvent {
+            scope,
+            event,
+            enabled,
+        }) => {
+            let mut settings = load_tool_settings(&resource_catalog.paths).await;
+            set_notify_event(&mut settings, scope, event, enabled);
+            save_tool_settings_for_scope(&settings, &resource_catalog.paths, scope).await?;
+            return Ok(format!(
+                "{} notify event {} set to {enabled}",
+                scope.label(),
+                event.label()
+            ));
         }
     };
     let mut settings = user_settings::load_from_path(&resource_catalog.paths.global_settings)
@@ -6678,7 +6837,7 @@ fn spawn_model_catalog_task(
         )
         .await;
         freshness_checks
-            .push(model_catalog::cached_is_fresh(model_catalog::NINE_ROUTER_PROVIDER_ID).await);
+            .push(model_catalog::cached_is_fresh(model_catalog::ROUTER_PROVIDER_ID).await);
         let fresh = !freshness_checks.is_empty() && freshness_checks.into_iter().all(|fresh| fresh);
         let initial_delay = if fresh {
             model_catalog::MODEL_REFRESH_INTERVAL
@@ -6700,13 +6859,13 @@ fn spawn_model_catalog_task(
             )
             .await;
             let _ = tx.send(TuiRuntimeEvent::ModelCatalog(update));
-            if let Ok(config) = load_nine_router_config() {
-                let base_url = resolved_nine_router_base_url(&config);
+            if let Ok(config) = load_router_config() {
+                let base_url = resolved_router_base_url(&config);
                 let update = model_catalog::refresh_openai_proxy_update(
-                    model_catalog::NINE_ROUTER_PROVIDER_ID,
-                    "9router",
+                    model_catalog::ROUTER_PROVIDER_ID,
+                    "router",
                     &base_url,
-                    Some("NINEROUTER_API_KEY"),
+                    Some("OMNIROUTE_API_KEY"),
                 )
                 .await;
                 let _ = tx.send(TuiRuntimeEvent::ModelCatalog(update));
@@ -7021,7 +7180,7 @@ async fn preflight_model_credentials(
     }
     if provider_by_id(&model.provider).is_none() {
         return Err(format!(
-            "Provider `{}` is not registered. Install/enable an extension runtime provider for `{}` or run `/9router setup` and select a `9router:<model>` model.",
+            "Provider `{}` is not registered. Install/enable an extension runtime provider for `{}` or run `/router setup` and select a `router:<model>` model.",
             model.provider, model.provider
         ));
     }
@@ -7032,7 +7191,7 @@ async fn preflight_model_credentials(
 fn user_facing_error(err: &HarnessError) -> String {
     let message = err.to_string();
     if message.contains("missing credential") || message.contains("OPENROUTER_API_KEY") {
-        "Provider credential is missing, but built-in provider auth/runtime has been removed from Oino core. Run `/9router setup` and select a `9router:<model>` model, or install/enable an extension runtime provider.".into()
+        "Provider credential is missing, but built-in provider auth/runtime has been removed from Oino core. Run `/router setup` and select a `router:<model>` model, or install/enable an extension runtime provider.".into()
     } else {
         message
     }
@@ -7139,16 +7298,16 @@ mod tests {
     use oino_types::{AssistantStreamEvent, StopReason};
 
     #[test]
-    fn default_model_is_9router_model() {
-        assert_eq!(DEFAULT_MODEL, "9router:kr/claude-sonnet-4.5");
+    fn default_model_is_omniroute_model() {
+        assert_eq!(DEFAULT_MODEL, "router:kr/claude-sonnet-4.5");
     }
 
     #[test]
     fn extension_runtime_provider_is_used_without_builtin_runtime_fallback() {
         let provider: ProviderContribution = serde_json::from_value(serde_json::json!({
-            "id": "provider.9router",
-            "provider_id": "9router",
-            "display_name": "9router",
+            "id": "provider.router",
+            "provider_id": "router",
+            "display_name": "OmniRoute",
             "privacy": { "can_receive_prompts": true },
             "runtime": {
                 "protocol": "open_ai_chat_completions",
@@ -7163,7 +7322,7 @@ mod tests {
                 .with_process_env(false),
         );
         let router = ProviderRouter::new(auth, vec![provider]);
-        let model = Model::from_identifier("9router:kr/test-model")
+        let model = Model::from_identifier("router:kr/test-model")
             .unwrap_or_else(|| panic!("model should parse"));
         let result = router.provider_for_model(&model);
         assert!(
@@ -7174,13 +7333,11 @@ mod tests {
 
     #[test]
     fn model_validation_accepts_extension_runtime_provider_prefixes() {
-        let extension_providers = BTreeSet::from(["9router".to_string()]);
-        let model = validate_model_identifier_with_extensions(
-            "9router:kr/test-model",
-            &extension_providers,
-        )
-        .unwrap_or_else(|err| panic!("extension model should validate: {err}"));
-        assert_eq!(model.provider, "9router");
+        let extension_providers = BTreeSet::from(["router".to_string()]);
+        let model =
+            validate_model_identifier_with_extensions("router:kr/test-model", &extension_providers)
+                .unwrap_or_else(|err| panic!("extension model should validate: {err}"));
+        assert_eq!(model.provider, "router");
 
         let err = validate_model_identifier_with_extensions(
             "not-installed:test-model",
@@ -7188,82 +7345,71 @@ mod tests {
         )
         .expect_err("unknown non-extension provider should be rejected");
         assert!(err.contains("extension runtime"));
-        assert!(err.contains("/9router setup"));
+        assert!(err.contains("/router setup"));
     }
 
     #[test]
-    fn auth_quickstart_is_9router_first_after_builtin_auth_removal() {
+    fn auth_quickstart_is_omniroute_first_after_builtin_auth_removal() {
         let guide = format_auth_quickstart();
-        assert!(guide.contains("Recommended path: 9router extension"));
-        assert!(guide.contains("/9router setup"));
+        assert!(guide.contains("Recommended path: OmniRoute extension"));
+        assert!(guide.contains("/router setup"));
         assert!(guide.contains("Built-in provider OAuth/API-key commands have been removed"));
     }
 
     #[test]
-    fn nine_router_default_config_resolves_known_good_tag() {
-        let config = NineRouterConfig::default();
-        assert_eq!(
-            resolved_nine_router_base_url(&config),
-            NINE_ROUTER_DEFAULT_BASE_URL
-        );
-        assert_eq!(
-            resolved_nine_router_tag(&config),
-            NINE_ROUTER_KNOWN_GOOD_TAG
-        );
-        assert!(
-            nine_router_managed_run_command(&config, NINE_ROUTER_KNOWN_GOOD_TAG)
-                .contains("ghcr.io/decolua/9router:0.4.59")
-        );
+    fn router_default_config_resolves_known_good_tag() {
+        let config = RouterConfig::default();
+        assert_eq!(resolved_router_base_url(&config), ROUTER_DEFAULT_BASE_URL);
+        assert_eq!(resolved_router_tag(&config), ROUTER_KNOWN_GOOD_TAG);
+        assert!(router_managed_run_command(&config, ROUTER_KNOWN_GOOD_TAG)
+            .contains("diegosouzapw/omniroute:3.8.7"));
     }
 
     #[test]
-    fn nine_router_tag_validation_rejects_unsafe_values() {
-        assert_eq!(validate_nine_router_tag("0.4.59").unwrap(), "0.4.59");
-        assert!(validate_nine_router_tag("../latest").is_err());
-        assert!(validate_nine_router_tag("").is_err());
+    fn router_tag_validation_rejects_unsafe_values() {
+        assert_eq!(validate_router_tag("3.8.7").unwrap(), "3.8.7");
+        assert!(validate_router_tag("../latest").is_err());
+        assert!(validate_router_tag("").is_err());
     }
 
     #[test]
-    fn nine_router_start_candidates_deduplicate_fallback_order() {
-        let config = NineRouterConfig {
-            pinned_tag: Some("0.4.60".into()),
-            last_good_tag: Some("0.4.59".into()),
-            known_good_tag: "0.4.59".into(),
-            ..NineRouterConfig::default()
+    fn router_start_candidates_deduplicate_fallback_order() {
+        let config = RouterConfig {
+            pinned_tag: Some("3.8.8".into()),
+            last_good_tag: Some("3.8.7".into()),
+            known_good_tag: "3.8.7".into(),
+            ..RouterConfig::default()
         };
-        assert_eq!(
-            nine_router_start_candidates(&config),
-            vec!["0.4.60", "0.4.59"]
-        );
+        assert_eq!(router_start_candidates(&config), vec!["3.8.8", "3.8.7"]);
     }
 
     #[test]
-    fn nine_router_run_args_include_pinned_image_and_data_dir() {
-        let config = NineRouterConfig::default();
-        let args = nine_router_run_args(&config, "0.4.59").join(" ");
-        assert!(args.contains("--name oino-9router"));
+    fn router_run_args_include_pinned_image_and_data_dir() {
+        let config = RouterConfig::default();
+        let args = router_run_args(&config, "3.8.7").join(" ");
+        assert!(args.contains("--name oino-router"));
         assert!(args.contains("20128:20128"));
-        assert!(args.contains("ghcr.io/decolua/9router:0.4.59"));
+        assert!(args.contains("diegosouzapw/omniroute:3.8.7"));
     }
 
     #[test]
-    fn nine_router_extension_readiness_detail_includes_live_health_and_fallback_state() {
-        let config = NineRouterConfig::default();
-        let health = NineRouterHealth {
+    fn router_extension_readiness_detail_includes_live_health_and_fallback_state() {
+        let config = RouterConfig::default();
+        let health = RouterHealth {
             reachable: true,
             status: Some("200 OK".into()),
             model_count: Some(42),
             error: None,
         };
-        let detail = format_nine_router_extension_readiness_detail(
+        let detail = format_router_extension_readiness_detail(
             &config,
-            "/tmp/oino-9router-config.json",
+            "/tmp/oino-router-config.json",
             &health,
         );
         assert!(detail.contains("mode External"));
         assert!(detail.contains("http://localhost:20128/v1"));
-        assert!(detail.contains("ghcr.io/decolua/9router:0.4.59"));
-        assert!(detail.contains("last-good 0.4.59"));
+        assert!(detail.contains("diegosouzapw/omniroute:3.8.7"));
+        assert!(detail.contains("last-good 3.8.7"));
         assert!(detail
             .contains("Live health: reachable at http://localhost:20128/v1/models · 42 models"));
     }
@@ -7289,10 +7435,10 @@ mod tests {
         );
         assert!(extension_config_dir_name("../provider").is_err());
         assert_eq!(
-            extension_runtime_base_url_env_candidates("9router"),
+            extension_runtime_base_url_env_candidates("router"),
             vec![
-                "NINEROUTER_BASE_URL".to_string(),
-                "9ROUTER_BASE_URL".to_string()
+                "OMNIROUTE_BASE_URL".to_string(),
+                "ROUTER_BASE_URL".to_string()
             ]
         );
         let runtime: oino_extension_core::ProviderRuntimeContribution =
@@ -7302,8 +7448,8 @@ mod tests {
                 "config": {
                     "base_url_key": "runtime.base_url",
                     "health_url_key": "runtime.health_url",
-                    "base_url_env": ["NINEROUTER_BASE_URL"],
-                    "health_url_env": ["NINEROUTER_HEALTH_URL"]
+                    "base_url_env": ["OMNIROUTE_BASE_URL"],
+                    "health_url_env": ["OMNIROUTE_HEALTH_URL"]
                 }
             }))
             .unwrap_or_else(|err| panic!("runtime config metadata should parse: {err}"));
@@ -7315,8 +7461,8 @@ mod tests {
             runtime.config.health_url_key.as_deref(),
             Some("runtime.health_url")
         );
-        assert_eq!(runtime.config.base_url_env, vec!["NINEROUTER_BASE_URL"]);
-        assert_eq!(runtime.config.health_url_env, vec!["NINEROUTER_HEALTH_URL"]);
+        assert_eq!(runtime.config.base_url_env, vec!["OMNIROUTE_BASE_URL"]);
+        assert_eq!(runtime.config.health_url_env, vec!["OMNIROUTE_HEALTH_URL"]);
     }
 
     #[test]
@@ -7717,8 +7863,8 @@ mod tests {
         );
         let package = oino_extension_builtins::optional_builtin_packages()
             .iter()
-            .find(|package| package.id == "oino.9router")
-            .unwrap_or_else(|| panic!("missing 9router optional builtin"));
+            .find(|package| package.id == "oino.router")
+            .unwrap_or_else(|| panic!("missing OmniRoute optional builtin"));
         service
             .install_local(package.path(), PackageInstallScope::Project, &mut manager)
             .unwrap_or_else(|err| panic!("install failed: {err}"));
@@ -7740,7 +7886,7 @@ mod tests {
 
         let report = update_installed_extension_packages(&paths, &project, &settings);
         assert!(report.contains("1 updated"), "{report}");
-        assert!(report.contains("oino.9router"), "{report}");
+        assert!(report.contains("oino.router"), "{report}");
         let refreshed = serde_json::from_str::<PackageManifest>(
             &fs::read_to_string(&manifest_path)
                 .unwrap_or_else(|err| panic!("read refreshed manifest failed: {err}")),
@@ -7752,6 +7898,57 @@ mod tests {
         )
         .unwrap_or_else(|err| panic!("parse source manifest failed: {err}"));
         assert_eq!(refreshed.version, source_manifest.version);
+    }
+
+    #[tokio::test]
+    async fn migrates_legacy_router_builtin_install_on_startup() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths failed: {err}"));
+        paths
+            .ensure_skeleton()
+            .unwrap_or_else(|err| panic!("resource skeleton failed: {err}"));
+
+        let legacy_dir = home.join(".oino/extension-packages/oino.9router");
+        fs::create_dir_all(&legacy_dir).unwrap_or_else(|err| panic!("legacy dir failed: {err}"));
+        user_settings::save_to_path(
+            &UserSettings {
+                extensions: oino_extension_core::ExtensionPolicySettings {
+                    packages: BTreeMap::from([(
+                        PackageId::new("oino.9router").unwrap(),
+                        PolicyToggle::Enabled,
+                    )]),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &paths.global_settings,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("write settings failed: {err}"));
+
+        migrate_legacy_router_builtin(&paths).await;
+
+        assert!(!legacy_dir.exists());
+        assert!(home
+            .join(".oino/extension-packages/oino.router/oino.package.json")
+            .is_file());
+        let settings = user_settings::load_from_path(&paths.global_settings)
+            .await
+            .unwrap_or_else(|err| panic!("read settings failed: {err}"));
+        assert!(!settings
+            .extensions
+            .packages
+            .contains_key(&PackageId::new("oino.9router").unwrap()));
+        assert_eq!(
+            settings
+                .extensions
+                .packages
+                .get(&PackageId::new("oino.router").unwrap()),
+            Some(&PolicyToggle::Enabled)
+        );
     }
 
     #[tokio::test]
@@ -7844,13 +8041,13 @@ mod tests {
             .into_iter()
             .map(|command| command.label)
             .collect::<BTreeSet<_>>();
-        assert!(command_suggestions.contains("/9router"));
-        let nine_router_setup = execute_extension_command("/9router setup", &snapshot)
+        assert!(command_suggestions.contains("/router"));
+        let router_guide = execute_extension_command("/router guide", &snapshot)
             .await
-            .unwrap_or_else(|| panic!("9router extension command should be known"))
-            .unwrap_or_else(|err| panic!("9router extension command failed: {err}"));
-        assert!(nine_router_setup.contains("9router setup"));
-        assert!(nine_router_setup.contains("Managed data dir"));
+            .unwrap_or_else(|| panic!("OmniRoute extension command should be known"))
+            .unwrap_or_else(|err| panic!("OmniRoute extension command failed: {err}"));
+        assert!(router_guide.contains("OmniRoute guide"));
+        assert!(router_guide.contains("Managed sidecar command"));
 
         assert!(command_suggestions.contains("/ralph"));
         assert!(command_suggestions.contains("/mode"));
@@ -7889,17 +8086,16 @@ mod tests {
             .iter()
             .map(|active| active.effective_id.as_str().to_string())
             .collect::<BTreeSet<_>>();
-        let nine_router_status =
-            extension_readiness_status_items(&snapshot, Some("9router"), "9router");
-        assert!(nine_router_status
+        let router_status = extension_readiness_status_items(&snapshot, Some("router"), "router");
+        assert!(router_status
             .iter()
             .any(|item| item.auth_kind == "extension custom"
                 && item.readiness == "extension-managed"));
-        assert!(nine_router_status
+        assert!(router_status
             .iter()
             .any(|item| item.auth_kind == "extension provider"
                 && item.readiness == "runtime registered"));
-        assert!(nine_router_status.iter().all(|item| item.current));
+        assert!(router_status.iter().all(|item| item.current));
         assert!(resources.contains("ralph_loop_skill"));
         assert!(resources.contains("mode-sandbox"));
         assert!(resources.contains("craft-skill"));
@@ -7918,16 +8114,16 @@ mod tests {
         set_extension_enabled(
             &mut settings,
             ExtensionManagementTarget::Package,
-            "oino.9router".into(),
+            "oino.router".into(),
             ToolSettingsScope::Project,
             false,
         );
-        let nine_router_disabled = load_extension_snapshot(&paths, &settings);
-        let inactive_nine_router_status =
-            extension_readiness_status_items(&nine_router_disabled, Some("9router"), "openrouter");
-        assert!(inactive_nine_router_status
+        let router_disabled = load_extension_snapshot(&paths, &settings);
+        let inactive_router_status =
+            extension_readiness_status_items(&router_disabled, Some("router"), "openrouter");
+        assert!(inactive_router_status
             .iter()
-            .any(|item| item.provider_id == "9router"
+            .any(|item| item.provider_id == "router"
                 && item.readiness == "inactive"
                 && item.detail.contains("Remediation")));
 
@@ -8017,6 +8213,14 @@ mod tests {
             cli.input.as_deref(),
             Some("/settings model openrouter:xai/glm-5.1")
         );
+
+        let cli = CliArgs::parse_from(["settings", "notify", "enabled", "true"])
+            .unwrap_or_else(|err| panic!("parse failed: {err}"));
+        assert_eq!(cli.input.as_deref(), Some("/settings notify enabled true"));
+
+        let cli = CliArgs::parse_from(["compact", "auto", "--help"])
+            .unwrap_or_else(|err| panic!("parse failed: {err}"));
+        assert_eq!(cli.input.as_deref(), Some("/compact auto --help"));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use crate::{text::truncate_to_width, theme::Theme};
+use mmdflux::{render_diagram, OutputFormat, RenderConfig};
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::{
     style::{Modifier, Style},
@@ -14,7 +15,6 @@ use syntect::{
 use syntect_assets::assets::HighlightingAssets;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
-use mmdflux::{OutputFormat, RenderConfig, render_diagram};
 
 #[derive(Debug, Clone, Copy)]
 struct MarkdownStyles {
@@ -711,36 +711,37 @@ impl MarkdownRenderer {
         let label = "mermaid diagram";
         self.push_code_block_border(Some(label), true, &mut consumed_block_prefix);
 
-        let rendered_text = match render_diagram(&mermaid_src, OutputFormat::Text, &RenderConfig::default()) {
-            Ok(text) => text,
-            Err(err) => {
-                // Fall back to showing the error as raw text inside the code block
-                let prefix_width = line_width(&self.continuation_prefixes().0);
-                let available = self.width.saturating_sub(prefix_width).max(1);
-                let code_width = available.saturating_sub(4).max(1);
-                let error_msg = format!("mermaid render error: {err}");
-                let wrapped = wrap_spans_to_width(
-                    vec![Span::styled(error_msg, self.styles.code)],
-                    code_width,
-                );
-                for segment in wrapped {
-                    let (mut line, _) = self.block_prefixes(&mut consumed_block_prefix);
-                    line.push_span(Span::styled("│ ", self.styles.code_border));
-                    let segment_width = line_width(&segment);
-                    line.spans.extend(segment.spans);
-                    if segment_width < code_width {
-                        line.push_span(Span::styled(
-                            " ".repeat(code_width - segment_width),
-                            self.styles.code,
-                        ));
+        let rendered_text =
+            match render_diagram(&mermaid_src, OutputFormat::Text, &RenderConfig::default()) {
+                Ok(text) => text,
+                Err(err) => {
+                    // Fall back to showing the error as raw text inside the code block
+                    let prefix_width = line_width(&self.continuation_prefixes().0);
+                    let available = self.width.saturating_sub(prefix_width).max(1);
+                    let code_width = available.saturating_sub(4).max(1);
+                    let error_msg = format!("mermaid render error: {err}");
+                    let wrapped = wrap_spans_to_width(
+                        vec![Span::styled(error_msg, self.styles.code)],
+                        code_width,
+                    );
+                    for segment in wrapped {
+                        let (mut line, _) = self.block_prefixes(&mut consumed_block_prefix);
+                        line.push_span(Span::styled("│ ", self.styles.code_border));
+                        let segment_width = line_width(&segment);
+                        line.spans.extend(segment.spans);
+                        if segment_width < code_width {
+                            line.push_span(Span::styled(
+                                " ".repeat(code_width - segment_width),
+                                self.styles.code,
+                            ));
+                        }
+                        line.push_span(Span::styled(" │", self.styles.code_border));
+                        self.lines.push(line);
                     }
-                    line.push_span(Span::styled(" │", self.styles.code_border));
-                    self.lines.push(line);
+                    self.push_code_block_border(None, false, &mut consumed_block_prefix);
+                    return;
                 }
-                self.push_code_block_border(None, false, &mut consumed_block_prefix);
-                return;
-            }
-        };
+            };
 
         // Render the mmdflux text output inside the code block frame
         for text_line in rendered_text.lines() {
@@ -750,10 +751,8 @@ impl MarkdownRenderer {
 
             // Strip ANSI escape sequences from mmdflux output for TUI rendering
             let stripped = strip_ansi(text_line);
-            let wrapped = wrap_spans_to_width(
-                vec![Span::styled(stripped, self.styles.code)],
-                code_width,
-            );
+            let wrapped =
+                wrap_spans_to_width(vec![Span::styled(stripped, self.styles.code)], code_width);
             for segment in wrapped {
                 let (mut line, _) = self.block_prefixes(&mut consumed_block_prefix);
                 line.push_span(Span::styled("│ ", self.styles.code_border));
@@ -2059,7 +2058,9 @@ mod tests {
 
         // Should show error or gracefully degrade
         // (mmdflux may render partial or error — either way no panic)
-        assert!(plain_lines.iter().any(|line| line.ends_with('│') || line.contains("error")));
+        assert!(plain_lines
+            .iter()
+            .any(|line| line.ends_with('│') || line.contains("error")));
     }
 
     #[test]

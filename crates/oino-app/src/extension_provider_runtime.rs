@@ -154,8 +154,8 @@ fn extension_runtime_env_candidates_with_overrides(
 
 pub(crate) fn extension_runtime_url_env_candidates(provider_id: &str, suffix: &str) -> Vec<String> {
     let mut candidates = Vec::new();
-    if provider_id == "9router" {
-        candidates.push(format!("NINEROUTER_{suffix}"));
+    if provider_id == "router" {
+        candidates.push(format!("OMNIROUTE_{suffix}"));
     }
     let prefix = provider_id
         .chars()

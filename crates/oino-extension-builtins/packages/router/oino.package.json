@@ -1,13 +1,13 @@
 {
-  "id": "oino.9router",
-  "display_name": "Oino 9router",
+  "id": "oino.router",
+  "display_name": "Oino OmniRoute",
   "version": "0.1.0",
   "oino": "^0.1",
   "publisher": "oino",
-  "description": "Optional built-in 9router auth/router integration for routing Oino models through a local or external 9router endpoint.",
+  "description": "Optional built-in OmniRoute auth/router integration for routing Oino models through a local or external OmniRoute endpoint.",
   "extensions": [
     {
-      "manifest": "extensions/9router/oino.extension.json",
+      "manifest": "extensions/router/oino.extension.json",
       "enabled_by_default": true
     }
   ],
@@ -23,10 +23,10 @@
   "permissions": {
     "tools": [],
     "commands": [
-      "9router"
+      "router"
     ],
     "host_capabilities": [
-      "9router_external_endpoint"
+      "omniroute_external_endpoint"
     ],
     "ui": [],
     "filesystem": [],
@@ -39,11 +39,11 @@
       "hosts": [
         "localhost",
         "127.0.0.1",
-        "ghcr.io"
+        "registry.hub.docker.com"
       ]
     },
     "secrets": [
-      "ninerouter_api_key"
+      "omniroute_api_key"
     ],
     "session_persistence": [],
     "provider_mutation": [],

@@ -136,7 +136,7 @@ if (Test-Path $PackagesDir) {
     $TargetDir = Join-Path $OinoHome ".oino\extension-packages"
     $SettingsPath = Join-Path $OinoHome ".oino\settings.json"
     $PackageIds = @(
-        "oino.9router",
+        "oino.router",
         "oino.footer_status",
         "oino.ralph_loop",
         "oino.mode_sandbox",

@@ -4244,7 +4244,7 @@ impl TuiState {
             }
             ParsedCommand::AuthQuickstart => {
                 self.open_auth_overlay();
-                self.status = "Showing 9router-first auth quickstart guide…".into();
+                self.status = "Showing OmniRoute-first auth quickstart guide…".into();
                 TuiAction::AuthQuickstart
             }
             ParsedCommand::Ralph(command) => {
@@ -4261,6 +4261,12 @@ impl TuiState {
                 self.clear_error();
                 self.status = format!("Switching to {} mode…", mode.label());
                 TuiAction::SetAgentMode(mode)
+            }
+            ParsedCommand::CommandHelp(path) => {
+                self.clear_error();
+                self.status = crate::command::format_command_help(&path)
+                    .unwrap_or_else(|| format!("No command help for `{path}`"));
+                TuiAction::None
             }
             ParsedCommand::Settings(SettingsCommand::Open) => {
                 self.open_settings_overlay();
@@ -4335,6 +4341,41 @@ impl TuiState {
                 self.status = format!("Chat style set to {}", chat_style_label(style));
                 self.clear_error();
                 TuiAction::SetChatStyle(style)
+            }
+            ParsedCommand::Settings(SettingsCommand::SetNotifyEnabled { scope, enabled }) => {
+                self.status = format!("{} notify enabled set to {enabled}", scope.label());
+                self.clear_error();
+                TuiAction::SetNotifyEnabled { scope, enabled }
+            }
+            ParsedCommand::Settings(SettingsCommand::SetNotifyField {
+                scope,
+                field,
+                value,
+            }) => {
+                self.status = format!("{} notify {} updated", scope.label(), field.label());
+                self.clear_error();
+                TuiAction::SetNotifyField {
+                    scope,
+                    field,
+                    value,
+                }
+            }
+            ParsedCommand::Settings(SettingsCommand::SetNotifyEvent {
+                scope,
+                event,
+                enabled,
+            }) => {
+                self.status = format!(
+                    "{} notify event {} set to {enabled}",
+                    scope.label(),
+                    event.label()
+                );
+                self.clear_error();
+                TuiAction::SetNotifyEvent {
+                    scope,
+                    event,
+                    enabled,
+                }
             }
         }
     }
@@ -4543,7 +4584,7 @@ impl TuiState {
         self.settings.open_auth();
         self.overlay = Some(OverlayKind::Settings);
         self.status =
-            "Auth: arrows/jk move • recommended /9router setup • extension readiness only".into();
+            "Auth: arrows/jk move • recommended /router setup • extension readiness only".into();
     }
 
     fn open_keymaps_overlay(&mut self) {
@@ -6032,19 +6073,19 @@ mod tests {
     fn extension_command_submission_returns_extension_action() {
         let mut state = TuiState::new();
         state.set_extension_commands(vec![ExtensionCommandSuggestion::new(
-            "/9router",
-            "Set up 9router",
-            "/9router ",
+            "/router",
+            "Set up OmniRoute",
+            "/router ",
         )]);
 
-        for ch in "/9router setup".chars() {
+        for ch in "/router setup".chars() {
             assert_eq!(state.handle_key(key(KeyCode::Char(ch))), TuiAction::None);
         }
 
         assert_eq!(
             state.handle_key(key(KeyCode::Enter)),
             TuiAction::RunExtensionCommand {
-                input: "/9router setup".into(),
+                input: "/router setup".into(),
             }
         );
         assert_eq!(state.input(), "");
@@ -6510,7 +6551,7 @@ mod tests {
                     provider_id: "local-proxy".into(),
                     display_name: "Local Proxy".into(),
                     status: "not configured".into(),
-                    message: "run /9router setup".into(),
+                    message: "run /router setup".into(),
                     ..UsagePanelProvider::default()
                 },
             ],

@@ -8,21 +8,21 @@ pub fn quickstart() -> String {
         "=".repeat(50),
         "".to_string(),
         "Oino now uses extension-managed auth and routing.".to_string(),
-        "Recommended path: 9router extension".to_string(),
-        "   /extensions              Install builtin:9router if not installed".to_string(),
-        "   /9router setup           Show external/managed setup steps".to_string(),
-        "   /9router use-managed     Let Oino manage the local sidecar".to_string(),
-        "   /9router start           Start with pinned/last-good fallback".to_string(),
-        "   /9router models          Refresh live/cached 9router models".to_string(),
-        "   /model 9router:<model>   Select a 9router model or combo".to_string(),
+        "Recommended path: OmniRoute extension".to_string(),
+        "   /extensions              Install builtin:router if not installed".to_string(),
+        "   /router setup           Show external/managed setup steps".to_string(),
+        "   /router use-managed     Let Oino manage the local sidecar".to_string(),
+        "   /router start           Start with pinned/last-good fallback".to_string(),
+        "   /router models          Refresh live/cached OmniRoute models".to_string(),
+        "   /model router:<model>   Select an OmniRoute model or combo".to_string(),
         "".to_string(),
         "Built-in provider OAuth/API-key commands have been removed.".to_string(),
-        "Configure provider credentials in the 9router dashboard or through an auth extension."
+        "Configure provider credentials in the OmniRoute dashboard or through an auth extension."
             .to_string(),
         "".to_string(),
         "Useful commands:".to_string(),
-        "   /9router status       - Check router health/config".to_string(),
-        "   /9router rollback     - Roll back to last-good/known-good tag".to_string(),
+        "   /router status       - Check OmniRoute health/config".to_string(),
+        "   /router rollback     - Roll back to last-good/known-good tag".to_string(),
         "   /auth                 - Show extension auth/runtime readiness".to_string(),
         "   /model                - Select a model".to_string(),
     ]
@@ -32,10 +32,11 @@ pub fn quickstart() -> String {
 #[must_use]
 pub fn format_auth_status(items: &[AuthStatusItem]) -> String {
     if items.is_empty() {
-        return "No extension auth/runtime readiness rows found. Recommended: `/9router setup` for extension-managed auth/routing.".into();
+        return "No extension auth/runtime readiness rows found. Recommended: `/router setup` for extension-managed auth/routing.".into();
     }
     let mut lines = vec![
-        "Auth/runtime readiness (extension-managed; use `/9router setup` for 9router):".to_string(),
+        "Auth/runtime readiness (extension-managed; use `/router setup` for OmniRoute):"
+            .to_string(),
     ];
     for item in items {
         let current = if item.current { " current" } else { "" };
@@ -73,31 +74,31 @@ pub fn removed_provider_runtime_info(
 ) -> Option<RemovedProviderRuntimeInfo> {
     match provider.target {
         ProviderTarget::Claude => Some(RemovedProviderRuntimeInfo {
-            hint: "Claude/Anthropic direct runtime has been removed from core; use 9router or an extension runtime provider.",
+            hint: "Claude/Anthropic direct runtime has been removed from core; use OmniRoute or an extension runtime provider.",
             historical_required_env: &["ANTHROPIC_API_KEY"],
             historical_optional_env: &[],
             historical_example_model: Some("claude:claude-3-5-sonnet-latest"),
         }),
         ProviderTarget::OpenAi => Some(RemovedProviderRuntimeInfo {
-            hint: "OpenAI ChatGPT/OAuth runtime has been removed from core; use 9router or an extension runtime provider.",
+            hint: "OpenAI ChatGPT/OAuth runtime has been removed from core; use OmniRoute or an extension runtime provider.",
             historical_required_env: &[],
             historical_optional_env: &["OPENAI_ACCESS_TOKEN", "OPENAI_REFRESH_TOKEN", "OPENAI_API_KEY"],
             historical_example_model: Some("openai-api:gpt-4o-mini"),
         }),
         ProviderTarget::Azure => Some(RemovedProviderRuntimeInfo {
-            hint: "Azure OpenAI built-in auth/runtime has been removed from core; configure Azure in 9router or an extension.",
+            hint: "Azure OpenAI built-in auth/runtime has been removed from core; configure Azure in OmniRoute or an extension.",
             historical_required_env: &["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_API_KEY"],
             historical_optional_env: &["AZURE_OPENAI_API_VERSION"],
             historical_example_model: Some("azure:<deployment-or-model>"),
         }),
         ProviderTarget::Bedrock => Some(RemovedProviderRuntimeInfo {
-            hint: "AWS Bedrock built-in auth/runtime has been removed from core; use 9router or an extension runtime provider.",
+            hint: "AWS Bedrock built-in auth/runtime has been removed from core; use OmniRoute or an extension runtime provider.",
             historical_required_env: &["AWS_REGION"],
             historical_optional_env: &["AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_BEARER_TOKEN_BEDROCK"],
             historical_example_model: Some("bedrock:<model-id>"),
         }),
         ProviderTarget::Cursor => Some(RemovedProviderRuntimeInfo {
-            hint: "Cursor built-in auth/import/runtime has been removed from core; use 9router or an extension runtime provider.",
+            hint: "Cursor built-in auth/import/runtime has been removed from core; use OmniRoute or an extension runtime provider.",
             historical_required_env: &[],
             historical_optional_env: &["CURSOR_API_KEY", "CURSOR_ACCESS_TOKEN", "CURSOR_REFRESH_TOKEN", "CURSOR_CLIENT_VERSION", "CURSOR_AGENT_PATH"],
             historical_example_model: Some("cursor:auto"),
@@ -109,7 +110,7 @@ pub fn removed_provider_runtime_info(
             historical_example_model: Some("copilot:<model-id>"),
         }),
         ProviderTarget::Gemini => Some(RemovedProviderRuntimeInfo {
-            hint: "Gemini/Google OAuth auth/runtime has been removed from core; configure Gemini in 9router or an extension.",
+            hint: "Gemini/Google OAuth auth/runtime has been removed from core; configure Gemini in OmniRoute or an extension.",
             historical_required_env: &[],
             historical_optional_env: &["GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_PROJECT_ID"],
             historical_example_model: Some("gemini:gemini-2.5-pro"),
@@ -127,7 +128,7 @@ pub fn removed_provider_runtime_info(
             historical_example_model: Some("antigravity:<model-id>"),
         }),
         ProviderTarget::AutoImport => Some(RemovedProviderRuntimeInfo {
-            hint: "External credential import has been removed from core; credentials should be configured in 9router or an extension.",
+            hint: "External credential import has been removed from core; credentials should be configured in OmniRoute or an extension.",
             historical_required_env: &[],
             historical_optional_env: &[],
             historical_example_model: None,
@@ -158,12 +159,12 @@ pub fn removed_provider_runtime_detail(provider: ProviderDescriptor) -> String {
             }
             detail
         })
-        .unwrap_or_else(|| "Use `/9router setup` or install an extension runtime provider.".into())
+        .unwrap_or_else(|| "Use `/router setup` or install an extension runtime provider.".into())
 }
 
 #[must_use]
 pub fn removed_builtin_auth_message(action: &str) -> String {
     format!(
-        "Built-in provider auth has been removed for `{action}`. Use `/9router setup` to configure provider auth/routing via 9router, or install an auth extension."
+        "Built-in provider auth has been removed for `{action}`. Use `/router setup` to configure provider auth/routing via OmniRoute, or install an auth extension."
     )
 }

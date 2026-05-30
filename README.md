@@ -72,13 +72,13 @@ oino
 Recommended first-run flow inside Oino:
 
 ```text
-/9router setup
-/9router dashboard
-/9router models
+/router setup
+/router dashboard
+/router models
 /model
 ```
 
-The local 9router dashboard password is:
+The local OmniRoute dashboard password is:
 
 ```text
 oino
@@ -89,7 +89,7 @@ oino
 | Feature | Use it for |
 | --- | --- |
 | Terminal chat | Work with models from a keyboard-first TUI. |
-| 9router-first auth | Configure provider keys in the local 9router dashboard. |
+| OmniRoute-first auth | Configure provider keys in the local OmniRoute dashboard. |
 | Built-in coding tools | Let the agent read, run shell commands, edit, and write files. |
 | Sessions | Resume previous work with `/sessions`. |
 | Prompts and skills | Reuse workflows with `/prompt:` and `/skill:`. |
@@ -134,8 +134,8 @@ Developer guides:
 | --- | --- |
 | Oino | The terminal agent app and Rust workspace. |
 | TUI | Terminal user interface: the transcript, composer, overlays, settings, and key handling. |
-| 9router | The recommended local model router and provider-key dashboard. |
-| Model | A selectable `provider:model-id`, such as a `9router:...` entry. |
+| OmniRoute | The recommended local model router and provider-key dashboard. |
+| Model | A selectable `provider:model-id`, such as a `router:...` entry. |
 | Extension | An installable package that can add commands, tools, themes, providers, settings pages, or resources. |
 | Built-in extension | An optional extension shipped in this repository and enabled by the installer. |
 | Prompt | A reusable text template included with `/prompt:<name>`. |
@@ -163,6 +163,6 @@ cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-package 
 ## Troubleshooting
 
 - `oino: command not found`: add the install directory, usually `~/.local/bin`, to `PATH`.
-- No models: run `/9router setup`, add provider keys in the dashboard, then run `/9router models`.
-- Dashboard password does not work: run `/9router reset-password` and `/9router restart`, then use `oino`.
+- No models: run `/router setup`, add provider keys in the dashboard, then run `/router models`.
+- Dashboard password does not work: run `/router reset-password` and `/router restart`, then use `oino`.
 - Terminal state looks broken after a crash: run `reset` in your shell.

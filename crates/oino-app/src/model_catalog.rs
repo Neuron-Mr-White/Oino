@@ -19,7 +19,7 @@ use tokio::fs;
 pub const MODEL_REFRESH_INTERVAL: Duration = Duration::from_secs(60 * 60 * 6);
 const MODEL_CATALOG_FETCH_TIMEOUT: Duration = Duration::from_secs(12);
 const MODEL_CATALOG_FETCH_CONCURRENCY: usize = 8;
-pub const NINE_ROUTER_PROVIDER_ID: &str = "9router";
+pub const ROUTER_PROVIDER_ID: &str = "router";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelCatalogUpdate {
@@ -232,8 +232,8 @@ async fn refresh_openai_proxy_catalog(
     }
     match response.json::<ModelsResponse>().await {
         Ok(body) => {
-            let availability = if provider_id == NINE_ROUTER_PROVIDER_ID {
-                fetch_nine_router_configured_routes(&client, base_url, api_key_env).await
+            let availability = if provider_id == ROUTER_PROVIDER_ID {
+                fetch_router_configured_routes(&client, base_url, api_key_env).await
             } else {
                 RouteAvailability::Unknown
             };
@@ -248,8 +248,8 @@ async fn refresh_openai_proxy_catalog(
                     })
                     .collect(),
             };
-            if provider_id == NINE_ROUTER_PROVIDER_ID {
-                enrich_nine_router_context_lengths(&mut cached).await;
+            if provider_id == ROUTER_PROVIDER_ID {
+                enrich_router_context_lengths(&mut cached).await;
             }
             let count = cached.models.len();
             match save_cache(&cached).await {
@@ -297,8 +297,8 @@ async fn refresh_one_catalog(
                     .map(openai_compatible_to_cached)
                     .collect(),
             };
-            if config.provider_id == NINE_ROUTER_PROVIDER_ID {
-                enrich_nine_router_context_lengths(&mut cached).await;
+            if config.provider_id == ROUTER_PROVIDER_ID {
+                enrich_router_context_lengths(&mut cached).await;
             }
             let count = cached.models.len();
             match save_cache(&cached).await {
@@ -411,20 +411,20 @@ enum RouteAvailability {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
-struct NineRouterProvidersResponse {
+struct RouterProvidersResponse {
     #[serde(default)]
-    connections: Vec<NineRouterProviderConnection>,
+    connections: Vec<RouterProviderConnection>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct NineRouterProviderConnection {
+struct RouterProviderConnection {
     provider: Option<String>,
     is_active: Option<bool>,
     provider_specific_data: Option<serde_json::Value>,
 }
 
-async fn fetch_nine_router_configured_routes(
+async fn fetch_router_configured_routes(
     client: &reqwest::Client,
     base_url: &str,
     api_key_env: Option<&str>,
@@ -447,7 +447,7 @@ async fn fetch_nine_router_configured_routes(
     if !response.status().is_success() {
         return RouteAvailability::Unknown;
     }
-    let Ok(body) = response.json::<NineRouterProvidersResponse>().await else {
+    let Ok(body) = response.json::<RouterProvidersResponse>().await else {
         return RouteAvailability::Unknown;
     };
     let mut routes = BTreeSet::new();
@@ -461,7 +461,7 @@ async fn fetch_nine_router_configured_routes(
         if provider.is_empty() {
             continue;
         }
-        add_nine_router_provider_routes(
+        add_router_provider_routes(
             &mut routes,
             provider,
             connection.provider_specific_data.as_ref(),
@@ -479,7 +479,7 @@ fn openai_compatible_base_to_server_root(base_url: &str) -> String {
         .to_string()
 }
 
-fn add_nine_router_provider_routes(
+fn add_router_provider_routes(
     routes: &mut BTreeSet<String>,
     provider: &str,
     provider_specific_data: Option<&serde_json::Value>,
@@ -493,12 +493,12 @@ fn add_nine_router_provider_routes(
     {
         routes.insert(prefix.to_string());
     }
-    if let Some(alias) = known_nine_router_provider_alias(provider) {
+    if let Some(alias) = known_router_provider_alias(provider) {
         routes.insert(alias.to_string());
     }
 }
 
-fn known_nine_router_provider_alias(provider: &str) -> Option<&'static str> {
+fn known_router_provider_alias(provider: &str) -> Option<&'static str> {
     match provider {
         "anthropic" => Some("claude"),
         "google" | "gemini" | "gemini-cli" => Some("gemini"),
@@ -551,7 +551,7 @@ pub async fn cached_is_fresh(provider_id: &str) -> bool {
     let Some(cache) = load_provider_cache(provider_id).await else {
         return false;
     };
-    let metadata_ok = provider_id == NINE_ROUTER_PROVIDER_ID || cache_has_context_lengths(&cache);
+    let metadata_ok = provider_id == ROUTER_PROVIDER_ID || cache_has_context_lengths(&cache);
     metadata_ok && cache_age(&cache).is_some_and(|age| age < MODEL_REFRESH_INTERVAL)
 }
 
@@ -661,7 +661,7 @@ async fn load_all_cached_model_options(
 }
 
 fn is_historical_provider_catalog_cache(provider_id: &str) -> bool {
-    provider_id != NINE_ROUTER_PROVIDER_ID
+    provider_id != ROUTER_PROVIDER_ID
         && oino_provider_catalog::provider_by_id(provider_id).is_some()
 }
 
@@ -729,10 +729,10 @@ fn openai_compatible_to_cached_with_availability(
 
 fn cached_to_option(provider_id: &str, model: CachedModel) -> ModelOption {
     let mut provider_label = provider_display_label(provider_id);
-    if provider_id == NINE_ROUTER_PROVIDER_ID {
+    if provider_id == ROUTER_PROVIDER_ID {
         if let Some(route_provider) = model.route_provider.as_deref() {
             if !route_provider.trim().is_empty() {
-                provider_label = format!("9router/{route_provider}");
+                provider_label = format!("OmniRoute/{route_provider}");
             }
         }
     }
@@ -747,8 +747,8 @@ fn cached_to_option(provider_id: &str, model: CachedModel) -> ModelOption {
 }
 
 fn provider_display_label(provider_id: &str) -> String {
-    if provider_id == NINE_ROUTER_PROVIDER_ID {
-        return "9router".into();
+    if provider_id == ROUTER_PROVIDER_ID {
+        return "router".into();
     }
     oino_provider_catalog::provider_by_id(provider_id).map_or_else(
         || provider_id.to_string(),
@@ -852,15 +852,15 @@ fn now_unix() -> u64 {
         .map_or(0, |duration| duration.as_secs())
 }
 
-/// Enrich 9router cached models with `context_length` from the OpenRouter cache.
+/// Enrich OmniRoute cached models with `context_length` from the OpenRouter cache.
 ///
-/// 9router's `/v1/models` endpoint does not return `context_length`, so all models
-/// come back with `None`. OpenRouter's endpoint does include it. Since 9router routes
+/// OmniRoute's `/v1/models` endpoint does not return `context_length`, so all models
+/// come back with `None`. OpenRouter's endpoint does include it. Since OmniRoute routes
 /// to the same underlying models (just with different provider prefixes), we can
 /// cross-reference by base model name (the segment after the last `/`) to fill in
 /// the context length.
-async fn enrich_nine_router_context_lengths(cache: &mut CachedModelCatalog) {
-    // Collect which 9router models are missing context_length
+async fn enrich_router_context_lengths(cache: &mut CachedModelCatalog) {
+    // Collect which OmniRoute models are missing context_length
     let missing: Vec<(usize, String)> = cache
         .models
         .iter()
@@ -869,13 +869,14 @@ async fn enrich_nine_router_context_lengths(cache: &mut CachedModelCatalog) {
         .filter_map(|(index, model)| {
             let base = model.id.rsplit('/').next()?;
             Some((index, base.to_string()))
-    })
-    .collect();
+        })
+        .collect();
     if missing.is_empty() {
         return;
     }
     // Build a lookup from base model name -> context_length from OpenRouter cache
-    let Some(openrouter_cache) = load_provider_cache(oino_auth::OPENROUTER_PROVIDER_ID).await else {
+    let Some(openrouter_cache) = load_provider_cache(oino_auth::OPENROUTER_PROVIDER_ID).await
+    else {
         return;
     };
     let context_map: std::collections::HashMap<&str, usize> = openrouter_cache
@@ -1040,10 +1041,10 @@ mod tests {
     }
 
     #[test]
-    fn nine_router_cached_models_mark_configured_routes_and_needed_keys() {
+    fn router_cached_models_mark_configured_routes_and_needed_keys() {
         let availability = RouteAvailability::Known(BTreeSet::from(["openai".to_string()]));
         let configured = cached_to_option(
-            NINE_ROUTER_PROVIDER_ID,
+            ROUTER_PROVIDER_ID,
             openai_compatible_to_cached_with_availability(
                 OpenRouterModelInfo {
                     id: "openai/gpt-5".into(),
@@ -1056,7 +1057,7 @@ mod tests {
             ),
         );
         let needs_key = cached_to_option(
-            NINE_ROUTER_PROVIDER_ID,
+            ROUTER_PROVIDER_ID,
             openai_compatible_to_cached_with_availability(
                 OpenRouterModelInfo {
                     id: "claude/sonnet".into(),
@@ -1070,13 +1071,13 @@ mod tests {
         );
 
         assert_eq!(configured.availability, ModelAvailability::Configured);
-        assert_eq!(configured.provider_label, "9router/openai");
+        assert_eq!(configured.provider_label, "OmniRoute/openai");
         assert_eq!(needs_key.availability, ModelAvailability::NeedsProviderKey);
-        assert_eq!(needs_key.provider_label, "9router/claude");
+        assert_eq!(needs_key.provider_label, "OmniRoute/claude");
     }
 
     #[test]
-    fn nine_router_provider_api_uses_server_root_not_openai_v1_base() {
+    fn router_provider_api_uses_server_root_not_openai_v1_base() {
         assert_eq!(
             openai_compatible_base_to_server_root("http://localhost:20128/v1"),
             "http://localhost:20128"
@@ -1088,10 +1089,10 @@ mod tests {
     }
 
     #[test]
-    fn nine_router_provider_routes_include_common_aliases() {
+    fn router_provider_routes_include_common_aliases() {
         let mut routes = BTreeSet::new();
-        add_nine_router_provider_routes(&mut routes, "anthropic", None);
-        add_nine_router_provider_routes(
+        add_router_provider_routes(&mut routes, "anthropic", None);
+        add_router_provider_routes(
             &mut routes,
             "custom-openai",
             Some(&serde_json::json!({ "prefix": "custom" })),
@@ -1110,7 +1111,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn enrich_nine_router_context_lengths_fills_from_openrouter() {
+    async fn enrich_router_context_lengths_fills_from_openrouter() {
         let openrouter_dir = tempfile::tempdir().unwrap();
         let openrouter_path = openrouter_dir.path().join("openrouter.json");
         let openrouter_cache = CachedModelCatalog {
@@ -1135,12 +1136,16 @@ mod tests {
                 },
             ],
         };
-        std::fs::write(&openrouter_path, serde_json::to_string(&openrouter_cache).unwrap()).unwrap();
+        std::fs::write(
+            &openrouter_path,
+            serde_json::to_string(&openrouter_cache).unwrap(),
+        )
+        .unwrap();
 
         // Set the cache dir env so load_provider_cache finds it
-        let mut nine_router_cache = CachedModelCatalog {
+        let mut router_cache = CachedModelCatalog {
             fetched_at_unix: 2000,
-            provider_id: "9router".into(),
+            provider_id: "router".into(),
             models: vec![
                 CachedModel {
                     id: "glm/glm-5.1".into(),
@@ -1183,7 +1188,7 @@ mod tests {
             .collect();
 
         // Enrich manually using the same logic
-        for model in &mut nine_router_cache.models {
+        for model in &mut router_cache.models {
             if model.context_length.is_none() {
                 if let Some(base) = model.id.rsplit('/').next() {
                     if let Some(&length) = context_map.get(base) {
@@ -1194,10 +1199,10 @@ mod tests {
         }
 
         // glm-5.1 matched z-ai/glm-5.1's context_length
-        assert_eq!(nine_router_cache.models[0].context_length, Some(202_752));
+        assert_eq!(router_cache.models[0].context_length, Some(202_752));
         // gpt-4o matched openai/gpt-4o's context_length
-        assert_eq!(nine_router_cache.models[1].context_length, Some(128_000));
+        assert_eq!(router_cache.models[1].context_length, Some(128_000));
         // mystery-model has no match, stays None
-        assert_eq!(nine_router_cache.models[2].context_length, None);
+        assert_eq!(router_cache.models[2].context_length, None);
     }
 }
