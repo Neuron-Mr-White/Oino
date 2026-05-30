@@ -334,8 +334,8 @@ impl EventSink for SubscriberSink {
 mod tests {
     use super::*;
     use oino_agent_loop::{
-        AgentLoopConfig, AbortSignal, FauxStream, StreamProvider, StreamRequest,
-        ToolExecutionMode, VecEventSink,
+        AbortSignal, AgentLoopConfig, FauxStream, StreamProvider, StreamRequest, ToolExecutionMode,
+        VecEventSink,
     };
     use oino_types::{AssistantStreamEvent, ContentBlock, StopReason};
 
@@ -527,7 +527,10 @@ mod tests {
         }) as Arc<dyn StreamProvider>;
 
         // 1st prompt → counter=1, echoes "1"
-        let agent = Agent::new(AgentLoopConfig::new(Model::new("test", "echo"), stream.clone()));
+        let agent = Agent::new(AgentLoopConfig::new(
+            Model::new("test", "echo"),
+            stream.clone(),
+        ));
         let output = agent.prompt(Message::user_text("start")).await.unwrap();
         let last_text = assistant_text(&output.messages);
         assert_eq!(last_text, "1", "first echo must be 1");
@@ -557,10 +560,12 @@ mod tests {
             .iter()
             .rev()
             .find_map(|msg| match msg {
-                Message::Assistant { content, .. } => content.iter().find_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text.clone()),
-                    _ => None,
-                }),
+                Message::Assistant { content, .. } => {
+                    content.iter().find_map(|block| match block {
+                        ContentBlock::Text { text } => Some(text.clone()),
+                        _ => None,
+                    })
+                }
                 _ => None,
             })
             .unwrap_or_default()

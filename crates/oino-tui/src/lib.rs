@@ -84,9 +84,9 @@ pub use render::{
 pub use resource::{PromptResource, ResourceBrowserState, SkillResource};
 pub use settings::{
     all_thinking_levels, chat_style_label, collapse_mode_label, thinking_label, AuthStatusItem,
-    ChatStyle, CollapseMode, CollapseTarget, ModelAvailability, ModelOption, NotifyEventKind,
-    NotifyField, NotifyScopeSettings, NotifySettingsState, SettingsAction, SettingsMenuItem,
-    SettingsPage, SettingsState, ToolSettingsItem, ToolSettingsScope,
+    ChatStyle, CollapseMode, CollapseTarget, ModelAvailability, ModelOption, ModelPricing,
+    NotifyEventKind, NotifyField, NotifyScopeSettings, NotifySettingsState, SettingsAction,
+    SettingsMenuItem, SettingsPage, SettingsState, ToolSettingsItem, ToolSettingsScope,
 };
 pub use theme::{
     builtin_theme_documents, normalize_theme_id, normalize_theme_token, parse_theme_color,

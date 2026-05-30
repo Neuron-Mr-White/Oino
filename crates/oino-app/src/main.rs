@@ -6876,6 +6876,7 @@ fn spawn_model_catalog_task(
             .await;
             let _ = tx.send(TuiRuntimeEvent::ModelCatalog(update));
             if let Ok(config) = load_router_config() {
+                let _ = model_catalog::refresh_openrouter_pricing_sidecar(&openrouter_config).await;
                 let base_url = resolved_router_base_url(&config);
                 let update = model_catalog::refresh_openai_proxy_update(
                     model_catalog::ROUTER_PROVIDER_ID,

@@ -789,11 +789,28 @@ fn usage_footer_label(state: &TuiState) -> String {
         return "cost: no usage".into();
     }
     let tokens = compact_count(report.session.total_tokens as usize);
+    let cache_hit = cache_hit_rate_footer_label(
+        report.session.input_tokens,
+        report.session.cache_read_tokens,
+    );
     if report.session.costs.is_empty() {
-        format!("usage: {tokens} tok • cost: n/a")
+        format!("usage: {tokens} tok • cost: n/a • cache hit: {cache_hit}")
     } else {
-        format!("usage: {tokens} tok • cost: {}", report.session.costs.join(", "))
+        format!(
+            "usage: {tokens} tok • cost: {} • cache hit: {cache_hit}",
+            report.session.costs.join(", ")
+        )
     }
+}
+
+fn cache_hit_rate_footer_label(input_tokens: u64, cache_read_tokens: u64) -> String {
+    if input_tokens == 0 {
+        return "n/a".into();
+    }
+    format!(
+        "{:.1}%",
+        (cache_read_tokens as f64 / input_tokens as f64) * 100.0
+    )
 }
 
 fn render_extension_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -4258,7 +4275,7 @@ pub(crate) fn render_model_panel(
                         crate::settings::ModelAvailability::Unknown => None,
                         availability => Some(availability.label()),
                     };
-                    let label = if model.provider == model.id || model.provider == "unknown" {
+                    let mut label = if model.provider == model.id || model.provider == "unknown" {
                         availability_label.map_or_else(
                             || model.display_name.clone(),
                             |availability| format!("{} ({availability})", model.display_name),
@@ -4271,6 +4288,12 @@ pub(crate) fn render_model_panel(
                     } else {
                         format!("[{}] {}", provider_label, model.display_name)
                     };
+                    if selector.show_pricing
+                        && !selector.search_active
+                        && selector.search.is_empty()
+                    {
+                        label.push_str(&model_pricing_suffix(model));
+                    }
                     let mut result = Vec::new();
                     if show_group && !active {
                         result.push(Line::styled(
@@ -4298,6 +4321,49 @@ pub(crate) fn render_model_panel(
     );
 }
 
+fn model_pricing_suffix(model: &crate::settings::ModelOption) -> String {
+    let Some(pricing) = model.pricing.as_ref() else {
+        return "  in n/a out n/a cache n/a".into();
+    };
+    let source = if pricing.source.trim().is_empty() {
+        ""
+    } else {
+        match pricing.source.as_str() {
+            "provider" => " src:provider",
+            source => {
+                return format!(
+                    "  in {} out {} cache {} src:{}",
+                    format_model_price_per_million(pricing.input_per_token.as_deref()),
+                    format_model_price_per_million(pricing.output_per_token.as_deref()),
+                    format_model_price_per_million(pricing.cache_hit_per_token.as_deref()),
+                    source
+                )
+            }
+        }
+    };
+    format!(
+        "  in {} out {} cache {}{}",
+        format_model_price_per_million(pricing.input_per_token.as_deref()),
+        format_model_price_per_million(pricing.output_per_token.as_deref()),
+        format_model_price_per_million(pricing.cache_hit_per_token.as_deref()),
+        source
+    )
+}
+
+fn format_model_price_per_million(value: Option<&str>) -> String {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return "n/a".into();
+    };
+    let Ok(per_token) = value.parse::<f64>() else {
+        return "n/a".into();
+    };
+    if per_token == 0.0 {
+        "$0/M".into()
+    } else {
+        format!("${:.2}/M", per_token * 1_000_000.0)
+    }
+}
+
 fn model_search_line(
     selector: &crate::model_selector::ModelSelector,
     width: usize,
@@ -4315,7 +4381,7 @@ fn model_search_line(
     }
     if selector.search.is_empty() {
         Line::styled(
-            truncate_with_ellipsis("Press / to search models", width),
+            truncate_with_ellipsis("Press / to search models • p toggle prices", width),
             settings_muted_style(theme),
         )
     } else {
@@ -6225,6 +6291,44 @@ mod tests {
     }
 
     #[test]
+    fn model_selector_browse_rows_show_pricing_and_search_hides_pricing() {
+        let mut state =
+            TuiState::with_settings("router:openai/gpt-4o", oino_types::ThinkingLevel::Off);
+        state.overlay = Some(crate::app::OverlayKind::Settings);
+        state.settings.open_model_selection();
+        state.set_model_catalog(
+            vec![crate::settings::ModelOption::new("router:openai/gpt-4o")
+                .with_display_name("GPT-4o")
+                .with_provider_label("OmniRoute/openai")
+                .with_pricing(Some(crate::settings::ModelPricing {
+                    input_per_token: Some("0.0000025".into()),
+                    output_per_token: Some("0.00001".into()),
+                    cache_hit_per_token: Some("0.00000125".into()),
+                    cache_write_per_token: None,
+                    source: "openrouter".into(),
+                }))],
+            "loaded",
+        );
+
+        let text = buffer_text(&draw_state(140, 24, &state));
+        assert!(text.contains("$2.50/M"));
+        assert!(text.contains("$10.00/M"));
+        assert!(text.contains("$1.25/M"));
+        assert!(text.contains("src:openrouter"));
+
+        state.settings.model_selector.search_active = true;
+        let text = buffer_text(&draw_state(140, 24, &state));
+        assert!(text.contains("[OmniRoute/openai] GPT-4o"));
+        assert!(!text.contains("$2.50/M"));
+
+        state.settings.model_selector.search_active = false;
+        state.settings.model_selector.show_pricing = false;
+        let text = buffer_text(&draw_state(140, 24, &state));
+        assert!(text.contains("[OmniRoute/openai] GPT-4o"));
+        assert!(!text.contains("$2.50/M"));
+    }
+
+    #[test]
     fn footer_status_surfaces_render_directly_around_composer() -> Result<(), Box<dyn Error>> {
         let mut state =
             TuiState::with_settings("openrouter:test/model", oino_types::ThinkingLevel::High);
@@ -6243,7 +6347,9 @@ mod tests {
             status_line: "Usage: 1 reported turn(s), 3 tokens, 0.0004 USD".into(),
             session: crate::app::UsagePanelSession {
                 reported_turns: 1,
-                total_tokens: 3,
+                input_tokens: 10,
+                cache_read_tokens: 5,
+                total_tokens: 15,
                 costs: vec!["0.0004 USD".into()],
                 ..Default::default()
             },
@@ -6294,6 +6400,7 @@ mod tests {
         assert!(text.contains("model: Test Model"));
         assert!(text.contains("thinking: High"));
         assert!(text.contains("cost: 0.0004 USD"));
+        assert!(text.contains("cache hit: 50.0%"));
         assert!(text.contains("cwd: /repo/oino"));
         assert!(text.contains("branch: main"));
         assert!(text.contains("context: 10%/100k"));

@@ -1089,6 +1089,14 @@ pub(crate) async fn wait_for_router_health(config: &RouterConfig) -> RouterHealt
 pub(crate) async fn router_models() -> Result<String, AppError> {
     let config = load_router_config()?;
     let base_url = resolved_router_base_url(&config);
+    let pricing_status = match model_catalog::refresh_openrouter_pricing_sidecar(
+        &oino_provider_openrouter::OpenRouterConfig::default(),
+    )
+    .await
+    {
+        Ok(count) => format!("OpenRouter pricing sidecar: {count} models"),
+        Err(err) => format!("OpenRouter pricing sidecar unavailable: {err}"),
+    };
     let update = model_catalog::refresh_openai_proxy_update(
         model_catalog::ROUTER_PROVIDER_ID,
         "router",
@@ -1108,13 +1116,13 @@ pub(crate) async fn router_models() -> Result<String, AppError> {
 ",
         );
     Ok(if preview.is_empty() {
-        update.status
+        format!("{}; {pricing_status}", update.status)
     } else {
         format!(
-            "{}
+            "{}; {}
 
 {preview}",
-            update.status
+            update.status, pricing_status
         )
     })
 }

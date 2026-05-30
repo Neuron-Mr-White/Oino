@@ -88,6 +88,8 @@ pub struct ModelSelector {
     pub status: String,
     /// Whether the catalog is currently being refreshed.
     pub refreshing: bool,
+    /// Show exact provider pricing in browse mode. Search mode always hides it.
+    pub show_pricing: bool,
 }
 
 impl ModelSelector {
@@ -104,6 +106,7 @@ impl ModelSelector {
             filtered_indices: Vec::new(),
             status: "Model catalog not loaded yet".into(),
             refreshing: false,
+            show_pricing: true,
         }
     }
 
@@ -161,6 +164,10 @@ impl ModelSelector {
                 self.refresh_filter();
                 ModelSelectorAction::None
             }
+            KeyCode::Char('p') if key.modifiers.is_empty() => {
+                self.show_pricing = !self.show_pricing;
+                ModelSelectorAction::None
+            }
             KeyCode::Up => {
                 self.move_cursor(-1);
                 ModelSelectorAction::None
@@ -216,6 +223,10 @@ impl ModelSelector {
             .iter()
             .find(|m| m.id == self.initial_model)
             .map_or(self.initial_model.as_str(), |m| m.display_name.as_str())
+    }
+
+    pub fn toggle_pricing(&mut self) {
+        self.show_pricing = !self.show_pricing;
     }
 
     // ── Private helpers ────────────────────────────────────────────────
@@ -452,6 +463,20 @@ mod tests {
         assert!(!sel.search_active);
         assert_eq!(sel.search, "");
         assert_eq!(sel.cursor, 1);
+    }
+
+    #[test]
+    fn selector_p_toggles_browse_pricing_only_outside_search() {
+        let mut sel = ModelSelector::new(ModelSelectorContext::Main, "model-a");
+        sel.set_models(vec![ModelOption::new("model-a")], "loaded");
+        sel.open();
+        assert!(sel.show_pricing);
+        sel.handle_key(key(KeyCode::Char('p')));
+        assert!(!sel.show_pricing);
+        sel.handle_key(key(KeyCode::Char('/')));
+        sel.handle_key(key(KeyCode::Char('p')));
+        assert_eq!(sel.search, "p");
+        assert!(!sel.show_pricing);
     }
 
     #[test]
