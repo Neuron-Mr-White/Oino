@@ -94,9 +94,9 @@ use oino_extension_core::ProviderContribution;
 use oino_extension_core::{
     ActiveContribution, ContributionId, ContributionMetadata, DiagnosticContribution, ExtensionId,
     HealthContribution, PackageId, PackageManifest, PolicyToggle, RegistryEntry, RegistryEntryKey,
-    RegistryPolicy, RendererContribution, RendererTarget, ResourceKind, SourceScope, UiFocusPolicy,
-    UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceContribution, UiSurfaceKind,
-    UiTinyTerminalFallback, UiVisibilityPolicy,
+    RegistryPolicy, RendererContribution, RendererTarget, ResourceKind, SourceDescriptor,
+    SourceKind, SourceScope, UiFocusPolicy, UiKeyDispatchPolicy, UiLayoutPolicy,
+    UiSurfaceContribution, UiSurfaceKind, UiTinyTerminalFallback, UiVisibilityPolicy,
 };
 use oino_extension_manager::{
     ExtensionDiscovery, ExtensionLayoutPaths, ExtensionManager, ExtensionManagerConfig,
@@ -1566,7 +1566,7 @@ fn apply_extension_snapshot_to_tui_state(
     settings: &ToolSettingsSnapshot,
     paths: &ResourcePaths,
 ) {
-    state.set_extension_ui_surfaces(extension_ui_surfaces(snapshot));
+    state.set_extension_ui_surfaces(extension_ui_surfaces(snapshot, &paths.project_root));
     state.set_extension_commands(extension_command_suggestions(snapshot));
     state.set_extension_shortcuts(extension_shortcuts(snapshot));
     state.set_extension_autosuggest_items(extension_autosuggest_items(snapshot));
@@ -1633,8 +1633,12 @@ fn app_notify_event_from_tui(event: TuiNotifyEventKind) -> notify::NotifyEvent {
 
 fn extension_ui_surfaces(
     snapshot: &ExtensionManagerSnapshot,
+    project_root: &Path,
 ) -> Vec<ActiveContribution<UiSurfaceContribution>> {
     let mut surfaces = snapshot.registries.ui_surfaces.active.clone();
+    if let Some(surface) = ralph_panel_surface(project_root) {
+        surfaces.push(surface);
+    }
     surfaces.extend(
         snapshot
             .registries
@@ -1738,6 +1742,72 @@ fn extension_ui_surfaces(
             .map(synthetic_health_surface),
     );
     surfaces
+}
+
+fn ralph_panel_surface(project_root: &Path) -> Option<ActiveContribution<UiSurfaceContribution>> {
+    if !ralph_loop::load_panel_settings(project_root).ok()?.enabled {
+        return None;
+    }
+    let summary = ralph_loop::panel_summary(project_root).ok().flatten();
+    let title = summary.map_or_else(
+        || "Ralph: no loops • status: n/a • iter: n/a • task: n/a • reflect: n/a".to_string(),
+        |summary| {
+            format!(
+                "Ralph: {} • status: {:?} • iter: {}/{} • task: {} • reflect: {}",
+                summary.name,
+                summary.status,
+                summary.iteration,
+                summary.max_iterations,
+                summary.task,
+                summary
+                    .next_reflection
+                    .map_or_else(|| "n/a".to_string(), |value| value.to_string())
+            )
+        },
+    );
+    let id = ContributionId::new("ralph-progress-panel")
+        .expect("builtin Ralph panel contribution id is valid");
+    let metadata = ContributionMetadata::new(
+        id.clone(),
+        SourceDescriptor {
+            scope: SourceScope::BuiltIn,
+            kind: SourceKind::BuiltIn,
+            path: None,
+            registry: None,
+        },
+    )
+    .with_package_id(PackageId::new(RALPH_LOOP_PACKAGE_ID).expect("valid package id"))
+    .with_extension_id(ExtensionId::new(RALPH_LOOP_PACKAGE_ID).expect("valid extension id"));
+    let mut scopes = BTreeSet::new();
+    scopes.insert("extension.floating_panel".to_string());
+    Some(ActiveContribution {
+        effective_id: id.clone(),
+        entry: RegistryEntry::new(
+            RegistryEntryKey::new("synthetic-ui:ralph-progress-panel"),
+            metadata,
+            UiSurfaceContribution {
+                id,
+                surface: UiSurfaceKind::FloatingPanel,
+                title,
+                state_schema: Some("object".into()),
+                layout: UiLayoutPolicy {
+                    slot: "ralph".into(),
+                    priority: 100,
+                    min_width: 24,
+                    min_height: 3,
+                    max_width: Some(54),
+                    tiny_terminal: UiTinyTerminalFallback::CompactBadge,
+                },
+                visibility: UiVisibilityPolicy::Visible,
+                focus: UiFocusPolicy::None,
+                key_dispatch: UiKeyDispatchPolicy {
+                    scopes,
+                    pass_through: true,
+                },
+                conflict: Default::default(),
+            },
+        ),
+    })
 }
 
 fn extension_command_suggestions(
@@ -5939,6 +6009,18 @@ fn execute_ralph_command(command: RalphCommand, project_root: &Path) -> Result<S
                 execute_ralph_command(RalphCommand::List, project_root)
             }
         }
+        RalphCommand::Panel { setting } => {
+            let enabled = match setting {
+                Some(oino_tui::RalphPanelSetting::On) => true,
+                Some(oino_tui::RalphPanelSetting::Off) => false,
+                None => !ralph_loop::load_panel_settings(project_root)?.enabled,
+            };
+            ralph_loop::set_panel_enabled(project_root, enabled)?;
+            Ok(format!(
+                "Ralph progress floating panel {}",
+                if enabled { "enabled" } else { "disabled" }
+            ))
+        }
         RalphCommand::Start { name, task } => {
             let state =
                 ralph_loop::start_loop(project_root, ralph_loop::RalphLoopStart::new(name, task))?;
@@ -6110,6 +6192,7 @@ fn ralph_help_text() -> String {
         "  /ralph start <name> <task>",
         "  /ralph list",
         "  /ralph status [name]",
+        "  /ralph panel [on|off]",
         "  /ralph resume <name>",
         "  /ralph continue [name]",
         "  /ralph once [name]",
@@ -7798,6 +7881,32 @@ mod tests {
         )
         .unwrap_or_else(|err| panic!("status failed: {err}"));
         assert!(status.contains("demo-loop: Active iteration 1/60"));
+
+        let panel = execute_ralph_command(RalphCommand::Panel { setting: None }, temp.path())
+            .unwrap_or_else(|err| panic!("panel toggle failed: {err}"));
+        assert!(panel.contains("enabled"));
+        assert!(temp.path().join(".oino/ralph/panel.json").is_file());
+        let surface = ralph_panel_surface(temp.path())
+            .unwrap_or_else(|| panic!("enabled panel should create surface"));
+        assert_eq!(
+            surface.entry.contribution.surface,
+            UiSurfaceKind::FloatingPanel
+        );
+        assert!(surface
+            .entry
+            .contribution
+            .title
+            .contains("Ralph: demo-loop"));
+        assert!(surface.entry.contribution.title.contains("iter: 1/60"));
+        let panel = execute_ralph_command(
+            RalphCommand::Panel {
+                setting: Some(oino_tui::RalphPanelSetting::Off),
+            },
+            temp.path(),
+        )
+        .unwrap_or_else(|err| panic!("panel off failed: {err}"));
+        assert!(panel.contains("disabled"));
+        assert!(ralph_panel_surface(temp.path()).is_none());
 
         execute_ralph_command(
             RalphCommand::Archive {

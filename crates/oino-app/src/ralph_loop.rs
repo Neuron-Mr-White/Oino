@@ -11,6 +11,7 @@ use thiserror::Error;
 pub const RALPH_DIR: &str = "ralph";
 pub const RALPH_ARCHIVE_DIR: &str = "archive";
 pub const RALPH_STATE_VERSION: u32 = 1;
+pub const RALPH_PANEL_FILE: &str = "panel.json";
 pub const PROMISE_COMPLETE: &str = "<promise>COMPLETE</promise>";
 pub const PROMISE_CONTINUE: &str = "<promise>CONTINUE</promise>";
 
@@ -163,6 +164,21 @@ pub struct RalphLoopProgress {
     pub note: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct RalphPanelSettings {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RalphPanelSummary {
+    pub name: String,
+    pub status: RalphLoopStatus,
+    pub iteration: u32,
+    pub max_iterations: u32,
+    pub task: String,
+    pub next_reflection: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RalphLoopPaths {
     pub root: PathBuf,
@@ -297,6 +313,66 @@ pub fn status_line(state: &RalphLoopState) -> String {
     )
 }
 
+pub fn load_panel_settings(project_root: &Path) -> Result<RalphPanelSettings, RalphLoopError> {
+    let path = panel_settings_path(project_root);
+    if !path.is_file() {
+        return Ok(RalphPanelSettings::default());
+    }
+    let text = read_file(&path)?;
+    serde_json::from_str(&text).map_err(|source| RalphLoopError::Json { path, source })
+}
+
+pub fn save_panel_settings(
+    project_root: &Path,
+    settings: &RalphPanelSettings,
+) -> Result<(), RalphLoopError> {
+    let path = panel_settings_path(project_root);
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent)?;
+    }
+    let text = serde_json::to_string_pretty(settings).map_err(|source| RalphLoopError::Json {
+        path: path.clone(),
+        source,
+    })?;
+    write_file(&path, &format!("{text}\n"))
+}
+
+pub fn set_panel_enabled(
+    project_root: &Path,
+    enabled: bool,
+) -> Result<RalphPanelSettings, RalphLoopError> {
+    let settings = RalphPanelSettings { enabled };
+    save_panel_settings(project_root, &settings)?;
+    Ok(settings)
+}
+
+pub fn panel_summary(project_root: &Path) -> Result<Option<RalphPanelSummary>, RalphLoopError> {
+    let mut states = list_states(project_root)?;
+    if states.is_empty() {
+        return Ok(None);
+    }
+    states.sort_by(|left, right| {
+        state_rank(&left.status)
+            .cmp(&state_rank(&right.status))
+            .then_with(|| right.updated_at_unix.cmp(&left.updated_at_unix))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    let state = states.remove(0);
+    let task = first_task_heading_or_file(project_root, &state);
+    Ok(Some(RalphPanelSummary {
+        name: state.name,
+        status: state.status,
+        iteration: state.iteration,
+        max_iterations: state.max_iterations,
+        task,
+        next_reflection: next_reflection_iteration(
+            state.iteration,
+            state.max_iterations,
+            state.reflect_every,
+        ),
+    }))
+}
+
 pub fn list_states(project_root: &Path) -> Result<Vec<RalphLoopState>, RalphLoopError> {
     let root = project_root.join(".oino").join(RALPH_DIR);
     if !root.exists() {
@@ -313,7 +389,9 @@ pub fn list_states(project_root: &Path) -> Result<Vec<RalphLoopState>, RalphLoop
             source,
         })?;
         let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+        if path.extension().and_then(|value| value.to_str()) != Some("json")
+            || path.file_name().and_then(|value| value.to_str()) == Some(RALPH_PANEL_FILE)
+        {
             continue;
         }
         let text = read_file(&path)?;
@@ -503,6 +581,51 @@ pub fn archive_loop(project_root: &Path, name: &str) -> Result<RalphLoopState, R
     rename_if_exists(&paths.log_file, &archive_log)?;
     rename_if_exists(&paths.steering_file, &archive_steering)?;
     Ok(state)
+}
+
+fn panel_settings_path(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".oino")
+        .join(RALPH_DIR)
+        .join(RALPH_PANEL_FILE)
+}
+
+fn state_rank(status: &RalphLoopStatus) -> u8 {
+    match status {
+        RalphLoopStatus::Active => 0,
+        RalphLoopStatus::Paused | RalphLoopStatus::Blocked | RalphLoopStatus::AwaitingDecision => 1,
+        RalphLoopStatus::Complete => 2,
+        RalphLoopStatus::Cancelled => 3,
+        RalphLoopStatus::Archived => 4,
+    }
+}
+
+fn next_reflection_iteration(
+    iteration: u32,
+    max_iterations: u32,
+    reflect_every: u32,
+) -> Option<u32> {
+    if reflect_every == 0 || iteration >= max_iterations {
+        return None;
+    }
+    let next = ((iteration / reflect_every) + 1).saturating_mul(reflect_every);
+    (next <= max_iterations).then_some(next)
+}
+
+fn first_task_heading_or_file(project_root: &Path, state: &RalphLoopState) -> String {
+    let paths = RalphLoopPaths::for_project(project_root, &state.name);
+    let Ok(text) = read_file(&paths.task_file) else {
+        return state.task_file.clone();
+    };
+    text.lines()
+        .find_map(|line| {
+            line.strip_prefix("# ")
+                .or_else(|| line.strip_prefix("## Task: "))
+        })
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .unwrap_or(state.task_file.as_str())
+        .to_string()
 }
 
 fn transition(
@@ -831,6 +954,66 @@ mod tests {
             .unwrap_or_else(|err| panic!("record failed: {err}"));
         assert_eq!(state.status, RalphLoopStatus::Blocked);
         assert_eq!(state.iteration, 2);
+    }
+
+    #[test]
+    fn panel_settings_persist_and_summary_reports_next_reflection() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        assert!(
+            !load_panel_settings(temp.path())
+                .unwrap_or_else(|err| panic!("load panel failed: {err}"))
+                .enabled
+        );
+        set_panel_enabled(temp.path(), true)
+            .unwrap_or_else(|err| panic!("set panel failed: {err}"));
+        assert!(
+            load_panel_settings(temp.path())
+                .unwrap_or_else(|err| panic!("reload panel failed: {err}"))
+                .enabled
+        );
+
+        let mut start = RalphLoopStart::new("Panel Loop", "Show Ralph progress");
+        start.max_iterations = 10;
+        start.reflect_every = 3;
+        let state =
+            start_loop(temp.path(), start).unwrap_or_else(|err| panic!("start failed: {err}"));
+        assert_eq!(state.name, "panel-loop");
+        let summary = panel_summary(temp.path())
+            .unwrap_or_else(|err| panic!("summary failed: {err}"))
+            .unwrap_or_else(|| panic!("missing summary"));
+        assert_eq!(summary.name, "panel-loop");
+        assert_eq!(summary.status, RalphLoopStatus::Active);
+        assert_eq!(summary.iteration, 0);
+        assert_eq!(summary.max_iterations, 10);
+        assert_eq!(summary.task, "Ralph Loop: panel-loop");
+        assert_eq!(summary.next_reflection, Some(3));
+
+        record_iteration(
+            temp.path(),
+            "panel-loop",
+            RalphPromise::Continue,
+            "progress",
+        )
+        .unwrap_or_else(|err| panic!("record failed: {err}"));
+        record_iteration(
+            temp.path(),
+            "panel-loop",
+            RalphPromise::Continue,
+            "progress",
+        )
+        .unwrap_or_else(|err| panic!("record failed: {err}"));
+        record_iteration(
+            temp.path(),
+            "panel-loop",
+            RalphPromise::Continue,
+            "progress",
+        )
+        .unwrap_or_else(|err| panic!("record failed: {err}"));
+        let summary = panel_summary(temp.path())
+            .unwrap_or_else(|err| panic!("summary failed: {err}"))
+            .unwrap_or_else(|| panic!("missing summary"));
+        assert_eq!(summary.iteration, 3);
+        assert_eq!(summary.next_reflection, Some(6));
     }
 
     #[test]

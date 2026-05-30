@@ -223,6 +223,9 @@ pub enum RalphCommand {
     Status {
         name: Option<String>,
     },
+    Panel {
+        setting: Option<RalphPanelSetting>,
+    },
     Start {
         name: String,
         task: String,
@@ -264,6 +267,12 @@ pub enum RalphRecordPromise {
     Blocked(String),
     Decide(String),
     TaskDone(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RalphPanelSetting {
+    On,
+    Off,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1071,6 +1080,7 @@ fn ralph_command_help() -> String {
             ("start", "create a project-scoped Ralph loop"),
             ("list", "list project Ralph loops"),
             ("status", "show one loop or all loops"),
+            ("panel", "toggle persisted floating progress panel"),
             ("resume", "resume a paused/blocked loop"),
             ("continue", "continue auto-running a loop"),
             ("once", "run exactly one iteration"),
@@ -1256,6 +1266,16 @@ fn parse_ralph_command(input: &str) -> Option<RalphCommand> {
         "status" => Some(RalphCommand::Status {
             name: optional_single_arg(tail)?,
         }),
+        "panel" => match tail.trim() {
+            "" => Some(RalphCommand::Panel { setting: None }),
+            "on" => Some(RalphCommand::Panel {
+                setting: Some(RalphPanelSetting::On),
+            }),
+            "off" => Some(RalphCommand::Panel {
+                setting: Some(RalphPanelSetting::Off),
+            }),
+            _ => None,
+        },
         "start" => {
             let (name, task) = split_head(tail);
             (!name.is_empty() && !task.trim().is_empty()).then_some(RalphCommand::Start {
@@ -2266,6 +2286,7 @@ fn ralph_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsVie
         ("archive", "archive a loop"),
         ("clean", "remove archived loop files"),
         ("record", "record an iteration promise"),
+        ("panel", "toggle persisted floating progress panel"),
         ("help", "show Ralph command usage"),
     ];
     let items = fuzzy_indices(
@@ -2310,6 +2331,14 @@ fn ralph_value_suggestions(
             context,
             "[name]",
             "optional loop name; omit to use current/default behavior",
+        ),
+        ("panel", None) => fixed_value_suggestions(
+            "Ralph panel",
+            context,
+            &[
+                ("on", "show floating progress panel"),
+                ("off", "hide floating progress panel"),
+            ],
         ),
         ("pause" | "stop" | "resume" | "cancel" | "archive", None) => {
             hint_suggestion("Ralph loop name", context, "<name>", "target loop name")
@@ -3330,6 +3359,12 @@ mod tests {
         assert_eq!(view.title, "Ralph");
         assert!(view.items.iter().any(|item| item.label == "start"));
         assert!(view.items.iter().any(|item| item.label == "record"));
+        assert!(view.items.iter().any(|item| item.label == "panel"));
+        let panel_values = suggestions("/ralph panel ", 13)
+            .unwrap_or_else(|| panic!("missing ralph panel suggestions"));
+        assert_eq!(panel_values.title, "Ralph panel");
+        assert!(panel_values.items.iter().any(|item| item.label == "on"));
+        assert!(panel_values.items.iter().any(|item| item.label == "off"));
         assert!(view
             .items
             .iter()
@@ -3519,6 +3554,22 @@ mod tests {
         assert_eq!(
             parse_command("/ralph once"),
             Some(ParsedCommand::Ralph(RalphCommand::Once { name: None }))
+        );
+        assert_eq!(
+            parse_command("/ralph panel"),
+            Some(ParsedCommand::Ralph(RalphCommand::Panel { setting: None }))
+        );
+        assert_eq!(
+            parse_command("/ralph panel on"),
+            Some(ParsedCommand::Ralph(RalphCommand::Panel {
+                setting: Some(RalphPanelSetting::On),
+            }))
+        );
+        assert_eq!(
+            parse_command("/ralph panel off"),
+            Some(ParsedCommand::Ralph(RalphCommand::Panel {
+                setting: Some(RalphPanelSetting::Off),
+            }))
         );
         assert_eq!(
             parse_command("/ralph steer build-ext prioritize docs"),
