@@ -434,7 +434,7 @@ fn render_chord_hint(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme:
     }
     let keymap = &state.settings.keymap;
     let title = format!(
-        " {}: Enter queue • / draft • s settings • q send panel • b btw • Esc cancel ",
+        " {}: Enter queue • / draft • s settings • q send • b btw • Esc cancel ",
         keymap.chord_key
     );
     frame.render_widget(
@@ -478,7 +478,9 @@ fn extension_surfaces(
         .iter()
         .filter(|surface| surface.entry.contribution.surface == surface_kind)
         .filter(|surface| seen_effective_id.insert(surface.effective_id.as_str().to_string()))
-        .filter(|surface| seen_contribution_id.insert(surface.entry.contribution.id.as_str().to_string()))
+        .filter(|surface| {
+            seen_contribution_id.insert(surface.entry.contribution.id.as_str().to_string())
+        })
         .filter(|surface| {
             !state
                 .extension_ui
@@ -1853,10 +1855,12 @@ fn command_suggestion_lines(
                     command_category_style(item.category, theme),
                 ));
             }
-            spans.push(Span::styled(
-                format!(" {}", item.label),
-                suggestion_label_style(active, theme),
-            ));
+            let label_style = if item.category == CommandSuggestionCategory::Hint {
+                command_category_style(item.category, theme)
+            } else {
+                suggestion_label_style(active, theme)
+            };
+            spans.push(Span::styled(format!(" {}", item.label), label_style));
             spans.push(Span::styled(
                 format!("  {}", item.summary),
                 suggestion_muted_style(theme),
@@ -1883,6 +1887,7 @@ fn command_category_style(category: CommandSuggestionCategory, theme: &Theme) ->
         CommandSuggestionCategory::Model
         | CommandSuggestionCategory::File
         | CommandSuggestionCategory::Value => theme.badge_muted,
+        CommandSuggestionCategory::Hint => theme.badge_accent,
     };
     badge_style(color, theme).add_modifier(Modifier::BOLD)
 }
@@ -3907,8 +3912,20 @@ fn render_settings_overlay(
         SettingsPage::Theme => render_theme_settings(frame, sections[0], settings, theme),
         SettingsPage::Notify => render_notify_settings(frame, sections[0], settings, theme),
         SettingsPage::Compaction => render_compaction_settings(frame, sections[0], settings, theme),
-        SettingsPage::NotifyModelPicker => render_sub_model_panel(frame, sections[0], &settings.sub_model_picker, " Summary Model ", theme),
-        SettingsPage::CompactionModelPicker => render_sub_model_panel(frame, sections[0], &settings.sub_model_picker, " Compaction Model ", theme),
+        SettingsPage::NotifyModelPicker => render_sub_model_panel(
+            frame,
+            sections[0],
+            &settings.sub_model_picker,
+            " Summary Model ",
+            theme,
+        ),
+        SettingsPage::CompactionModelPicker => render_sub_model_panel(
+            frame,
+            sections[0],
+            &settings.sub_model_picker,
+            " Compaction Model ",
+            theme,
+        ),
         SettingsPage::Extensions => render_settings_extensions_page(frame, sections[0], theme),
     }
     render_settings_footer(frame, sections[1], settings, theme);
@@ -4251,7 +4268,11 @@ pub(crate) fn render_model_panel(
     );
 }
 
-fn model_search_line(selector: &crate::model_selector::ModelSelector, width: usize, theme: &Theme) -> Line<'static> {
+fn model_search_line(
+    selector: &crate::model_selector::ModelSelector,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
     if selector.search_active {
         return Line::from(truncate_spans_to_width(
             vec![
@@ -4503,7 +4524,7 @@ fn render_auth_settings(
     let content_width = area.width.saturating_sub(2) as usize;
     let mut lines = vec![Line::styled(
         truncate_with_ellipsis(
-            "Extension auth/runtime readiness. Recommended: /9router setup. Built-in provider auth commands have been removed.",
+            "Extension auth/runtime readiness. Recommended: /router setup. Built-in provider auth commands have been removed.",
             content_width,
         ),
         Style::default().fg(theme.muted),
@@ -5305,7 +5326,7 @@ fn render_settings_footer(
         SettingsPage::Tools => {
             "arrows/jk move • g toggle global • p/Space/Enter toggle project • Esc/← back"
         }
-        SettingsPage::Auth => "arrows/jk move • recommended /9router setup • extension readiness only • Esc/← back",
+        SettingsPage::Auth => "arrows/jk move • recommended /router setup • extension readiness only • Esc/← back",
         SettingsPage::Theme => "arrows/jk move • Enter preview • p project • g global • r reset project • R reset global • Esc/← back",
         SettingsPage::Notify if settings.notify.edit.is_some() => "type value • Enter save • Esc cancel edit",
         SettingsPage::Notify => "arrows/jk move • Enter edit/toggle • p project • g global • x clear • Esc/← back",
@@ -6759,7 +6780,7 @@ mod tests {
             .collect::<String>();
         assert!(text.contains("Ctrl-O:"));
         assert!(text.contains("s settings"));
-        assert!(text.contains("q send panel"));
+        assert!(text.contains("q send"));
         assert!(text.contains("Esc cancel"));
     }
 

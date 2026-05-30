@@ -26,7 +26,7 @@ test -x "$PREFIX/bin/oino"
 
 test -f "$HOME_DIR/.oino/settings.json"
 for package_id in \
-  oino.9router \
+  oino.router \
   oino.footer_status \
   oino.ralph_loop \
   oino.mode_sandbox \

@@ -15,7 +15,7 @@ Then run `/reload` or restart Oino.
 
 | Package | What it adds |
 | --- | --- |
-| `oino.9router` | `/9router` setup, dashboard, status, model refresh, restart, and password reset commands. |
+| `oino.router` | `/router` setup, dashboard, status, model refresh, restart, and password reset commands. |
 | `oino.footer_status` | Extra footer status lines for model, thinking, working directory, and context. |
 | `oino.ralph_loop` | Iterative development loops controlled from inside Oino. |
 | `oino.mode_sandbox` | `/mode <profile>` sandbox/profile controls. |

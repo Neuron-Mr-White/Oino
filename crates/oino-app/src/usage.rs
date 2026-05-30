@@ -289,7 +289,7 @@ pub(crate) async fn account_usage_progress_placeholder(
                     (
                         ProviderUsageStatus::NotConfigured,
                         format!(
-                            "account usage unavailable until {} is configured; use `/9router setup` and select a `9router:<model>` model, or install an extension account-usage provider. Historical env var: {}",
+                            "account usage unavailable until {} is configured; use `/router setup` and select a `router:<model>` model, or install an extension account-usage provider. Historical env var: {}",
                             provider.display_name, env_var
                         ),
                     )
@@ -321,7 +321,7 @@ pub(crate) async fn account_usage_progress_placeholder(
                     (
                         ProviderUsageStatus::NotConfigured,
                         format!(
-                            "account usage unavailable for {} from core; use `/9router setup` and select a `9router:<model>` model, or install an extension account-usage provider. Historical env var: {}. {removed_detail}",
+                            "account usage unavailable for {} from core; use `/router setup` and select a `router:<model>` model, or install an extension account-usage provider. Historical env var: {}. {removed_detail}",
                             provider.display_name, env_var
                         ),
                     )

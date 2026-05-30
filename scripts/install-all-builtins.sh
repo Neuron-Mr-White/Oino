@@ -24,7 +24,7 @@ target_dir = Path(sys.argv[2])
 settings_path = Path(sys.argv[3])
 
 package_ids = [
-    "oino.9router",
+    "oino.router",
     "oino.footer_status",
     "oino.ralph_loop",
     "oino.mode_sandbox",

@@ -4083,7 +4083,7 @@ mod tests {
                     models_url: None,
                     health_url: Some("http://localhost:20128/v1/models".into()),
                     api_key: ProviderRuntimeSecret::EnvVar {
-                        name: "NINEROUTER_API_KEY".into(),
+                        name: "OMNIROUTE_API_KEY".into(),
                     },
                     headers: BTreeMap::new(),
                     model_id: ProviderRuntimeModelIdPolicy::StripProviderPrefix,

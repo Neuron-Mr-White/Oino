@@ -76,12 +76,12 @@ pub(crate) fn help_entries(keymap: &KeymapConfig) -> Vec<HelpEntry> {
         HelpEntry::item("/settings", "open settings pages"),
         HelpEntry::item("/theme", "open theme selection"),
         HelpEntry::item(
-            "/9router setup / /9router status / /9router models",
-            "extension command from enabled builtin:9router; provider auth/router setup",
+            "/router setup / /router status / /router models",
+            "extension command from enabled builtin:router; provider auth/router setup",
         ),
         HelpEntry::item(
             "/auth / /account / /auth quickstart",
-            "extension auth/runtime readiness plus 9router-first setup guidance",
+            "extension auth/runtime readiness plus OmniRoute-first setup guidance",
         ),
         HelpEntry::item(
             "/usage",

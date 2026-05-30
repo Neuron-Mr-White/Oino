@@ -1,7 +1,7 @@
 {
-  "id": "oino.9router",
-  "package_id": "oino.9router",
-  "display_name": "Oino 9router",
+  "id": "oino.router",
+  "package_id": "oino.router",
+  "display_name": "Oino OmniRoute",
   "version": "0.1.0",
   "oino": "^0.1",
   "protocol": 1,
@@ -11,10 +11,10 @@
   "permissions": {
     "tools": [],
     "commands": [
-      "9router"
+      "router"
     ],
     "host_capabilities": [
-      "9router_external_endpoint"
+      "omniroute_external_endpoint"
     ],
     "ui": [],
     "filesystem": [],
@@ -27,11 +27,11 @@
       "hosts": [
         "localhost",
         "127.0.0.1",
-        "ghcr.io"
+        "registry.hub.docker.com"
       ]
     },
     "secrets": [
-      "ninerouter_api_key"
+      "omniroute_api_key"
     ],
     "session_persistence": [],
     "provider_mutation": [],
@@ -40,26 +40,26 @@
   "contributes": {
     "commands": [
       {
-        "id": "9router",
-        "description": "Set up, inspect, and manage the Oino 9router auth/router endpoint.",
-        "handler": "9router.command"
+        "id": "router",
+        "description": "Set up, inspect, and manage the Oino OmniRoute auth/router endpoint.",
+        "handler": "router.command"
       }
     ],
     "auth_providers": [
       {
-        "id": "auth.9router",
-        "provider_id": "9router",
-        "display_name": "9router",
+        "id": "auth.router",
+        "provider_id": "router",
+        "display_name": "OmniRoute",
         "auth_flow": "custom",
-        "setup_url": "http://localhost:20128/dashboard",
-        "handler": "9router.setup"
+        "setup_url": "http://localhost:20128",
+        "handler": "router.setup"
       }
     ],
     "providers": [
       {
-        "id": "provider.9router",
-        "provider_id": "9router",
-        "display_name": "9router",
+        "id": "provider.router",
+        "provider_id": "router",
+        "display_name": "OmniRoute",
         "model_ids": [
           "kr/claude-sonnet-4.5",
           "kr/glm-5",
@@ -81,23 +81,23 @@
           "health_url": "http://localhost:20128/v1/models",
           "api_key": {
             "kind": "env_var",
-            "name": "NINEROUTER_API_KEY"
+            "name": "OMNIROUTE_API_KEY"
           },
           "model_id": "strip_provider_prefix",
           "config": {
             "base_url_key": "base_url",
             "health_url_key": "health_url",
-            "base_url_env": ["NINEROUTER_BASE_URL"],
-            "health_url_env": ["NINEROUTER_HEALTH_URL"]
+            "base_url_env": ["OMNIROUTE_BASE_URL"],
+            "health_url_env": ["OMNIROUTE_HEALTH_URL"]
           }
         }
       }
     ],
     "resources": [
       {
-        "id": "9router_setup_skill",
+        "id": "router_setup_skill",
         "kind": "skill",
-        "path": "resources/skills/9router-setup/SKILL.md"
+        "path": "resources/skills/router-setup/SKILL.md"
       }
     ],
     "tools": [],
@@ -112,7 +112,7 @@
   },
   "metadata": {
     "oino_builtin_optional": true,
-    "known_good_image": "ghcr.io/decolua/9router:0.4.59",
-    "runtime_contract": "Oino routes provider prefix 9router:* to an OpenAI-compatible 9router endpoint. Current iteration supports external endpoint mode; managed sidecar, persistent pinning, and automatic rollback are implemented in later iterations."
+    "known_good_image": "diegosouzapw/omniroute:3.8.7",
+    "runtime_contract": "Oino routes provider prefix router:* to an OpenAI-compatible OmniRoute endpoint. Current iteration supports external endpoint mode; managed sidecar, persistent pinning, and automatic rollback are implemented in later iterations."
   }
 }

@@ -3119,30 +3119,30 @@ mod tests {
         let home = temp.path().join("home");
         let project = temp.path().join("project");
         write_json(
-            &project.join(".oino/extensions/9router/oino.extension.json"),
+            &project.join(".oino/extensions/router/oino.extension.json"),
             r#"{
-              "id": "builtin.9router-test",
+              "id": "builtin.router-test",
               "version": "1.0.0",
               "oino": "^0.1",
               "runtime": { "kind": "wasm", "entry": "plugin.wasm" },
               "contributes": {
                 "providers": [{
-                  "id": "provider.9router",
-                  "provider_id": "9router",
-                  "display_name": "9router",
+                  "id": "provider.router",
+                  "provider_id": "router",
+                  "display_name": "OmniRoute",
                   "model_ids": ["kr/claude-sonnet-4.5"],
                   "runtime": {
                     "protocol": "open_ai_chat_completions",
                     "base_url": "http://localhost:20128/v1",
                     "health_url": "http://localhost:20128/v1/models",
-                    "api_key": { "kind": "env_var", "name": "NINEROUTER_API_KEY" },
+                    "api_key": { "kind": "env_var", "name": "OMNIROUTE_API_KEY" },
                     "model_id": "strip_provider_prefix"
                   }
                 }],
                 "auth_providers": [{
-                  "id": "auth.9router",
-                  "provider_id": "9router",
-                  "display_name": "9router",
+                  "id": "auth.router",
+                  "provider_id": "router",
+                  "display_name": "OmniRoute",
                   "auth_flow": "custom",
                   "setup_url": "http://localhost:20128/dashboard"
                 }]
@@ -3153,7 +3153,7 @@ mod tests {
         let mut policy = RegistryPolicy::safe_defaults();
         policy
             .enabled_extensions
-            .insert(ExtensionId::new("builtin.9router-test")?);
+            .insert(ExtensionId::new("builtin.router-test")?);
         let config = ExtensionManagerConfig::new(
             Version::parse("0.1.0")?,
             ExtensionDiscovery::from_home_and_project(&home, &project),
@@ -3170,7 +3170,7 @@ mod tests {
             .runtime
             .is_some());
         assert!(snapshot.contributions.iter().any(|record| {
-            record.family == RegistryFamily::AuthProvider && record.id.as_str() == "auth.9router"
+            record.family == RegistryFamily::AuthProvider && record.id.as_str() == "auth.router"
         }));
         Ok(())
     }
