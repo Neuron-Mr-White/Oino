@@ -639,9 +639,10 @@ fn builtin_footer_status_label(
         && (id == FOOTER_STATUS_TOP_ID || surface.effective_id.as_str() == FOOTER_STATUS_TOP_ID)
     {
         return Some(format!(
-            "model: {} • thinking: {}",
+            "model: {} • thinking: {} • {}",
             state.settings.selected_model_label(),
-            thinking_label(state.settings.selected_thinking_level)
+            thinking_label(state.settings.selected_thinking_level),
+            usage_footer_label(state)
         ));
     }
     if owner_is_builtin_footer
@@ -650,7 +651,11 @@ fn builtin_footer_status_label(
     {
         let cwd = state.runtime_status.working_directory.trim();
         let cwd = if cwd.is_empty() { "." } else { cwd };
-        return Some(format!("cwd: {cwd} • {}", context_status_label(state)));
+        return Some(format!(
+            "cwd: {cwd} • branch: {} • {}",
+            branch_footer_label(state),
+            context_status_label(state)
+        ));
     }
     None
 }
@@ -764,6 +769,31 @@ fn render_extension_main_panel(frame: &mut Frame<'_>, area: Rect, state: &TuiSta
             .style(panel_style(theme)),
     );
     frame.render_widget(paragraph, area);
+}
+
+fn branch_footer_label(state: &TuiState) -> String {
+    state
+        .runtime_status
+        .git_branch
+        .as_deref()
+        .filter(|branch| !branch.trim().is_empty())
+        .unwrap_or("-")
+        .to_string()
+}
+
+fn usage_footer_label(state: &TuiState) -> String {
+    let Some(report) = state.usage.report.as_ref() else {
+        return "cost: pending".into();
+    };
+    if report.session.reported_turns == 0 {
+        return "cost: no usage".into();
+    }
+    let tokens = compact_count(report.session.total_tokens as usize);
+    if report.session.costs.is_empty() {
+        format!("usage: {tokens} tok • cost: n/a")
+    } else {
+        format!("usage: {tokens} tok • cost: {}", report.session.costs.join(", "))
+    }
 }
 
 fn render_extension_footer(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {
@@ -6206,7 +6236,19 @@ mod tests {
             "loaded",
         );
         state.set_working_directory("/repo/oino");
+        state.set_git_branch(Some("main".into()));
         state.set_context_tokens(Some(10_000));
+        state.set_usage_report(crate::app::UsagePanelReport {
+            generated_at_unix: 1,
+            status_line: "Usage: 1 reported turn(s), 3 tokens, 0.0004 USD".into(),
+            session: crate::app::UsagePanelSession {
+                reported_turns: 1,
+                total_tokens: 3,
+                costs: vec!["0.0004 USD".into()],
+                ..Default::default()
+            },
+            providers: Vec::new(),
+        });
         state.set_extension_ui_surfaces(vec![
             extension_surface(
                 FOOTER_STATUS_TOP_ID,
@@ -6251,7 +6293,9 @@ mod tests {
         let text = buffer_text(&buffer);
         assert!(text.contains("model: Test Model"));
         assert!(text.contains("thinking: High"));
+        assert!(text.contains("cost: 0.0004 USD"));
         assert!(text.contains("cwd: /repo/oino"));
+        assert!(text.contains("branch: main"));
         assert!(text.contains("context: 10%/100k"));
         assert!(!text.contains("Extension Status"));
         assert_eq!(transcript_visible_lines(&state, 100, 24), 15);

@@ -2855,6 +2855,7 @@ async fn run_tui(
     let mut state = TuiState::with_settings(initial_model.clone(), initial_thinking_level);
     state.set_btw_configured_model(tool_settings.global.btw_model.clone(), &initial_model);
     state.set_working_directory(path_to_string(&cwd));
+    state.set_git_branch(current_git_branch(&cwd));
     let agent_mode = Arc::new(Mutex::new(state.agent_mode.clone()));
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
     if mode_sandbox_enabled_in_snapshot(&extension_snapshot) {
@@ -5221,6 +5222,20 @@ fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn current_git_branch(cwd: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .arg("branch")
+        .arg("--show-current")
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!branch.is_empty()).then_some(branch)
+}
+
 async fn run_non_interactive(
     cli: CliArgs,
     harness: Harness,
@@ -6710,6 +6725,7 @@ async fn save_tui_session(state: &mut TuiState, harness: &Harness, path: &std::p
 
 async fn refresh_tui_context_status(state: &mut TuiState, harness: &Harness, cwd: &Path) {
     state.set_working_directory(path_to_string(cwd));
+    state.set_git_branch(current_git_branch(cwd));
     match harness.inspect_full_prompt().await {
         Ok(snapshot) => state.set_context_tokens(Some(snapshot.token_count)),
         Err(_) => state.set_context_tokens(None),

@@ -844,6 +844,7 @@ impl TranscriptScroll {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RuntimeStatusState {
     pub working_directory: String,
+    pub git_branch: Option<String>,
     pub context_tokens: Option<usize>,
 }
 
@@ -1811,6 +1812,10 @@ impl TuiState {
 
     pub fn set_working_directory(&mut self, working_directory: impl Into<String>) {
         self.runtime_status.working_directory = working_directory.into();
+    }
+
+    pub fn set_git_branch(&mut self, git_branch: Option<String>) {
+        self.runtime_status.git_branch = git_branch;
     }
 
     pub const fn set_context_tokens(&mut self, context_tokens: Option<usize>) {

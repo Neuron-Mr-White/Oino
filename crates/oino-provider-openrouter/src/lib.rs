@@ -580,10 +580,17 @@ pub struct OpenRouterChatRequest {
     pub model: String,
     pub messages: Vec<OpenRouterChatMessage>,
     pub stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<OpenRouterStreamOptions>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<OpenRouterTool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<OpenRouterReasoning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OpenRouterStreamOptions {
+    pub include_usage: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -661,6 +668,9 @@ pub fn build_openai_compatible_chat_request(
         model: request.model.name.clone(),
         messages,
         stream: true,
+        stream_options: Some(OpenRouterStreamOptions {
+            include_usage: true,
+        }),
         tools,
         reasoning: openrouter_reasoning(request.thinking_level),
     })
@@ -1021,10 +1031,17 @@ struct OpenRouterUsage {
     completion_tokens: u64,
     #[serde(default)]
     total_tokens: u64,
+    cost: Option<f64>,
+    #[serde(default)]
+    cost_currency: Option<String>,
 }
 
 impl From<OpenRouterUsage> for Usage {
     fn from(value: OpenRouterUsage) -> Self {
+        let cost = value.cost.map(|amount| oino_types::UsageCost {
+            amount,
+            currency: value.cost_currency.unwrap_or_else(|| "USD".into()),
+        });
         Self {
             input_tokens: value.prompt_tokens,
             output_tokens: value.completion_tokens,
@@ -1032,7 +1049,7 @@ impl From<OpenRouterUsage> for Usage {
             cache_write_tokens: value
                 .total_tokens
                 .saturating_sub(value.prompt_tokens + value.completion_tokens),
-            cost: None,
+            cost,
         }
     }
 }
@@ -1311,6 +1328,12 @@ mod tests {
         };
         assert_eq!(built.model, "deepseek-chat");
         assert_eq!(
+            built.stream_options,
+            Some(OpenRouterStreamOptions {
+                include_usage: true
+            })
+        );
+        assert_eq!(
             config.endpoint(),
             "https://api.deepseek.com/chat/completions"
         );
@@ -1553,7 +1576,7 @@ mod tests {
         let mut parser = SseEventParser::new();
         let input = concat!(
             "data: {\"id\":\"req-1\",\"model\":\"m\",\"choices\":[{\"delta\":{\"content\":\"hel\"},\"finish_reason\":null}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3}}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2,\"total_tokens\":3,\"cost\":0.00042}}\n\n",
             "data: {\"id\":\"req-1\",\"model\":\"m\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
             "data: [DONE]\n\n"
         );
@@ -1565,7 +1588,7 @@ mod tests {
             delta: "hel".into()
         }));
         assert!(events.contains(&AssistantStreamEvent::TextDelta { delta: "lo".into() }));
-        assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::Usage { usage } if usage.input_tokens == 1 && usage.output_tokens == 2)));
+        assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::Usage { usage } if usage.input_tokens == 1 && usage.output_tokens == 2 && usage.cost.as_ref().is_some_and(|cost| cost.amount == 0.00042 && cost.currency == "USD"))));
         assert!(events.iter().any(|event| matches!(
             event,
             AssistantStreamEvent::Done {

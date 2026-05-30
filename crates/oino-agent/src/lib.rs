@@ -334,7 +334,8 @@ impl EventSink for SubscriberSink {
 mod tests {
     use super::*;
     use oino_agent_loop::{
-        AgentLoopConfig, FauxStream, StreamProvider, ToolExecutionMode, VecEventSink,
+        AgentLoopConfig, AbortSignal, FauxStream, StreamProvider, StreamRequest,
+        ToolExecutionMode, VecEventSink,
     };
     use oino_types::{AssistantStreamEvent, ContentBlock, StopReason};
 
@@ -515,5 +516,80 @@ mod tests {
         let output = agent.prompt(Message::user_text("hi")).await;
         assert!(output.is_ok());
         assert!(*seen.lock().await > 0);
+    }
+
+    /// Smoketest: each call echoes 1-3, each ralph only can echo n+1 once.
+    #[tokio::test]
+    async fn ralph_smoketest_echoes_n_plus_one_once() {
+        let counter = Arc::new(Mutex::new(0u32));
+        let stream = Arc::new(EchoCounterStream {
+            counter: Arc::clone(&counter),
+        }) as Arc<dyn StreamProvider>;
+
+        // 1st prompt → counter=1, echoes "1"
+        let agent = Agent::new(AgentLoopConfig::new(Model::new("test", "echo"), stream.clone()));
+        let output = agent.prompt(Message::user_text("start")).await.unwrap();
+        let last_text = assistant_text(&output.messages);
+        assert_eq!(last_text, "1", "first echo must be 1");
+        assert_eq!(*counter.lock().await, 1);
+
+        // 2nd prompt → counter=2, echoes "2"
+        let output = agent.prompt(Message::user_text("next")).await.unwrap();
+        let last_text = assistant_text(&output.messages);
+        assert_eq!(last_text, "2", "second echo must be 2");
+        assert_eq!(*counter.lock().await, 2);
+
+        // 3rd prompt → counter=3, echoes "3"
+        let output = agent.prompt(Message::user_text("next")).await.unwrap();
+        let last_text = assistant_text(&output.messages);
+        assert_eq!(last_text, "3", "third echo must be 3");
+        assert_eq!(*counter.lock().await, 3);
+
+        // 4th prompt → capped at 3 (only 1-3 allowed)
+        let output = agent.prompt(Message::user_text("next")).await.unwrap();
+        let last_text = assistant_text(&output.messages);
+        assert_eq!(last_text, "3", "must stay at 3, no further increment");
+        assert_eq!(*counter.lock().await, 3);
+    }
+
+    fn assistant_text(messages: &[Message]) -> String {
+        messages
+            .iter()
+            .rev()
+            .find_map(|msg| match msg {
+                Message::Assistant { content, .. } => content.iter().find_map(|block| match block {
+                    ContentBlock::Text { text } => Some(text.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    /// Stream provider that echoes a shared counter (capped at 3).
+    struct EchoCounterStream {
+        counter: Arc<Mutex<u32>>,
+    }
+
+    #[async_trait::async_trait]
+    impl StreamProvider for EchoCounterStream {
+        async fn stream(
+            &self,
+            _request: StreamRequest,
+            _signal: AbortSignal,
+        ) -> LoopResult<Vec<AssistantStreamEvent>> {
+            let mut c = self.counter.lock().await;
+            if *c < 3 {
+                *c += 1;
+            }
+            let text = c.to_string();
+            Ok(vec![
+                AssistantStreamEvent::TextDelta { delta: text },
+                AssistantStreamEvent::Done {
+                    stop_reason: StopReason::EndTurn,
+                    provider: None,
+                },
+            ])
+        }
     }
 }
