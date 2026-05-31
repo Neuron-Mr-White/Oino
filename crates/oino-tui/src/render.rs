@@ -3126,10 +3126,11 @@ fn sessions_lines(
             .enumerate()
             .filter_map(|(offset, item_index)| {
                 let item = state.sessions.items.get(*item_index)?;
-                let display_index = range.start + offset;
+                let _display_index = range.start + offset;
                 let active = *item_index == state.sessions.cursor;
                 Some(sessions_item_line(
-                    display_index,
+                    *item_index,
+                    state.sessions.items.len(),
                     item,
                     active,
                     content_width,
@@ -3169,6 +3170,7 @@ fn sessions_search_line(state: &TuiState, width: usize, theme: &Theme) -> Line<'
 
 fn sessions_item_line(
     index: usize,
+    total: usize,
     item: &SessionListItem,
     active: bool,
     width: usize,
@@ -3176,7 +3178,8 @@ fn sessions_item_line(
 ) -> Line<'static> {
     let marker = arrow_marker(active);
     let current = if item.current { "●" } else { " " };
-    let prefix = format!("{marker} {current} {}. ", index.saturating_add(1));
+    let number = total.saturating_sub(index).max(1);
+    let prefix = format!("{marker} {current} {number}. ");
     let description = if item.preview.trim().is_empty() {
         item.cwd.clone()
     } else {
@@ -7320,6 +7323,44 @@ mod tests {
         assert!(lines.iter().all(|line| line.width() <= width), "{lines:?}");
         assert!(lines.iter().any(|line| line.contains('…')), "{lines:?}");
         assert!(!joined.contains("disappear"));
+    }
+
+    #[test]
+    fn sessions_overlay_numbers_latest_to_oldest_descending() {
+        let theme = Theme::default();
+        let mut state = TuiState::new();
+        state.set_sessions(vec![
+            SessionListItem {
+                id: "latest".into(),
+                name: "latest".into(),
+                cwd: "/repo".into(),
+                message_count: 1,
+                preview: "newest".into(),
+                current: false,
+            },
+            SessionListItem {
+                id: "middle".into(),
+                name: "middle".into(),
+                cwd: "/repo".into(),
+                message_count: 1,
+                preview: "middle".into(),
+                current: false,
+            },
+            SessionListItem {
+                id: "oldest".into(),
+                name: "oldest".into(),
+                cwd: "/repo".into(),
+                message_count: 1,
+                preview: "oldest".into(),
+                current: false,
+            },
+        ]);
+
+        let lines = line_texts(sessions_lines(&state, 80, 8, &theme));
+        let joined = lines.join("\n");
+        assert!(joined.contains(" 3. latest"), "{joined}");
+        assert!(joined.contains(" 2. middle"), "{joined}");
+        assert!(joined.contains(" 1. oldest"), "{joined}");
     }
 
     #[test]
