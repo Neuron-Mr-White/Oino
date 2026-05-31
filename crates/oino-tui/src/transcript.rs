@@ -153,7 +153,7 @@ fn minimal_transcript_blocks(
     error: Option<&str>,
     width: usize,
     thinking_mode: CollapseMode,
-    _tool_mode: CollapseMode,
+    tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Arc<Vec<Line<'static>>>> {
     let mut blocks =
@@ -174,6 +174,7 @@ fn minimal_transcript_blocks(
                 user_index,
                 width,
                 thinking_mode,
+                tool_mode,
                 theme,
                 theme_hash,
                 relation_hash,
@@ -191,6 +192,7 @@ fn minimal_transcript_blocks(
                 user_index,
                 width,
                 thinking_mode,
+                tool_mode,
                 theme,
                 theme_hash,
                 relation_hash,
@@ -379,6 +381,7 @@ fn cached_minimal_message_lines(
     user_index: usize,
     width: usize,
     thinking_mode: CollapseMode,
+    tool_mode: CollapseMode,
     theme: &Theme,
     theme_hash: u64,
     relation_hash: u64,
@@ -392,7 +395,7 @@ fn cached_minimal_message_lines(
         style: chat_style_key(ChatStyle::Minimal),
         width,
         thinking_mode: collapse_mode_key(thinking_mode),
-        tool_mode: 0,
+        tool_mode: collapse_mode_key(tool_mode),
         message_hash: message_cache_hash(message),
         context_hash,
         theme_hash,
@@ -405,6 +408,7 @@ fn cached_minimal_message_lines(
             user_index,
             width,
             thinking_mode,
+            tool_mode,
             theme,
         )
     })
@@ -679,7 +683,7 @@ fn agentic_tool_result_lines(
             .fg(theme.tool_success)
             .add_modifier(Modifier::BOLD)
     };
-    if tool_mode == CollapseMode::Collapse {
+    if tool_mode == CollapseMode::Collapse && !message.is_error {
         return vec![agentic_collapsed_tool_result_line(
             message,
             tool_name,
@@ -845,6 +849,7 @@ fn minimal_message_lines(
     user_index: usize,
     width: usize,
     thinking_mode: CollapseMode,
+    tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     if message.is_user() {
@@ -878,7 +883,7 @@ fn minimal_message_lines(
         return minimal_assistant_lines(message, messages, index, width, thinking_mode, theme);
     }
     if message.role.starts_with("tool:") {
-        return minimal_tool_result_lines(message, messages, theme);
+        return minimal_tool_result_lines(message, messages, width, tool_mode, theme);
     }
     if message.is_error {
         return prefixed_text_lines(
@@ -945,6 +950,8 @@ fn minimal_assistant_lines(
 fn minimal_tool_result_lines(
     message: &MessageView,
     messages: &[MessageView],
+    width: usize,
+    tool_mode: CollapseMode,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let tool_name = tool_name_from_role(&message.role);
@@ -985,7 +992,17 @@ fn minimal_tool_result_lines(
             tool_muted_style(theme),
         ));
     }
-    vec![line]
+    let mut lines = vec![line];
+    if message.is_error {
+        lines.extend(prefixed_text_lines(
+            &tool_output_for_display(message, tool_mode).unwrap_or_else(|| message.content.clone()),
+            width,
+            Line::from("    "),
+            Line::from("    "),
+            theme.error,
+        ));
+    }
+    lines
 }
 
 fn message_text_style(message: &MessageView, theme: &Theme) -> Style {
@@ -1216,14 +1233,15 @@ fn display_tool_name(name: &str) -> String {
 }
 
 fn tool_output_for_display(message: &MessageView, tool_mode: CollapseMode) -> Option<String> {
-    if message.content == "<empty>" || tool_mode == CollapseMode::Collapse {
+    if message.content == "<empty>" {
         return None;
     }
     Some(match tool_mode {
         CollapseMode::Full => message.content.clone(),
         CollapseMode::Truncate => truncate_display(&message.content),
+        CollapseMode::Collapse if message.is_error => message.content.clone(),
         CollapseMode::Collapse => {
-            unreachable!("collapsed tool output is rendered as a summary line")
+            unreachable!("collapsed non-error tool output is rendered as a summary line")
         }
     })
 }
@@ -1658,7 +1676,8 @@ fn bubble_lines(
     if is_empty_assistant_message(message, thinking_mode) {
         return Vec::new();
     }
-    if message.role.starts_with("tool:") && tool_mode == CollapseMode::Collapse {
+    if message.role.starts_with("tool:") && tool_mode == CollapseMode::Collapse && !message.is_error
+    {
         return vec![chat_collapsed_tool_result_line(
             message,
             available_width,
@@ -1820,6 +1839,7 @@ fn display_message_content(message: &MessageView, tool_mode: CollapseMode) -> St
         match tool_mode {
             CollapseMode::Full => message.content.clone(),
             CollapseMode::Truncate => truncate_display(&message.content),
+            CollapseMode::Collapse if message.is_error => message.content.clone(),
             CollapseMode::Collapse => {
                 collapsed_tool_summary(message, tool_name_from_role(&message.role), None, false)
             }
@@ -2360,11 +2380,57 @@ mod tests {
         );
         let plain_lines = lines.iter().map(plain).collect::<Vec<_>>();
 
-        assert_eq!(plain_lines.len(), 1);
+        assert_eq!(plain_lines.len(), 2);
         assert_eq!(
             plain_lines[0],
             "  ✗ Read /home/pi/project/oino · io error: Is a directory (os error 21)"
         );
-        assert!(!plain_lines[0].contains("[collapsed]"));
+        assert_eq!(
+            plain_lines[1],
+            "    tool error: io error: Is a directory (os error 21)"
+        );
+        assert!(plain_lines.iter().all(|line| !line.contains("[collapsed]")));
+    }
+
+    #[test]
+    fn tool_errors_render_details_across_chat_styles_even_when_tools_collapsed() {
+        let messages = vec![
+            assistant_tool_calls(vec![ToolCallView {
+                id: oino_types::OinoId::from_u128(5),
+                name: "bash".into(),
+                arguments: json!({ "command": "cargo test" }),
+            }]),
+            tool_result(25, 5, "bash", "stdout line\nstderr line\nstatus 101", true),
+        ];
+
+        for style in [ChatStyle::Chat, ChatStyle::Agentic, ChatStyle::Minimal] {
+            let lines = transcript_lines(
+                &messages,
+                None,
+                120,
+                CollapseMode::Full,
+                CollapseMode::Collapse,
+                style,
+                &Theme::default(),
+            );
+            let rendered = lines.iter().map(plain).collect::<Vec<_>>().join("\n");
+
+            assert!(
+                rendered.contains("tool:bash") || rendered.contains("Bash cargo test"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("stdout line"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("stderr line"),
+                "style {style:?}: {rendered}"
+            );
+            assert!(
+                rendered.contains("status 101"),
+                "style {style:?}: {rendered}"
+            );
+        }
     }
 }
