@@ -1099,7 +1099,7 @@ dependencies = [
 
 [[package]]
 name = "oino-agent"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "futures",
@@ -1113,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "oino-agent-loop"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "futures",
@@ -1128,7 +1128,7 @@ dependencies = [
 
 [[package]]
 name = "oino-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "crossterm",
@@ -1153,6 +1153,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -1162,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "oino-auth"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dirs",
  "serde",
@@ -1174,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "oino-env"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "serde",
@@ -1185,7 +1186,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-builtins"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oino-agent-loop",
  "oino-env",
@@ -1202,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "semver",
  "serde",
@@ -1212,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-manager"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oino-extension-builtins",
  "oino-extension-core",
@@ -1225,7 +1226,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "oino-agent-loop",
@@ -1241,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oino-extension-core",
  "oino-extension-manager",
@@ -1255,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "oino-harness"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "oino-agent",
@@ -1272,11 +1273,11 @@ dependencies = [
 
 [[package]]
 name = "oino-provider-catalog"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "oino-provider-openrouter"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "futures",
@@ -1294,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "oino-resource"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dirs",
  "tempfile",
@@ -1304,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "oino-session"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oino-extension-core",
  "oino-types",
@@ -1318,7 +1319,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tools"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "oino-agent-loop",
@@ -1334,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crossterm",
  "mmdflux",
@@ -1354,7 +1355,7 @@ dependencies = [
 
 [[package]]
 name = "oino-types"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "schemars",
  "serde",

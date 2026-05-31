@@ -24,7 +24,19 @@
 
 ## Install
 
-macOS/Linux/Unix shell:
+Pure Oino install (core binary only, no optional extension packages):
+
+```bash
+sh -c 'u=https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u"; elif command -v wget >/dev/null 2>&1; then wget -qO- "$u"; else echo "Install curl or wget, or run from a source checkout: OINO_EXTENSIONS=none sh scripts/install.sh" >&2; exit 1; fi' | OINO_EXTENSIONS=none sh
+```
+
+Interactive install (choose built-in and additional extensions):
+
+```bash
+sh -c 'u=https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install-interactive.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u"; elif command -v wget >/dev/null 2>&1; then wget -qO- "$u"; else echo "Install curl or wget, or run from a source checkout: sh scripts/install-interactive.sh" >&2; exit 1; fi' | sh
+```
+
+Default macOS/Linux/Unix install (core plus all built-in extensions):
 
 ```bash
 sh -c 'u=https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u"; elif command -v wget >/dev/null 2>&1; then wget -qO- "$u"; else echo "Install curl or wget, or run from a source checkout: sh scripts/install.sh" >&2; exit 1; fi' | sh
@@ -39,11 +51,13 @@ irm https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install.
 From a source checkout:
 
 ```bash
-sh scripts/install.sh        # macOS/Linux/Unix
-.\scripts\install.ps1       # Windows PowerShell
+sh scripts/install.sh              # macOS/Linux/Unix, core plus all built-ins
+OINO_EXTENSIONS=none sh scripts/install.sh  # pure Oino core only
+sh scripts/install-interactive.sh  # choose built-in/additional extensions
+.\scripts\install.ps1             # Windows PowerShell
 ```
 
-The installer builds Oino, places the binary in `~/.local/bin` (`$HOME\.local\bin` on Windows), and enables the built-in extension pack. Set `OINO_PREFIX` to install somewhere else.
+The Unix installer prefers a tagged release binary, verifies checksums when available, and falls back to `cargo build --release` from source for unsupported devices. It places the binary in `~/.local/bin` (`$HOME\.local\bin` on Windows). Set `OINO_PREFIX` to install somewhere else, `OINO_REF=vX.Y.Z` to pin a tag, and `OINO_EXTENSIONS=none|all|router,vcc` to control built-in extension installation.
 
 ## Uninstall
 
@@ -107,6 +121,9 @@ oino
 /account     show provider/runtime status
 /usage       show usage totals
 /extensions  manage extensions
+/update check            check latest tagged Oino release
+/update                  update core binary; restart Oino to use it
+/update extensions       hot-update installed extension packages
 /reload      rescan resources, extensions, themes, and cached model lists
 ```
 
@@ -120,6 +137,7 @@ User guides:
 - [Built-in extensions](docs/built-in-extensions.md)
 - [Keymap](docs/keymap.md)
 - [Configuration](docs/configurations.md)
+- [Install and updates](docs/update.md)
 
 Developer guides:
 

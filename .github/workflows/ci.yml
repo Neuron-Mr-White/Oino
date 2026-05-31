@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ['v*']
 
 jobs:
   docs-and-install:
@@ -47,3 +48,100 @@ jobs:
         run: cargo check --workspace
       - name: Test
         run: cargo test --workspace
+
+  release-binaries:
+    name: release binary (${{ matrix.target }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bin: oino
+          - os: macos-14
+            target: aarch64-apple-darwin
+            bin: oino
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: oino.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binary
+        run: cargo build --release -p oino-app --bin oino
+      - name: Stage release binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          suffix=""
+          if [ "${{ matrix.bin }}" = "oino.exe" ]; then suffix=".exe"; fi
+          cp "target/release/${{ matrix.bin }}" "dist/oino-${{ matrix.target }}${suffix}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oino-${{ matrix.target }}
+          path: dist/*
+
+  release-assets:
+    name: release manifest and assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Bundle extension packages
+        run: |
+          tar -czf dist/oino-extension-bundles.tar.gz extensions/built-in extensions/additional
+      - name: Generate checksums and release manifest
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          sha256sum oino-* > checksums.txt
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          tag = os.environ['TAG']
+          repo = os.environ['REPO']
+          base = f"https://github.com/{repo}/releases/download/{tag}"
+          artifacts = []
+          for path in sorted(Path('.').glob('oino-*')):
+              if path.name == 'oino-extension-bundles.tar.gz':
+                  continue
+              target = path.name.removeprefix('oino-').removesuffix('.exe')
+              artifacts.append({
+                  'target': target,
+                  'kind': 'binary',
+                  'url': f"{base}/{path.name}",
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'size': path.stat().st_size,
+              })
+          bundle = Path('oino-extension-bundles.tar.gz')
+          manifest = {
+              'tag': tag,
+              'version': tag.removeprefix('v'),
+              'artifacts': artifacts,
+              'source': {'url': f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz"},
+              'extensions': {
+                  'url': f"{base}/{bundle.name}",
+                  'sha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
+                  'built_in_root': 'extensions/built-in',
+                  'additional_root': 'extensions/additional',
+              },
+          }
+          Path('release-manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
+          PY
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/oino-*
+            dist/checksums.txt
+            dist/release-manifest.json

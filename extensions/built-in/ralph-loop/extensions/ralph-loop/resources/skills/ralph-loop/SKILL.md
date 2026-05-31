@@ -13,7 +13,7 @@ Use this skill to run Oino-native Ralph loops. A Ralph loop keeps a stable task 
 2. Read `.oino/ralph/<loop-name>/steering.md` for urgent human steering before choosing work.
 3. Work on only the requested number of checklist items for the current iteration.
 4. Update the task file with concise progress notes and any changed checklist boxes.
-5. Preserve Oino conventions: project state stays under `.oino/`, user-facing skills stay under `.oino/skills/`, and optional built-in packages stay under `crates/oino-extension-builtins/packages/`.
+5. Preserve Oino conventions: project state stays under `.oino/`, user-facing skills stay under `.oino/skills/`, and optional built-in packages stay under `extensions/built-in/`.
 6. Do not assume Docker, outside tool paths, or external `ralph-loop` packages. Oino owns the loop state and controller behavior.
 7. If blocked by a decision, stop and emit a `DECIDE` promise rather than guessing.
 

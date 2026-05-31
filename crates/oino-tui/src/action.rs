@@ -116,6 +116,7 @@ pub enum TuiAction {
         scope: ToolSettingsScope,
     },
     UpdateExtensionPackages,
+    OinoUpdate(crate::command::OinoUpdateCommand),
     RemoveExtensionPackage {
         package_id: String,
         scope: ToolSettingsScope,

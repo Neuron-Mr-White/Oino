@@ -4167,6 +4167,11 @@ impl TuiState {
                 self.status = "Updating installed extension packages…".into();
                 TuiAction::UpdateExtensionPackages
             }
+            ParsedCommand::OinoUpdate(command) => {
+                self.clear_error();
+                self.status = "Updating Oino…".into();
+                TuiAction::OinoUpdate(command)
+            }
             ParsedCommand::Compact => {
                 self.clear_error();
                 self.status = "Compacting session…".into();

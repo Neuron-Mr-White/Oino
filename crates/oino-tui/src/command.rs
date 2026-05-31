@@ -147,6 +147,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Settings,
     },
     CommandSpec {
+        name: "/update",
+        summary: "Update Oino from GitHub releases",
+        kind: CommandKind::Settings,
+    },
+    CommandSpec {
         name: "/prompts",
         summary: "Browse prompt templates",
         kind: CommandKind::Resource,
@@ -194,6 +199,7 @@ pub enum ParsedCommand {
     Inspect,
     Extensions,
     ExtensionsUpdate,
+    OinoUpdate(OinoUpdateCommand),
     Compact,
     CompactMethod(CompactMethodOverride),
     CompactThreshold(Option<u8>),
@@ -214,6 +220,15 @@ pub enum ParsedCommand {
     Usage,
     SetSessionTitle(String),
     Settings(SettingsCommand),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OinoUpdateCommand {
+    Check,
+    CheckTag(Option<String>),
+    Core { tag: Option<String>, source: bool },
+    Extensions,
+    All { tag: Option<String>, source: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -772,6 +787,42 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
         ["/extensions", "update"] | ["/extensions", "upgrade"] => {
             Some(ParsedCommand::ExtensionsUpdate)
         }
+        ["/update"] => Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
+            tag: None,
+            source: false,
+        })),
+        ["/update", "check" | "--check"] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Check))
+        }
+        ["/update", "check" | "--check", "--tag", tag]
+        | ["/update", "check" | "--check", "tag", tag] => Some(ParsedCommand::OinoUpdate(
+            OinoUpdateCommand::CheckTag(Some((*tag).to_string())),
+        )),
+        ["/update", "extensions" | "extension" | "--extensions"] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Extensions))
+        }
+        ["/update", "all" | "--all"] => Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::All {
+            tag: None,
+            source: false,
+        })),
+        ["/update", "source" | "--source"] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
+                tag: None,
+                source: true,
+            }))
+        }
+        ["/update", "--tag", tag] | ["/update", "tag", tag] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::Core {
+                tag: Some((*tag).to_string()),
+                source: false,
+            }))
+        }
+        ["/update", "all", "--tag", tag] | ["/update", "all", "tag", tag] => {
+            Some(ParsedCommand::OinoUpdate(OinoUpdateCommand::All {
+                tag: Some((*tag).to_string()),
+                source: false,
+            }))
+        }
         ["/usage"] => Some(ParsedCommand::Usage),
         ["/compact"] => Some(ParsedCommand::Compact),
         ["/compact", "vcc"] => Some(ParsedCommand::CompactMethod(CompactMethodOverride::Vcc)),
@@ -925,6 +976,7 @@ Show session/provider usage totals.".into()),
         ["/auth"] => Some(auth_help()),
         ["/account"] => Some(descriptive_command_help("Account", "/account [provider]", "Show current extension/provider status. Provider is a provider id such as openrouter or router.")),
         ["/extensions"] => Some(enum_help("Extensions", "/extensions <subcommand>", &[("update", "Update installed extension packages") ])),
+        ["/update"] => Some(enum_help("Oino update", "/update [check|all|extensions|source|--tag <tag>]", &[("check", "Check latest GitHub release manifest"), ("all", "Update core binary and extensions"), ("extensions", "Update installed extension packages"), ("source", "Show source/cargo fallback guidance")])),
         ["/ralph"] => Some(ralph_command_help()),
         ["/ralph", "record"] => Some(enum_help("Ralph record", "/ralph record <name> <promise> [note]", &[("continue", "record a continue promise"), ("complete", "record completion"), ("blocked", "record blocked state with reason"), ("decide", "record decision needed"), ("done", "record a completed task id") ])),
         ["/router"] => Some(router_help()),

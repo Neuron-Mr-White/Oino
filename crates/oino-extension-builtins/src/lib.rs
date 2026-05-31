@@ -70,7 +70,8 @@ use std::{
 use thiserror::Error;
 
 pub const BUILTIN_EXTENSION_ID: &str = "oino.builtins";
-pub const OPTIONAL_BUILTIN_PACKAGES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/packages");
+pub const OPTIONAL_BUILTIN_PACKAGES_DIR: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../extensions/built-in");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OptionalBuiltinPackage {

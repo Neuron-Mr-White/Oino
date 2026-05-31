@@ -47,6 +47,7 @@ mod notify;
 mod provider_runtime;
 mod ralph_loop;
 mod router;
+mod updater;
 mod usage;
 mod user_settings;
 mod vcc;
@@ -166,6 +167,7 @@ struct CliArgs {
     settings: bool,
     model: Option<String>,
     session: Option<OinoId>,
+    update: Option<updater::OinoUpdatePlan>,
     input: Option<String>,
 }
 
@@ -181,6 +183,7 @@ impl CliArgs {
             settings: false,
             model: None,
             session: None,
+            update: None,
             input: None,
         };
         let mut input_parts = Vec::new();
@@ -209,6 +212,13 @@ impl CliArgs {
                     parsed.session = Some(value.parse().map_err(|_| {
                         AppError::InvalidArguments(format!("invalid session uuid `{value}`"))
                     })?);
+                }
+                "update" => {
+                    let rest = args.collect::<Vec<_>>();
+                    parsed.update = Some(updater::parse_oino_update_args(
+                        &rest.iter().map(String::as_str).collect::<Vec<_>>(),
+                    )?);
+                    break;
                 }
                 value if value.starts_with('-') => {
                     return Err(AppError::InvalidArguments(format!(
@@ -270,6 +280,8 @@ enum AppError {
     Resource(#[from] oino_resource::ResourceError),
     #[error(transparent)]
     Ralph(#[from] ralph_loop::RalphLoopError),
+    #[error(transparent)]
+    Update(#[from] updater::UpdateError),
     #[error("invalid arguments: {0}")]
     InvalidArguments(String),
     #[error("invalid model identifier `{0}`; expected provider:model-id")]
@@ -555,7 +567,7 @@ async fn main() -> Result<(), AppError> {
     )
     .await;
 
-    if cli.settings || cli.input.is_some() {
+    if cli.settings || cli.input.is_some() || cli.update.is_some() {
         return run_non_interactive(
             cli,
             harness,
@@ -1468,6 +1480,65 @@ fn looks_like_git_url(source: &str) -> bool {
         || source.starts_with("git://")
         || source.starts_with("git@")
         || source.ends_with(".git")
+}
+
+async fn execute_oino_update_command(
+    command: oino_tui::OinoUpdateCommand,
+    paths: &ResourcePaths,
+    cwd: &Path,
+    settings: &ToolSettingsSnapshot,
+) -> Result<String, AppError> {
+    let plan = match command {
+        oino_tui::OinoUpdateCommand::Check => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Check,
+            ..Default::default()
+        },
+        oino_tui::OinoUpdateCommand::CheckTag(tag) => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Check,
+            tag,
+            ..Default::default()
+        },
+        oino_tui::OinoUpdateCommand::Core { tag, source } => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Core,
+            tag,
+            force_source: source,
+        },
+        oino_tui::OinoUpdateCommand::Extensions => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::Extensions,
+            ..Default::default()
+        },
+        oino_tui::OinoUpdateCommand::All { tag, source } => updater::OinoUpdatePlan {
+            mode: updater::OinoUpdateMode::All,
+            tag,
+            force_source: source,
+        },
+    };
+
+    execute_oino_update_plan(plan, paths, cwd, settings).await
+}
+
+async fn execute_oino_update_plan(
+    plan: updater::OinoUpdatePlan,
+    paths: &ResourcePaths,
+    cwd: &Path,
+    settings: &ToolSettingsSnapshot,
+) -> Result<String, AppError> {
+    match plan.mode {
+        updater::OinoUpdateMode::Check => updater::check_for_update(&plan)
+            .await
+            .map_err(AppError::from),
+        updater::OinoUpdateMode::Extensions => {
+            Ok(update_installed_extension_packages(paths, cwd, settings))
+        }
+        updater::OinoUpdateMode::Core => updater::install_core_update(&plan)
+            .await
+            .map_err(AppError::from),
+        updater::OinoUpdateMode::All => {
+            let core = updater::install_core_update(&plan).await?;
+            let extensions = update_installed_extension_packages(paths, cwd, settings);
+            Ok(format!("{core}\n\n{extensions}"))
+        }
+    }
 }
 
 fn update_installed_extension_packages(
@@ -4007,6 +4078,28 @@ async fn run_tui(
                 state.append_command_output("/extensions update", message.clone());
                 state.status = compact_status_line(&message);
             }
+            TuiAction::OinoUpdate(command) => {
+                match execute_oino_update_command(command, &resource_paths, &cwd, &tool_settings)
+                    .await
+                {
+                    Ok(message) => {
+                        reload_tui_everything(
+                            &mut state,
+                            &harness,
+                            &resource_paths,
+                            &cwd,
+                            &mut tool_settings,
+                            &mut extension_models,
+                            &mut extension_runtime_provider_ids,
+                            Some(tx.clone()),
+                        )
+                        .await;
+                        state.append_command_output("/update", message.clone());
+                        state.status = compact_status_line(&message);
+                    }
+                    Err(err) => state.set_error(format!("Update failed: {err}")),
+                }
+            }
             TuiAction::RemoveExtensionPackage { package_id, scope } => {
                 let mut manager =
                     extension_manager_with_current_policy(&resource_paths, &tool_settings);
@@ -6319,6 +6412,13 @@ async fn execute_runtime_command(
     extension_runtime_provider_ids: &BTreeSet<String>,
 ) -> Result<String, AppError> {
     let message = match command {
+        ParsedCommand::OinoUpdate(command) => {
+            let settings = load_tool_settings(&resource_catalog.paths).await;
+            let cwd = std::env::current_dir()
+                .unwrap_or_else(|_| resource_catalog.paths.project_root.clone());
+            return execute_oino_update_command(command, &resource_catalog.paths, &cwd, &settings)
+                .await;
+        }
         ParsedCommand::Help => {
             return Ok("Oino help is available in the TUI with `/help`. Common commands: /sessions, /new, /settings, /model, /thinking, /title. In the composer, use @ to fuzzy-search file paths.".into());
         }
