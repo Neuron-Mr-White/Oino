@@ -3757,6 +3757,14 @@ async fn run_tui(
                 .await
                 {
                     Ok(message) => {
+                        let extension_snapshot =
+                            load_extension_snapshot(&resource_paths, &tool_settings);
+                        apply_extension_snapshot_to_tui_state(
+                            &mut state,
+                            &extension_snapshot,
+                            &tool_settings,
+                            &resource_paths,
+                        );
                         state.clear_error();
                         state.status = message;
                     }
