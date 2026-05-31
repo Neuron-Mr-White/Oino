@@ -601,7 +601,7 @@ fn agentic_assistant_lines(
         ));
     }
     if message.content != "<empty>" {
-        lines.extend(prefixed_markdown_lines(
+        lines.extend(assistant_prefixed_markdown_lines(
             &message.content,
             width,
             Line::from(Span::styled("• ", Style::default().fg(theme.muted))),
@@ -918,7 +918,7 @@ fn minimal_assistant_lines(
     }
     if message.content != "<empty>" {
         lines.push(Line::from(""));
-        lines.extend(render_markdown_lines(
+        lines.extend(assistant_markdown_lines(
             &message.content,
             width,
             assistant_text_style(theme),
@@ -1493,17 +1493,51 @@ fn message_content_lines(
         }
     }
     if message.is_assistant() && content != "<empty>" {
-        let (cleaned, promises) = extract_ralph_promises(content);
-        let mut lines = render_markdown_lines(&cleaned, width, assistant_text_style(theme), theme);
-        lines.extend(
-            promises
-                .into_iter()
-                .map(|(kind, tag)| ralph_promise_line(kind, &tag, theme)),
-        );
-        return lines;
+        return assistant_markdown_lines(content, width, assistant_text_style(theme), theme);
     } else {
         plain_wrapped_lines(content, width, message_text_style(message, theme))
     }
+}
+
+fn assistant_markdown_lines(
+    content: &str,
+    width: usize,
+    base_style: Style,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let (cleaned, promises) = extract_ralph_promises(content);
+    let mut lines = render_markdown_lines(&cleaned, width, base_style, theme);
+    lines.extend(
+        promises
+            .into_iter()
+            .map(|(kind, tag)| ralph_promise_line(kind, &tag, theme)),
+    );
+    lines
+}
+
+fn assistant_prefixed_markdown_lines(
+    content: &str,
+    width: usize,
+    initial_prefix: Line<'static>,
+    subsequent_prefix: Line<'static>,
+    base_style: Style,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let (cleaned, promises) = extract_ralph_promises(content);
+    let mut lines = prefixed_markdown_lines(
+        &cleaned,
+        width,
+        initial_prefix,
+        subsequent_prefix,
+        base_style,
+        theme,
+    );
+    lines.extend(
+        promises
+            .into_iter()
+            .map(|(kind, tag)| ralph_promise_line(kind, &tag, theme)),
+    );
+    lines
 }
 
 fn extract_ralph_promises(content: &str) -> (String, Vec<(RalphPromiseKind, String)>) {
