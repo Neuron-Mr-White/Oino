@@ -1634,15 +1634,17 @@ fn ralph_promise_label(kind: RalphPromiseKind) -> &'static str {
 }
 
 fn ralph_promise_style(kind: RalphPromiseKind, theme: &Theme) -> Style {
-    let (fg, bg) = match kind {
-        RalphPromiseKind::Continue => (Color::Black, Color::Cyan),
-        RalphPromiseKind::Complete => (Color::Black, Color::Green),
-        RalphPromiseKind::Blocked => (Color::White, Color::Red),
-        RalphPromiseKind::Decide => (Color::Black, Color::Yellow),
-        RalphPromiseKind::Done => (Color::Black, Color::Magenta),
+    let fg = match kind {
+        RalphPromiseKind::Continue => Color::Cyan,
+        RalphPromiseKind::Complete => Color::Green,
+        RalphPromiseKind::Blocked => Color::Red,
+        RalphPromiseKind::Decide => Color::Yellow,
+        RalphPromiseKind::Done => Color::Magenta,
     };
-    let _ = theme;
-    Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
+    Style::default()
+        .fg(fg)
+        .bg(theme.bg)
+        .add_modifier(Modifier::BOLD)
 }
 
 fn plain_wrapped_lines(text: &str, width: usize, style: Style) -> Vec<Line<'static>> {
