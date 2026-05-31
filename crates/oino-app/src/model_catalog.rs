@@ -809,7 +809,8 @@ fn cached_to_option(provider_id: &str, model: CachedModel) -> ModelOption {
         .with_display_name(model.display_name)
         .with_provider_label(provider_label)
         .with_availability(model.availability)
-        .with_thinking_levels(thinking_levels_for_supported_parameters(
+        .with_thinking_levels(thinking_levels_for_model(
+            provider_id,
             &model.supported_parameters,
         ))
         .with_context_length(model.context_length)
@@ -840,6 +841,13 @@ fn merge_model_options(
         }
     }
     primary
+}
+
+fn thinking_levels_for_model(provider_id: &str, parameters: &[String]) -> Vec<ThinkingLevel> {
+    if provider_id == ROUTER_PROVIDER_ID {
+        return all_thinking_levels();
+    }
+    thinking_levels_for_supported_parameters(parameters)
 }
 
 fn thinking_levels_for_supported_parameters(parameters: &[String]) -> Vec<ThinkingLevel> {
@@ -1011,6 +1019,25 @@ mod tests {
             thinking_levels_for_supported_parameters(&["temperature".into()]),
             vec![ThinkingLevel::Off]
         );
+    }
+
+    #[test]
+    fn router_models_allow_thinking_without_supported_parameter_metadata() {
+        let option = cached_to_option(
+            ROUTER_PROVIDER_ID,
+            CachedModel {
+                id: "cc/claude-sonnet-4-5".into(),
+                display_name: "Claude Sonnet 4.5".into(),
+                route_provider: Some("cc".into()),
+                availability: ModelAvailability::Configured,
+                supported_parameters: Vec::new(),
+                context_length: Some(200_000),
+                pricing: None,
+            },
+        );
+
+        assert_eq!(option.id, "router:cc/claude-sonnet-4-5");
+        assert_eq!(option.thinking_levels, all_thinking_levels());
     }
 
     #[test]

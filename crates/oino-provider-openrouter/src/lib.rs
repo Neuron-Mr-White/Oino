@@ -1098,8 +1098,6 @@ struct OpenRouterUsage {
     #[serde(default)]
     completion_tokens: u64,
     #[serde(default)]
-    total_tokens: u64,
-    #[serde(default)]
     prompt_tokens_details: Option<OpenRouterPromptTokensDetails>,
     cost: Option<f64>,
     #[serde(default)]
@@ -1108,8 +1106,10 @@ struct OpenRouterUsage {
 
 #[derive(Debug, Deserialize)]
 struct OpenRouterPromptTokensDetails {
+    #[serde(default, alias = "cached_tokens")]
+    cache_read_tokens: u64,
     #[serde(default)]
-    cached_tokens: u64,
+    cache_write_tokens: u64,
 }
 
 impl From<OpenRouterUsage> for Usage {
@@ -1118,17 +1118,17 @@ impl From<OpenRouterUsage> for Usage {
             amount,
             currency: value.cost_currency.unwrap_or_else(|| "USD".into()),
         });
-        let cache_read_tokens = value
+        let (cache_read_tokens, cache_write_tokens) = value
             .prompt_tokens_details
             .as_ref()
-            .map_or(0, |details| details.cached_tokens);
+            .map_or((0, 0), |details| {
+                (details.cache_read_tokens, details.cache_write_tokens)
+            });
         Self {
             input_tokens: value.prompt_tokens,
             output_tokens: value.completion_tokens,
             cache_read_tokens,
-            cache_write_tokens: value
-                .total_tokens
-                .saturating_sub(value.prompt_tokens + value.completion_tokens),
+            cache_write_tokens,
             cost,
         }
     }
@@ -1687,7 +1687,7 @@ mod tests {
         let mut parser = SseEventParser::new();
         let input = concat!(
             "data: {\"id\":\"req-1\",\"model\":\"m\",\"choices\":[{\"delta\":{\"content\":\"hel\"},\"finish_reason\":null}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":4},\"cost\":0.00042}}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":4,\"cache_write_tokens\":3},\"cost\":0.00042}}\n\n",
             "data: {\"id\":\"req-1\",\"model\":\"m\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
             "data: [DONE]\n\n"
         );
@@ -1699,7 +1699,7 @@ mod tests {
             delta: "hel".into()
         }));
         assert!(events.contains(&AssistantStreamEvent::TextDelta { delta: "lo".into() }));
-        assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::Usage { usage } if usage.input_tokens == 10 && usage.output_tokens == 2 && usage.cache_read_tokens == 4 && usage.cost.as_ref().is_some_and(|cost| cost.amount == 0.00042 && cost.currency == "USD"))));
+        assert!(events.iter().any(|event| matches!(event, AssistantStreamEvent::Usage { usage } if usage.input_tokens == 10 && usage.output_tokens == 2 && usage.cache_read_tokens == 4 && usage.cache_write_tokens == 3 && usage.cost.as_ref().is_some_and(|cost| cost.amount == 0.00042 && cost.currency == "USD"))));
         assert!(events.iter().any(|event| matches!(
             event,
             AssistantStreamEvent::Done {

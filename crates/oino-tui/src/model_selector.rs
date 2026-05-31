@@ -318,7 +318,10 @@ impl ModelSelector {
             let candidates = model_filter_candidate_indices(&self.models, query);
             fuzzy_indices(&candidates, query, FuzzyMode::Text, None, |idx| {
                 let m = &self.models[*idx];
-                format!("{} {} {}", m.provider, m.id, m.display_name)
+                format!(
+                    "{} {} {} {}",
+                    m.provider, m.provider_label, m.id, m.display_name
+                )
             })
             .into_iter()
             .map(|ci| candidates[ci])

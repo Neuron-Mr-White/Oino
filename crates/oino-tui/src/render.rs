@@ -810,9 +810,13 @@ fn cache_hit_rate_footer_label(input_tokens: u64, cache_read_tokens: u64) -> Str
     if input_tokens == 0 {
         return "n/a".into();
     }
+    let denominator = input_tokens.saturating_add(cache_read_tokens);
+    if denominator == 0 {
+        return "n/a".into();
+    }
     format!(
         "{:.1}%",
-        (cache_read_tokens as f64 / input_tokens as f64) * 100.0
+        (cache_read_tokens as f64 / denominator as f64) * 100.0
     )
 }
 
@@ -6490,7 +6494,7 @@ mod tests {
             status_line: "Usage: 1 reported turn(s), 3 tokens, 0.0004 USD".into(),
             session: crate::app::UsagePanelSession {
                 reported_turns: 1,
-                input_tokens: 10,
+                input_tokens: 5,
                 cache_read_tokens: 5,
                 total_tokens: 15,
                 costs: vec!["0.0004 USD".into()],
