@@ -900,11 +900,24 @@ fn render_extension_floating_panels(
     if height < 3 {
         return;
     }
-    let panel_area = Rect {
-        x: area.x + area.width.saturating_sub(width) / 2,
-        y: area.y + area.height.saturating_sub(height) / 2,
-        width,
-        height,
+    let has_top_right_surface = surfaces.iter().any(|surface| {
+        surface.entry.contribution.layout.slot == "floating:top-right"
+            || surface.entry.contribution.layout.slot == "top-right"
+    });
+    let panel_area = if has_top_right_surface {
+        Rect {
+            x: area.x + area.width.saturating_sub(width),
+            y: area.y,
+            width,
+            height,
+        }
+    } else {
+        Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        }
     };
     frame.render_widget(Clear, panel_area);
     let lines = extension_surface_lines(
@@ -6268,6 +6281,32 @@ mod tests {
         assert!(text.contains("Extension Panel"));
         assert!(text.contains("Process Details"));
         assert!(text.contains("Process Suggestions"));
+        Ok(())
+    }
+
+    #[test]
+    fn floating_panel_top_right_slot_anchors_to_top_right() -> Result<(), Box<dyn Error>> {
+        let mut state = TuiState::new();
+        state.set_extension_ui_surfaces(vec![extension_surface(
+            "ui.float",
+            "process-manager",
+            UiSurfaceKind::FloatingPanel,
+            "Process Details",
+            "floating:top-right",
+            10,
+        )?]);
+
+        let buffer = draw_state(80, 24, &state);
+        let width = buffer.area.width as usize;
+        let row = buffer
+            .content()
+            .iter()
+            .take(width)
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(row.trim_start().starts_with('┌'));
+        assert!(row.contains("Extension Panel"));
+        assert!(row.trim_end().ends_with('┐'));
         Ok(())
     }
 

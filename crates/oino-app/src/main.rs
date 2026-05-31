@@ -1791,7 +1791,7 @@ fn ralph_panel_surface(project_root: &Path) -> Option<ActiveContribution<UiSurfa
                 title,
                 state_schema: Some("object".into()),
                 layout: UiLayoutPolicy {
-                    slot: "ralph".into(),
+                    slot: "floating:top-right".into(),
                     priority: 100,
                     min_width: 24,
                     min_height: 3,
