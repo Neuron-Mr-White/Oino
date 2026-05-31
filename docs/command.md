@@ -45,7 +45,7 @@ Inside the BTW panel, submit `/new` with no other text to reset that panel.
 /account           show provider/runtime status
 /router setup     set up the recommended local router
 /router dashboard open the dashboard URL
-/router models    fetch and cache models
+/router fetch-models    fetch and cache models
 ```
 
 ## Prompts and skills

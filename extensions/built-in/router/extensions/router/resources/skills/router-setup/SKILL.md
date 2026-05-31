@@ -12,7 +12,7 @@ Use this skill when the user wants to configure Oino through OmniRoute instead o
 1. Check whether the extension is installed:
    - Ask user to open `/extensions` and install `builtin:router` if needed.
 2. Have them run `/router setup`. It initializes Oino's OmniRoute config and starts the managed sidecar when Docker/Podman is available. Use `/router guide` only when they want read-only instructions.
-   - External endpoint mode: use `/router use-external` and start OmniRoute yourself.
+   - External endpoint mode: use `/router use-external` in the TUI for the URL/API-key onboarding form, or `/router use-external <url> <api-key>` in shell/non-interactive mode.
    - If Docker/Podman is missing, `/router setup` prompts them to run `/router install-podman` or install a runtime manually.
 3. For external endpoint mode, guide them to start OmniRoute:
 
@@ -26,12 +26,12 @@ Use this skill when the user wants to configure Oino through OmniRoute instead o
    ```
 
 4. Tell them to open `http://localhost:20128/dashboard` and configure providers/combos there.
-5. If OmniRoute requires API keys for `/v1/*`, have them set `OMNIROUTE_API_KEY`.
+5. If OmniRoute requires API keys for `/v1/*`, have them paste it into `/router use-external`; Oino verifies `/v1/models`, saves the key as provider `router`, and refreshes the model cache. `OMNIROUTE_API_KEY` remains a supported env alternative.
 6. Verify and refresh Oino's model cache with:
 
    ```text
    /router status
-   /router models
+   /router fetch-models
    ```
 
 7. Select a live/cached model:

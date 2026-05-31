@@ -39,7 +39,7 @@ Oino uses extensions for provider setup. The recommended path is the built-in Om
 7. Refresh models:
 
    ```text
-   /router models
+   /router fetch-models
    ```
 
 8. Pick a model:
@@ -54,13 +54,13 @@ Oino uses extensions for provider setup. The recommended path is the built-in Om
 /auth              show auth/readiness status
 /account           show current provider/runtime status
 /router status    check the local OmniRoute sidecar
-/router models    fetch and cache OmniRoute models
+/router fetch-models    fetch and cache OmniRoute models
 /router restart   restart the managed sidecar
 ```
 
 ## Model cache
 
-Oino caches fetched model lists under `~/.oino/model-catalogs/`. `/router models` fetches fresh OmniRoute models and updates the visible list immediately. `/reload` reloads the cached list; it does not fetch from the network.
+Oino caches fetched model lists under `~/.oino/model-catalogs/`. `/router fetch-models` fetches fresh OmniRoute models and updates the visible list immediately. `/reload` reloads the cached list; it does not fetch from the network.
 
 ## If login fails
 

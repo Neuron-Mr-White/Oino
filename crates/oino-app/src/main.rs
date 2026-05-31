@@ -89,7 +89,7 @@ use oino_agent_loop::{
     AbortSignal, AgentEvent, BeforeToolCallResult, BoxFuture, LoopError, StreamProvider,
     StreamRequest, Tool, ToolCall, ToolDefinition, ToolResult, ToolUpdateCallback,
 };
-use oino_auth::{AuthError, AuthStorage, ProviderAuthSpec};
+use oino_auth::{AuthConfig, AuthCredential, AuthError, AuthStorage, ProviderAuthSpec};
 #[cfg(test)]
 use oino_extension_core::ProviderContribution;
 use oino_extension_core::{
@@ -131,7 +131,10 @@ use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, OinoId, Thi
 use provider_runtime::ProviderRouter;
 use provider_runtime::{build_runtime_provider, provider_status_for_model_identifier};
 use ratatui::{backend::CrosstermBackend, Terminal};
-use router::{execute_router_command_input, load_router_config, resolved_router_base_url};
+use router::{
+    check_router_health_with_api_key, execute_router_command_input, load_router_config,
+    normalize_external_router_endpoint, resolved_router_base_url, save_router_config, RouterMode,
+};
 #[cfg(test)]
 use router::{
     format_extension_readiness_detail as format_router_extension_readiness_detail,
@@ -521,7 +524,9 @@ async fn main() -> Result<(), AppError> {
         config.model = model;
     }
 
-    let auth = AuthStorage::default_file()?;
+    let auth = AuthStorage::new(
+        AuthConfig::default_file()?.with_env_override("OMNIROUTE_API_KEY", "router"),
+    );
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let resource_paths = ResourcePaths::for_cwd(&cwd)?;
     migrate_legacy_router_builtin(&resource_paths).await;
@@ -2640,9 +2645,70 @@ fn fixture_runtime_for_tool(
     Some(Arc::new(Mutex::new(Box::new(runtime))))
 }
 
+async fn configure_router_use_external_from_inline_command(
+    input: &str,
+    auth: &AuthStorage,
+) -> Option<Result<String, AppError>> {
+    let parts = input.split_whitespace().collect::<Vec<_>>();
+    let (url, api_key) = match parts.as_slice() {
+        ["/router", "use-external", url, api_key] | ["/router", "external", url, api_key] => {
+            (*url, *api_key)
+        }
+        _ => return None,
+    };
+    Some(async move { verify_and_save_router_external(url, api_key, auth).await }.await)
+}
+
+async fn verify_and_save_router_external(
+    url: &str,
+    api_key: &str,
+    auth: &AuthStorage,
+) -> Result<String, AppError> {
+    let mut config = load_router_config()?;
+    let urls = normalize_external_router_endpoint(url)?;
+    config.mode = RouterMode::External;
+    config.base_url = urls.base_url;
+    config.dashboard_url = urls.dashboard_url;
+    let health = check_router_health_with_api_key(&config, Some(api_key)).await;
+    if !health.reachable || health.status.as_deref() != Some("200 OK") {
+        return Err(AppError::InvalidArguments(format!(
+            "OmniRoute external endpoint verification failed: {}",
+            health
+                .error
+                .or(health.status)
+                .unwrap_or_else(|| "unknown error".into())
+        )));
+    }
+    let model_count = health.model_count.ok_or_else(|| {
+        AppError::InvalidArguments(
+            "OmniRoute external endpoint returned 200 OK but no model list was found".into(),
+        )
+    })?;
+    let path = save_router_config(&config)?;
+    auth.set_credential("router", AuthCredential::api_key(api_key))
+        .await
+        .map_err(|err| AppError::InvalidArguments(err.to_string()))?;
+    let update = model_catalog::refresh_openai_proxy_update_with_api_key(
+        model_catalog::ROUTER_PROVIDER_ID,
+        "router",
+        &config.base_url,
+        Some(api_key),
+    )
+    .await;
+    Ok(format!(
+        "OmniRoute external endpoint verified and configured.\nConfig: {}\nEndpoint: {}\nDashboard: {}\nModels fetched: {}\nModel cache: {}\nAPI key: saved to Oino auth storage as provider `router`.\nUse models like `router:kr/claude-sonnet-4.5`.",
+        path.display(),
+        config.base_url,
+        config.dashboard_url,
+        model_count,
+        update.status
+    ))
+}
+
 async fn execute_extension_command(
     input: &str,
     snapshot: &ExtensionManagerSnapshot,
+    auth: Option<&AuthStorage>,
 ) -> Option<Result<String, AppError>> {
     let trimmed = input.trim();
     let command_name = trimmed
@@ -2674,6 +2740,13 @@ async fn execute_extension_command(
         .is_some_and(|package_id| package_id.as_str() == ROUTER_PACKAGE_ID)
         || handler == "router.command"
     {
+        if let Some(auth) = auth {
+            if let Some(result) =
+                configure_router_use_external_from_inline_command(trimmed, auth).await
+            {
+                return Some(result);
+            }
+        }
         return Some(execute_router_command_input(trimmed).await);
     }
     let extension_id = active.entry.metadata.extension_id.clone()?;
@@ -3843,9 +3916,12 @@ async fn run_tui(
             }
             TuiAction::RunExtensionCommand { input } => {
                 let snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
-                match execute_extension_command(&input, &snapshot).await {
+                match execute_extension_command(&input, &snapshot, Some(&auth)).await {
                     Some(Ok(message)) => {
-                        let refresh_models = input.trim_start().starts_with("/router models");
+                        let refresh_models = matches!(
+                            input.split_whitespace().collect::<Vec<_>>().as_slice(),
+                            ["/router", "models"] | ["/router", "fetch-models"]
+                        );
                         state.clear_error();
                         state.status = compact_status_line(&message);
                         state.append_command_output(input, message);
@@ -3860,6 +3936,20 @@ async fn run_tui(
                     }
                     None => {
                         state.set_error(format!("Extension command is not enabled: {input}"));
+                        state.status = HELP_STATUS.into();
+                    }
+                }
+            }
+            TuiAction::SaveRouterExternal { url, api_key } => {
+                match verify_and_save_router_external(&url, &api_key, &auth).await {
+                    Ok(message) => {
+                        state.clear_error();
+                        state.status = compact_status_line(&message);
+                        state
+                            .append_command_output("/router use-external <url> <api-key>", message);
+                    }
+                    Err(err) => {
+                        state.set_error(err.to_string());
                         state.status = HELP_STATUS.into();
                     }
                 }
@@ -5573,7 +5663,7 @@ async fn run_non_interactive(
         }
         let tool_settings = load_tool_settings(&resource_catalog.paths).await;
         let snapshot = load_extension_snapshot(&resource_catalog.paths, &tool_settings);
-        if let Some(message) = execute_extension_command(&input, &snapshot).await {
+        if let Some(message) = execute_extension_command(&input, &snapshot, Some(&auth)).await {
             println!("{}", message?);
             return Ok(());
         }
@@ -8397,7 +8487,7 @@ mod tests {
             .map(|command| command.label)
             .collect::<BTreeSet<_>>();
         assert!(command_suggestions.contains("/router"));
-        let router_guide = execute_extension_command("/router guide", &snapshot)
+        let router_guide = execute_extension_command("/router guide", &snapshot, None)
             .await
             .unwrap_or_else(|| panic!("OmniRoute extension command should be known"))
             .unwrap_or_else(|err| panic!("OmniRoute extension command failed: {err}"));
@@ -8865,7 +8955,7 @@ mod tests {
         let disabled_snapshot = load_extension_snapshot(&paths, &ToolSettingsSnapshot::default());
         assert!(disabled_snapshot.registries.tools.active.is_empty());
         assert!(
-            execute_extension_command("/visible_command now", &disabled_snapshot)
+            execute_extension_command("/visible_command now", &disabled_snapshot, None)
                 .await
                 .is_none()
         );
@@ -8881,7 +8971,7 @@ mod tests {
             .any(|active| active.effective_id.as_str() == "visible_tool"));
         let tools = extension_tool_map(&snapshot);
         assert!(tools.contains_key("visible_tool"));
-        let command = execute_extension_command("/visible_command now", &snapshot)
+        let command = execute_extension_command("/visible_command now", &snapshot, None)
             .await
             .unwrap_or_else(|| panic!("extension command should be known"))
             .unwrap_or_else(|err| panic!("extension command failed: {err}"));

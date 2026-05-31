@@ -126,6 +126,10 @@ pub enum TuiAction {
     RunExtensionCommand {
         input: String,
     },
+    SaveRouterExternal {
+        url: String,
+        api_key: String,
+    },
     AbortPrompt,
     Quit,
 }

@@ -30,7 +30,7 @@ pub(crate) enum RouterCommand {
     Dashboard,
     Stop,
     Restart,
-    UseExternal,
+    UseExternal { base_url: Option<String> },
     UseManaged,
     VersionList,
     VersionPin { tag: String },
@@ -46,11 +46,18 @@ pub(crate) fn parse_router_command_input(input: &str) -> Option<RouterCommand> {
         ["/router", "guide"] => Some(RouterCommand::Guide),
         ["/router", "setup"] | ["/router", "start"] => Some(RouterCommand::Setup),
         ["/router", "status"] => Some(RouterCommand::Status),
-        ["/router", "models"] => Some(RouterCommand::Models),
+        ["/router", "models"] | ["/router", "fetch-models"] => Some(RouterCommand::Models),
         ["/router", "dashboard"] | ["/router", "open"] => Some(RouterCommand::Dashboard),
         ["/router", "stop"] => Some(RouterCommand::Stop),
         ["/router", "restart"] => Some(RouterCommand::Restart),
-        ["/router", "use-external"] | ["/router", "external"] => Some(RouterCommand::UseExternal),
+        ["/router", "use-external"] | ["/router", "external"] => {
+            Some(RouterCommand::UseExternal { base_url: None })
+        }
+        ["/router", "use-external", base_url] | ["/router", "external", base_url] => {
+            Some(RouterCommand::UseExternal {
+                base_url: Some((*base_url).into()),
+            })
+        }
         ["/router", "use-managed"] | ["/router", "managed"] => Some(RouterCommand::UseManaged),
         ["/router", "version", "list"] | ["/router", "versions"] => {
             Some(RouterCommand::VersionList)
@@ -322,7 +329,7 @@ pub(crate) async fn execute_router_command(command: RouterCommand) -> Result<Str
         }
         RouterCommand::Stop => stop_router_sidecar(),
         RouterCommand::Restart => restart_router_sidecar().await,
-        RouterCommand::UseExternal => set_router_mode(RouterMode::External),
+        RouterCommand::UseExternal { base_url } => set_router_external(base_url.as_deref()),
         RouterCommand::UseManaged => set_router_mode(RouterMode::ManagedSidecar),
         RouterCommand::VersionList => router_version_list().await,
         RouterCommand::VersionPin { tag } => pin_router_tag(&tag),
@@ -338,11 +345,12 @@ pub(crate) fn format_router_help() -> String {
         "  /router setup              Initialize and start managed OmniRoute sidecar",
         "  /router guide              Show setup guide without changing anything",
         "  /router status             Check endpoint health",
-        "  /router models             Fetch model catalog from /v1/models",
+        "  /router fetch-models       Fetch model catalog from /v1/models",
+        "  /router models             Alias for /router fetch-models",
         "  /router dashboard          Open dashboard",
         "  /router stop               Stop managed sidecar",
         "  /router restart            Restart managed sidecar with fallback",
-        "  /router use-external       Use external endpoint mode",
+        "  /router use-external [url] Use external endpoint mode",
         "  /router use-managed        Use managed sidecar mode",
         "  /router version list       List published container tags",
         "  /router version pin <tag>  Pin requested tag (config wiring next)",
@@ -361,7 +369,7 @@ pub(crate) fn format_router_guide() -> String {
         .map(|path| path.display().to_string())
         .unwrap_or_else(|_| "~/.oino/extensions/router/config.json".into());
     format!(
-        "OmniRoute guide\n\nRecommended flow:\n1. Run `/router setup` to initialize config and start the managed sidecar.\n2. Open `/router dashboard`.\n3. Login with the initial dashboard password shown by setup/start. If you already changed the password in OmniRoute, use your saved password instead.\n4. Add provider accounts/API keys in OmniRoute.\n5. Run `/router models`.\n6. Select `/model router:kr/claude-sonnet-4.5` or another returned model.\n\nExternal endpoint mode:\n1. Start or connect to OmniRoute at {base}.\n2. Run `/router use-external`.\n3. Open dashboard: {dashboard}\n4. If REQUIRE_API_KEY=true, set OMNIROUTE_API_KEY for Oino.\n\nManaged sidecar command:\n  {run_command}\n\nConfig: {config_path}\nResolved image: {image}:{tag}\nFallback order: pinned tag -> last-good tag -> known-good tag ({known_good}).",
+        "OmniRoute guide\n\nRecommended flow:\n1. Run `/router setup` to initialize config and start the managed sidecar.\n2. Open `/router dashboard`.\n3. Login with the initial dashboard password shown by setup/start. If you already changed the password in OmniRoute, use your saved password instead.\n4. Add provider accounts/API keys in OmniRoute.\n5. Run `/router fetch-models`.\n6. Select `/model router:kr/claude-sonnet-4.5` or another returned model.\n\nExternal endpoint mode:\n1. Start or connect to OmniRoute at {base}.\n2. Run `/router use-external <url>` or `/router use-external` for the TUI onboarding form.\n3. Paste the endpoint API key when prompted, or set OMNIROUTE_API_KEY.\n4. Open dashboard: {dashboard}\n\nManaged sidecar command:\n  {run_command}\n\nConfig: {config_path}\nResolved image: {image}:{tag}\nFallback order: pinned tag -> last-good tag -> known-good tag ({known_good}).",
         base = resolved_router_base_url(&config),
         dashboard = resolved_router_dashboard_url(&config),
         image = config.image,
@@ -404,7 +412,7 @@ pub(crate) async fn setup_router() -> Result<String, AppError> {
     let health = check_router_health(&config).await;
     if health.reachable {
         return Ok(format!(
-            "{init_summary}\n\nOmniRoute is already reachable{}\nNext: `/router dashboard`, then `/router models`.",
+            "{init_summary}\n\nOmniRoute is already reachable{}\nNext: `/router dashboard`, then `/router fetch-models`.",
             health
                 .model_count
                 .map(|count| format!(" · {count} models"))
@@ -420,7 +428,7 @@ pub(crate) async fn setup_router() -> Result<String, AppError> {
 
     let start = start_router_sidecar().await?;
     Ok(format!(
-        "{init_summary}\n\n{start}\n\nNext: open `/router dashboard`, login with the password above if this is a fresh OmniRoute data dir, add provider keys, then run `/router models`.\nIf login fails, this data dir probably already has a saved OmniRoute password hash; run `/router reset-password`, then `/router restart`."
+        "{init_summary}\n\n{start}\n\nNext: open `/router dashboard`, login with the password above if this is a fresh OmniRoute data dir, add provider keys, then run `/router fetch-models`.\nIf login fails, this data dir probably already has a saved OmniRoute password hash; run `/router reset-password`, then `/router restart`."
     ))
 }
 
@@ -585,6 +593,16 @@ pub(crate) fn detect_container_runtimes() -> Vec<ContainerRuntimeStatus> {
 }
 
 pub(crate) async fn check_router_health(config: &RouterConfig) -> RouterHealth {
+    let api_key = std::env::var("OMNIROUTE_API_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    check_router_health_with_api_key(config, api_key.as_deref()).await
+}
+
+pub(crate) async fn check_router_health_with_api_key(
+    config: &RouterConfig,
+    api_key: Option<&str>,
+) -> RouterHealth {
     let base_url = resolved_router_base_url(config);
     let models_url = format!("{}/models", base_url.trim_end_matches('/'));
     let timeout = Duration::from_millis(config.healthcheck_timeout_ms.clamp(1_000, 60_000));
@@ -600,10 +618,8 @@ pub(crate) async fn check_router_health(config: &RouterConfig) -> RouterHealth {
         }
     };
     let mut request = client.get(&models_url);
-    if let Ok(api_key) = std::env::var("OMNIROUTE_API_KEY") {
-        if !api_key.trim().is_empty() {
-            request = request.bearer_auth(api_key);
-        }
+    if let Some(api_key) = api_key.filter(|value| !value.trim().is_empty()) {
+        request = request.bearer_auth(api_key);
     }
     let response = match request.send().await {
         Ok(response) => response,
@@ -643,6 +659,54 @@ pub(crate) fn router_model_count(body: &serde_json::Value) -> Option<usize> {
         .and_then(|value| value.as_array())
         .or_else(|| body.get("models").and_then(|value| value.as_array()))
         .map(Vec::len)
+}
+
+pub(crate) fn set_router_external(endpoint: Option<&str>) -> Result<String, AppError> {
+    let mut config = load_router_config()?;
+    config.mode = RouterMode::External;
+    if let Some(endpoint) = endpoint {
+        let urls = normalize_external_router_endpoint(endpoint)?;
+        config.base_url = urls.base_url;
+        config.dashboard_url = urls.dashboard_url;
+    }
+    let path = save_router_config(&config)?;
+    Ok(format!(
+        "OmniRoute external endpoint configured.\nConfig: {}\nEndpoint: {}\nDashboard: {}\nAPI key: run `/router use-external` in TUI for guided setup, pass `/router use-external <url> <api-key>`, or set OMNIROUTE_API_KEY.\nUse models like `router:kr/claude-sonnet-4.5`.",
+        path.display(),
+        config.base_url,
+        config.dashboard_url
+    ))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExternalRouterEndpoint {
+    pub(crate) base_url: String,
+    pub(crate) dashboard_url: String,
+}
+
+pub(crate) fn normalize_external_router_endpoint(
+    endpoint: &str,
+) -> Result<ExternalRouterEndpoint, AppError> {
+    let trimmed = endpoint.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(AppError::InvalidArguments(
+            "external OmniRoute URL cannot be empty".into(),
+        ));
+    }
+    let with_scheme = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
+    } else {
+        format!("https://{trimmed}")
+    };
+    let dashboard_url = with_scheme
+        .trim_end_matches("/v1")
+        .trim_end_matches('/')
+        .to_string();
+    let base_url = format!("{}/v1", dashboard_url.trim_end_matches('/'));
+    Ok(ExternalRouterEndpoint {
+        base_url,
+        dashboard_url,
+    })
 }
 
 pub(crate) fn set_router_mode(mode: RouterMode) -> Result<String, AppError> {

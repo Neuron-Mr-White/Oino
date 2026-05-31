@@ -13,7 +13,7 @@ pub fn quickstart() -> String {
         "   /router setup           Show external/managed setup steps".to_string(),
         "   /router use-managed     Let Oino manage the local sidecar".to_string(),
         "   /router start           Start with pinned/last-good fallback".to_string(),
-        "   /router models          Refresh live/cached OmniRoute models".to_string(),
+        "   /router fetch-models          Refresh live/cached OmniRoute models".to_string(),
         "   /model router:<model>   Select an OmniRoute model or combo".to_string(),
         "".to_string(),
         "Built-in provider OAuth/API-key commands have been removed.".to_string(),

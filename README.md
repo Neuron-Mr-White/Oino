@@ -88,7 +88,7 @@ Recommended first-run flow inside Oino:
 ```text
 /router setup
 /router dashboard
-/router models
+/router fetch-models
 /model
 ```
 
@@ -181,6 +181,6 @@ cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-package 
 ## Troubleshooting
 
 - `oino: command not found`: add the install directory, usually `~/.local/bin`, to `PATH`.
-- No models: run `/router setup`, add provider keys in the dashboard, then run `/router models`.
+- No models: run `/router setup`, add provider keys in the dashboard, then run `/router fetch-models`.
 - Dashboard password does not work: run `/router reset-password` and `/router restart`, then use `oino`.
 - Terminal state looks broken after a crash: run `reset` in your shell.

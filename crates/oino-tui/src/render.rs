@@ -420,6 +420,9 @@ pub fn render_with_theme(frame: &mut Frame<'_>, state: &TuiState, theme: &Theme)
         Some(OverlayKind::Usage) => render_usage_overlay(frame, area, state, theme),
         Some(OverlayKind::AskUser) => render_ask_user_overlay(frame, area, state, theme),
         Some(OverlayKind::Btw) => render_btw_overlay(frame, area, state, theme),
+        Some(OverlayKind::RouterExternal) => {
+            render_router_external_overlay(frame, area, state, theme)
+        }
         None => {}
     }
 
@@ -2726,6 +2729,104 @@ fn help_entry_line(entry: &HelpEntry, width: usize, theme: &Theme) -> Line<'stat
         ),
         HelpEntry::Blank => Line::from(""),
     }
+}
+
+fn render_router_external_overlay(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    state: &TuiState,
+    theme: &Theme,
+) {
+    let overlay = centered_rect(area, 74, 44);
+    frame.render_widget(Clear, overlay);
+    let block = Block::default()
+        .title(Span::styled(" OmniRoute external setup ", theme.title))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.focused_border))
+        .style(panel_style(theme));
+    frame.render_widget(block, overlay);
+    let inner = overlay.inner(Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(4),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
+    let url_style = if state.router_external.focus_api_key {
+        Style::default().fg(theme.fg)
+    } else {
+        Style::default().fg(theme.fg).add_modifier(Modifier::BOLD)
+    };
+    let key_style = if state.router_external.focus_api_key {
+        Style::default().fg(theme.fg).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.fg)
+    };
+    frame.render_widget(
+        Paragraph::new(if state.router_external.url.is_empty() {
+            "https://router.oino.dev".to_string()
+        } else {
+            state.router_external.url.clone()
+        })
+        .style(url_style)
+        .block(
+            Block::default()
+                .title(" Endpoint URL ")
+                .borders(Borders::ALL)
+                .border_style(section_border_style(
+                    !state.router_external.focus_api_key,
+                    theme,
+                )),
+        ),
+        sections[0],
+    );
+
+    let masked_key = if state.router_external.api_key.is_empty() {
+        "Paste endpoint API key…".to_string()
+    } else {
+        "•".repeat(state.router_external.api_key.chars().count().min(48))
+    };
+    frame.render_widget(
+        Paragraph::new(masked_key).style(key_style).block(
+            Block::default()
+                .title(" API key ")
+                .borders(Borders::ALL)
+                .border_style(section_border_style(
+                    state.router_external.focus_api_key,
+                    theme,
+                )),
+        ),
+        sections[1],
+    );
+
+    let help = vec![
+        Line::from("Connect Oino to an external OmniRoute endpoint."),
+        Line::from("Enter verifies /v1/models with the API key before saving."),
+        Line::from("URL normalizes like router.oino.dev → https://router.oino.dev/v1."),
+        Line::from("Key saves to Oino auth storage as provider `router`."),
+    ];
+    frame.render_widget(
+        Paragraph::new(help).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .title(" What happens ")
+                .borders(Borders::ALL)
+                .border_style(section_border_style(false, theme)),
+        ),
+        sections[2],
+    );
+    render_overlay_footer(
+        frame,
+        sections[3],
+        "Tab switch field • paste supported • Enter verify/save • Esc close",
+        theme.footer,
+    );
 }
 
 fn render_btw_overlay(frame: &mut Frame<'_>, area: Rect, state: &TuiState, theme: &Theme) {

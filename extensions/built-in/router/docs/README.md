@@ -4,7 +4,9 @@ Optional built-in extension for routing Oino through [OmniRoute](https://github.
 
 ## Current mode
 
-This first implementation supports **external endpoint mode**:
+Oino supports managed sidecar mode (`/router setup`) and external endpoint mode (`/router use-external`). For an external hosted endpoint, run `/router use-external` in the TUI to open the URL/API-key onboarding form; Enter verifies `/v1/models`, saves the endpoint config, saves the API key as provider `router`, and refreshes the model cache.
+
+Manual external setup:
 
 1. Start OmniRoute yourself, usually with Docker:
 
@@ -19,7 +21,7 @@ This first implementation supports **external endpoint mode**:
 
 2. Open the dashboard: <http://localhost:20128/dashboard>
 3. Configure providers and combos in OmniRoute.
-4. If your OmniRoute requires API keys for `/v1/*`, set:
+4. If your OmniRoute requires API keys for `/v1/*`, either run `/router use-external` in the TUI and paste the key, or set:
 
    ```bash
    export OMNIROUTE_API_KEY=<api-key-from-dashboard>
@@ -37,7 +39,7 @@ This first implementation supports **external endpoint mode**:
 /router setup
 /router guide
 /router status
-/router models
+/router fetch-models
 /router dashboard
 /router use-external
 /router use-managed
@@ -51,7 +53,7 @@ This first implementation supports **external endpoint mode**:
 
 ## Model catalog cache
 
-`/router models` fetches `GET /v1/models`, writes Oino's provider cache for `OmniRoute`, and updates `/model` search with live/cached OmniRoute models. The background model refresh also refreshes this cache when OmniRoute is reachable.
+`/router fetch-models` fetches `GET /v1/models`, writes Oino's provider cache for `OmniRoute`, and updates `/model` search with live/cached OmniRoute models. The background model refresh also refreshes this cache when OmniRoute is reachable.
 
 ## Fallback policy
 

@@ -35,4 +35,4 @@ OINO_MODEL=router:openai/gpt-4.1 oino
 
 ## Reloading
 
-Use `/reload` after editing settings, prompts, skills, themes, or extension files. Use `/router models` when you want fresh model data from OmniRoute.
+Use `/reload` after editing settings, prompts, skills, themes, or extension files. Use `/router fetch-models` when you want fresh model data from OmniRoute.

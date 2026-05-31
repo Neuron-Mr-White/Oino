@@ -54,6 +54,7 @@ pub enum OverlayKind {
     Usage,
     AskUser,
     Btw,
+    RouterExternal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1004,6 +1005,23 @@ impl Default for BtwState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouterExternalState {
+    pub url: String,
+    pub api_key: String,
+    pub focus_api_key: bool,
+}
+
+impl Default for RouterExternalState {
+    fn default() -> Self {
+        Self {
+            url: "https://router.oino.dev".into(),
+            api_key: String::new(),
+            focus_api_key: false,
+        }
+    }
+}
+
 pub struct TuiState {
     pub messages: Vec<MessageView>,
     pub session_title: String,
@@ -1027,6 +1045,7 @@ pub struct TuiState {
     pub inspect: InspectState,
     pub ask_user: Option<AskUserOverlayState>,
     pub btw: BtwState,
+    pub router_external: RouterExternalState,
     pub prompts: ResourceBrowserState,
     pub skills: ResourceBrowserState,
     pub prompt_resources: Vec<PromptResource>,
@@ -1087,6 +1106,7 @@ impl Default for TuiState {
             inspect: InspectState::default(),
             ask_user: None,
             btw: BtwState::default(),
+            router_external: RouterExternalState::default(),
             prompts: ResourceBrowserState::default(),
             skills: ResourceBrowserState::default(),
             prompt_resources: Vec::new(),
@@ -2123,6 +2143,16 @@ impl TuiState {
     }
 
     pub fn handle_paste(&mut self, text: &str) -> TuiAction {
+        if self.overlay == Some(OverlayKind::RouterExternal) {
+            let normalized = normalize_paste_text(text);
+            if self.router_external.focus_api_key {
+                self.router_external.api_key.push_str(normalized.trim());
+            } else {
+                self.router_external.url.push_str(normalized.trim());
+            }
+            self.status = "Pasted into Router external setup".into();
+            return TuiAction::None;
+        }
         if self.overlay.is_some() || self.chord != ChordState::None || !self.composer.is_enabled() {
             return TuiAction::None;
         }
@@ -2190,6 +2220,9 @@ impl TuiState {
         if self.overlay == Some(OverlayKind::Btw) {
             return self.handle_btw_key(key);
         }
+        if self.overlay == Some(OverlayKind::RouterExternal) {
+            return self.handle_router_external_key(key);
+        }
 
         if self.overlay.is_none()
             && matches!(key.code, KeyCode::Esc)
@@ -2252,6 +2285,66 @@ impl TuiState {
             self.after_composer_edit(&before);
         }
         TuiAction::None
+    }
+
+    fn open_router_external_overlay(&mut self) {
+        self.overlay = Some(OverlayKind::RouterExternal);
+        self.router_external = RouterExternalState::default();
+        self.status = "Router external: enter URL, Tab API key, Enter save".into();
+    }
+
+    fn handle_router_external_key(&mut self, key: KeyEvent) -> TuiAction {
+        match key.code {
+            KeyCode::Esc => {
+                self.overlay = None;
+                self.status = HELP_STATUS.into();
+                TuiAction::None
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                self.router_external.focus_api_key = !self.router_external.focus_api_key;
+                self.status = if self.router_external.focus_api_key {
+                    "Router external: enter API key".into()
+                } else {
+                    "Router external: enter URL".into()
+                };
+                TuiAction::None
+            }
+            KeyCode::Enter => {
+                let url = self.router_external.url.trim().to_string();
+                let api_key = self.router_external.api_key.trim().to_string();
+                if url.is_empty() {
+                    self.status = "Router external: URL required".into();
+                    return TuiAction::None;
+                }
+                if api_key.is_empty() {
+                    self.status = "Router external: API key required".into();
+                    self.router_external.focus_api_key = true;
+                    return TuiAction::None;
+                }
+                self.overlay = None;
+                self.status = "Verifying OmniRoute external endpoint…".into();
+                TuiAction::SaveRouterExternal { url, api_key }
+            }
+            KeyCode::Backspace => {
+                if self.router_external.focus_api_key {
+                    self.router_external.api_key.pop();
+                } else {
+                    self.router_external.url.pop();
+                }
+                TuiAction::None
+            }
+            KeyCode::Char(ch)
+                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+            {
+                if self.router_external.focus_api_key {
+                    self.router_external.api_key.push(ch);
+                } else {
+                    self.router_external.url.push(ch);
+                }
+                TuiAction::None
+            }
+            _ => TuiAction::None,
+        }
     }
 
     fn handle_btw_key(&mut self, key: KeyEvent) -> TuiAction {
@@ -2612,6 +2705,7 @@ impl TuiState {
             Some(OverlayKind::Usage) => contexts.push(KeyContext::Sessions),
             Some(OverlayKind::AskUser) => contexts.push(KeyContext::Sessions),
             Some(OverlayKind::Btw) => contexts.push(KeyContext::Sessions),
+            Some(OverlayKind::RouterExternal) => contexts.push(KeyContext::Sessions),
             None => {
                 if self.command_suggestions_view().is_some() {
                     contexts.push(KeyContext::CommandSuggestions);
@@ -4041,6 +4135,11 @@ impl TuiState {
     }
 
     fn submit_text(&mut self, prompt: String) -> TuiAction {
+        if prompt.trim() == "/router use-external" || prompt.trim() == "/router external" {
+            self.open_router_external_overlay();
+            return TuiAction::None;
+        }
+
         if let Some(command) = parse_command(&prompt) {
             return self.execute_command(command);
         }

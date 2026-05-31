@@ -182,7 +182,42 @@ pub async fn refresh_openai_proxy_update(
     base_url: &str,
     api_key_env: Option<&str>,
 ) -> ModelCatalogUpdate {
-    match refresh_openai_proxy_catalog(provider_id, display_name, base_url, api_key_env).await {
+    match refresh_openai_proxy_catalog(provider_id, display_name, base_url, api_key_env, None).await
+    {
+        ProviderCatalogRefresh::Refreshed { count, .. } => ModelCatalogUpdate {
+            models: merge_model_options(
+                load_all_cached_model_options(true).await,
+                static_model_options(),
+            ),
+            status: format!("Fetched {count} {display_name} models (cached)"),
+            refreshing: false,
+        },
+        ProviderCatalogRefresh::Skipped { reason, .. } => ModelCatalogUpdate {
+            models: merge_model_options(
+                load_all_cached_model_options(true).await,
+                static_model_options(),
+            ),
+            status: format!("Skipped {display_name} model refresh: {reason}"),
+            refreshing: false,
+        },
+        ProviderCatalogRefresh::Failed { error, .. } => ModelCatalogUpdate {
+            models: merge_model_options(
+                load_all_cached_model_options(true).await,
+                static_model_options(),
+            ),
+            status: format!("Model refresh failed for {display_name}: {error}"),
+            refreshing: false,
+        },
+    }
+}
+
+pub async fn refresh_openai_proxy_update_with_api_key(
+    provider_id: &str,
+    display_name: &str,
+    base_url: &str,
+    api_key: Option<&str>,
+) -> ModelCatalogUpdate {
+    match refresh_openai_proxy_catalog(provider_id, display_name, base_url, None, api_key).await {
         ProviderCatalogRefresh::Refreshed { count, .. } => ModelCatalogUpdate {
             models: merge_model_options(
                 load_all_cached_model_options(true).await,
@@ -215,6 +250,7 @@ async fn refresh_openai_proxy_catalog(
     display_name: &str,
     base_url: &str,
     api_key_env: Option<&str>,
+    api_key: Option<&str>,
 ) -> ProviderCatalogRefresh {
     let provider_id = provider_id.to_string();
     let models_endpoint = format!("{}{}", base_url.trim_end_matches('/'), "/models");
@@ -231,7 +267,9 @@ async fn refresh_openai_proxy_catalog(
         }
     };
     let mut request = client.get(models_endpoint);
-    if let Some(env_var) = api_key_env {
+    if let Some(api_key) = api_key.filter(|value| !value.trim().is_empty()) {
+        request = request.bearer_auth(api_key);
+    } else if let Some(env_var) = api_key_env {
         if let Ok(api_key) = std::env::var(env_var) {
             if !api_key.trim().is_empty() {
                 request = request.bearer_auth(api_key);
