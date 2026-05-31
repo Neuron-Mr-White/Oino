@@ -9,8 +9,8 @@ Use this skill to run Oino-native Ralph loops. A Ralph loop keeps a stable task 
 
 ## Operating rules
 
-1. Read the loop task file from `.oino/ralph/<loop-name>.md` before changing code.
-2. Read `.oino/ralph/<loop-name>.steering.md` for urgent human steering before choosing work.
+1. Read the loop task file from `.oino/ralph/<loop-name>/task.md` before changing code.
+2. Read `.oino/ralph/<loop-name>/steering.md` for urgent human steering before choosing work.
 3. Work on only the requested number of checklist items for the current iteration.
 4. Update the task file with concise progress notes and any changed checklist boxes.
 5. Preserve Oino conventions: project state stays under `.oino/`, user-facing skills stay under `.oino/skills/`, and optional built-in packages stay under `crates/oino-extension-builtins/packages/`.

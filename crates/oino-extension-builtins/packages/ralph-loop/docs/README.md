@@ -43,13 +43,14 @@ Ralph loop state is project-scoped and lives under:
 
 ```text
 <project>/.oino/ralph/
-  <loop-name>.md       # task/checklist/progress document
-  <loop-name>.json     # typed state machine snapshot
-  <loop-name>.log.md   # append-only iteration notes
-  <loop-name>.steering.md # live human steering included each iteration
-  history/<loop-name>/ # assistant output captured per iteration
+  <loop-name>/
+    state.json         # typed state machine snapshot
+    task.md            # task/checklist/progress document
+    log.md             # append-only iteration notes
+    steering.md        # live human steering included each iteration
+    history/           # assistant output captured per iteration
   panel.json           # persisted floating panel visibility
-  archive/             # archived loop snapshots
+  archive/             # archived loop directories
 ```
 
 The typed state tracks:

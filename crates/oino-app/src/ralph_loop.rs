@@ -195,14 +195,15 @@ impl RalphLoopPaths {
     pub fn for_project(project_root: &Path, name: &str) -> Self {
         let safe_name = safe_loop_name(name);
         let root = project_root.join(".oino").join(RALPH_DIR);
+        let loop_dir = root.join(&safe_name);
         Self {
-            task_file: root.join(format!("{safe_name}.md")),
-            state_file: root.join(format!("{safe_name}.json")),
-            log_file: root.join(format!("{safe_name}.log.md")),
-            steering_file: root.join(format!("{safe_name}.steering.md")),
-            history_dir: root.join("history").join(&safe_name),
+            task_file: loop_dir.join("task.md"),
+            state_file: loop_dir.join("state.json"),
+            log_file: loop_dir.join("log.md"),
+            steering_file: loop_dir.join("steering.md"),
+            history_dir: loop_dir.join("history"),
             archive_dir: root.join(RALPH_ARCHIVE_DIR),
-            root,
+            root: loop_dir,
         }
     }
 }
@@ -243,7 +244,7 @@ pub fn start_loop(
         return Err(RalphLoopError::EmptyName);
     }
     let paths = RalphLoopPaths::for_project(project_root, &name);
-    if paths.state_file.exists() || paths.task_file.exists() {
+    if paths.root.exists() {
         return Err(RalphLoopError::AlreadyExists(name));
     }
     create_dir_all(&paths.root)?;
@@ -389,14 +390,21 @@ pub fn list_states(project_root: &Path) -> Result<Vec<RalphLoopState>, RalphLoop
             source,
         })?;
         let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("json")
-            || path.file_name().and_then(|value| value.to_str()) == Some(RALPH_PANEL_FILE)
+        if !path.is_dir()
+            || path.file_name().and_then(|value| value.to_str()) == Some(RALPH_ARCHIVE_DIR)
         {
             continue;
         }
-        let text = read_file(&path)?;
+        let state_path = path.join("state.json");
+        if !state_path.is_file() {
+            continue;
+        }
+        let text = read_file(&state_path)?;
         states.push(
-            serde_json::from_str(&text).map_err(|source| RalphLoopError::Json { path, source })?,
+            serde_json::from_str(&text).map_err(|source| RalphLoopError::Json {
+                path: state_path,
+                source,
+            })?,
         );
     }
     states.sort_by(|left, right| left.name.cmp(&right.name));
@@ -548,7 +556,13 @@ pub fn clean_archive(project_root: &Path) -> Result<usize, RalphLoopError> {
             source,
         })?;
         let path = entry.path();
-        if path.is_file() {
+        if path.is_dir() {
+            fs::remove_dir_all(&path).map_err(|source| RalphLoopError::Io {
+                path: path.clone(),
+                source,
+            })?;
+            removed = removed.saturating_add(1);
+        } else if path.is_file() {
             fs::remove_file(&path).map_err(|source| RalphLoopError::Io {
                 path: path.clone(),
                 source,
@@ -564,22 +578,13 @@ pub fn archive_loop(project_root: &Path, name: &str) -> Result<RalphLoopState, R
     let paths = RalphLoopPaths::for_project(project_root, &state.name);
     create_dir_all(&paths.archive_dir)?;
     let stamp = now_unix();
-    let archive_prefix = format!("{}-{stamp}", state.name);
-    let archive_state = paths.archive_dir.join(format!("{archive_prefix}.json"));
-    let archive_task = paths.archive_dir.join(format!("{archive_prefix}.md"));
-    let archive_log = paths.archive_dir.join(format!("{archive_prefix}.log.md"));
-    let archive_steering = paths
-        .archive_dir
-        .join(format!("{archive_prefix}.steering.md"));
+    let archive_dir = paths.archive_dir.join(format!("{}-{stamp}", state.name));
 
     state.status = RalphLoopStatus::Archived;
     state.archived_at_unix = Some(stamp);
     state.updated_at_unix = stamp;
     save_state(project_root, &state)?;
-    rename_if_exists(&paths.state_file, &archive_state)?;
-    rename_if_exists(&paths.task_file, &archive_task)?;
-    rename_if_exists(&paths.log_file, &archive_log)?;
-    rename_if_exists(&paths.steering_file, &archive_steering)?;
+    rename_if_exists(&paths.root, &archive_dir)?;
     Ok(state)
 }
 
@@ -862,12 +867,12 @@ mod tests {
             start_loop(temp.path(), start).unwrap_or_else(|err| panic!("start failed: {err}"));
         assert_eq!(state.name, "demo-loop");
         assert_eq!(state.status, RalphLoopStatus::Active);
-        assert!(temp.path().join(".oino/ralph/demo-loop.md").is_file());
+        assert!(temp.path().join(".oino/ralph/demo-loop/task.md").is_file());
         assert!(temp
             .path()
-            .join(".oino/ralph/demo-loop.steering.md")
+            .join(".oino/ralph/demo-loop/steering.md")
             .is_file());
-        assert!(temp.path().join(".oino/ralph/history/demo-loop").is_dir());
+        assert!(temp.path().join(".oino/ralph/demo-loop/history").is_dir());
         assert!(state.next_iteration_prompt().contains("iteration 1/3"));
         assert!(status_line(&state).contains("demo-loop: Active iteration 0/3"));
 
@@ -915,11 +920,11 @@ mod tests {
         let archived = archive_loop(temp.path(), "demo-loop")
             .unwrap_or_else(|err| panic!("archive failed: {err}"));
         assert_eq!(archived.status, RalphLoopStatus::Archived);
-        assert!(!temp.path().join(".oino/ralph/demo-loop.json").exists());
+        assert!(!temp.path().join(".oino/ralph/demo-loop").exists());
         assert!(temp.path().join(".oino/ralph/archive").is_dir());
         let removed =
             clean_archive(temp.path()).unwrap_or_else(|err| panic!("clean failed: {err}"));
-        assert!(removed >= 4);
+        assert!(removed >= 1);
     }
 
     #[test]
@@ -947,7 +952,7 @@ mod tests {
         assert_eq!(state.iteration, 1);
         assert!(temp
             .path()
-            .join(".oino/ralph/history/auto-loop/iteration-0001.md")
+            .join(".oino/ralph/auto-loop/history/iteration-0001.md")
             .is_file());
 
         let state = record_iteration_output(temp.path(), "auto-loop", "No promise this time")

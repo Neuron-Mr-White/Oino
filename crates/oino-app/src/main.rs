@@ -7867,7 +7867,10 @@ mod tests {
         )
         .unwrap_or_else(|err| panic!("start failed: {err}"));
         assert!(started.contains("demo-loop"));
-        assert!(temp.path().join(".oino/ralph/demo-loop.json").is_file());
+        assert!(temp
+            .path()
+            .join(".oino/ralph/demo-loop/state.json")
+            .is_file());
 
         let recorded = execute_ralph_command(
             RalphCommand::Record {
@@ -7929,7 +7932,7 @@ mod tests {
         .unwrap_or_else(|err| panic!("archive failed: {err}"));
         let cleaned = execute_ralph_command(RalphCommand::CleanArchive, temp.path())
             .unwrap_or_else(|err| panic!("clean failed: {err}"));
-        assert!(cleaned.contains("Removed 4 archived Ralph loop files"));
+        assert!(cleaned.contains("Removed 1 archived Ralph loop file"));
     }
 
     #[test]
