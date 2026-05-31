@@ -1748,22 +1748,17 @@ fn ralph_panel_surface(project_root: &Path) -> Option<ActiveContribution<UiSurfa
     if !ralph_loop::load_panel_settings(project_root).ok()?.enabled {
         return None;
     }
-    let summary = ralph_loop::panel_summary(project_root).ok().flatten();
-    let title = summary.map_or_else(
-        || "Ralph: no loops • status: n/a • iter: n/a • task: n/a • reflect: n/a".to_string(),
-        |summary| {
-            format!(
-                "Ralph: {} • status: {:?} • iter: {}/{} • task: {} • reflect: {}",
-                summary.name,
-                summary.status,
-                summary.iteration,
-                summary.max_iterations,
-                summary.task,
-                summary
-                    .next_reflection
-                    .map_or_else(|| "n/a".to_string(), |value| value.to_string())
-            )
-        },
+    let summary = ralph_loop::panel_summary(project_root).ok().flatten()?;
+    let title = format!(
+        "Ralph: {} • status: {:?} • iter: {}/{} • task: {} • reflect: {}",
+        summary.name,
+        summary.status,
+        summary.iteration,
+        summary.max_iterations,
+        summary.task,
+        summary
+            .next_reflection
+            .map_or_else(|| "n/a".to_string(), |value| value.to_string())
     );
     let id = ContributionId::new("ralph-progress-panel")
         .expect("builtin Ralph panel contribution id is valid");
@@ -3073,6 +3068,7 @@ async fn run_tui(
                     &tx,
                     &session_path,
                     &resource_paths,
+                    &tool_settings,
                     &mut prompt_in_flight,
                     &extension_runtime_provider_ids,
                     &messages,
@@ -4641,6 +4637,7 @@ async fn continue_ralph_after_prompt_if_needed(
     tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
     session_path: &Path,
     paths: &ResourcePaths,
+    settings: &ToolSettingsSnapshot,
     prompt_in_flight: &mut bool,
     extension_runtime_provider_ids: &BTreeSet<String>,
     messages: &[Message],
@@ -4651,6 +4648,8 @@ async fn continue_ralph_after_prompt_if_needed(
     let output = last_assistant_text(messages).unwrap_or_default();
     match ralph_loop::record_iteration_output(&paths.project_root, &loop_name, &output) {
         Ok(state_loop) => {
+            let extension_snapshot = load_extension_snapshot(paths, settings);
+            apply_extension_snapshot_to_tui_state(state, &extension_snapshot, settings, paths);
             state.status = format!(
                 "Ralph `{}` recorded iteration {}/{} ({:?})",
                 state_loop.name, state_loop.iteration, state_loop.max_iterations, state_loop.status
@@ -7915,6 +7914,11 @@ mod tests {
         .unwrap_or_else(|err| panic!("panel off failed: {err}"));
         assert!(panel.contains("disabled"));
         assert!(ralph_panel_surface(temp.path()).is_none());
+
+        let empty = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        ralph_loop::set_panel_enabled(empty.path(), true)
+            .unwrap_or_else(|err| panic!("panel on failed: {err}"));
+        assert!(ralph_panel_surface(empty.path()).is_none());
 
         execute_ralph_command(
             RalphCommand::Archive {

@@ -8,7 +8,7 @@ use crate::{
     theme::{theme_cache_hash, Theme},
 };
 use ratatui::{
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
 };
 use serde_json::Value;
@@ -1493,10 +1493,104 @@ fn message_content_lines(
         }
     }
     if message.is_assistant() && content != "<empty>" {
-        render_markdown_lines(content, width, assistant_text_style(theme), theme)
+        let (cleaned, promises) = extract_ralph_promises(content);
+        let mut lines = render_markdown_lines(&cleaned, width, assistant_text_style(theme), theme);
+        lines.extend(
+            promises
+                .into_iter()
+                .map(|(kind, tag)| ralph_promise_line(kind, &tag, theme)),
+        );
+        return lines;
     } else {
         plain_wrapped_lines(content, width, message_text_style(message, theme))
     }
+}
+
+fn extract_ralph_promises(content: &str) -> (String, Vec<(RalphPromiseKind, String)>) {
+    let mut cleaned = String::with_capacity(content.len());
+    let mut promises = Vec::new();
+    let mut cursor = 0;
+    while let Some(start_rel) = content[cursor..].find("<promise>") {
+        let start = cursor + start_rel;
+        cleaned.push_str(&content[cursor..start]);
+        let body_start = start + "<promise>".len();
+        let Some(end_rel) = content[body_start..].find("</promise>") else {
+            cleaned.push_str(&content[start..]);
+            return (cleaned, promises);
+        };
+        let end = body_start + end_rel + "</promise>".len();
+        let tag = &content[start..end];
+        if let Some(kind) = ralph_promise_kind(tag) {
+            promises.push((kind, tag.to_string()));
+        } else {
+            cleaned.push_str(tag);
+        }
+        cursor = end;
+    }
+    cleaned.push_str(&content[cursor..]);
+    (cleaned, promises)
+}
+
+fn ralph_promise_line(kind: RalphPromiseKind, tag: &str, theme: &Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("▌ ", ralph_promise_style(kind, theme)),
+        Span::styled(ralph_promise_label(kind), ralph_promise_style(kind, theme)),
+        Span::styled(" ", ralph_promise_style(kind, theme)),
+        Span::styled(tag.trim().to_string(), ralph_promise_style(kind, theme)),
+        Span::styled(" ", ralph_promise_style(kind, theme)),
+    ])
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RalphPromiseKind {
+    Continue,
+    Complete,
+    Blocked,
+    Decide,
+    Done,
+}
+
+fn ralph_promise_kind(text: &str) -> Option<RalphPromiseKind> {
+    let body = text
+        .trim()
+        .strip_prefix("<promise>")?
+        .strip_suffix("</promise>")?
+        .trim();
+    if body.eq_ignore_ascii_case("CONTINUE") {
+        Some(RalphPromiseKind::Continue)
+    } else if body.eq_ignore_ascii_case("COMPLETE") {
+        Some(RalphPromiseKind::Complete)
+    } else if body.starts_with("BLOCKED:") {
+        Some(RalphPromiseKind::Blocked)
+    } else if body.starts_with("DECIDE:") {
+        Some(RalphPromiseKind::Decide)
+    } else if body.ends_with(":DONE") {
+        Some(RalphPromiseKind::Done)
+    } else {
+        None
+    }
+}
+
+fn ralph_promise_label(kind: RalphPromiseKind) -> &'static str {
+    match kind {
+        RalphPromiseKind::Continue => "RALPH CONTINUE",
+        RalphPromiseKind::Complete => "RALPH COMPLETE",
+        RalphPromiseKind::Blocked => "RALPH BLOCKED",
+        RalphPromiseKind::Decide => "RALPH DECIDE",
+        RalphPromiseKind::Done => "RALPH TASK DONE",
+    }
+}
+
+fn ralph_promise_style(kind: RalphPromiseKind, theme: &Theme) -> Style {
+    let (fg, bg) = match kind {
+        RalphPromiseKind::Continue => (Color::Black, Color::Cyan),
+        RalphPromiseKind::Complete => (Color::Black, Color::Green),
+        RalphPromiseKind::Blocked => (Color::White, Color::Red),
+        RalphPromiseKind::Decide => (Color::Black, Color::Yellow),
+        RalphPromiseKind::Done => (Color::Black, Color::Magenta),
+    };
+    let _ = theme;
+    Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
 }
 
 fn plain_wrapped_lines(text: &str, width: usize, style: Style) -> Vec<Line<'static>> {
@@ -1810,6 +1904,28 @@ mod tests {
             tool_calls: Vec::new(),
             is_error,
         }
+    }
+
+    #[test]
+    fn ralph_promise_tags_render_as_distinct_blocks() {
+        let messages = vec![assistant_text(
+            "done\n<promise>COMPLETE</promise>\n<promise>BLOCKED:needs input</promise>\n<promise>DECIDE:ship?</promise>\n<promise>TASK-1:DONE</promise>\n<promise>CONTINUE</promise>",
+        )];
+        let lines = transcript_lines(
+            &messages,
+            None,
+            120,
+            CollapseMode::Full,
+            CollapseMode::Full,
+            ChatStyle::Chat,
+            &Theme::default(),
+        );
+        let rendered = lines.iter().map(plain).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("▌ RALPH COMPLETE <promise>COMPLETE</promise>"));
+        assert!(rendered.contains("▌ RALPH BLOCKED <promise>BLOCKED:needs input</promise>"));
+        assert!(rendered.contains("▌ RALPH DECIDE <promise>DECIDE:ship?</promise>"));
+        assert!(rendered.contains("▌ RALPH TASK DONE <promise>TASK-1:DONE</promise>"));
+        assert!(rendered.contains("▌ RALPH CONTINUE <promise>CONTINUE</promise>"));
     }
 
     #[test]
