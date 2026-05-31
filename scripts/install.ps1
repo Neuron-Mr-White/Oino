@@ -123,14 +123,14 @@ if (-not (Have "cargo")) {
     if ((-not $DryRun) -and (Test-Path $CargoEnv)) { . $CargoEnv }
 }
 
-Run cargo build --manifest-path (Join-Path $Src "Cargo.toml") -p oino-app --bin oino --release
+Run "cargo" "build" "--manifest-path" (Join-Path $Src "Cargo.toml") "-p" "oino-app" "--bin" "oino" "--release"
 EnsureDir $BinDir
 
 $BuiltExe = Join-Path $Src "target\release\oino.exe"
 $InstalledExe = Join-Path $BinDir "oino.exe"
 CopyPath $BuiltExe $InstalledExe
 
-$PackagesDir = Join-Path $Src "crates\oino-extension-builtins\packages"
+$PackagesDir = Join-Path $Src "extensions\built-in"
 if (Test-Path $PackagesDir) {
     $OinoHome = if ($env:OINO_HOME) { $env:OINO_HOME } else { $HOME }
     $TargetDir = Join-Path $OinoHome ".oino\extension-packages"
