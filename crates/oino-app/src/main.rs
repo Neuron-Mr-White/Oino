@@ -4106,7 +4106,13 @@ async fn run_tui(
             }
             TuiAction::SteerPrompt(prompt) => {
                 if prompt_in_flight {
-                    let message = Message::user_text(prompt);
+                    let message = match prompt_message_from_input(prompt) {
+                        Ok(message) => message,
+                        Err(err) => {
+                            state.set_error(err);
+                            continue;
+                        }
+                    };
                     match harness.steer(message.clone()).await {
                         Ok(()) => materialize_accepted_steer(&mut state, &message),
                         Err(err) => state.set_error(user_facing_error(&err)),
@@ -4901,7 +4907,15 @@ async fn start_prompt(
     }
     state.set_working(true);
     *prompt_in_flight = true;
-    let prompt_message = Message::user_text(prompt);
+    let prompt_message = match prompt_message_from_input(prompt) {
+        Ok(message) => message,
+        Err(err) => {
+            state.set_error(err);
+            state.set_working(false);
+            *prompt_in_flight = false;
+            return false;
+        }
+    };
     let task_harness = Arc::clone(harness);
     let task_tx = tx.clone();
     let task_session_path = session_path.to_path_buf();
@@ -5256,6 +5270,86 @@ fn dropped_file_paths_to_mentions(text: &str, cwd: &Path) -> Option<String> {
     Some(format!("{} ", mentions.join(" ")))
 }
 
+fn prompt_message_from_input(prompt: String) -> Result<Message, String> {
+    let image_paths = image_file_paths_in_prompt(&prompt);
+    if image_paths.is_empty() {
+        return Ok(Message::user_text(prompt));
+    }
+
+    let mut content = vec![ContentBlock::Text { text: prompt }];
+    for path in image_paths {
+        let media_type = image_mime_from_path(&path)
+            .ok_or_else(|| format!("Unsupported image type: {}", path.display()))?;
+        let data = fs::read(&path)
+            .map_err(|err| format!("Image read failed for {}: {err}", path.display()))?;
+        content.push(ContentBlock::Image {
+            media_type: media_type.into(),
+            data: base64_encode(&data),
+        });
+    }
+    let mut message = Message::user_text(String::new());
+    if let Message::User {
+        content: target, ..
+    } = &mut message
+    {
+        *target = content;
+    }
+    Ok(message)
+}
+
+fn image_file_paths_in_prompt(prompt: &str) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    for token in prompt.split_whitespace() {
+        let candidate = token.trim_start_matches('@');
+        let path = normalize_dropped_path(candidate);
+        if path.exists()
+            && image_mime_from_path(&path).is_some()
+            && !paths.iter().any(|p| p == &path)
+        {
+            paths.push(path);
+        }
+    }
+    paths
+}
+
+fn image_mime_from_path(path: &Path) -> Option<&'static str> {
+    match path
+        .extension()?
+        .to_string_lossy()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(TABLE[(((b0 & 0b0000_0011) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[(((b1 & 0b0000_1111) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(b2 & 0b0011_1111) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 fn dropped_file_path_candidates(text: &str) -> Vec<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -5399,7 +5493,9 @@ async fn run_non_interactive(
     preflight_model_credentials(&auth, &config.model, &extension_runtime_provider_ids)
         .await
         .map_err(AppError::InvalidArguments)?;
-    let messages = harness.prompt(Message::user_text(input)).await?;
+    let messages = harness
+        .prompt(prompt_message_from_input(input).map_err(AppError::InvalidArguments)?)
+        .await?;
     harness.save_session_jsonl(&session_path).await?;
     if let Some(text) = last_assistant_text(&messages) {
         println!("{text}");
@@ -7407,6 +7503,24 @@ mod tests {
     #[test]
     fn default_model_is_omniroute_model() {
         assert_eq!(DEFAULT_MODEL, "router:kr/claude-sonnet-4.5");
+    }
+
+    #[test]
+    fn prompt_message_from_input_embeds_png_mentions() {
+        let dir = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let path = dir.path().join("pi-clipboard.png");
+        std::fs::write(&path, b"hello").unwrap_or_else(|err| panic!("write image failed: {err}"));
+        let message = prompt_message_from_input(format!("describe @{}", path.display()))
+            .unwrap_or_else(|err| panic!("prompt image failed: {err}"));
+        let Message::User { content, .. } = message else {
+            panic!("expected user message");
+        };
+        assert!(matches!(content[0], ContentBlock::Text { .. }));
+        assert!(matches!(
+            &content[1],
+            ContentBlock::Image { media_type, data }
+                if media_type == "image/png" && data == "aGVsbG8="
+        ));
     }
 
     #[test]

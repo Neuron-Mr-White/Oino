@@ -611,13 +611,38 @@ pub struct OpenRouterStreamOptions {
 pub struct OpenRouterChatMessage {
     pub role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
+    pub content: Option<OpenRouterMessageContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<OpenRouterToolCall>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum OpenRouterMessageContent {
+    Text(String),
+    Parts(Vec<OpenRouterContentPart>),
+}
+
+impl From<String> for OpenRouterMessageContent {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum OpenRouterContentPart {
+    Text { text: String },
+    ImageUrl { image_url: OpenRouterImageUrl },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OpenRouterImageUrl {
+    pub url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -668,7 +693,7 @@ pub fn build_openai_compatible_chat_request(
     if let Some(system) = &request.system_prompt {
         messages.push(OpenRouterChatMessage {
             role: "system".into(),
-            content: Some(system.clone()),
+            content: Some(system.clone().into()),
             tool_call_id: None,
             name: None,
             tool_calls: Vec::new(),
@@ -720,7 +745,7 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
     match message {
         Message::User { content, .. } => Ok(OpenRouterChatMessage {
             role: "user".into(),
-            content: Some(text_content(content)?),
+            content: Some(user_content(content)?),
             tool_call_id: None,
             name: None,
             tool_calls: Vec::new(),
@@ -748,7 +773,7 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
                 .collect();
             Ok(OpenRouterChatMessage {
                 role: "assistant".into(),
-                content: text,
+                content: text.map(Into::into),
                 tool_call_id: None,
                 name: None,
                 tool_calls,
@@ -761,7 +786,7 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
             ..
         } => Ok(OpenRouterChatMessage {
             role: "tool".into(),
-            content: Some(text_content(content)?),
+            content: Some(text_content(content)?.into()),
             tool_call_id: Some(tool_call_id.to_string()),
             name: Some(tool_name.clone()),
             tool_calls: Vec::new(),
@@ -769,7 +794,7 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
         Message::CompactionSummary { summary, .. } | Message::BranchSummary { summary, .. } => {
             Ok(OpenRouterChatMessage {
                 role: "system".into(),
-                content: Some(summary.clone()),
+                content: Some(summary.clone().into()),
                 tool_call_id: None,
                 name: None,
                 tool_calls: Vec::new(),
@@ -788,6 +813,35 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
     }
 }
 
+fn user_content(content: &[ContentBlock]) -> Result<OpenRouterMessageContent, OpenRouterError> {
+    let mut parts = Vec::new();
+    for block in content {
+        match block {
+            ContentBlock::Text { text } => {
+                parts.push(OpenRouterContentPart::Text { text: text.clone() })
+            }
+            ContentBlock::Image { media_type, data } => {
+                parts.push(OpenRouterContentPart::ImageUrl {
+                    image_url: OpenRouterImageUrl {
+                        url: format!("data:{media_type};base64,{data}"),
+                    },
+                })
+            }
+            ContentBlock::Thinking { .. } | ContentBlock::ToolCall { .. } => {}
+        }
+    }
+    if parts.is_empty() {
+        Ok(OpenRouterMessageContent::Text(String::new()))
+    } else if parts.len() == 1 {
+        match parts.remove(0) {
+            OpenRouterContentPart::Text { text } => Ok(OpenRouterMessageContent::Text(text)),
+            image => Ok(OpenRouterMessageContent::Parts(vec![image])),
+        }
+    } else {
+        Ok(OpenRouterMessageContent::Parts(parts))
+    }
+}
+
 fn text_content(content: &[ContentBlock]) -> Result<String, OpenRouterError> {
     let Some(text) = optional_text_content(content)? else {
         return Ok(String::new());
@@ -803,7 +857,7 @@ fn optional_text_content(content: &[ContentBlock]) -> Result<Option<String>, Ope
             ContentBlock::ToolCall { .. } => {}
             ContentBlock::Image { .. } => {
                 return Err(OpenRouterError::UnsupportedContent(
-                    "image content is not supported in the first OpenRouter adapter".into(),
+                    "image content is only supported for user messages".into(),
                 ));
             }
             ContentBlock::Thinking { .. } => {}
@@ -1598,18 +1652,34 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_content_is_error() {
+    fn user_image_content_serializes_as_data_url_parts() {
         let message = Message::User {
             id: Uuid::new_v4(),
-            content: vec![ContentBlock::Image {
-                media_type: "image/png".into(),
-                data: "...".into(),
-            }],
+            content: vec![
+                ContentBlock::Text {
+                    text: "describe".into(),
+                },
+                ContentBlock::Image {
+                    media_type: "image/png".into(),
+                    data: "aGVsbG8=".into(),
+                },
+            ],
         };
-        match build_chat_request(&request(vec![message])) {
-            Err(OpenRouterError::UnsupportedContent(_)) => {}
-            other => panic!("expected unsupported content, got {other:?}"),
-        }
+        let built = match build_chat_request(&request(vec![message])) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        let json = match serde_json::to_value(built) {
+            Ok(value) => value,
+            Err(err) => panic!("serialize failed: {err}"),
+        };
+        assert_eq!(json["messages"][1]["content"][0]["type"], "text");
+        assert_eq!(json["messages"][1]["content"][0]["text"], "describe");
+        assert_eq!(json["messages"][1]["content"][1]["type"], "image_url");
+        assert_eq!(
+            json["messages"][1]["content"][1]["image_url"]["url"],
+            "data:image/png;base64,aGVsbG8="
+        );
     }
 
     #[test]
