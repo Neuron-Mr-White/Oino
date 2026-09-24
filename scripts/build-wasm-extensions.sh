@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release --target wasm32-wasip2 --manifest-path extensions/Cargo.toml \
-    -p fixture -p fixture-provider -p provider-openai-compat -p provider-anthropic -p provider-openai-responses
+    -p fixture -p fixture-provider -p provider-openai-compat -p provider-anthropic -p provider-openai-responses -p ext-budget -p ext-presets -p ext-search
 target="extensions/target/wasm32-wasip2/release"
 mkdir -p crates/oino-wasm-host/tests/fixtures examples/extensions/rust-wasm-fixture
 cp "$target/fixture.wasm" crates/oino-wasm-host/tests/fixtures/fixture.wasm
@@ -14,3 +14,7 @@ mkdir -p crates/oino-app/assets/providers
 cp "$target/provider_openai_compat.wasm" crates/oino-app/assets/providers/openai_compat.wasm
 cp "$target/provider_anthropic.wasm" crates/oino-app/assets/providers/anthropic.wasm
 cp "$target/provider_openai_responses.wasm" crates/oino-app/assets/providers/openai_responses.wasm
+# Built-in extension packages embed their component as `plugin.wasm`.
+cp "$target/ext_budget.wasm" extensions/built-in/budget/extensions/budget/plugin.wasm
+cp "$target/ext_presets.wasm" extensions/built-in/presets/extensions/presets/plugin.wasm
+cp "$target/ext_search.wasm" extensions/built-in/search/extensions/search/plugin.wasm

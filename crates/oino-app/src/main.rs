@@ -170,7 +170,7 @@ const OPENAI_REFRESH_TOKEN_ENV: &str = "OPENAI_REFRESH_TOKEN";
 #[cfg(test)]
 const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct CliArgs {
     show_help: bool,
     settings: bool,
@@ -183,6 +183,14 @@ struct CliArgs {
     json: bool,
     max_turns: Option<u32>,
     no_session: bool,
+    /// `--max-cost <usd>` — enable oino.budget with a cost cap for the run.
+    max_cost: Option<f64>,
+    /// `--max-wall <secs>` — wall-clock cap for the run.
+    max_wall: Option<u64>,
+    /// `--max-tool-errors <n>` — consecutive tool-error cap.
+    max_tool_errors: Option<u64>,
+    /// `--preset <name>` — select an oino.presets preset for the run.
+    preset: Option<String>,
 }
 
 impl CliArgs {
@@ -203,6 +211,10 @@ impl CliArgs {
             json: false,
             max_turns: None,
             no_session: false,
+            max_cost: None,
+            max_wall: None,
+            max_tool_errors: None,
+            preset: None,
         };
         let mut input_parts = Vec::new();
         while let Some(arg) = args.next() {
@@ -224,6 +236,44 @@ impl CliArgs {
                     parsed.max_turns = Some(value.parse().map_err(|_| {
                         AppError::InvalidArguments(format!("invalid --max-turns `{value}`"))
                     })?);
+                }
+                "--max-cost" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "--max-cost requires a value".into(),
+                        ));
+                    };
+                    parsed.max_cost = Some(value.parse().map_err(|_| {
+                        AppError::InvalidArguments(format!("invalid --max-cost `{value}`"))
+                    })?);
+                }
+                "--max-wall" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "--max-wall requires a value".into(),
+                        ));
+                    };
+                    parsed.max_wall = Some(value.parse().map_err(|_| {
+                        AppError::InvalidArguments(format!("invalid --max-wall `{value}`"))
+                    })?);
+                }
+                "--max-tool-errors" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "--max-tool-errors requires a value".into(),
+                        ));
+                    };
+                    parsed.max_tool_errors = Some(value.parse().map_err(|_| {
+                        AppError::InvalidArguments(format!("invalid --max-tool-errors `{value}`"))
+                    })?);
+                }
+                "--preset" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "--preset requires a value".into(),
+                        ));
+                    };
+                    parsed.preset = Some(value);
                 }
                 "-p" | "--prompt" => {
                     let Some(value) = args.next() else {
@@ -326,7 +376,7 @@ fn usage() -> &'static str {
   /compact threshold [pct]        (set/show auto-compact threshold %)
   /compact auto <on|off>           (enable/disable auto-compact)
   /compact model [inherit|<m>]     (set/show LLM compact model)
-  /compact prompt [path]           (set/show LLM compact prompt)\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id] | /model btw inherit|<provider:model> | /model notify-summary inherit|<provider:model>\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify [project|global] <field> <value>\n    fields: enabled, server, topic, token, priority, tags, agent_end, tool_error, summary_enabled, summary_model, summary_prompt, summary_max_chars\n\nOptional built-ins: install from /extensions with builtin:router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, or builtin:ask-user"
+  /compact prompt [path]           (set/show LLM compact prompt)\n  /recall [query]\n  /ralph help | /ralph start <name> <task> | /ralph continue [name]\n  /mode <profile>\n  /prompt:<name>\n  /skill:<name>\n  /model [provider:model-id] | /model btw inherit|<provider:model> | /model notify-summary inherit|<provider:model>\n  /thinking [off|minimal|low|medium|high|xhigh]\n  /title <session-title>\n  /settings model <provider:model-id>\n  /settings thinking <off|minimal|low|medium|high|xhigh>\n  /settings collapse <thinking|tool> <full|truncate|collapse>\n  /settings chat-style <chat|agentic|minimal>\n  /settings tools\n  /settings auth\n  /settings keymaps\n  /settings theme\n  /settings extensions\n  /settings notify [project|global] <field> <value>\n    fields: enabled, server, topic, token, priority, tags, agent_end, tool_error, summary_enabled, summary_model, summary_prompt, summary_max_chars\n\nHeadless flags:\n  -p/--prompt <text|->  (one-shot; - reads stdin)\n  --json                (stream events + summary line)\n  --max-turns N         (cap agent turns, exit 2 on cap)\n  --max-cost <usd>      (oino.budget cost cap)\n  --max-wall <secs>     (oino.budget wall-clock cap)\n  --max-tool-errors <n> (oino.budget consecutive tool-error cap)\n  --preset <name>       (oino.presets selection)\n  --no-session          (don't write a session file)\n\nOptional built-ins: install from /extensions with builtin:router, builtin:footer-status, builtin:ralph-loop, builtin:mode-sandbox, builtin:notify, builtin:craft-skill, builtin:vcc, builtin:ask-user, builtin:provider-anthropic, builtin:provider-openai, builtin:budget, builtin:presets, or builtin:search"
 }
 
 #[derive(Debug, Error)]
@@ -607,7 +657,8 @@ async fn main() -> Result<(), AppError> {
         title: config.title.clone(),
         ..OpenRouterConfig::default()
     };
-    let tool_settings = load_tool_settings(&resource_paths).await;
+    let mut tool_settings = load_tool_settings(&resource_paths).await;
+    apply_headless_extension_overrides(&cli, &mut tool_settings);
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
     let wasm = build_wasm_extensions(
         &extension_snapshot,
@@ -819,6 +870,44 @@ fn headless_summary_json(summary: &HeadlessSummary, wall_ms: u128) -> Value {
 
 /// Exit-code mapping for one-shot prompts: 0 done, 1 error, 2 aborted or
 /// cap-hit (stop_reason aborted/length or `--max-turns` reached).
+/// Headless budget/preset flags: force-enable the package and pass the caps
+/// as init config via env overrides consumed in `build_wasm_extensions`.
+fn apply_headless_extension_overrides(cli: &CliArgs, settings: &mut ToolSettingsSnapshot) {
+    let budget = json!({
+        "max_cost_usd": cli.max_cost,
+        "max_wall_secs": cli.max_wall,
+        "max_consecutive_tool_errors": cli.max_tool_errors,
+    });
+    let budget_active =
+        cli.max_cost.is_some() || cli.max_wall.is_some() || cli.max_tool_errors.is_some();
+    if budget_active {
+        force_enable_extension(settings, "oino.budget");
+        std::env::set_var("OINO_BUDGET_CONFIG", budget.to_string());
+    } else {
+        std::env::remove_var("OINO_BUDGET_CONFIG");
+    }
+    if let Some(preset) = &cli.preset {
+        force_enable_extension(settings, "oino.presets");
+        std::env::set_var(
+            "OINO_PRESETS_CONFIG",
+            serde_json::json!({"preset": preset}).to_string(),
+        );
+    } else {
+        std::env::remove_var("OINO_PRESETS_CONFIG");
+    }
+}
+
+fn force_enable_extension(settings: &mut ToolSettingsSnapshot, extension_id: &str) {
+    let Ok(id) = oino_extension_core::ExtensionId::new(extension_id) else {
+        return;
+    };
+    settings
+        .project
+        .extensions
+        .extensions
+        .insert(id, oino_extension_core::PolicyToggle::Enabled);
+}
+
 fn headless_exit_code(summary: &HeadlessSummary, max_turns: Option<u32>, failed: bool) -> i32 {
     if failed || summary.stop_reason == Some(StopReason::Error) {
         return 1;
@@ -3099,6 +3188,60 @@ async fn apply_tool_settings_to_harness(
             Arc::new(AskUserTool::new(requester)) as Arc<dyn Tool>,
         );
     }
+    // Deferred tools: registered for execution (extension_tool_map below)
+    // but hidden from the model until loaded through `tool_search`.
+    let mut deferred: BTreeMap<String, oino_types::ToolDeclaration> = BTreeMap::new();
+    for active in &snapshot.registries.tools.active {
+        let contribution = &active.entry.contribution;
+        if !contribution.deferred {
+            continue;
+        }
+        deferred.insert(
+            active.effective_id.to_string(),
+            oino_types::ToolDeclaration {
+                name: active.effective_id.to_string(),
+                description: contribution.description.clone(),
+                input_schema: contribution.input_schema.clone(),
+            },
+        );
+    }
+    if !deferred.is_empty() {
+        let (deferred_map, loaded_set) = harness.deferred_state();
+        available.insert(
+            "tool_search".into(),
+            Arc::new(oino_tools::ToolSearchTool::new(
+                {
+                    let deferred_map = Arc::clone(&deferred_map);
+                    Arc::new(move || {
+                        deferred_map
+                            .try_lock()
+                            .map(|map| map.values().cloned().collect())
+                            .unwrap_or_default()
+                    })
+                },
+                {
+                    let deferred_map = Arc::clone(&deferred_map);
+                    Arc::new(move |names: Vec<String>| {
+                        let Ok(deferred) = deferred_map.try_lock() else {
+                            return Vec::new();
+                        };
+                        let Ok(mut loaded) = loaded_set.try_lock() else {
+                            return Vec::new();
+                        };
+                        names
+                            .iter()
+                            .filter(|name| deferred.contains_key(*name))
+                            .map(|name| {
+                                loaded.insert(name.clone());
+                                name.clone()
+                            })
+                            .collect()
+                    })
+                },
+            )) as Arc<dyn Tool>,
+        );
+    }
+    harness.set_deferred_tools(deferred).await;
     available.extend(extension_tool_map(&snapshot, wasm));
     let mode_profile = mode_sandbox_enabled_in_snapshot(&snapshot)
         .then(|| load_mode_sandbox_profile(paths, &mode));
@@ -6169,7 +6312,12 @@ async fn run_non_interactive(
     }
     match outcome {
         Ok(messages) => {
-            let summary = headless_summary(&messages);
+            let mut summary = headless_summary(&messages);
+            // Loop-level reason wins: `end_run`/cap-hit surfaces as `aborted`
+            // even though the last assistant turn itself ended cleanly.
+            if let Some(reason) = harness.last_run_stop_reason().await {
+                summary.stop_reason = Some(reason);
+            }
             if cli.json {
                 println!(
                     "{}",
@@ -11579,5 +11727,438 @@ pi: {expected:?}"
         assert_eq!(headless_exit_code(&aborted, None, false), 2);
         let errored = headless_summary(&[headless_test_message(Some(StopReason::Error), None)]);
         assert_eq!(headless_exit_code(&errored, None, false), 1);
+    }
+
+    /// Install a built-in package extension (manifest + plugin.wasm) into a
+    /// project-local `.oino/extensions/` dir and enable it via project
+    /// settings.
+    fn install_builtin_extension(project: &Path, package: &str, ext_dir: &str) {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| panic!("repo root"))
+            .to_path_buf();
+        let src = repo.join(format!(
+            "extensions/built-in/{package}/extensions/{ext_dir}"
+        ));
+        let dest = project.join(format!(".oino/extensions/{ext_dir}"));
+        fs::create_dir_all(&dest).unwrap_or_else(|err| panic!("mkdir failed: {err}"));
+        for file in ["oino.extension.json", "plugin.wasm"] {
+            fs::copy(src.join(file), dest.join(file))
+                .unwrap_or_else(|err| panic!("copy {file} failed: {err}"));
+        }
+        let id = format!("oino.{package}");
+        fs::write(
+            project.join(".oino/settings.json"),
+            format!(r#"{{ "extensions": {{ "extensions": {{ "{id}": "enabled" }} }} }}"#),
+        )
+        .unwrap_or_else(|err| panic!("write settings failed: {err}"));
+    }
+
+    struct TurnCappedStream {
+        requests: Arc<tokio::sync::Mutex<Vec<oino_agent_loop::StreamRequest>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl StreamProvider for TurnCappedStream {
+        async fn stream(
+            &self,
+            request: oino_agent_loop::StreamRequest,
+            _signal: AbortSignal,
+        ) -> oino_agent_loop::LoopResult<Vec<AssistantStreamEvent>> {
+            self.requests.lock().await.push(request);
+            Ok(vec![
+                AssistantStreamEvent::TextDelta { delta: "ok".into() },
+                AssistantStreamEvent::Done {
+                    stop_reason: StopReason::EndTurn,
+                    provider: None,
+                },
+            ])
+        }
+    }
+
+    fn test_catalog(paths: &ResourcePaths) -> ResourceCatalog {
+        ResourceCatalog {
+            paths: paths.clone(),
+            system_prompt: None,
+            project_instructions: None,
+            prompts: Vec::new(),
+            skills: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn test_auth(temp: &tempfile::TempDir) -> AuthStorage {
+        AuthStorage::new(
+            AuthConfig::new(temp.path().join("auth.json"))
+                .with_runtime_override("parity", "sk-parity")
+                .with_process_env(false),
+        )
+    }
+
+    /// oino.budget with a 1-turn cap + summary: the run continues exactly once
+    /// for the summary turn, then `end_run` ends it (stop_reason aborted).
+    #[tokio::test]
+    async fn wasm_budget_turn_cap_injects_one_summary_then_ends() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        install_builtin_extension(&project, "budget", "budget");
+        std::env::set_var("OINO_BUDGET_CONFIG", r#"{"max_turns": 1}"#);
+
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+        assert!(
+            wasm.extensions.contains_key(
+                &oino_extension_core::ExtensionId::new("oino.budget")
+                    .unwrap_or_else(|e| panic!("id: {e}"))
+            ),
+            "budget not instantiated: {:?}",
+            wasm.diagnostics
+        );
+
+        let stream = Arc::new(TurnCappedStream {
+            requests: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        });
+        let requests = Arc::clone(&stream.requests);
+        let session = SessionManager::new(SessionHeader::new("t", project.clone()));
+        let auth = test_auth(&temp);
+        let catalog = test_catalog(&paths);
+        let harness = build_harness(
+            "openrouter:test/model".into(),
+            ThinkingLevel::Off,
+            stream as Arc<dyn StreamProvider>,
+            auth,
+            session,
+            &catalog,
+            false,
+            None,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("harness: {err}"));
+        wasm.set_session(harness.session_handle());
+        register_wasm_hooks(
+            &harness.hooks(),
+            Arc::new(std::sync::RwLock::new(wasm.clone())),
+        )
+        .await;
+
+        let messages = harness
+            .prompt(Message::user_text("work forever"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
+
+        std::env::remove_var("OINO_BUDGET_CONFIG");
+        // Exactly two provider requests: the work turn + the summary turn.
+        let got = requests.lock().await.len();
+        assert_eq!(
+            got, 2,
+            "requests: {got}, messages: {messages:?}, diags: {:?}",
+            wasm.diagnostics
+        );
+        // Exactly one injected user summary request.
+        let summary_users = messages
+            .iter()
+            .filter(|message| {
+                message
+                    .text_content()
+                    .is_some_and(|text| text.contains("Budget cap reached"))
+            })
+            .count();
+        assert_eq!(summary_users, 1, "messages: {messages:?}");
+        // The run ended via TurnDecision::End → loop-level `aborted`.
+        assert_eq!(
+            harness.last_run_stop_reason().await,
+            Some(StopReason::Aborted)
+        );
+        // A `budget_cap` session entry was recorded.
+        let session = harness.session_handle();
+        let entries = session.lock().await.get_entries();
+        assert!(
+            entries.iter().any(|e| {
+                matches!(
+                    e.kind,
+                    oino_session::SessionEntryKind::ExtensionCustom { .. }
+                )
+            }),
+            "no budget_cap entry"
+        );
+    }
+
+    /// Switching to `minimal` produces a single delta System carrying the
+    /// preset section plus tool removals — not a rewritten prefix.
+    #[tokio::test]
+    async fn wasm_presets_minimal_emits_section_and_tool_delta() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        install_builtin_extension(&project, "presets", "presets");
+        std::env::set_var("OINO_PRESETS_CONFIG", r#"{"preset": "standard"}"#);
+
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+
+        let stream = Arc::new(TurnCappedStream {
+            requests: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        });
+        let requests = Arc::clone(&stream.requests);
+        let session = SessionManager::new(SessionHeader::new("t", project.clone()));
+        let auth = test_auth(&temp);
+        let catalog = test_catalog(&paths);
+        let harness = build_harness(
+            "openrouter:test/model".into(),
+            ThinkingLevel::Off,
+            stream as Arc<dyn StreamProvider>,
+            auth,
+            session,
+            &catalog,
+            false,
+            None,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("harness: {err}"));
+        wasm.set_session(harness.session_handle());
+        register_wasm_hooks(
+            &harness.hooks(),
+            Arc::new(std::sync::RwLock::new(wasm.clone())),
+        )
+        .await;
+
+        // An extra registered tool outside the minimal set so the
+        // active-tools restriction emits a removal delta.
+        let mut tools = BTreeMap::new();
+        for name in ["read", "edit", "write", "bash", "grep"] {
+            tools.insert(
+                name.to_string(),
+                Arc::new(oino_agent_loop::FakeTool::new(name, "ok"))
+                    as Arc<dyn oino_agent_loop::Tool>,
+            );
+        }
+        harness.set_tools(tools).await;
+
+        harness
+            .prompt(Message::user_text("one"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
+
+        // Switch preset via the extension command.
+        let ext = wasm
+            .extensions
+            .get(
+                &oino_extension_core::ExtensionId::new("oino.presets")
+                    .unwrap_or_else(|e| panic!("id: {e}")),
+            )
+            .cloned()
+            .unwrap_or_else(|| panic!("presets not instantiated: {:?}", wasm.diagnostics));
+        let out = ext
+            .run_command("preset", "minimal")
+            .await
+            .unwrap_or_else(|err| panic!("preset command failed: {err}"));
+        assert!(
+            out["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("minimal"),
+            "{out}"
+        );
+
+        harness
+            .prompt(Message::user_text("two"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
+        std::env::remove_var("OINO_PRESETS_CONFIG");
+
+        let requests = requests.lock().await;
+        let second = &requests[1];
+        let delta = second
+            .transcript
+            .messages()
+            .iter()
+            .rev()
+            .find_map(|message| match message {
+                Message::System {
+                    sections,
+                    tools_removed,
+                    ..
+                } if !sections.is_empty() || !tools_removed.is_empty() => {
+                    Some((sections.clone(), tools_removed.clone()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no system delta in second request"));
+        let (sections, tools_removed) = delta;
+        assert_eq!(
+            sections.len(),
+            1,
+            "delta sections: {sections:?}, removed: {tools_removed:?}"
+        );
+        assert_eq!(sections[0].name, "oino/preset");
+        assert!(sections[0]
+            .text
+            .as_deref()
+            .unwrap_or_default()
+            .contains("concise"));
+        let minimal = ["read", "edit", "write", "bash"];
+        assert!(
+            !tools_removed.is_empty(),
+            "expected tools_removed delta: {tools_removed:?}"
+        );
+        for kept in minimal {
+            assert!(
+                !tools_removed.contains(&kept.to_string()),
+                "{kept} removed: {tools_removed:?}"
+            );
+        }
+    }
+
+    /// oino.search tools are registered but deferred (hidden); tool_search
+    /// loads them, and grep respects .gitignore + the output cap.
+    #[tokio::test]
+    async fn wasm_search_deferred_tools_and_gitignore() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        fs::create_dir_all(&project).unwrap_or_else(|err| panic!("mkdir: {err}"));
+        fs::write(project.join("keep.txt"), "needle here\n")
+            .unwrap_or_else(|err| panic!("write: {err}"));
+        fs::write(project.join("skip.log"), "needle ignored\n")
+            .unwrap_or_else(|err| panic!("write: {err}"));
+        fs::write(project.join(".gitignore"), "skip.log\n")
+            .unwrap_or_else(|err| panic!("write: {err}"));
+        install_builtin_extension(&project, "search", "search");
+
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+        assert!(
+            wasm.tools.contains_key("grep"),
+            "grep missing: {:?}",
+            wasm.diagnostics
+        );
+
+        // deferred contributions collected
+        let deferred: Vec<&str> = snapshot
+            .registries
+            .tools
+            .active
+            .iter()
+            .filter(|a| a.entry.contribution.deferred)
+            .map(|a| a.effective_id.as_str())
+            .collect();
+        assert!(
+            deferred.contains(&"grep") && deferred.contains(&"find"),
+            "{deferred:?}"
+        );
+
+        // grep runs through the WasmTool; gitignored file excluded.
+        let tools = extension_tool_map(&snapshot, Some(&wasm));
+        let grep = tools
+            .get("grep")
+            .unwrap_or_else(|| panic!("grep tool missing"));
+        let call = oino_agent_loop::ToolCall {
+            id: OinoId::nil(),
+            name: "grep".into(),
+            arguments: serde_json::json!({"pattern": "needle", "path": project.display().to_string()}),
+        };
+        let result = oino_agent_loop::Tool::execute(
+            grep.as_ref(),
+            call,
+            oino_agent_loop::ToolUpdateCallback::new(
+                Arc::new(oino_agent_loop::NoopEventSink) as Arc<dyn oino_agent_loop::EventSink>,
+                OinoId::nil(),
+            ),
+            AbortSignal::new(),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("grep failed: {err}"));
+        let text = match &result.content[0] {
+            oino_types::ContentBlock::Text { text, .. } => text.clone(),
+            _ => panic!("unexpected content"),
+        };
+        assert!(text.contains("keep.txt:1"), "{text}");
+        assert!(!text.contains("skip.log"), "gitignored file leaked: {text}");
+
+        // tool_search finds + loads the deferred tools.
+        let session = SessionManager::new(SessionHeader::new("t", project.clone()));
+        let auth = test_auth(&temp);
+        let catalog = test_catalog(&paths);
+        let stream = Arc::new(TurnCappedStream {
+            requests: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+        });
+        let harness = build_harness(
+            "openrouter:test/model".into(),
+            ThinkingLevel::Off,
+            stream,
+            auth,
+            session,
+            &catalog,
+            false,
+            None,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("harness: {err}"));
+        apply_tool_settings_to_harness(
+            &harness,
+            &settings,
+            &paths,
+            &project,
+            AgentMode::default(),
+            None,
+            Some(&wasm),
+        )
+        .await;
+        let deferred_decls = harness.deferred_tool_declarations().await;
+        let names: Vec<String> = deferred_decls.iter().map(|d| d.name.clone()).collect();
+        assert!(names.contains(&"grep".into()), "{names:?}");
+        let search_tool = harness
+            .get_tool("tool_search")
+            .await
+            .unwrap_or_else(|| panic!("tool_search not registered"));
+        let call = oino_agent_loop::ToolCall {
+            id: OinoId::nil(),
+            name: "tool_search".into(),
+            arguments: serde_json::json!({"query": "search contents"}),
+        };
+        let result = oino_agent_loop::Tool::execute(
+            search_tool.as_ref(),
+            call,
+            oino_agent_loop::ToolUpdateCallback::new(
+                Arc::new(oino_agent_loop::NoopEventSink) as Arc<dyn oino_agent_loop::EventSink>,
+                OinoId::nil(),
+            ),
+            AbortSignal::new(),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("tool_search failed: {err}"));
+        let text = match &result.content[0] {
+            oino_types::ContentBlock::Text { text, .. } => text.clone(),
+            _ => panic!("unexpected content"),
+        };
+        assert!(text.contains("grep"), "{text}");
+        let call = oino_agent_loop::ToolCall {
+            id: OinoId::nil(),
+            name: "tool_search".into(),
+            arguments: serde_json::json!({"load": ["grep"]}),
+        };
+        let result = oino_agent_loop::Tool::execute(
+            search_tool.as_ref(),
+            call,
+            oino_agent_loop::ToolUpdateCallback::new(
+                Arc::new(oino_agent_loop::NoopEventSink) as Arc<dyn oino_agent_loop::EventSink>,
+                OinoId::nil(),
+            ),
+            AbortSignal::new(),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("tool_search load failed: {err}"));
+        assert_eq!(result.added_tool_names, vec!["grep".to_string()]);
     }
 }

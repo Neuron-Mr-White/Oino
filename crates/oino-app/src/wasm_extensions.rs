@@ -415,9 +415,10 @@ pub(crate) async fn build_wasm_extensions(
                 continue;
             }
         };
-        let permissions = record_for(extension_id)
+        let mut permissions = record_for(extension_id)
             .map(|record| record.permissions.clone())
             .unwrap_or_else(|| manifest.permissions.clone());
+        substitute_permission_paths(&mut permissions, paths);
         let kv_dir = paths
             .home_dir
             .join(".oino/extension-data")
@@ -459,7 +460,7 @@ pub(crate) async fn build_wasm_extensions(
                 continue;
             }
         };
-        let config: Value = fs::read_to_string(
+        let mut config: Value = fs::read_to_string(
             paths
                 .home_dir
                 .join(".oino/extensions")
@@ -469,6 +470,28 @@ pub(crate) async fn build_wasm_extensions(
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_else(|| json!({}));
+        // Headless run overrides (e.g. `--max-cost` → oino.budget caps).
+        for (env_name, target) in [
+            ("OINO_BUDGET_CONFIG", "oino.budget"),
+            ("OINO_PRESETS_CONFIG", "oino.presets"),
+        ] {
+            if extension_id.as_str() == target {
+                if let Ok(overrides) = std::env::var(env_name)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+                    .unwrap_or_else(|| json!({}))
+                    .as_object()
+                    .cloned()
+                    .ok_or("not an object")
+                {
+                    if let Some(object) = config.as_object_mut() {
+                        for (key, value) in overrides {
+                            object.insert(key, value);
+                        }
+                    }
+                }
+            }
+        }
         let registration = match extension.init(config).await {
             Ok(registration) => registration,
             Err(err) => {
@@ -1159,8 +1182,8 @@ pub(crate) async fn register_wasm_hooks(hooks: &HookRegistry, holder: WasmHolder
             let holder = holder5.clone();
             Box::pin(async move {
                 let wasm = holder.read().ok().map(|guard| guard.clone());
-                let mut edits = Vec::new();
-                let Some(wasm) = wasm else { return Ok(edits) };
+                let mut merged = oino_harness::BeforeAgentStartResult::default();
+                let Some(wasm) = wasm else { return Ok(merged) };
                 for contribution in
                     wasm.hooks_matching(HookEventKind::BeforeAgentStart, HookMode::Mutable)
                 {
@@ -1174,7 +1197,10 @@ pub(crate) async fn register_wasm_hooks(hooks: &HookRegistry, holder: WasmHolder
                                 oino_extension_runtime::BeforeAgentStartResult,
                             >(result)
                             {
-                                edits.extend(result.section_edits);
+                                merged.section_edits.extend(result.section_edits);
+                                if result.active_tools.is_some() {
+                                    merged.active_tools = result.active_tools;
+                                }
                             }
                         }
                         Err(err) => hook_diag(
@@ -1185,7 +1211,7 @@ pub(crate) async fn register_wasm_hooks(hooks: &HookRegistry, holder: WasmHolder
                         ),
                     }
                 }
-                Ok::<Vec<oino_types::PromptSection>, oino_agent_loop::LoopError>(edits)
+                Ok::<oino_harness::BeforeAgentStartResult, oino_agent_loop::LoopError>(merged)
             })
         }))
         .await;
@@ -1217,6 +1243,7 @@ pub(crate) async fn register_wasm_hooks(hooks: &HookRegistry, holder: WasmHolder
                             {
                                 merged.entries.extend(result.entries);
                                 merged.continue_run |= result.continue_run;
+                                merged.end_run |= result.end_run;
                             }
                         }
                         Err(err) => hook_diag(
@@ -1381,4 +1408,48 @@ pub(crate) fn wasm_model_cache_lookup(holder: WasmHolder) -> oino_harness::Model
             cache_read_price: f64v(&cost["cache_read"]),
         })
     })
+}
+
+/// Substitute `${project}` (project root) and `${home}` placeholders in
+/// `permissions.filesystem[].paths` before preopens are built.
+fn substitute_permission_paths(
+    permissions: &mut oino_extension_core::ExtensionPermissions,
+    paths: &ResourcePaths,
+) {
+    let project = paths.project_root.display().to_string();
+    let home = paths.home_dir.display().to_string();
+    for permission in &mut permissions.filesystem {
+        for path in &mut permission.paths {
+            *path = path
+                .replace("${project}", &project)
+                .replace("${home}", &home);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_paths_substitute_project_and_home() {
+        let paths = ResourcePaths::from_home_and_cwd("/home/u", "/work/proj")
+            .unwrap_or_else(|err| panic!("paths: {err}"));
+        let mut permissions = oino_extension_core::ExtensionPermissions {
+            filesystem: vec![oino_extension_core::FilesystemPermission {
+                access: oino_extension_core::FilesystemAccess::Read,
+                paths: vec!["${project}".into(), "${home}/shared".into(), "/abs".into()],
+            }],
+            ..oino_extension_core::ExtensionPermissions::default()
+        };
+        substitute_permission_paths(&mut permissions, &paths);
+        assert_eq!(
+            permissions.filesystem[0].paths,
+            vec![
+                "/work/proj".to_string(),
+                "/home/u/shared".to_string(),
+                "/abs".to_string()
+            ]
+        );
+    }
 }

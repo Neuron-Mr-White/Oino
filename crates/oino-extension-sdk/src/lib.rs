@@ -198,6 +198,7 @@ impl ExampleExtensionTemplate {
                     }),
                     execution_mode: ToolExecutionMode::Parallel,
                     handler: Some("handle_tool".into()),
+                    deferred: false,
                     conflict: Default::default(),
                 }],
                 commands: vec![CommandContribution {

@@ -609,6 +609,10 @@ pub struct ToolContribution {
     pub handler: Option<String>,
     #[serde(default)]
     pub conflict: ConflictPolicy,
+    /// Registered but excluded from the model-visible tool set until loaded
+    /// through the `tool_search` host tool.
+    #[serde(default)]
+    pub deferred: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -4070,6 +4074,7 @@ mod tests {
                 execution_mode: ToolExecutionMode::Parallel,
                 handler: None,
                 conflict: ConflictPolicy::default(),
+                deferred: false,
             },
         )?;
         assert_typed_valid(
@@ -4254,6 +4259,7 @@ mod tests {
                 execution_mode: ToolExecutionMode::Parallel,
                 handler: None,
                 conflict: ConflictPolicy::default(),
+                deferred: false,
             },
         )?;
         assert_typed_invalid(

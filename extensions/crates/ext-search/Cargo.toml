@@ -1,0 +1,15 @@
+[package]
+name = "ext-search"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oino-extension-guest = { path = "../oino-extension-guest" }
+serde_json = "1"
+ignore = "0.4.30"
+glob = "0.3"
+regex = "1"
+walkdir = "2"

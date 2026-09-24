@@ -45,7 +45,7 @@ use oino_agent_loop::{
     ToolExecutionMode, ToolResult, ToolUpdateCallback,
 };
 use oino_env::{CommandOptions, EnvError, ExecutionEnv};
-use oino_types::ContentBlock;
+use oino_types::{ContentBlock, ToolDeclaration};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -1091,4 +1091,119 @@ beta"
             matches!(&result.content[0], ContentBlock::Text { text, .. } if text.contains("stdout:\nhi") && text.contains("Command exited with code 2"))
         );
     }
+}
+
+/// Host-owned `tool_search`: lists deferred (registered but hidden) tools and
+/// loads them into the model-visible set. Registered only when at least one
+/// deferred tool exists.
+pub struct ToolSearchTool {
+    deferred: Arc<dyn Fn() -> Vec<ToolDeclaration> + Send + Sync>,
+    load: Arc<dyn Fn(Vec<String>) -> Vec<String> + Send + Sync>,
+}
+
+impl ToolSearchTool {
+    /// `deferred` lists the deferred declarations; `load` marks names loaded
+    /// and returns the confirmed subset.
+    #[must_use]
+    pub fn new(
+        deferred: Arc<dyn Fn() -> Vec<ToolDeclaration> + Send + Sync>,
+        load: Arc<dyn Fn(Vec<String>) -> Vec<String> + Send + Sync>,
+    ) -> Self {
+        Self { deferred, load }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolSearchArgs {
+    query: Option<String>,
+    load: Option<Vec<String>>,
+}
+
+#[async_trait]
+impl Tool for ToolSearchTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "tool_search".into(),
+            description: "Search deferred tools and load them into the visible set. Without `load`, returns up to 10 deferred tools matching `query` (name + description). With `load`, marks the named tools available and returns the confirmed list.".into(),
+            input_schema: json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "query": {"type": "string", "description": "Fuzzy match against deferred tool names and descriptions"},
+                    "load": {"type": "array", "items": {"type": "string"}, "description": "Tool names to make available"}
+                }
+            }),
+        }
+    }
+
+    async fn execute(
+        &self,
+        call: ToolCall,
+        _updates: ToolUpdateCallback,
+        signal: AbortSignal,
+    ) -> LoopResult<ToolResult> {
+        abort_if_needed(&signal)?;
+        let args: ToolSearchArgs = serde_json::from_value(call.arguments.clone())
+            .map_err(|_| LoopError::Tool(ToolInputError::InvalidArgument("query").to_string()))?;
+        if let Some(load) = args.load {
+            let confirmed = (self.load)(load);
+            let mut result = ToolResult::text(
+                &call,
+                if confirmed.is_empty() {
+                    "No matching deferred tools loaded.".to_string()
+                } else {
+                    format!("Loaded tools: {}", confirmed.join(", "))
+                },
+            );
+            result.added_tool_names = confirmed;
+            return Ok(result);
+        }
+        let deferred = (self.deferred)();
+        let query = args.query.unwrap_or_default();
+        let matches = fuzzy_tool_matches(&deferred, &query, 10);
+        let text = if matches.is_empty() {
+            "No deferred tools found.".to_string()
+        } else {
+            matches
+                .iter()
+                .map(|tool| format!("{} — {}", tool.name, tool.description))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        Ok(ToolResult::text(&call, text))
+    }
+}
+
+fn fuzzy_tool_matches(
+    tools: &[ToolDeclaration],
+    query: &str,
+    limit: usize,
+) -> Vec<ToolDeclaration> {
+    let query = query.trim();
+    if query.is_empty() {
+        return tools.iter().take(limit).cloned().collect();
+    }
+    let mut nucleo = nucleo::Nucleo::new(nucleo::Config::DEFAULT, Arc::new(|| {}), Some(1), 1);
+    let injector = nucleo.injector();
+    for (index, tool) in tools.iter().enumerate() {
+        let haystack = format!("{} {}", tool.name, tool.description);
+        injector.push(index, move |_, columns| {
+            columns[0] = nucleo::Utf32String::from(haystack);
+        });
+    }
+    drop(injector);
+    nucleo.pattern.reparse(
+        0,
+        query,
+        nucleo::pattern::CaseMatching::Ignore,
+        nucleo::pattern::Normalization::Smart,
+        false,
+    );
+    while nucleo.tick(10).running {}
+    nucleo
+        .snapshot()
+        .matched_items(..)
+        .filter_map(|item| tools.get(*item.data).cloned())
+        .take(limit)
+        .collect()
 }

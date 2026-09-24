@@ -51,9 +51,11 @@ pub use cache::{
 };
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
 use oino_session::{SessionEntry, SessionEntryKind, SessionManager};
+use std::collections::BTreeSet;
+
 use oino_types::{
     transcript::{current_system, current_tools, render_system_prompt, tool_declaration_canonical},
-    AssistantStreamEvent, ContentBlock, Message, Model, PromptSection, ThinkingLevel,
+    AssistantStreamEvent, ContentBlock, Message, Model, PromptSection, StopReason, ThinkingLevel,
 };
 use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
@@ -102,19 +104,32 @@ pub enum MutatingHook {
 pub type NotificationHandler = Arc<dyn Fn(AgentEvent) -> BoxFuture<'static, ()> + Send + Sync>;
 /// `before_agent_start` handlers return prompt-section edits merged into the
 /// pending system state; never a whole replacement prompt.
+/// `before_agent_start` handlers may return section edits and optionally
+/// restrict the model-visible tool set for the run.
 pub type BeforeAgentStartHandler =
-    Arc<dyn Fn() -> BoxFuture<'static, LoopResult<Vec<PromptSection>>> + Send + Sync>;
+    Arc<dyn Fn() -> BoxFuture<'static, LoopResult<BeforeAgentStartResult>> + Send + Sync>;
 /// `turn_end` handlers see the finished turn and may append entries and/or
 /// request one more turn.
 pub type TurnEndHandler =
     Arc<dyn Fn(TurnContext) -> BoxFuture<'static, LoopResult<Option<TurnEndResult>>> + Send + Sync>;
 
 /// Result of an actionable `turn_end` hook: extra entries appended (in
-/// registration order) and whether the run should continue.
+/// registration order) and whether the run should continue or end.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TurnEndResult {
     pub entries: Vec<Message>,
     pub continue_run: bool,
+    /// `end_run` maps to [`TurnDecision::End`] and beats `continue_run`.
+    pub end_run: bool,
+}
+
+/// Result of `before_agent_start`: prompt section edits plus an optional
+/// model-visible tool restriction (`Some` = only these tool names are
+/// visible; the last non-`None` handler wins).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BeforeAgentStartResult {
+    pub section_edits: Vec<PromptSection>,
+    pub active_tools: Option<Vec<String>>,
 }
 pub type ContextHandler =
     Arc<dyn Fn(Vec<Message>) -> BoxFuture<'static, LoopResult<Vec<Message>>> + Send + Sync>;
@@ -217,12 +232,16 @@ impl HookRegistry {
         }
     }
 
-    async fn run_before_agent_start(&self) -> LoopResult<Vec<PromptSection>> {
-        let mut edits = Vec::new();
+    async fn run_before_agent_start(&self) -> LoopResult<BeforeAgentStartResult> {
+        let mut merged = BeforeAgentStartResult::default();
         for handler in self.before_agent_start.lock().await.clone() {
-            edits.extend(handler().await?);
+            let result = handler().await?;
+            merged.section_edits.extend(result.section_edits);
+            if result.active_tools.is_some() {
+                merged.active_tools = result.active_tools;
+            }
         }
-        Ok(edits)
+        Ok(merged)
     }
 
     async fn run_input(&self, mut message: Message) -> LoopResult<Message> {
@@ -238,6 +257,7 @@ impl HookRegistry {
             if let Some(result) = handler(context.clone()).await? {
                 merged.entries.extend(result.entries);
                 merged.continue_run |= result.continue_run;
+                merged.end_run |= result.end_run;
             }
         }
         Ok(merged)
@@ -446,6 +466,12 @@ pub struct FullPromptInspect {
 /// Desired prompt state: base text plus ordered sections.
 type PendingSystemState = (String, Vec<PromptSection>);
 
+/// Shared deferred-tool state: registered declarations and loaded names.
+pub type DeferredToolState = (
+    Arc<Mutex<BTreeMap<String, oino_types::ToolDeclaration>>>,
+    Arc<Mutex<BTreeSet<String>>>,
+);
+
 pub struct Harness {
     agent: Agent,
     session: Arc<Mutex<SessionManager>>,
@@ -461,6 +487,18 @@ pub struct Harness {
     /// Bridge fallback prompt used when no `System` message exists and no
     /// pending state was synced.
     system_prompt_fallback: Option<String>,
+    /// Registered-but-hidden deferred tool declarations (name -> definition).
+    deferred_tools: Arc<Mutex<BTreeMap<String, oino_types::ToolDeclaration>>>,
+    /// Deferred tool names already loaded mid-run.
+    loaded_tools: Arc<Mutex<BTreeSet<String>>>,
+
+    /// `before_agent_start` active-tools restriction (`Some` = allowlist).
+    active_tools_filter: Arc<Mutex<Option<BTreeSet<String>>>>,
+    /// Diagnostics from hook results (e.g. unknown tool names).
+    hook_diagnostics: Arc<Mutex<Vec<String>>>,
+    /// Stop reason of the most recent `prompt` run (loop-level, incl.
+    /// `TurnDecision::End` → `aborted` mapping).
+    last_run_stop_reason: Arc<Mutex<Option<StopReason>>>,
 }
 
 impl Harness {
@@ -489,6 +527,10 @@ impl Harness {
             hooks: hooks.clone(),
             cache: Arc::clone(&cache_tracker),
         }) as Arc<dyn StreamProvider>;
+        let deferred_tools: Arc<Mutex<BTreeMap<String, oino_types::ToolDeclaration>>> =
+            Arc::new(Mutex::new(BTreeMap::new()));
+        let loaded_tools: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(BTreeSet::new()));
+        let emitted_loaded: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(BTreeSet::new()));
         let mut loop_config = AgentLoopConfig::new(initial_model, stream);
         loop_config.thinking_level = initial_thinking_level;
         loop_config.system_prompt = config.system_prompt.clone();
@@ -514,19 +556,64 @@ impl Harness {
                 Box::pin(async move { hooks.run_before_tool_call(call).await });
             fut
         }) as BeforeToolCall);
-        loop_config.after_tool_call = Some(Arc::new(move |result| {
+        let loaded_for_results = Arc::clone(&loaded_tools);
+        loop_config.after_tool_call = Some(Arc::new(move |result: ToolResult| {
             let hooks = after_hooks.clone();
-            let fut: BoxFuture<'static, LoopResult<ToolResult>> =
-                Box::pin(async move { hooks.run_after_tool_call(result).await });
+            let loaded = Arc::clone(&loaded_for_results);
+            let fut: BoxFuture<'static, LoopResult<ToolResult>> = Box::pin(async move {
+                for name in &result.added_tool_names {
+                    loaded.lock().await.insert(name.clone());
+                }
+                hooks.run_after_tool_call(result).await
+            });
             fut
         }) as AfterToolCall);
+        let deferred_for_turn = Arc::clone(&deferred_tools);
+        let loaded_for_turn = Arc::clone(&loaded_tools);
+        let emitted_for_turn = Arc::clone(&emitted_loaded);
         loop_config.finish_turn = Some(Arc::new(move |context| {
             let hooks = turn_end_hooks.clone();
+            let deferred = Arc::clone(&deferred_for_turn);
+            let loaded = Arc::clone(&loaded_for_turn);
+            let emitted = Arc::clone(&emitted_for_turn);
             let fut: BoxFuture<'static, LoopResult<Option<TurnUpdate>>> = Box::pin(async move {
+                // Deferred tools loaded by this turn's tool results must reach
+                // the next provider request as a `System { tools_added }`
+                // delta (prefix-stability mechanism, before any hook entries).
+                let mut messages = Vec::new();
+                {
+                    let deferred = deferred.lock().await;
+                    let mut loaded_guard = loaded.lock().await;
+                    let _ = &mut loaded_guard;
+                    let mut emitted_guard = emitted.lock().await;
+                    let pending: Vec<oino_types::ToolDeclaration> = loaded_guard
+                        .iter()
+                        .filter(|name| !emitted_guard.contains(*name))
+                        .filter_map(|name| deferred.get(name).cloned())
+                        .collect();
+                    if !pending.is_empty() {
+                        for name in &pending {
+                            emitted_guard.insert(name.name.clone());
+                        }
+                        drop(loaded_guard);
+                        messages.push(Message::System {
+                            id: oino_types::OinoId::new_v4(),
+                            content: String::new(),
+                            sections: Vec::new(),
+                            tools_added: pending,
+                            tools_removed: Vec::new(),
+                        });
+                    }
+                }
                 let result = hooks.run_turn_end(context).await?;
+                messages.extend(result.entries);
                 Ok(Some(TurnUpdate {
-                    decision: result.continue_run.then_some(TurnDecision::Continue),
-                    messages: result.entries,
+                    decision: if result.end_run {
+                        Some(TurnDecision::End)
+                    } else {
+                        result.continue_run.then_some(TurnDecision::Continue)
+                    },
+                    messages,
                 }))
             });
             fut
@@ -540,6 +627,11 @@ impl Harness {
             tools: Arc::new(Mutex::new(config.tools)),
             auth_resolver: config.auth_resolver,
             cache_tracker,
+            deferred_tools,
+            loaded_tools,
+            active_tools_filter: Arc::new(Mutex::new(None)),
+            hook_diagnostics: Arc::new(Mutex::new(Vec::new())),
+            last_run_stop_reason: Arc::new(Mutex::new(None)),
             pending_system: Arc::new(Mutex::new(None)),
             system_prompt_fallback: config.system_prompt,
         }
@@ -555,12 +647,15 @@ impl Harness {
     }
 
     pub async fn prompt(&self, message: Message) -> HarnessResult<Vec<Message>> {
-        let edits = self
+        let result = self
             .hooks
             .run_before_agent_start()
             .await
             .map_err(oino_agent::AgentError::Loop)?;
-        self.merge_section_edits(edits).await;
+        self.merge_section_edits(result.section_edits).await;
+        if let Some(active_tools) = result.active_tools {
+            self.apply_active_tools(active_tools).await;
+        }
         self.flush_system().await?;
         let message = self
             .hooks
@@ -568,6 +663,7 @@ impl Harness {
             .await
             .map_err(oino_agent::AgentError::Loop)?;
         let output = self.agent.prompt(message).await?;
+        *self.last_run_stop_reason.lock().await = Some(output.stop_reason.clone());
         self.persist_messages(&output.messages).await;
         self.hooks
             .notify(AgentEvent::SavePoint {
@@ -705,6 +801,102 @@ impl Harness {
     }
 
     /// Record the desired prompt state (base text plus ordered sections).
+    /// `before_agent_start` active-tools restriction: store the allowlist and
+    /// record unknown names as hook diagnostics.
+    async fn apply_active_tools(&self, active_tools: Vec<String>) {
+        let registered: BTreeSet<String> = self.tools.lock().await.keys().cloned().collect();
+        let unknown: Vec<String> = active_tools
+            .iter()
+            .filter(|name| !registered.contains(*name))
+            .cloned()
+            .collect();
+        if !unknown.is_empty() {
+            self.hook_diagnostics.lock().await.push(format!(
+                "before_agent_start active_tools ignored unknown tools: {}",
+                unknown.join(", ")
+            ));
+        }
+        let allowed: BTreeSet<String> = active_tools
+            .into_iter()
+            .filter(|name| registered.contains(name))
+            .collect();
+        *self.active_tools_filter.lock().await = Some(allowed);
+    }
+
+    /// Loop-level stop reason of the last run (`aborted` covers
+    /// `end_run`/max-turns/Esc).
+    pub async fn last_run_stop_reason(&self) -> Option<StopReason> {
+        self.last_run_stop_reason.lock().await.clone()
+    }
+
+    /// Diagnostics recorded from hook results (read + clear).
+    pub async fn take_hook_diagnostics(&self) -> Vec<String> {
+        std::mem::take(&mut *self.hook_diagnostics.lock().await)
+    }
+
+    /// Register deferred tool declarations (registered for execution, hidden
+    /// from the model until loaded via `tool_search`).
+    pub async fn set_deferred_tools(&self, tools: BTreeMap<String, oino_types::ToolDeclaration>) {
+        *self.deferred_tools.lock().await = tools;
+    }
+
+    /// Deferred declarations for the `tool_search` listing.
+    pub async fn deferred_tool_declarations(&self) -> Vec<oino_types::ToolDeclaration> {
+        self.deferred_tools.lock().await.values().cloned().collect()
+    }
+
+    /// Mark deferred tools as loaded (next request carries a
+    /// `System { tools_added }` delta; the declaration stays registered).
+    pub async fn mark_tools_loaded(&self, names: &[String]) -> Vec<String> {
+        let deferred = self.deferred_tools.lock().await;
+        let mut loaded = self.loaded_tools.lock().await;
+        names
+            .iter()
+            .filter(|name| deferred.contains_key(*name))
+            .map(|name| {
+                loaded.insert(name.clone());
+                name.clone()
+            })
+            .collect()
+    }
+
+    /// Shared deferred-tool state for `tool_search` callbacks.
+    #[must_use]
+    pub fn deferred_state(&self) -> DeferredToolState {
+        (
+            Arc::clone(&self.deferred_tools),
+            Arc::clone(&self.loaded_tools),
+        )
+    }
+
+    /// Synchronous accessors for `tool_search` callbacks (try_lock-based).
+    #[must_use]
+    pub fn deferred_tool_declarations_sync(&self) -> Vec<oino_types::ToolDeclaration> {
+        self.deferred_tools
+            .try_lock()
+            .map(|map| map.values().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Synchronous `mark_tools_loaded` for `tool_search` (try_lock-based).
+    #[must_use]
+    pub fn mark_tools_loaded_sync(&self, names: &[String]) -> Vec<String> {
+        let Ok(deferred) = self.deferred_tools.try_lock() else {
+            return Vec::new();
+        };
+        let Ok(mut loaded) = self.loaded_tools.try_lock() else {
+            return Vec::new();
+        };
+        names
+            .iter()
+            .filter(|name| deferred.contains_key(*name))
+            .map(|name| {
+                loaded.insert(name.clone());
+                name.clone()
+            })
+            .collect()
+    }
+
     /// Repeated calls coalesce; the next `prompt` flushes one delta `System`
     /// message carrying only what changed.
     pub async fn sync_system(&self, base: String, sections: Vec<PromptSection>) {
@@ -743,11 +935,21 @@ impl Harness {
     /// user message.
     async fn flush_system(&self) -> HarnessResult<()> {
         let pending = self.pending_system.lock().await.clone();
+        let deferred = self.deferred_tools.lock().await;
+        let loaded = self.loaded_tools.lock().await;
+        let active_filter = self.active_tools_filter.lock().await;
         let desired_tools: Vec<oino_types::ToolDeclaration> = self
             .tools
             .lock()
             .await
             .values()
+            .filter(|tool| {
+                let name = &tool.definition().name;
+                (!deferred.contains_key(name) || loaded.contains(name))
+                    && active_filter
+                        .as_ref()
+                        .is_none_or(|filter| filter.contains(name))
+            })
             .map(|tool| tool.definition())
             .collect();
         let messages = self.agent.messages().await;
@@ -891,6 +1093,11 @@ impl Harness {
 
     pub async fn session_title(&self) -> String {
         self.session.lock().await.get_session_name()
+    }
+
+    /// Look up a registered tool by name (execution map).
+    pub async fn get_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.tools.lock().await.get(name).cloned()
     }
 
     pub async fn tool_names(&self) -> Vec<String> {
@@ -1168,6 +1375,7 @@ mod tests {
         VecEventSink,
     };
     use oino_session::SessionHeader;
+
     use oino_types::{AssistantStreamEvent, StopReason};
     use std::path::PathBuf;
 
@@ -1557,6 +1765,151 @@ mod tests {
         assert!(tools_removed.is_empty());
     }
 
+    /// A tool result carrying `added_tool_names` emits a mid-run
+    /// `System { tools_added }` delta so the loaded deferred tool is visible
+    /// to the very next provider request.
+    #[tokio::test]
+    async fn deferred_tool_load_emits_mid_run_system_delta() {
+        struct SearchLoader;
+        #[async_trait::async_trait]
+        impl Tool for SearchLoader {
+            fn definition(&self) -> oino_agent_loop::ToolDefinition {
+                oino_agent_loop::ToolDefinition {
+                    name: "tool_search".into(),
+                    description: "load".into(),
+                    input_schema: serde_json::json!({"type":"object"}),
+                }
+            }
+            async fn execute(
+                &self,
+                call: ToolCall,
+                _updates: oino_agent_loop::ToolUpdateCallback,
+                _signal: AbortSignal,
+            ) -> LoopResult<ToolResult> {
+                let mut result = ToolResult::text(&call, "loaded");
+                result.added_tool_names = vec!["grep".into()];
+                Ok(result)
+            }
+        }
+
+        struct TurnRecordingStream {
+            turns: std::sync::Mutex<std::collections::VecDeque<Vec<AssistantStreamEvent>>>,
+            requests: Arc<std::sync::Mutex<Vec<StreamRequest>>>,
+        }
+        #[async_trait::async_trait]
+        impl StreamProvider for TurnRecordingStream {
+            async fn stream(
+                &self,
+                request: StreamRequest,
+                _signal: AbortSignal,
+            ) -> LoopResult<Vec<AssistantStreamEvent>> {
+                self.requests
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(request);
+                Ok(self
+                    .turns
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .pop_front()
+                    .unwrap_or_else(|| {
+                        vec![AssistantStreamEvent::Done {
+                            stop_reason: StopReason::EndTurn,
+                            provider: None,
+                        }]
+                    }))
+            }
+        }
+        let session = SessionManager::new(SessionHeader::new("t", PathBuf::from("/tmp")));
+        let call_id = oino_types::OinoId::new_v4();
+        let requests: Arc<std::sync::Mutex<Vec<StreamRequest>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let stream = Arc::new(TurnRecordingStream {
+            turns: std::sync::Mutex::new(
+                [
+                    vec![
+                        AssistantStreamEvent::ToolCallDone {
+                            id: call_id,
+                            name: "tool_search".into(),
+                            native_id: None,
+                            arguments: serde_json::json!({}),
+                        },
+                        AssistantStreamEvent::Done {
+                            stop_reason: StopReason::ToolUse,
+                            provider: None,
+                        },
+                    ],
+                    vec![
+                        AssistantStreamEvent::TextDelta {
+                            delta: "done".into(),
+                        },
+                        AssistantStreamEvent::Done {
+                            stop_reason: StopReason::EndTurn,
+                            provider: None,
+                        },
+                    ],
+                ]
+                .into_iter()
+                .collect(),
+            ),
+            requests: Arc::clone(&requests),
+        });
+        let h = Harness::new(HarnessConfig::new(
+            Model::new("test", "faux"),
+            stream,
+            session,
+        ));
+        h.set_deferred_tools(BTreeMap::from([(
+            "grep".to_string(),
+            oino_types::ToolDeclaration {
+                name: "grep".into(),
+                description: "search".into(),
+                input_schema: serde_json::json!({"type":"object"}),
+            },
+        )]))
+        .await;
+        let mut tools = std::collections::BTreeMap::new();
+        tools.insert(
+            "tool_search".into(),
+            Arc::new(SearchLoader) as Arc<dyn Tool>,
+        );
+        tools.insert(
+            "grep".into(),
+            Arc::new(oino_agent_loop::FakeTool::new("grep", "hits")) as Arc<dyn Tool>,
+        );
+        h.set_tools(tools).await;
+        let (base, sections) = prompt_parts();
+        h.sync_system(base, sections).await;
+        h.prompt(Message::user_text("go"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
+        let requests = requests.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(requests.len(), 2);
+        // Deferred tool absent from the initial System.
+        let first_tools = oino_types::transcript::current_tools(requests[0].transcript.messages());
+        assert!(
+            !first_tools.iter().any(|tool| tool.name == "grep"),
+            "deferred tool leaked: {first_tools:?}"
+        );
+        // Second request carries a System delta declaring `grep`.
+        let delta = requests[1]
+            .transcript
+            .messages()
+            .iter()
+            .rev()
+            .find_map(|message| match message {
+                Message::System { tools_added, .. } if !tools_added.is_empty() => {
+                    Some(tools_added.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no tools_added delta in second request"));
+        assert_eq!(delta.len(), 1);
+        assert_eq!(delta[0].name, "grep");
+        let second_tools = oino_types::transcript::current_tools(requests[1].transcript.messages());
+        assert!(second_tools.iter().any(|tool| tool.name == "grep"));
+    }
+
     #[tokio::test]
     async fn blank_session_stays_lazy_without_prompt() {
         let h = harness();
@@ -1717,6 +2070,7 @@ mod tests {
                             Vec::new()
                         },
                         continue_run,
+                        end_run: false,
                     }))
                 })
             }))
@@ -1751,10 +2105,13 @@ mod tests {
         h.hooks()
             .on_before_agent_start(Arc::new(|| {
                 Box::pin(async {
-                    Ok(vec![oino_types::PromptSection {
-                        name: "ext/edited".into(),
-                        text: Some("from hook".into()),
-                    }])
+                    Ok(BeforeAgentStartResult {
+                        section_edits: vec![oino_types::PromptSection {
+                            name: "ext/edited".into(),
+                            text: Some("from hook".into()),
+                        }],
+                        active_tools: None,
+                    })
                 })
             }))
             .await;

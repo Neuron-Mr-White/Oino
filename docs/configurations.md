@@ -51,6 +51,16 @@ project wins) selects how declarative extension providers are executed:
   `provider-openai` (`OPENAI_API_KEY`, `api.openai.com/v1`) packages report a
   readiness diagnostic under `"native"`.
 
+## Headless extension flags
+
+One-shot runs can drive `oino.budget` and `oino.presets` from the CLI (the
+packages are force-enabled for the run even when disabled in settings):
+
+- `--max-cost <usd>`, `--max-wall <secs>`, `--max-tool-errors <n>` — budget
+  caps merged into the `oino.budget` init config.
+- `--preset <name>` — select an `oino.presets` preset (`minimal`/`standard`/
+  `thorough`) for the run.
+
 ## Prompt-cache telemetry and warming
 
 - `cacheWarming`: `"off"` | `"tools"` (default) | `"tools+idle"` — sends a

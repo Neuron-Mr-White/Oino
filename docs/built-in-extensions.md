@@ -23,6 +23,23 @@ Then run `/reload` or restart Oino.
 | `oino.craft_skill` | Help creating Oino skills. |
 | `oino.vcc` | Session compaction and recall. |
 | `oino.ask_user` | Structured question tool with an Oino modal. |
+| `oino.provider_anthropic` | Declarative `anthropic` provider (Anthropic Messages via bundled WASM component). |
+| `oino.provider_openai` | Declarative `openai` provider (OpenAI Responses via bundled WASM component). |
+| `oino.budget` | Run caps (turns, cost, wall time, consecutive tool errors) with an optional summary turn before ending the run. Enabled but inert until configured (or via `--max-cost`/`--max-wall`/`--max-tool-errors`). |
+| `oino.presets` | `/preset` work presets (`minimal`, `standard`, `thorough`) restricting the visible tool set and/or adding a prompt section. `--preset` for headless runs. |
+| `oino.search` | Deferred `grep`/`find` tools over the project tree (gitignore-aware), loaded on demand through `tool_search`. |
+
+## `tool_search` (host tool)
+
+When any active extension contributes **deferred** tools (`"deferred": true`
+in the manifest), the host registers a `tool_search` tool automatically.
+Deferred tools are registered for execution but hidden from the model until
+loaded:
+
+- `tool_search {query}` — fuzzy-match up to 10 deferred tools (name +
+  description).
+- `tool_search {load: ["name", ...]}` — marks the named tools available; the
+  next provider request carries a `System { tools_added }` delta mid-run.
 
 ## Managing them
 

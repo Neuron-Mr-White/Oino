@@ -36,6 +36,9 @@ all_package_ids = [
     "oino.ask_user",
     "oino.provider_anthropic",
     "oino.provider_openai",
+    "oino.budget",
+    "oino.presets",
+    "oino.search",
 ]
 aliases = {
     "router": "oino.router",
@@ -48,6 +51,9 @@ aliases = {
     "ask-user": "oino.ask_user",
     "provider-anthropic": "oino.provider_anthropic",
     "provider-openai": "oino.provider_openai",
+    "budget": "oino.budget",
+    "presets": "oino.presets",
+    "search": "oino.search",
 }
 package_ids = all_package_ids
 if requested:

@@ -772,6 +772,9 @@ async fn run_agent_loop_continue_inner(
             }
             let decision = update.and_then(|update| update.decision);
             if matches!(decision, Some(TurnDecision::End)) {
+                // An explicit end (extension budget cap, Esc) surfaces as
+                // `aborted` so headless callers can map it to exit code 2.
+                final_stop = StopReason::Aborted;
                 break 'outer;
             }
             if all_terminate {

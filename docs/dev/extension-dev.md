@@ -97,7 +97,11 @@ extension unhealthy after three failed re-instantiations.
 
 ### `handle_event` result contract
 
-`guest.handle_event(kind, payload)` returns a JSON value:
+`guest.handle_event(kind, payload)` returns a JSON value. Tool contributions
+may set `"deferred": true` in the manifest: deferred tools are registered but
+excluded from the model-visible set until loaded through the host
+`tool_search` tool (`{query}` lists, `{load: [...]}` activates — the next
+provider request carries a `System { tools_added }` delta).
 
 - `null` → no-op.
 - `input`: request `{"text": <user text>}` → `{"payload": <replacement text>}`.
@@ -105,9 +109,17 @@ extension unhealthy after three failed re-instantiations.
 - `tool_call`: request `{"call": ToolCall}` → `{"payload": ToolCall}` to
   rewrite, or `{"block": {"reason": str, "terminate": bool}}` to block.
 - `tool_result`: request `{"result": ToolResult}` → `{"result": ToolResult}`.
-- `before_agent_start` → `{"section_edits": [PromptSection]}`.
+- `before_agent_start` → `{"section_edits": [PromptSection],
+  "active_tools": [name, ...]?}`. When `active_tools` is set, the
+  model-visible tool set is restricted to that subset of registered tools
+  (unknown names produce a host diagnostic); the last non-`None` handler
+  wins, and the change is emitted as a `tools_added`/`tools_removed` delta.
 - `turn_end`: request `{"message", "tool_results"}` →
-  `{"entries": [Message], "continue_run": bool}`.
+  `{"entries": [Message], "continue_run": bool, "end_run": bool}`.
+  `end_run` maps to `TurnDecision::End` (beats `continue_run`; entries are
+  still appended) and surfaces as `stop_reason: aborted`.
+- `cache_warming_decision` (mutable): fired before a cache-warming request;
+  `{"veto": true}` suppresses the warm.
 - observe-only kinds (`agent_start`, `agent_end`, `agent_settled`,
   `message_start`, `message_end`, `turn_start`, `tool_execution_start`,
   `tool_execution_end`) receive `{"event": <AgentEvent JSON>}`; results are
@@ -126,6 +138,8 @@ extension unhealthy after three failed re-instantiations.
   preopen.
 - `host.notify` is surfaced in the TUI; `host.confirm` currently returns
   `false` after emitting a notice (interactive confirm is not wired yet).
+- `permissions.filesystem[].paths` may use `${project}` (project root) and
+  `${home}` placeholders; the host substitutes them before building preopens.
 - `network.hosts` gates `wasi:http` outgoing requests by exact host match.
   **`raw_network` is currently not granted to anything**: raw `wasi:sockets`
   (TCP/UDP) and DNS lookups are disabled in every component regardless of the

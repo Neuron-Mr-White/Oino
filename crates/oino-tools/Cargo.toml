@@ -11,6 +11,7 @@ oino-agent-loop = { path = "../oino-agent-loop" }
 oino-env = { path = "../oino-env" }
 oino-types = { path = "../oino-types" }
 serde = { workspace = true, features = ["derive"] }
+nucleo.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 

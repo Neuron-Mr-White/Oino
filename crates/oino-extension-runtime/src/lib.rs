@@ -210,6 +210,10 @@ pub struct TurnEndResult {
     pub entries: Vec<Message>,
     #[serde(default)]
     pub continue_run: bool,
+    /// Ends the run after this turn (`TurnDecision::End`); beats
+    /// `continue_run`. Entries are still appended first.
+    #[serde(default)]
+    pub end_run: bool,
 }
 
 /// Result of `before_agent_start`: section edits merged into the pending
@@ -218,6 +222,11 @@ pub struct TurnEndResult {
 pub struct BeforeAgentStartResult {
     #[serde(default)]
     pub section_edits: Vec<PromptSection>,
+    /// When set, restricts the model-visible tool set to these registered
+    /// tool names (unknown names produce a host diagnostic). The last
+    /// non-`None` handler wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_tools: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1464,6 +1473,7 @@ mod tests {
                 execution_mode: ToolExecutionMode::Parallel,
                 handler: Some("tool.run".into()),
                 conflict: Default::default(),
+                deferred: false,
             },
             extension_id(),
             runtime,
@@ -1500,6 +1510,7 @@ mod tests {
                 execution_mode: ToolExecutionMode::Parallel,
                 handler: Some("tool.fail".into()),
                 conflict: Default::default(),
+                deferred: false,
             },
             extension_id(),
             runtime,

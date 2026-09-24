@@ -246,6 +246,7 @@ pub fn tool_contribution_from_definition(
         execution_mode,
         handler: None,
         conflict: Default::default(),
+        deferred: false,
     })
 }
 

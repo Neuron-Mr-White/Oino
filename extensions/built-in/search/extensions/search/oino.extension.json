@@ -1,0 +1,52 @@
+{
+  "id": "oino.search",
+  "package_id": "oino.search",
+  "display_name": "Oino Search",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {"kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0"},
+  "permissions": {
+    "tools": ["grep", "find"],
+    "commands": [],
+    "host_capabilities": [],
+    "ui": [],
+    "filesystem": [{"access": "read", "paths": ["${project}"]}],
+    "shell_process": {"allowed": false, "commands": []},
+    "network": {"raw_network": false, "hosts": []},
+    "secrets": [],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "tools": [
+      {
+        "id": "grep",
+        "description": "Search file contents with a regex. Respects .gitignore; results are sorted by path then line and capped at 30k characters.",
+        "input_schema": {"type":"object","additionalProperties":false,"required":["pattern"],"properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string"},"case_insensitive":{"type":"boolean"},"max_results":{"type":"number"}}},
+        "handler": "grep",
+        "deferred": true
+      },
+      {
+        "id": "find",
+        "description": "Find files by glob pattern. Respects .gitignore; results are sorted by path and capped at 30k characters.",
+        "input_schema": {"type":"object","additionalProperties":false,"required":["pattern"],"properties":{"pattern":{"type":"string"},"path":{"type":"string"},"max_results":{"type":"number"}}},
+        "handler": "find",
+        "deferred": true
+      }
+    ],
+    "commands": [],
+    "hooks": [],
+    "providers": [],
+    "resources": [],
+    "keymaps": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {}
+}
