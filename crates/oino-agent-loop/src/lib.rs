@@ -431,8 +431,17 @@ pub enum TurnDecision {
     End,
 }
 
+/// What [`FinishTurn`] may return: an optional decision plus extra messages
+/// appended to the transcript (with `MessageStart`/`MessageEnd` events) so they
+/// are visible to the very next request. Both fields are ignored on hard exits.
+#[derive(Debug, Clone, Default)]
+pub struct TurnUpdate {
+    pub decision: Option<TurnDecision>,
+    pub messages: Vec<Message>,
+}
+
 pub type FinishTurn =
-    Arc<dyn Fn(TurnContext) -> BoxFuture<'static, LoopResult<Option<TurnDecision>>> + Send + Sync>;
+    Arc<dyn Fn(TurnContext) -> BoxFuture<'static, LoopResult<Option<TurnUpdate>>> + Send + Sync>;
 
 /// Runtime state available immediately before a provider request.
 #[derive(Debug, Clone)]
@@ -703,7 +712,7 @@ async fn run_agent_loop_continue_inner(
 
             // finish_turn runs after the assistant message and all tool results
             // are finalized, before TurnEnd. On hard exits its decision is ignored.
-            let decision = if let Some(hook) = &config.finish_turn {
+            let update = if let Some(hook) = &config.finish_turn {
                 hook(TurnContext {
                     message: assistant.clone(),
                     tool_results: tool_result_messages,
@@ -724,6 +733,27 @@ async fn run_agent_loop_continue_inner(
             if hard_exit {
                 break 'outer;
             }
+            // Entries produced by the hook join the transcript immediately so
+            // they are visible to the very next request.
+            if let Some(update) = &update {
+                for message in &update.messages {
+                    config
+                        .event_sink
+                        .emit(AgentEvent::MessageStart {
+                            message_id: message.id(),
+                            role: message_role(message).into(),
+                        })
+                        .await?;
+                    config
+                        .event_sink
+                        .emit(AgentEvent::MessageEnd {
+                            message: message.clone(),
+                        })
+                        .await?;
+                    messages.push(message.clone());
+                }
+            }
+            let decision = update.and_then(|update| update.decision);
             if matches!(decision, Some(TurnDecision::End)) {
                 break 'outer;
             }
@@ -2041,7 +2071,10 @@ mod tests {
                     }
                 ));
                 ordering.lock().await.push("finish_turn".into());
-                Ok(Some(TurnDecision::Continue))
+                Ok(Some(TurnUpdate {
+                    decision: Some(TurnDecision::Continue),
+                    messages: Vec::new(),
+                }))
             })
         }));
         config.get_follow_up_messages = Some(Arc::new(move || {
@@ -2082,7 +2115,12 @@ mod tests {
             .tools
             .insert("noop".into(), Arc::new(FakeTool::new("noop", "done")));
         config.finish_turn = Some(Arc::new(|_context| {
-            Box::pin(async { Ok(Some(TurnDecision::End)) })
+            Box::pin(async {
+                Ok(Some(TurnUpdate {
+                    decision: Some(TurnDecision::End),
+                    messages: Vec::new(),
+                }))
+            })
         }));
         config.get_steering_messages = Some(Arc::new(move || {
             let counter = Arc::clone(&steering_counter);
@@ -2125,7 +2163,10 @@ mod tests {
             Box::pin(async move {
                 *counter.lock().await += 1;
                 if *counter.lock().await == 1 {
-                    Ok(Some(TurnDecision::Continue))
+                    Ok(Some(TurnUpdate {
+                        decision: Some(TurnDecision::Continue),
+                        messages: Vec::new(),
+                    }))
                 } else {
                     Ok(None)
                 }
@@ -2152,7 +2193,10 @@ mod tests {
             Box::pin(async move {
                 *counter.lock().await += 1;
                 if *counter.lock().await == 1 {
-                    Ok(Some(TurnDecision::Continue))
+                    Ok(Some(TurnUpdate {
+                        decision: Some(TurnDecision::Continue),
+                        messages: Vec::new(),
+                    }))
                 } else {
                     Ok(None)
                 }
@@ -2178,7 +2222,10 @@ mod tests {
             Box::pin(async move {
                 *counter.lock().await += 1;
                 if *counter.lock().await == 1 {
-                    Ok(Some(TurnDecision::Continue))
+                    Ok(Some(TurnUpdate {
+                        decision: Some(TurnDecision::Continue),
+                        messages: Vec::new(),
+                    }))
                 } else {
                     Ok(None)
                 }
@@ -2272,7 +2319,10 @@ mod tests {
             Box::pin(async move {
                 *counter.lock().await += 1;
                 if *counter.lock().await == 1 {
-                    Ok(Some(TurnDecision::Continue))
+                    Ok(Some(TurnUpdate {
+                        decision: Some(TurnDecision::Continue),
+                        messages: Vec::new(),
+                    }))
                 } else {
                     Ok(None)
                 }
@@ -2482,5 +2532,44 @@ mod tests {
                 ..
             }) if signature == "sig-1"
         ));
+    }
+
+    #[tokio::test]
+    async fn turn_update_messages_reach_the_next_request() {
+        let stream = RecordingStream::turns(vec![end_turn_done(), end_turn_done()]);
+        let requests = Arc::clone(&stream.requests);
+        let injected = Message::user_text("turn end entry");
+        let injected_hook = injected.clone();
+        let calls = Arc::new(Mutex::new(0usize));
+        let calls_hook = Arc::clone(&calls);
+        let mut config = AgentLoopConfig::new(model(), stream);
+        config.finish_turn = Some(Arc::new(move |_context| {
+            let injected = injected_hook.clone();
+            let calls = Arc::clone(&calls_hook);
+            Box::pin(async move {
+                *calls.lock().await += 1;
+                if *calls.lock().await == 1 {
+                    Ok(Some(TurnUpdate {
+                        decision: Some(TurnDecision::Continue),
+                        messages: vec![injected],
+                    }))
+                } else {
+                    Ok(None)
+                }
+            })
+        }));
+        let output = run_agent_loop(Message::user_text("run"), config).await;
+        let output = match output {
+            Ok(output) => output,
+            Err(err) => panic!("loop failed: {err}"),
+        };
+        let requests = requests.lock().await;
+        assert_eq!(requests.len(), 2);
+        // The injected entry is in the transcript of the very next request...
+        assert!(requests[1].transcript.messages().contains(&injected));
+        // ...not in the first request...
+        assert!(!requests[0].transcript.messages().contains(&injected));
+        // ...and in the output messages.
+        assert!(output.messages.contains(&injected));
     }
 }

@@ -25,6 +25,19 @@ TUI/composer ──> app runtime ──> harness ──> agent loop ──> prov
 - `oino-auth` — provider-neutral credential document primitives used by extensions.
 - `oino-provider-openrouter` — OpenAI-compatible transport used by extension providers such as OmniRoute.
 
+## WASM extension host
+
+`crates/oino-wasm-host` runs extension components built against
+`oino:extension@0.1.0` (`wit/`). A shared `WasmHostEngine` (epoch interruption
+every 10 ms, wasmtime disk cache under the configured dir) serves many
+`WasmExtension`s; each is one lazily-instantiated store+instance with calls
+serialized by a mutex. `host` imports are gated through the manifest
+`ExtensionPermissions` (network hosts, filesystem preopens, secrets, exec,
+kv, ui, session). `WasmStreamProvider` adapts provider-world components to the
+agent loop's `StreamProvider`. Guest-side SDK crates live in the separate
+`extensions/` workspace (`oino-extension-guest`,
+`oino-extension-guest-provider`).
+
 ## Transcript and prompt sync
 
 Sessions persist `System` messages inside the transcript (session format v2).

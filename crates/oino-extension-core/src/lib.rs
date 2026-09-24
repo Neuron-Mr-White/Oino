@@ -86,6 +86,8 @@ pub enum ExtensionCoreError {
     UnsupportedProtocol(u16),
     #[error("runtime entry is required for {0} extensions")]
     MissingRuntimeEntry(RuntimeKind),
+    #[error("wasm extensions must declare abi `oino:extension@0.1.0`, found `{0}`")]
+    UnsupportedWasmAbi(String),
     #[error("Oino compatibility requirement `{requirement}` is invalid: {message}")]
     InvalidCompatibility {
         requirement: String,
@@ -373,6 +375,12 @@ impl RuntimeDescriptor {
         if self.kind.requires_entry() && missing_entry {
             return Err(ExtensionCoreError::MissingRuntimeEntry(self.kind));
         }
+        if matches!(self.kind, RuntimeKind::Wasm) && self.abi.as_deref() != Some(WASM_COMPONENT_ABI)
+        {
+            return Err(ExtensionCoreError::UnsupportedWasmAbi(
+                self.abi.clone().unwrap_or_else(|| "<missing>".into()),
+            ));
+        }
         Ok(())
     }
 }
@@ -392,6 +400,9 @@ impl RuntimeKind {
         !matches!(self, Self::BuiltIn)
     }
 }
+
+/// The only supported WASM component ABI (`oino:extension@0.1.0`).
+pub const WASM_COMPONENT_ABI: &str = "oino:extension@0.1.0";
 
 impl fmt::Display for RuntimeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -3218,7 +3229,7 @@ mod tests {
           "display_name": "Acme Web",
           "version": "1.2.3",
           "oino": "^0.1",
-          "runtime": { "kind": "wasm", "entry": "plugin.wasm", "abi": "json-v1" },
+          "runtime": { "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" },
           "permissions": {
             "tools": ["web_search"],
             "host_capabilities": ["host.web.search"],
@@ -3266,7 +3277,7 @@ mod tests {
         {
           "id": "Bad Id",
           "version": "1.0.0",
-          "runtime": { "kind": "wasm", "entry": "plugin.wasm" }
+          "runtime": { "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" }
         }
         "#;
         let result = serde_json::from_str::<ExtensionManifest>(json);
@@ -3295,7 +3306,7 @@ mod tests {
               "id": "acme.future",
               "version": "1.0.0",
               "oino": ">=2.0.0",
-              "runtime": { "kind": "wasm", "entry": "future.wasm" }
+              "runtime": { "kind": "wasm", "entry": "future.wasm", "abi": "oino:extension@0.1.0" }
             }"#,
         )?;
         manifest.validate()?;
@@ -3307,7 +3318,7 @@ mod tests {
               "id": "acme.badcompat",
               "version": "1.0.0",
               "oino": "not a version req",
-              "runtime": { "kind": "wasm", "entry": "future.wasm" }
+              "runtime": { "kind": "wasm", "entry": "future.wasm", "abi": "oino:extension@0.1.0" }
             }"#,
         );
         assert!(invalid.is_err());
@@ -3360,7 +3371,7 @@ mod tests {
             r#"{
               "id": "acme.tool",
               "version": "1.0.0",
-              "runtime": { "kind": "wasm", "entry": "tool.wasm" },
+              "runtime": { "kind": "wasm", "entry": "tool.wasm", "abi": "oino:extension@0.1.0" },
               "contributes": {
                 "tools": [{ "id": "danger_tool", "description": "danger" }]
               }
@@ -3370,6 +3381,35 @@ mod tests {
         assert!(matches!(
             result,
             Err(ExtensionCoreError::MissingContributionPermission { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn wasm_runtime_requires_component_abi() -> Result<(), Box<dyn Error>> {
+        for abi in ["wasm-json-v1", "json-v1", "component-model", ""] {
+            let manifest: ExtensionManifest = serde_json::from_str(&format!(
+                r#"{{
+                  "id": "acme.abi",
+                  "version": "1.0.0",
+                  "runtime": {{ "kind": "wasm", "entry": "plugin.wasm", "abi": "{abi}" }}
+                }}"#
+            ))?;
+            assert!(matches!(
+                manifest.validate(),
+                Err(ExtensionCoreError::UnsupportedWasmAbi(_))
+            ));
+        }
+        let missing: ExtensionManifest = serde_json::from_str(
+            r#"{
+              "id": "acme.abi",
+              "version": "1.0.0",
+              "runtime": { "kind": "wasm", "entry": "plugin.wasm" }
+            }"#,
+        )?;
+        assert!(matches!(
+            missing.validate(),
+            Err(ExtensionCoreError::UnsupportedWasmAbi(_))
         ));
         Ok(())
     }

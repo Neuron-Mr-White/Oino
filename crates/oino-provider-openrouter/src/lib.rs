@@ -182,8 +182,9 @@ pub struct OpenAiCompatibleConfig {
     /// Send `prompt_cache_key` derived from `StreamRequest::session_id`.
     /// `None` = auto: enabled only for `openrouter.ai` / `api.openai.com` hosts.
     pub send_prompt_cache_key: Option<bool>,
-    /// Send `x-session-affinity` and `session_id` headers with the cache key.
-    pub session_affinity_headers: bool,
+    /// Session-affinity header format. `None` = auto: `OpenRouter` when the
+    /// host is `openrouter.ai`, disabled otherwise (matches pi compat detect).
+    pub session_affinity: Option<SessionAffinityFormat>,
     /// Anthropic-style `cache_control` breakpoints. `None` = auto: enabled for
     /// models whose name starts with `anthropic/` or `~anthropic/`.
     pub cache_control_format: Option<CacheControlFormat>,
@@ -193,6 +194,15 @@ pub struct OpenAiCompatibleConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheControlFormat {
     Anthropic,
+}
+
+/// Session-affinity header format (mirrors pi `sessionAffinityFormat`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionAffinityFormat {
+    /// `session_id`, `x-client-request-id`, `x-session-affinity`.
+    OpenAi,
+    /// `x-session-id`.
+    OpenRouter,
 }
 
 impl OpenAiCompatibleConfig {
@@ -211,7 +221,7 @@ impl OpenAiCompatibleConfig {
             headers: BTreeMap::new(),
             chat_endpoint: None,
             send_prompt_cache_key: None,
-            session_affinity_headers: false,
+            session_affinity: None,
             cache_control_format: None,
         }
     }
@@ -359,12 +369,8 @@ impl OpenAiCompatibleProvider {
         for (name, value) in &self.config.headers {
             builder = builder.header(name, value);
         }
-        if self.config.session_affinity_headers {
-            if let Some(key) = &body.prompt_cache_key {
-                builder = builder
-                    .header("x-session-affinity", key.as_str())
-                    .header("session_id", key.as_str());
-            }
+        for (name, value) in affinity_headers(&self.config, request.session_id.as_deref()) {
+            builder = builder.header(name, value);
         }
         let response = builder
             .send()
@@ -815,6 +821,32 @@ fn cache_key_enabled(config: Option<&OpenAiCompatibleConfig>) -> bool {
             )
         }),
     }
+}
+
+fn affinity_headers(
+    config: &OpenAiCompatibleConfig,
+    session_id: Option<&str>,
+) -> Vec<(&'static str, String)> {
+    let Some(session_id) = session_id else {
+        return Vec::new();
+    };
+    match resolved_affinity(config) {
+        Some(SessionAffinityFormat::OpenRouter) => {
+            vec![("x-session-id", session_id.to_string())]
+        }
+        Some(SessionAffinityFormat::OpenAi) => vec![
+            ("session_id", session_id.to_string()),
+            ("x-client-request-id", session_id.to_string()),
+            ("x-session-affinity", session_id.to_string()),
+        ],
+        None => Vec::new(),
+    }
+}
+
+fn resolved_affinity(config: &OpenAiCompatibleConfig) -> Option<SessionAffinityFormat> {
+    config.session_affinity.or_else(|| {
+        (config_host(config) == "openrouter.ai").then_some(SessionAffinityFormat::OpenRouter)
+    })
 }
 
 fn cache_control_active(request: &StreamRequest, config: Option<&OpenAiCompatibleConfig>) -> bool {
@@ -2334,5 +2366,48 @@ mod tests {
         );
         assert_eq!(first_json["tools"], second_json["tools"]);
         assert_eq!(first_messages[0], second_messages[0]);
+    }
+
+    #[test]
+    fn affinity_headers_match_pi_formats() {
+        let mut config = openrouter_config();
+        // Auto: openrouter.ai host -> x-session-id.
+        assert_eq!(
+            affinity_headers(&config, Some("sess-1")),
+            vec![("x-session-id", "sess-1".to_string())]
+        );
+        // Explicit OpenAi format sends all three headers.
+        config.session_affinity = Some(SessionAffinityFormat::OpenAi);
+        assert_eq!(
+            affinity_headers(&config, Some("sess-1")),
+            vec![
+                ("session_id", "sess-1".to_string()),
+                ("x-client-request-id", "sess-1".to_string()),
+                ("x-session-affinity", "sess-1".to_string())
+            ]
+        );
+        // Unknown host + no explicit format -> disabled.
+        let custom = OpenAiCompatibleConfig::new("custom", "Custom", "https://llm.example.com/v1");
+        assert!(affinity_headers(&custom, Some("sess-1")).is_empty());
+        // No session id -> nothing.
+        assert!(affinity_headers(&config, None).is_empty());
+    }
+
+    #[test]
+    fn native_openrouter_config_enables_key_and_affinity() {
+        let config = OpenRouterConfig::default().openai_compatible_config();
+        let request = cache_request(
+            "openai/gpt-4o",
+            Some("sess-9"),
+            oino_agent_loop::CacheRetention::Short,
+        );
+        let built =
+            build_openai_compatible_chat_request_with_cache(&request, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}"));
+        assert_eq!(built.prompt_cache_key.as_deref(), Some("sess-9"));
+        assert_eq!(
+            affinity_headers(&config, request.session_id.as_deref()),
+            vec![("x-session-id", "sess-9".to_string())]
+        );
     }
 }

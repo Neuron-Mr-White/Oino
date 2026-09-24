@@ -2828,7 +2828,7 @@ mod tests {
               "id": "{id}",
               "version": "1.0.0",
               "oino": "^0.1",
-              "runtime": {{ "kind": "wasm", "entry": "plugin.wasm" }},
+              "runtime": {{ "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" }},
               "permissions": {{ "tools": ["{tool_id}"] }},
               "contributes": {{
                 "tools": [{{ "id": "{tool_id}", "description": "test tool" }}]
@@ -3071,7 +3071,7 @@ mod tests {
               "id": "acme.future",
               "version": "1.0.0",
               "oino": ">=9.0.0",
-              "runtime": { "kind": "wasm", "entry": "plugin.wasm" },
+              "runtime": { "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" },
               "permissions": { "tools": ["future_tool"] },
               "contributes": { "tools": [{ "id": "future_tool", "description": "future" }] }
             }"#,
@@ -3124,7 +3124,7 @@ mod tests {
               "id": "builtin.router-test",
               "version": "1.0.0",
               "oino": "^0.1",
-              "runtime": { "kind": "wasm", "entry": "plugin.wasm" },
+              "runtime": { "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" },
               "contributes": {
                 "providers": [{
                   "id": "provider.router",
@@ -3300,7 +3300,7 @@ mod tests {
               "package_id": "{package_id}",
               "version": "{version}",
               "oino": "^0.1",
-              "runtime": {{ "kind": "wasm", "entry": "plugin.wasm" }},
+              "runtime": {{ "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" }},
               "permissions": {{ "tools": ["{tool_id}"] }},
               "contributes": {{
                 "tools": [{{ "id": "{tool_id}", "description": "lifecycle tool" }}]

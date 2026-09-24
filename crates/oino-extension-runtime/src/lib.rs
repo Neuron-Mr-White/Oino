@@ -43,8 +43,6 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 
-pub const WASM_JSON_V1_ABI: &str = "wasm-json-v1";
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HookEvent {
     pub kind: HookEventKind,
@@ -566,185 +564,6 @@ impl RuntimeCapabilityPolicy {
     #[must_use]
     pub fn allows(&self, import: &str) -> bool {
         self.allowed_imports.contains(import)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FixtureHandlerBehavior {
-    Success {
-        output: Value,
-        progress: Vec<RuntimeProgress>,
-    },
-    Error(String),
-    Timeout {
-        simulated_ms: u64,
-    },
-    RequiresImport {
-        import: String,
-        output: Value,
-    },
-    MalformedPayload(String),
-    Crash(String),
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct FixtureWasmModule {
-    pub handlers: BTreeMap<String, FixtureHandlerBehavior>,
-}
-
-impl FixtureWasmModule {
-    #[must_use]
-    pub fn with_handler(
-        mut self,
-        handler: impl Into<String>,
-        behavior: FixtureHandlerBehavior,
-    ) -> Self {
-        self.handlers.insert(handler.into(), behavior);
-        self
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct JsonWasmRuntime {
-    module: FixtureWasmModule,
-    capabilities: RuntimeCapabilityPolicy,
-    initialized: bool,
-    shutdown: bool,
-    health: HealthState,
-    cancelled: BTreeSet<String>,
-}
-
-impl JsonWasmRuntime {
-    #[must_use]
-    pub fn new(module: FixtureWasmModule) -> Self {
-        Self {
-            module,
-            capabilities: RuntimeCapabilityPolicy::default(),
-            initialized: false,
-            shutdown: false,
-            health: HealthState::Healthy,
-            cancelled: BTreeSet::new(),
-        }
-    }
-
-    #[must_use]
-    pub fn with_capabilities(mut self, capabilities: RuntimeCapabilityPolicy) -> Self {
-        self.capabilities = capabilities;
-        self
-    }
-}
-
-impl ExtensionRuntime for JsonWasmRuntime {
-    fn initialize(
-        &mut self,
-        init: RuntimeInitialize,
-    ) -> Result<Vec<RuntimeProgress>, RuntimeError> {
-        if self.shutdown {
-            return Err(RuntimeError::Shutdown);
-        }
-        if init.abi != WASM_JSON_V1_ABI {
-            self.health = HealthState::Blocked;
-            return Err(RuntimeError::UnsupportedAbi(init.abi));
-        }
-        if init.entry.trim().is_empty() {
-            self.health = HealthState::Blocked;
-            return Err(RuntimeError::MalformedPayload(
-                "runtime entry is required".into(),
-            ));
-        }
-        self.initialized = true;
-        self.health = HealthState::Healthy;
-        Ok(vec![RuntimeProgress {
-            message: format!("initialized {}", init.extension_id),
-            details: None,
-        }])
-    }
-
-    fn invoke(
-        &mut self,
-        invocation: RuntimeInvocation,
-    ) -> Result<RuntimeResultValue, RuntimeError> {
-        if self.shutdown {
-            return Err(RuntimeError::Shutdown);
-        }
-        if !self.initialized {
-            return Err(RuntimeError::NotInitialized);
-        }
-        if self.cancelled.remove(&invocation.invocation_id) {
-            return Err(RuntimeError::Cancelled(invocation.invocation_id));
-        }
-        if !invocation.payload.is_object() && !invocation.payload.is_null() {
-            self.health = HealthState::Degraded;
-            return Err(RuntimeError::MalformedPayload(
-                "JSON-v1 invocation payload must be an object or null".into(),
-            ));
-        }
-        let behavior = self
-            .module
-            .handlers
-            .get(&invocation.handler)
-            .cloned()
-            .ok_or_else(|| RuntimeError::HandlerNotFound(invocation.handler.clone()))?;
-        match behavior {
-            FixtureHandlerBehavior::Success { output, progress } => {
-                Ok(RuntimeResultValue { output, progress })
-            }
-            FixtureHandlerBehavior::Error(message) => Err(RuntimeError::Handler(message)),
-            FixtureHandlerBehavior::Timeout { simulated_ms } => {
-                let timeout_ms = invocation
-                    .timeout
-                    .as_millis()
-                    .try_into()
-                    .unwrap_or(u64::MAX);
-                if simulated_ms > timeout_ms {
-                    self.health = HealthState::Degraded;
-                    Err(RuntimeError::Timeout(timeout_ms))
-                } else {
-                    Ok(RuntimeResultValue {
-                        output: Value::Null,
-                        progress: Vec::new(),
-                    })
-                }
-            }
-            FixtureHandlerBehavior::RequiresImport { import, output } => {
-                if self.capabilities.allows(&import) {
-                    Ok(RuntimeResultValue {
-                        output,
-                        progress: Vec::new(),
-                    })
-                } else {
-                    self.health = HealthState::Blocked;
-                    Err(RuntimeError::UnauthorizedImport(import))
-                }
-            }
-            FixtureHandlerBehavior::MalformedPayload(message) => {
-                self.health = HealthState::Degraded;
-                Err(RuntimeError::MalformedPayload(message))
-            }
-            FixtureHandlerBehavior::Crash(message) => {
-                self.health = HealthState::Unhealthy;
-                Err(RuntimeError::Crash(message))
-            }
-        }
-    }
-
-    fn cancel(&mut self, invocation_id: &str) -> Result<(), RuntimeError> {
-        if self.shutdown {
-            return Err(RuntimeError::Shutdown);
-        }
-        self.cancelled.insert(invocation_id.into());
-        Ok(())
-    }
-
-    fn shutdown(&mut self) -> Result<(), RuntimeError> {
-        self.shutdown = true;
-        self.initialized = false;
-        self.health = HealthState::Disabled;
-        Ok(())
-    }
-
-    fn health(&self) -> HealthState {
-        self.health
     }
 }
 
@@ -1469,102 +1288,55 @@ mod tests {
         assert_eq!(events.len(), 23);
     }
 
-    fn init() -> RuntimeInitialize {
-        RuntimeInitialize {
-            extension_id: extension_id(),
-            abi: WASM_JSON_V1_ABI.into(),
-            entry: "plugin.wasm".into(),
-            metadata: Value::Null,
+    /// Minimal `ExtensionRuntime` used by the adapter tests.
+    struct StubRuntime {
+        handlers: BTreeMap<String, Result<Value, String>>,
+    }
+
+    impl ExtensionRuntime for StubRuntime {
+        fn initialize(
+            &mut self,
+            _init: RuntimeInitialize,
+        ) -> Result<Vec<RuntimeProgress>, RuntimeError> {
+            Ok(Vec::new())
+        }
+        fn invoke(
+            &mut self,
+            invocation: RuntimeInvocation,
+        ) -> Result<RuntimeResultValue, RuntimeError> {
+            match self.handlers.get(&invocation.handler) {
+                Some(Ok(output)) => Ok(RuntimeResultValue {
+                    output: output.clone(),
+                    progress: vec![RuntimeProgress {
+                        message: "working".into(),
+                        details: None,
+                    }],
+                }),
+                Some(Err(message)) => Err(RuntimeError::Handler(message.clone())),
+                None => Err(RuntimeError::HandlerNotFound(invocation.handler)),
+            }
+        }
+        fn cancel(&mut self, _invocation_id: &str) -> Result<(), RuntimeError> {
+            Ok(())
+        }
+        fn shutdown(&mut self) -> Result<(), RuntimeError> {
+            Ok(())
+        }
+        fn health(&self) -> HealthState {
+            HealthState::Healthy
         }
     }
 
-    #[test]
-    fn json_runtime_initializes_executes_progress_and_shutdown() {
-        let module = FixtureWasmModule::default().with_handler(
-            "run",
-            FixtureHandlerBehavior::Success {
-                output: json!({"ok": true}),
-                progress: vec![RuntimeProgress {
-                    message: "halfway".into(),
-                    details: Some(json!({"pct": 50})),
-                }],
-            },
-        );
-        let mut runtime = JsonWasmRuntime::new(module);
-        let progress = runtime
-            .initialize(init())
-            .unwrap_or_else(|err| panic!("init: {err}"));
-        assert_eq!(progress.len(), 1);
-        let result = runtime
-            .invoke(RuntimeInvocation::new(extension_id(), "run", json!({})))
-            .unwrap_or_else(|err| panic!("invoke: {err}"));
-        assert_eq!(result.output, json!({"ok": true}));
-        assert_eq!(result.progress[0].message, "halfway");
-        runtime
-            .shutdown()
-            .unwrap_or_else(|err| panic!("shutdown: {err}"));
-        assert_eq!(runtime.health(), HealthState::Disabled);
-    }
-
-    #[test]
-    fn json_runtime_cancel_timeout_crash_unauthorized_and_malformed_payloads() {
-        let module = FixtureWasmModule::default()
-            .with_handler("slow", FixtureHandlerBehavior::Timeout { simulated_ms: 10 })
-            .with_handler(
-                "import",
-                FixtureHandlerBehavior::RequiresImport {
-                    import: "host.fs.read".into(),
-                    output: json!({"read": true}),
-                },
-            )
-            .with_handler("crash", FixtureHandlerBehavior::Crash("boom".into()))
-            .with_handler(
-                "malformed",
-                FixtureHandlerBehavior::MalformedPayload("bad shape".into()),
-            );
-        let mut runtime = JsonWasmRuntime::new(module);
-        runtime
-            .initialize(init())
-            .unwrap_or_else(|err| panic!("init: {err}"));
-
-        let mut cancelled = RuntimeInvocation::new(extension_id(), "slow", json!({}));
-        cancelled.invocation_id = "cancel-me".into();
-        runtime
-            .cancel("cancel-me")
-            .unwrap_or_else(|err| panic!("cancel: {err}"));
-        assert!(matches!(
-            runtime.invoke(cancelled),
-            Err(RuntimeError::Cancelled(id)) if id == "cancel-me"
-        ));
-
-        let mut slow = RuntimeInvocation::new(extension_id(), "slow", json!({}));
-        slow.timeout = Duration::from_millis(1);
-        assert!(matches!(
-            runtime.invoke(slow),
-            Err(RuntimeError::Timeout(1))
-        ));
-        assert!(matches!(
-            runtime.invoke(RuntimeInvocation::new(extension_id(), "import", json!({}))),
-            Err(RuntimeError::UnauthorizedImport(import)) if import == "host.fs.read"
-        ));
-        assert_eq!(runtime.health(), HealthState::Blocked);
-        assert!(matches!(
-            runtime.invoke(RuntimeInvocation::new(
-                extension_id(),
-                "malformed",
-                json!({})
-            )),
-            Err(RuntimeError::MalformedPayload(_))
-        ));
-        assert!(matches!(
-            runtime.invoke(RuntimeInvocation::new(extension_id(), "crash", json!({}))),
-            Err(RuntimeError::Crash(_))
-        ));
-        assert_eq!(runtime.health(), HealthState::Unhealthy);
-        assert!(matches!(
-            runtime.invoke(RuntimeInvocation::new(extension_id(), "slow", json!("bad"))),
-            Err(RuntimeError::MalformedPayload(_))
-        ));
+    fn stub_runtime(handlers: &[(&str, Result<Value, String>)]) -> SharedRuntime {
+        let mut runtime = StubRuntime {
+            handlers: BTreeMap::new(),
+        };
+        for (handler, result) in handlers {
+            runtime
+                .handlers
+                .insert((*handler).to_string(), result.clone());
+        }
+        Arc::new(Mutex::new(Box::new(runtime)))
     }
 
     fn permissions_with(capability: &str) -> ExtensionPermissions {
@@ -1682,21 +1454,7 @@ mod tests {
 
     #[tokio::test]
     async fn extension_tool_adapter_returns_normal_tool_results() {
-        let module = FixtureWasmModule::default().with_handler(
-            "tool.run",
-            FixtureHandlerBehavior::Success {
-                output: json!({"ok": true}),
-                progress: vec![RuntimeProgress {
-                    message: "working".into(),
-                    details: None,
-                }],
-            },
-        );
-        let mut runtime = JsonWasmRuntime::new(module);
-        runtime
-            .initialize(init())
-            .unwrap_or_else(|err| panic!("init: {err}"));
-        let runtime: SharedRuntime = Arc::new(Mutex::new(Box::new(runtime)));
+        let runtime = stub_runtime(&[("tool.run", Ok(json!({"ok": true})))]);
         let adapter = ExtensionToolAdapter::new(
             ToolContribution {
                 id: ContributionId::new("visible_tool")
@@ -1732,12 +1490,7 @@ mod tests {
 
     #[tokio::test]
     async fn extension_tool_adapter_returns_errors_and_honors_cancellation() {
-        let module = FixtureWasmModule::default()
-            .with_handler("tool.fail", FixtureHandlerBehavior::Error("boom".into()));
-        let mut runtime = JsonWasmRuntime::new(module);
-        runtime
-            .initialize(init())
-            .unwrap_or_else(|err| panic!("init: {err}"));
+        let runtime = stub_runtime(&[("tool.fail", Err("boom".into()))]);
         let adapter = ExtensionToolAdapter::new(
             ToolContribution {
                 id: ContributionId::new("failing_tool")
@@ -1749,7 +1502,7 @@ mod tests {
                 conflict: Default::default(),
             },
             extension_id(),
-            Arc::new(Mutex::new(Box::new(runtime))),
+            runtime,
         );
         let call = oino_agent_loop::ToolCall {
             id: oino_types::OinoId::nil(),
@@ -1784,20 +1537,10 @@ mod tests {
 
     #[test]
     fn extension_command_adapter_routes_success_and_errors() {
-        let module = FixtureWasmModule::default()
-            .with_handler(
-                "cmd.run",
-                FixtureHandlerBehavior::Success {
-                    output: json!({"message": "done"}),
-                    progress: Vec::new(),
-                },
-            )
-            .with_handler("cmd.err", FixtureHandlerBehavior::Error("nope".into()));
-        let mut runtime = JsonWasmRuntime::new(module);
-        runtime
-            .initialize(init())
-            .unwrap_or_else(|err| panic!("init: {err}"));
-        let runtime: SharedRuntime = Arc::new(Mutex::new(Box::new(runtime)));
+        let runtime = stub_runtime(&[
+            ("cmd.run", Ok(json!({"message": "done"}))),
+            ("cmd.err", Err("nope".into())),
+        ]);
         let command = ExtensionCommandAdapter::new(
             ContributionId::new("demo_command").unwrap_or_else(|err| panic!("valid id: {err}")),
             "demo",
@@ -1822,31 +1565,5 @@ mod tests {
             failing.execute(json!({})),
             Err(RuntimeError::Handler(_))
         ));
-    }
-
-    #[test]
-    fn json_runtime_allows_brokered_import_and_rejects_bad_abi() {
-        let module = FixtureWasmModule::default().with_handler(
-            "import",
-            FixtureHandlerBehavior::RequiresImport {
-                import: "host.web.search".into(),
-                output: json!({"result": "ok"}),
-            },
-        );
-        let mut runtime = JsonWasmRuntime::new(module)
-            .with_capabilities(RuntimeCapabilityPolicy::default().allow("host.web.search"));
-        let mut bad = init();
-        bad.abi = "component-model".into();
-        assert!(matches!(
-            runtime.initialize(bad),
-            Err(RuntimeError::UnsupportedAbi(_))
-        ));
-        runtime
-            .initialize(init())
-            .unwrap_or_else(|err| panic!("init: {err}"));
-        let result = runtime
-            .invoke(RuntimeInvocation::new(extension_id(), "import", json!({})))
-            .unwrap_or_else(|err| panic!("invoke: {err}"));
-        assert_eq!(result.output, json!({"result": "ok"}));
     }
 }

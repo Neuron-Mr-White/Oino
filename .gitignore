@@ -6,3 +6,4 @@ AGENT.md
 .deepseek/
 .oino/
 .env.podman
+extensions/target/

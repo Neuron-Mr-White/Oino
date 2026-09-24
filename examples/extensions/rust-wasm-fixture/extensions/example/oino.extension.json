@@ -8,7 +8,7 @@
   "runtime": {
     "kind": "wasm",
     "entry": "plugin.wasm",
-    "abi": "wasm-json-v1"
+    "abi": "oino:extension@0.1.0"
   },
   "permissions": {
     "tools": [

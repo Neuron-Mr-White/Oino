@@ -1,0 +1,140 @@
+package oino:extension@0.1.0;
+
+/// Mirrors of `oino-types` (P1). Complex/opaque fields travel as `json`
+/// strings in v0.1; requests/messages/events/configs are serialized JSON.
+interface types {
+    type json = string;
+
+    record model {
+        provider: string,
+        name: string,
+    }
+
+    enum stop-reason {
+        unknown,
+        end-turn,
+        tool-use,
+        length,
+        error,
+        aborted,
+    }
+
+    variant content-block {
+        text(string),
+        thinking(string),
+        tool-call(json),
+        image(json),
+        custom(json),
+    }
+
+    record tool-declaration {
+        name: string,
+        description: string,
+        input-schema: option<json>,
+    }
+
+    record usage {
+        input-tokens: u64,
+        output-tokens: u64,
+        cache-read-tokens: u64,
+        cache-write-tokens: u64,
+        reasoning-tokens: u64,
+        total-tokens: u64,
+        cost: option<f64>,
+    }
+
+    variant assistant-event {
+        start(json),
+        text-start(string),
+        text-delta(string),
+        thinking-start(string),
+        thinking-delta(string),
+        thinking-signature(string),
+        tool-call-start(json),
+        tool-call-delta(json),
+        tool-call-done(json),
+        usage(json),
+        done(json),
+        error(string),
+        aborted,
+    }
+}
+
+/// Host imports; every function is gated by a manifest permission.
+interface host {
+    use types.{json};
+
+    log: func(level: u8, msg: string);
+    secret: func(name: string) -> result<string, string>;
+    kv-get: func(key: string) -> option<list<u8>>;
+    kv-set: func(key: string, value: list<u8>) -> result<_, string>;
+    session-append: func(kind: string, payload: json) -> result<_, string>;
+    notify: func(level: u8, text: string);
+    confirm: func(title: string, body: string) -> bool;
+    tool-progress: func(call-id: string, message: string, details: option<json>);
+
+    record exec-output {
+        status: s32,
+        stdout: list<u8>,
+        stderr: list<u8>,
+    }
+
+    exec: func(cmd: string, args: list<string>, cwd: option<string>) -> result<exec-output, string>;
+}
+
+/// Extension exports: registration plus tool/command/hook dispatch.
+interface guest {
+    use types.{json, tool-declaration, content-block};
+
+    record registration {
+        tools: list<tool-declaration>,
+        commands: list<command-decl>,
+        hooks: list<string>,
+        providers: list<string>,
+    }
+
+    record command-decl {
+        name: string,
+        description: string,
+    }
+
+    record tool-output {
+        content: list<content-block>,
+        is-error: bool,
+        details: option<json>,
+        added-tool-names: list<string>,
+        terminate: bool,
+    }
+
+    init: func(config: json) -> result<registration, string>;
+    handle-event: func(kind: string, payload: json) -> result<json, string>;
+    run-tool: func(name: string, call-id: string, args: json) -> result<tool-output, string>;
+    run-command: func(name: string, args: string) -> result<json, string>;
+}
+
+/// Provider exports: pull-based streaming, `next` returns event batches.
+interface provider {
+    use types.{model, json, assistant-event};
+
+    list-models: func() -> result<json, string>;
+
+    resource response {
+        next: func() -> result<option<list<assistant-event>>, string>;
+        cancel: func();
+    }
+
+    %stream: func(request: json) -> result<response, string>;
+}
+
+world extension {
+    import host;
+    import wasi:http/outgoing-handler@0.2.12;
+    export guest;
+}
+
+world provider-extension {
+    import host;
+    import wasi:http/outgoing-handler@0.2.12;
+    export guest;
+    export provider;
+}

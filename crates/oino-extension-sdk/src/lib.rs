@@ -56,23 +56,22 @@ use oino_extension_core::{
     AuthContribution, AuthFlowType, AutosuggestContribution, AutosuggestItem, ChangelogEntry,
     CommandContribution, CommunityPackageMetadata, ContributionId, ContributionMetadata,
     ExtensionContributions, ExtensionCoreError, ExtensionId, ExtensionManifest,
-    ExtensionPermissions, HookContribution, HookEventKind, HookMode, KeymapContribution,
-    OinoCompatibility, PackageAssetRef, PackageExtensionRef, PackageId, PackageManifest,
-    PersistenceContribution, PersistenceRecord, PersistenceScope, ProviderContribution,
-    ProviderPrivacyPolicy, ProviderRuntimeContribution, ProviderRuntimeModelIdPolicy,
-    ProviderRuntimeProtocol, ProviderRuntimeSecret, RegistryEntryKey, RegistryFamily,
-    RegistryPolicy, RuntimeDescriptor, RuntimeKind, SourceDescriptor, SourceKind, SourceScope,
-    ThemeContribution, ToolContribution, ToolExecutionMode, TrustMetadata, UiFocusPolicy,
-    UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceAction, UiSurfaceContribution, UiSurfaceKind,
-    UiSurfaceRegistry, UiSurfaceStateUpdate, UiSurfaceValidationError, MANIFEST_FILE,
-    PACKAGE_MANIFEST_FILE,
+    ExtensionPermissions, HealthState, HookContribution, HookEventKind, HookMode,
+    KeymapContribution, OinoCompatibility, PackageAssetRef, PackageExtensionRef, PackageId,
+    PackageManifest, PersistenceContribution, PersistenceRecord, PersistenceScope,
+    ProviderContribution, ProviderPrivacyPolicy, ProviderRuntimeContribution,
+    ProviderRuntimeModelIdPolicy, ProviderRuntimeProtocol, ProviderRuntimeSecret, RegistryEntryKey,
+    RegistryFamily, RegistryPolicy, RuntimeDescriptor, RuntimeKind, SourceDescriptor, SourceKind,
+    SourceScope, ThemeContribution, ToolContribution, ToolExecutionMode, TrustMetadata,
+    UiFocusPolicy, UiKeyDispatchPolicy, UiLayoutPolicy, UiSurfaceAction, UiSurfaceContribution,
+    UiSurfaceKind, UiSurfaceRegistry, UiSurfaceStateUpdate, UiSurfaceValidationError,
+    MANIFEST_FILE, PACKAGE_MANIFEST_FILE,
 };
 use oino_extension_manager::{ExtensionPersistenceStore, PackageLifecycleService};
 use oino_extension_runtime::{
     CapabilityBroker, CapabilityError, CapabilityRequest, CapabilityResponse, ExtensionRuntime,
-    FixtureHandlerBehavior, FixtureWasmModule, JsonWasmRuntime, RuntimeCapabilityPolicy,
-    RuntimeError, RuntimeInitialize, RuntimeInvocation, RuntimeProgress, RuntimeResultValue,
-    WASM_JSON_V1_ABI,
+    RuntimeCapabilityPolicy, RuntimeError, RuntimeInitialize, RuntimeInvocation, RuntimeProgress,
+    RuntimeResultValue,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -185,7 +184,7 @@ impl ExampleExtensionTemplate {
             runtime: RuntimeDescriptor {
                 kind: RuntimeKind::Wasm,
                 entry: Some("plugin.wasm".into()),
-                abi: Some(WASM_JSON_V1_ABI.into()),
+                abi: Some(oino_extension_core::WASM_COMPONENT_ABI.into()),
             },
             permissions,
             contributes: ExtensionContributions {
@@ -490,6 +489,189 @@ fn main() {
         }))?,
     )?;
     Ok(package_dir)
+}
+
+/// The retired `wasm-json-v1` ABI string, kept only for the SDK's local test
+/// harness. Production wasm components use `oino:extension@0.1.0`.
+pub const WASM_JSON_V1_ABI: &str = "wasm-json-v1";
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum FixtureHandlerBehavior {
+    Success {
+        output: Value,
+        progress: Vec<RuntimeProgress>,
+    },
+    Error(String),
+    Timeout {
+        simulated_ms: u64,
+    },
+    RequiresImport {
+        import: String,
+        output: Value,
+    },
+    MalformedPayload(String),
+    Crash(String),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FixtureWasmModule {
+    pub handlers: BTreeMap<String, FixtureHandlerBehavior>,
+}
+
+impl FixtureWasmModule {
+    #[must_use]
+    pub fn with_handler(
+        mut self,
+        handler: impl Into<String>,
+        behavior: FixtureHandlerBehavior,
+    ) -> Self {
+        self.handlers.insert(handler.into(), behavior);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JsonWasmRuntime {
+    module: FixtureWasmModule,
+    capabilities: RuntimeCapabilityPolicy,
+    initialized: bool,
+    shutdown: bool,
+    health: HealthState,
+    cancelled: BTreeSet<String>,
+}
+
+impl JsonWasmRuntime {
+    #[must_use]
+    pub fn new(module: FixtureWasmModule) -> Self {
+        Self {
+            module,
+            capabilities: RuntimeCapabilityPolicy::default(),
+            initialized: false,
+            shutdown: false,
+            health: HealthState::Healthy,
+            cancelled: BTreeSet::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_capabilities(mut self, capabilities: RuntimeCapabilityPolicy) -> Self {
+        self.capabilities = capabilities;
+        self
+    }
+}
+
+impl ExtensionRuntime for JsonWasmRuntime {
+    fn initialize(
+        &mut self,
+        init: RuntimeInitialize,
+    ) -> Result<Vec<RuntimeProgress>, RuntimeError> {
+        if self.shutdown {
+            return Err(RuntimeError::Shutdown);
+        }
+        if init.abi != WASM_JSON_V1_ABI && init.abi != oino_extension_core::WASM_COMPONENT_ABI {
+            self.health = HealthState::Blocked;
+            return Err(RuntimeError::UnsupportedAbi(init.abi));
+        }
+        if init.entry.trim().is_empty() {
+            self.health = HealthState::Blocked;
+            return Err(RuntimeError::MalformedPayload(
+                "runtime entry is required".into(),
+            ));
+        }
+        self.initialized = true;
+        self.health = HealthState::Healthy;
+        Ok(vec![RuntimeProgress {
+            message: format!("initialized {}", init.extension_id),
+            details: None,
+        }])
+    }
+
+    fn invoke(
+        &mut self,
+        invocation: RuntimeInvocation,
+    ) -> Result<RuntimeResultValue, RuntimeError> {
+        if self.shutdown {
+            return Err(RuntimeError::Shutdown);
+        }
+        if !self.initialized {
+            return Err(RuntimeError::NotInitialized);
+        }
+        if self.cancelled.remove(&invocation.invocation_id) {
+            return Err(RuntimeError::Cancelled(invocation.invocation_id));
+        }
+        if !invocation.payload.is_object() && !invocation.payload.is_null() {
+            self.health = HealthState::Degraded;
+            return Err(RuntimeError::MalformedPayload(
+                "JSON-v1 invocation payload must be an object or null".into(),
+            ));
+        }
+        let behavior = self
+            .module
+            .handlers
+            .get(&invocation.handler)
+            .cloned()
+            .ok_or_else(|| RuntimeError::HandlerNotFound(invocation.handler.clone()))?;
+        match behavior {
+            FixtureHandlerBehavior::Success { output, progress } => {
+                Ok(RuntimeResultValue { output, progress })
+            }
+            FixtureHandlerBehavior::Error(message) => Err(RuntimeError::Handler(message)),
+            FixtureHandlerBehavior::Timeout { simulated_ms } => {
+                let timeout_ms = invocation
+                    .timeout
+                    .as_millis()
+                    .try_into()
+                    .unwrap_or(u64::MAX);
+                if simulated_ms > timeout_ms {
+                    self.health = HealthState::Degraded;
+                    Err(RuntimeError::Timeout(timeout_ms))
+                } else {
+                    Ok(RuntimeResultValue {
+                        output: Value::Null,
+                        progress: Vec::new(),
+                    })
+                }
+            }
+            FixtureHandlerBehavior::RequiresImport { import, output } => {
+                if self.capabilities.allows(&import) {
+                    Ok(RuntimeResultValue {
+                        output,
+                        progress: Vec::new(),
+                    })
+                } else {
+                    self.health = HealthState::Blocked;
+                    Err(RuntimeError::UnauthorizedImport(import))
+                }
+            }
+            FixtureHandlerBehavior::MalformedPayload(message) => {
+                self.health = HealthState::Degraded;
+                Err(RuntimeError::MalformedPayload(message))
+            }
+            FixtureHandlerBehavior::Crash(message) => {
+                self.health = HealthState::Unhealthy;
+                Err(RuntimeError::Crash(message))
+            }
+        }
+    }
+
+    fn cancel(&mut self, invocation_id: &str) -> Result<(), RuntimeError> {
+        if self.shutdown {
+            return Err(RuntimeError::Shutdown);
+        }
+        self.cancelled.insert(invocation_id.into());
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), RuntimeError> {
+        self.shutdown = true;
+        self.initialized = false;
+        self.health = HealthState::Disabled;
+        Ok(())
+    }
+
+    fn health(&self) -> HealthState {
+        self.health
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

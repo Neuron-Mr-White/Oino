@@ -61,3 +61,36 @@ results: `before_agent_start` returns `BeforeAgentStartResult { section_edits }`
 5. Open `/extensions` and check diagnostics.
 
 Keep extension IDs stable and prefer explicit permissions. Oino does not implicitly load unrelated agent extension folders.
+
+## WASM components (`oino:extension@0.1.0`)
+
+WASM runtimes are real Wasmtime components, not the retired `wasm-json-v1`
+JSON fixtures. The WIT package lives at `wit/` (`oino:extension@0.1.0`) with
+two worlds: `extension` (tools/commands/hooks) and `provider-extension` (adds a
+pull-based `provider.stream`/`response.next` streaming path). Host imports in
+`oino:extension/host` (`log`, `secret`, `kv-get`/`kv-set`, `session-append`,
+`notify`, `confirm`, `exec`, `tool-progress`) are each gated by a manifest
+permission; `wasi:http/outgoing-handler` enforces `network.hosts`.
+
+Guest crates live in the separate `extensions/` workspace (not the host
+workspace). A component implements `Extension` (plus `Provider` for providers)
+and exports it with `export_extension!` / `export_provider!` from
+`oino-extension-guest` / `oino-extension-guest-provider`. Payloads cross the
+boundary as JSON; `host::tool_progress`, `host::kv_*`, `host::secret`, and a
+blocking `http` helper with `read_chunk()` for SSE are provided by the SDK.
+
+### Build workflow
+
+```bash
+rustup target add wasm32-wasip2
+bash scripts/build-wasm-extensions.sh   # builds + copies fixture components
+cargo build --release --target wasm32-wasip2 --manifest-path extensions/Cargo.toml
+```
+
+wasm32-wasip2 emits a ready-to-load component directly — no separate
+`cargo-component`/`wasm-tools` step. A wasm manifest must declare
+`runtime: { kind: "wasm", entry: "plugin.wasm", abi: "oino:extension@0.1.0" }`;
+other ABIs are rejected as `UnsupportedWasmAbi` and the extension is skipped
+with a diagnostic. Host-side limits: 256 MiB memory per store, epoch deadlines
+(hooks 2 s, commands 30 s, tools 10 min, provider `next` 120 s), traps mark an
+extension unhealthy after three failed re-instantiations.

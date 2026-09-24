@@ -103,11 +103,6 @@ use oino_extension_manager::{
     ExtensionDiscovery, ExtensionLayoutPaths, ExtensionManager, ExtensionManagerConfig,
     ExtensionManagerSnapshot, PackageInstallScope, PackageLifecycleError, PackageLifecycleService,
 };
-use oino_extension_runtime::{
-    ExtensionCommandAdapter, ExtensionRuntime, ExtensionToolAdapter, FixtureHandlerBehavior,
-    FixtureWasmModule, JsonWasmRuntime, RuntimeInitialize, RuntimeProgress, SharedRuntime,
-    WASM_JSON_V1_ABI,
-};
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_catalog::{provider_by_id, resolve_provider, ProviderDescriptor};
 use oino_provider_openrouter::OpenRouterConfig;
@@ -2590,7 +2585,7 @@ fn synthetic_ui_surface(
 }
 
 fn extension_tool_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, Arc<dyn Tool>> {
-    let mut tools = BTreeMap::new();
+    let tools = BTreeMap::new();
     for active in &snapshot.registries.tools.active {
         if active.entry.metadata.source.scope == SourceScope::BuiltIn
             || active
@@ -2604,56 +2599,11 @@ fn extension_tool_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, A
         {
             continue;
         }
-        let Some(extension_id) = active.entry.metadata.extension_id.clone() else {
-            continue;
-        };
-        let contribution = active.entry.contribution.clone();
-        if let Some(runtime) = fixture_runtime_for_tool(&extension_id, &contribution) {
-            tools.insert(
-                contribution.id.to_string(),
-                Arc::new(ExtensionToolAdapter::new(
-                    contribution,
-                    extension_id,
-                    runtime,
-                )) as Arc<dyn Tool>,
-            );
-        }
+        // TODO(P2b): wire the real Wasmtime host here; the fixture JSON-v1
+        // runtime was removed, so non-built-in extension tools contribute
+        // nothing for now.
     }
     tools
-}
-
-fn fixture_runtime_for_tool(
-    extension_id: &oino_extension_core::ExtensionId,
-    contribution: &oino_extension_core::ToolContribution,
-) -> Option<SharedRuntime> {
-    let handler = contribution
-        .handler
-        .clone()
-        .unwrap_or_else(|| contribution.id.to_string());
-    let module = FixtureWasmModule::default().with_handler(
-        handler,
-        FixtureHandlerBehavior::Success {
-            output: serde_json::json!({
-                "status": "extension runtime bridge invoked",
-                "tool": contribution.id.to_string(),
-                "note": "wasm-json-v1 fixture runtime is active; replace with a real WASM handler when available"
-            }),
-            progress: vec![RuntimeProgress {
-                message: format!("Invoked extension tool {}", contribution.id),
-                details: None,
-            }],
-        },
-    );
-    let mut runtime = JsonWasmRuntime::new(module);
-    runtime
-        .initialize(RuntimeInitialize {
-            extension_id: extension_id.clone(),
-            abi: WASM_JSON_V1_ABI.into(),
-            entry: "fixture-runtime".into(),
-            metadata: serde_json::Value::Null,
-        })
-        .ok()?;
-    Some(Arc::new(Mutex::new(Box::new(runtime))))
 }
 
 async fn configure_router_use_external_from_inline_command(
@@ -2760,40 +2710,11 @@ async fn execute_extension_command(
         }
         return Some(execute_router_command_input(trimmed).await);
     }
-    let extension_id = active.entry.metadata.extension_id.clone()?;
-    let module = FixtureWasmModule::default().with_handler(
-        handler.clone(),
-        FixtureHandlerBehavior::Success {
-            output: serde_json::json!({
-                "status": "extension command bridge invoked",
-                "command": contribution.id.to_string(),
-                "input": trimmed,
-            }),
-            progress: Vec::new(),
-        },
-    );
-    let mut runtime = JsonWasmRuntime::new(module);
-    if let Err(err) = runtime.initialize(RuntimeInitialize {
-        extension_id: extension_id.clone(),
-        abi: WASM_JSON_V1_ABI.into(),
-        entry: "fixture-runtime".into(),
-        metadata: serde_json::Value::Null,
-    }) {
-        return Some(Err(AppError::InvalidArguments(err.to_string())));
-    }
-    let adapter = ExtensionCommandAdapter::new(
-        contribution.id.clone(),
-        contribution.description.clone(),
-        extension_id,
-        handler,
-        Arc::new(Mutex::new(Box::new(runtime))),
-    );
-    Some(
-        adapter
-            .execute(serde_json::json!({ "input": trimmed }))
-            .map(|output| output.to_string())
-            .map_err(|err| AppError::InvalidArguments(err.to_string())),
-    )
+    // TODO(P2b): route extension commands through the Wasmtime host; the
+    // fixture JSON-v1 runtime was removed, so non-built-in extension commands
+    // are skipped for now.
+    let _ = (active, contribution, trimmed);
+    None
 }
 
 async fn apply_tool_settings_to_harness(
@@ -9032,7 +8953,7 @@ mod tests {
               "id": "acme.visible",
               "version": "1.0.0",
               "oino": "^0.1",
-              "runtime": { "kind": "wasm", "entry": "plugin.wasm" },
+              "runtime": { "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" },
               "permissions": { "tools": ["visible_tool"], "commands": ["visible_command"] },
               "contributes": {
                 "tools": [{ "id": "visible_tool", "description": "Visible dogfood tool" }],
@@ -9074,13 +8995,15 @@ mod tests {
             .active
             .iter()
             .any(|active| active.effective_id.as_str() == "visible_tool"));
+        // P2a: non-built-in extension tools/commands are skipped until the
+        // Wasmtime host is wired into the app (TODO(P2b)).
         let tools = extension_tool_map(&snapshot);
-        assert!(tools.contains_key("visible_tool"));
-        let command = execute_extension_command("/visible_command now", &snapshot, None)
-            .await
-            .unwrap_or_else(|| panic!("extension command should be known"))
-            .unwrap_or_else(|err| panic!("extension command failed: {err}"));
-        assert!(command.contains("visible_command"));
+        assert!(!tools.contains_key("visible_tool"));
+        assert!(
+            execute_extension_command("/visible_command now", &snapshot, None)
+                .await
+                .is_none()
+        );
         let (prompts, skills, diagnostics) = extension_resource_items(&snapshot);
         assert!(diagnostics.is_empty());
         assert!(prompts

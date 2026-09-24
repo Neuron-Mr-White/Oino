@@ -41,6 +41,7 @@ use oino_agent_loop::{
     AbortSignal, AfterToolCall, AgentEvent, AgentLoopConfig, BeforeToolCall, BeforeToolCallResult,
     BoxFuture, EventSink, FinishTurn, LoopError, LoopResult, StreamEventSink, StreamProvider,
     StreamRequest, Tool, ToolCall, ToolResult, TransformContext, TurnContext, TurnDecision,
+    TurnUpdate,
 };
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
 use oino_session::{SessionEntry, SessionEntryKind, SessionManager};
@@ -416,9 +417,6 @@ pub struct Harness {
     /// Bridge fallback prompt used when no `System` message exists and no
     /// pending state was synced.
     system_prompt_fallback: Option<String>,
-    /// Entries returned by `turn_end` handlers during a run; drained into the
-    /// agent context and session after the run finishes.
-    turn_end_entries: Arc<Mutex<Vec<Message>>>,
 }
 
 impl Harness {
@@ -441,8 +439,6 @@ impl Harness {
         let before_hooks = hooks.clone();
         let after_hooks = hooks.clone();
         let turn_end_hooks = hooks.clone();
-        let turn_end_entries: Arc<Mutex<Vec<Message>>> = Arc::new(Mutex::new(Vec::new()));
-        let turn_end_buffer = Arc::clone(&turn_end_entries);
         let stream = Arc::new(HookedStreamProvider {
             inner: Arc::clone(&config.stream),
             hooks: hooks.clone(),
@@ -476,11 +472,12 @@ impl Harness {
         }) as AfterToolCall);
         loop_config.finish_turn = Some(Arc::new(move |context| {
             let hooks = turn_end_hooks.clone();
-            let buffer = Arc::clone(&turn_end_buffer);
-            let fut: BoxFuture<'static, LoopResult<Option<TurnDecision>>> = Box::pin(async move {
+            let fut: BoxFuture<'static, LoopResult<Option<TurnUpdate>>> = Box::pin(async move {
                 let result = hooks.run_turn_end(context).await?;
-                buffer.lock().await.extend(result.entries);
-                Ok(result.continue_run.then_some(TurnDecision::Continue))
+                Ok(Some(TurnUpdate {
+                    decision: result.continue_run.then_some(TurnDecision::Continue),
+                    messages: result.entries,
+                }))
             });
             fut
         }) as FinishTurn);
@@ -494,7 +491,6 @@ impl Harness {
             auth_resolver: config.auth_resolver,
             pending_system: Arc::new(Mutex::new(None)),
             system_prompt_fallback: config.system_prompt,
-            turn_end_entries,
         }
     }
 
@@ -516,13 +512,6 @@ impl Harness {
         self.merge_section_edits(edits).await;
         self.flush_system().await?;
         let output = self.agent.prompt(message).await?;
-        // Entries produced by `turn_end` handlers are appended in registration
-        // order to both the agent context and the session.
-        let appended: Vec<Message> = std::mem::take(&mut *self.turn_end_entries.lock().await);
-        for entry in &appended {
-            self.agent.append_transcript_message(entry.clone()).await;
-            self.session.lock().await.append_message(entry.clone());
-        }
         self.persist_messages(&output.messages).await;
         self.hooks
             .notify(AgentEvent::SavePoint {
