@@ -80,13 +80,11 @@ pub(crate) fn extension_runtime_missing_message(provider_id: &str) -> String {
     )
 }
 
-pub(crate) fn provider_status_for_model_identifier(
-    model_identifier: &str,
-) -> Result<Model, String> {
+pub(crate) fn provider_status_for_model_identifier(model_identifier: &str) -> String {
     let Some(model) = Model::from_identifier(model_identifier) else {
-        return Err(format!(
+        return format!(
             "Invalid model identifier `{model_identifier}`; expected provider:model-id"
-        ));
+        );
     };
-    Err(extension_runtime_missing_message(&model.provider))
+    extension_runtime_missing_message(&model.provider)
 }

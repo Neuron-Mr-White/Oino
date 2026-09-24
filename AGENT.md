@@ -64,3 +64,7 @@ From today onwards, keep all conventions we know so far in this file so future a
 - Esc should dismiss transient UI or stop a running response; it should not quit the app.
 - Quit requires two Ctrl-C presses.
 - Long rows in pickers/browsers should truncate with ellipsis instead of clipping.
+
+## Revival specs
+
+- Oino's pi-parity revival plan lives in `docs/dev/revival/` (start with `README.md`, then the numbered phase files). Follow the spec files when implementing parity work; keep transcripts, hooks, and provider semantics aligned with upstream pi as described there.

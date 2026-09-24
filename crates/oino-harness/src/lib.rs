@@ -188,7 +188,7 @@ impl HookRegistry {
         for handler in self.before_tool_call.lock().await.clone() {
             match handler(call.clone()).await? {
                 BeforeToolCallResult::Allow(rewritten) => call = rewritten,
-                blocked @ BeforeToolCallResult::Block(_) => return Ok(blocked),
+                blocked @ BeforeToolCallResult::Block { .. } => return Ok(blocked),
             }
         }
         Ok(BeforeToolCallResult::Allow(call))
@@ -257,7 +257,7 @@ fn hook_for_event(event: &AgentEvent) -> Option<NotificationHook> {
         AgentEvent::AgentStart { .. } => Some(NotificationHook::AgentStart),
         AgentEvent::TurnStart { .. } => Some(NotificationHook::TurnStart),
         AgentEvent::MessageStart { .. } => Some(NotificationHook::MessageStart),
-        AgentEvent::MessageUpdate { .. } => Some(NotificationHook::MessageUpdate),
+        AgentEvent::MessageDelta { .. } => Some(NotificationHook::MessageUpdate),
         AgentEvent::MessageEnd { .. } => Some(NotificationHook::MessageEnd),
         AgentEvent::ToolExecutionStart { .. } => Some(NotificationHook::ToolExecutionStart),
         AgentEvent::ToolExecutionUpdate { .. } => Some(NotificationHook::ToolExecutionUpdate),
@@ -706,6 +706,11 @@ impl Harness {
 
 fn format_message_for_inspect(index: usize, message: &Message) -> String {
     match message {
+        Message::System { content, .. } => format!(
+            "## Message {}: system\n\n{}\n",
+            index.saturating_add(1),
+            content
+        ),
         Message::User { content, .. } => format!(
             "## Message {}: user\n\n{}\n",
             index.saturating_add(1),
@@ -752,7 +757,7 @@ fn format_content_blocks_for_inspect(blocks: &[ContentBlock]) -> String {
             ContentBlock::Image { media_type, data } => {
                 format!("<image:{media_type}; {} bytes>", data.len())
             }
-            ContentBlock::Thinking { text, redacted } => {
+            ContentBlock::Thinking { text, redacted, .. } => {
                 if *redacted {
                     format!("<thinking redacted; {} chars>", text.chars().count())
                 } else {
@@ -763,6 +768,7 @@ fn format_content_blocks_for_inspect(blocks: &[ContentBlock]) -> String {
                 id,
                 name,
                 arguments,
+                ..
             } => format!(
                 "<tool-call:{name} id={id}>\n```json\n{}\n```",
                 serde_json::to_string_pretty(arguments).unwrap_or_else(|_| arguments.to_string())

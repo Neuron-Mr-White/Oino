@@ -43,6 +43,21 @@ pub fn project_messages(messages: &[Message]) -> Vec<MessageView> {
 #[must_use]
 pub fn project_message(message: &Message) -> MessageView {
     match message {
+        Message::System { id, content, .. } => MessageView {
+            id: *id,
+            role: "system".into(),
+            title: None,
+            content: if content.is_empty() {
+                "<prompt/tools updated>".into()
+            } else {
+                content.clone()
+            },
+            thinking: None,
+            thinking_redacted: false,
+            tool_call_id: None,
+            tool_calls: Vec::new(),
+            is_error: false,
+        },
         Message::User { id, content } => {
             let summary = summarize_content(content);
             MessageView {
@@ -158,7 +173,7 @@ fn summarize_content(content: &[ContentBlock]) -> ContentSummary {
         match block {
             ContentBlock::Text { text } => parts.push(text.clone()),
             ContentBlock::Image { media_type, .. } => parts.push(format!("<image:{media_type}>")),
-            ContentBlock::Thinking { text, redacted } => {
+            ContentBlock::Thinking { text, redacted, .. } => {
                 thinking_parts.push(text.clone());
                 thinking_redacted |= *redacted;
             }
@@ -166,6 +181,7 @@ fn summarize_content(content: &[ContentBlock]) -> ContentSummary {
                 id,
                 name,
                 arguments,
+                ..
             } => tool_calls.push(ToolCallView {
                 id: *id,
                 name: name.clone(),
@@ -208,6 +224,8 @@ mod tests {
                 model: Some(Model::new("openrouter", "test/model")),
                 values: Default::default(),
             }),
+            response_model: None,
+            error_message: None,
         };
         let view = project_message(&message);
         assert_eq!(view.role, "assistant");
@@ -222,10 +240,13 @@ mod tests {
                 id: OinoId::nil(),
                 name: "write".into(),
                 arguments: Default::default(),
+                native_id: None,
             }],
             stop_reason: Some(StopReason::ToolUse),
             usage: None,
             provider: None,
+            response_model: None,
+            error_message: None,
         };
         let view = project_message(&message);
         assert_eq!(view.content, "<empty>");
@@ -240,6 +261,8 @@ mod tests {
                 ContentBlock::Thinking {
                     text: "private chain".into(),
                     redacted: false,
+                    signature: None,
+                    provider_data: None,
                 },
                 ContentBlock::Text {
                     text: "public answer".into(),
@@ -248,6 +271,8 @@ mod tests {
             stop_reason: Some(StopReason::EndTurn),
             usage: None,
             provider: None,
+            response_model: None,
+            error_message: None,
         };
         let view = project_message(&message);
         assert_eq!(view.content, "public answer");

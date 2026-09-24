@@ -845,7 +845,7 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
             .ok()
             .filter(|&p| p > 0 && p <= 100)
             .map(|p| ParsedCommand::CompactThreshold(Some(p)))
-            .or_else(|| Some(ParsedCommand::CompactThreshold(None))),
+            .or(Some(ParsedCommand::CompactThreshold(None))),
         ["/compact", "auto", "on"] => Some(ParsedCommand::CompactAuto(true)),
         ["/compact", "auto", "off"] => Some(ParsedCommand::CompactAuto(false)),
         ["/compact", "model"] => Some(ParsedCommand::CompactModel(Some(None))),
@@ -859,7 +859,7 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
             .map(str::trim)
             .filter(|p| !p.is_empty())
             .map(|p| ParsedCommand::CompactPrompt(Some(p.to_string())))
-            .or_else(|| Some(ParsedCommand::CompactPrompt(None))),
+            .or(Some(ParsedCommand::CompactPrompt(None))),
         ["/recall"] => Some(ParsedCommand::Recall { query: None }),
         ["/recall", ..] => input
             .strip_prefix("/recall")
@@ -1274,7 +1274,7 @@ fn descriptive_value_help(title: &str, value_hint: &str, description: &str) -> S
 }
 
 fn parse_mode_command(input: &str) -> Option<ParsedCommand> {
-    let tokens = input.trim().split_whitespace().collect::<Vec<_>>();
+    let tokens = input.split_whitespace().collect::<Vec<_>>();
     match tokens.as_slice() {
         ["/mode"] => Some(ParsedCommand::ShowAgentModeUsage),
         ["/mode", profile] => AgentMode::from_value(profile).map(ParsedCommand::SetAgentMode),
@@ -1560,6 +1560,7 @@ pub fn parse_thinking_level(value: &str) -> Option<ThinkingLevel> {
         "medium" => Some(ThinkingLevel::Medium),
         "high" => Some(ThinkingLevel::High),
         "xhigh" => Some(ThinkingLevel::XHigh),
+        "max" => Some(ThinkingLevel::Max),
         _ => None,
     }
 }
@@ -1573,6 +1574,7 @@ pub fn thinking_level_value(level: ThinkingLevel) -> &'static str {
         ThinkingLevel::Medium => "medium",
         ThinkingLevel::High => "high",
         ThinkingLevel::XHigh => "xhigh",
+        ThinkingLevel::Max => "max",
     }
 }
 
@@ -2098,6 +2100,7 @@ fn thinking_suggestions(context: SuggestionContext) -> Option<CommandSuggestions
         (ThinkingLevel::Medium, "Medium reasoning"),
         (ThinkingLevel::High, "High reasoning"),
         (ThinkingLevel::XHigh, "Extra-high reasoning"),
+        (ThinkingLevel::Max, "Maximum reasoning"),
     ];
     let items = fuzzy_indices(
         &levels,

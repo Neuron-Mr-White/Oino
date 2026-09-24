@@ -150,7 +150,7 @@ enum JsonlRecord {
         leaf_id: Option<OinoId>,
     },
     Entry {
-        entry: SessionEntry,
+        entry: Box<SessionEntry>,
     },
 }
 
@@ -421,7 +421,7 @@ impl SessionManager {
         file.write_all(b"\n").await?;
         for entry in self.entries.values() {
             let record = JsonlRecord::Entry {
-                entry: entry.clone(),
+                entry: Box::new(entry.clone()),
             };
             file.write_all(serde_json::to_string(&record)?.as_bytes())
                 .await?;
@@ -454,7 +454,7 @@ impl SessionManager {
                         .entry(entry.parent)
                         .or_default()
                         .insert(entry.id);
-                    manager.entries.insert(entry.id, entry);
+                    manager.entries.insert(entry.id, *entry);
                 }
                 JsonlRecord::Header { .. } => {
                     return Err(SessionError::InvalidRecord("duplicate header".into()))

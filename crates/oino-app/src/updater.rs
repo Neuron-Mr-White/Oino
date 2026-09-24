@@ -410,14 +410,19 @@ mod tests {
     #[test]
     fn parses_update_modes_and_tags() {
         assert_eq!(
-            parse_oino_update_args(&["check"]).unwrap().mode,
+            parse_oino_update_args(&["check"])
+                .unwrap_or_else(|err| panic!("parse failed: {err}"))
+                .mode,
             OinoUpdateMode::Check
         );
         assert_eq!(
-            parse_oino_update_args(&["extensions"]).unwrap().mode,
+            parse_oino_update_args(&["extensions"])
+                .unwrap_or_else(|err| panic!("parse failed: {err}"))
+                .mode,
             OinoUpdateMode::Extensions
         );
-        let plan = parse_oino_update_args(&["all", "--tag", "v1.2.3", "--source"]).unwrap();
+        let plan = parse_oino_update_args(&["all", "--tag", "v1.2.3", "--source"])
+            .unwrap_or_else(|err| panic!("parse failed: {err}"));
         assert_eq!(plan.mode, OinoUpdateMode::All);
         assert_eq!(plan.tag.as_deref(), Some("v1.2.3"));
         assert!(plan.force_source);
@@ -442,7 +447,7 @@ mod tests {
               "extensions": {"url":"https://example/extensions.tar.gz","built_in_root":"extensions/built-in","additional_root":"extensions/additional"}
             }"#,
         )
-        .unwrap();
+        .unwrap_or_else(|err| panic!("manifest parse failed: {err}"));
         assert_eq!(manifest.tag, "v1.2.3");
         assert_eq!(manifest.artifacts[0].target, "x86_64-unknown-linux-gnu");
     }

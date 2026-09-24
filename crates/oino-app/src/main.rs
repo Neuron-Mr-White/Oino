@@ -1837,7 +1837,7 @@ fn ralph_panel_surface(project_root: &Path) -> Option<ActiveContribution<UiSurfa
             .map_or_else(|| "n/a".to_string(), |value| value.to_string())
     );
     let id = ContributionId::new("ralph-progress-panel")
-        .expect("builtin Ralph panel contribution id is valid");
+        .unwrap_or_else(|err| panic!("builtin Ralph panel contribution id is valid: {err}"));
     let metadata = ContributionMetadata::new(
         id.clone(),
         SourceDescriptor {
@@ -1847,8 +1847,14 @@ fn ralph_panel_surface(project_root: &Path) -> Option<ActiveContribution<UiSurfa
             registry: None,
         },
     )
-    .with_package_id(PackageId::new(RALPH_LOOP_PACKAGE_ID).expect("valid package id"))
-    .with_extension_id(ExtensionId::new(RALPH_LOOP_PACKAGE_ID).expect("valid extension id"));
+    .with_package_id(
+        PackageId::new(RALPH_LOOP_PACKAGE_ID)
+            .unwrap_or_else(|err| panic!("valid package id: {err}")),
+    )
+    .with_extension_id(
+        ExtensionId::new(RALPH_LOOP_PACKAGE_ID)
+            .unwrap_or_else(|err| panic!("valid extension id: {err}")),
+    );
     let mut scopes = BTreeSet::new();
     scopes.insert("extension.floating_panel".to_string());
     Some(ActiveContribution {
@@ -3154,6 +3160,10 @@ async fn run_tui(
         initial_model,
     );
     let mut prompt_in_flight = false;
+    let mut message_accumulators: std::collections::HashMap<
+        OinoId,
+        oino_agent_loop::MessageAccumulator,
+    > = std::collections::HashMap::new();
     let mut btw_harness: Option<Arc<Harness>> = None;
     let mut btw_in_flight = false;
     let mut ralph_controller = RalphRunController::default();
@@ -3198,6 +3208,7 @@ async fn run_tui(
                         other,
                         &mut prompt_in_flight,
                         &extension_models,
+                        &mut message_accumulators,
                     );
                 }
             }
@@ -3465,7 +3476,7 @@ async fn run_tui(
                 match auth_status_items_with_extension_readiness(
                     &auth,
                     provider.as_deref(),
-                    &state.settings.selected_model(),
+                    state.settings.selected_model(),
                     &extension_snapshot,
                 )
                 .await
@@ -3485,7 +3496,7 @@ async fn run_tui(
                 match auth_status_items_with_extension_readiness(
                     &auth,
                     None,
-                    &state.settings.selected_model(),
+                    state.settings.selected_model(),
                     &extension_snapshot,
                 )
                 .await
@@ -3528,7 +3539,7 @@ async fn run_tui(
                             .model
                             .as_deref()
                             .filter(|m| *m != "inherit")
-                            .unwrap_or(&state.settings.selected_model());
+                            .unwrap_or(state.settings.selected_model());
                         let model = match Model::from_identifier(model_id) {
                             Some(m) => m,
                             None => {
@@ -3626,7 +3637,7 @@ async fn run_tui(
                             .model
                             .as_deref()
                             .filter(|m| *m != "inherit")
-                            .unwrap_or(&state.settings.selected_model());
+                            .unwrap_or(state.settings.selected_model());
                         let model = match Model::from_identifier(model_id) {
                             Some(m) => m,
                             None => {
@@ -3759,7 +3770,7 @@ async fn run_tui(
                 match usage_report_for_current_session(
                     &harness,
                     &auth,
-                    &state.settings.selected_model(),
+                    state.settings.selected_model(),
                 )
                 .await
                 {
@@ -3784,7 +3795,7 @@ async fn run_tui(
                         &btw_provider_config,
                         &extension_snapshot,
                         state.btw.configured_model.clone(),
-                        &state.settings.selected_model(),
+                        state.settings.selected_model(),
                         true,
                     )
                     .await
@@ -3816,7 +3827,7 @@ async fn run_tui(
                             &btw_provider_config,
                             &extension_snapshot,
                             state.btw.configured_model.clone(),
-                            &state.settings.selected_model(),
+                            state.settings.selected_model(),
                             true,
                         )
                         .await
@@ -3846,7 +3857,7 @@ async fn run_tui(
                     &btw_provider_config,
                     &extension_snapshot,
                     state.btw.configured_model.clone(),
-                    &state.settings.selected_model(),
+                    state.settings.selected_model(),
                     false,
                 )
                 .await
@@ -4564,6 +4575,7 @@ async fn apply_cached_model_catalog_to_tui_state(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn reload_tui_everything(
     state: &mut TuiState,
     harness: &Harness,
@@ -4998,6 +5010,7 @@ async fn start_next_queued_prompt_if_idle(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_btw_harness(
     main_harness: &Arc<Harness>,
     auth: &AuthStorage,
@@ -5062,6 +5075,7 @@ fn start_btw_prompt(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn start_prompt(
     state: &mut TuiState,
     auth: &AuthStorage,
@@ -5079,7 +5093,7 @@ async fn start_prompt(
     }
     if let Err(message) = preflight_model_credentials(
         auth,
-        &state.settings.selected_model(),
+        state.settings.selected_model(),
         extension_runtime_provider_ids,
     )
     .await
@@ -6249,14 +6263,17 @@ fn mode_before_tool_call_result(
     if profile.allows_tool(&call.name) {
         return BeforeToolCallResult::Allow(call);
     }
-    BeforeToolCallResult::Block(format!(
-        "{} mode blocked tool `{}`. Allowed tools for this profile: {}. Edit `~/.oino/sandbox-mode/{}.json`, add a project override at `.oino/sandbox-mode/{}.json`, or switch modes before using this tool.",
-        mode.label(),
-        call.name,
-        profile.allowed_tools.join(", "),
-        mode.value(),
-        mode.value()
-    ))
+    BeforeToolCallResult::Block {
+        reason: format!(
+            "{} mode blocked tool `{}`. Allowed tools for this profile: {}. Edit `~/.oino/sandbox-mode/{}.json`, add a project override at `.oino/sandbox-mode/{}.json`, or switch modes before using this tool.",
+            mode.label(),
+            call.name,
+            profile.allowed_tools.join(", "),
+            mode.value(),
+            mode.value()
+        ),
+        terminate: false,
+    }
 }
 
 fn execute_ralph_command_if_enabled(
@@ -6996,6 +7013,10 @@ async fn session_list_items_from_root(
 
 fn message_preview(message: &Message) -> Option<String> {
     match message {
+        Message::System { content, .. } => {
+            let text = content.split_whitespace().collect::<Vec<_>>().join(" ");
+            (!text.is_empty()).then_some(text)
+        }
         Message::User { content, .. } | Message::Assistant { content, .. } => {
             content_text_preview(content)
         }
@@ -7205,7 +7226,7 @@ async fn try_auto_compact(
                 .model
                 .as_deref()
                 .filter(|m| *m != "inherit")
-                .unwrap_or(&state.settings.selected_model());
+                .unwrap_or(state.settings.selected_model());
             let model = match Model::from_identifier(model_id) {
                 Some(m) => m,
                 None => return false,
@@ -7452,9 +7473,13 @@ async fn summarize_notify_body(
     let request = StreamRequest {
         model,
         thinking_level: ThinkingLevel::Off,
-        system_prompt: Some("You write concise desktop/mobile notification summaries.".into()),
-        messages: vec![Message::user_text(prompt)],
-        tools: Vec::new(),
+        transcript: oino_types::transcript::normalize(
+            Some("You write concise desktop/mobile notification summaries.".into()),
+            Vec::new(),
+            vec![Message::user_text(prompt)],
+        ),
+        session_id: None,
+        cache_retention: oino_agent_loop::CacheRetention::default(),
     };
     let Ok(events) = stream.stream(request, AbortSignal::new()).await else {
         return fallback;
@@ -7512,6 +7537,10 @@ fn apply_tui_runtime_event(
     event: TuiRuntimeEvent,
     prompt_in_flight: &mut bool,
     extension_models: &[ModelOption],
+    message_accumulators: &mut std::collections::HashMap<
+        OinoId,
+        oino_agent_loop::MessageAccumulator,
+    >,
 ) {
     match event {
         TuiRuntimeEvent::Agent(AgentEvent::AgentStart { .. }) => {
@@ -7522,13 +7551,17 @@ fn apply_tui_runtime_event(
         TuiRuntimeEvent::Agent(AgentEvent::MessageStart { message_id, role }) => {
             state.start_message(message_id, role);
         }
-        TuiRuntimeEvent::Agent(AgentEvent::MessageUpdate {
-            message_id,
-            content,
-        }) => {
-            state.update_message(message_id, &content);
+        TuiRuntimeEvent::Agent(AgentEvent::MessageDelta { message_id, delta }) => {
+            message_accumulators
+                .entry(message_id)
+                .or_default()
+                .apply(&delta);
+            if let Some(accumulator) = message_accumulators.get(&message_id) {
+                state.update_message(message_id, &accumulator.content());
+            }
         }
         TuiRuntimeEvent::Agent(AgentEvent::MessageEnd { message }) => {
+            message_accumulators.remove(&message.id());
             state.finish_message(&message);
         }
         TuiRuntimeEvent::Agent(AgentEvent::ToolExecutionStart { call }) => {
@@ -7610,7 +7643,7 @@ async fn preflight_model_credentials(
         ));
     }
     let _ = auth;
-    Err(provider_status_for_model_identifier(model_identifier).unwrap_err())
+    Err(provider_status_for_model_identifier(model_identifier))
 }
 
 fn user_facing_error(err: &HarnessError) -> String {
@@ -7786,7 +7819,8 @@ mod tests {
             "not-installed:test-model",
             &extension_providers,
         )
-        .expect_err("unknown non-extension provider should be rejected");
+        .err()
+        .unwrap_or_else(|| panic!("unknown non-extension provider should be rejected"));
         assert!(err.contains("extension runtime"));
         assert!(err.contains("/router setup"));
     }
@@ -7810,7 +7844,10 @@ mod tests {
 
     #[test]
     fn router_tag_validation_rejects_unsafe_values() {
-        assert_eq!(validate_router_tag("3.8.7").unwrap(), "3.8.7");
+        assert_eq!(
+            validate_router_tag("3.8.7").unwrap_or_else(|err| panic!("tag parse failed: {err}")),
+            "3.8.7"
+        );
         assert!(validate_router_tag("../latest").is_err());
         assert!(validate_router_tag("").is_err());
     }
@@ -7873,7 +7910,8 @@ mod tests {
         );
         assert!(extension_config_string_from_value(&value, "missing.key").is_none());
         assert_eq!(
-            extension_config_dir_name("provider.test-1").unwrap(),
+            extension_config_dir_name("provider.test-1")
+                .unwrap_or_else(|err| panic!("config dir name failed: {err}")),
             "provider.test-1"
         );
         assert!(extension_config_dir_name("../provider").is_err());
@@ -8092,14 +8130,14 @@ mod tests {
             BeforeToolCallResult::Allow(_)
         ));
         match mode_before_tool_call_result(&AgentMode::Plan, &plan, edit) {
-            BeforeToolCallResult::Block(reason) => {
+            BeforeToolCallResult::Block { reason, .. } => {
                 assert!(reason.contains("Plan mode blocked tool `edit`"));
                 assert!(reason.contains(".oino/sandbox-mode/plan.json"));
             }
             BeforeToolCallResult::Allow(_) => panic!("plan profile should block edit"),
         }
         match mode_before_tool_call_result(&AgentMode::Plan, &plan, write.clone()) {
-            BeforeToolCallResult::Block(reason) => {
+            BeforeToolCallResult::Block { reason, .. } => {
                 assert!(reason.contains("Plan mode blocked tool `write`"));
                 assert!(reason.contains(".oino/sandbox-mode/plan.json"));
             }
@@ -8363,7 +8401,8 @@ mod tests {
         installed["version"] = serde_json::json!("0.0.1");
         fs::write(
             &manifest_path,
-            serde_json::to_string_pretty(&installed).unwrap(),
+            serde_json::to_string_pretty(&installed)
+                .unwrap_or_else(|err| panic!("serialize failed: {err}")),
         )
         .unwrap_or_else(|err| panic!("write downgraded manifest failed: {err}"));
 
@@ -8400,7 +8439,8 @@ mod tests {
             &UserSettings {
                 extensions: oino_extension_core::ExtensionPolicySettings {
                     packages: BTreeMap::from([(
-                        PackageId::new("oino.9router").unwrap(),
+                        PackageId::new("oino.9router")
+                            .unwrap_or_else(|err| panic!("package id: {err}")),
                         PolicyToggle::Enabled,
                     )]),
                     ..Default::default()
@@ -8421,15 +8461,13 @@ mod tests {
         let settings = user_settings::load_from_path(&paths.global_settings)
             .await
             .unwrap_or_else(|err| panic!("read settings failed: {err}"));
-        assert!(!settings
-            .extensions
-            .packages
-            .contains_key(&PackageId::new("oino.9router").unwrap()));
+        let nine_router =
+            PackageId::new("oino.9router").unwrap_or_else(|err| panic!("package id: {err}"));
+        let router =
+            PackageId::new("oino.router").unwrap_or_else(|err| panic!("package id: {err}"));
+        assert!(!settings.extensions.packages.contains_key(&nine_router));
         assert_eq!(
-            settings
-                .extensions
-                .packages
-                .get(&PackageId::new("oino.router").unwrap()),
+            settings.extensions.packages.get(&router),
             Some(&PolicyToggle::Enabled)
         );
     }

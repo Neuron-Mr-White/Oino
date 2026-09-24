@@ -414,50 +414,30 @@ struct RecallRow {
 }
 
 fn recall_row(index: usize, entry: &SessionEntry) -> Option<RecallRow> {
-    let title;
-    let full;
-    match &entry.kind {
-        SessionEntryKind::Message { message } | SessionEntryKind::CustomMessage { message } => {
-            title = message_title(message).to_string();
-            full = message_full_text(message);
-        }
-        SessionEntryKind::Compaction { summary, .. } => {
-            title = "compaction".into();
-            full = summary.clone();
-        }
-        SessionEntryKind::BranchSummary { summary } => {
-            title = "branch summary".into();
-            full = summary.clone();
-        }
-        SessionEntryKind::ModelChange { model } => {
-            title = "model".into();
-            full = model.identifier();
-        }
+    let (title, full) = match &entry.kind {
+        SessionEntryKind::Message { message } | SessionEntryKind::CustomMessage { message } => (
+            message_title(message).to_string(),
+            message_full_text(message),
+        ),
+        SessionEntryKind::Compaction { summary, .. } => ("compaction".into(), summary.clone()),
+        SessionEntryKind::BranchSummary { summary } => ("branch summary".into(), summary.clone()),
+        SessionEntryKind::ModelChange { model } => ("model".into(), model.identifier()),
         SessionEntryKind::ThinkingLevelChange { thinking_level } => {
-            title = "thinking".into();
-            full = format!("{thinking_level:?}");
+            ("thinking".into(), format!("{thinking_level:?}"))
         }
-        SessionEntryKind::Label { label } => {
-            title = "label".into();
-            full = label.clone();
-        }
+        SessionEntryKind::Label { label } => ("label".into(), label.clone()),
         SessionEntryKind::SessionInfo { name, cwd } => {
-            title = "session info".into();
-            full = format!("name={name:?} cwd={cwd:?}");
+            ("session info".into(), format!("name={name:?} cwd={cwd:?}"))
         }
         SessionEntryKind::Custom { name, payload } => {
-            title = format!("custom:{name}");
-            full = payload.to_string();
+            (format!("custom:{name}"), payload.to_string())
         }
-        SessionEntryKind::ExtensionCustom { entry } => {
-            title = format!("extension:{}", entry.owner_extension_id);
-            full = entry.payload.to_string();
-        }
-        SessionEntryKind::LeafMove { leaf_id } => {
-            title = "leaf move".into();
-            full = leaf_id.to_string();
-        }
-    }
+        SessionEntryKind::ExtensionCustom { entry } => (
+            format!("extension:{}", entry.owner_extension_id),
+            entry.payload.to_string(),
+        ),
+        SessionEntryKind::LeafMove { leaf_id } => ("leaf move".into(), leaf_id.to_string()),
+    };
     let snippet = compact_snippet(&full, MAX_SNIPPET_CHARS);
     (!snippet.is_empty()).then(|| RecallRow {
         index,
@@ -480,6 +460,7 @@ fn message_for_entry(entry: &SessionEntry) -> Option<&Message> {
 
 fn message_title(message: &Message) -> &'static str {
     match message {
+        Message::System { .. } => "system",
         Message::User { .. } => "user",
         Message::Assistant { .. } => "assistant",
         Message::ToolResult { is_error: true, .. } => "tool error",
@@ -505,6 +486,7 @@ fn message_full_text(message: &Message) -> String {
             summary.clone()
         }
         Message::Custom { name, payload, .. } => format!("custom:{name}\n{payload}"),
+        Message::System { content, .. } => content.clone(),
         Message::User { content, .. } | Message::Assistant { content, .. } => {
             blocks_text(content, true)
         }
@@ -513,6 +495,7 @@ fn message_full_text(message: &Message) -> String {
 
 fn message_text(message: &Message) -> String {
     match message {
+        Message::System { content, .. } => content.clone(),
         Message::User { content, .. }
         | Message::Assistant { content, .. }
         | Message::ToolResult { content, .. } => blocks_text(content, false),
@@ -528,7 +511,8 @@ fn content_blocks(message: &Message) -> &[ContentBlock] {
         Message::User { content, .. }
         | Message::Assistant { content, .. }
         | Message::ToolResult { content, .. } => content,
-        Message::Custom { .. }
+        Message::System { .. }
+        | Message::Custom { .. }
         | Message::CompactionSummary { .. }
         | Message::BranchSummary { .. } => &[],
     }
@@ -623,10 +607,13 @@ mod tests {
                 id: Uuid::new_v4(),
                 name: "read".into(),
                 arguments: serde_json::json!({"path":"README.md"}),
+                native_id: None,
             }],
             stop_reason: Some(StopReason::ToolUse),
             usage: None,
             provider: None,
+            response_model: None,
+            error_message: None,
         });
         session.append_message(Message::user_text("Now continue"));
         let branch = session

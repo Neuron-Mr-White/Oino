@@ -44,7 +44,11 @@ document it as encryption or an OS keychain unless the storage contract changes.
 #![forbid(unsafe_code)]
 
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 use tokio::fs;
 
@@ -755,7 +759,7 @@ impl ExternalAuthTrustRecord {
         self.decision == ExternalAuthTrustDecision::Trusted
             && self
                 .expires_at_ms
-                .map_or(true, |expires_at| expires_at > now_ms)
+                .is_none_or(|expires_at| expires_at > now_ms)
     }
 
     #[must_use]
@@ -1268,11 +1272,11 @@ impl VersionedAuthDocument {
 
 fn parse_auth_document_text(
     text: &str,
-    path: &PathBuf,
+    path: &Path,
 ) -> AuthResult<(AuthDocument, AuthDocumentFormat)> {
     let parsed =
         serde_json::from_str::<AuthDocumentOnDisk>(text).map_err(|source| AuthError::Json {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })?;
     Ok(match parsed {
@@ -1299,23 +1303,23 @@ async fn write_secret_file(path: &PathBuf, contents: &[u8]) -> AuthResult<()> {
         .open(path)
         .await
         .map_err(|source| AuthError::Io {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })?;
     file.write_all(contents)
         .await
         .map_err(|source| AuthError::Io {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })?;
     file.flush().await.map_err(|source| AuthError::Io {
-        path: path.clone(),
+        path: path.to_path_buf(),
         source,
     })?;
     fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .await
         .map_err(|source| AuthError::Io {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })
 }
@@ -1325,7 +1329,7 @@ async fn write_secret_file(path: &PathBuf, contents: &[u8]) -> AuthResult<()> {
     fs::write(path, contents)
         .await
         .map_err(|source| AuthError::Io {
-            path: path.clone(),
+            path: path.to_path_buf(),
             source,
         })
 }
@@ -1695,7 +1699,10 @@ mod tests {
             Err(err) => panic!("set trusted source failed: {err}"),
         };
         assert_eq!(
-            storage.active_external_trust_count_at(201).await.unwrap(),
+            storage
+                .active_external_trust_count_at(201)
+                .await
+                .unwrap_or_else(|err| panic!("active trust count failed: {err}")),
             1
         );
 
@@ -1714,7 +1721,10 @@ mod tests {
         };
         assert_eq!(trusts.len(), 2);
         assert_eq!(
-            storage.active_external_trust_count_at(202).await.unwrap(),
+            storage
+                .active_external_trust_count_at(202)
+                .await
+                .unwrap_or_else(|err| panic!("active trust count failed: {err}")),
             1
         );
         assert!(trusts
@@ -1727,7 +1737,10 @@ mod tests {
         };
         assert!(revoked);
         assert_eq!(
-            storage.active_external_trust_count_at(203).await.unwrap(),
+            storage
+                .active_external_trust_count_at(203)
+                .await
+                .unwrap_or_else(|err| panic!("active trust count failed: {err}")),
             0
         );
     }

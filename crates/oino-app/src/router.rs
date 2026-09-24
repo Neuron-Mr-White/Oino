@@ -1200,7 +1200,7 @@ pub(crate) async fn router_version_list() -> Result<String, AppError> {
         .filter(|tag| tag.chars().next().is_some_and(|ch| ch.is_ascii_digit()))
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    tags.sort_by(|left, right| semverish_tag_key(right).cmp(&semverish_tag_key(left)));
+    tags.sort_by_key(|tag| std::cmp::Reverse(semverish_tag_key(tag)));
     tags.dedup();
     let preview = tags.into_iter().take(20).collect::<Vec<_>>().join("\n  ");
     Ok(format!(

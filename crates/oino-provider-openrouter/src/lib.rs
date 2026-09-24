@@ -675,20 +675,32 @@ pub fn build_openai_compatible_chat_request(
             request.model.provider
         )));
     }
+    // This adapter has no mid-conversation system support: collapse the
+    // transcript, render the replayed system message as the leading system
+    // message, and take the current tool set.
+    let collapsed = oino_types::transcript::collapse(&request.transcript);
+    let current_system = oino_types::transcript::current_system(collapsed.messages());
+    let current_tools = oino_types::transcript::current_tools(collapsed.messages());
     let mut messages = Vec::new();
-    if let Some(system) = &request.system_prompt {
-        messages.push(OpenRouterChatMessage {
-            role: "system".into(),
-            content: Some(system.clone().into()),
-            tool_call_id: None,
-            name: None,
-            tool_calls: Vec::new(),
-        });
+    if let Some(system) = &current_system {
+        let prompt = oino_types::transcript::render_system_prompt(system);
+        if !prompt.is_empty() {
+            messages.push(OpenRouterChatMessage {
+                role: "system".into(),
+                content: Some(prompt.into()),
+                tool_call_id: None,
+                name: None,
+                tool_calls: Vec::new(),
+            });
+        }
     }
-    for message in &request.messages {
+    for message in collapsed.messages() {
+        if matches!(message, Message::System { .. }) {
+            continue;
+        }
         messages.push(convert_message(message)?);
     }
-    let tools = request.tools.iter().map(convert_tool).collect();
+    let tools = current_tools.iter().map(convert_tool).collect();
     Ok(OpenRouterChatRequest {
         model: request.model.name.clone(),
         messages,
@@ -708,7 +720,7 @@ fn openrouter_reasoning(level: ThinkingLevel) -> Option<OpenRouterReasoning> {
         ThinkingLevel::Low => ("low", None),
         ThinkingLevel::Medium => ("medium", None),
         ThinkingLevel::High => ("high", None),
-        ThinkingLevel::XHigh => ("xhigh", None),
+        ThinkingLevel::XHigh | ThinkingLevel::Max => ("xhigh", None),
     };
     Some(OpenRouterReasoning {
         effort: Some(effort.into()),
@@ -745,8 +757,9 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
                         id,
                         name,
                         arguments,
+                        native_id,
                     } => Some(OpenRouterToolCall {
-                        id: id.to_string(),
+                        id: native_id.clone().unwrap_or_else(|| id.to_string()),
                         kind: "function".into(),
                         function: OpenRouterToolCallFunction {
                             name: name.clone(),
@@ -777,6 +790,9 @@ fn convert_message(message: &Message) -> Result<OpenRouterChatMessage, OpenRoute
             name: Some(tool_name.clone()),
             tool_calls: Vec::new(),
         }),
+        Message::System { .. } => Err(OpenRouterError::UnsupportedContent(
+            "system message must be collapsed before OpenRouter conversion".into(),
+        )),
         Message::CompactionSummary { summary, .. } | Message::BranchSummary { summary, .. } => {
             Ok(OpenRouterChatMessage {
                 role: "system".into(),
@@ -1085,6 +1101,8 @@ struct OpenRouterUsage {
     completion_tokens: u64,
     #[serde(default)]
     prompt_tokens_details: Option<OpenRouterPromptTokensDetails>,
+    #[serde(default)]
+    completion_tokens_details: Option<OpenRouterCompletionTokensDetails>,
     cost: Option<f64>,
     #[serde(default)]
     cost_currency: Option<String>,
@@ -1096,6 +1114,12 @@ struct OpenRouterPromptTokensDetails {
     cache_read_tokens: u64,
     #[serde(default)]
     cache_write_tokens: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenRouterCompletionTokensDetails {
+    #[serde(default)]
+    reasoning_tokens: u64,
 }
 
 impl From<OpenRouterUsage> for Usage {
@@ -1115,6 +1139,10 @@ impl From<OpenRouterUsage> for Usage {
             output_tokens: value.completion_tokens,
             cache_read_tokens,
             cache_write_tokens,
+            reasoning_tokens: value
+                .completion_tokens_details
+                .as_ref()
+                .map_or(0, |details| details.reasoning_tokens),
             cost,
         }
     }
@@ -1184,13 +1212,13 @@ pub fn parse_openrouter_usage_payloads(
     credits_payload: Option<&str>,
 ) -> Result<OpenRouterUsageReport, OpenRouterError> {
     let key = key_payload
-        .map(|raw| serde_json::from_str::<Value>(raw))
+        .map(serde_json::from_str::<Value>)
         .transpose()
         .map_err(|err| {
             OpenRouterError::Serialization(format!("invalid key usage fixture: {err}"))
         })?;
     let credits = credits_payload
-        .map(|raw| serde_json::from_str::<Value>(raw))
+        .map(serde_json::from_str::<Value>)
         .transpose()
         .map_err(|err| {
             OpenRouterError::Serialization(format!("invalid credits usage fixture: {err}"))
@@ -1312,12 +1340,21 @@ mod tests {
         model: impl Into<String>,
         messages: Vec<Message>,
     ) -> StreamRequest {
+        request_with_tools(provider, model, messages, Vec::new())
+    }
+
+    fn request_with_tools(
+        provider: impl Into<String>,
+        model: impl Into<String>,
+        messages: Vec<Message>,
+        tools: Vec<ToolDefinition>,
+    ) -> StreamRequest {
         StreamRequest {
             model: Model::new(provider, model),
             thinking_level: ThinkingLevel::Off,
-            system_prompt: Some("be kind".into()),
-            messages,
-            tools: Vec::new(),
+            transcript: oino_types::transcript::normalize(Some("be kind".into()), tools, messages),
+            session_id: None,
+            cache_retention: oino_agent_loop::CacheRetention::default(),
         }
     }
 
@@ -1546,6 +1583,8 @@ mod tests {
                 ContentBlock::Thinking {
                     text: "private reasoning".into(),
                     redacted: false,
+                    signature: None,
+                    provider_data: None,
                 },
                 ContentBlock::Text {
                     text: "public answer".into(),
@@ -1554,6 +1593,8 @@ mod tests {
             stop_reason: Some(StopReason::EndTurn),
             usage: None,
             provider: None,
+            response_model: None,
+            error_message: None,
         }])) {
             Ok(value) => value,
             Err(err) => panic!("build failed: {err}"),
@@ -1604,12 +1645,16 @@ mod tests {
 
     #[test]
     fn serializes_tools() {
-        let mut req = request(vec![Message::user_text("use tool")]);
-        req.tools.push(ToolDefinition {
-            name: "read".into(),
-            description: "Read a file".into(),
-            input_schema: json!({"type":"object","required":["path"],"properties":{"path":{"type":"string"}}}),
-        });
+        let req = request_with_tools(
+            "openrouter",
+            "openai/gpt-4o-mini",
+            vec![Message::user_text("use tool")],
+            vec![ToolDefinition {
+                name: "read".into(),
+                description: "Read a file".into(),
+                input_schema: json!({"type":"object","required":["path"],"properties":{"path":{"type":"string"}}}),
+            }],
+        );
         let built = match build_chat_request(&req) {
             Ok(value) => value,
             Err(err) => panic!("build failed: {err}"),
@@ -1775,5 +1820,104 @@ mod tests {
         assert_eq!(map_finish_reason(Some("tool_calls")), StopReason::ToolUse);
         assert_eq!(map_finish_reason(Some("error")), StopReason::Error);
         assert_eq!(map_finish_reason(None), StopReason::Unknown);
+    }
+
+    #[test]
+    fn normalize_transcript_serializes_identically_to_v1_request() {
+        // A transcript produced by `normalize` must yield byte-for-byte the
+        // same request body as the old system_prompt/messages/tools request.
+        let req = request_with_tools(
+            "openrouter",
+            "openai/gpt-4o-mini",
+            vec![
+                Message::user_text("hello"),
+                Message::assistant_text("hi there", StopReason::EndTurn),
+                Message::user_text("use read"),
+            ],
+            vec![ToolDefinition {
+                name: "read".into(),
+                description: "Read a file".into(),
+                input_schema: json!({"type":"object","required":["path"],"properties":{"path":{"type":"string"}}}),
+            }],
+        );
+        let built = match build_chat_request(&req) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        let json = match serde_json::to_string(&built) {
+            Ok(value) => value,
+            Err(err) => panic!("serialize failed: {err}"),
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(&json) {
+            Ok(value) => value,
+            Err(err) => panic!("parse failed: {err}"),
+        };
+        assert_eq!(parsed["model"], "openai/gpt-4o-mini");
+        assert_eq!(
+            parsed["messages"],
+            json!([
+                {"role": "system", "content": "be kind"},
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "hi there"},
+                {"role": "user", "content": "use read"}
+            ])
+        );
+        assert_eq!(parsed["tools"][0]["function"]["name"], "read");
+        assert_eq!(parsed["reasoning"]["effort"], "none");
+        assert_eq!(parsed["stream"], true);
+    }
+
+    #[test]
+    fn mid_conversation_system_messages_are_collapsed() {
+        let delta = Message::System {
+            id: Uuid::new_v4(),
+            content: "extra instructions".into(),
+            sections: Vec::new(),
+            tools_added: vec![ToolDefinition {
+                name: "write".into(),
+                description: "Write".into(),
+                input_schema: json!({"type":"object"}),
+            }],
+            tools_removed: vec!["read".into()],
+        };
+        let transcript = oino_types::transcript::normalize(
+            Some("be kind".into()),
+            vec![ToolDefinition {
+                name: "read".into(),
+                description: "Read".into(),
+                input_schema: json!({"type":"object"}),
+            }],
+            vec![Message::user_text("hi"), delta, Message::user_text("go")],
+        );
+        let req = StreamRequest {
+            model: Model::new("openrouter", "openai/gpt-4o-mini"),
+            thinking_level: ThinkingLevel::Off,
+            transcript,
+            session_id: None,
+            cache_retention: oino_agent_loop::CacheRetention::default(),
+        };
+        let built = match build_chat_request(&req) {
+            Ok(value) => value,
+            Err(err) => panic!("build failed: {err}"),
+        };
+        let json = match serde_json::to_value(&built) {
+            Ok(value) => value,
+            Err(err) => panic!("serialize failed: {err}"),
+        };
+        assert_eq!(json["messages"][0]["role"], "system");
+        assert_eq!(
+            json["messages"][0]["content"],
+            "be kind\n\nextra instructions"
+        );
+        // Only the surviving tool is serialized.
+        assert_eq!(json["tools"].as_array().map(Vec::len), Some(1));
+        assert_eq!(json["tools"][0]["function"]["name"], "write");
+        // No mid-conversation system roles remain.
+        assert!(!json["messages"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .skip(1)
+            .any(|message| message["role"] == "system"));
     }
 }

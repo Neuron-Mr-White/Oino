@@ -5849,6 +5849,8 @@ mod tests {
                 ContentBlock::Thinking {
                     text: "streamed thought".into(),
                     redacted: false,
+                    signature: None,
+                    provider_data: None,
                 },
                 ContentBlock::Text {
                     text: "answer".into(),

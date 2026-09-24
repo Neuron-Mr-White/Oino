@@ -44,7 +44,7 @@ async fn full_prompt_lifecycle_streams_and_saves() {
     let events = sink.events().await;
     assert!(events
         .iter()
-        .any(|event| matches!(event, AgentEvent::MessageUpdate { .. })));
+        .any(|event| matches!(event, AgentEvent::MessageDelta { .. })));
 }
 
 #[tokio::test]

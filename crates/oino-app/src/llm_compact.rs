@@ -74,9 +74,9 @@ pub async fn compact_with_llm(
     let request = StreamRequest {
         model: model.clone(),
         thinking_level: ThinkingLevel::Low,
-        system_prompt: Some(system_prompt),
-        messages,
-        tools: vec![],
+        transcript: oino_types::transcript::normalize(Some(system_prompt), Vec::new(), messages),
+        session_id: None,
+        cache_retention: oino_agent_loop::CacheRetention::default(),
     };
 
     // Call the LLM

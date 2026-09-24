@@ -842,6 +842,7 @@ fn collapsed_tool_detail(message: &MessageView) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn minimal_message_lines(
     message: &MessageView,
     messages: &[MessageView],
@@ -1511,7 +1512,7 @@ fn message_content_lines(
         }
     }
     if message.is_assistant() && content != "<empty>" {
-        return assistant_markdown_lines(content, width, assistant_text_style(theme), theme);
+        assistant_markdown_lines(content, width, assistant_text_style(theme), theme)
     } else {
         plain_wrapped_lines(content, width, message_text_style(message, theme))
     }

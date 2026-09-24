@@ -29,6 +29,10 @@ shared shapes at their boundaries.
   calls inside messages.
 - [`AssistantStreamEvent`] is the provider-to-loop streaming contract used by provider
   adapters and deterministic loop fixtures.
+- [`PromptSection`] and [`ToolDeclaration`] are carried by [`Message::System`];
+  the [`transcript`] module replays them into the current prompt and tool set
+  (`normalize`, `current_tools`, `current_system`, `render_system_prompt`,
+  `collapse`, `resolve`).
 
 ## Contributor rules
 
@@ -41,6 +45,8 @@ focused user/developer docs when changing tagged enum names, model identifiers, 
 visibility rules for messages and content blocks.
 "#]
 #![forbid(unsafe_code)]
+
+pub mod transcript;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -105,6 +111,7 @@ pub enum ThinkingLevel {
     Medium,
     High,
     XHigh,
+    Max,
 }
 
 /// Compaction method used when compacting session history.
@@ -123,6 +130,8 @@ pub struct Usage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+    #[serde(default)]
+    pub reasoning_tokens: u64,
     pub cost: Option<UsageCost>,
 }
 
@@ -159,6 +168,18 @@ pub struct ProviderMetadata {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Message {
+    /// System prompt and tool declarations. The leading message carries the base
+    /// prompt; later messages append instructions, patch sections, or change tools.
+    System {
+        id: OinoId,
+        content: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sections: Vec<PromptSection>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        tools_added: Vec<ToolDeclaration>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        tools_removed: Vec<String>,
+    },
     User {
         id: OinoId,
         content: Vec<ContentBlock>,
@@ -169,6 +190,10 @@ pub enum Message {
         stop_reason: Option<StopReason>,
         usage: Option<Usage>,
         provider: Option<ProviderMetadata>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        response_model: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_message: Option<String>,
     },
     ToolResult {
         id: OinoId,
@@ -178,6 +203,10 @@ pub enum Message {
         is_error: bool,
         terminate: bool,
         details: Option<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<Usage>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        added_tool_names: Vec<String>,
     },
     Custom {
         id: OinoId,
@@ -199,7 +228,8 @@ impl Message {
     #[must_use]
     pub fn id(&self) -> OinoId {
         match self {
-            Self::User { id, .. }
+            Self::System { id, .. }
+            | Self::User { id, .. }
             | Self::Assistant { id, .. }
             | Self::ToolResult { id, .. }
             | Self::Custom { id, .. }
@@ -224,8 +254,29 @@ impl Message {
             stop_reason: Some(stop_reason),
             usage: None,
             provider: None,
+            response_model: None,
+            error_message: None,
         }
     }
+}
+
+/// A named, ordered prompt section carried by [`Message::System`]. `text: None`
+/// removes the section with that name during transcript replay.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PromptSection {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// A model-visible tool declaration carried by [`Message::System`]. Re-exported
+/// from `oino-agent-loop` as `ToolDefinition` for compatibility.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ToolDeclaration {
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub input_schema: Value,
 }
 
 /// Content blocks inside messages. `ToolCall` is model-visible in assistant messages;
@@ -243,11 +294,17 @@ pub enum ContentBlock {
     Thinking {
         text: String,
         redacted: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_data: Option<Value>,
     },
     ToolCall {
         id: OinoId,
         name: String,
         arguments: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        native_id: Option<String>,
     },
 }
 
@@ -255,11 +312,20 @@ pub enum ContentBlock {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AssistantStreamEvent {
+    Start {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        response_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        response_model: Option<String>,
+    },
     TextDelta {
         delta: String,
     },
     ThinkingDelta {
         delta: String,
+    },
+    ThinkingSignature {
+        signature: String,
     },
     ToolCallDelta {
         id: OinoId,
@@ -334,6 +400,7 @@ mod tests {
                     id: Uuid::new_v4(),
                     name: "read".into(),
                     arguments: serde_json::json!({"path":"README.md"}),
+                    native_id: None,
                 },
             ],
             stop_reason: Some(StopReason::ToolUse),
@@ -342,11 +409,107 @@ mod tests {
                 output_tokens: 2,
                 cache_read_tokens: 0,
                 cache_write_tokens: 0,
+                reasoning_tokens: 3,
                 cost: None,
             }),
             provider: None,
+            response_model: Some("openai/gpt-4o".into()),
+            error_message: None,
         };
         assert_eq!(msg, round_trip(&msg));
+    }
+
+    #[test]
+    fn v1_message_json_deserializes_without_new_fields() {
+        let v1 = serde_json::json!({
+            "kind": "assistant",
+            "id": "00000000-0000-0000-0000-000000000001",
+            "content": [
+                {"kind": "thinking", "text": "hmm", "redacted": false},
+                {"kind": "tool_call", "id": "00000000-0000-0000-0000-000000000002",
+                 "name": "read", "arguments": {}}
+            ],
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 1, "output_tokens": 2,
+                      "cache_read_tokens": 0, "cache_write_tokens": 0},
+            "provider": null
+        });
+        let message: Message = match serde_json::from_value(v1) {
+            Ok(message) => message,
+            Err(err) => panic!("v1 message should parse: {err}"),
+        };
+        let Message::Assistant {
+            content,
+            response_model,
+            error_message,
+            ..
+        } = message
+        else {
+            panic!("expected assistant message");
+        };
+        assert!(response_model.is_none());
+        assert!(error_message.is_none());
+        assert!(matches!(
+            &content[0],
+            ContentBlock::Thinking {
+                signature: None,
+                provider_data: None,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &content[1],
+            ContentBlock::ToolCall {
+                native_id: None,
+                ..
+            }
+        ));
+
+        let v1_tool_result = serde_json::json!({
+            "kind": "tool_result",
+            "id": "00000000-0000-0000-0000-000000000003",
+            "tool_call_id": "00000000-0000-0000-0000-000000000002",
+            "tool_name": "read",
+            "content": [{"kind": "text", "text": "ok"}],
+            "is_error": false,
+            "terminate": false,
+            "details": null
+        });
+        let result: Message = match serde_json::from_value(v1_tool_result) {
+            Ok(message) => message,
+            Err(err) => panic!("v1 tool result should parse: {err}"),
+        };
+        assert!(matches!(result, Message::ToolResult { usage: None, .. }));
+    }
+
+    #[test]
+    fn system_message_and_new_event_variants_round_trip() {
+        let system = Message::System {
+            id: Uuid::new_v4(),
+            content: "base".into(),
+            sections: vec![PromptSection {
+                name: "a".into(),
+                text: Some("text".into()),
+            }],
+            tools_added: vec![ToolDeclaration {
+                name: "read".into(),
+                description: "Read".into(),
+                input_schema: serde_json::json!({"type": "object"}),
+            }],
+            tools_removed: vec!["old".into()],
+        };
+        assert_eq!(system, round_trip(&system));
+        for event in [
+            AssistantStreamEvent::Start {
+                response_id: Some("r1".into()),
+                response_model: Some("m1".into()),
+            },
+            AssistantStreamEvent::ThinkingSignature {
+                signature: "sig".into(),
+            },
+        ] {
+            assert_eq!(event, round_trip(&event));
+        }
     }
 
     #[test]

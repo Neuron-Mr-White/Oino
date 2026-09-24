@@ -661,6 +661,8 @@ mod tests {
                 model: Some(Model::new(provider, "test-model")),
                 values: Default::default(),
             }),
+            response_model: None,
+            error_message: None,
         }
     }
 
@@ -675,6 +677,7 @@ mod tests {
                         output_tokens: 20,
                         cache_read_tokens: 3,
                         cache_write_tokens: 2,
+                        reasoning_tokens: 0,
                         cost: Some(UsageCost {
                             amount: 0.001,
                             currency: "USD".into(),
@@ -688,6 +691,7 @@ mod tests {
                         output_tokens: 7,
                         cache_read_tokens: 0,
                         cache_write_tokens: 0,
+                        reasoning_tokens: 0,
                         cost: Some(UsageCost {
                             amount: 0.002,
                             currency: "USD".into(),
@@ -747,6 +751,7 @@ mod tests {
                     output_tokens: 2,
                     cache_read_tokens: 3,
                     cache_write_tokens: 4,
+                    reasoning_tokens: 0,
                     cost: Some(UsageCost {
                         amount: 0.125,
                         currency: "USD".into(),
@@ -815,7 +820,9 @@ mod tests {
         let progress = openrouter_usage_report_to_provider_progress(&parsed, 77);
         assert_eq!(progress.status, ProviderUsageStatus::Error);
         assert!(progress.message.contains("hard limit reached"));
-        let account = progress.account_usage.expect("account usage");
+        let account = progress
+            .account_usage
+            .unwrap_or_else(|| panic!("account usage"));
         assert_eq!(account.limits[0].used, 100.0);
         assert_eq!(
             format_usage_limit(&account.limits[0]),

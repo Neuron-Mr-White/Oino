@@ -1210,7 +1210,8 @@ mod tests {
 
     #[tokio::test]
     async fn enrich_router_context_lengths_fills_from_openrouter() {
-        let openrouter_dir = tempfile::tempdir().unwrap();
+        let openrouter_dir =
+            tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
         let openrouter_path = openrouter_dir.path().join("openrouter.json");
         let openrouter_cache = CachedModelCatalog {
             fetched_at_unix: 1000,
@@ -1236,9 +1237,10 @@ mod tests {
         };
         std::fs::write(
             &openrouter_path,
-            serde_json::to_string(&openrouter_cache).unwrap(),
+            serde_json::to_string(&openrouter_cache)
+                .unwrap_or_else(|err| panic!("serialize failed: {err}")),
         )
-        .unwrap();
+        .unwrap_or_else(|err| panic!("write failed: {err}"));
 
         // Set the cache dir env so load_provider_cache finds it
         let mut router_cache = CachedModelCatalog {

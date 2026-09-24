@@ -54,7 +54,10 @@ use oino_agent_loop::{
     run_agent_loop_continue, run_agent_loop_with_context, AbortSignal, AgentEvent, AgentLoopConfig,
     AgentLoopOutput, BoxFuture, EventSink, LoopError, LoopResult, ToolDefinition,
 };
-use oino_types::{Message, Model, ThinkingLevel};
+use oino_types::{
+    transcript::{current_tools, tool_declaration_canonical},
+    Message, Model, ThinkingLevel,
+};
 use std::{collections::VecDeque, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -161,12 +164,76 @@ impl Agent {
         self.config.lock().await.system_prompt = system_prompt;
     }
 
+    /// Update the tool registry. When the transcript already carries a
+    /// [`Message::System`], a single delta `System` message recording the tool
+    /// additions/removals is appended (only when something changed), so the
+    /// change replays instead of replacing the prompt header. In bridge mode
+    /// (no `System` message) only the registry is updated.
     pub async fn set_tools(
         &self,
         tools: std::collections::BTreeMap<String, Arc<dyn oino_agent_loop::Tool>>,
     ) {
-        self.state.lock().await.tools = tools.values().map(|tool| tool.definition()).collect();
+        let declarations: Vec<oino_types::ToolDeclaration> =
+            tools.values().map(|tool| tool.definition()).collect();
+        {
+            let mut state = self.state.lock().await;
+            state.tools = declarations.clone();
+            if state
+                .messages
+                .iter()
+                .any(|message| matches!(message, Message::System { .. }))
+            {
+                let previous = current_tools(&state.messages);
+                let previous_by_name: std::collections::BTreeMap<_, _> = previous
+                    .iter()
+                    .map(|tool| (tool.name.clone(), tool_declaration_canonical(tool)))
+                    .collect();
+                let current_by_name: std::collections::BTreeMap<_, _> = declarations
+                    .iter()
+                    .map(|tool| (tool.name.clone(), tool_declaration_canonical(tool)))
+                    .collect();
+                // A changed definition is a removal followed by an addition
+                // (pi `getToolStateChanges`).
+                let tools_added: Vec<oino_types::ToolDeclaration> = declarations
+                    .iter()
+                    .filter(|tool| {
+                        previous_by_name.get(&tool.name) != current_by_name.get(&tool.name)
+                    })
+                    .cloned()
+                    .collect();
+                let tools_removed: Vec<String> = previous
+                    .iter()
+                    .filter(|tool| match current_by_name.get(&tool.name) {
+                        Some(current) => *current != previous_by_name[&tool.name],
+                        None => true,
+                    })
+                    .map(|tool| tool.name.clone())
+                    .collect();
+                if !tools_added.is_empty() || !tools_removed.is_empty() {
+                    state.messages.push(Message::System {
+                        id: oino_types::OinoId::new_v4(),
+                        content: String::new(),
+                        sections: Vec::new(),
+                        tools_added,
+                        tools_removed,
+                    });
+                }
+            }
+        }
         self.config.lock().await.tools = tools;
+    }
+
+    /// Peek at the next batch of queued messages that the loop would drain,
+    /// without consuming them. Steering takes precedence over follow-up,
+    /// matching the loop's drain order and [`QueueMode`].
+    pub async fn peek_queued_messages(&self) -> Vec<Message> {
+        let steering = self.steering.lock().await;
+        if !steering.is_empty() {
+            return peek_queue(&steering, self.steering_mode);
+        }
+        drop(steering);
+        let follow_up = self.follow_up.lock().await;
+        peek_queue(&follow_up, self.follow_up_mode)
     }
 
     pub async fn reset(&self) {
@@ -283,6 +350,13 @@ impl Agent {
             }
             Err(err) => Err(AgentError::Loop(err)),
         }
+    }
+}
+
+fn peek_queue(queue: &VecDeque<Message>, mode: QueueMode) -> Vec<Message> {
+    match mode {
+        QueueMode::All => queue.iter().cloned().collect(),
+        QueueMode::OneAtATime => queue.front().cloned().into_iter().collect(),
     }
 }
 
@@ -531,25 +605,37 @@ mod tests {
             Model::new("test", "echo"),
             stream.clone(),
         ));
-        let output = agent.prompt(Message::user_text("start")).await.unwrap();
+        let output = agent
+            .prompt(Message::user_text("start"))
+            .await
+            .unwrap_or_else(|err| panic!("first prompt failed: {err}"));
         let last_text = assistant_text(&output.messages);
         assert_eq!(last_text, "1", "first echo must be 1");
         assert_eq!(*counter.lock().await, 1);
 
         // 2nd prompt → counter=2, echoes "2"
-        let output = agent.prompt(Message::user_text("next")).await.unwrap();
+        let output = agent
+            .prompt(Message::user_text("next"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
         let last_text = assistant_text(&output.messages);
         assert_eq!(last_text, "2", "second echo must be 2");
         assert_eq!(*counter.lock().await, 2);
 
         // 3rd prompt → counter=3, echoes "3"
-        let output = agent.prompt(Message::user_text("next")).await.unwrap();
+        let output = agent
+            .prompt(Message::user_text("next"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
         let last_text = assistant_text(&output.messages);
         assert_eq!(last_text, "3", "third echo must be 3");
         assert_eq!(*counter.lock().await, 3);
 
         // 4th prompt → capped at 3 (only 1-3 allowed)
-        let output = agent.prompt(Message::user_text("next")).await.unwrap();
+        let output = agent
+            .prompt(Message::user_text("next"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
         let last_text = assistant_text(&output.messages);
         assert_eq!(last_text, "3", "must stay at 3, no further increment");
         assert_eq!(*counter.lock().await, 3);
@@ -596,5 +682,112 @@ mod tests {
                 },
             ])
         }
+    }
+
+    #[tokio::test]
+    async fn peek_queued_messages_does_not_consume() {
+        let agent = Agent::new(config()).with_queue_modes(QueueMode::OneAtATime, QueueMode::All);
+        agent
+            .steer(Message::user_text("s1"))
+            .await
+            .unwrap_or_else(|err| panic!("steer failed: {err}"));
+        agent
+            .steer(Message::user_text("s2"))
+            .await
+            .unwrap_or_else(|err| panic!("steer failed: {err}"));
+        agent
+            .follow_up(Message::user_text("f1"))
+            .await
+            .unwrap_or_else(|err| panic!("follow up failed: {err}"));
+        // One-at-a-time steering: peek returns only the head, twice.
+        let first = agent.peek_queued_messages().await;
+        assert_eq!(first.len(), 1);
+        let second = agent.peek_queued_messages().await;
+        assert_eq!(second, first);
+        // Steering takes precedence over follow-up.
+        assert!(matches!(
+            first.first(),
+            Some(Message::User { content, .. })
+                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "s1")
+        ));
+    }
+
+    #[tokio::test]
+    async fn set_tools_appends_system_delta_only_on_change() {
+        let agent = Agent::new(config());
+        let mut tools = std::collections::BTreeMap::new();
+        tools.insert(
+            "read".into(),
+            Arc::new(oino_agent_loop::FakeTool::new("read", "ok"))
+                as Arc<dyn oino_agent_loop::Tool>,
+        );
+        agent.set_tools(tools.clone()).await;
+        // Bridge mode: no System message, registry update only.
+        assert!(agent
+            .messages()
+            .await
+            .iter()
+            .all(|message| !matches!(message, Message::System { .. })));
+
+        // Seed a System message declaring `read`, then a no-op set_tools adds nothing.
+        let mut seeded = vec![Message::System {
+            id: oino_types::OinoId::new_v4(),
+            content: "sys".into(),
+            sections: Vec::new(),
+            tools_added: vec![oino_agent_loop::ToolDefinition {
+                name: "read".into(),
+                description: "fake tool".into(),
+                input_schema: serde_json::json!({"type":"object"}),
+            }],
+            tools_removed: Vec::new(),
+        }];
+        agent.replace_messages(seeded.clone()).await;
+        agent.set_tools(tools.clone()).await;
+        assert_eq!(agent.messages().await.len(), 1);
+
+        // Adding a tool appends one delta System message.
+        tools.insert(
+            "write".into(),
+            Arc::new(oino_agent_loop::FakeTool::new("write", "ok"))
+                as Arc<dyn oino_agent_loop::Tool>,
+        );
+        agent.set_tools(tools.clone()).await;
+        let messages = agent.messages().await;
+        assert_eq!(messages.len(), 2);
+        let Message::System {
+            tools_added,
+            tools_removed,
+            ..
+        } = &messages[1]
+        else {
+            panic!("expected system delta");
+        };
+        assert_eq!(tools_added.len(), 1);
+        assert_eq!(tools_added[0].name, "write");
+        assert!(tools_removed.is_empty());
+
+        // Removing `read` records a removal.
+        let mut write_only = std::collections::BTreeMap::new();
+        write_only.insert(
+            "write".into(),
+            Arc::new(oino_agent_loop::FakeTool::new("write", "ok"))
+                as Arc<dyn oino_agent_loop::Tool>,
+        );
+        agent.set_tools(write_only).await;
+        let messages = agent.messages().await;
+        assert_eq!(messages.len(), 3);
+        let Message::System {
+            tools_removed,
+            tools_added,
+            ..
+        } = &messages[2]
+        else {
+            panic!("expected system delta");
+        };
+        assert_eq!(tools_removed, &vec!["read".to_string()]);
+        assert!(tools_added.is_empty());
+        seeded.push(messages[1].clone());
+        seeded.push(messages[2].clone());
+        assert_eq!(messages, seeded);
     }
 }

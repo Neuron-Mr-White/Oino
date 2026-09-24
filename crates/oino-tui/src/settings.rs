@@ -12,18 +12,13 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use oino_types::ThinkingLevel;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelAvailability {
     Configured,
+    #[default]
     Unknown,
     NeedsProviderKey,
-}
-
-impl Default for ModelAvailability {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl ModelAvailability {
@@ -2069,6 +2064,7 @@ pub fn all_thinking_levels() -> Vec<ThinkingLevel> {
         ThinkingLevel::Medium,
         ThinkingLevel::High,
         ThinkingLevel::XHigh,
+        ThinkingLevel::Max,
     ]
 }
 
@@ -2117,6 +2113,7 @@ pub fn thinking_label(level: ThinkingLevel) -> &'static str {
         ThinkingLevel::Medium => "Medium",
         ThinkingLevel::High => "High",
         ThinkingLevel::XHigh => "X High",
+        ThinkingLevel::Max => "Max",
     }
 }
 
