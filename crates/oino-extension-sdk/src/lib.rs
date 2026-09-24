@@ -175,6 +175,7 @@ impl ExampleExtensionTemplate {
         theme_tokens.insert("success".into(), "#86efac".into());
 
         let manifest = ExtensionManifest {
+            config_env: BTreeMap::new(),
             id: self.extension_id.clone(),
             package_id: Some(self.package_id.clone()),
             display_name: "Oino Rust WASM example".into(),

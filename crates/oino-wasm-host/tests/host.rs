@@ -766,3 +766,156 @@ fn faux_request(payload: Value) -> oino_agent_loop::StreamRequest {
         max_output_tokens: None,
     }
 }
+
+#[tokio::test]
+async fn oino_provider_instantiates() {
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../extensions/built-in/oino-router/extensions/oino-router/plugin.wasm"
+    ))
+    .unwrap_or_else(|e| panic!("read plugin: {e}"));
+    let engine = WasmHostEngine::new(
+        tempfile::tempdir()
+            .unwrap_or_else(|e| panic!("tmp: {e}"))
+            .keep(),
+    )
+    .unwrap_or_else(|e| panic!("engine: {e}"));
+    let ext = WasmExtension::new(
+        engine,
+        &bytes,
+        caps(oino_extension_core::ExtensionPermissions {
+            network: oino_extension_core::NetworkPermission {
+                raw_network: false,
+                hosts_from_config: Vec::new(),
+                hosts: vec!["router.oino.dev".into(), "127.0.0.1".into()],
+            },
+            ..full_permissions()
+        }),
+        CallLimits::default(),
+        true,
+    )
+    .unwrap_or_else(|e| panic!("instantiate: {e:?}"));
+    ext.init(json!({}))
+        .await
+        .unwrap_or_else(|e| panic!("init: {e}"));
+}
+
+#[tokio::test]
+async fn all_builtin_wasm_plugins_instantiate() {
+    for name in [
+        "ralph-loop",
+        "vcc",
+        "notify",
+        "oino-router",
+        "budget",
+        "presets",
+        "search",
+    ] {
+        let path = format!(
+            "{}/../../extensions/built-in/{}/extensions/{}/plugin.wasm",
+            env!("CARGO_MANIFEST_DIR"),
+            name,
+            name
+        );
+        let Ok(bytes) = std::fs::read(&path) else {
+            println!("skip {name} (no plugin.wasm)");
+            continue;
+        };
+        let engine = WasmHostEngine::new(
+            tempfile::tempdir()
+                .unwrap_or_else(|e| panic!("tmp: {e}"))
+                .keep(),
+        )
+        .unwrap_or_else(|e| panic!("engine: {e}"));
+        let has_provider = name == "oino-router";
+        match WasmExtension::new(
+            engine,
+            &bytes,
+            caps(full_permissions()),
+            CallLimits::default(),
+            has_provider,
+        ) {
+            Ok(_) => println!("{name}: instantiate ok"),
+            Err(e) => println!("{name}: INSTANTIATE ERR {e:?}"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn oino_provider_stream_large_request() {
+    use oino_agent_loop::{AbortSignal, CacheRetention, StreamRequest};
+    let (port, handle) = http_server(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 14\r\n\r\ndata: [DONE]\n\n",
+    );
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../extensions/built-in/oino-router/extensions/oino-router/plugin.wasm"
+    ))
+    .unwrap_or_else(|e| panic!("read: {e}"));
+    let engine = WasmHostEngine::new(
+        tempfile::tempdir()
+            .unwrap_or_else(|e| panic!("tmp: {e}"))
+            .keep(),
+    )
+    .unwrap_or_else(|e| panic!("engine: {e}"));
+    let mut permissions = full_permissions();
+    permissions.network = oino_extension_core::NetworkPermission {
+        raw_network: false,
+        hosts_from_config: Vec::new(),
+        hosts: vec!["127.0.0.1".into()],
+    };
+    permissions.secrets = ["OINO_API_KEY"].into_iter().map(String::from).collect();
+    struct EnvSecrets2;
+    impl SecretResolver for EnvSecrets2 {
+        fn secret(&self, name: &str) -> Option<String> {
+            (name == "OINO_API_KEY").then(|| "test-key".to_string())
+        }
+    }
+    let mut c = caps(permissions);
+    c.secrets = Arc::new(EnvSecrets2);
+    let ext = WasmExtension::new(engine, &bytes, c, CallLimits::default(), true)
+        .unwrap_or_else(|e| panic!("instantiate: {e:?}"));
+    ext.init(json!({
+        "base_url": format!("http://127.0.0.1:{port}")
+    }))
+    .await
+    .unwrap_or_else(|e| panic!("init: {e}"));
+    let provider = WasmStreamProvider::new(std::sync::Arc::new(ext))
+        .unwrap_or_else(|e| panic!("provider: {e}"));
+    // big transcript: large system prompt + many tools + messages
+    let mut messages = vec![oino_types::Message::System {
+        id: OinoId::nil(),
+        content: "x".repeat(200_000),
+        sections: Vec::new(),
+        tools_added: (0..60)
+            .map(|i| oino_types::ToolDeclaration {
+                name: format!("tool_{i}"),
+                description: "d".repeat(200),
+                input_schema: serde_json::json!({"type":"object"}),
+            })
+            .collect(),
+        tools_removed: Vec::new(),
+    }];
+    for i in 0..50 {
+        messages.push(oino_types::Message::user_text(format!(
+            "{}{i}",
+            "m".repeat(5000)
+        )));
+    }
+    let request = StreamRequest {
+        model: oino_types::Model::from_identifier("oino:openrouter/z-ai/glm-5.3-flashx")
+            .unwrap_or_else(|| panic!("model")),
+        thinking_level: oino_types::ThinkingLevel::Medium,
+        transcript: oino_types::transcript::Transcript::new(messages),
+        session_id: Some("s".into()),
+        cache_retention: CacheRetention::Short,
+        max_output_tokens: None,
+    };
+    let events = provider.stream(request, AbortSignal::new()).await;
+    match events {
+        Ok(e) => println!("events: {}", e.len()),
+        Err(e) => println!("STREAM ERR: {e:?}"),
+    }
+
+    drop(handle);
+}

@@ -431,6 +431,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "provider-oino"
+version = "0.1.0"
+dependencies = [
+ "oino-extension-guest",
+ "oino-extension-guest-provider",
+ "oino-provider-kit",
+ "oino-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "provider-openai-compat"
 version = "0.1.3"
 dependencies = [

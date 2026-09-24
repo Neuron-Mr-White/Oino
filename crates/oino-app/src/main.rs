@@ -6023,11 +6023,11 @@ async fn run_non_interactive(
             wasm,
         )
         .await?;
-        if cli.input.is_none() {
+        if cli.input.is_none() && cli.prompt.is_none() {
             println!("{message}");
             return Ok(());
         }
-    } else if cli.settings && cli.input.is_none() {
+    } else if cli.settings && cli.input.is_none() && cli.prompt.is_none() {
         run_tui(
             harness,
             auth,
@@ -11868,5 +11868,381 @@ pi: {expected:?}"
         assert!(lower.contains("tags: oino"), "{request}");
         assert!(lower.contains("authorization: bearer tk"), "{request}");
         assert!(request.contains("LLM summary body"), "{request}");
+    }
+
+    /// Routing 127.0.0.1 server for the oino-router provider tests: serves a
+    /// models fixture plus canned SSE for both wire formats, recording every
+    /// request.
+    fn spawn_oino_router_server() -> (String, std::sync::mpsc::Receiver<RecordedRequest>) {
+        let models = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../extensions/crates/provider-oino/fixtures/models.json"
+        ))
+        .to_string();
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+        let port = listener
+            .local_addr()
+            .unwrap_or_else(|err| panic!("addr: {err}"))
+            .port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            while let Ok((mut stream, _)) = listener.accept() {
+                use std::io::{Read, Write};
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 65536];
+                let mut head_end = None;
+                while head_end.is_none() {
+                    let Ok(n) = stream.read(&mut chunk) else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                    head_end = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4);
+                }
+                let head_end = head_end.unwrap_or_default();
+                let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
+                let mut headers = BTreeMap::new();
+                let mut lines = head.lines();
+                let request_line = lines.next().unwrap_or_default().to_string();
+                for line in lines {
+                    if let Some((name, value)) = line.split_once(':') {
+                        headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+                    }
+                }
+                let content_length: usize = headers
+                    .get("content-length")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                let mut body_buf = buf[head_end..].to_vec();
+                while body_buf.len() < content_length {
+                    match stream.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => body_buf.extend_from_slice(&chunk[..n]),
+                    }
+                }
+                body_buf.truncate(content_length);
+                let mut parts = request_line.split_whitespace();
+                let method = parts.next().unwrap_or_default().to_string();
+                let path = parts.next().unwrap_or_default().to_string();
+                let _ = tx.send(RecordedRequest {
+                    method: method.clone(),
+                    path: path.clone(),
+                    headers,
+                    body: body_buf,
+                });
+                let (status, content_type, body): (u16, &str, String) = if path == "/models" {
+                    (200, "application/json", models.clone())
+                } else if path.starts_with("/chat/completions") {
+                    (
+                        200,
+                        "text/event-stream",
+                        concat!(
+                            "data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}\n\n",
+                            "data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+                            "data: [DONE]\n\n"
+                        )
+                        .to_string(),
+                    )
+                } else if path.starts_with("/messages") {
+                    (
+                        200,
+                        "text/event-stream",
+                        concat!(
+                            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-haiku-4-5-20251001\",\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":4,\"cache_creation_input_tokens\":2}}}\n\n",
+                            "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+                            "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n",
+                            "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                            "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n",
+                            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                        )
+                        .to_string(),
+                    )
+                } else {
+                    (404, "text/plain", "not found".to_string())
+                };
+                let response = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (format!("http://127.0.0.1:{port}"), rx)
+    }
+
+    async fn build_oino_router_wasm(
+        project: &Path,
+        config: serde_json::Value,
+    ) -> (ResourcePaths, Arc<WasmExtensions>) {
+        install_builtin_extension(project, "oino-router", "oino-router");
+        let home = project.join("home");
+        let paths = ResourcePaths::from_home_and_cwd(&home, project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        fs::create_dir_all(paths.home_dir.join(".oino/extensions/oino.oino_router"))
+            .unwrap_or_else(|e| panic!("config dir: {e}"));
+        fs::write(
+            paths
+                .home_dir
+                .join(".oino/extensions/oino.oino_router/config.json"),
+            config.to_string(),
+        )
+        .unwrap_or_else(|e| panic!("config: {e}"));
+        fs::create_dir_all(project.join(".oino")).unwrap_or_else(|e| panic!("dir: {e}"));
+        fs::write(
+            project.join(".oino/settings.json"),
+            r#"{"extensions":{"extensions":{"oino.oino_router":"enabled"}}}"#,
+        )
+        .unwrap_or_else(|e| panic!("settings: {e}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        assert!(
+            wasm.providers.contains_key("oino"),
+            "oino provider missing: {:?} diags {:?}",
+            wasm.providers.keys(),
+            wasm.diagnostics
+        );
+        (paths, wasm)
+    }
+
+    fn oino_router_request(model: &str, level: ThinkingLevel) -> oino_agent_loop::StreamRequest {
+        oino_agent_loop::StreamRequest {
+            model: Model::from_identifier(&format!("oino:{model}"))
+                .unwrap_or_else(|| panic!("model id")),
+            thinking_level: level,
+            transcript: oino_types::transcript::Transcript::new(vec![Message::user_text("hi")]),
+            session_id: Some("sess-1".into()),
+            cache_retention: oino_agent_loop::CacheRetention::Short,
+            max_output_tokens: None,
+        }
+    }
+
+    static OINO_KEY_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Restore an env var on drop (tests mutate OINO_* keys).
+    fn scopeguard_key(name: &'static str, saved: Option<String>) -> impl Drop {
+        struct Guard(&'static str, Option<String>);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                match &self.1 {
+                    Some(v) => std::env::set_var(self.0, v),
+                    None => std::env::remove_var(self.0),
+                }
+            }
+        }
+        Guard(name, saved)
+    }
+
+    /// Format auto-selection, key fallback, env base_url override, models
+    /// mapping, and request goldens for both wire formats.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wasm_oino_router_formats_and_models() {
+        let _key_lock = OINO_KEY_LOCK.lock().await;
+        let _saved_key = std::env::var("OINO_API_KEY").ok();
+        std::env::set_var("OINO_API_KEY", "test-oino-key");
+        let _guard = scopeguard_key("OINO_API_KEY", _saved_key.clone());
+        let (base_url, rx) = spawn_oino_router_server();
+        let temp = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let (_paths, wasm) =
+            build_oino_router_wasm(temp.path(), serde_json::json!({"base_url": base_url})).await;
+
+        // models: mapping + pi-catalog enrichment for claude roots.
+        let provider = wasm.providers["oino"].clone();
+        let models = provider
+            .list_models()
+            .await
+            .unwrap_or_else(|err| panic!("list_models: {err}"));
+        let list = models["models"].as_array().cloned().unwrap_or_default();
+        assert_eq!(list.len(), 6, "{list:?}");
+        let haiku = list
+            .iter()
+            .find(|m| m["id"] == "cc/claude-haiku-4-5-20251001")
+            .cloned()
+            .unwrap_or_else(|| panic!("haiku missing: {list:?}"));
+        assert_eq!(haiku["context_window"].as_u64(), Some(200000));
+        assert_eq!(haiku["max_output_tokens"].as_u64(), Some(64000));
+        assert!(haiku["thinking_levels"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .contains(&serde_json::json!("off")));
+        assert!(
+            haiku["prompt_cache"]["short_secs"].as_u64().unwrap_or(0) > 0,
+            "pi catalog prompt_cache enrichment missing: {haiku}"
+        );
+        assert!(
+            haiku["cost"]["input"].as_f64().unwrap_or(0.0) > 0.0,
+            "pi catalog cost enrichment missing: {haiku}"
+        );
+        // non-claude model: no anthropic enrichment
+        let glm = list
+            .iter()
+            .find(|m| m["id"] == "openrouter/z-ai/glm-5.3-flashx")
+            .cloned()
+            .unwrap_or_else(|| panic!("glm missing"));
+        assert!(glm["prompt_cache"].is_null());
+        let _ = rx.try_recv(); // the GET /models
+
+        // claude model → anthropic wire format
+        let events = provider
+            .stream(
+                oino_router_request("cc/claude-haiku-4-5-20251001", ThinkingLevel::Medium),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("stream: {err}"));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            AssistantStreamEvent::TextDelta { delta } if delta == "hi"
+        )));
+        let req = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap_or_else(|e| panic!("no request: {e}"));
+        assert_eq!(req.method, "POST");
+        assert_eq!(req.path, "/messages?beta=true");
+        assert_eq!(
+            req.headers.get("x-api-key").map(String::as_str),
+            Some("test-oino-key")
+        );
+        assert_eq!(
+            req.headers.get("anthropic-version").map(String::as_str),
+            Some("2023-06-01")
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(&req.body).unwrap_or_else(|e| panic!("body: {e}"));
+        assert_eq!(body["model"].as_str(), Some("cc/claude-haiku-4-5-20251001"));
+        // anthropic cache_control breakpoints on the message content
+        assert!(
+            body["messages"][0]["content"][0]["cache_control"].is_object(),
+            "{body}"
+        );
+        // anthropic cache_control breakpoints on the message content
+        assert!(
+            body["messages"][0]["content"][0]["cache_control"].is_object(),
+            "{body}"
+        );
+        // pi-catalog thinking config present
+        assert!(
+            body["thinking"].is_object() || body["output_config"].is_object(),
+            "{body}"
+        );
+        let _ = rx.try_recv(); // router_models cache — no extra GET expected
+
+        // non-claude model → openai chat-completions
+        let events = provider
+            .stream(
+                oino_router_request("openrouter/z-ai/glm-5.3-flashx", ThinkingLevel::Medium),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("stream: {err}"));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            AssistantStreamEvent::TextDelta { delta } if delta == "hi"
+        )));
+        let req = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap_or_else(|e| panic!("no request: {e}"));
+        assert_eq!(req.path, "/chat/completions");
+        assert_eq!(
+            req.headers.get("authorization").map(String::as_str),
+            Some("Bearer test-oino-key")
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(&req.body).unwrap_or_else(|e| panic!("body: {e}"));
+        assert_eq!(
+            body["model"].as_str(),
+            Some("openrouter/z-ai/glm-5.3-flashx")
+        );
+        assert_eq!(body["prompt_cache_key"].as_str(), Some("sess-1"));
+    }
+
+    /// `format_overrides` forces the openai path for a claude model; env
+    /// `OINO_BASE_URL` overrides config.json via manifest `config_env`.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wasm_oino_router_format_override_and_env_base_url() {
+        let _key_lock = OINO_KEY_LOCK.lock().await;
+        let _g1 = scopeguard_key("OINO_API_KEY", std::env::var("OINO_API_KEY").ok());
+        let _g2 = scopeguard_key("OMNI_API_KEY", std::env::var("OMNI_API_KEY").ok());
+        std::env::remove_var("OINO_API_KEY"); // exercise the OMNI_API_KEY fallback
+        std::env::set_var("OMNI_API_KEY", "test-omni-key");
+        let (base_url, rx) = spawn_oino_router_server();
+        let temp = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        // config.json has a bogus base_url; env must win via config_env.
+        std::env::set_var("OINO_BASE_URL", &base_url);
+        let (_paths, wasm) = build_oino_router_wasm(
+            temp.path(),
+            serde_json::json!({
+                "base_url": "http://127.0.0.1:1/unused",
+                "format_overrides": {"cc/claude-haiku-4-5-20251001": "openai"},
+            }),
+        )
+        .await;
+        std::env::remove_var("OINO_BASE_URL");
+        let provider = wasm.providers["oino"].clone();
+        // OMNI_API_KEY fallback (config.json key).
+        let _events = provider
+            .stream(
+                oino_router_request("cc/claude-haiku-4-5-20251001", ThinkingLevel::High),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("stream: {err}"));
+        let mut saw_models_get = false;
+        let mut chat = None;
+        while let Ok(req) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            if req.method == "GET" && req.path == "/models" {
+                saw_models_get = true;
+            } else {
+                chat = Some(req);
+            }
+        }
+        assert!(saw_models_get);
+        let chat = chat.unwrap_or_else(|| panic!("no chat request"));
+        assert_eq!(chat.path, "/chat/completions");
+        assert_eq!(
+            chat.headers.get("authorization").map(String::as_str),
+            Some("Bearer test-omni-key")
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(&chat.body).unwrap_or_else(|e| panic!("body: {e}"));
+        assert_eq!(body["model"].as_str(), Some("cc/claude-haiku-4-5-20251001"));
+    }
+
+    /// No key in config or env → clear actionable error.
+    #[tokio::test]
+    async fn wasm_oino_router_missing_key_error() {
+        if crate::extension_provider_runtime::extension_config_path("oino.oino_router")
+            .map(|path| path.exists())
+            .unwrap_or(false)
+        {
+            eprintln!("skipping: real oino.oino_router config exists");
+            return;
+        }
+        let _key_lock = OINO_KEY_LOCK.lock().await;
+        let saved = [std::env::var("OINO_API_KEY"), std::env::var("OMNI_API_KEY")];
+        std::env::remove_var("OINO_API_KEY");
+        std::env::remove_var("OMNI_API_KEY");
+        let result = async {
+            let temp = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+            let (_paths, wasm) = build_oino_router_wasm(temp.path(), serde_json::json!({})).await;
+            match wasm.providers["oino"].list_models().await {
+                Ok(_) => "unexpected success".to_string(),
+                Err(err) => err.to_string(),
+            }
+        }
+        .await;
+        if let Ok(v) = &saved[0] {
+            std::env::set_var("OINO_API_KEY", v);
+        }
+        if let Ok(v) = &saved[1] {
+            std::env::set_var("OMNI_API_KEY", v);
+        }
+        assert!(
+            result.contains("set OINO_API_KEY"),
+            "unexpected error: {result}"
+        );
     }
 }

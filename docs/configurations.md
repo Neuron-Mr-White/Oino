@@ -61,6 +61,24 @@ packages are force-enabled for the run even when disabled in settings):
 - `--preset <name>` — select an `oino.presets` preset (`minimal`/`standard`/
   `thorough`) for the run.
 
+## Oino Router provider
+
+The built-in `oino.oino_router` package serves `oino:*` model ids from
+`https://router.oino.dev` as a WASM component:
+
+- `OINO_API_KEY` (fallback `OMNI_API_KEY`) — required, resolved via the
+  standard extension secret lookup (extension config.json first, then env).
+- `OINO_BASE_URL` — override the router base URL (granted through
+  `hosts_from_config`, so a custom endpoint host is permitted).
+- `OINO_FORMAT` — `auto` (default; claude-family → Anthropic Messages,
+  everything else → OpenAI chat-completions), `openai`, or `anthropic`.
+- `~/.oino/extensions/oino.oino_router/config.json` keys: `base_url`,
+  `format`, `format_overrides` (map of endpoint id → `"openai"|"anthropic"`).
+
+`config_env` in a manifest maps config keys to env vars (env wins over
+`config.json`); `network.hosts_from_config` grants network access to the
+host of a config URL key. Both are declared by `oino.oino_router`.
+
 ## Prompt-cache telemetry and warming
 
 - `cacheWarming`: `"off"` | `"tools"` (default) | `"tools+idle"` — sends a

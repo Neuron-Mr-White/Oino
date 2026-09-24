@@ -162,7 +162,19 @@ impl Iterator for SseStream {
                     };
                     match self.parser.push_str(text) {
                         Ok(events) if !events.is_empty() => {
-                            return Some(Ok(events.iter().map(event_to_wit).collect()))
+                            // Terminal events end the SSE stream — do not keep
+                            // reading on keep-alive connections.
+                            if events.iter().any(|e| {
+                                matches!(
+                                    e,
+                                    oino_types::AssistantStreamEvent::Done { .. }
+                                        | oino_types::AssistantStreamEvent::Aborted
+                                        | oino_types::AssistantStreamEvent::Error { .. }
+                                )
+                            }) {
+                                self.finished = true;
+                            }
+                            return Some(Ok(events.iter().map(event_to_wit).collect()));
                         }
                         Ok(_) => continue,
                         Err(err) => return Some(Err(err.to_string())),
@@ -172,7 +184,19 @@ impl Iterator for SseStream {
                     self.finished = true;
                     match self.parser.finish() {
                         Ok(events) if !events.is_empty() => {
-                            return Some(Ok(events.iter().map(event_to_wit).collect()))
+                            // Terminal events end the SSE stream — do not keep
+                            // reading on keep-alive connections.
+                            if events.iter().any(|e| {
+                                matches!(
+                                    e,
+                                    oino_types::AssistantStreamEvent::Done { .. }
+                                        | oino_types::AssistantStreamEvent::Aborted
+                                        | oino_types::AssistantStreamEvent::Error { .. }
+                                )
+                            }) {
+                                self.finished = true;
+                            }
+                            return Some(Ok(events.iter().map(event_to_wit).collect()));
                         }
                         Ok(_) => return None,
                         Err(err) => return Some(Err(err.to_string())),

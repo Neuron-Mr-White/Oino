@@ -145,6 +145,12 @@ pub const OPTIONAL_BUILTIN_PACKAGES: &[OptionalBuiltinPackage] = &[
         description: "Anthropic Messages provider served by the bundled WASM component (providers.runtime = wasm)",
     },
     OptionalBuiltinPackage {
+        id: "oino.oino_router",
+        display_name: "Oino Router",
+        directory_name: "oino-router",
+        description: "Official Oino Router provider (router.oino.dev) — Anthropic Messages or OpenAI chat-completions per model",
+    },
+    OptionalBuiltinPackage {
         id: "oino.provider_openai",
         display_name: "Oino OpenAI Provider",
         directory_name: "provider-openai",

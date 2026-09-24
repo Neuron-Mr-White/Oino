@@ -215,10 +215,10 @@ impl WasmHostEngine {
         let mut cache_config = wasmtime::CacheConfig::new();
         cache_config.with_directory(&cache_dir);
         let cache = wasmtime::Cache::new(cache_config)
-            .map_err(|err| WasmHostError::Instantiate(err.to_string()))?;
+            .map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))?;
         config.cache(Some(cache));
         let engine =
-            Engine::new(&config).map_err(|err| WasmHostError::Instantiate(err.to_string()))?;
+            Engine::new(&config).map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))?;
         // A dedicated OS thread (not a tokio task): during a blocking guest
         // call the executor may be starved, which would also starve the
         // ticker and prevent deadline interruption.
@@ -252,7 +252,7 @@ impl WasmHostEngine {
     /// wasmtime version) under `cache_dir`.
     pub fn component(&self, bytes: &[u8]) -> WasmResult<Component> {
         Component::new(&self.engine, bytes)
-            .map_err(|err| WasmHostError::Instantiate(err.to_string()))
+            .map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))
     }
 
     /// Epoch ticks per wall-clock duration, rounded up.
@@ -652,14 +652,14 @@ impl WasmExtension {
         let mut store = new_store(&self.host.engine, self.caps.clone(), &self.limits);
         let mut linker = Linker::new(&self.host.engine);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)
-            .map_err(|err| WasmHostError::Instantiate(err.to_string()))?;
+            .map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))?;
         wasmtime_wasi_http::p2::add_only_http_to_linker_async(&mut linker)
-            .map_err(|err| WasmHostError::Instantiate(err.to_string()))?;
+            .map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))?;
         bindings::oino::extension::host::add_to_linker::<_, wasmtime::component::HasSelf<HostState>>(
             &mut linker,
             |state: &mut HostState| state,
         )
-        .map_err(|err| WasmHostError::Instantiate(err.to_string()))?;
+        .map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))?;
         if self.provider {
             let instance = provider_bindings::ProviderExtension::instantiate_async(
                 &mut store,
@@ -667,7 +667,7 @@ impl WasmExtension {
                 &linker,
             )
             .await
-            .map_err(|err| WasmHostError::Instantiate(err.to_string()))?;
+            .map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))?;
             Ok(ExtensionKind::Provider(ProviderInstance {
                 instance,
                 store,
@@ -676,7 +676,7 @@ impl WasmExtension {
             let instance =
                 bindings::Extension::instantiate_async(&mut store, &self.component, &linker)
                     .await
-                    .map_err(|err| WasmHostError::Instantiate(err.to_string()))?;
+                    .map_err(|err| WasmHostError::Instantiate(format!("{err:#}")))?;
             Ok(ExtensionKind::Guest(GuestInstance { instance, store }))
         }
     }
@@ -1033,7 +1033,7 @@ fn classify_error(err: wasmtime::Error) -> WasmHostError {
             return WasmHostError::Deadline;
         }
     }
-    WasmHostError::Instantiate(err.to_string())
+    WasmHostError::Instantiate(format!("{err:#}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,12 +1130,13 @@ impl StreamProvider for WasmStreamProvider {
             .map_err(|err| oino_agent_loop::LoopError::Stream(err.to_string()))?;
         let response = {
             store.set_epoch_deadline(self.extension.deadline(self.extension.limits.provider_next));
-            instance
+            let out = instance
                 .oino_extension_provider()
                 .call_stream(&mut *store, &request_str)
                 .await
                 .map_err(classify_loop_error)?
-                .map_err(oino_agent_loop::LoopError::Stream)?
+                .map_err(oino_agent_loop::LoopError::Stream)?;
+            out
         };
         loop {
             if signal.is_aborted() {
@@ -1148,13 +1149,15 @@ impl StreamProvider for WasmStreamProvider {
                 return Ok(());
             }
             store.set_epoch_deadline(self.extension.deadline(self.extension.limits.provider_next));
-            let batch = instance
-                .oino_extension_provider()
-                .response()
-                .call_next(&mut *store, response)
-                .await
-                .map_err(classify_loop_error)?
-                .map_err(oino_agent_loop::LoopError::Stream)?;
+            let batch = {
+                instance
+                    .oino_extension_provider()
+                    .response()
+                    .call_next(&mut *store, response)
+                    .await
+            }
+            .map_err(classify_loop_error)?
+            .map_err(oino_agent_loop::LoopError::Stream)?;
             let Some(events) = batch else {
                 break;
             };

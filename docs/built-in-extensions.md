@@ -25,6 +25,7 @@ Then run `/reload` or restart Oino.
 | `oino.ask_user` | Structured question tool with an Oino modal. |
 | `oino.provider_anthropic` | Declarative `anthropic` provider (Anthropic Messages via bundled WASM component). |
 | `oino.provider_openai` | Declarative `openai` provider (OpenAI Responses via bundled WASM component). |
+| `oino.oino_router` | Official Oino Router provider — `oino:*` models on `router.oino.dev`. Picks Anthropic Messages or OpenAI chat-completions per model (`format`/`format_overrides` config; `OINO_API_KEY`/`OMNI_API_KEY`, `OINO_BASE_URL`, `OINO_FORMAT` env overrides). |
 | `oino.budget` | Run caps (turns, cost, wall time, consecutive tool errors) with an optional summary turn before ending the run. Enabled but inert until configured (or via `--max-cost`/`--max-wall`/`--max-tool-errors`). |
 | `oino.presets` | `/preset` work presets (`minimal`, `standard`, `thorough`) restricting the visible tool set and/or adding a prompt section. `--preset` for headless runs. |
 | `oino.search` | Deferred `grep`/`find` tools over the project tree (gitignore-aware), loaded on demand through `tool_search`. |

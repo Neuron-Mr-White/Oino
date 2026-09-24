@@ -313,6 +313,10 @@ pub struct ExtensionManifest {
     #[serde(default = "current_protocol_version")]
     pub protocol: ProtocolVersion,
     pub runtime: RuntimeDescriptor,
+    /// Init-config keys filled from environment variables (env wins over
+    /// `config.json`). Example: `{"base_url": "OINO_BASE_URL"}`.
+    #[serde(default)]
+    pub config_env: BTreeMap<String, String>,
     #[serde(default)]
     pub permissions: ExtensionPermissions,
     #[serde(default)]

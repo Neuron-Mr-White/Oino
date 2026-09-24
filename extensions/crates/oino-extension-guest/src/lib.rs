@@ -242,20 +242,39 @@ pub mod http {
         request
             .set_path_with_query(Some(&path))
             .map_err(|_| "set path".to_string())?;
-        if let Some(bytes) = body {
-            let outgoing = request.body().map_err(|_| "request body".to_string())?;
+        // Take the body stream, dispatch the request, then stream the body —
+        // wasi-http only buffers ~4 KiB pre-dispatch, so large bodies must be
+        // written while the request is in flight.
+        let body_parts = body.map(|bytes| {
+            request
+                .body()
+                .map(|outgoing| (outgoing, bytes))
+                .map_err(|_| "request body".to_string())
+        });
+        let body_parts = match body_parts {
+            Some(Ok(parts)) => Some(parts),
+            Some(Err(err)) => return Err(err),
+            None => None,
+        };
+        let future = ext::wasi::http::outgoing_handler::handle(request, None)
+            .map_err(|err| format!("outgoing handle: {err:?}"))?;
+        if let Some((outgoing, bytes)) = body_parts {
             let stream = outgoing
                 .write()
                 .map_err(|_| "request body stream".to_string())?;
+            // `write` enqueues the whole buffer as one channel item — the
+            // wasmtime body channel is item-bounded, not byte-bounded, so a
+            // single write is the only way to send large bodies.
             stream
-                .blocking_write_and_flush(bytes)
+                .write(bytes)
                 .map_err(|err| format!("write body: {err:?}"))?;
+            stream
+                .blocking_flush()
+                .map_err(|err| format!("flush body: {err:?}"))?;
             drop(stream);
             ext::wasi::http::types::OutgoingBody::finish(outgoing, None)
                 .map_err(|_| "finish body".to_string())?;
         }
-        let future = ext::wasi::http::outgoing_handler::handle(request, None)
-            .map_err(|err| format!("outgoing handle: {err:?}"))?;
         let incoming = wait_incoming(future)?;
         let status = incoming.status();
         let body = incoming.consume().map_err(|_| "consume body".to_string())?;

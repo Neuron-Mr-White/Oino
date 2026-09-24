@@ -640,7 +640,13 @@ pub(crate) async fn build_wasm_extensions(
                 }
             }
         }
+        // Manifest `config_env`: fill config keys from the environment.
         if let Some(object) = config.as_object_mut() {
+            for (key, env) in &manifest.config_env {
+                if let Ok(value) = std::env::var(env) {
+                    object.insert(key.clone(), Value::String(value));
+                }
+            }
             object.insert(
                 "project_root".into(),
                 Value::String(paths.project_root.to_string_lossy().into_owned()),

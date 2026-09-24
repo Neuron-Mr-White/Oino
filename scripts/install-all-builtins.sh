@@ -39,6 +39,7 @@ all_package_ids = [
     "oino.budget",
     "oino.presets",
     "oino.search",
+    "oino.oino_router",
 ]
 aliases = {
     "router": "oino.router",
@@ -54,6 +55,7 @@ aliases = {
     "budget": "oino.budget",
     "presets": "oino.presets",
     "search": "oino.search",
+    "oino-router": "oino.oino_router",
 }
 package_ids = all_package_ids
 if requested:
