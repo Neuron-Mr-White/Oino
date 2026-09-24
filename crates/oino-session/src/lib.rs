@@ -871,12 +871,12 @@ mod tests {
         assert!(matches!(
             context.messages[1],
             Message::User { ref content, .. }
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "kept")
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "kept")
         ));
         assert!(matches!(
             context.messages[2],
             Message::User { ref content, .. }
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "new")
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "new")
         ));
         assert_eq!(context.messages.len(), 3);
         assert!(context.warnings.is_empty());
@@ -940,6 +940,7 @@ mod tests {
             target_id,
             Some(vec![ContentBlock::Text {
                 text: "edited".into(),
+                signature: None,
             }]),
         );
         session.append_context_edit(other_id, None);
@@ -949,6 +950,7 @@ mod tests {
             target_id,
             Some(vec![ContentBlock::Text {
                 text: "final".into(),
+                signature: None,
             }]),
         );
         let context = session
@@ -959,7 +961,7 @@ mod tests {
             .iter()
             .filter_map(|message| match message {
                 Message::User { content, .. } => content.iter().find_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text.clone()),
+                    ContentBlock::Text { text, .. } => Some(text.clone()),
                     _ => None,
                 }),
                 _ => None,
@@ -1060,7 +1062,7 @@ mod tests {
             .skip(1)
             .filter_map(|message| match message {
                 Message::User { content, .. } => content.iter().find_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text.clone()),
+                    ContentBlock::Text { text, .. } => Some(text.clone()),
                     _ => None,
                 }),
                 _ => None,

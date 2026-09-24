@@ -10,6 +10,11 @@
 //! with the identical serde shape — the mirror is covered by a host-side
 //! round-trip test.
 
+pub mod anthropic;
+pub mod catalog;
+pub mod piutil;
+pub mod responses;
+
 use std::collections::BTreeMap;
 
 use oino_types::{
@@ -516,7 +521,7 @@ fn user_content(content: &[ContentBlock]) -> Result<OpenRouterMessageContent, Ki
     let mut parts = Vec::new();
     for block in content {
         match block {
-            ContentBlock::Text { text } => parts.push(OpenRouterContentPart::Text {
+            ContentBlock::Text { text, .. } => parts.push(OpenRouterContentPart::Text {
                 text: text.clone(),
                 cache_control: None,
             }),
@@ -553,7 +558,7 @@ fn optional_text_content(content: &[ContentBlock]) -> Result<Option<String>, Kit
     let mut text = String::new();
     for block in content {
         match block {
-            ContentBlock::Text { text: value } => text.push_str(value),
+            ContentBlock::Text { text: value, .. } => text.push_str(value),
             ContentBlock::ToolCall { .. } => {}
             ContentBlock::Image { .. } => {
                 return Err(KitError::UnsupportedContent(
@@ -674,6 +679,9 @@ impl SseEventParser {
                     .as_deref()
                     .and_then(|id| Uuid::parse_str(id).ok())
                     .unwrap_or_else(Uuid::new_v4),
+                // Only non-UUID provider ids (e.g. `call_`, `toolu_`, custom
+                // ids) need native replay; UUIDs round-trip as `id` already.
+                native_id: delta.id.clone().filter(|id| Uuid::parse_str(id).is_err()),
                 name: None,
                 arguments: String::new(),
             });
@@ -695,6 +703,7 @@ impl SseEventParser {
         AssistantStreamEvent::ToolCallDelta {
             id: state.id,
             name,
+            native_id: state.native_id.clone(),
             arguments_delta,
         }
     }
@@ -714,6 +723,7 @@ impl SseEventParser {
                 events.push(AssistantStreamEvent::ToolCallDone {
                     id: state.id,
                     name,
+                    native_id: state.native_id,
                     arguments,
                 });
             }
@@ -735,6 +745,7 @@ fn data_payloads(frame: &str) -> Vec<String> {
 #[derive(Debug, Default)]
 struct PartialToolState {
     id: OinoId,
+    native_id: Option<String>,
     name: Option<String>,
     arguments: String,
 }
@@ -828,6 +839,7 @@ impl From<OpenRouterUsage> for Usage {
             output_tokens: value.completion_tokens,
             cache_read_tokens,
             cache_write_tokens,
+            cache_write_1h_tokens: None,
             reasoning_tokens: value
                 .completion_tokens_details
                 .as_ref()

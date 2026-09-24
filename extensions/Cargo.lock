@@ -253,6 +253,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "provider-anthropic"
+version = "0.1.0"
+dependencies = [
+ "oino-extension-guest",
+ "oino-extension-guest-provider",
+ "oino-provider-kit",
+ "oino-types",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "provider-openai-compat"
 version = "0.1.3"
 dependencies = [
@@ -262,6 +275,19 @@ dependencies = [
  "oino-types",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "provider-openai-responses"
+version = "0.1.0"
+dependencies = [
+ "oino-extension-guest",
+ "oino-extension-guest-provider",
+ "oino-provider-kit",
+ "oino-types",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

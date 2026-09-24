@@ -36,12 +36,20 @@ OINO_MODEL=router:openai/gpt-4.1 oino
 ## Provider runtime
 
 `providers.runtime` in `~/.oino/settings.json` (or project `.oino/settings.json`,
-project wins) selects how declarative OpenAI-compatible extension providers
-are executed:
+project wins) selects how declarative extension providers are executed:
 
-- `"native"` (default): the in-process OpenAI-compatible adapter.
-- `"wasm"`: the bundled `provider-openai-compat` Wasmtime component, one
-  instance per provider id, with host-resolved config and `api_key` secret.
+- `"native"` (default): the in-process OpenAI-compatible adapter
+  (`open_ai_chat_completions` protocol only).
+- `"wasm"`: bundled Wasmtime components, one instance per provider id, with
+  host-resolved config and an `api_key` host secret:
+  - `open_ai_chat_completions` → `provider-openai-compat`
+  - `anthropic_messages` → `provider-anthropic`
+  - `open_ai_responses` → `provider-openai-responses`
+
+  The built-in `provider-anthropic` (`ANTHROPIC_API_KEY`,
+  `api.anthropic.com`) and `provider-openai` (`OPENAI_API_KEY`,
+  `api.openai.com/v1`) packages only work under `"wasm"` and report a
+  readiness diagnostic under the native runtime.
 
 ## Reloading
 

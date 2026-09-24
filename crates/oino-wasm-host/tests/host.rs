@@ -146,7 +146,7 @@ async fn tool_round_trip_emits_progress() {
         .unwrap_or_else(|err| panic!("run_tool: {err}"));
     assert!(!output.is_error);
     match &output.content[0] {
-        ContentBlock::Text { text } => assert!(text.contains("hello"), "{text}"),
+        ContentBlock::Text { text, .. } => assert!(text.contains("hello"), "{text}"),
         _ => panic!("expected text"),
     }
     let progress = progress

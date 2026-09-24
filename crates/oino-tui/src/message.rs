@@ -196,7 +196,7 @@ fn summarize_content(content: &[ContentBlock]) -> ContentSummary {
     let mut tool_calls = Vec::new();
     for block in content {
         match block {
-            ContentBlock::Text { text } => parts.push(text.clone()),
+            ContentBlock::Text { text, .. } => parts.push(text.clone()),
             ContentBlock::Image { media_type, .. } => parts.push(format!("<image:{media_type}>")),
             ContentBlock::Thinking { text, redacted, .. } => {
                 thinking_parts.push(text.clone());
@@ -241,6 +241,7 @@ mod tests {
             id: OinoId::nil(),
             content: vec![ContentBlock::Text {
                 text: "answer".into(),
+                signature: None,
             }],
             stop_reason: Some(StopReason::EndTurn),
             usage: None,
@@ -251,6 +252,7 @@ mod tests {
             }),
             response_model: None,
             error_message: None,
+            provider_thinking_level: None,
         };
         let view = project_message(&message);
         assert_eq!(view.role, "assistant");
@@ -272,6 +274,7 @@ mod tests {
             provider: None,
             response_model: None,
             error_message: None,
+            provider_thinking_level: None,
         };
         let view = project_message(&message);
         assert_eq!(view.content, "<empty>");
@@ -291,6 +294,7 @@ mod tests {
                 },
                 ContentBlock::Text {
                     text: "public answer".into(),
+                    signature: None,
                 },
             ],
             stop_reason: Some(StopReason::EndTurn),
@@ -298,6 +302,7 @@ mod tests {
             provider: None,
             response_model: None,
             error_message: None,
+            provider_thinking_level: None,
         };
         let view = project_message(&message);
         assert_eq!(view.content, "public answer");

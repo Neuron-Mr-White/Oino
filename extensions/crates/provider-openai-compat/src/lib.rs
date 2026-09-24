@@ -225,16 +225,20 @@ fn event_to_wit(event: &oino_types::AssistantStreamEvent) -> AssistantEvent {
         E::ToolCallDelta {
             id,
             name,
+            native_id,
             arguments_delta,
         } => AssistantEvent::ToolCallDelta(
-            json!({ "id": id, "name": name, "arguments_delta": arguments_delta }).to_string(),
+            json!({ "id": id, "name": name, "native_id": native_id, "arguments_delta": arguments_delta })
+                .to_string(),
         ),
         E::ToolCallDone {
             id,
             name,
+            native_id,
             arguments,
         } => AssistantEvent::ToolCallDone(
-            json!({ "id": id, "name": name, "arguments": arguments }).to_string(),
+            json!({ "id": id, "name": name, "native_id": native_id, "arguments": arguments })
+                .to_string(),
         ),
         E::Usage { usage } => {
             AssistantEvent::Usage(serde_json::to_string(usage).unwrap_or_default())

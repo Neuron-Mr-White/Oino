@@ -34,6 +34,8 @@ all_package_ids = [
     "oino.craft_skill",
     "oino.vcc",
     "oino.ask_user",
+    "oino.provider_anthropic",
+    "oino.provider_openai",
 ]
 aliases = {
     "router": "oino.router",
@@ -44,6 +46,8 @@ aliases = {
     "craft-skill": "oino.craft_skill",
     "vcc": "oino.vcc",
     "ask-user": "oino.ask_user",
+    "provider-anthropic": "oino.provider_anthropic",
+    "provider-openai": "oino.provider_openai",
 }
 package_ids = all_package_ids
 if requested:

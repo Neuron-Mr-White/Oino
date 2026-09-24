@@ -916,7 +916,10 @@ impl GuestToolOutput {
             .content
             .into_iter()
             .map(|block| match block {
-                Wit::Text(text) => oino_types::ContentBlock::Text { text },
+                Wit::Text(text) => oino_types::ContentBlock::Text {
+                    text,
+                    signature: None,
+                },
                 Wit::Thinking(text) => oino_types::ContentBlock::Thinking {
                     text,
                     signature: None,
@@ -924,8 +927,10 @@ impl GuestToolOutput {
                     redacted: false,
                 },
                 Wit::ToolCall(json) | Wit::Image(json) | Wit::Custom(json) => {
-                    serde_json::from_str(&json)
-                        .unwrap_or(oino_types::ContentBlock::Text { text: json })
+                    serde_json::from_str(&json).unwrap_or(oino_types::ContentBlock::Text {
+                        text: json,
+                        signature: None,
+                    })
                 }
             })
             .collect();
@@ -946,16 +951,21 @@ fn content_block_from_wit(
 ) -> oino_types::ContentBlock {
     use bindings::exports::oino::extension::guest::ContentBlock as Wit;
     match block {
-        Wit::Text(text) => oino_types::ContentBlock::Text { text },
+        Wit::Text(text) => oino_types::ContentBlock::Text {
+            text,
+            signature: None,
+        },
         Wit::Thinking(text) => oino_types::ContentBlock::Thinking {
             text,
             signature: None,
             provider_data: None,
             redacted: false,
         },
-        Wit::ToolCall(json) | Wit::Image(json) | Wit::Custom(json) => {
-            serde_json::from_str(&json).unwrap_or(oino_types::ContentBlock::Text { text: json })
-        }
+        Wit::ToolCall(json) | Wit::Image(json) | Wit::Custom(json) => serde_json::from_str(&json)
+            .unwrap_or(oino_types::ContentBlock::Text {
+                text: json,
+                signature: None,
+            }),
     }
 }
 
@@ -1145,6 +1155,7 @@ fn assistant_event_from_wit(
                     .and_then(|s| s.parse::<oino_types::OinoId>().ok())
                     .unwrap_or_else(uuid::Uuid::new_v4),
                 name: value["name"].as_str().map(Into::into),
+                native_id: value["native_id"].as_str().map(Into::into),
                 arguments_delta: value["arguments_delta"].as_str().unwrap_or_default().into(),
             })
         }
@@ -1156,6 +1167,7 @@ fn assistant_event_from_wit(
                     .and_then(|s| s.parse::<oino_types::OinoId>().ok())
                     .unwrap_or_else(uuid::Uuid::new_v4),
                 name: value["name"].as_str().unwrap_or_default().into(),
+                native_id: value["native_id"].as_str().map(Into::into),
                 arguments: value["arguments"].clone(),
             })
         }

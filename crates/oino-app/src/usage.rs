@@ -653,7 +653,10 @@ mod tests {
     fn assistant(provider: Option<&str>, usage: Option<Usage>) -> Message {
         Message::Assistant {
             id: OinoId::nil(),
-            content: vec![ContentBlock::Text { text: "ok".into() }],
+            content: vec![ContentBlock::Text {
+                text: "ok".into(),
+                signature: None,
+            }],
             stop_reason: Some(StopReason::EndTurn),
             usage,
             provider: provider.map(|provider| ProviderMetadata {
@@ -663,6 +666,7 @@ mod tests {
             }),
             response_model: None,
             error_message: None,
+            provider_thinking_level: None,
         }
     }
 
@@ -677,6 +681,7 @@ mod tests {
                         output_tokens: 20,
                         cache_read_tokens: 3,
                         cache_write_tokens: 2,
+                        cache_write_1h_tokens: None,
                         reasoning_tokens: 0,
                         cost: Some(UsageCost {
                             amount: 0.001,
@@ -691,6 +696,7 @@ mod tests {
                         output_tokens: 7,
                         cache_read_tokens: 0,
                         cache_write_tokens: 0,
+                        cache_write_1h_tokens: None,
                         reasoning_tokens: 0,
                         cost: Some(UsageCost {
                             amount: 0.002,
@@ -751,6 +757,7 @@ mod tests {
                     output_tokens: 2,
                     cache_read_tokens: 3,
                     cache_write_tokens: 4,
+                    cache_write_1h_tokens: None,
                     reasoning_tokens: 0,
                     cost: Some(UsageCost {
                         amount: 0.125,

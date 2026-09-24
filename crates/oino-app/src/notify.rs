@@ -262,7 +262,7 @@ fn default_summary_prompt() -> String {
 
 fn first_text_block(content: &[ContentBlock]) -> Option<&str> {
     content.iter().find_map(|block| match block {
-        ContentBlock::Text { text } => Some(text.as_str()),
+        ContentBlock::Text { text, .. } => Some(text.as_str()),
         _ => None,
     })
 }

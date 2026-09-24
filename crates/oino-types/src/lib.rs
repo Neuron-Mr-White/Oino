@@ -130,6 +130,10 @@ pub struct Usage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+    /// Tokens written to a long-retention cache (Anthropic `ephemeral_1h`),
+    /// charged at 2x input instead of the cache-write rate.
+    #[serde(default)]
+    pub cache_write_1h_tokens: Option<u64>,
     #[serde(default)]
     pub reasoning_tokens: u64,
     pub cost: Option<UsageCost>,
@@ -194,6 +198,11 @@ pub enum Message {
         response_model: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error_message: Option<String>,
+        /// Thinking effort the provider applied to this turn (Anthropic
+        /// `providerThinkingLevel`), replayed for mid-conversation effort
+        /// models.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_thinking_level: Option<String>,
     },
     ToolResult {
         id: OinoId,
@@ -242,7 +251,10 @@ impl Message {
     pub fn user_text(text: impl Into<String>) -> Self {
         Self::User {
             id: Uuid::new_v4(),
-            content: vec![ContentBlock::Text { text: text.into() }],
+            content: vec![ContentBlock::Text {
+                text: text.into(),
+                signature: None,
+            }],
         }
     }
 
@@ -257,7 +269,7 @@ impl Message {
         let text = content
             .iter()
             .filter_map(|block| match block {
-                ContentBlock::Text { text } => Some(text.as_str()),
+                ContentBlock::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -270,7 +282,10 @@ impl Message {
     pub fn replace_text(&mut self, text: &str) {
         match self {
             Self::User { content, .. } | Self::Assistant { content, .. } => {
-                *content = vec![ContentBlock::Text { text: text.into() }];
+                *content = vec![ContentBlock::Text {
+                    text: text.into(),
+                    signature: None,
+                }];
             }
             _ => {}
         }
@@ -280,12 +295,16 @@ impl Message {
     pub fn assistant_text(text: impl Into<String>, stop_reason: StopReason) -> Self {
         Self::Assistant {
             id: Uuid::new_v4(),
-            content: vec![ContentBlock::Text { text: text.into() }],
+            content: vec![ContentBlock::Text {
+                text: text.into(),
+                signature: None,
+            }],
             stop_reason: Some(stop_reason),
             usage: None,
             provider: None,
             response_model: None,
             error_message: None,
+            provider_thinking_level: None,
         }
     }
 }
@@ -316,6 +335,10 @@ pub struct ToolDeclaration {
 pub enum ContentBlock {
     Text {
         text: String,
+        /// Provider-assigned item id encoded as a signature (OpenAI
+        /// Responses `textSignatureV1`), replayed verbatim.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
     },
     Image {
         media_type: String,
@@ -360,11 +383,17 @@ pub enum AssistantStreamEvent {
     ToolCallDelta {
         id: OinoId,
         name: Option<String>,
+        /// Provider-native tool call id (Anthropic `toolu_*`, OpenAI
+        /// `call_*|fc_*`); replayed verbatim on later turns.
+        #[serde(default)]
+        native_id: Option<String>,
         arguments_delta: String,
     },
     ToolCallDone {
         id: OinoId,
         name: String,
+        #[serde(default)]
+        native_id: Option<String>,
         arguments: Value,
     },
     Usage {
@@ -425,6 +454,7 @@ mod tests {
             content: vec![
                 ContentBlock::Text {
                     text: "hello".into(),
+                    signature: None,
                 },
                 ContentBlock::ToolCall {
                     id: Uuid::new_v4(),
@@ -439,12 +469,14 @@ mod tests {
                 output_tokens: 2,
                 cache_read_tokens: 0,
                 cache_write_tokens: 0,
+                cache_write_1h_tokens: None,
                 reasoning_tokens: 3,
                 cost: None,
             }),
             provider: None,
             response_model: Some("openai/gpt-4o".into()),
             error_message: None,
+            provider_thinking_level: None,
         };
         assert_eq!(msg, round_trip(&msg));
     }
@@ -547,6 +579,7 @@ mod tests {
         let event = AssistantStreamEvent::ToolCallDone {
             id: Uuid::new_v4(),
             name: "bash".into(),
+            native_id: None,
             arguments: serde_json::json!({"command":"true"}),
         };
         assert_eq!(event, round_trip(&event));

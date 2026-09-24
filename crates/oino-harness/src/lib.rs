@@ -1085,7 +1085,7 @@ fn format_content_blocks_for_inspect(blocks: &[ContentBlock]) -> String {
     blocks
         .iter()
         .map(|block| match block {
-            ContentBlock::Text { text } => text.clone(),
+            ContentBlock::Text { text, .. } => text.clone(),
             ContentBlock::Image { media_type, data } => {
                 format!("<image:{media_type}; {} bytes>", data.len())
             }
@@ -1599,7 +1599,7 @@ mod tests {
                 SessionEntryKind::Message {
                     message: Message::User { content, .. },
                 } => content.iter().find_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text.clone()),
+                    ContentBlock::Text { text, .. } => Some(text.clone()),
                     _ => None,
                 }),
                 _ => None,

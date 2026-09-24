@@ -1,0 +1,51 @@
+{
+  "id": "oino.provider_anthropic",
+  "display_name": "Oino Anthropic Provider",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "publisher": "oino",
+  "description": "Anthropic Messages provider served by the bundled WASM component (requires providers.runtime = \"wasm\").",
+  "extensions": [
+    {
+      "manifest": "extensions/provider-anthropic/oino.extension.json",
+      "enabled_by_default": true
+    }
+  ],
+  "resources": [],
+  "assets": [],
+  "examples": [],
+  "docs": [
+    {
+      "path": "docs/README.md"
+    }
+  ],
+  "dependencies": [],
+  "permissions": {
+    "tools": [],
+    "commands": [],
+    "host_capabilities": [],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": [
+        "api.anthropic.com"
+      ]
+    },
+    "secrets": [
+      "ANTHROPIC_API_KEY"
+    ],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "trust": {
+    "reviewed": true,
+    "publisher": "oino",
+    "advisories": []
+  }
+}

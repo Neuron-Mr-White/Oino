@@ -1,0 +1,77 @@
+{
+  "id": "oino.provider_openai",
+  "package_id": "oino.provider_openai",
+  "display_name": "Oino OpenAI Provider",
+  "version": "0.1.0",
+  "oino": "^0.1",
+  "protocol": 1,
+  "runtime": {
+    "kind": "built_in"
+  },
+  "permissions": {
+    "tools": [],
+    "commands": [],
+    "host_capabilities": [],
+    "ui": [],
+    "filesystem": [],
+    "shell_process": {
+      "allowed": false,
+      "commands": []
+    },
+    "network": {
+      "raw_network": false,
+      "hosts": [
+        "api.openai.com"
+      ]
+    },
+    "secrets": [
+      "OPENAI_API_KEY"
+    ],
+    "session_persistence": [],
+    "provider_mutation": [],
+    "package_management": []
+  },
+  "contributes": {
+    "commands": [],
+    "providers": [
+      {
+        "id": "provider.openai",
+        "provider_id": "openai",
+        "display_name": "OpenAI",
+        "model_ids": [],
+        "privacy": {
+          "can_receive_prompts": true,
+          "can_receive_tools": true,
+          "can_mutate_requests": true
+        },
+        "runtime": {
+          "protocol": "open_ai_responses",
+          "base_url": "https://api.openai.com/v1",
+          "api_key": {
+            "kind": "env_var",
+            "name": "OPENAI_API_KEY"
+          },
+          "model_id": "strip_provider_prefix",
+          "config": {
+            "base_url_key": "base_url",
+            "base_url_env": ["OPENAI_BASE_URL"]
+          }
+        }
+      }
+    ],
+    "resources": [],
+    "tools": [],
+    "keymaps": [],
+    "hooks": [],
+    "ui_surfaces": [],
+    "settings_pages": [],
+    "themes": [],
+    "persistence": [],
+    "autosuggest_providers": [],
+    "renderers": []
+  },
+  "metadata": {
+    "oino_builtin_optional": true,
+    "runtime_contract": "Declarative provider `openai` is served by the bundled provider-openai WASM component when providers.runtime = \"wasm\". Under the native runtime the provider reports a readiness diagnostic."
+  }
+}

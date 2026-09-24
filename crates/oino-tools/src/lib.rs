@@ -521,6 +521,7 @@ impl Tool for EditTool {
                     args.edits.len(),
                     args.path
                 ),
+                signature: None,
             }],
             is_error: false,
             terminate: false,
@@ -860,7 +861,8 @@ mod tests {
         assert_eq!(
             result.content,
             vec![ContentBlock::Text {
-                text: "two\n\n[1 more lines in file. Use offset=3 to continue.]".into()
+                text: "two\n\n[1 more lines in file. Use offset=3 to continue.]".into(),
+                signature: None
             }]
         );
     }
@@ -929,7 +931,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("bash failed: {err}"));
         assert!(result.is_error);
         assert!(
-            matches!(&result.content[0], ContentBlock::Text { text } if text.contains("stdout:\nhi") && text.contains("Command exited with code 2"))
+            matches!(&result.content[0], ContentBlock::Text { text, .. } if text.contains("stdout:\nhi") && text.contains("Command exited with code 2"))
         );
     }
 }

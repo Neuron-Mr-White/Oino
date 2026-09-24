@@ -56,11 +56,13 @@ async fn tool_execution_supports_parallel_and_sequential_modes() {
             AssistantStreamEvent::ToolCallDone {
                 id: call_a,
                 name: "a".into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::ToolCallDone {
                 id: call_b,
                 name: "b".into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::Done {

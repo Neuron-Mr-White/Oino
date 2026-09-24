@@ -14,12 +14,19 @@ Goal: every model provider is a WASM component implementing the `provider` inter
 | `provider-anthropic` | Anthropic, Claude-compatible gateways | Messages |
 
 No separate `router` component: declarative provider contributions (manifest
-`providers[].runtime.protocol = open_ai_chat_completions`, e.g.
-`extensions/built-in/router`) are served by `provider-openai-compat`. The
-artifact is bundled in `oino-app` (`include_bytes!`); host-resolved config
-(base_url, headers, auth spec) is passed via `init`, the api key via
-`host.secret("api_key")`, and network permissions are synthesized from the
-resolved URLs.
+`providers[].runtime.protocol`) are served by bundled components —
+`open_ai_chat_completions` → `provider-openai-compat` (incl. OmniRoute),
+`anthropic_messages` → `provider-anthropic` (incl. the built-in `anthropic`
+provider), `open_ai_responses` → `provider-openai-responses` (incl. built-in
+`openai`). The artifacts are bundled in `oino-app` (`include_bytes!`);
+host-resolved config (base_url, headers, auth spec) is passed via `init`,
+the api key via `host.secret("api_key")`, and network permissions are
+synthesized from the resolved URLs. Under `providers.runtime = "native"` the
+anthropic/responses protocols report a readiness diagnostic (no native
+adapter exists). Both adapters carry pi's generated catalog data verbatim
+(`extensions/crates/oino-provider-kit/assets/{anthropic,openai}.json`) and
+are verified byte-for-byte against pi via oracle fixtures — see
+`scripts/pi-oracle/README.md` for regeneration.
 
 Google/Vertex, Bedrock, Codex WebSocket and Mistral are follow-ups, not P3.
 

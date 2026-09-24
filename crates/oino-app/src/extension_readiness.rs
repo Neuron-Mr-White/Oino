@@ -296,6 +296,8 @@ fn auth_flow_label(flow: AuthFlowType) -> &'static str {
 fn runtime_protocol_label(protocol: ProviderRuntimeProtocol) -> &'static str {
     match protocol {
         ProviderRuntimeProtocol::OpenAiChatCompletions => "OpenAI-compatible chat",
+        ProviderRuntimeProtocol::AnthropicMessages => "Anthropic messages",
+        ProviderRuntimeProtocol::OpenAiResponses => "OpenAI responses",
     }
 }
 

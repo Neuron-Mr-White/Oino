@@ -1219,6 +1219,8 @@ pub struct ProviderRuntimeConfigContribution {
 pub enum ProviderRuntimeProtocol {
     #[default]
     OpenAiChatCompletions,
+    AnthropicMessages,
+    OpenAiResponses,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

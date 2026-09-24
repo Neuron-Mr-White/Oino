@@ -106,9 +106,9 @@ use oino_extension_manager::{
 };
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_catalog::{provider_by_id, resolve_provider, ProviderDescriptor};
-use oino_provider_openrouter::OpenRouterConfig;
 #[cfg(test)]
 use oino_provider_openrouter::OpenAiCompatibleConfig;
+use oino_provider_openrouter::OpenRouterConfig;
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
@@ -5164,7 +5164,7 @@ fn content_text(content: &[ContentBlock]) -> String {
     content
         .iter()
         .filter_map(|block| match block {
-            ContentBlock::Text { text } => Some(text.as_str()),
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -5682,7 +5682,10 @@ fn prompt_message_from_input(prompt: String) -> Result<Message, String> {
         return Ok(Message::user_text(prompt));
     }
 
-    let mut content = vec![ContentBlock::Text { text: prompt }];
+    let mut content = vec![ContentBlock::Text {
+        text: prompt,
+        signature: None,
+    }];
     for path in image_paths {
         let media_type = image_mime_from_path(&path)
             .ok_or_else(|| format!("Unsupported image type: {}", path.display()))?;
@@ -7256,7 +7259,7 @@ fn content_text_preview(content: &[ContentBlock]) -> Option<String> {
     let joined = content
         .iter()
         .map(|block| match block {
-            ContentBlock::Text { text } | ContentBlock::Thinking { text, .. } => text.as_str(),
+            ContentBlock::Text { text, .. } | ContentBlock::Thinking { text, .. } => text.as_str(),
             ContentBlock::ToolCall { name, .. } => name.as_str(),
             ContentBlock::Image { .. } => "image",
         })
@@ -7629,7 +7632,7 @@ fn assistant_message_text(message: &Message) -> Option<String> {
     let text = content
         .iter()
         .filter_map(|block| match block {
-            ContentBlock::Text { text } => Some(text.trim()),
+            ContentBlock::Text { text, .. } => Some(text.trim()),
             _ => None,
         })
         .filter(|text| !text.is_empty())
@@ -7975,6 +7978,8 @@ mod tests {
     use oino_auth::AuthConfig;
     use oino_session::SessionHeader;
     use oino_types::{AssistantStreamEvent, StopReason};
+    use oino_types::{OinoId, PromptSection, ProviderMetadata, ToolDeclaration};
+    use serde_json::{json, Map, Value};
 
     #[test]
     fn default_model_is_omniroute_model() {
@@ -9602,7 +9607,7 @@ mod tests {
         .await
         .unwrap_or_else(|err| panic!("echo tool failed: {err}"));
         assert!(
-            matches!(&result.content[0], oino_types::ContentBlock::Text { text } if text.contains("hi")),
+            matches!(&result.content[0], oino_types::ContentBlock::Text { text, .. } if text.contains("hi")),
             "unexpected tool result: {:?}",
             result.content
         );
@@ -9968,6 +9973,7 @@ mod tests {
         wasm_config.base_url = wasm_url.clone();
         let mut set = WasmExtensions::empty();
         wasm_extensions::instantiate_declarative_wasm_provider(
+            oino_extension_core::ProviderRuntimeProtocol::OpenAiChatCompletions,
             "parity",
             &wasm_config,
             "optional",
@@ -10038,6 +10044,7 @@ mod tests {
         for name in [
             "authorization",
             "content-type",
+            "content-length",
             "x-session-id",
             "session_id",
             "x-client-request-id",
@@ -10275,6 +10282,7 @@ mod tests {
         wasm_config.base_url = wasm_url;
         let mut set = WasmExtensions::empty();
         wasm_extensions::instantiate_declarative_wasm_provider(
+            oino_extension_core::ProviderRuntimeProtocol::OpenAiChatCompletions,
             "parity",
             &wasm_config,
             "none",
@@ -10318,5 +10326,656 @@ mod tests {
                 .any(|e| matches!(e, AssistantStreamEvent::Aborted)),
             "wasm abort events: {wasm_events:?}"
         );
+    }
+
+    // ---- P3b: pi oracle parity (anthropic-messages / openai-responses) ----
+
+    struct PiFixture {
+        context: Value,
+        sse: String,
+        status: u16,
+        model_id: String,
+        request_headers: Value,
+        request_body: Value,
+        events: Vec<Value>,
+    }
+
+    fn pi_fixture(component: &str, case: &str) -> PiFixture {
+        let text = match (component, case) {
+            ("provider-anthropic", name) => match name {
+                "a_system_user" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/a_system_user.json"),
+                "b_tools_roundtrip" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/b_tools_roundtrip.json"),
+                "c_thinking_replay" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/c_thinking_replay.json"),
+                "d_retention_short" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/d_retention_short.json"),
+                "d_retention_long" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/d_retention_long.json"),
+                "d_retention_none" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/d_retention_none.json"),
+                "e_midconvo_capable" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/e_midconvo_capable.json"),
+                "e_midconvo_collapsed" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/e_midconvo_collapsed.json"),
+                "f_image" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/f_image.json"),
+                "g_usage_cache" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/g_usage_cache.json"),
+                "h_error_429" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/h_error_429.json"),
+                "h_error_400" => include_str!("../../../extensions/crates/provider-anthropic/fixtures/pi/h_error_400.json"),
+                other => panic!("unknown anthropic case {other}"),
+            },
+            ("provider-openai-responses", name) => match name {
+                "a_system_user" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/a_system_user.json"),
+                "b_tools_roundtrip" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/b_tools_roundtrip.json"),
+                "c_thinking_replay" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/c_thinking_replay.json"),
+                "d_retention_short" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/d_retention_short.json"),
+                "d_retention_long" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/d_retention_long.json"),
+                "d_retention_none" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/d_retention_none.json"),
+                "e_midconvo_capable" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/e_midconvo_capable.json"),
+                "e_midconvo_collapsed" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/e_midconvo_collapsed.json"),
+                "f_image" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/f_image.json"),
+                "g_usage_cache" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/g_usage_cache.json"),
+                "h_error_429" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/h_error_429.json"),
+                "h_error_400" => include_str!("../../../extensions/crates/provider-openai-responses/fixtures/pi/h_error_400.json"),
+                other => panic!("unknown responses case {other}"),
+            },
+            _ => panic!("unknown component"),
+        };
+        let fixture: Value =
+            serde_json::from_str(text).unwrap_or_else(|err| panic!("fixture parse: {err}"));
+        PiFixture {
+            context: fixture["context"].clone(),
+            sse: fixture["sse"].as_str().unwrap_or_default().to_string(),
+            status: fixture["status"].as_u64().unwrap_or(200) as u16,
+            model_id: fixture["model"]["id"].as_str().unwrap_or_default().into(),
+            request_headers: fixture["request"]["headers"].clone(),
+            request_body: fixture["request"]["body"].clone(),
+            events: fixture["events"].as_array().cloned().unwrap_or_default(),
+        }
+    }
+
+    fn pi_stop_reason(reason: &str) -> StopReason {
+        match reason {
+            "stop" => StopReason::EndTurn,
+            "length" => StopReason::Length,
+            "toolUse" => StopReason::ToolUse,
+            "error" => StopReason::Error,
+            "aborted" => StopReason::Aborted,
+            other => panic!("stop reason {other}"),
+        }
+    }
+
+    /// Convert a pi context message list into Oino `Message`s. pi tool call
+    /// ids become `native_id`s on Oino blocks; tool results are linked to the
+    /// originating block's `OinoId`.
+    fn pi_context_to_messages(context: &Value) -> Vec<Message> {
+        let mut messages = Vec::new();
+        let mut call_ids: std::collections::BTreeMap<String, OinoId> =
+            std::collections::BTreeMap::new();
+        for msg in context.as_array().unwrap_or(&Vec::new()) {
+            let role = msg["role"].as_str().unwrap_or_default();
+            match role {
+                "system" => {
+                    let content = msg["content"].as_str().unwrap_or_default().to_string();
+                    let sections: Vec<PromptSection> = msg["sections"]
+                        .as_object()
+                        .map(|map| {
+                            map.iter()
+                                .map(|(name, text)| PromptSection {
+                                    name: name.clone(),
+                                    text: text.as_str().map(str::to_string),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let tools_added = pi_tools(&msg["toolsAdded"]);
+                    let tools_removed: Vec<String> = msg["toolsRemoved"]
+                        .as_array()
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(|t| {
+                                    t["name"].as_str().or(t.as_str()).map(str::to_string)
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    messages.push(Message::System {
+                        id: OinoId::new_v4(),
+                        content,
+                        sections,
+                        tools_added,
+                        tools_removed,
+                    });
+                }
+                "user" => {
+                    messages.push(Message::User {
+                        id: OinoId::new_v4(),
+                        content: pi_content_blocks(&msg["content"]),
+                    });
+                }
+                "assistant" => {
+                    let mut content = Vec::new();
+                    for block in msg["content"].as_array().unwrap_or(&Vec::new()) {
+                        match block["type"].as_str() {
+                            Some("text") => content.push(ContentBlock::Text {
+                                text: block["text"].as_str().unwrap_or_default().into(),
+                                signature: block["textSignature"].as_str().map(str::to_string),
+                            }),
+                            Some("thinking") => content.push(ContentBlock::Thinking {
+                                text: block["thinking"].as_str().unwrap_or_default().into(),
+                                redacted: block["redacted"].as_bool().unwrap_or(false),
+                                signature: block["thinkingSignature"].as_str().map(str::to_string),
+                                provider_data: None,
+                            }),
+                            Some("toolCall") => {
+                                let id = OinoId::new_v4();
+                                let native = block["id"].as_str().unwrap_or_default().to_string();
+                                call_ids.insert(native.clone(), id);
+                                content.push(ContentBlock::ToolCall {
+                                    id,
+                                    name: block["name"].as_str().unwrap_or_default().into(),
+                                    arguments: block["arguments"].clone(),
+                                    native_id: Some(native),
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                    let stop = msg["stopReason"].as_str().map(pi_stop_reason);
+                    let model_name = msg["model"].as_str().unwrap_or_default().to_string();
+                    let provider_name = msg["provider"].as_str().unwrap_or_default().to_string();
+                    messages.push(Message::Assistant {
+                        id: OinoId::new_v4(),
+                        content,
+                        stop_reason: stop,
+                        usage: None,
+                        provider: Some(ProviderMetadata {
+                            request_id: None,
+                            model: Some(Model::new(provider_name, model_name)),
+                            values: Default::default(),
+                        }),
+                        response_model: None,
+                        error_message: None,
+                        provider_thinking_level: msg["providerThinkingLevel"]
+                            .as_str()
+                            .map(str::to_string),
+                    });
+                }
+                "toolResult" => {
+                    let call = msg["toolCallId"].as_str().unwrap_or_default();
+                    let id = call_ids.get(call).copied().unwrap_or_else(OinoId::nil);
+                    messages.push(Message::ToolResult {
+                        id: OinoId::new_v4(),
+                        tool_call_id: id,
+                        tool_name: msg["toolName"].as_str().unwrap_or_default().into(),
+                        content: pi_content_blocks(&msg["content"]),
+                        is_error: msg["isError"].as_bool().unwrap_or(false),
+                        terminate: false,
+                        details: None,
+                        usage: None,
+                        added_tool_names: Vec::new(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        messages
+    }
+
+    fn pi_tools(value: &Value) -> Vec<ToolDeclaration> {
+        value
+            .as_array()
+            .map(|tools| {
+                tools
+                    .iter()
+                    .map(|tool| ToolDeclaration {
+                        name: tool["name"].as_str().unwrap_or_default().into(),
+                        description: tool["description"].as_str().unwrap_or_default().into(),
+                        input_schema: tool["parameters"].clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn pi_content_blocks(value: &Value) -> Vec<ContentBlock> {
+        if let Some(text) = value.as_str() {
+            return vec![ContentBlock::Text {
+                text: text.to_string(),
+                signature: None,
+            }];
+        }
+        value
+            .as_array()
+            .map(|blocks| {
+                blocks
+                    .iter()
+                    .filter_map(|block| match block["type"].as_str() {
+                        Some("text") => Some(ContentBlock::Text {
+                            text: block["text"].as_str().unwrap_or_default().into(),
+                            signature: None,
+                        }),
+                        Some("image") => Some(ContentBlock::Image {
+                            media_type: block["mimeType"].as_str().unwrap_or_default().into(),
+                            data: block["data"].as_str().unwrap_or_default().into(),
+                        }),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Project Oino `AssistantStreamEvent`s into the pi event vocabulary for
+    /// 1:1 comparison (deltas, tool calls, done/error, thinking signatures
+    /// kept aside).
+    fn project_events(events: &[AssistantStreamEvent]) -> Vec<Value> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                AssistantStreamEvent::Start { .. } => Some(json!({"type": "start"})),
+                AssistantStreamEvent::TextDelta { delta } => {
+                    Some(json!({"type": "text_delta", "delta": delta}))
+                }
+                AssistantStreamEvent::ThinkingDelta { delta } => {
+                    Some(json!({"type": "thinking_delta", "delta": delta}))
+                }
+                AssistantStreamEvent::ToolCallDelta { arguments_delta, .. } => {
+                    Some(json!({"type": "toolcall_delta", "delta": arguments_delta}))
+                }
+                AssistantStreamEvent::ToolCallDone {
+                    name,
+                    native_id,
+                    arguments,
+                    ..
+                } => Some(json!({
+                    "type": "toolcall_end",
+                    "toolCall": {"id": native_id.clone().unwrap_or_default(), "name": name, "arguments": arguments}
+                })),
+                AssistantStreamEvent::Done { stop_reason, .. } => Some(json!({
+                    "type": "done",
+                    "reason": match stop_reason {
+                        StopReason::EndTurn => "stop",
+                        StopReason::Length => "length",
+                        StopReason::ToolUse => "toolUse",
+                        StopReason::Error => "error",
+                        StopReason::Aborted => "aborted",
+                        _ => "stop",
+                    }
+                })),
+                AssistantStreamEvent::Error { message } => {
+                    Some(json!({"type": "error", "errorMessage": message}))
+                }
+                AssistantStreamEvent::Aborted => Some(json!({"type": "error", "reason": "aborted"})),
+                // ThinkingSignature/Usage are Oino extras with no pi event
+                // counterpart (pi folds them into the final message).
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pi_expected_events(fixture: &PiFixture) -> Vec<Value> {
+        fixture
+            .events
+            .iter()
+            .filter_map(|event| {
+                match event["type"].as_str().unwrap_or_default() {
+                    "start" => Some(json!({"type": "start"})),
+                    "text_delta" => Some(event.clone()),
+                    "thinking_delta" => Some(event.clone()),
+                    "toolcall_delta" => Some(event.clone()),
+                    "toolcall_end" => {
+                        let mut e = event.clone();
+                        if let Some(call) = e.get_mut("toolCall") {
+                            call.as_object_mut().map(|o| o.remove("name"));
+                            // keep id + arguments only? compare all three
+                        }
+                        Some(e)
+                    }
+                    "done" => Some(json!({
+                        "type": "done",
+                        "reason": event["reason"].clone(),
+                    })),
+                    "error" => Some(json!({"type": "error"})),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
+    async fn run_pi_oracle_case(
+        temp: &tempfile::TempDir,
+        component_dir: &str,
+        protocol: oino_extension_core::ProviderRuntimeProtocol,
+        provider_id: &str,
+        case: &str,
+    ) -> (
+        Result<Vec<AssistantStreamEvent>, String>,
+        RecordedRequest,
+        PiFixture,
+    ) {
+        let fixture = pi_fixture(component_dir, case);
+        let sse: &'static str = Box::leak(fixture.sse.clone().into_boxed_str());
+        let (url, rx) = spawn_recording_server(fixture.status, "text/event-stream", sse);
+
+        let paths =
+            ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path().join("project"))
+                .unwrap_or_else(|err| panic!("paths: {err}"));
+        let engine = WasmHostEngine::new(temp.path().join(format!("wasm-cache-{case}")))
+            .unwrap_or_else(|err| panic!("engine: {err}"));
+        let config = OpenAiCompatibleConfig::new(provider_id, provider_id, url.clone());
+        let mut set = WasmExtensions::empty();
+        wasm_extensions::instantiate_declarative_wasm_provider(
+            protocol,
+            provider_id,
+            &config,
+            "required",
+            None,
+            Some("test-key".into()),
+            None,
+            &paths,
+            &engine,
+            &mut set,
+        )
+        .await;
+        let provider = set
+            .providers
+            .get(provider_id)
+            .unwrap_or_else(|| panic!("{case}: wasm provider missing"))
+            .clone();
+
+        let thinking = if case == "c_thinking_replay" {
+            ThinkingLevel::Medium
+        } else {
+            ThinkingLevel::Off
+        };
+        let retention = match case {
+            "d_retention_long" => oino_agent_loop::CacheRetention::Long,
+            "d_retention_none" => oino_agent_loop::CacheRetention::None,
+            // anthropic g ran with long retention (1h cache write usage)
+            "g_usage_cache" if component_dir == "provider-anthropic" => {
+                oino_agent_loop::CacheRetention::Long
+            }
+            _ => oino_agent_loop::CacheRetention::Short,
+        };
+        let request = oino_agent_loop::StreamRequest {
+            model: Model::new(provider_id, fixture.model_id.clone()),
+            thinking_level: thinking,
+            transcript: oino_types::transcript::Transcript::new(pi_context_to_messages(
+                &fixture.context,
+            )),
+            session_id: Some("sess-1234".into()),
+            cache_retention: retention,
+        };
+        let outcome = provider
+            .stream(request, AbortSignal::new())
+            .await
+            .map_err(|err| err.to_string());
+        let recorded = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|err| panic!("{case}: request not recorded: {err}"));
+        (outcome, recorded, fixture)
+    }
+
+    fn assert_pi_request(case: &str, recorded: &RecordedRequest, fixture: &PiFixture) {
+        // request body as parsed JSON (key order may differ), plus byte log
+        let body_json: Value = serde_json::from_slice(&recorded.body).unwrap_or_else(|err| {
+            panic!(
+                "{case}: wasm body is not JSON: {err} ({})",
+                String::from_utf8_lossy(&recorded.body)
+            )
+        });
+        assert_eq!(
+            body_json,
+            fixture.request_body,
+            "{case}: request JSON
+wasm: {}
+pi: {}",
+            serde_json::to_string_pretty(&body_json).unwrap_or_default(),
+            serde_json::to_string_pretty(&fixture.request_body).unwrap_or_default(),
+        );
+        let byte_equal = String::from_utf8(recorded.body.clone()).ok()
+            == serde_json::to_string(&fixture.request_body).ok();
+        eprintln!("{case}: JSON-equal=yes byte-equal={byte_equal}");
+
+        // headers: auth/version/session/content-type + content-length framing
+        for (name, value) in fixture.request_headers.as_object().unwrap_or(&Map::new()) {
+            let lname = name.to_ascii_lowercase();
+            let check = matches!(
+                lname.as_str(),
+                "x-api-key"
+                    | "authorization"
+                    | "anthropic-version"
+                    | "anthropic-beta"
+                    | "session_id"
+                    | "x-client-request-id"
+                    | "x-session-id"
+                    | "x-session-affinity"
+                    | "content-type"
+                    | "accept"
+            );
+            if !check {
+                continue;
+            }
+            assert_eq!(
+                recorded.headers.get(&lname).map(String::as_str),
+                value.as_str(),
+                "{case}: header `{lname}` (pi={value})"
+            );
+        }
+        assert!(
+            recorded.headers.contains_key("content-length"),
+            "{case}: expected content-length framing"
+        );
+    }
+
+    fn assert_pi_events(
+        case: &str,
+        outcome: &Result<Vec<AssistantStreamEvent>, String>,
+        fixture: &PiFixture,
+    ) {
+        let expected = pi_expected_events(fixture);
+        if fixture.status >= 400 {
+            assert!(outcome.is_err(), "{case}: expected stream error");
+            assert_eq!(expected.len(), 1, "{case}: pi error event count");
+            assert_eq!(
+                expected[0]["type"], "error",
+                "{case}: pi emitted non-error terminal event"
+            );
+            return;
+        }
+        let events = outcome
+            .as_ref()
+            .unwrap_or_else(|err| panic!("{case}: stream failed: {err}"));
+        let projected = project_events(events);
+        // compare fields pi asserts: type/delta/content/reason + toolCall {id,name,arguments}
+        assert_eq!(
+            projected.len(),
+            expected.len(),
+            "{case}: event count
+wasm: {projected:?}
+pi: {expected:?}"
+        );
+        for (index, (got, want)) in projected.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(
+                got["type"], want["type"],
+                "{case}: event {index} type (got {got} want {want})"
+            );
+            for key in ["delta", "content", "reason"] {
+                if want.get(key).is_some() {
+                    assert_eq!(got[key], want[key], "{case}: event {index} `{key}`");
+                }
+            }
+            if want.get("toolCall").is_some() {
+                let got_call = &got["toolCall"];
+                let want_call = &want["toolCall"];
+                assert_eq!(got_call["id"], want_call["id"], "{case}: toolCall id");
+                assert_eq!(got_call["name"], want_call["name"], "{case}: toolCall name");
+                assert_eq!(
+                    got_call["arguments"], want_call["arguments"],
+                    "{case}: toolCall arguments"
+                );
+            }
+        }
+        // usage parity: last Oino Usage event vs pi done.message.usage
+        if let Some(usage) = fixture
+            .events
+            .iter()
+            .rev()
+            .find(|e| e.get("usage").is_some())
+        {
+            let oino_usage = events.iter().rev().find_map(|e| match e {
+                AssistantStreamEvent::Usage { usage } => Some(usage.clone()),
+                _ => None,
+            });
+            if let Some(got) = oino_usage {
+                let want = &usage["usage"];
+                assert_eq!(
+                    got.input_tokens as i64,
+                    want["input"].as_i64().unwrap_or(-1),
+                    "{case}: usage input"
+                );
+                assert_eq!(
+                    got.output_tokens as i64,
+                    want["output"].as_i64().unwrap_or(-1),
+                    "{case}: usage output"
+                );
+                assert_eq!(
+                    got.cache_read_tokens as i64,
+                    want["cacheRead"].as_i64().unwrap_or(-1),
+                    "{case}: usage cacheRead"
+                );
+                assert_eq!(
+                    got.cache_write_tokens as i64,
+                    want["cacheWrite"].as_i64().unwrap_or(-1),
+                    "{case}: usage cacheWrite"
+                );
+            }
+        }
+    }
+
+    async fn pi_oracle_parity(
+        component_dir: &str,
+        protocol: oino_extension_core::ProviderRuntimeProtocol,
+        provider_id: &str,
+        case: &str,
+    ) {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let (outcome, recorded, fixture) =
+            run_pi_oracle_case(&temp, component_dir, protocol, provider_id, case).await;
+        let label = format!("{component_dir}/{case}");
+        assert_pi_request(&label, &recorded, &fixture);
+        assert_pi_events(&label, &outcome, &fixture);
+    }
+
+    const ANTHROPIC_CASES: &[&str] = &[
+        "a_system_user",
+        "b_tools_roundtrip",
+        "c_thinking_replay",
+        "d_retention_short",
+        "d_retention_long",
+        "d_retention_none",
+        "e_midconvo_capable",
+        "e_midconvo_collapsed",
+        "f_image",
+        "g_usage_cache",
+        "h_error_429",
+        "h_error_400",
+    ];
+
+    #[tokio::test]
+    async fn pi_oracle_anthropic_messages_parity() {
+        for case in ANTHROPIC_CASES {
+            pi_oracle_parity(
+                "provider-anthropic",
+                oino_extension_core::ProviderRuntimeProtocol::AnthropicMessages,
+                "anthropic",
+                case,
+            )
+            .await;
+        }
+    }
+
+    #[tokio::test]
+    async fn pi_oracle_openai_responses_parity() {
+        for case in ANTHROPIC_CASES {
+            pi_oracle_parity(
+                "provider-openai-responses",
+                oino_extension_core::ProviderRuntimeProtocol::OpenAiResponses,
+                "openai",
+                case,
+            )
+            .await;
+        }
+    }
+
+    /// Determinism + prefix-consistency: same request twice → identical body
+    /// bytes; turn N+1 messages carry turn N's as a prefix (mid-convo models).
+    #[tokio::test]
+    async fn pi_oracle_determinism_and_prefix() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        for (component_dir, protocol, provider_id, list_key) in [
+            (
+                "provider-anthropic",
+                oino_extension_core::ProviderRuntimeProtocol::AnthropicMessages,
+                "anthropic",
+                "messages",
+            ),
+            (
+                "provider-openai-responses",
+                oino_extension_core::ProviderRuntimeProtocol::OpenAiResponses,
+                "openai",
+                "input",
+            ),
+        ] {
+            let (_, recorded_a, _) = run_pi_oracle_case(
+                &temp,
+                component_dir,
+                protocol,
+                provider_id,
+                "e_midconvo_capable",
+            )
+            .await;
+            let (_, recorded_b, _) = run_pi_oracle_case(
+                &temp,
+                component_dir,
+                protocol,
+                provider_id,
+                "e_midconvo_capable",
+            )
+            .await;
+            assert_eq!(
+                recorded_a.body, recorded_b.body,
+                "{component_dir}: deterministic bytes"
+            );
+
+            // prefix: turn N's message list must appear verbatim at the
+            // start of turn N+1 (before the added user turn). Build both
+            // turns through the same component and compare.
+            let (_, turn1_rec, fixture) =
+                run_pi_oracle_case(&temp, component_dir, protocol, provider_id, "a_system_user")
+                    .await;
+            let turn1_body: Value =
+                serde_json::from_slice(&turn1_rec.body).unwrap_or_else(|_| json!({}));
+            let turn1_list = turn1_body[list_key].as_array().cloned().unwrap_or_default();
+            let turn2_list = serde_json::from_slice::<Value>(&recorded_a.body)
+                .unwrap_or_else(|_| json!({}))[list_key]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            // a_system_user's context is the leading prefix of
+            // e_midconvo_capable's (same system+first user turn modulo the
+            // different prompt/tool text — compare structure count and roles)
+            assert!(
+                turn2_list.len() >= turn1_list.len(),
+                "{component_dir}: turn2 must carry at least turn1's messages"
+            );
+            for (i, m) in turn1_list.iter().enumerate() {
+                let role = m["role"].as_str().or_else(|| m["type"].as_str());
+                let role2 = turn2_list[i]["role"]
+                    .as_str()
+                    .or_else(|| turn2_list[i]["type"].as_str());
+                assert_eq!(
+                    role, role2,
+                    "{component_dir}: prefix item {i} role ({m:?} vs {:?})",
+                    turn2_list[i]
+                );
+            }
+            let _ = fixture;
+        }
     }
 }

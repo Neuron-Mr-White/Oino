@@ -536,7 +536,7 @@ fn blocks_text(blocks: &[ContentBlock], include_tools: bool) -> String {
     blocks
         .iter()
         .filter_map(|block| match block {
-            ContentBlock::Text { text } => Some(text.clone()),
+            ContentBlock::Text { text, .. } => Some(text.clone()),
             ContentBlock::Image { media_type, .. } => Some(format!("[image:{media_type}]")),
             ContentBlock::Thinking { .. } => None,
             ContentBlock::ToolCall {
@@ -628,6 +628,7 @@ mod tests {
             provider: None,
             response_model: None,
             error_message: None,
+            provider_thinking_level: None,
         });
         session.append_message(Message::user_text("Now continue"));
         let branch = session

@@ -138,6 +138,18 @@ pub const OPTIONAL_BUILTIN_PACKAGES: &[OptionalBuiltinPackage] = &[
         directory_name: "router",
         description: "OmniRoute auth/router integration with external endpoint setup and version fallback guidance",
     },
+    OptionalBuiltinPackage {
+        id: "oino.provider_anthropic",
+        display_name: "Oino Anthropic Provider",
+        directory_name: "provider-anthropic",
+        description: "Anthropic Messages provider served by the bundled WASM component (providers.runtime = wasm)",
+    },
+    OptionalBuiltinPackage {
+        id: "oino.provider_openai",
+        display_name: "Oino OpenAI Provider",
+        directory_name: "provider-openai",
+        description: "OpenAI Responses provider served by the bundled WASM component (providers.runtime = wasm)",
+    },
 ];
 
 #[must_use]

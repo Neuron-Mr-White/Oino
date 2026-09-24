@@ -201,6 +201,13 @@ pub mod http {
                 .set(name, &[value.as_bytes().to_vec()])
                 .map_err(|err| format!("set header `{name}`: {err:?}"))?;
         }
+        if let Some(bytes) = body {
+            // Explicit content-length so wasi-http does not use chunked
+            // framing — some OpenAI-compatible servers reject chunked POSTs.
+            fields
+                .set("content-length", &[bytes.len().to_string().into_bytes()])
+                .map_err(|err| format!("set content-length: {err:?}"))?;
+        }
         let request = OutgoingRequest::new(fields);
         let method = match method.to_ascii_uppercase().as_str() {
             "GET" => ext::wasi::http::types::Method::Get,

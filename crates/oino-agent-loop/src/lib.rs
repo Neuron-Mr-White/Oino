@@ -169,7 +169,7 @@ impl MessageAccumulator {
 
     pub fn apply(&mut self, delta: &ContentDelta) {
         match delta {
-            ContentDelta::Text { text } => self.text.push_str(text),
+            ContentDelta::Text { text, .. } => self.text.push_str(text),
             ContentDelta::Thinking { text } => self.thinking.push_str(text),
             ContentDelta::ToolCall { block } => self.tool_calls.push(block.clone()),
         }
@@ -189,6 +189,7 @@ impl MessageAccumulator {
         if !self.text.is_empty() {
             content.push(ContentBlock::Text {
                 text: self.text.clone(),
+                signature: None,
             });
         }
         content.extend(self.tool_calls.iter().cloned());
@@ -281,7 +282,10 @@ impl ToolResult {
         Self {
             call_id: call.id,
             tool_name: call.name.clone(),
-            content: vec![ContentBlock::Text { text: text.into() }],
+            content: vec![ContentBlock::Text {
+                text: text.into(),
+                signature: None,
+            }],
             is_error: false,
             terminate: false,
             details: None,
@@ -293,7 +297,10 @@ impl ToolResult {
         Self {
             call_id: call.id,
             tool_name: call.name.clone(),
-            content: vec![ContentBlock::Text { text: text.into() }],
+            content: vec![ContentBlock::Text {
+                text: text.into(),
+                signature: None,
+            }],
             is_error: true,
             terminate: false,
             details: None,
@@ -975,6 +982,7 @@ impl StreamAccumulator {
             AssistantStreamEvent::ToolCallDelta {
                 id,
                 name,
+                native_id: _,
                 arguments_delta,
             } => {
                 if !self.partial_tool_calls.contains_key(&id) {
@@ -989,6 +997,7 @@ impl StreamAccumulator {
             AssistantStreamEvent::ToolCallDone {
                 id,
                 name,
+                native_id,
                 arguments,
             } => {
                 if !self.partial_tool_calls.contains_key(&id) {
@@ -1006,7 +1015,7 @@ impl StreamAccumulator {
                     id,
                     name,
                     arguments,
-                    native_id: None,
+                    native_id,
                 };
                 self.content.push(block.clone());
                 self.emit_delta(message_id, ContentDelta::ToolCall { block }, event_sink)
@@ -1055,6 +1064,7 @@ impl StreamAccumulator {
                 0,
                 ContentBlock::Text {
                     text: self.text.clone(),
+                    signature: None,
                 },
             );
         }
@@ -1090,6 +1100,7 @@ impl StreamAccumulator {
             provider: self.provider.take(),
             response_model: self.response_model.take(),
             error_message,
+            provider_thinking_level: None,
         }
     }
 }
@@ -1435,6 +1446,7 @@ impl Tool for FakeTool {
                 tool_name: call.name,
                 content: vec![ContentBlock::Text {
                     text: "aborted".into(),
+                    signature: None,
                 }],
                 is_error: true,
                 terminate: true,
@@ -1560,11 +1572,13 @@ mod tests {
                 AssistantStreamEvent::ToolCallDone {
                     id: call_a,
                     name: "a".into(),
+                    native_id: None,
                     arguments: serde_json::json!({}),
                 },
                 AssistantStreamEvent::ToolCallDone {
                     id: call_b,
                     name: "b".into(),
+                    native_id: None,
                     arguments: serde_json::json!({}),
                 },
                 AssistantStreamEvent::Done {
@@ -1685,7 +1699,7 @@ mod tests {
             .iter()
             .filter_map(|message| match message {
                 Message::User { content, .. } => content.iter().find_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text.clone()),
+                    ContentBlock::Text { text, .. } => Some(text.clone()),
                     _ => None,
                 }),
                 _ => None,
@@ -1700,7 +1714,7 @@ mod tests {
             Some(Message::Assistant { content, .. })
                 if content.iter().any(|block| matches!(
                     block,
-                    ContentBlock::Text { text } if text == "after steer"
+                    ContentBlock::Text { text, .. } if text == "after steer"
                 ))
         ));
 
@@ -1712,7 +1726,7 @@ mod tests {
                 AgentEvent::MessageEnd {
                     message: Message::User { content, .. },
                 } => content.into_iter().find_map(|block| match block {
-                    ContentBlock::Text { text } => Some(text),
+                    ContentBlock::Text { text, .. } => Some(text),
                     _ => None,
                 }),
                 _ => None,
@@ -1732,11 +1746,13 @@ mod tests {
                 AssistantStreamEvent::ToolCallDelta {
                     id: call,
                     name: Some("echo".into()),
+                    native_id: None,
                     arguments_delta: "{\"value\":".into(),
                 },
                 AssistantStreamEvent::ToolCallDelta {
                     id: call,
                     name: None,
+                    native_id: None,
                     arguments_delta: "42}".into(),
                 },
                 AssistantStreamEvent::Done {
@@ -1773,11 +1789,13 @@ mod tests {
                 AssistantStreamEvent::ToolCallDone {
                     id: call_a,
                     name: "a".into(),
+                    native_id: None,
                     arguments: serde_json::json!({}),
                 },
                 AssistantStreamEvent::ToolCallDone {
                     id: call_b,
                     name: "b".into(),
+                    native_id: None,
                     arguments: serde_json::json!({}),
                 },
                 AssistantStreamEvent::Done {
@@ -1829,6 +1847,7 @@ mod tests {
             AssistantStreamEvent::ToolCallDone {
                 id: call,
                 name: "fail".into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::Done {
@@ -1849,7 +1868,7 @@ mod tests {
             message,
             Message::ToolResult { tool_name, is_error: true, content, .. }
                 if tool_name == "fail"
-                    && matches!(content.first(), Some(ContentBlock::Text { text }) if text.contains("kaput"))
+                    && matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text.contains("kaput"))
         )));
     }
 
@@ -1860,6 +1879,7 @@ mod tests {
             AssistantStreamEvent::ToolCallDone {
                 id: call,
                 name: "needs_arg".into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::Done {
@@ -1882,7 +1902,7 @@ mod tests {
         assert!(output.messages.iter().any(|message| matches!(
             message,
             Message::ToolResult { is_error: true, content, .. }
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text.contains("missing required argument"))
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text.contains("missing required argument"))
         )));
     }
 
@@ -1893,6 +1913,7 @@ mod tests {
             AssistantStreamEvent::ToolCallDone {
                 id: call,
                 name: "blocked".into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::Done {
@@ -1997,6 +2018,7 @@ mod tests {
             AssistantStreamEvent::ToolCallDone {
                 id: Uuid::new_v4(),
                 name: name.into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::Done {
@@ -2152,7 +2174,7 @@ mod tests {
         assert!(!output.messages.iter().any(|message| matches!(
             message,
             Message::User { content, .. }
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "queued")
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "queued")
         )));
         assert_eq!(*follow_up_polls.lock().await, 0);
         assert!(*steering_polls.lock().await <= 1);
@@ -2249,7 +2271,7 @@ mod tests {
         assert!(second.transcript.messages().iter().any(|message| matches!(
             message,
             Message::User { content, .. }
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "follow up")
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "follow up")
         )));
     }
 
@@ -2272,7 +2294,7 @@ mod tests {
                 assert!(context.transcript.messages().iter().any(|message| matches!(
                     message,
                     Message::User { content, .. }
-                        if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "steering")
+                        if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "steering")
                 )));
                 Ok(Some(RequestUpdate {
                     transcript: None,
@@ -2343,7 +2365,7 @@ mod tests {
             request.transcript.messages().iter().any(|message| matches!(
                 message,
                 Message::User { content, .. }
-                    if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "late steering")
+                    if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "late steering")
             ))
         };
         assert!(!contains_late(&requests[0]));
@@ -2393,6 +2415,7 @@ mod tests {
                 AssistantStreamEvent::ToolCallDone {
                     id: call,
                     name: "hidden".into(),
+                    native_id: None,
                     arguments: serde_json::json!({}),
                 },
                 AssistantStreamEvent::Done {
@@ -2428,7 +2451,7 @@ mod tests {
         assert!(output.messages.iter().any(|message| matches!(
             message,
             Message::ToolResult { is_error: true, content, .. }
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text.contains("tool `hidden` is not available"))
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text.contains("tool `hidden` is not available"))
         )));
     }
 
@@ -2446,6 +2469,7 @@ mod tests {
             AssistantStreamEvent::ToolCallDone {
                 id: call,
                 name: "read".into(),
+                native_id: None,
                 arguments: serde_json::json!({"path": "a"}),
             },
             AssistantStreamEvent::Done {

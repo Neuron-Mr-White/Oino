@@ -35,7 +35,12 @@ pub(crate) fn extension_runtime_config_for_provider_id(
     let Some(runtime) = &provider.runtime else {
         return Ok(None);
     };
-    if runtime.protocol != ProviderRuntimeProtocol::OpenAiChatCompletions {
+    if !matches!(
+        runtime.protocol,
+        ProviderRuntimeProtocol::OpenAiChatCompletions
+            | ProviderRuntimeProtocol::AnthropicMessages
+            | ProviderRuntimeProtocol::OpenAiResponses
+    ) {
         return Err(LoopError::Stream(format!(
             "extension provider `{provider_id}` uses an unsupported runtime protocol"
         )));

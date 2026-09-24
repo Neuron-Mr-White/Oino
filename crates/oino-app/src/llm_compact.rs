@@ -289,7 +289,7 @@ fn blocks_to_text(blocks: &[ContentBlock]) -> String {
     blocks
         .iter()
         .filter_map(|block| match block {
-            ContentBlock::Text { text } => Some(text.clone()),
+            ContentBlock::Text { text, .. } => Some(text.clone()),
             _ => None,
         })
         .collect::<Vec<_>>()

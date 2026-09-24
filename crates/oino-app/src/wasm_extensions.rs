@@ -14,8 +14,8 @@ use oino_agent_loop::{BeforeToolCallResult, StreamProvider, ToolCall};
 use oino_auth::AuthStorage;
 use oino_extension_core::{
     DiagnosticPhase, DiagnosticSeverity, ExtensionDiagnostic, ExtensionId, ExtensionManifest,
-    ExtensionPermissions, ExtensionSessionEntry, HealthState, HookEventKind, HookMode, SourceScope,
-    MANIFEST_FILE,
+    ExtensionPermissions, ExtensionSessionEntry, HealthState, HookEventKind, HookMode,
+    ProviderRuntimeProtocol, SourceScope, MANIFEST_FILE,
 };
 use oino_extension_manager::ExtensionManagerSnapshot;
 use oino_harness::HookRegistry;
@@ -639,6 +639,39 @@ pub(crate) async fn build_wasm_extensions(
 
     if providers_runtime == "wasm" {
         build_declarative_wasm_providers(snapshot, paths, auth, &engine, &mut set).await;
+    } else {
+        // Anthropic/Responses declarative providers only exist as WASM
+        // components; surface a readiness diagnostic under the native runtime.
+        for provider in crate::extension_provider_runtime::extension_runtime_providers(snapshot) {
+            let protocol = provider
+                .runtime
+                .as_ref()
+                .map_or(ProviderRuntimeProtocol::OpenAiChatCompletions, |runtime| {
+                    runtime.protocol
+                });
+            if matches!(
+                protocol,
+                ProviderRuntimeProtocol::AnthropicMessages
+                    | ProviderRuntimeProtocol::OpenAiResponses
+            ) {
+                set.diagnostics
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(diagnostic(
+                        None,
+                        DiagnosticSeverity::Warning,
+                        DiagnosticPhase::RuntimeLoad,
+                        format!(
+                            "declarative provider `{}` uses the `{}` protocol and only works with providers.runtime = \"wasm\"",
+                            provider.provider_id,
+                            serde_json::to_value(protocol)
+                                .ok()
+                                .and_then(|v| v.as_str().map(str::to_string))
+                                .unwrap_or_default()
+                        ),
+                    ));
+            }
+        }
     }
 
     Arc::new(set)
@@ -649,6 +682,18 @@ pub(crate) async fn build_wasm_extensions(
 /// `providers.runtime` is `wasm`; the host synthesizes permissions from the
 /// resolved provider config (network hosts + `api_key` secret).
 const OPENAI_COMPAT_WASM: &[u8] = include_bytes!("../assets/providers/openai_compat.wasm");
+
+/// Bundled Anthropic Messages and OpenAI Responses components.
+const ANTHROPIC_WASM: &[u8] = include_bytes!("../assets/providers/anthropic.wasm");
+const OPENAI_RESPONSES_WASM: &[u8] = include_bytes!("../assets/providers/openai_responses.wasm");
+
+fn component_for_protocol(protocol: ProviderRuntimeProtocol) -> Option<&'static [u8]> {
+    match protocol {
+        ProviderRuntimeProtocol::OpenAiChatCompletions => Some(OPENAI_COMPAT_WASM),
+        ProviderRuntimeProtocol::AnthropicMessages => Some(ANTHROPIC_WASM),
+        ProviderRuntimeProtocol::OpenAiResponses => Some(OPENAI_RESPONSES_WASM),
+    }
+}
 
 /// Secret resolver serving exactly one resolved credential under `api_key`.
 struct StaticSecretResolver(Option<String>);
@@ -779,6 +824,12 @@ async fn build_declarative_wasm_providers(
             .as_ref()
             .and_then(|runtime| runtime.models_url.clone());
         instantiate_declarative_wasm_provider(
+            provider
+                .runtime
+                .as_ref()
+                .map_or(ProviderRuntimeProtocol::OpenAiChatCompletions, |runtime| {
+                    runtime.protocol
+                }),
             &provider_id,
             &config,
             auth_kind,
@@ -797,6 +848,7 @@ async fn build_declarative_wasm_providers(
 /// register it (plus `list_models` ids) on `set`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn instantiate_declarative_wasm_provider(
+    protocol: ProviderRuntimeProtocol,
     provider_id: &str,
     config: &oino_provider_openrouter::OpenAiCompatibleConfig,
     auth_kind: &str,
@@ -834,27 +886,34 @@ pub(crate) async fn instantiate_declarative_wasm_provider(
         progress: set.progress.sink(),
         kv_dir,
     };
-    let extension = match WasmExtension::new(
-        engine.clone(),
-        OPENAI_COMPAT_WASM,
-        caps,
-        CallLimits::default(),
-        true,
-    ) {
-        Ok(extension) => Arc::new(extension),
-        Err(err) => {
-            set.diagnostics
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .push(diagnostic(
-                    None,
-                    DiagnosticSeverity::Error,
-                    DiagnosticPhase::RuntimeLoad,
-                    format!("wasm provider `{provider_id}` component load failed: {err}"),
-                ));
-            return;
-        }
+    let Some(component) = component_for_protocol(protocol) else {
+        set.diagnostics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(diagnostic(
+                None,
+                DiagnosticSeverity::Error,
+                DiagnosticPhase::RuntimeLoad,
+                format!("wasm provider `{provider_id}` has no bundled component for this protocol"),
+            ));
+        return;
     };
+    let extension =
+        match WasmExtension::new(engine.clone(), component, caps, CallLimits::default(), true) {
+            Ok(extension) => Arc::new(extension),
+            Err(err) => {
+                set.diagnostics
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(diagnostic(
+                        None,
+                        DiagnosticSeverity::Error,
+                        DiagnosticPhase::RuntimeLoad,
+                        format!("wasm provider `{provider_id}` component load failed: {err}"),
+                    ));
+                return;
+            }
+        };
     let init = json!({
         "provider_id": provider_id,
         "display_name": config.display_name,

@@ -1027,7 +1027,7 @@ fn user_content(content: &[ContentBlock]) -> Result<OpenRouterMessageContent, Op
     let mut parts = Vec::new();
     for block in content {
         match block {
-            ContentBlock::Text { text } => parts.push(OpenRouterContentPart::Text {
+            ContentBlock::Text { text, .. } => parts.push(OpenRouterContentPart::Text {
                 text: text.clone(),
                 cache_control: None,
             }),
@@ -1064,7 +1064,7 @@ fn optional_text_content(content: &[ContentBlock]) -> Result<Option<String>, Ope
     let mut text = String::new();
     for block in content {
         match block {
-            ContentBlock::Text { text: value } => text.push_str(value),
+            ContentBlock::Text { text: value, .. } => text.push_str(value),
             ContentBlock::ToolCall { .. } => {}
             ContentBlock::Image { .. } => {
                 return Err(OpenRouterError::UnsupportedContent(
@@ -1215,6 +1215,7 @@ impl SseEventParser {
         AssistantStreamEvent::ToolCallDelta {
             id: state.id,
             name,
+            native_id: None,
             arguments_delta,
         }
     }
@@ -1234,6 +1235,7 @@ impl SseEventParser {
                 events.push(AssistantStreamEvent::ToolCallDone {
                     id: state.id,
                     name,
+                    native_id: None,
                     arguments,
                 });
             }
@@ -1348,6 +1350,7 @@ impl From<OpenRouterUsage> for Usage {
             output_tokens: value.completion_tokens,
             cache_read_tokens,
             cache_write_tokens,
+            cache_write_1h_tokens: None,
             reasoning_tokens: value
                 .completion_tokens_details
                 .as_ref()
@@ -1797,6 +1800,7 @@ mod tests {
                 },
                 ContentBlock::Text {
                     text: "public answer".into(),
+                    signature: None,
                 },
             ],
             stop_reason: Some(StopReason::EndTurn),
@@ -1804,6 +1808,7 @@ mod tests {
             provider: None,
             response_model: None,
             error_message: None,
+            provider_thinking_level: None,
         }])) {
             Ok(value) => value,
             Err(err) => panic!("build failed: {err}"),
@@ -1884,6 +1889,7 @@ mod tests {
             content: vec![
                 ContentBlock::Text {
                     text: "describe".into(),
+                    signature: None,
                 },
                 ContentBlock::Image {
                     media_type: "image/png".into(),

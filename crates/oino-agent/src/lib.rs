@@ -506,6 +506,7 @@ mod tests {
             AssistantStreamEvent::ToolCallDone {
                 id: uuid::Uuid::new_v4(),
                 name: "slow".into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::Done {
@@ -534,6 +535,7 @@ mod tests {
             AssistantStreamEvent::ToolCallDone {
                 id: uuid::Uuid::new_v4(),
                 name: "slow".into(),
+                native_id: None,
                 arguments: serde_json::json!({}),
             },
             AssistantStreamEvent::Done {
@@ -558,7 +560,7 @@ mod tests {
         assert!(output.messages.iter().any(|message| matches!(
             message,
             Message::ToolResult { is_error: true, content, .. }
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "aborted")
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "aborted")
         )));
     }
 
@@ -659,7 +661,7 @@ mod tests {
             .find_map(|msg| match msg {
                 Message::Assistant { content, .. } => {
                     content.iter().find_map(|block| match block {
-                        ContentBlock::Text { text } => Some(text.clone()),
+                        ContentBlock::Text { text, .. } => Some(text.clone()),
                         _ => None,
                     })
                 }
@@ -719,7 +721,7 @@ mod tests {
         assert!(matches!(
             first.first(),
             Some(Message::User { content, .. })
-                if matches!(content.first(), Some(ContentBlock::Text { text }) if text == "s1")
+                if matches!(content.first(), Some(ContentBlock::Text { text, .. }) if text == "s1")
         ));
     }
 

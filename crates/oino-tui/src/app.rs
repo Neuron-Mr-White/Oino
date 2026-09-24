@@ -5854,6 +5854,7 @@ mod tests {
                 },
                 ContentBlock::Text {
                     text: "answer".into(),
+                    signature: None,
                 },
             ],
         );
@@ -5878,6 +5879,7 @@ mod tests {
             id,
             &[ContentBlock::Text {
                 text: "answer".into(),
+                signature: None,
             }],
         );
         assert!(state.transcript_version() > after_start);
@@ -5887,6 +5889,7 @@ mod tests {
             id,
             &[ContentBlock::Text {
                 text: "answer".into(),
+                signature: None,
             }],
         );
         assert_eq!(state.transcript_version(), after_update);

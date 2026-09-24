@@ -1484,7 +1484,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("execute: {err}"));
         assert!(!result.is_error);
         assert!(
-            matches!(&result.content[0], oino_types::ContentBlock::Text { text } if text.contains("ok"))
+            matches!(&result.content[0], oino_types::ContentBlock::Text { text, .. } if text.contains("ok"))
         );
     }
 
