@@ -179,6 +179,20 @@ pub struct OpenAiCompatibleConfig {
     pub auth: OpenAiCompatibleAuth,
     pub headers: BTreeMap<String, String>,
     pub chat_endpoint: Option<String>,
+    /// Send `prompt_cache_key` derived from `StreamRequest::session_id`.
+    /// `None` = auto: enabled only for `openrouter.ai` / `api.openai.com` hosts.
+    pub send_prompt_cache_key: Option<bool>,
+    /// Send `x-session-affinity` and `session_id` headers with the cache key.
+    pub session_affinity_headers: bool,
+    /// Anthropic-style `cache_control` breakpoints. `None` = auto: enabled for
+    /// models whose name starts with `anthropic/` or `~anthropic/`.
+    pub cache_control_format: Option<CacheControlFormat>,
+}
+
+/// Anthropic-style cache breakpoint format for OpenAI-compatible requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheControlFormat {
+    Anthropic,
 }
 
 impl OpenAiCompatibleConfig {
@@ -196,6 +210,9 @@ impl OpenAiCompatibleConfig {
             auth: OpenAiCompatibleAuth::None,
             headers: BTreeMap::new(),
             chat_endpoint: None,
+            send_prompt_cache_key: None,
+            session_affinity_headers: false,
+            cache_control_format: None,
         }
     }
 
@@ -319,7 +336,11 @@ impl OpenAiCompatibleProvider {
         &self,
         request: &StreamRequest,
     ) -> Result<OpenRouterChatRequest, OpenRouterError> {
-        build_openai_compatible_chat_request(request, &self.config.provider_id)
+        build_openai_compatible_chat_request_with_cache(
+            request,
+            &self.config.provider_id,
+            Some(&self.config),
+        )
     }
 
     async fn stream_events_inner(
@@ -337,6 +358,13 @@ impl OpenAiCompatibleProvider {
         builder = self.apply_auth(builder).await?;
         for (name, value) in &self.config.headers {
             builder = builder.header(name, value);
+        }
+        if self.config.session_affinity_headers {
+            if let Some(key) = &body.prompt_cache_key {
+                builder = builder
+                    .header("x-session-affinity", key.as_str())
+                    .header("session_id", key.as_str());
+            }
         }
         let response = builder
             .send()
@@ -586,6 +614,16 @@ pub struct OpenRouterChatRequest {
     pub tools: Vec<OpenRouterTool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<OpenRouterReasoning>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct OpenRouterCacheControl {
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -622,8 +660,14 @@ impl From<String> for OpenRouterMessageContent {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OpenRouterContentPart {
-    Text { text: String },
-    ImageUrl { image_url: OpenRouterImageUrl },
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<OpenRouterCacheControl>,
+    },
+    ImageUrl {
+        image_url: OpenRouterImageUrl,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -636,6 +680,8 @@ pub struct OpenRouterTool {
     #[serde(rename = "type")]
     pub kind: String,
     pub function: OpenRouterFunction,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<OpenRouterCacheControl>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -662,12 +708,29 @@ pub struct OpenRouterToolCallFunction {
 pub fn build_chat_request(
     request: &StreamRequest,
 ) -> Result<OpenRouterChatRequest, OpenRouterError> {
-    build_openai_compatible_chat_request(request, oino_auth::OPENROUTER_PROVIDER_ID)
+    build_openai_compatible_chat_request_with_cache(
+        request,
+        oino_auth::OPENROUTER_PROVIDER_ID,
+        None,
+    )
 }
 
 pub fn build_openai_compatible_chat_request(
     request: &StreamRequest,
     provider_id: &str,
+) -> Result<OpenRouterChatRequest, OpenRouterError> {
+    build_openai_compatible_chat_request_with_cache(request, provider_id, None)
+}
+
+/// Build a chat request applying the configured cache hints: a
+/// `prompt_cache_key` derived from `session_id` (when enabled and retention is
+/// not `None`), and Anthropic-style `cache_control` breakpoints on the system
+/// message, the last tool, and the last text part of the last
+/// user/assistant/tool message.
+pub fn build_openai_compatible_chat_request_with_cache(
+    request: &StreamRequest,
+    provider_id: &str,
+    cache: Option<&OpenAiCompatibleConfig>,
 ) -> Result<OpenRouterChatRequest, OpenRouterError> {
     if request.model.provider != provider_id {
         return Err(OpenRouterError::Serialization(format!(
@@ -700,7 +763,24 @@ pub fn build_openai_compatible_chat_request(
         }
         messages.push(convert_message(message)?);
     }
-    let tools = current_tools.iter().map(convert_tool).collect();
+    let mut tools: Vec<OpenRouterTool> = current_tools.iter().map(convert_tool).collect();
+    let retention_enabled = request.cache_retention != oino_agent_loop::CacheRetention::None;
+    if retention_enabled && cache_control_active(request, cache) {
+        let cache_control = OpenRouterCacheControl {
+            kind: "ephemeral".into(),
+            ttl: (request.cache_retention == oino_agent_loop::CacheRetention::Long)
+                .then(|| "1h".to_string()),
+        };
+        apply_anthropic_cache_control(&mut messages, &mut tools, cache_control);
+    }
+    let prompt_cache_key = if retention_enabled && cache_key_enabled(cache) {
+        request
+            .session_id
+            .as_deref()
+            .map(|id| id.chars().take(64).collect())
+    } else {
+        None
+    };
     Ok(OpenRouterChatRequest {
         model: request.model.name.clone(),
         messages,
@@ -710,7 +790,102 @@ pub fn build_openai_compatible_chat_request(
         }),
         tools,
         reasoning: openrouter_reasoning(request.thinking_level),
+        prompt_cache_key,
     })
+}
+
+fn config_host(config: &OpenAiCompatibleConfig) -> String {
+    config
+        .base_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+}
+
+fn cache_key_enabled(config: Option<&OpenAiCompatibleConfig>) -> bool {
+    match config.and_then(|config| config.send_prompt_cache_key) {
+        Some(value) => value,
+        None => config.is_some_and(|config| {
+            matches!(
+                config_host(config).as_str(),
+                "openrouter.ai" | "api.openai.com"
+            )
+        }),
+    }
+}
+
+fn cache_control_active(request: &StreamRequest, config: Option<&OpenAiCompatibleConfig>) -> bool {
+    match config.and_then(|config| config.cache_control_format) {
+        Some(format) => matches!(format, CacheControlFormat::Anthropic),
+        None => {
+            let name = request.model.name.as_str();
+            name.starts_with("anthropic/") || name.starts_with("~anthropic/")
+        }
+    }
+}
+
+fn apply_anthropic_cache_control(
+    messages: &mut [OpenRouterChatMessage],
+    tools: &mut [OpenRouterTool],
+    cache_control: OpenRouterCacheControl,
+) {
+    for message in messages.iter_mut() {
+        if message.role == "system" || message.role == "developer" {
+            add_cache_control_to_message(message, &cache_control);
+            break;
+        }
+    }
+    if let Some(tool) = tools.last_mut() {
+        tool.cache_control = Some(cache_control.clone());
+    }
+    for message in messages.iter_mut().rev() {
+        if matches!(message.role.as_str(), "user" | "assistant" | "tool")
+            && add_cache_control_to_message(message, &cache_control)
+        {
+            break;
+        }
+    }
+}
+
+/// Mirrors pi `addCacheControlToTextContent`: string content becomes a single
+/// text part carrying the marker; array content gets the marker on its last
+/// text part; returns false when no text part exists so the caller continues
+/// scanning backward.
+fn add_cache_control_to_message(
+    message: &mut OpenRouterChatMessage,
+    cache_control: &OpenRouterCacheControl,
+) -> bool {
+    match &mut message.content {
+        Some(OpenRouterMessageContent::Text(text)) => {
+            if text.is_empty() {
+                return false;
+            }
+            message.content = Some(OpenRouterMessageContent::Parts(vec![
+                OpenRouterContentPart::Text {
+                    text: std::mem::take(text),
+                    cache_control: Some(cache_control.clone()),
+                },
+            ]));
+            true
+        }
+        Some(OpenRouterMessageContent::Parts(parts)) => {
+            for part in parts.iter_mut().rev() {
+                if let OpenRouterContentPart::Text {
+                    cache_control: slot,
+                    ..
+                } = part
+                {
+                    *slot = Some(cache_control.clone());
+                    return true;
+                }
+            }
+            false
+        }
+        None => false,
+    }
 }
 
 fn openrouter_reasoning(level: ThinkingLevel) -> Option<OpenRouterReasoning> {
@@ -736,6 +911,7 @@ fn convert_tool(tool: &ToolDefinition) -> OpenRouterTool {
             description: tool.description.clone(),
             parameters: tool.input_schema.clone(),
         },
+        cache_control: None,
     }
 }
 
@@ -819,9 +995,10 @@ fn user_content(content: &[ContentBlock]) -> Result<OpenRouterMessageContent, Op
     let mut parts = Vec::new();
     for block in content {
         match block {
-            ContentBlock::Text { text } => {
-                parts.push(OpenRouterContentPart::Text { text: text.clone() })
-            }
+            ContentBlock::Text { text } => parts.push(OpenRouterContentPart::Text {
+                text: text.clone(),
+                cache_control: None,
+            }),
             ContentBlock::Image { media_type, data } => {
                 parts.push(OpenRouterContentPart::ImageUrl {
                     image_url: OpenRouterImageUrl {
@@ -836,7 +1013,7 @@ fn user_content(content: &[ContentBlock]) -> Result<OpenRouterMessageContent, Op
         Ok(OpenRouterMessageContent::Text(String::new()))
     } else if parts.len() == 1 {
         match parts.remove(0) {
-            OpenRouterContentPart::Text { text } => Ok(OpenRouterMessageContent::Text(text)),
+            OpenRouterContentPart::Text { text, .. } => Ok(OpenRouterMessageContent::Text(text)),
             image => Ok(OpenRouterMessageContent::Parts(vec![image])),
         }
     } else {
@@ -1919,5 +2096,243 @@ mod tests {
             .iter()
             .skip(1)
             .any(|message| message["role"] == "system"));
+    }
+
+    fn cache_request(
+        model_name: &str,
+        session_id: Option<&str>,
+        retention: oino_agent_loop::CacheRetention,
+    ) -> StreamRequest {
+        StreamRequest {
+            model: Model::new("openrouter", model_name),
+            thinking_level: ThinkingLevel::Off,
+            transcript: oino_types::transcript::normalize(
+                Some("be kind".into()),
+                vec![
+                    ToolDefinition {
+                        name: "read".into(),
+                        description: "Read".into(),
+                        input_schema: json!({"type": "object"}),
+                    },
+                    ToolDefinition {
+                        name: "write".into(),
+                        description: "Write".into(),
+                        input_schema: json!({"type": "object"}),
+                    },
+                ],
+                vec![Message::user_text("hello"), Message::user_text("again")],
+            ),
+            session_id: session_id.map(Into::into),
+            cache_retention: retention,
+        }
+    }
+
+    fn openrouter_config() -> OpenAiCompatibleConfig {
+        OpenAiCompatibleConfig::new("openrouter", "OpenRouter", "https://openrouter.ai/api/v1")
+    }
+
+    #[test]
+    fn openai_model_sends_prompt_cache_key_without_cache_control() {
+        let request = cache_request(
+            "openai/gpt-4o",
+            Some("session-abc"),
+            oino_agent_loop::CacheRetention::Short,
+        );
+        let config = openrouter_config();
+        let built =
+            build_openai_compatible_chat_request_with_cache(&request, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}"));
+        assert_eq!(built.prompt_cache_key.as_deref(), Some("session-abc"));
+        let json = serde_json::to_string(&built).unwrap_or_else(|err| panic!("serde: {err}"));
+        assert!(json.contains("\"prompt_cache_key\":\"session-abc\""));
+        assert!(!json.contains("cache_control"));
+    }
+
+    #[test]
+    fn anthropic_model_gets_three_breakpoints() {
+        let request = cache_request(
+            "anthropic/claude-sonnet-4",
+            Some("sess"),
+            oino_agent_loop::CacheRetention::Short,
+        );
+        let config = openrouter_config();
+        let built =
+            build_openai_compatible_chat_request_with_cache(&request, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}"));
+        let parsed = serde_json::to_value(&built).unwrap_or_else(|err| panic!("serde: {err}"));
+        // System message -> array form with cache_control.
+        let system = &parsed["messages"][0];
+        assert_eq!(system["role"], "system");
+        assert_eq!(
+            system["content"][0]["cache_control"],
+            json!({"type": "ephemeral"})
+        );
+        // Last tool carries the marker.
+        let tools = parsed["tools"].as_array().unwrap_or(&Vec::new()).clone();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"], json!({"type": "ephemeral"}));
+        // Last user message -> array form on its last text part.
+        let last = parsed["messages"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .last()
+            .cloned();
+        let last = last.unwrap_or_else(|| panic!("missing messages"));
+        assert_eq!(last["role"], "user");
+        assert_eq!(
+            last["content"][0]["cache_control"],
+            json!({"type": "ephemeral"})
+        );
+        // Earlier user message is untouched.
+        let earlier = &parsed["messages"][1];
+        assert_eq!(earlier["role"], "user");
+        assert_eq!(earlier["content"], "hello");
+        // Short retention: no ttl.
+        assert!(!json!(parsed).to_string().contains("\"ttl\""));
+    }
+
+    #[test]
+    fn anthropic_long_retention_adds_ttl() {
+        let request = cache_request(
+            "anthropic/claude-sonnet-4",
+            Some("sess"),
+            oino_agent_loop::CacheRetention::Long,
+        );
+        let config = openrouter_config();
+        let built =
+            build_openai_compatible_chat_request_with_cache(&request, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}"));
+        let json = serde_json::to_string(&built).unwrap_or_else(|err| panic!("serde: {err}"));
+        assert!(json.contains("\"ttl\":\"1h\""));
+    }
+
+    #[test]
+    fn retention_none_sends_neither_key_nor_cache_control() {
+        let request = cache_request(
+            "anthropic/claude-sonnet-4",
+            Some("sess"),
+            oino_agent_loop::CacheRetention::None,
+        );
+        let config = openrouter_config();
+        let built =
+            build_openai_compatible_chat_request_with_cache(&request, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}"));
+        assert!(built.prompt_cache_key.is_none());
+        let json = serde_json::to_string(&built).unwrap_or_else(|err| panic!("serde: {err}"));
+        assert!(!json.contains("cache_control"));
+        assert!(!json.contains("prompt_cache_key"));
+    }
+
+    #[test]
+    fn unknown_host_auto_disables_prompt_cache_key() {
+        let mut request = cache_request(
+            "openai/gpt-4o",
+            Some("sess"),
+            oino_agent_loop::CacheRetention::Short,
+        );
+        request.model = Model::new("custom", "openai/gpt-4o");
+        let config = OpenAiCompatibleConfig::new("custom", "Custom", "https://llm.example.com/v1");
+        let built =
+            build_openai_compatible_chat_request_with_cache(&request, "custom", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}"));
+        assert!(built.prompt_cache_key.is_none());
+        // Explicit opt-in overrides the host check.
+        let mut opted = config.clone();
+        opted.send_prompt_cache_key = Some(true);
+        let built =
+            build_openai_compatible_chat_request_with_cache(&request, "custom", Some(&opted))
+                .unwrap_or_else(|err| panic!("build failed: {err}"));
+        assert_eq!(built.prompt_cache_key.as_deref(), Some("sess"));
+    }
+
+    #[test]
+    fn same_request_builds_identical_bytes() {
+        let request = cache_request(
+            "anthropic/claude-sonnet-4",
+            Some("sess"),
+            oino_agent_loop::CacheRetention::Long,
+        );
+        let config = openrouter_config();
+        let first = serde_json::to_string(
+            &build_openai_compatible_chat_request_with_cache(&request, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("serde: {err}"));
+        let second = serde_json::to_string(
+            &build_openai_compatible_chat_request_with_cache(&request, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("serde: {err}"));
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn request_messages_are_prefix_stable_across_turns() {
+        let config = openrouter_config();
+        let base_messages = vec![
+            Message::user_text("one"),
+            Message::assistant_text("a1", StopReason::EndTurn),
+        ];
+        let first = StreamRequest {
+            transcript: oino_types::transcript::normalize(
+                Some("be kind".into()),
+                vec![ToolDefinition {
+                    name: "read".into(),
+                    description: "Read".into(),
+                    input_schema: json!({"type": "object"}),
+                }],
+                base_messages.clone(),
+            ),
+            ..cache_request(
+                "openai/gpt-4o",
+                Some("sess"),
+                oino_agent_loop::CacheRetention::Short,
+            )
+        };
+        let mut later_messages = base_messages.clone();
+        later_messages.push(Message::user_text("two"));
+        later_messages.push(Message::assistant_text("a2", StopReason::EndTurn));
+        let second = StreamRequest {
+            transcript: oino_types::transcript::normalize(
+                Some("be kind".into()),
+                vec![ToolDefinition {
+                    name: "read".into(),
+                    description: "Read".into(),
+                    input_schema: json!({"type": "object"}),
+                }],
+                later_messages,
+            ),
+            ..cache_request(
+                "openai/gpt-4o",
+                Some("sess"),
+                oino_agent_loop::CacheRetention::Short,
+            )
+        };
+        let first_json = serde_json::to_value(
+            build_openai_compatible_chat_request_with_cache(&first, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("serde: {err}"));
+        let second_json = serde_json::to_value(
+            build_openai_compatible_chat_request_with_cache(&second, "openrouter", Some(&config))
+                .unwrap_or_else(|err| panic!("build failed: {err}")),
+        )
+        .unwrap_or_else(|err| panic!("serde: {err}"));
+        let first_messages = first_json["messages"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let second_messages = second_json["messages"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(second_messages.len() > first_messages.len());
+        assert_eq!(
+            &second_messages[..first_messages.len()],
+            first_messages.as_slice()
+        );
+        assert_eq!(first_json["tools"], second_json["tools"]);
+        assert_eq!(first_messages[0], second_messages[0]);
     }
 }

@@ -126,7 +126,9 @@ use oino_tui::{
     ThemeSourceKind, ThemeSourceScope, ToolSettingsItem, ToolSettingsScope, TuiAction, TuiState,
     HELP_STATUS,
 };
-use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, OinoId, ThinkingLevel};
+use oino_types::{
+    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, PromptSection, ThinkingLevel,
+};
 #[cfg(test)]
 use provider_runtime::ProviderRouter;
 use provider_runtime::{build_runtime_provider, provider_status_for_model_identifier};
@@ -561,7 +563,8 @@ async fn main() -> Result<(), AppError> {
         auth.clone(),
         session,
         &resource_catalog,
-    )?;
+    )
+    .await?;
     apply_tool_settings_to_harness(
         &harness,
         &tool_settings,
@@ -649,7 +652,7 @@ fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
     })
 }
 
-fn build_harness(
+async fn build_harness(
     model_identifier: String,
     thinking_level: ThinkingLevel,
     provider: Arc<dyn StreamProvider>,
@@ -662,10 +665,12 @@ fn build_harness(
         .ok_or_else(|| AppError::InvalidModelIdentifier(model_identifier.clone()))?;
     let mut config = HarnessConfig::new(model, provider, session);
     config.tools = oino_tools::default_tools(Arc::clone(&config.env), cwd.clone());
-    config.system_prompt = Some(default_system_prompt(&cwd, resource_catalog));
     config.thinking_level = thinking_level;
     config.auth_resolver = Some(build_auth_resolver(auth));
-    Ok(Harness::new(config))
+    let harness = Harness::new(config);
+    let (base, sections) = system_prompt_parts(&cwd, resource_catalog);
+    harness.sync_system(base, sections).await;
+    Ok(harness)
 }
 
 const BUILT_IN_TOOL_NAMES: &[&str] = &["bash", "edit", "read", "write"];
@@ -3020,21 +3025,39 @@ fn html_escape(value: &str) -> String {
     escaped
 }
 
-fn default_system_prompt(cwd: &std::path::Path, catalog: &ResourceCatalog) -> String {
+const RESOURCE_POLICY_PROMPT: &str = "# Oino Resource Inclusion Policy\n\nPrompt templates and skills are explicit composer resources. Only use prompt or skill content when it has been included in the user message via `/prompt:<name>` or `/skill:<name>`. Do not auto-load skills from discovery metadata.";
+
+/// Split the default system prompt into the stable base text and ordered
+/// [`PromptSection`]s consumed by `Harness::sync_system`. Nothing
+/// time-varying goes into either part.
+fn system_prompt_parts(
+    cwd: &std::path::Path,
+    catalog: &ResourceCatalog,
+) -> (String, Vec<PromptSection>) {
     let mut sections = Vec::new();
     for section in catalog.system_prompt_sections() {
-        sections.push(format!(
-            "# {}\n\n<!-- {} -->\n{}",
-            section.title,
-            section.path.display(),
-            section.content
-        ));
+        let name = if section.path == catalog.paths.global_system_prompt {
+            "global/SYSTEM.md"
+        } else if section.path == catalog.paths.project_agent {
+            "project/AGENT.md"
+        } else {
+            section.title.as_str()
+        };
+        sections.push(PromptSection {
+            name: name.into(),
+            text: Some(format!(
+                "# {}\n\n<!-- {} -->\n{}",
+                section.title,
+                section.path.display(),
+                section.content
+            )),
+        });
     }
-    sections.push(
-        "# Oino Resource Inclusion Policy\n\nPrompt templates and skills are explicit composer resources. Only use prompt or skill content when it has been included in the user message via `/prompt:<name>` or `/skill:<name>`. Do not auto-load skills from discovery metadata.".into(),
-    );
-    sections.push(format!("Current working directory: {}", cwd.display()));
-    sections.join("\n\n---\n\n")
+    sections.push(PromptSection {
+        name: "oino/cwd".into(),
+        text: Some(format!("Current working directory: {}", cwd.display())),
+    });
+    (RESOURCE_POLICY_PROMPT.into(), sections)
 }
 
 async fn run_tui(
@@ -4599,9 +4622,8 @@ async fn reload_tui_everything(
 
     match load_resource_catalog(resource_paths) {
         Ok(catalog) => {
-            harness
-                .set_system_prompt(Some(default_system_prompt(cwd, &catalog)))
-                .await;
+            let (base, sections) = system_prompt_parts(cwd, &catalog);
+            harness.sync_system(base, sections).await;
             let extension_snapshot = load_extension_snapshot(resource_paths, tool_settings);
             *extension_models = extension_model_options(&extension_snapshot);
             *extension_runtime_provider_ids =
@@ -5039,14 +5061,17 @@ async fn create_btw_harness(
         provider_config.clone(),
         extension_runtime_providers(extension_snapshot),
     );
-    let harness = Arc::new(build_harness(
-        effective_model,
-        ThinkingLevel::Off,
-        provider,
-        auth.clone(),
-        session,
-        resource_catalog,
-    )?);
+    let harness = Arc::new(
+        build_harness(
+            effective_model,
+            ThinkingLevel::Off,
+            provider,
+            auth.clone(),
+            session,
+            resource_catalog,
+        )
+        .await?,
+    );
     apply_tool_settings_to_harness(
         &harness,
         tool_settings,
@@ -6433,7 +6458,11 @@ async fn compact_session_with_vcc(harness: &Harness) -> Result<(String, Vec<Mess
     let compacted_entries = compaction.compacted_entries;
     let kept_entries = compaction.kept_entries;
     let messages = harness
-        .append_compaction(compaction.summary, compaction.replaces)
+        .append_compaction(
+            compaction.summary,
+            compaction.first_kept,
+            compaction.tokens_before,
+        )
         .await?;
     Ok((
         format!(
@@ -6471,7 +6500,11 @@ async fn compact_session_with_llm(
     let compacted_entries = compaction.compacted_entries;
     let kept_entries = compaction.kept_entries;
     let messages = harness
-        .append_compaction(compaction.summary, compaction.replaces)
+        .append_compaction(
+            compaction.summary,
+            compaction.first_kept,
+            compaction.tokens_before,
+        )
         .await?;
     Ok((
         format!(
@@ -6831,12 +6864,8 @@ async fn execute_runtime_command(
         }
         ParsedCommand::ReloadResources => {
             let catalog = load_resource_catalog(&resource_catalog.paths)?;
-            harness
-                .set_system_prompt(Some(default_system_prompt(
-                    &catalog.paths.project_root,
-                    &catalog,
-                )))
-                .await;
+            let (base, sections) = system_prompt_parts(&catalog.paths.project_root, &catalog);
+            harness.sync_system(base, sections).await;
             let settings = load_tool_settings(&resource_catalog.paths).await;
             let snapshot = load_extension_snapshot(&resource_catalog.paths, &settings);
             return Ok(format!(
@@ -9201,7 +9230,9 @@ mod tests {
             auth,
             session,
             &resource_catalog,
-        ) {
+        )
+        .await
+        {
             Ok(harness) => harness,
             Err(err) => panic!("harness build failed: {err}"),
         };

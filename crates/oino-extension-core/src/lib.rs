@@ -32,6 +32,8 @@ schemas.
   [`ThemeContribution`], [`ProviderContribution`], [`ResourceContribution`],
   [`PersistenceContribution`], [`AutosuggestContribution`], [`RendererContribution`],
   [`DiagnosticContribution`], and [`HealthContribution`].
+- [`HookEventKind`] is the snake_case hook event vocabulary shared by manifests,
+  the runtime dispatcher, and the harness seam.
 - [`UiSurfaceKind`], [`UiLayoutPolicy`], [`UiFocusPolicy`], [`UiKeyDispatchPolicy`],
   [`UiSurfaceStateUpdate`], and [`UiSurfaceValidationError`] define host-rendered UI
   contracts while keeping Ratatui state out of the manifest layer.
@@ -668,6 +670,30 @@ pub enum HookEventKind {
     Update,
     Remove,
     PackageLifecycle,
+    BeforeAgentStart,
+    ContextWithSystem,
+    BeforeProviderHeaders,
+    ProviderStreamEvent,
+    TurnEnd,
+    AgentBeforeSettle,
+    AgentSettled,
+    SessionBeforeFork,
+    SessionBeforeSwitch,
+    SessionBeforeTree,
+    SessionCompactFailed,
+    SessionInfoChanged,
+    ResourcesDiscover,
+    ProjectTrust,
+    UiPromptStart,
+    UiPromptEnd,
+    CacheWarmingDecision,
+    AgentStart,
+    AgentEnd,
+    TurnStart,
+    MessageStart,
+    MessageEnd,
+    ToolExecutionStart,
+    ToolExecutionEnd,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -4487,5 +4513,31 @@ mod tests {
         assert_eq!(policy.strategy, ConflictStrategy::Namespaced);
         assert_eq!(policy.priority, 0);
         assert!(policy.allow_user_override);
+    }
+
+    #[test]
+    fn all_builtin_manifests_parse() {
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../extensions/built-in");
+        let mut found = 0usize;
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap_or_else(|err| panic!("read dir: {err}")) {
+                let path = entry.unwrap_or_else(|err| panic!("entry: {err}")).path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path
+                    .file_name()
+                    .is_some_and(|name| name == "oino.extension.json")
+                {
+                    let text = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|err| panic!("read {path:?}: {err}"));
+                    serde_json::from_str::<ExtensionManifest>(&text)
+                        .unwrap_or_else(|err| panic!("parse {path:?}: {err}"));
+                    found += 1;
+                }
+            }
+        }
+        assert!(found >= 8, "expected built-in manifests, found {found}");
     }
 }

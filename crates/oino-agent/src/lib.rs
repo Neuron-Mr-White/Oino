@@ -240,6 +240,17 @@ impl Agent {
         self.replace_messages(Vec::new()).await;
     }
 
+    /// Append a transcript message (e.g. a `System` delta) to the live context
+    /// without draining queues or emitting events.
+    pub async fn append_transcript_message(&self, message: Message) {
+        self.state.lock().await.messages.push(message);
+    }
+
+    /// Update the cache-affinity session id used for subsequent requests.
+    pub async fn set_session_id(&self, session_id: Option<String>) {
+        self.config.lock().await.session_id = session_id;
+    }
+
     pub async fn replace_messages(&self, messages: Vec<Message>) {
         self.state.lock().await.messages = messages;
         self.steering.lock().await.clear();

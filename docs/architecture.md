@@ -25,6 +25,22 @@ TUI/composer ──> app runtime ──> harness ──> agent loop ──> prov
 - `oino-auth` — provider-neutral credential document primitives used by extensions.
 - `oino-provider-openrouter` — OpenAI-compatible transport used by extension providers such as OmniRoute.
 
+## Transcript and prompt sync
+
+Sessions persist `System` messages inside the transcript (session format v2).
+The leading `System` carries the base prompt and tool declarations; later
+`System` entries are deltas — appended instructions, named-section patches
+(`text: None` removes), and tool additions/removals. `oino_types::transcript`
+replays them into the current prompt (`current_system`, `render_system_prompt`)
+and tool set (`current_tools`), and `collapse` rebuilds a single leading system
+message for providers without mid-conversation support.
+
+`Harness::sync_system(base, sections)` records the desired prompt state;
+`flush_system` runs before each prompt and appends at most one delta `System`
+to both the agent context and the session. A changed base is carried as the
+pseudo-section `oino/base`. Sessions also support `ContextEdit` (omit/replace a
+message at context-build time) and `Usage` entries (never enter context).
+
 ## Design rules
 
 - Providers and auth are extension/router concerns, not hard-coded TUI behavior.

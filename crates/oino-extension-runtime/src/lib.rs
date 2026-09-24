@@ -12,6 +12,13 @@ state directly; persistence records are managed by `oino-extension-manager`, and
 runtime code reaches them only through brokered `host.persistence.*` capability
 requests. Keep public capability names, payload shapes, and developer docs in
 sync when changing this boundary.
+
+Hook events use [`HookEventKind`] (the manifest vocabulary) with typed
+[`HookEventPayload`] values — transcripts are `oino_types::Message` values, not
+strings — and actionable events return typed results ([`BeforeAgentStartResult`]
+section edits, [`TurnEndResult`] appended entries plus `continue_run`). Live
+dispatch lands with the WASM host in P2; the in-process seam lives in
+`oino-harness`'s hook registry.
 "#]
 #![forbid(unsafe_code)]
 
@@ -25,6 +32,7 @@ use oino_extension_core::{
     ExtensionPermissions, HealthState, HookContribution, HookEventKind, HookMode, RegistrySnapshot,
     ToolContribution, ToolExecutionMode,
 };
+use oino_types::{AssistantStreamEvent, Message, PromptSection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -37,7 +45,7 @@ use uuid::Uuid;
 
 pub const WASM_JSON_V1_ABI: &str = "wasm-json-v1";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HookEvent {
     pub kind: HookEventKind,
     pub payload: HookEventPayload,
@@ -50,33 +58,168 @@ impl HookEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type", content = "value")]
 pub enum HookEventPayload {
     Empty,
     Startup,
-    ResourceDiscovery { path: String },
-    Session { session_id: String },
-    Input { text: String },
-    Command { command: String },
-    AgentTurn { run_id: String },
-    Context { messages: Vec<String> },
-    ProviderRequest { provider: String, model: String },
-    ProviderResponse { provider: String, status: String },
-    MessageStream { delta: String },
-    ToolCall { tool: String, arguments: Value },
-    ToolResult { tool: String, result: Value },
-    ToolUpdate { tool: String, update: Value },
-    ModelSelection { model: String },
-    ThinkingSelection { level: String },
-    Compaction { session_id: String },
-    Tree { branch: String },
+    ResourceDiscovery {
+        path: String,
+    },
+    Session {
+        session_id: String,
+    },
+    Input {
+        text: String,
+    },
+    Command {
+        command: String,
+    },
+    AgentTurn {
+        run_id: String,
+    },
+    /// Typed transcript for context hooks (pi `context` event).
+    Context {
+        messages: Vec<Message>,
+    },
+    /// Actionable: handlers return section edits, never a whole prompt.
+    BeforeAgentStart {
+        sections: Vec<PromptSection>,
+    },
+    /// Transcript including the replayed system message.
+    ContextWithSystem {
+        messages: Vec<Message>,
+    },
+    ProviderHeaders {
+        provider: String,
+        model: String,
+        headers: BTreeMap<String, String>,
+    },
+    ProviderStreamEvent {
+        event: AssistantStreamEvent,
+    },
+    TurnEnd {
+        turn: u32,
+        message: Message,
+        tool_results: Vec<Message>,
+    },
+    AgentStart {
+        run_id: String,
+    },
+    AgentEnd {
+        run_id: String,
+        stop_reason: String,
+    },
+    TurnStart {
+        turn: u32,
+    },
+    MessageStart {
+        message_id: String,
+        role: String,
+    },
+    MessageEnd {
+        message: Message,
+    },
+    ToolExecutionStart {
+        call_id: String,
+        tool: String,
+    },
+    ToolExecutionEnd {
+        call_id: String,
+        tool: String,
+    },
+    AgentSettled,
+    SessionChange {
+        session_id: String,
+        reason: String,
+    },
+    CompactFailed {
+        reason: String,
+        will_retry: bool,
+        error: String,
+    },
+    SessionInfoChanged {
+        session_id: String,
+    },
+    ProjectTrust {
+        cwd: String,
+    },
+    UiPrompt {
+        kind: String,
+    },
+    CacheWarmingDecision {
+        model: String,
+        estimated_savings_usd: f64,
+        lifetime_secs: u64,
+    },
+    ProviderRequest {
+        provider: String,
+        model: String,
+    },
+    ProviderResponse {
+        provider: String,
+        status: String,
+    },
+    MessageStream {
+        delta: String,
+    },
+    ToolCall {
+        tool: String,
+        arguments: Value,
+    },
+    ToolResult {
+        tool: String,
+        result: Value,
+    },
+    ToolUpdate {
+        tool: String,
+        update: Value,
+    },
+    ModelSelection {
+        model: String,
+    },
+    ThinkingSelection {
+        level: String,
+    },
+    Compaction {
+        session_id: String,
+    },
+    Tree {
+        branch: String,
+    },
     Reload,
-    Install { package: String },
-    Update { package: String },
-    Remove { package: String },
-    PackageLifecycle { package: String, action: String },
+    Install {
+        package: String,
+    },
+    Update {
+        package: String,
+    },
+    Remove {
+        package: String,
+    },
+    PackageLifecycle {
+        package: String,
+        action: String,
+    },
     Custom(Value),
+}
+
+/// Result of an actionable `turn_end` hook: extra entries to append and
+/// whether to continue the run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnEndResult {
+    #[serde(default)]
+    pub entries: Vec<Message>,
+    #[serde(default)]
+    pub continue_run: bool,
+}
+
+/// Result of `before_agent_start`: section edits merged into the pending
+/// prompt state. Never a whole replacement prompt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BeforeAgentStartResult {
+    #[serde(default)]
+    pub section_edits: Vec<PromptSection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

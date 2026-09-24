@@ -128,7 +128,7 @@ async fn sessions_jsonl_compaction_and_branch_summaries_roundtrip() {
     let root = session.append_message(Message::user_text("root"));
     let branch = session.branch_with_summary(root, "branch summary");
     assert!(branch.is_ok());
-    let replaced = session.append_compaction("compact summary", vec![root]);
+    let replaced = session.append_compaction("compact summary", None, 0);
     session.append_message(Message::Custom {
         id: Uuid::new_v4(),
         name: "custom".into(),

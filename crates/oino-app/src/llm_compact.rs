@@ -16,7 +16,8 @@ use tokio::fs;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmCompaction {
     pub summary: String,
-    pub replaces: Vec<OinoId>,
+    pub first_kept: Option<OinoId>,
+    pub tokens_before: u64,
     pub compacted_entries: usize,
     pub kept_entries: usize,
 }
@@ -111,11 +112,27 @@ pub async fn compact_with_llm(
         ));
     }
 
-    let replaces = compacted.iter().map(|entry| entry.id).collect();
+    let tokens_before = compacted
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            SessionEntryKind::Message { message } | SessionEntryKind::CustomMessage { message } => {
+                Some(message)
+            }
+            _ => None,
+        })
+        .map(|message| match message {
+            Message::User { content, .. }
+            | Message::Assistant { content, .. }
+            | Message::ToolResult { content, .. } => blocks_to_text(content).chars().count(),
+            _ => 0,
+        })
+        .sum::<usize>() as u64
+        / 4;
 
     Ok(LlmCompaction {
         summary: summary_text,
-        replaces,
+        first_kept: Some(branch[last_user_index].id),
+        tokens_before,
         compacted_entries: compacted.len(),
         kept_entries,
     })

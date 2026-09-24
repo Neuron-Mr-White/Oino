@@ -5,13 +5,24 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 const MAX_SECTION_ITEMS: usize = 12;
+
+fn estimate_tokens(entries: &[SessionEntry]) -> u64 {
+    let chars: usize = entries
+        .iter()
+        .filter_map(|entry| message_for_entry(entry))
+        .map(message_full_text)
+        .map(|text| text.chars().count())
+        .sum();
+    (chars / 4) as u64
+}
 const MAX_TRANSCRIPT_ITEMS: usize = 24;
 const MAX_SNIPPET_CHARS: usize = 260;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VccCompaction {
     pub summary: String,
-    pub replaces: Vec<OinoId>,
+    pub first_kept: Option<OinoId>,
+    pub tokens_before: u64,
     pub compacted_entries: usize,
     pub kept_entries: usize,
 }
@@ -56,10 +67,11 @@ pub fn compact_branch(branch: &[SessionEntry]) -> Option<VccCompaction> {
     }
     let kept_entries = branch.len().saturating_sub(compacted.len());
     let summary = build_summary(compacted, kept_entries);
-    let replaces = compacted.iter().map(|entry| entry.id).collect::<Vec<_>>();
+    let tokens_before = estimate_tokens(compacted);
     Some(VccCompaction {
         summary,
-        replaces,
+        first_kept: Some(branch[last_user_index].id),
+        tokens_before,
         compacted_entries: compacted.len(),
         kept_entries,
     })
@@ -437,6 +449,8 @@ fn recall_row(index: usize, entry: &SessionEntry) -> Option<RecallRow> {
             entry.payload.to_string(),
         ),
         SessionEntryKind::LeafMove { leaf_id } => ("leaf move".into(), leaf_id.to_string()),
+        SessionEntryKind::ContextEdit { target, .. } => ("context edit".into(), target.to_string()),
+        SessionEntryKind::Usage { usage_kind, .. } => ("usage".into(), usage_kind.clone()),
     };
     let snippet = compact_snippet(&full, MAX_SNIPPET_CHARS);
     (!snippet.is_empty()).then(|| RecallRow {

@@ -37,27 +37,52 @@ impl MessageView {
 
 #[must_use]
 pub fn project_messages(messages: &[Message]) -> Vec<MessageView> {
+    // The leading full System message carries the prompt/tool declarations;
+    // it is request context, not transcript content, so it is not rendered.
+    let messages = if matches!(messages.first(), Some(Message::System { .. })) {
+        &messages[1..]
+    } else {
+        messages
+    };
     messages.iter().map(project_message).collect()
 }
 
 #[must_use]
 pub fn project_message(message: &Message) -> MessageView {
     match message {
-        Message::System { id, content, .. } => MessageView {
-            id: *id,
-            role: "system".into(),
-            title: None,
-            content: if content.is_empty() {
-                "<prompt/tools updated>".into()
-            } else {
-                content.clone()
-            },
-            thinking: None,
-            thinking_redacted: false,
-            tool_call_id: None,
-            tool_calls: Vec::new(),
-            is_error: false,
-        },
+        Message::System {
+            id,
+            content,
+            sections,
+            tools_added,
+            tools_removed,
+        } => {
+            let mut changed: Vec<String> = sections
+                .iter()
+                .map(|section| section.name.clone())
+                .collect();
+            changed.extend(tools_added.iter().map(|tool| format!("+{}", tool.name)));
+            changed.extend(tools_removed.iter().map(|name| format!("-{name}")));
+            MessageView {
+                id: *id,
+                role: "system".into(),
+                title: None,
+                content: if changed.is_empty() {
+                    if content.is_empty() {
+                        "prompt updated".into()
+                    } else {
+                        content.clone()
+                    }
+                } else {
+                    format!("prompt updated: {}", changed.join(", "))
+                },
+                thinking: None,
+                thinking_redacted: false,
+                tool_call_id: None,
+                tool_calls: Vec::new(),
+                is_error: false,
+            }
+        }
         Message::User { id, content } => {
             let summary = summarize_content(content);
             MessageView {

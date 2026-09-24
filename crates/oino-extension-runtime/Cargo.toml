@@ -8,13 +8,13 @@ license.workspace = true
 async-trait.workspace = true
 oino-agent-loop = { path = "../oino-agent-loop" }
 oino-extension-core = { path = "../oino-extension-core" }
+oino-types = { path = "../oino-types" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-oino-types = { path = "../oino-types" }
 semver.workspace = true
 tokio.workspace = true
 

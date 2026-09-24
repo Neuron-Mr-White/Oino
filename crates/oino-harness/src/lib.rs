@@ -17,8 +17,13 @@ or project filesystem discovery.
 - [`HookRegistry`] exposes deterministic notification and mutation hooks. Use
   [`NotificationHook`] for event fan-out and [`MutatingHook`] families for context,
   provider-boundary, tool, compaction, or tree-navigation changes.
+- [`Harness::sync_system`] records the desired prompt (base plus ordered
+  [`PromptSection`]s); the next prompt flushes one delta `System` message into the
+  agent context and session, which is the prefix-stability mechanism behind
+  `/reload`, resume, and tool changes.
 - [`FullPromptInspect`] is a debugging snapshot for `/inspect`: model, thinking
-  level, system prompt, transformed messages, tools, and an approximate token count.
+  level, replayed system prompt and prompt deltas, transformed messages, tools, and
+  an approximate token count.
 
 ## Contributor rules
 
@@ -34,12 +39,15 @@ guards while calling providers or tools.
 use oino_agent::Agent;
 use oino_agent_loop::{
     AbortSignal, AfterToolCall, AgentEvent, AgentLoopConfig, BeforeToolCall, BeforeToolCallResult,
-    BoxFuture, EventSink, LoopError, LoopResult, StreamEventSink, StreamProvider, StreamRequest,
-    Tool, ToolCall, ToolResult, TransformContext,
+    BoxFuture, EventSink, FinishTurn, LoopError, LoopResult, StreamEventSink, StreamProvider,
+    StreamRequest, Tool, ToolCall, ToolResult, TransformContext, TurnContext, TurnDecision,
 };
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
 use oino_session::{SessionEntry, SessionEntryKind, SessionManager};
-use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, ThinkingLevel};
+use oino_types::{
+    transcript::{current_system, current_tools, render_system_prompt, tool_declaration_canonical},
+    AssistantStreamEvent, ContentBlock, Message, Model, PromptSection, ThinkingLevel,
+};
 use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -85,8 +93,22 @@ pub enum MutatingHook {
 }
 
 pub type NotificationHandler = Arc<dyn Fn(AgentEvent) -> BoxFuture<'static, ()> + Send + Sync>;
+/// `before_agent_start` handlers return prompt-section edits merged into the
+/// pending system state; never a whole replacement prompt.
 pub type BeforeAgentStartHandler =
-    Arc<dyn Fn() -> BoxFuture<'static, LoopResult<()>> + Send + Sync>;
+    Arc<dyn Fn() -> BoxFuture<'static, LoopResult<Vec<PromptSection>>> + Send + Sync>;
+/// `turn_end` handlers see the finished turn and may append entries and/or
+/// request one more turn.
+pub type TurnEndHandler =
+    Arc<dyn Fn(TurnContext) -> BoxFuture<'static, LoopResult<Option<TurnEndResult>>> + Send + Sync>;
+
+/// Result of an actionable `turn_end` hook: extra entries appended (in
+/// registration order) and whether the run should continue.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TurnEndResult {
+    pub entries: Vec<Message>,
+    pub continue_run: bool,
+}
 pub type ContextHandler =
     Arc<dyn Fn(Vec<Message>) -> BoxFuture<'static, LoopResult<Vec<Message>>> + Send + Sync>;
 pub type BeforeToolCallHandler =
@@ -110,6 +132,7 @@ pub struct HookRegistry {
     after_provider_response: Arc<Mutex<Vec<StringMutationHandler>>>,
     before_compaction: Arc<Mutex<Vec<StringMutationHandler>>>,
     before_tree_navigation: Arc<Mutex<Vec<StringMutationHandler>>>,
+    turn_end: Arc<Mutex<Vec<TurnEndHandler>>>,
 }
 
 impl HookRegistry {
@@ -153,6 +176,12 @@ impl HookRegistry {
     pub async fn on_before_tree_navigation(&self, handler: StringMutationHandler) {
         self.before_tree_navigation.lock().await.push(handler);
     }
+    /// Register an actionable turn-end hook. Handlers run in registration
+    /// order; returned entries are appended (agent + session) and any
+    /// `continue_run` maps to [`TurnDecision::Continue`].
+    pub async fn on_turn_end(&self, handler: TurnEndHandler) {
+        self.turn_end.lock().await.push(handler);
+    }
 
     async fn notify(&self, event: AgentEvent) {
         let Some(hook) = hook_for_event(&event) else {
@@ -170,11 +199,23 @@ impl HookRegistry {
         }
     }
 
-    async fn run_before_agent_start(&self) -> LoopResult<()> {
+    async fn run_before_agent_start(&self) -> LoopResult<Vec<PromptSection>> {
+        let mut edits = Vec::new();
         for handler in self.before_agent_start.lock().await.clone() {
-            handler().await?;
+            edits.extend(handler().await?);
         }
-        Ok(())
+        Ok(edits)
+    }
+
+    async fn run_turn_end(&self, context: TurnContext) -> LoopResult<TurnEndResult> {
+        let mut merged = TurnEndResult::default();
+        for handler in self.turn_end.lock().await.clone() {
+            if let Some(result) = handler(context.clone()).await? {
+                merged.entries.extend(result.entries);
+                merged.continue_run |= result.continue_run;
+            }
+        }
+        Ok(merged)
     }
 
     async fn run_context(&self, mut messages: Vec<Message>) -> LoopResult<Vec<Message>> {
@@ -358,6 +399,9 @@ pub struct FullPromptInspect {
     pub token_count: usize,
 }
 
+/// Desired prompt state: base text plus ordered sections.
+type PendingSystemState = (String, Vec<PromptSection>);
+
 pub struct Harness {
     agent: Agent,
     session: Arc<Mutex<SessionManager>>,
@@ -366,6 +410,15 @@ pub struct Harness {
     resources: Arc<Mutex<Vec<String>>>,
     tools: Arc<Mutex<BTreeMap<String, Arc<dyn Tool>>>>,
     auth_resolver: Option<AuthResolver>,
+    /// Desired prompt state set by [`Harness::sync_system`]; flushed into the
+    /// transcript as one delta `System` message before the next prompt.
+    pending_system: Arc<Mutex<Option<PendingSystemState>>>,
+    /// Bridge fallback prompt used when no `System` message exists and no
+    /// pending state was synced.
+    system_prompt_fallback: Option<String>,
+    /// Entries returned by `turn_end` handlers during a run; drained into the
+    /// agent context and session after the run finishes.
+    turn_end_entries: Arc<Mutex<Vec<Message>>>,
 }
 
 impl Harness {
@@ -387,13 +440,17 @@ impl Harness {
         let context_hooks = hooks.clone();
         let before_hooks = hooks.clone();
         let after_hooks = hooks.clone();
+        let turn_end_hooks = hooks.clone();
+        let turn_end_entries: Arc<Mutex<Vec<Message>>> = Arc::new(Mutex::new(Vec::new()));
+        let turn_end_buffer = Arc::clone(&turn_end_entries);
         let stream = Arc::new(HookedStreamProvider {
             inner: Arc::clone(&config.stream),
             hooks: hooks.clone(),
         }) as Arc<dyn StreamProvider>;
         let mut loop_config = AgentLoopConfig::new(initial_model, stream);
         loop_config.thinking_level = initial_thinking_level;
-        loop_config.system_prompt = config.system_prompt;
+        loop_config.system_prompt = config.system_prompt.clone();
+        loop_config.session_id = Some(config.session.header().session_id.to_string());
         loop_config.tools = config.tools.clone();
         loop_config.event_sink = Arc::new(HookEventSink {
             registry: hooks.clone(),
@@ -417,6 +474,16 @@ impl Harness {
                 Box::pin(async move { hooks.run_after_tool_call(result).await });
             fut
         }) as AfterToolCall);
+        loop_config.finish_turn = Some(Arc::new(move |context| {
+            let hooks = turn_end_hooks.clone();
+            let buffer = Arc::clone(&turn_end_buffer);
+            let fut: BoxFuture<'static, LoopResult<Option<TurnDecision>>> = Box::pin(async move {
+                let result = hooks.run_turn_end(context).await?;
+                buffer.lock().await.extend(result.entries);
+                Ok(result.continue_run.then_some(TurnDecision::Continue))
+            });
+            fut
+        }) as FinishTurn);
         Self {
             agent: Agent::new_with_messages(loop_config, initial_messages),
             session: Arc::new(Mutex::new(config.session)),
@@ -425,6 +492,9 @@ impl Harness {
             resources: Arc::new(Mutex::new(config.resources)),
             tools: Arc::new(Mutex::new(config.tools)),
             auth_resolver: config.auth_resolver,
+            pending_system: Arc::new(Mutex::new(None)),
+            system_prompt_fallback: config.system_prompt,
+            turn_end_entries,
         }
     }
 
@@ -438,11 +508,21 @@ impl Harness {
     }
 
     pub async fn prompt(&self, message: Message) -> HarnessResult<Vec<Message>> {
-        self.hooks
+        let edits = self
+            .hooks
             .run_before_agent_start()
             .await
             .map_err(oino_agent::AgentError::Loop)?;
+        self.merge_section_edits(edits).await;
+        self.flush_system().await?;
         let output = self.agent.prompt(message).await?;
+        // Entries produced by `turn_end` handlers are appended in registration
+        // order to both the agent context and the session.
+        let appended: Vec<Message> = std::mem::take(&mut *self.turn_end_entries.lock().await);
+        for entry in &appended {
+            self.agent.append_transcript_message(entry.clone()).await;
+            self.session.lock().await.append_message(entry.clone());
+        }
         self.persist_messages(&output.messages).await;
         self.hooks
             .notify(AgentEvent::SavePoint {
@@ -480,9 +560,7 @@ impl Harness {
     }
 
     pub async fn compact(&self, summary: String) -> HarnessResult<()> {
-        self.append_compaction(summary, Vec::new())
-            .await
-            .map(|_| ())
+        self.append_compaction(summary, None, 0).await.map(|_| ())
     }
 
     #[must_use]
@@ -499,10 +577,14 @@ impl Harness {
         self.session.lock().await.get_entries()
     }
 
+    /// Append a compaction entry. `first_kept` is the id of the first entry on
+    /// the active branch to keep (`None` retains nothing). `tokens_before` is
+    /// the estimated token count of the compacted region.
     pub async fn append_compaction(
         &self,
         summary: String,
-        replaces: Vec<oino_types::OinoId>,
+        first_kept: Option<oino_types::OinoId>,
+        tokens_before: u64,
     ) -> HarnessResult<Vec<Message>> {
         let summary = self
             .hooks
@@ -511,7 +593,7 @@ impl Harness {
             .map_err(oino_agent::AgentError::Loop)?;
         let messages = {
             let mut session = self.session.lock().await;
-            session.append_compaction(summary, replaces);
+            session.append_compaction(summary, first_kept, tokens_before);
             session.build_session_context()?.messages
         };
         self.agent.replace_messages(messages.clone()).await;
@@ -553,6 +635,9 @@ impl Harness {
         if let Some(thinking_level) = context.as_ref().and_then(|context| context.thinking_level) {
             self.agent.set_thinking_level(thinking_level).await;
         }
+        self.agent
+            .set_session_id(Some(session.header().session_id.to_string()))
+            .await;
         *self.session.lock().await = session;
     }
 
@@ -574,8 +659,161 @@ impl Harness {
         Ok(())
     }
 
-    pub async fn set_system_prompt(&self, system_prompt: Option<String>) {
-        self.agent.set_system_prompt(system_prompt).await;
+    /// Record the desired prompt state (base text plus ordered sections).
+    /// Repeated calls coalesce; the next `prompt` flushes one delta `System`
+    /// message carrying only what changed.
+    pub async fn sync_system(&self, base: String, sections: Vec<PromptSection>) {
+        *self.pending_system.lock().await = Some((base, sections));
+    }
+
+    /// Merge `before_agent_start` section edits into the pending prompt state:
+    /// same-name sections are replaced, new names appended in order.
+    async fn merge_section_edits(&self, edits: Vec<PromptSection>) {
+        if edits.is_empty() {
+            return;
+        }
+        let mut pending = self.pending_system.lock().await;
+        let (_, sections) = pending.get_or_insert_with(|| {
+            (
+                self.system_prompt_fallback.clone().unwrap_or_default(),
+                Vec::new(),
+            )
+        });
+        for edit in edits {
+            if let Some(existing) = sections
+                .iter_mut()
+                .find(|section| section.name == edit.name)
+            {
+                *existing = edit;
+            } else {
+                sections.push(edit);
+            }
+        }
+    }
+
+    /// Flush pending prompt/tool state into the transcript. Without a `System`
+    /// message a full `System` is appended; otherwise a single delta `System`
+    /// carrying changed sections and tool declarations is appended. The
+    /// message goes to both the agent context and the session, before the next
+    /// user message.
+    async fn flush_system(&self) -> HarnessResult<()> {
+        let pending = self.pending_system.lock().await.clone();
+        let desired_tools: Vec<oino_types::ToolDeclaration> = self
+            .tools
+            .lock()
+            .await
+            .values()
+            .map(|tool| tool.definition())
+            .collect();
+        let messages = self.agent.messages().await;
+        let has_system = messages
+            .iter()
+            .any(|message| matches!(message, Message::System { .. }));
+        if !has_system {
+            let (base, sections) = pending.unwrap_or_else(|| {
+                (
+                    self.system_prompt_fallback.clone().unwrap_or_default(),
+                    Vec::new(),
+                )
+            });
+            let system = Message::System {
+                id: oino_types::OinoId::new_v4(),
+                content: base,
+                sections,
+                tools_added: desired_tools,
+                tools_removed: Vec::new(),
+            };
+            self.agent.append_transcript_message(system.clone()).await;
+            self.session.lock().await.append_message(system);
+            return Ok(());
+        }
+        let Some(replayed) = current_system(&messages) else {
+            return Ok(());
+        };
+        let Message::System {
+            content: replayed_content,
+            sections: replayed_sections,
+            ..
+        } = replayed
+        else {
+            return Ok(());
+        };
+        let (base, desired_sections) =
+            pending.unwrap_or_else(|| (replayed_content.clone(), replayed_sections.clone()));
+        // `content` is append-only in pi semantics, so a changed base is
+        // carried as the pseudo-section `oino/base` with the new base text.
+        let mut effective: Vec<PromptSection> = Vec::new();
+        if base != replayed_content {
+            effective.push(PromptSection {
+                name: "oino/base".into(),
+                text: Some(base),
+            });
+        }
+        effective.extend(
+            desired_sections
+                .into_iter()
+                .filter(|section| section.text.is_some()),
+        );
+        let replayed_by_name: BTreeMap<&str, Option<&str>> = replayed_sections
+            .iter()
+            .map(|section| (section.name.as_str(), section.text.as_deref()))
+            .collect();
+        let mut delta_sections: Vec<PromptSection> = effective
+            .iter()
+            .filter(|section| {
+                replayed_by_name
+                    .get(section.name.as_str())
+                    .copied()
+                    .flatten()
+                    != section.text.as_deref()
+                    || !replayed_by_name.contains_key(section.name.as_str())
+            })
+            .cloned()
+            .collect();
+        let effective_names: std::collections::BTreeSet<&str> = effective
+            .iter()
+            .map(|section| section.name.as_str())
+            .collect();
+        for section in &replayed_sections {
+            if !effective_names.contains(section.name.as_str()) {
+                delta_sections.push(PromptSection {
+                    name: section.name.clone(),
+                    text: None,
+                });
+            }
+        }
+        let replayed_tools = current_tools(&messages);
+        let replayed_canonical: BTreeMap<String, String> = replayed_tools
+            .iter()
+            .map(|tool| (tool.name.clone(), tool_declaration_canonical(tool)))
+            .collect();
+        let desired_canonical: BTreeMap<String, String> = desired_tools
+            .iter()
+            .map(|tool| (tool.name.clone(), tool_declaration_canonical(tool)))
+            .collect();
+        let tools_added: Vec<oino_types::ToolDeclaration> = desired_tools
+            .iter()
+            .filter(|tool| replayed_canonical.get(&tool.name) != desired_canonical.get(&tool.name))
+            .cloned()
+            .collect();
+        let tools_removed: Vec<String> = replayed_tools
+            .iter()
+            .filter(|tool| desired_canonical.get(&tool.name) != replayed_canonical.get(&tool.name))
+            .map(|tool| tool.name.clone())
+            .collect();
+        if delta_sections.is_empty() && tools_added.is_empty() && tools_removed.is_empty() {
+            return Ok(());
+        }
+        let delta = Message::System {
+            id: oino_types::OinoId::new_v4(),
+            content: String::new(),
+            sections: delta_sections,
+            tools_added,
+            tools_removed,
+        };
+        self.agent.append_transcript_message(delta.clone()).await;
+        self.session.lock().await.append_message(delta);
+        Ok(())
     }
 
     pub async fn set_session_title(&self, title: impl Into<String>) -> HarnessResult<()> {
@@ -638,8 +876,29 @@ impl Harness {
         self.session.lock().await.save_jsonl(path).await?;
         Ok(())
     }
+    /// The current replayed system prompt text, or the pending prompt state
+    /// when no `System` message has been appended yet.
     pub async fn get_system_prompt(&self) -> Option<String> {
-        self.agent.state().await.system_prompt
+        let messages = self.agent.messages().await;
+        if let Some(system) = current_system(&messages) {
+            let prompt = render_system_prompt(&system);
+            if !prompt.is_empty() {
+                return Some(prompt);
+            }
+        }
+        if let Some((base, sections)) = self.pending_system.lock().await.clone() {
+            let prompt = render_system_prompt(&Message::System {
+                id: oino_types::OinoId::nil(),
+                content: base,
+                sections,
+                tools_added: Vec::new(),
+                tools_removed: Vec::new(),
+            });
+            if !prompt.is_empty() {
+                return Some(prompt);
+            }
+        }
+        self.system_prompt_fallback.clone()
     }
 
     pub async fn inspect_full_prompt(&self) -> HarnessResult<FullPromptInspect> {
@@ -656,23 +915,63 @@ impl Harness {
         content.push_str(&format!("Model: {}\n", state.model.identifier()));
         content.push_str(&format!("Thinking: {:?}\n", state.thinking_level));
         content.push_str("\n# System Prompt\n\n");
-        content.push_str(
-            state
-                .system_prompt
-                .as_deref()
-                .filter(|prompt| !prompt.trim().is_empty())
-                .unwrap_or("<none>"),
-        );
+        let replayed = current_system(&state.messages);
+        let prompt_text = replayed
+            .as_ref()
+            .map(render_system_prompt)
+            .filter(|prompt| !prompt.trim().is_empty())
+            .or_else(|| {
+                self.system_prompt_fallback
+                    .clone()
+                    .filter(|prompt| !prompt.trim().is_empty())
+            })
+            .unwrap_or_else(|| "<none>".into());
+        content.push_str(&prompt_text);
+        let mut seen_system = false;
+        for message in &state.messages {
+            let Message::System {
+                sections,
+                tools_added,
+                tools_removed,
+                ..
+            } = message
+            else {
+                continue;
+            };
+            if !seen_system {
+                seen_system = true;
+                continue;
+            }
+            let mut changed: Vec<String> = sections
+                .iter()
+                .map(|section| match &section.text {
+                    Some(_) => section.name.clone(),
+                    None => format!("-{}", section.name),
+                })
+                .collect();
+            changed.extend(tools_added.iter().map(|tool| format!("+{}", tool.name)));
+            changed.extend(tools_removed.iter().map(|name| format!("-{name}")));
+            if !changed.is_empty() {
+                content.push_str("\n\n# Prompt deltas\n\n");
+                content.push_str(&format!("- {}", changed.join(", ")));
+            }
+        }
         content.push_str("\n\n# Messages\n");
         for (index, message) in messages.iter().enumerate() {
             content.push('\n');
             content.push_str(&format_message_for_inspect(index, message));
         }
         content.push_str("\n# Tools\n");
-        if state.tools.is_empty() {
+        let transcript_tools = current_tools(&state.messages);
+        let tools = if transcript_tools.is_empty() {
+            state.tools.clone()
+        } else {
+            transcript_tools
+        };
+        if tools.is_empty() {
             content.push_str("\n<none>\n");
         } else {
-            for tool in &state.tools {
+            for tool in &tools {
                 content.push('\n');
                 content.push_str(&format!("## {}\n\n", tool.name));
                 content.push_str(&tool.description);
@@ -691,14 +990,35 @@ impl Harness {
         })
     }
 
+    /// Append output messages not already present on the active branch,
+    /// preserving order. Id-based so messages appended outside the loop (e.g.
+    /// `System` deltas) never shift the offset.
     async fn persist_messages(&self, messages: &[Message]) {
         let mut session = self.session.lock().await;
-        let existing = session
-            .get_entries()
-            .into_iter()
-            .filter(|entry| matches!(entry.kind, SessionEntryKind::Message { .. }))
-            .count();
-        for message in messages.iter().skip(existing) {
+        let mut existing: std::collections::BTreeSet<oino_types::OinoId> =
+            std::collections::BTreeSet::new();
+        for entry in session
+            .get_branch(session.get_leaf_id())
+            .unwrap_or_default()
+            .iter()
+        {
+            existing.insert(entry.id);
+            if let SessionEntryKind::Message { message }
+            | SessionEntryKind::CustomMessage { message } = &entry.kind
+            {
+                existing.insert(message.id());
+            }
+        }
+        for message in messages {
+            // Summary messages are projections of session entries, not real
+            // transcript messages; never persist them here.
+            if matches!(
+                message,
+                Message::CompactionSummary { .. } | Message::BranchSummary { .. }
+            ) || existing.contains(&message.id())
+            {
+                continue;
+            }
             session.append_message(message.clone());
         }
     }
@@ -1049,5 +1369,453 @@ mod tests {
         assert_eq!(agent_state.messages, context);
         assert_eq!(agent_state.model, Model::new("test", "replacement"));
         assert_eq!(agent_state.thinking_level, ThinkingLevel::High);
+    }
+
+    fn prompt_parts() -> (String, Vec<oino_types::PromptSection>) {
+        (
+            "policy base".into(),
+            vec![
+                oino_types::PromptSection {
+                    name: "project/AGENT.md".into(),
+                    text: Some("rules".into()),
+                },
+                oino_types::PromptSection {
+                    name: "oino/cwd".into(),
+                    text: Some("/tmp".into()),
+                },
+            ],
+        )
+    }
+
+    fn system_messages(messages: &[Message]) -> Vec<&Message> {
+        messages
+            .iter()
+            .filter(|message| matches!(message, Message::System { .. }))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn sync_system_persists_full_then_noop_delta() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base.clone(), sections.clone()).await;
+        h.sync_system(base, sections).await; // coalesces
+        let first = h.prompt(Message::user_text("one")).await;
+        assert!(first.is_ok());
+        let second = h.prompt(Message::user_text("two")).await;
+        assert!(second.is_ok());
+        let entries = h.all_session_entries().await;
+        let system_count = entries
+            .iter()
+            .filter(|entry| matches!(&entry.kind, SessionEntryKind::Message { message } if matches!(message, Message::System { .. })))
+            .count();
+        assert_eq!(system_count, 1);
+        // The first prompt carries a full System before the user message.
+        let first_system = entries
+            .iter()
+            .find_map(|entry| match &entry.kind {
+                SessionEntryKind::Message {
+                    message: system @ Message::System { .. },
+                } => Some(system.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing system message"));
+        let Message::System {
+            content,
+            sections,
+            tools_added,
+            ..
+        } = first_system
+        else {
+            panic!("expected system");
+        };
+        assert_eq!(content, "policy base");
+        assert_eq!(sections.len(), 2);
+        assert!(tools_added.is_empty());
+    }
+
+    #[tokio::test]
+    async fn section_change_yields_single_section_delta() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base.clone(), sections.clone()).await;
+        assert!(h.prompt(Message::user_text("one")).await.is_ok());
+        let changed = vec![
+            oino_types::PromptSection {
+                name: "project/AGENT.md".into(),
+                text: Some("rules v2".into()),
+            },
+            sections[1].clone(),
+        ];
+        h.sync_system(base, changed).await;
+        assert!(h.prompt(Message::user_text("two")).await.is_ok());
+        let messages = h.build_context().await.unwrap_or_default();
+        let systems = system_messages(&messages);
+        assert_eq!(systems.len(), 2);
+        let Message::System {
+            sections,
+            tools_added,
+            tools_removed,
+            ..
+        } = systems[1]
+        else {
+            panic!("expected system delta");
+        };
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].name, "project/AGENT.md");
+        assert_eq!(sections[0].text.as_deref(), Some("rules v2"));
+        assert!(tools_added.is_empty());
+        assert!(tools_removed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tool_change_yields_tools_only_delta() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base.clone(), sections.clone()).await;
+        assert!(h.prompt(Message::user_text("one")).await.is_ok());
+        let mut tools = std::collections::BTreeMap::new();
+        tools.insert(
+            "inspect_tool".into(),
+            Arc::new(InspectTool) as Arc<dyn Tool>,
+        );
+        h.set_tools(tools).await;
+        assert!(h.prompt(Message::user_text("two")).await.is_ok());
+        let messages = h.build_context().await.unwrap_or_default();
+        let systems = system_messages(&messages);
+        assert_eq!(systems.len(), 2);
+        let Message::System {
+            sections,
+            tools_added,
+            tools_removed,
+            ..
+        } = systems[1]
+        else {
+            panic!("expected system delta");
+        };
+        assert!(sections.is_empty());
+        assert_eq!(tools_added.len(), 1);
+        assert_eq!(tools_added[0].name, "inspect_tool");
+        assert!(tools_removed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn blank_session_stays_lazy_without_prompt() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base, sections).await;
+        assert!(h.all_session_entries().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn v1_session_resume_appends_full_system_at_leaf() {
+        // v1-style session: messages but no System entry.
+        let mut session = SessionManager::new(SessionHeader::new("v1", PathBuf::from("/tmp")));
+        let prior = session.append_message(Message::user_text("prior"));
+        let stream = Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            provider: None,
+        }]));
+        let h = Harness::new(HarnessConfig::new(
+            Model::new("test", "faux"),
+            stream,
+            session,
+        ));
+        let (base, sections) = prompt_parts();
+        h.sync_system(base.clone(), sections.clone()).await;
+        assert!(h.prompt(Message::user_text("hi")).await.is_ok());
+        let branch = h
+            .active_branch_entries()
+            .await
+            .unwrap_or_else(|err| panic!("branch failed: {err}"));
+        // The System entry is a child of the previous leaf (nothing at root).
+        let system_index = branch
+            .iter()
+            .position(|entry| matches!(&entry.kind, SessionEntryKind::Message { message } if matches!(message, Message::System { .. })))
+            .unwrap_or_else(|| panic!("no system entry appended"));
+        assert_eq!(branch[system_index].parent, Some(prior));
+        let Some(Message::System {
+            content, sections, ..
+        }) = (match &branch[system_index].kind {
+            SessionEntryKind::Message { message } => Some(message.clone()),
+            _ => None,
+        })
+        else {
+            panic!("expected system");
+        };
+        assert_eq!(content, "policy base");
+        assert_eq!(sections.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn prompt_text_is_byte_stable_across_builds() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base.clone(), sections.clone()).await;
+        let first = h.get_system_prompt().await.unwrap_or_default();
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        let h2 = harness();
+        h2.sync_system(base, sections).await;
+        let second = h2.get_system_prompt().await.unwrap_or_default();
+        assert_eq!(first, second);
+        assert!(!first.is_empty());
+    }
+
+    #[tokio::test]
+    async fn prompt_after_compaction_persists_new_messages() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base, sections).await;
+        assert!(h.prompt(Message::user_text("one")).await.is_ok());
+        // Retain-none compaction, then prompt again: the new messages must be
+        // persisted even though message entries already exist.
+        let messages = h
+            .append_compaction("summary".into(), None, 10)
+            .await
+            .unwrap_or_else(|err| panic!("compaction failed: {err}"));
+        assert!(messages
+            .iter()
+            .any(|message| matches!(message, Message::CompactionSummary { .. })));
+        assert!(h.prompt(Message::user_text("two")).await.is_ok());
+        let branch = h
+            .active_branch_entries()
+            .await
+            .unwrap_or_else(|err| panic!("branch failed: {err}"));
+        let texts: Vec<String> = branch
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                SessionEntryKind::Message {
+                    message: Message::User { content, .. },
+                } => content.iter().find_map(|block| match block {
+                    ContentBlock::Text { text } => Some(text.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.contains(&"two".to_string()));
+    }
+
+    #[tokio::test]
+    async fn prompts_after_compaction_do_not_duplicate_summary_entries() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base, sections).await;
+        assert!(h.prompt(Message::user_text("one")).await.is_ok());
+        h.append_compaction("summary".into(), None, 10)
+            .await
+            .unwrap_or_else(|err| panic!("compaction failed: {err}"));
+        assert!(h.prompt(Message::user_text("two")).await.is_ok());
+        assert!(h.prompt(Message::user_text("three")).await.is_ok());
+        let branch = h
+            .active_branch_entries()
+            .await
+            .unwrap_or_else(|err| panic!("branch failed: {err}"));
+        // No Message entry may wrap a CompactionSummary/BranchSummary.
+        assert!(!branch.iter().any(|entry| matches!(
+            &entry.kind,
+            SessionEntryKind::Message {
+                message: Message::CompactionSummary { .. } | Message::BranchSummary { .. }
+            }
+        )));
+        let context = h
+            .build_context()
+            .await
+            .unwrap_or_else(|err| panic!("context failed: {err}"));
+        let summaries = context
+            .iter()
+            .filter(|message| matches!(message, Message::CompactionSummary { .. }))
+            .count();
+        assert_eq!(summaries, 1);
+    }
+
+    #[tokio::test]
+    async fn turn_end_hook_appends_entries_and_can_continue() {
+        let sink = VecEventSink::new();
+        let session = SessionManager::new(SessionHeader::new("h", PathBuf::from("/tmp")));
+        let stream = Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            provider: None,
+        }]));
+        let mut cfg = HarnessConfig::new(Model::new("test", "faux"), stream, session);
+        cfg.event_sink = Arc::new(sink.clone());
+        let h = Harness::new(cfg);
+        let entry = Message::user_text("turn end entry");
+        let entry_for_hook = entry.clone();
+        let calls = Arc::new(std::sync::Mutex::new(0usize));
+        let calls_hook = Arc::clone(&calls);
+        h.hooks()
+            .on_turn_end(Arc::new(move |_context| {
+                let entry = entry_for_hook.clone();
+                let calls = Arc::clone(&calls_hook);
+                Box::pin(async move {
+                    let mut locked = calls.lock().unwrap_or_else(|e| e.into_inner());
+                    *locked += 1;
+                    let continue_run = *locked == 1;
+                    Ok(Some(TurnEndResult {
+                        entries: if continue_run {
+                            vec![entry]
+                        } else {
+                            Vec::new()
+                        },
+                        continue_run,
+                    }))
+                })
+            }))
+            .await;
+        assert!(h.prompt(Message::user_text("hi")).await.is_ok());
+        // Continue ran one extra turn.
+        let turn_ends = sink
+            .events()
+            .await
+            .iter()
+            .filter(|event| matches!(event, AgentEvent::TurnEnd { .. }))
+            .count();
+        assert_eq!(turn_ends, 2);
+        // The entry landed in agent context and session.
+        assert!(h.build_context().await.unwrap_or_default().contains(&entry));
+        let branch = h
+            .active_branch_entries()
+            .await
+            .unwrap_or_else(|err| panic!("branch failed: {err}"));
+        assert!(branch.iter().any(|e| matches!(
+            &e.kind,
+            SessionEntryKind::Message { message } if *message == entry
+        )));
+    }
+
+    #[tokio::test]
+    async fn before_agent_start_section_edits_flush_as_delta() {
+        let h = harness();
+        let (base, sections) = prompt_parts();
+        h.sync_system(base, sections).await;
+        assert!(h.prompt(Message::user_text("one")).await.is_ok());
+        h.hooks()
+            .on_before_agent_start(Arc::new(|| {
+                Box::pin(async {
+                    Ok(vec![oino_types::PromptSection {
+                        name: "ext/edited".into(),
+                        text: Some("from hook".into()),
+                    }])
+                })
+            }))
+            .await;
+        assert!(h.prompt(Message::user_text("two")).await.is_ok());
+        let messages = h.build_context().await.unwrap_or_default();
+        let systems = system_messages(&messages);
+        assert_eq!(systems.len(), 2);
+        let Message::System { sections, .. } = systems[1] else {
+            panic!("expected system delta");
+        };
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].name, "ext/edited");
+        assert_eq!(sections[0].text.as_deref(), Some("from hook"));
+        // The replayed prompt now contains the hook section text.
+        let prompt = h.get_system_prompt().await.unwrap_or_default();
+        assert!(prompt.contains("from hook"));
+    }
+
+    /// Stream provider that records every request and always ends the turn.
+    struct CaptureStream {
+        requests: Arc<Mutex<Vec<oino_agent_loop::StreamRequest>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl StreamProvider for CaptureStream {
+        async fn stream(
+            &self,
+            request: oino_agent_loop::StreamRequest,
+            _signal: AbortSignal,
+        ) -> LoopResult<Vec<AssistantStreamEvent>> {
+            self.requests.lock().await.push(request);
+            Ok(vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }])
+        }
+    }
+
+    #[tokio::test]
+    async fn requests_are_prefix_stable_across_prompts_and_deltas() {
+        let session = SessionManager::new(SessionHeader::new("h", PathBuf::from("/tmp")));
+        let stream = Arc::new(CaptureStream {
+            requests: Arc::new(Mutex::new(Vec::new())),
+        });
+        let requests = Arc::clone(&stream.requests);
+        let h = Harness::new(HarnessConfig::new(
+            Model::new("test", "faux"),
+            stream,
+            session,
+        ));
+        let (base, sections) = prompt_parts();
+        h.sync_system(base.clone(), sections.clone()).await;
+        for i in 0..3 {
+            assert!(h
+                .prompt(Message::user_text(format!("prompt-{i}")))
+                .await
+                .is_ok());
+        }
+        let changed = vec![
+            oino_types::PromptSection {
+                name: "project/AGENT.md".into(),
+                text: Some("rules v2".into()),
+            },
+            sections[1].clone(),
+        ];
+        h.sync_system(base, changed).await;
+        for i in 3..5 {
+            assert!(h
+                .prompt(Message::user_text(format!("prompt-{i}")))
+                .await
+                .is_ok());
+        }
+        let requests = requests.lock().await;
+        assert_eq!(requests.len(), 5);
+        // Every request's transcript is an exact prefix of the next one.
+        for pair in requests.windows(2) {
+            let earlier = pair[0].transcript.messages();
+            let later = pair[1].transcript.messages();
+            assert!(later.len() > earlier.len());
+            assert_eq!(&later[..earlier.len()], earlier);
+        }
+        // Between prompt 3 and 4 the only new System is a one-section delta.
+        let third = requests[2].transcript.messages().len();
+        let inserted = &requests[3].transcript.messages()[third..];
+        let deltas: Vec<&Message> = inserted
+            .iter()
+            .filter(|message| matches!(message, Message::System { .. }))
+            .collect();
+        assert_eq!(deltas.len(), 1);
+        let Message::System {
+            sections: delta_sections,
+            tools_added,
+            tools_removed,
+            ..
+        } = deltas[0]
+        else {
+            panic!("expected delta");
+        };
+        assert_eq!(delta_sections.len(), 1);
+        assert_eq!(delta_sections[0].name, "project/AGENT.md");
+        assert!(tools_added.is_empty() && tools_removed.is_empty());
+        // Rendered prompt byte-identical for requests 1-3, changes only in the
+        // edited section for 4-5.
+        let rendered: Vec<String> = requests
+            .iter()
+            .map(|request| {
+                oino_types::transcript::current_system(request.transcript.messages())
+                    .map(|system| oino_types::transcript::render_system_prompt(&system))
+                    .unwrap_or_default()
+            })
+            .collect();
+        assert!(rendered[0] == rendered[1] && rendered[1] == rendered[2]);
+        assert!(rendered[3] == rendered[4]);
+        assert_ne!(rendered[2], rendered[3]);
+        assert!(rendered[3].contains("rules v2"));
+        let without_section: Vec<String> = rendered
+            .iter()
+            .map(|prompt| prompt.replace("rules v2", "rules"))
+            .collect();
+        assert_eq!(without_section[2], without_section[4]);
     }
 }
