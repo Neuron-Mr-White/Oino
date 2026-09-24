@@ -35,21 +35,17 @@ OINO_MODEL=router:openai/gpt-4.1 oino
 
 ## Provider runtime
 
-`providers.runtime` in `~/.oino/settings.json` (or project `.oino/settings.json`,
-project wins) selects how declarative extension providers are executed:
+Declarative extension providers always run as bundled Wasmtime components —
+one instance per provider id, with host-resolved config and an `api_key` host
+secret:
 
-- `"wasm"` (default): bundled Wasmtime components, one instance per provider
-  id, with
-  host-resolved config and an `api_key` host secret:
-  - `open_ai_chat_completions` → `provider-openai-compat`
-  - `anthropic_messages` → `provider-anthropic`
-  - `open_ai_responses` → `provider-openai-responses`
+- `open_ai_chat_completions` → `provider-openai-compat`
+- `anthropic_messages` → `provider-anthropic`
+- `open_ai_responses` → `provider-openai-responses`
 
-- `"native"` (fallback): the in-process OpenAI-compatible adapter
-  (`open_ai_chat_completions` protocol only). The built-in
-  `provider-anthropic` (`ANTHROPIC_API_KEY`, `api.anthropic.com`) and
-  `provider-openai` (`OPENAI_API_KEY`, `api.openai.com/v1`) packages report a
-  readiness diagnostic under `"native"`.
+(The native in-process adapter and the `providers.runtime` setting were
+removed in the P3c cutover; provider behavior is frozen as goldens under
+`crates/oino-app/tests/fixtures/openai_compat/`.)
 
 ## Headless extension flags
 
@@ -60,6 +56,13 @@ packages are force-enabled for the run even when disabled in settings):
   caps merged into the `oino.budget` init config.
 - `--preset <name>` — select an `oino.presets` preset (`minimal`/`standard`/
   `thorough`) for the run.
+
+## Debugging provider HTTP traffic
+
+`OINO_DEBUG_PROVIDER_DIR=<dir>` makes the WASM host dump every provider
+request body to `<dir>/<n>-request.json` and every streamed response to
+`<dir>/<n>-response.sse`. Auth headers are redacted; files are numbered in
+request order across all provider components.
 
 ## Oino Router provider
 

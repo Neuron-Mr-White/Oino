@@ -23,7 +23,6 @@ TUI/composer ──> app runtime ──> harness ──> agent loop ──> prov
 - `oino-tools` / `oino-env` — local read/bash/edit/write tools on an execution environment.
 - `oino-extension-*` — manifests, manager, runtime boundary, SDK, and built-ins.
 - `oino-auth` — provider-neutral credential document primitives used by extensions.
-- `oino-provider-openrouter` — OpenAI-compatible transport used by extension providers such as OmniRoute.
 
 ## WASM extension host
 

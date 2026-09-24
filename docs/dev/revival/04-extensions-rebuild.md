@@ -6,7 +6,7 @@ marked host.
 
 ## P4.0 Headless mode (host, prerequisite for P5)
 
-`oino run [-p "<prompt>"] [--json] [--model provider:model] [--max-turns N] [--session <path>|--no-session]`
+`oino [-p "<prompt>"] [--json] [--model provider:model] [--max-turns N] [--session <path>|--no-session]`
 
 - `-p` runs one prompt non-interactively and prints the final assistant text.
 - `--json` streams `AgentEvent`s as JSON lines (delta-only, P1) plus a final summary line:

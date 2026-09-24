@@ -24,7 +24,6 @@ oino-extension-manager = { path = "../oino-extension-manager" }
 oino-extension-runtime = { path = "../oino-extension-runtime" }
 oino-harness = { path = "../oino-harness" }
 oino-provider-catalog = { path = "../oino-provider-catalog" }
-oino-provider-openrouter = { path = "../oino-provider-openrouter" }
 oino-resource = { path = "../oino-resource" }
 oino-session = { path = "../oino-session" }
 oino-tools = { path = "../oino-tools" }

@@ -305,6 +305,79 @@ struct GatedHooks {
     hosts: BTreeSet<String>,
 }
 
+/// `OINO_DEBUG_PROVIDER_DIR`: when set, every provider HTTP request/response
+/// body is dumped to `<dir>/<n>-request.json` / `<n>-response.sse` (auth
+/// headers are stripped before writing).
+fn debug_provider_dir() -> Option<&'static std::path::PathBuf> {
+    static DIR: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        std::env::var("OINO_DEBUG_PROVIDER_DIR")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .and_then(|dir| {
+                std::fs::create_dir_all(&dir).ok()?;
+                Some(dir)
+            })
+    })
+    .as_ref()
+}
+
+fn debug_next_index() -> usize {
+    static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+    COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+fn strip_auth_headers(headers: &http::HeaderMap) -> serde_json::Map<String, Value> {
+    let mut out = serde_json::Map::new();
+    for (name, value) in headers {
+        let n = name.as_str().to_ascii_lowercase();
+        if matches!(
+            n.as_str(),
+            "authorization" | "x-api-key" | "proxy-authorization" | "cookie"
+        ) {
+            out.insert(n, Value::String("<redacted>".into()));
+        } else if let Ok(v) = value.to_str() {
+            out.insert(n, Value::String(v.to_string()));
+        }
+    }
+    out
+}
+
+fn boxed_full_body(bytes: bytes::Bytes) -> wasmtime_wasi_http::WasiBody {
+    use http_body_util::BodyExt;
+    http_body_util::Full::new(bytes)
+        .map_err(|never: std::convert::Infallible| match never {})
+        .boxed_unsync()
+}
+
+/// Response body wrapper that appends every polled data frame to a file —
+/// used by `OINO_DEBUG_PROVIDER_DIR` so streaming (SSE) bodies are captured
+/// without buffering the whole response.
+struct TeeBody {
+    inner: wasmtime_wasi_http::WasiBody,
+    sink: Option<std::fs::File>,
+}
+
+impl http_body::Body for TeeBody {
+    type Data = bytes::Bytes;
+    type Error = wasmtime_wasi_http::Error;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        use std::io::Write;
+        let inner = std::pin::Pin::new(&mut self.inner);
+        let poll = inner.poll_frame(cx);
+        if let std::task::Poll::Ready(Some(Ok(frame))) = &poll {
+            if let (Some(sink), Some(data)) = (&mut self.sink, frame.data_ref()) {
+                let _ = sink.write_all(data);
+            }
+        }
+        poll
+    }
+}
+
 impl WasiHttpHooks for GatedHooks {
     fn send_request(
         &mut self,
@@ -337,9 +410,44 @@ impl WasiHttpHooks for GatedHooks {
         }
         Box::new(async move {
             use http_body_util::BodyExt;
+            let debug_dir = debug_provider_dir();
+            let index = debug_dir.map(|_| debug_next_index());
+            let request = if let Some(dir) = debug_dir {
+                let index = index.unwrap_or(0);
+                let (parts, body) = request.into_parts();
+                let collected = body
+                    .collect()
+                    .await
+                    .map_err(|_| wasmtime_wasi_http::Error::HttpProtocolError)?;
+                let bytes = collected.to_bytes();
+                let mut dump = strip_auth_headers(&parts.headers);
+                dump.insert("method".into(), Value::String(parts.method.to_string()));
+                dump.insert("uri".into(), Value::String(parts.uri.to_string()));
+                let _ = std::fs::write(
+                    dir.join(format!("{index}-request.json")),
+                    serde_json::json!({
+                        "meta": Value::Object(dump),
+                        "body": serde_json::from_slice::<Value>(&bytes)
+                            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into())),
+                    })
+                    .to_string(),
+                );
+                http::Request::from_parts(parts, boxed_full_body(bytes))
+            } else {
+                request
+            };
             let (res, io) = wasmtime_wasi_http::default_send_request(request, options).await?;
+            let res = res.map(BodyExt::boxed_unsync);
+            let res = if let Some(dir) = debug_dir {
+                let index = index.unwrap_or(0);
+                let (parts, body) = res.into_parts();
+                let sink = std::fs::File::create(dir.join(format!("{index}-response.sse"))).ok();
+                http::Response::from_parts(parts, TeeBody { inner: body, sink }.boxed_unsync())
+            } else {
+                res
+            };
             Ok((
-                res.map(BodyExt::boxed_unsync),
+                res,
                 Box::new(io)
                     as Box<
                         dyn std::future::Future<Output = Result<(), wasmtime_wasi_http::Error>>

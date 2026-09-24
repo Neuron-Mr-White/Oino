@@ -1,8 +1,9 @@
 # P3: Providers as WASM Extensions
 
 Goal: every model provider is a WASM component implementing the `provider` interface
-(P2). Core keeps no wire formats. `crates/oino-provider-openrouter` and
-`ProviderRuntimeProtocol` are deleted at the end of this phase.
+(P2). Core keeps no wire formats. `crates/oino-provider-openrouter` and the
+`providers.runtime` setting were deleted in P3c (`ProviderRuntimeProtocol`
+stays — it selects the bundled component per declarative contribution).
 
 ## Components (guest workspace `extensions/`)
 
@@ -21,9 +22,7 @@ provider), `open_ai_responses` → `provider-openai-responses` (incl. built-in
 `openai`). The artifacts are bundled in `oino-app` (`include_bytes!`);
 host-resolved config (base_url, headers, auth spec) is passed via `init`,
 the api key via `host.secret("api_key")`, and network permissions are
-synthesized from the resolved URLs. Under `providers.runtime = "native"` the
-anthropic/responses protocols report a readiness diagnostic (no native
-adapter exists). Both adapters carry pi's generated catalog data verbatim
+synthesized from the resolved URLs. Both adapters carry pi's generated catalog data verbatim
 (`extensions/crates/oino-provider-kit/assets/{anthropic,openai}.json`) and
 are verified byte-for-byte against pi via oracle fixtures — see
 `scripts/pi-oracle/README.md` for regeneration.
@@ -121,15 +120,14 @@ injected into the component at `init`/`host.secret` time.
 ## Cutover
 
 1. ~~Ship components next to the native provider behind a setting~~ — done
-   (P3a/P3b; `providers.runtime = "wasm" | "native"`).
-2. ~~Flip default to `wasm`~~ — done (P3c). Native-vs-wasm wire behavior is
+   (P3a/P3b).
+2. ~~Flip default to `wasm`~~ — done. Native-vs-wasm wire behavior is
    frozen as goldens under `crates/oino-app/tests/fixtures/openai_compat/`
-   (regenerate with `OINO_GOLDEN_RECORD=1`); one live native-vs-wasm parity
-   test remains while the native crate exists.
-3. Delete `oino-provider-openrouter`, `ProviderRuntimeProtocol`, and the
-   setting — pending a real user smoke run. App-side usage is already
-   isolated behind `crates/oino-app/src/provider_config.rs` +
-   `provider_runtime.rs`.
+   (regenerate with `OINO_GOLDEN_RECORD=1`).
+3. ~~Delete `oino-provider-openrouter` and the `providers.runtime`
+   setting~~ — done (P3c cutover; `ProviderRuntimeProtocol` remains as the
+   component selector). App-side provider config types live in
+   `crates/oino-app/src/provider_config.rs`.
 
 ## Acceptance
 

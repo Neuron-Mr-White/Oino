@@ -405,7 +405,6 @@ pub(crate) async fn build_wasm_extensions(
     paths: &ResourcePaths,
     ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
     auth: Option<&AuthStorage>,
-    providers_runtime: &str,
     // Extra init-config fields merged into each extension's config.json
     // before `init` (keyed by extension id). Used for host-resolved config
     // like notify's `resolve_notify_config` output.
@@ -869,42 +868,7 @@ pub(crate) async fn build_wasm_extensions(
         set.extensions.insert(extension_id.clone(), extension);
     }
 
-    if providers_runtime == "wasm" {
-        build_declarative_wasm_providers(snapshot, paths, auth, &engine, &mut set).await;
-    } else {
-        // Anthropic/Responses declarative providers only exist as WASM
-        // components; surface a readiness diagnostic under the native runtime.
-        for provider in crate::extension_provider_runtime::extension_runtime_providers(snapshot) {
-            let protocol = provider
-                .runtime
-                .as_ref()
-                .map_or(ProviderRuntimeProtocol::OpenAiChatCompletions, |runtime| {
-                    runtime.protocol
-                });
-            if matches!(
-                protocol,
-                ProviderRuntimeProtocol::AnthropicMessages
-                    | ProviderRuntimeProtocol::OpenAiResponses
-            ) {
-                set.diagnostics
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .push(diagnostic(
-                        None,
-                        DiagnosticSeverity::Warning,
-                        DiagnosticPhase::RuntimeLoad,
-                        format!(
-                            "declarative provider `{}` uses the `{}` protocol and only works with providers.runtime = \"wasm\"",
-                            provider.provider_id,
-                            serde_json::to_value(protocol)
-                                .ok()
-                                .and_then(|v| v.as_str().map(str::to_string))
-                                .unwrap_or_default()
-                        ),
-                    ));
-            }
-        }
-    }
+    build_declarative_wasm_providers(snapshot, paths, auth, &engine, &mut set).await;
 
     Arc::new(set)
 }
@@ -1027,27 +991,6 @@ async fn build_declarative_wasm_providers(
                     None => None,
                 };
                 ("optional", None, key)
-            }
-            crate::provider_config::OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => {
-                let key = match auth {
-                    Some(auth) => match auth.resolve_api_key(spec).await {
-                        Ok(key) => Some(key),
-                        Err(err) => {
-                            set.diagnostics
-                                .lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .push(diagnostic(
-                                    None,
-                                    DiagnosticSeverity::Error,
-                                    DiagnosticPhase::RuntimeLoad,
-                                    format!("wasm provider `{provider_id}` api key: {err}"),
-                                ));
-                            continue;
-                        }
-                    },
-                    None => None,
-                };
-                ("required", Some(header_name.clone()), key)
             }
         };
 

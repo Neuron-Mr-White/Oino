@@ -1,5 +1,6 @@
 use std::{fs, path::PathBuf, time::Duration};
 
+use crate::provider_config::{OpenAiCompatibleAuth, OpenAiCompatibleConfig};
 use oino_agent_loop::LoopError;
 use oino_auth::ProviderAuthSpec;
 use oino_extension_core::{
@@ -7,7 +8,6 @@ use oino_extension_core::{
     ProviderRuntimeProtocol, ProviderRuntimeSecret,
 };
 use oino_extension_manager::ExtensionManagerSnapshot;
-use oino_provider_openrouter::{OpenAiCompatibleAuth, OpenAiCompatibleConfig};
 
 pub(crate) fn extension_runtime_providers(
     snapshot: &ExtensionManagerSnapshot,

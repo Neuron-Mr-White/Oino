@@ -44,9 +44,6 @@ impl Default for CompactSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UserSettings {
-    /// Declarative provider runtime: `"wasm"` (bundled components) or
-    /// `"native"` (in-process OpenAI-compatible adapter, fallback).
-    pub providers: ProvidersSettings,
     pub model: Option<String>,
     pub thinking_level: Option<ThinkingLevel>,
     pub thinking_collapse_mode: Option<CollapseMode>,
@@ -64,13 +61,6 @@ pub struct UserSettings {
     /// Show cache-miss diagnostics as notices (default off; the last
     /// diagnosis is always recorded for `/session`).
     pub show_cache_miss_notices: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ProvidersSettings {
-    /// `native` | `wasm`; unset behaves as `wasm`.
-    pub runtime: Option<String>,
 }
 
 impl UserSettings {
@@ -96,7 +86,6 @@ impl UserSettings {
             tools: BTreeMap::new(),
             extensions: ExtensionPolicySettings::default(),
             compact: CompactSettings::default(),
-            providers: ProvidersSettings::default(),
             cache_warming: None,
             show_cache_miss_notices: None,
         }

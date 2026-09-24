@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 
-use oino_auth::{AuthError, AuthStorage};
-use oino_provider_catalog::{providers, ProviderTarget};
-use oino_provider_openrouter::{
+use crate::provider_config::{
     OpenAiCompatibleAuth, OpenAiCompatibleConfig, OpenRouterConfig, OpenRouterModelInfo,
 };
+use oino_auth::{AuthError, AuthStorage};
+use oino_provider_catalog::{providers, ProviderTarget};
 use oino_tui::{all_thinking_levels, ModelAvailability, ModelOption};
 use oino_types::{Model, ThinkingLevel};
 use serde::{Deserialize, Serialize};
@@ -360,7 +360,7 @@ async fn ensure_model_catalog_auth(
 ) -> Result<(), String> {
     match &config.auth {
         OpenAiCompatibleAuth::None | OpenAiCompatibleAuth::OptionalBearer { .. } => Ok(()),
-        OpenAiCompatibleAuth::Bearer { spec } | OpenAiCompatibleAuth::ApiKeyHeader { spec, .. } => {
+        OpenAiCompatibleAuth::Bearer { spec } => {
             if config.provider_id == oino_auth::OPENROUTER_PROVIDER_ID {
                 return Ok(());
             }
@@ -429,11 +429,6 @@ async fn apply_model_catalog_auth(
             Ok(None) => Ok(builder),
             Err(err) => Err(err.to_string()),
         },
-        OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => auth
-            .resolve_api_key(spec)
-            .await
-            .map(|api_key| builder.header(header_name.as_str(), api_key))
-            .map_err(|err| err.to_string()),
     }
 }
 

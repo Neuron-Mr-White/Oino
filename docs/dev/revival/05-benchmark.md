@@ -6,7 +6,7 @@ harness" kit, `skills/frontierharness-eval`).
 
 ## Prerequisites
 
-- P4.0 headless mode (`oino run -p --json`).
+- P4.0 headless mode (`oino -p --json`).
 - P3 providers, so Oino can reach Fireworks/Kimi K3 through Chat Completions (or the
   gateway's Responses or Messages endpoint).
 - The benchmark's gateway speaks OpenAI Responses and Anthropic Messages; configure

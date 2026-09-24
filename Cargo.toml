@@ -14,7 +14,6 @@ members = [
   "crates/oino-extension-runtime",
   "crates/oino-extension-sdk",
   "crates/oino-auth",
-  "crates/oino-provider-openrouter",
   "crates/oino-provider-catalog",
   "crates/oino-tui",
   "crates/oino-app",

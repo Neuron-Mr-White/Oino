@@ -54,6 +54,7 @@ mod user_settings;
 
 mod wasm_extensions;
 
+use crate::provider_config::OpenRouterConfig;
 use ask_user::{AskUserRequester, AskUserTool, ASK_USER_TOOL_NAME};
 use async_trait::async_trait;
 use auth_readiness::{format_auth_status, quickstart as format_auth_quickstart};
@@ -74,12 +75,12 @@ use crossterm::{
         LeaveAlternateScreen,
     },
 };
+use extension_provider_runtime::ExtensionRuntimeHealth;
 #[cfg(test)]
 use extension_provider_runtime::{
     extension_config_dir_name, extension_config_string_from_value,
     extension_runtime_base_url_env_candidates,
 };
-use extension_provider_runtime::{extension_runtime_providers, ExtensionRuntimeHealth};
 #[cfg(test)]
 use extension_readiness::status_items as extension_readiness_status_items;
 use extension_readiness::{
@@ -107,7 +108,6 @@ use oino_extension_manager::{
 };
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_catalog::{provider_by_id, resolve_provider, ProviderDescriptor};
-use oino_provider_openrouter::OpenRouterConfig;
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
@@ -380,8 +380,6 @@ fn usage() -> &'static str {
 enum AppError {
     #[error(transparent)]
     Auth(#[from] AuthError),
-    #[error(transparent)]
-    Provider(#[from] oino_provider_openrouter::OpenRouterError),
     #[error(transparent)]
     Harness(#[from] HarnessError),
     #[error(transparent)]
@@ -663,16 +661,10 @@ async fn main() -> Result<(), AppError> {
         &resource_paths,
         None,
         Some(&auth),
-        providers_runtime_setting(&tool_settings),
         Some(&extras),
     )
     .await;
-    let provider = build_runtime_provider(
-        auth.clone(),
-        provider_config.clone(),
-        extension_runtime_providers(&extension_snapshot),
-        wasm.provider_map(),
-    );
+    let provider = build_runtime_provider(wasm.provider_map());
     let harness = build_harness(
         config.model.clone(),
         config.thinking_level,
@@ -3171,21 +3163,6 @@ async fn configure_cache_tracker(
         .await;
 }
 
-/// `providers.runtime` user setting: project value wins over global; unset
-/// defaults to `wasm` (the native adapter remains as an explicit fallback).
-fn providers_runtime_setting(settings: &ToolSettingsSnapshot) -> &'static str {
-    let value = settings.project.providers.runtime.as_deref().or(settings
-        .global
-        .providers
-        .runtime
-        .as_deref());
-    if value == Some("native") {
-        "native"
-    } else {
-        "wasm"
-    }
-}
-
 /// Rebuild wasm extension instances for a fresh snapshot, attach the harness
 /// session, and swap the holder the hook handlers dispatch through.
 #[allow(clippy::too_many_arguments)]
@@ -3196,19 +3173,10 @@ async fn rebuild_wasm(
     holder: &wasm_extensions::WasmHolder,
     ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
     auth: Option<&AuthStorage>,
-    providers_runtime: &str,
     settings: &ToolSettingsSnapshot,
 ) -> Arc<WasmExtensions> {
     let extras = wasm_init_config_extras(settings);
-    let wasm = build_wasm_extensions(
-        snapshot,
-        paths,
-        ui_tx.clone(),
-        auth,
-        providers_runtime,
-        Some(&extras),
-    )
-    .await;
+    let wasm = build_wasm_extensions(snapshot, paths, ui_tx.clone(), auth, Some(&extras)).await;
     wasm.set_session(harness.session_handle());
     if let Ok(mut guard) = holder.write() {
         wasm.inherit_model_service(&guard);
@@ -3577,7 +3545,6 @@ async fn run_tui(
         &resource_paths,
         None,
         Some(&auth),
-        providers_runtime_setting(&tool_settings),
         Some(&init_extras),
     )
     .await;
@@ -3651,7 +3618,6 @@ async fn run_tui(
         &wasm_holder,
         Some(tx.clone()),
         Some(&auth),
-        providers_runtime_setting(&tool_settings),
         &tool_settings,
     )
     .await;
@@ -3668,7 +3634,6 @@ async fn run_tui(
     .await;
     register_tui_stream_hooks(&harness, tx.clone()).await;
     register_mode_hooks(&harness, Arc::clone(&agent_mode), resource_paths.clone()).await;
-    let btw_provider_config = provider_config.clone();
     spawn_model_catalog_task(
         tx.clone(),
         auth.clone(),
@@ -3738,17 +3703,7 @@ async fn run_tui(
             )
             .await;
             refresh_tui_context_status(&mut state, &harness, &cwd).await;
-            try_auto_compact(
-                &mut state,
-                &harness,
-                &auth,
-                &provider_config,
-                &extension_snapshot,
-                &session_path,
-                &cwd,
-                &wasm,
-            )
-            .await;
+            try_auto_compact(&mut state, &harness, &session_path, &cwd, &wasm).await;
         }
         if applied_thinking_level != state.settings.selected_thinking_level {
             applied_thinking_level = state.settings.selected_thinking_level;
@@ -3872,7 +3827,6 @@ async fn run_tui(
                     &wasm_holder,
                     Some(tx.clone()),
                     Some(&auth),
-                    providers_runtime_setting(&tool_settings),
                     &tool_settings,
                 )
                 .await;
@@ -4058,12 +4012,7 @@ async fn run_tui(
                                 return Ok(());
                             }
                         };
-                        let compact_stream = build_runtime_provider(
-                            auth.clone(),
-                            provider_config.clone(),
-                            extension_runtime_providers(&extension_snapshot),
-                            wasm.provider_map(),
-                        );
+                        let compact_stream = build_runtime_provider(wasm.provider_map());
                         match compact_session_with_llm(
                             &harness,
                             &compact_stream,
@@ -4157,12 +4106,7 @@ async fn run_tui(
                                 return Ok(());
                             }
                         };
-                        let compact_stream = build_runtime_provider(
-                            auth.clone(),
-                            provider_config.clone(),
-                            extension_runtime_providers(&extension_snapshot),
-                            wasm.provider_map(),
-                        );
+                        let compact_stream = build_runtime_provider(wasm.provider_map());
                         match compact_session_with_llm(
                             &harness,
                             &compact_stream,
@@ -4304,8 +4248,6 @@ async fn run_tui(
                         &resource_paths,
                         &tool_settings,
                         &cwd,
-                        &btw_provider_config,
-                        &extension_snapshot,
                         state.btw.configured_model.clone(),
                         state.settings.selected_model(),
                         true,
@@ -4336,8 +4278,6 @@ async fn run_tui(
                             &resource_paths,
                             &tool_settings,
                             &cwd,
-                            &btw_provider_config,
-                            &extension_snapshot,
                             state.btw.configured_model.clone(),
                             state.settings.selected_model(),
                             true,
@@ -4366,8 +4306,6 @@ async fn run_tui(
                     &resource_paths,
                     &tool_settings,
                     &cwd,
-                    &btw_provider_config,
-                    &extension_snapshot,
                     state.btw.configured_model.clone(),
                     state.settings.selected_model(),
                     false,
@@ -4549,7 +4487,6 @@ async fn run_tui(
                     &wasm_holder,
                     Some(tx.clone()),
                     Some(&auth),
-                    providers_runtime_setting(&tool_settings),
                     &tool_settings,
                 )
                 .await;
@@ -4590,7 +4527,6 @@ async fn run_tui(
                     &wasm_holder,
                     Some(tx.clone()),
                     Some(&auth),
-                    providers_runtime_setting(&tool_settings),
                     &tool_settings,
                 )
                 .await;
@@ -4630,7 +4566,6 @@ async fn run_tui(
                     &wasm_holder,
                     Some(tx.clone()),
                     Some(&auth),
-                    providers_runtime_setting(&tool_settings),
                     &tool_settings,
                 )
                 .await;
@@ -4713,7 +4648,6 @@ async fn run_tui(
                             &wasm_holder,
                             Some(tx.clone()),
                             Some(&auth),
-                            providers_runtime_setting(&tool_settings),
                             &tool_settings,
                         )
                         .await;
@@ -4836,7 +4770,6 @@ async fn run_tui(
                                     &wasm_holder,
                                     Some(tx.clone()),
                                     Some(&auth),
-                                    providers_runtime_setting(&tool_settings),
                                     &tool_settings,
                                 )
                                 .await;
@@ -5218,7 +5151,6 @@ async fn reload_tui_everything(
         wasm_holder,
         ask_user_tx.clone(),
         Some(auth),
-        providers_runtime_setting(tool_settings),
         tool_settings,
     )
     .await;
@@ -5398,8 +5330,6 @@ async fn create_btw_harness(
     resource_paths: &ResourcePaths,
     tool_settings: &ToolSettingsSnapshot,
     cwd: &Path,
-    provider_config: &OpenRouterConfig,
-    extension_snapshot: &ExtensionManagerSnapshot,
     configured_model: Option<String>,
     current_model: &str,
     inherit_history: bool,
@@ -5417,12 +5347,7 @@ async fn create_btw_harness(
     // btw side sessions keep the extension OpenAI-compatible providers but
     // do not get wasm component providers (their model ids are not exposed
     // to the btw model picker yet).
-    let provider = build_runtime_provider(
-        auth.clone(),
-        provider_config.clone(),
-        extension_runtime_providers(extension_snapshot),
-        std::collections::BTreeMap::new(),
-    );
+    let provider = build_runtime_provider(std::collections::BTreeMap::new());
     let harness = Arc::new(
         build_harness(
             effective_model,
@@ -7442,9 +7367,6 @@ async fn refresh_tui_context_status(state: &mut TuiState, harness: &Harness, cwd
 async fn try_auto_compact(
     state: &mut TuiState,
     harness: &Harness,
-    auth: &AuthStorage,
-    provider_config: &OpenRouterConfig,
-    extension_snapshot: &ExtensionManagerSnapshot,
     session_path: &std::path::Path,
     cwd: &Path,
     wasm: &WasmExtensions,
@@ -7508,12 +7430,7 @@ async fn try_auto_compact(
                 Some(m) => m,
                 None => return false,
             };
-            let compact_stream = build_runtime_provider(
-                auth.clone(),
-                provider_config.clone(),
-                extension_runtime_providers(extension_snapshot),
-                std::collections::BTreeMap::new(),
-            );
+            let compact_stream = build_runtime_provider(std::collections::BTreeMap::new());
             match compact_session_with_llm(
                 harness,
                 &compact_stream,
@@ -7935,17 +7852,24 @@ mod tests {
             }
         }))
         .unwrap_or_else(|err| panic!("extension provider should parse: {err}"));
-        let auth = AuthStorage::new(
-            AuthConfig::new(std::env::temp_dir().join("oino-app-extension-runtime-auth.json"))
-                .with_process_env(false),
+        let mut providers: std::collections::BTreeMap<
+            String,
+            Arc<dyn oino_agent_loop::StreamProvider>,
+        > = Default::default();
+        providers.insert(
+            provider.provider_id.clone(),
+            Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }])) as Arc<dyn oino_agent_loop::StreamProvider>,
         );
-        let router = ProviderRouter::new(auth, vec![provider], Default::default());
+        let router = ProviderRouter::new(providers);
         let model = Model::from_identifier("router:kr/test-model")
             .unwrap_or_else(|| panic!("model should parse"));
         let result = router.provider_for_model(&model);
         assert!(
             result.is_ok(),
-            "extension runtime should be selected without built-in runtime fallback"
+            "wasm provider should be selected for the contribution's provider_id"
         );
     }
 
@@ -9156,7 +9080,6 @@ mod tests {
                 tools: BTreeMap::new(),
                 extensions: oino_extension_core::ExtensionPolicySettings::default(),
                 compact: user_settings::CompactSettings::default(),
-                providers: user_settings::ProvidersSettings::default(),
                 cache_warming: None,
                 show_cache_miss_notices: None,
             },
@@ -9406,7 +9329,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
         assert!(
             wasm.tools.contains_key("echo"),
             "wasm tools missing echo: {:?} diags {:?}",
@@ -9548,7 +9471,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
         assert!(
             wasm.providers.contains_key("faux"),
             "faux provider missing: {:?} diags {:?}",
@@ -9563,10 +9486,7 @@ mod tests {
             wasm.provider_models
         );
 
-        let auth = AuthStorage::new(
-            AuthConfig::new(temp.path().join("auth.json")).with_process_env(false),
-        );
-        let router = ProviderRouter::new(auth, Vec::new(), wasm.provider_map());
+        let router = ProviderRouter::new(wasm.provider_map());
         let model = Model::from_identifier("faux:faux-1").unwrap_or_else(|| panic!("model id"));
         let request = oino_agent_loop::StreamRequest {
             model,
@@ -9767,138 +9687,6 @@ mod tests {
         events: Vec<AssistantStreamEvent>,
         error: Option<String>,
         recorded: RecordedRequest,
-    }
-
-    /// Run the same request through a wasm declarative provider instance and
-    /// the native `OpenAiCompatibleProvider`, against two identical servers,
-    /// and return (wasm, native) outcomes for comparison.
-    async fn run_parity_case(
-        temp: &tempfile::TempDir,
-        config: &OpenAiCompatibleConfig,
-        api_key: Option<&str>,
-        request: oino_agent_loop::StreamRequest,
-        sse: &'static str,
-        status: u16,
-    ) -> (ParityOutcome, ParityOutcome) {
-        let (native_url, native_rx) = spawn_recording_server(status, "text/event-stream", sse);
-        let (wasm_url, wasm_rx) = spawn_recording_server(status, "text/event-stream", sse);
-
-        let mut auth_config =
-            AuthConfig::new(temp.path().join("auth.json")).with_process_env(false);
-        if api_key.is_some() {
-            auth_config = auth_config.with_runtime_override("parity", "sk-parity");
-        }
-        let auth = AuthStorage::new(auth_config);
-
-        // native path: same resolved config, different base urls per server
-        let mut native_config = config.clone();
-        native_config.base_url = native_url.clone();
-        let native =
-            oino_provider_openrouter::OpenAiCompatibleProvider::new(auth.clone(), native_config)
-                .unwrap_or_else(|err| panic!("native provider: {err}"));
-
-        // wasm path: same config, api key injected via the secret resolver
-        let paths =
-            ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path().join("project"))
-                .unwrap_or_else(|err| panic!("paths: {err}"));
-        let engine = WasmHostEngine::new(temp.path().join("wasm-cache"))
-            .unwrap_or_else(|err| panic!("engine: {err}"));
-        let mut wasm_config = config.clone();
-        wasm_config.base_url = wasm_url.clone();
-        let mut set = WasmExtensions::empty();
-        wasm_extensions::instantiate_declarative_wasm_provider(
-            oino_extension_core::ProviderRuntimeProtocol::OpenAiChatCompletions,
-            "parity",
-            &wasm_config,
-            "optional",
-            None,
-            api_key.map(str::to_string),
-            None,
-            &paths,
-            &engine,
-            &mut set,
-        )
-        .await;
-        let wasm_provider = set
-            .providers
-            .get("parity")
-            .unwrap_or_else(|| panic!("wasm provider missing"))
-            .clone();
-
-        let native_outcome = native.stream(request.clone(), AbortSignal::new()).await;
-        let wasm_outcome = wasm_provider.stream(request, AbortSignal::new()).await;
-        let native_rec = native_rx
-            .recv_timeout(std::time::Duration::from_secs(10))
-            .unwrap_or_else(|err| panic!("native request not recorded: {err}"));
-        // instantiate lists models first; the stream request is the next one
-        let mut wasm_rec = wasm_rx
-            .recv_timeout(std::time::Duration::from_secs(10))
-            .unwrap_or_else(|err| panic!("wasm request not recorded: {err}"));
-        if wasm_rec.path == "/models" {
-            wasm_rec = wasm_rx
-                .recv_timeout(std::time::Duration::from_secs(10))
-                .unwrap_or_else(|err| panic!("wasm stream request not recorded: {err}"));
-        }
-        let pack = |outcome: oino_agent_loop::LoopResult<Vec<AssistantStreamEvent>>, recorded| {
-            match outcome {
-                Ok(events) => ParityOutcome {
-                    events,
-                    error: None,
-                    recorded,
-                },
-                Err(err) => ParityOutcome {
-                    events: Vec::new(),
-                    error: Some(err.to_string()),
-                    recorded,
-                },
-            }
-        };
-        (
-            pack(wasm_outcome, wasm_rec),
-            pack(native_outcome, native_rec),
-        )
-    }
-
-    fn assert_parity(case: &str, wasm: &ParityOutcome, native: &ParityOutcome) {
-        assert_eq!(
-            wasm.error, native.error,
-            "{case}: error parity (wasm={:?} native={:?})",
-            wasm.error, native.error
-        );
-        assert_eq!(
-            wasm.events, native.events,
-            "{case}: event parity\nwasm: {:?}\nnative: {:?}",
-            wasm.events, native.events
-        );
-        assert_eq!(
-            wasm.recorded.method, native.recorded.method,
-            "{case}: method"
-        );
-        assert_eq!(wasm.recorded.path, native.recorded.path, "{case}: path");
-        for name in [
-            "authorization",
-            "content-type",
-            "content-length",
-            "x-session-id",
-            "session_id",
-            "x-client-request-id",
-            "x-session-affinity",
-        ] {
-            assert_eq!(
-                wasm.recorded.headers.get(name),
-                native.recorded.headers.get(name),
-                "{case}: header `{name}` (wasm={:?} native={:?})",
-                wasm.recorded.headers.get(name),
-                native.recorded.headers.get(name)
-            );
-        }
-        assert_eq!(
-            wasm.recorded.body,
-            native.recorded.body,
-            "{case}: body\nwasm: {}\nnative: {}",
-            String::from_utf8_lossy(&wasm.recorded.body),
-            String::from_utf8_lossy(&native.recorded.body)
-        );
     }
 
     /// Run one request through a wasm declarative provider only (golden path).
@@ -10129,115 +9917,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wasm_openai_compat_matches_native_on_the_wire() {
-        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
-        // ProviderAuthSpec is unused here (key injected directly); the config
-        // mirrors what extension_runtime_config_for_provider_id produces for
-        // an env-var api_key contribution.
-        let base_config = OpenAiCompatibleConfig::new("parity", "Parity", "http://127.0.0.1:1")
-            .with_auth(provider_config::OpenAiCompatibleAuth::OptionalBearer {
-                spec: ProviderAuthSpec::new("parity", "parity", "OINO_PARITY_TEST_KEY"),
-            });
-
-        let req = || {
-            parity_stream_request(
-                "parity",
-                "m",
-                oino_agent_loop::CacheRetention::Short,
-                Some("sess-1".into()),
-            )
-        };
-
-        // plain text
-        let (wasm, native) =
-            run_parity_case(&temp, &base_config, Some("sk-parity"), req(), SSE_TEXT, 200).await;
-        assert_parity("plain text", &wasm, &native);
-        assert_eq!(wasm.events.len(), 2);
-
-        // thinking + tool calls + usage
-        let (wasm, native) =
-            run_parity_case(&temp, &base_config, Some("sk-parity"), req(), SSE_RICH, 200).await;
-        assert_parity("rich stream", &wasm, &native);
-
-        // anthropic cache_control breakpoints (byte-identical body)
-        let mut anthropic_config = base_config.clone();
-        anthropic_config.cache_control_format =
-            Some(provider_config::CacheControlFormat::Anthropic);
-        let (wasm, native) = run_parity_case(
-            &temp,
-            &anthropic_config,
-            Some("sk-parity"),
-            parity_stream_request(
-                "parity",
-                "anthropic/x",
-                oino_agent_loop::CacheRetention::Long,
-                Some("sess-1".into()),
-            ),
-            SSE_TEXT,
-            200,
-        )
-        .await;
-        assert_parity("anthropic cache_control", &wasm, &native);
-
-        // retention none: no cache key/control on either side
-        let (wasm, native) = run_parity_case(
-            &temp,
-            &anthropic_config,
-            Some("sk-parity"),
-            parity_stream_request(
-                "parity",
-                "anthropic/x",
-                oino_agent_loop::CacheRetention::None,
-                Some("sess-1".into()),
-            ),
-            SSE_TEXT,
-            200,
-        )
-        .await;
-        assert_parity("retention none", &wasm, &native);
-
-        // openrouter-format affinity headers via config override
-        let mut affinity_config = base_config.clone();
-        affinity_config.session_affinity = Some(provider_config::SessionAffinityFormat::OpenRouter);
-        let (wasm, native) = run_parity_case(
-            &temp,
-            &affinity_config,
-            Some("sk-parity"),
-            req(),
-            SSE_TEXT,
-            200,
-        )
-        .await;
-        assert_parity("openrouter affinity", &wasm, &native);
-        assert_eq!(
-            wasm.recorded
-                .headers
-                .get("x-session-id")
-                .map(String::as_str),
-            Some("sess-1")
-        );
-
-        // HTTP 429 error parity
-        let (wasm, native) = run_parity_case(
-            &temp,
-            &base_config,
-            Some("sk-parity"),
-            req(),
-            "rate limited",
-            429,
-        )
-        .await;
-        assert_parity("http 429", &wasm, &native);
-        let error = wasm.error.unwrap_or_default();
-        assert!(error.contains("status 429"), "wasm error: {error}");
-
-        // no key: both sides omit Authorization
-        let (wasm, native) = run_parity_case(&temp, &base_config, None, req(), SSE_TEXT, 200).await;
-        assert_parity("no api key", &wasm, &native);
-        assert!(!wasm.recorded.headers.contains_key("authorization"));
-    }
-
-    #[tokio::test]
     async fn wasm_flag_routes_declarative_provider_through_component() {
         let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
         let (base_url, rx) = spawn_recording_server(200, "text/event-stream", SSE_TEXT);
@@ -10284,7 +9963,7 @@ mod tests {
                 .with_runtime_override("decl", "sk-decl")
                 .with_process_env(false),
         );
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, Some(&auth), "wasm", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, Some(&auth), None).await;
         assert!(
             wasm.providers.contains_key("decl"),
             "declarative wasm provider missing: {:?}",
@@ -10292,11 +9971,7 @@ mod tests {
                 .lock()
                 .map(|d| d.iter().map(|x| x.format_message()).collect::<Vec<_>>())
         );
-        let router = ProviderRouter::new(
-            auth,
-            extension_runtime_providers(&snapshot),
-            wasm.provider_map(),
-        );
+        let router = ProviderRouter::new(wasm.provider_map());
         let events = StreamProvider::stream(
             &router,
             parity_stream_request(
@@ -10321,15 +9996,9 @@ mod tests {
         let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
         let base_config = OpenAiCompatibleConfig::new("parity", "Parity", "http://127.0.0.1:1");
 
-        // models listing parity
+        // models listing through the wasm component
         let models_body = r#"{"data":[{"id":"m1","name":"Model One"},{"id":"m2"}]}"#;
-        let (native_url, _rx) = spawn_recording_server(200, "application/json", models_body);
         let (wasm_url, _rx2) = spawn_recording_server(200, "application/json", models_body);
-        let mut native_config = base_config.clone();
-        native_config.base_url = native_url;
-        let native_models = oino_provider_openrouter::list_openai_compatible_models(&native_config)
-            .await
-            .unwrap_or_else(|err| panic!("native models: {err}"));
 
         let paths =
             ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path().join("project"))
@@ -10356,11 +10025,10 @@ mod tests {
             .provider_models
             .get("parity")
             .unwrap_or_else(|| panic!("no wasm models"));
-        let native_ids: Vec<String> = native_models.iter().map(|m| m.id.clone()).collect();
         assert_eq!(
             wasm_models.as_slice(),
-            native_ids.as_slice(),
-            "model id parity"
+            ["m1".to_string(), "m2".to_string()].as_slice(),
+            "model ids"
         );
 
         // abort before stream: native emits Aborted; wasm must not hang
@@ -11201,7 +10869,7 @@ pi: {expected:?}"
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
         assert!(
             wasm.extensions.contains_key(
                 &oino_extension_core::ExtensionId::new("oino.budget")
@@ -11293,7 +10961,7 @@ pi: {expected:?}"
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
 
         let stream = Arc::new(TurnCappedStream {
             requests: Arc::new(tokio::sync::Mutex::new(Vec::new())),
@@ -11428,7 +11096,7 @@ pi: {expected:?}"
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
         assert!(
             wasm.tools.contains_key("grep"),
             "grep missing: {:?}",
@@ -11616,7 +11284,7 @@ pi: {expected:?}"
         .unwrap_or_else(|e| panic!("settings: {e}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
 
         // /ralph start returns the iteration prompt for the host to submit.
         let (extension, guest) = wasm.commands.get("ralph").cloned().unwrap_or_else(|| {
@@ -11703,7 +11371,7 @@ pi: {expected:?}"
         .unwrap_or_else(|e| panic!("settings: {e}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
 
         let mut session = SessionManager::new(SessionHeader::new("t", project.clone()));
         session.append_message(Message::user_text(
@@ -11810,8 +11478,7 @@ pi: {expected:?}"
         settings.project.notify.enabled = Some(true);
         let snapshot = load_extension_snapshot(&paths, &settings);
         let extras = wasm_init_config_extras(&settings);
-        let wasm =
-            build_wasm_extensions(&snapshot, &paths, None, None, "native", Some(&extras)).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, Some(&extras)).await;
         // host.complete backing: faux provider returns a canned summary.
         let session = SessionManager::new(SessionHeader::new("t", project.clone()));
         let session = Arc::new(tokio::sync::Mutex::new(session));
@@ -11998,7 +11665,7 @@ pi: {expected:?}"
         .unwrap_or_else(|e| panic!("settings: {e}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, None).await;
         assert!(
             wasm.providers.contains_key("oino"),
             "oino provider missing: {:?} diags {:?}",

@@ -1,16 +1,210 @@
-//! App-local provider config surface. Everything `oino-app` needs from
-//! `oino-provider-openrouter` is funneled through this module so deleting the
-//! native crate (P3c cutover) only touches this file and `provider_runtime.rs`.
-//!
-//! Config types are re-exports; the OpenRouter usage-report parsing is a copy
-//! kept app-side (the wasm providers do not use it).
+//! App-local provider config surface. After the native
+//! `oino-provider-openrouter` crate was removed (P3c cutover), these config
+//! types live app-side: they describe how declarative provider contributions
+//! resolve into `oino.provider_openai` (openai-compat component) requests.
+//! The OpenRouter usage-report parsing is app-owned too.
 
-#[allow(unused_imports)] // some items are only used under cfg(test)
-pub use oino_provider_openrouter::{
-    CacheControlFormat, OpenAiCompatibleAuth, OpenAiCompatibleConfig, SessionAffinityFormat,
-};
-
+use oino_auth::ProviderAuthSpec;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{collections::BTreeMap, time::Duration};
+
+const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+const MODELS_PATH: &str = "/models";
+
+/// OpenRouter account config (referer/title are forwarded as headers).
+#[derive(Debug, Clone)]
+pub struct OpenRouterConfig {
+    pub base_url: String,
+    pub referer: Option<String>,
+    pub title: Option<String>,
+    pub timeout: Duration,
+}
+
+impl Default for OpenRouterConfig {
+    fn default() -> Self {
+        Self {
+            base_url: DEFAULT_OPENROUTER_BASE_URL.into(),
+            referer: None,
+            title: None,
+            timeout: Duration::from_secs(120),
+        }
+    }
+}
+
+impl OpenRouterConfig {
+    #[must_use]
+    pub fn openai_compatible_config(&self) -> OpenAiCompatibleConfig {
+        let mut config = OpenAiCompatibleConfig::new(
+            oino_auth::OPENROUTER_PROVIDER_ID,
+            "OpenRouter",
+            self.base_url.clone(),
+        )
+        .with_auth(OpenAiCompatibleAuth::Bearer {
+            spec: ProviderAuthSpec::openrouter(),
+        })
+        .with_timeout(self.timeout);
+        if let Some(referer) = &self.referer {
+            config = config.with_header("HTTP-Referer", referer.clone());
+        }
+        if let Some(title) = &self.title {
+            config = config.with_header("X-OpenRouter-Title", title.clone());
+        }
+        config
+    }
+}
+
+/// Auth spec for an OpenAI-compatible provider endpoint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenAiCompatibleAuth {
+    None,
+    Bearer { spec: ProviderAuthSpec },
+    OptionalBearer { spec: ProviderAuthSpec },
+}
+
+/// Resolved config for an OpenAI-compatible provider contribution.
+#[derive(Debug, Clone)]
+pub struct OpenAiCompatibleConfig {
+    pub provider_id: String,
+    pub display_name: String,
+    pub base_url: String,
+    pub timeout: Duration,
+    pub auth: OpenAiCompatibleAuth,
+    pub headers: BTreeMap<String, String>,
+    /// Send `prompt_cache_key` derived from `StreamRequest::session_id`.
+    /// `None` = auto: enabled only for `openrouter.ai` / `api.openai.com` hosts.
+    pub send_prompt_cache_key: Option<bool>,
+    /// Session-affinity header format. `None` = auto: `OpenRouter` when the
+    /// host is `openrouter.ai`, disabled otherwise (matches pi compat detect).
+    pub session_affinity: Option<SessionAffinityFormat>,
+    /// Anthropic-style `cache_control` breakpoints. `None` = auto: enabled for
+    /// models whose name starts with `anthropic/` or `~anthropic/`.
+    pub cache_control_format: Option<CacheControlFormat>,
+}
+
+/// Anthropic-style cache breakpoint format for OpenAI-compatible requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // config surface: set by declarative provider configs/tests
+pub enum CacheControlFormat {
+    Anthropic,
+}
+
+/// Session-affinity header format (mirrors pi `sessionAffinityFormat`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // config surface: set by declarative provider configs/tests
+pub enum SessionAffinityFormat {
+    /// `session_id`, `x-client-request-id`, `x-session-affinity`.
+    OpenAi,
+    /// `x-session-id`.
+    OpenRouter,
+}
+
+impl OpenAiCompatibleConfig {
+    #[must_use]
+    pub fn new(
+        provider_id: impl Into<String>,
+        display_name: impl Into<String>,
+        base_url: impl Into<String>,
+    ) -> Self {
+        Self {
+            provider_id: provider_id.into(),
+            display_name: display_name.into(),
+            base_url: base_url.into(),
+            timeout: Duration::from_secs(120),
+            auth: OpenAiCompatibleAuth::None,
+            headers: BTreeMap::new(),
+            send_prompt_cache_key: None,
+            session_affinity: None,
+            cache_control_format: None,
+        }
+    }
+
+    #[must_use]
+    pub fn from_profile(profile: oino_provider_catalog::OpenAiCompatibleProfile) -> Self {
+        let credential = profile.credential_spec();
+        let auth = credential
+            .env_var
+            .map(|env_var| {
+                ProviderAuthSpec::new(credential.provider_id, credential.auth_key, env_var)
+            })
+            .map(|spec| {
+                if profile.requires_api_key {
+                    OpenAiCompatibleAuth::Bearer { spec }
+                } else {
+                    OpenAiCompatibleAuth::OptionalBearer { spec }
+                }
+            })
+            .unwrap_or(OpenAiCompatibleAuth::None);
+        Self::new(profile.id, profile.display_name, profile.api_base).with_auth(auth)
+    }
+
+    #[must_use]
+    pub fn from_provider(provider: oino_provider_catalog::ProviderDescriptor) -> Option<Self> {
+        match provider.target {
+            oino_provider_catalog::ProviderTarget::OpenRouter => {
+                Some(OpenRouterConfig::default().openai_compatible_config())
+            }
+            oino_provider_catalog::ProviderTarget::OpenAiApiKey => {
+                let credential = provider.credential_spec();
+                credential.env_var.map(|env_var| {
+                    Self::new(
+                        provider.id,
+                        provider.display_name,
+                        "https://api.openai.com/v1",
+                    )
+                    .with_auth(OpenAiCompatibleAuth::Bearer {
+                        spec: ProviderAuthSpec::new(
+                            credential.provider_id,
+                            credential.auth_key,
+                            env_var,
+                        ),
+                    })
+                })
+            }
+            oino_provider_catalog::ProviderTarget::OpenAiCompatible { profile_id } => {
+                oino_provider_catalog::openai_compatible_profile_by_id(profile_id)
+                    .map(|profile| Self::from_profile(*profile))
+            }
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn models_endpoint(&self) -> String {
+        format!("{}{}", self.base_url.trim_end_matches('/'), MODELS_PATH)
+    }
+
+    #[must_use]
+    pub fn with_auth(mut self, auth: OpenAiCompatibleAuth) -> Self {
+        self.auth = auth;
+        self
+    }
+
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    #[must_use]
+    pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.insert(name.into(), value.into());
+        self
+    }
+}
+
+/// `/models` response entry (OpenRouter-shaped).
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct OpenRouterModelInfo {
+    pub id: String,
+    pub name: Option<String>,
+    #[serde(default)]
+    pub owned_by: Option<String>,
+    #[serde(default)]
+    pub supported_parameters: Vec<String>,
+    #[serde(default)]
+    pub context_length: Option<usize>,
+}
 
 /// OpenRouter `/key` + `/credits` usage report (moved from
 /// `oino-provider-openrouter` — same shape, same semantics).

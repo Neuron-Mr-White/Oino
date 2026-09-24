@@ -24,6 +24,8 @@ wasmtime-wasi-http = "=48.0.2"
 wasmtime-wasi-io = "=48.0.2"
 http = "1"
 http-body-util = "0.1"
+bytes.workspace = true
+http-body = "1.1.0"
 
 [dev-dependencies]
 tempfile.workspace = true
