@@ -9,10 +9,17 @@ Goal: every model provider is a WASM component implementing the `provider` inter
 | Crate | Serves | Wire API |
 | --- | --- | --- |
 | `oino-provider-kit` (library, not a component) | shared SSE parser, usage normalization, cache-hint helpers, catalog types, tool-call JSON accumulation | n/a |
-| `provider-openai-compat` | OpenRouter, Fireworks, DeepSeek, Kimi, Groq, Cerebras, vLLM/llama.cpp, generic | Chat Completions |
+| `provider-openai-compat` | OpenRouter, Fireworks, DeepSeek, Kimi, Groq, Cerebras, vLLM/llama.cpp, generic — **and every declarative `open_ai_chat_completions` provider contribution (incl. OmniRoute), instantiated once per provider id with injected config** | Chat Completions |
 | `provider-openai-responses` | OpenAI API, Azure OpenAI | Responses |
 | `provider-anthropic` | Anthropic, Claude-compatible gateways | Messages |
-| `router` (ported built-in) | OmniRoute local/external | Chat Completions via kit |
+
+No separate `router` component: declarative provider contributions (manifest
+`providers[].runtime.protocol = open_ai_chat_completions`, e.g.
+`extensions/built-in/router`) are served by `provider-openai-compat`. The
+artifact is bundled in `oino-app` (`include_bytes!`); host-resolved config
+(base_url, headers, auth spec) is passed via `init`, the api key via
+`host.secret("api_key")`, and network permissions are synthesized from the
+resolved URLs.
 
 Google/Vertex, Bedrock, Codex WebSocket and Mistral are follow-ups, not P3.
 
@@ -85,14 +92,12 @@ timestamps or random ids in the body.
 
 ## Router (OmniRoute) port
 
-The current router is `built_in` with logic in `oino-app/src/router.rs` (Docker
-bootstrap, onboarding, external endpoint). Split it:
-
-- Component `router`: provider interface over the kit (Chat Completions), catalog from
-  the OmniRoute `/models` endpoint, thinking-level mapping, network hosts from settings.
-- Host-owned: Docker/process bootstrap and onboarding UI remain native in `oino-app`
-  (they need process control and TUI flows), exposed to the component as a
-  `host_capabilities: ["omniroute_external_endpoint"]` value read through `host.kv-get`.
+The OmniRoute provider is a **declarative** contribution served by the bundled
+`provider-openai-compat` component — no dedicated component exists (see the
+table above). Host-owned concerns stay native in `oino-app`: Docker/process
+bootstrap, onboarding UI, and base_url/api-key resolution
+(`resolved_extension_runtime_base_url`, `ProviderRuntimeSecret`), which are
+injected into the component at `init`/`host.secret` time.
 
 ## Testing
 
@@ -116,7 +121,7 @@ bootstrap, onboarding, external endpoint). Split it:
 
 ## Acceptance
 
-- All four components build for `wasm32-wasip2`, install through the extension manager,
+- All components build for `wasm32-wasip2`, install through the extension manager,
   and appear in model selection.
 - Golden and determinism tests pass.
 - Manual smoke run (user-run, real keys): a 10-turn tool-using session through the

@@ -33,6 +33,16 @@ Example:
 OINO_MODEL=router:openai/gpt-4.1 oino
 ```
 
+## Provider runtime
+
+`providers.runtime` in `~/.oino/settings.json` (or project `.oino/settings.json`,
+project wins) selects how declarative OpenAI-compatible extension providers
+are executed:
+
+- `"native"` (default): the in-process OpenAI-compatible adapter.
+- `"wasm"`: the bundled `provider-openai-compat` Wasmtime component, one
+  instance per provider id, with host-resolved config and `api_key` secret.
+
 ## Reloading
 
 Use `/reload` after editing settings, prompts, skills, themes, or extension files. Use `/router fetch-models` when you want fresh model data from OmniRoute.

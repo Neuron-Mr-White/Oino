@@ -44,6 +44,9 @@ impl Default for CompactSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UserSettings {
+    /// Declarative provider runtime: `"native"` (in-process OpenAI-compatible
+    /// adapter) or `"wasm"` (bundled openai_compat component).
+    pub providers: ProvidersSettings,
     pub model: Option<String>,
     pub thinking_level: Option<ThinkingLevel>,
     pub thinking_collapse_mode: Option<CollapseMode>,
@@ -56,6 +59,13 @@ pub struct UserSettings {
     pub tools: BTreeMap<String, bool>,
     pub extensions: ExtensionPolicySettings,
     pub compact: CompactSettings,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProvidersSettings {
+    /// `native` | `wasm`; unset behaves as `native`.
+    pub runtime: Option<String>,
 }
 
 impl UserSettings {
@@ -81,6 +91,7 @@ impl UserSettings {
             tools: BTreeMap::new(),
             extensions: ExtensionPolicySettings::default(),
             compact: CompactSettings::default(),
+            providers: ProvidersSettings::default(),
         }
     }
 

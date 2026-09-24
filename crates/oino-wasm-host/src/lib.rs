@@ -1165,8 +1165,17 @@ fn assistant_event_from_wit(
         Wit::Done(json) => {
             let value: Value = serde_json::from_str(&json).ok()?;
             Some(AssistantStreamEvent::Done {
-                stop_reason: stop_reason_from_str(value["stop_reason"].as_str()),
-                provider: None,
+                stop_reason: value["stop_reason"]
+                    .as_str()
+                    .map(stop_reason_from_str)
+                    .unwrap_or_else(|| {
+                        serde_json::from_value::<StopReason>(value["stop_reason"].clone())
+                            .unwrap_or(StopReason::Unknown)
+                    }),
+                provider: serde_json::from_value::<oino_types::ProviderMetadata>(
+                    value["provider"].clone(),
+                )
+                .ok(),
             })
         }
         Wit::Error(message) => Some(AssistantStreamEvent::Error { message }),
@@ -1174,13 +1183,13 @@ fn assistant_event_from_wit(
     }
 }
 
-fn stop_reason_from_str(value: Option<&str>) -> StopReason {
+fn stop_reason_from_str(value: &str) -> StopReason {
     match value {
-        Some("end_turn") | Some("end-turn") => StopReason::EndTurn,
-        Some("tool_use") | Some("tool-use") => StopReason::ToolUse,
-        Some("length") => StopReason::Length,
-        Some("error") => StopReason::Error,
-        Some("aborted") => StopReason::Aborted,
+        "end_turn" | "end-turn" => StopReason::EndTurn,
+        "tool_use" | "tool-use" => StopReason::ToolUse,
+        "length" => StopReason::Length,
+        "error" => StopReason::Error,
+        "aborted" => StopReason::Aborted,
         _ => StopReason::Unknown,
     }
 }
@@ -1286,5 +1295,55 @@ impl oino_agent_loop::Tool for WasmTool {
             Ok(output) => Ok(output.into_tool_result(&call)),
             Err(err) => Err(oino_agent_loop::LoopError::Tool(err.to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod stream_request_mirror_tests {
+    use super::stream_request_json;
+    use oino_agent_loop::CacheRetention;
+    use oino_types::{transcript::Transcript, Message, Model, ThinkingLevel};
+
+    /// The `stream(request)` JSON the host produces must keep exactly the
+    /// shape `oino_provider_kit::StreamRequest` deserializes (the guest
+    /// workspace is separate, so compatibility is asserted on the wire
+    /// shape here).
+    #[test]
+    fn stream_request_json_matches_guest_mirror() {
+        let request = oino_agent_loop::StreamRequest {
+            model: Model::new("prov", "m"),
+            thinking_level: ThinkingLevel::Low,
+            transcript: Transcript::new(vec![Message::user_text("hi")]),
+            session_id: Some("s".into()),
+            cache_retention: CacheRetention::Long,
+        };
+        let value = stream_request_json(&request);
+        // mirror field-for-field
+        assert_eq!(
+            value["model"],
+            serde_json::to_value(Model::new("prov", "m")).unwrap_or_default()
+        );
+        assert_eq!(
+            value["thinking_level"],
+            serde_json::to_value(ThinkingLevel::Low).unwrap_or_default()
+        );
+        assert!(value["transcript"]["messages"].is_array());
+        assert_eq!(value["session_id"], serde_json::json!("s"));
+        assert_eq!(value["cache_retention"], serde_json::json!("long"));
+        let mut keys: Vec<String> = value
+            .as_object()
+            .map(|o| o.keys().cloned().collect())
+            .unwrap_or_default();
+        keys.sort();
+        assert_eq!(
+            keys,
+            [
+                "cache_retention",
+                "model",
+                "session_id",
+                "thinking_level",
+                "transcript"
+            ]
+        );
     }
 }

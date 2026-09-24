@@ -81,7 +81,8 @@ impl Extension for Fixture {
                     .map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
                 Ok(json!({ "value": value }))
             }
-                        "spin" => {
+            "spin" =>
+            {
                 #[allow(clippy::empty_loop)]
                 loop {}
             }

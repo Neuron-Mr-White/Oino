@@ -107,6 +107,8 @@ use oino_extension_manager::{
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_catalog::{provider_by_id, resolve_provider, ProviderDescriptor};
 use oino_provider_openrouter::OpenRouterConfig;
+#[cfg(test)]
+use oino_provider_openrouter::OpenAiCompatibleConfig;
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
 use oino_tui::{
@@ -125,6 +127,8 @@ use oino_tui::{
 use oino_types::{
     AssistantStreamEvent, ContentBlock, Message, Model, OinoId, PromptSection, ThinkingLevel,
 };
+#[cfg(test)]
+use oino_wasm_host::WasmHostEngine;
 #[cfg(test)]
 use provider_runtime::ProviderRouter;
 use provider_runtime::{build_runtime_provider, provider_status_for_model_identifier};
@@ -548,7 +552,14 @@ async fn main() -> Result<(), AppError> {
     };
     let tool_settings = load_tool_settings(&resource_paths).await;
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
-    let wasm = build_wasm_extensions(&extension_snapshot, &resource_paths, None).await;
+    let wasm = build_wasm_extensions(
+        &extension_snapshot,
+        &resource_paths,
+        None,
+        Some(&auth),
+        providers_runtime_setting(&tool_settings),
+    )
+    .await;
     let provider = build_runtime_provider(
         auth.clone(),
         provider_config.clone(),
@@ -2799,6 +2810,21 @@ async fn execute_extension_command(
     )
 }
 
+/// `providers.runtime` user setting: project value wins over global; unset
+/// or anything other than `wasm` is `native`.
+fn providers_runtime_setting(settings: &ToolSettingsSnapshot) -> &'static str {
+    let value = settings.project.providers.runtime.as_deref().or(settings
+        .global
+        .providers
+        .runtime
+        .as_deref());
+    if value == Some("wasm") {
+        "wasm"
+    } else {
+        "native"
+    }
+}
+
 /// Rebuild wasm extension instances for a fresh snapshot, attach the harness
 /// session, and swap the holder the hook handlers dispatch through.
 async fn rebuild_wasm(
@@ -2807,8 +2833,10 @@ async fn rebuild_wasm(
     harness: &Harness,
     holder: &wasm_extensions::WasmHolder,
     ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
+    auth: Option<&AuthStorage>,
+    providers_runtime: &str,
 ) -> Arc<WasmExtensions> {
-    let wasm = build_wasm_extensions(snapshot, paths, ui_tx).await;
+    let wasm = build_wasm_extensions(snapshot, paths, ui_tx, auth, providers_runtime).await;
     wasm.set_session(harness.session_handle());
     if let Ok(mut guard) = holder.write() {
         *guard = wasm.clone();
@@ -3121,7 +3149,14 @@ async fn run_tui(
     if mode_sandbox_enabled_in_snapshot(&extension_snapshot) {
         let _ = ensure_mode_sandbox_profiles(&resource_paths);
     }
-    let mut wasm = build_wasm_extensions(&extension_snapshot, &resource_paths, None).await;
+    let mut wasm = build_wasm_extensions(
+        &extension_snapshot,
+        &resource_paths,
+        None,
+        Some(&auth),
+        providers_runtime_setting(&tool_settings),
+    )
+    .await;
     let wasm_holder: wasm_extensions::WasmHolder = Arc::new(std::sync::RwLock::new(wasm.clone()));
     let mut extension_models = extension_model_options(&extension_snapshot, Some(&wasm));
     let mut extension_runtime_provider_ids =
@@ -3191,6 +3226,8 @@ async fn run_tui(
         &harness,
         &wasm_holder,
         Some(tx.clone()),
+        Some(&auth),
+        providers_runtime_setting(&tool_settings),
     )
     .await;
     register_wasm_hooks(&harness.hooks(), wasm_holder.clone()).await;
@@ -3434,6 +3471,8 @@ async fn run_tui(
                     &harness,
                     &wasm_holder,
                     Some(tx.clone()),
+                    Some(&auth),
+                    providers_runtime_setting(&tool_settings),
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4079,6 +4118,8 @@ async fn run_tui(
                     &harness,
                     &wasm_holder,
                     Some(tx.clone()),
+                    Some(&auth),
+                    providers_runtime_setting(&tool_settings),
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4117,6 +4158,8 @@ async fn run_tui(
                     &harness,
                     &wasm_holder,
                     Some(tx.clone()),
+                    Some(&auth),
+                    providers_runtime_setting(&tool_settings),
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4154,6 +4197,8 @@ async fn run_tui(
                     &harness,
                     &wasm_holder,
                     Some(tx.clone()),
+                    Some(&auth),
+                    providers_runtime_setting(&tool_settings),
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4234,6 +4279,8 @@ async fn run_tui(
                             &harness,
                             &wasm_holder,
                             Some(tx.clone()),
+                            Some(&auth),
+                            providers_runtime_setting(&tool_settings),
                         )
                         .await;
                         apply_tool_settings_to_harness(
@@ -4289,6 +4336,7 @@ async fn run_tui(
                     Some(tx.clone()),
                     &mut wasm,
                     &wasm_holder,
+                    &auth,
                 )
                 .await;
                 state.append_command_output("/extensions update", message.clone());
@@ -4310,6 +4358,7 @@ async fn run_tui(
                             Some(tx.clone()),
                             &mut wasm,
                             &wasm_holder,
+                            &auth,
                         )
                         .await;
                         state.append_command_output("/update", message.clone());
@@ -4352,6 +4401,8 @@ async fn run_tui(
                                     &harness,
                                     &wasm_holder,
                                     Some(tx.clone()),
+                                    Some(&auth),
+                                    providers_runtime_setting(&tool_settings),
                                 )
                                 .await;
                                 apply_tool_settings_to_harness(
@@ -4496,6 +4547,7 @@ async fn run_tui(
                     Some(tx.clone()),
                     &mut wasm,
                     &wasm_holder,
+                    &auth,
                 )
                 .await;
                 apply_cached_model_catalog_to_tui_state(&mut state, &extension_models).await;
@@ -4717,6 +4769,7 @@ async fn reload_tui_everything(
     ask_user_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
     wasm: &mut Arc<WasmExtensions>,
     wasm_holder: &wasm_extensions::WasmHolder,
+    auth: &AuthStorage,
 ) {
     *tool_settings = load_tool_settings(resource_paths).await;
     let mut extension_snapshot = load_extension_snapshot(resource_paths, tool_settings);
@@ -4726,6 +4779,8 @@ async fn reload_tui_everything(
         harness,
         wasm_holder,
         ask_user_tx.clone(),
+        Some(auth),
+        providers_runtime_setting(tool_settings),
     )
     .await;
     apply_tool_settings_to_harness(
@@ -9270,6 +9325,7 @@ mod tests {
                 tools: BTreeMap::new(),
                 extensions: oino_extension_core::ExtensionPolicySettings::default(),
                 compact: user_settings::CompactSettings::default(),
+                providers: user_settings::ProvidersSettings::default(),
             },
             None,
             None,
@@ -9515,7 +9571,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
         assert!(
             wasm.tools.contains_key("echo"),
             "wasm tools missing echo: {:?} diags {:?}",
@@ -9578,7 +9634,9 @@ mod tests {
         let requests = Arc::clone(&stream.requests);
         let session = SessionManager::new(SessionHeader::new("test", project.clone()));
         let auth = AuthStorage::new(
-            AuthConfig::new(temp.path().join("auth.json")).with_process_env(false),
+            AuthConfig::new(temp.path().join("auth.json"))
+                .with_runtime_override("parity", "sk-parity")
+                .with_process_env(false),
         );
         let resource_catalog = ResourceCatalog {
             paths: paths.clone(),
@@ -9653,7 +9711,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None).await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
         assert!(
             wasm.providers.contains_key("faux"),
             "faux provider missing: {:?} diags {:?}",
@@ -9694,5 +9752,571 @@ mod tests {
         assert_eq!(deltas.len(), 5, "expected 5 faux deltas: {events:?}");
         assert_eq!(deltas[0], "event-0");
         assert_eq!(deltas[4], "event-4");
+    }
+
+    // ---- openai-compat wasm parity tests ---------------------------------
+
+    struct RecordedRequest {
+        method: String,
+        path: String,
+        headers: BTreeMap<String, String>,
+        body: Vec<u8>,
+    }
+
+    /// One-shot 127.0.0.1 HTTP server that records the first request and
+    /// replies with a canned response.
+    fn spawn_recording_server(
+        status: u16,
+        content_type: &'static str,
+        body: &'static str,
+    ) -> (String, std::sync::mpsc::Receiver<RecordedRequest>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap_or_else(|err| panic!("bind test server: {err}"));
+        let port = listener
+            .local_addr()
+            .unwrap_or_else(|err| panic!("local addr: {err}"))
+            .port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            while let Ok((mut stream, _)) = listener.accept() {
+                use std::io::{Read, Write};
+                let mut buf = Vec::new();
+                let mut head_end = None;
+                let mut chunk = [0u8; 8192];
+                while head_end.is_none() {
+                    let Ok(n) = stream.read(&mut chunk) else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                    head_end = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4);
+                }
+                let head_end = head_end.unwrap_or_default();
+                let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
+                let mut headers = BTreeMap::new();
+                let mut lines = head.lines();
+                let request_line = lines.next().unwrap_or_default().to_string();
+                for line in lines {
+                    if let Some((name, value)) = line.split_once(':') {
+                        headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+                    }
+                }
+                // Read the entity body: `content-length` (reqwest) or `chunked`
+                // framing (wasi-http guest POSTs).
+                let mut body_buf = buf[head_end..].to_vec();
+                let read_more = |stream: &mut std::net::TcpStream,
+                                 chunk: &mut [u8; 8192],
+                                 out: &mut Vec<u8>| {
+                    if let Ok(n) = stream.read(chunk) {
+                        if n > 0 {
+                            out.extend_from_slice(&chunk[..n]);
+                        }
+                        n
+                    } else {
+                        0
+                    }
+                };
+                if headers
+                    .get("transfer-encoding")
+                    .is_some_and(|v| v.contains("chunked"))
+                {
+                    loop {
+                        // parse `SIZE\r\n DATA \r\n` chunks until a 0 chunk
+                        let text = String::from_utf8_lossy(&body_buf).into_owned();
+                        let mut pos = 0usize;
+                        let mut done = false;
+                        while let Some(line_end) = text[pos..].find("\r\n") {
+                            let size_str = &text[pos..pos + line_end];
+                            let Ok(size) = usize::from_str_radix(size_str.trim(), 16) else {
+                                break;
+                            };
+                            let chunk_start = pos + line_end + 2;
+                            if text.len() < chunk_start + size + 2 {
+                                break;
+                            }
+                            if size == 0 {
+                                done = true;
+                                break;
+                            }
+                            pos = chunk_start + size + 2;
+                        }
+                        if done {
+                            // decode
+                            let mut decoded = Vec::new();
+                            let mut pos = 0usize;
+                            while let Some(line_end) = text[pos..].find("\r\n") {
+                                let size =
+                                    usize::from_str_radix(text[pos..pos + line_end].trim(), 16)
+                                        .unwrap_or(0);
+                                let start = pos + line_end + 2;
+                                if size == 0 {
+                                    break;
+                                }
+                                decoded.extend_from_slice(&text.as_bytes()[start..start + size]);
+                                pos = start + size + 2;
+                            }
+                            body_buf = decoded;
+                            break;
+                        }
+                        if read_more(&mut stream, &mut chunk, &mut body_buf) == 0 {
+                            break;
+                        }
+                    }
+                } else {
+                    let content_length: usize = headers
+                        .get("content-length")
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0);
+                    while body_buf.len() < content_length {
+                        if read_more(&mut stream, &mut chunk, &mut body_buf) == 0 {
+                            break;
+                        }
+                    }
+                    body_buf.truncate(content_length);
+                }
+                let mut parts = request_line.split_whitespace();
+                let _ = tx.send(RecordedRequest {
+                    method: parts.next().unwrap_or_default().into(),
+                    path: parts.next().unwrap_or_default().into(),
+                    headers,
+                    body: body_buf,
+                });
+                let response = format!(
+                "HTTP/1.1 {status} X\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (format!("http://127.0.0.1:{port}"), rx)
+    }
+
+    fn parity_stream_request(
+        provider_id: &str,
+        model: &str,
+        retention: oino_agent_loop::CacheRetention,
+        session_id: Option<String>,
+    ) -> oino_agent_loop::StreamRequest {
+        oino_agent_loop::StreamRequest {
+            model: Model::from_identifier(&format!("{provider_id}:{model}"))
+                .unwrap_or_else(|| panic!("model id")),
+            thinking_level: ThinkingLevel::Low,
+            transcript: oino_types::transcript::Transcript::new(vec![Message::user_text("hello")]),
+            session_id,
+            cache_retention: retention,
+        }
+    }
+
+    const SSE_TEXT: &str = concat!(
+        "data: {\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"delta\":{\"content\":\"hello\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"id\":\"r1\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n"
+    );
+
+    const SSE_RICH: &str = concat!(
+        "data: {\"id\":\"r2\",\"model\":\"m\",\"choices\":[{\"delta\":{\"reasoning\":\"think\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"070e304d-069a-4549-92fc-8f0128d3fe30\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"a\\\"\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\":1}\"}}]},\"finish_reason\":null}]}\n\n",
+        "data: {\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"prompt_tokens_details\":{\"cached_tokens\":3,\"cache_write_tokens\":2},\"completion_tokens_details\":{\"reasoning_tokens\":4},\"cost\":0.001}}\n\n",
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+        "data: [DONE]\n\n"
+    );
+
+    struct ParityOutcome {
+        events: Vec<AssistantStreamEvent>,
+        error: Option<String>,
+        recorded: RecordedRequest,
+    }
+
+    /// Run the same request through a wasm declarative provider instance and
+    /// the native `OpenAiCompatibleProvider`, against two identical servers,
+    /// and return (wasm, native) outcomes for comparison.
+    async fn run_parity_case(
+        temp: &tempfile::TempDir,
+        config: &OpenAiCompatibleConfig,
+        api_key: Option<&str>,
+        request: oino_agent_loop::StreamRequest,
+        sse: &'static str,
+        status: u16,
+    ) -> (ParityOutcome, ParityOutcome) {
+        let (native_url, native_rx) = spawn_recording_server(status, "text/event-stream", sse);
+        let (wasm_url, wasm_rx) = spawn_recording_server(status, "text/event-stream", sse);
+
+        let mut auth_config =
+            AuthConfig::new(temp.path().join("auth.json")).with_process_env(false);
+        if api_key.is_some() {
+            auth_config = auth_config.with_runtime_override("parity", "sk-parity");
+        }
+        let auth = AuthStorage::new(auth_config);
+
+        // native path: same resolved config, different base urls per server
+        let mut native_config = config.clone();
+        native_config.base_url = native_url.clone();
+        let native =
+            oino_provider_openrouter::OpenAiCompatibleProvider::new(auth.clone(), native_config)
+                .unwrap_or_else(|err| panic!("native provider: {err}"));
+
+        // wasm path: same config, api key injected via the secret resolver
+        let paths =
+            ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path().join("project"))
+                .unwrap_or_else(|err| panic!("paths: {err}"));
+        let engine = WasmHostEngine::new(temp.path().join("wasm-cache"))
+            .unwrap_or_else(|err| panic!("engine: {err}"));
+        let mut wasm_config = config.clone();
+        wasm_config.base_url = wasm_url.clone();
+        let mut set = WasmExtensions::empty();
+        wasm_extensions::instantiate_declarative_wasm_provider(
+            "parity",
+            &wasm_config,
+            "optional",
+            None,
+            api_key.map(str::to_string),
+            None,
+            &paths,
+            &engine,
+            &mut set,
+        )
+        .await;
+        let wasm_provider = set
+            .providers
+            .get("parity")
+            .unwrap_or_else(|| panic!("wasm provider missing"))
+            .clone();
+
+        let native_outcome = native.stream(request.clone(), AbortSignal::new()).await;
+        let wasm_outcome = wasm_provider.stream(request, AbortSignal::new()).await;
+        let native_rec = native_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|err| panic!("native request not recorded: {err}"));
+        // instantiate lists models first; the stream request is the next one
+        let mut wasm_rec = wasm_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|err| panic!("wasm request not recorded: {err}"));
+        if wasm_rec.path == "/models" {
+            wasm_rec = wasm_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap_or_else(|err| panic!("wasm stream request not recorded: {err}"));
+        }
+        let pack = |outcome: oino_agent_loop::LoopResult<Vec<AssistantStreamEvent>>, recorded| {
+            match outcome {
+                Ok(events) => ParityOutcome {
+                    events,
+                    error: None,
+                    recorded,
+                },
+                Err(err) => ParityOutcome {
+                    events: Vec::new(),
+                    error: Some(err.to_string()),
+                    recorded,
+                },
+            }
+        };
+        (
+            pack(wasm_outcome, wasm_rec),
+            pack(native_outcome, native_rec),
+        )
+    }
+
+    fn assert_parity(case: &str, wasm: &ParityOutcome, native: &ParityOutcome) {
+        assert_eq!(
+            wasm.error, native.error,
+            "{case}: error parity (wasm={:?} native={:?})",
+            wasm.error, native.error
+        );
+        assert_eq!(
+            wasm.events, native.events,
+            "{case}: event parity\nwasm: {:?}\nnative: {:?}",
+            wasm.events, native.events
+        );
+        assert_eq!(
+            wasm.recorded.method, native.recorded.method,
+            "{case}: method"
+        );
+        assert_eq!(wasm.recorded.path, native.recorded.path, "{case}: path");
+        for name in [
+            "authorization",
+            "content-type",
+            "x-session-id",
+            "session_id",
+            "x-client-request-id",
+            "x-session-affinity",
+        ] {
+            assert_eq!(
+                wasm.recorded.headers.get(name),
+                native.recorded.headers.get(name),
+                "{case}: header `{name}` (wasm={:?} native={:?})",
+                wasm.recorded.headers.get(name),
+                native.recorded.headers.get(name)
+            );
+        }
+        assert_eq!(
+            wasm.recorded.body,
+            native.recorded.body,
+            "{case}: body\nwasm: {}\nnative: {}",
+            String::from_utf8_lossy(&wasm.recorded.body),
+            String::from_utf8_lossy(&native.recorded.body)
+        );
+    }
+
+    #[tokio::test]
+    async fn wasm_openai_compat_matches_native_on_the_wire() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        // ProviderAuthSpec is unused here (key injected directly); the config
+        // mirrors what extension_runtime_config_for_provider_id produces for
+        // an env-var api_key contribution.
+        let base_config = OpenAiCompatibleConfig::new("parity", "Parity", "http://127.0.0.1:1")
+            .with_auth(
+                oino_provider_openrouter::OpenAiCompatibleAuth::OptionalBearer {
+                    spec: ProviderAuthSpec::new("parity", "parity", "OINO_PARITY_TEST_KEY"),
+                },
+            );
+
+        let req = || {
+            parity_stream_request(
+                "parity",
+                "m",
+                oino_agent_loop::CacheRetention::Short,
+                Some("sess-1".into()),
+            )
+        };
+
+        // plain text
+        let (wasm, native) =
+            run_parity_case(&temp, &base_config, Some("sk-parity"), req(), SSE_TEXT, 200).await;
+        assert_parity("plain text", &wasm, &native);
+        assert_eq!(wasm.events.len(), 2);
+
+        // thinking + tool calls + usage
+        let (wasm, native) =
+            run_parity_case(&temp, &base_config, Some("sk-parity"), req(), SSE_RICH, 200).await;
+        assert_parity("rich stream", &wasm, &native);
+
+        // anthropic cache_control breakpoints (byte-identical body)
+        let mut anthropic_config = base_config.clone();
+        anthropic_config.cache_control_format =
+            Some(oino_provider_openrouter::CacheControlFormat::Anthropic);
+        let (wasm, native) = run_parity_case(
+            &temp,
+            &anthropic_config,
+            Some("sk-parity"),
+            parity_stream_request(
+                "parity",
+                "anthropic/x",
+                oino_agent_loop::CacheRetention::Long,
+                Some("sess-1".into()),
+            ),
+            SSE_TEXT,
+            200,
+        )
+        .await;
+        assert_parity("anthropic cache_control", &wasm, &native);
+
+        // retention none: no cache key/control on either side
+        let (wasm, native) = run_parity_case(
+            &temp,
+            &anthropic_config,
+            Some("sk-parity"),
+            parity_stream_request(
+                "parity",
+                "anthropic/x",
+                oino_agent_loop::CacheRetention::None,
+                Some("sess-1".into()),
+            ),
+            SSE_TEXT,
+            200,
+        )
+        .await;
+        assert_parity("retention none", &wasm, &native);
+
+        // openrouter-format affinity headers via config override
+        let mut affinity_config = base_config.clone();
+        affinity_config.session_affinity =
+            Some(oino_provider_openrouter::SessionAffinityFormat::OpenRouter);
+        let (wasm, native) = run_parity_case(
+            &temp,
+            &affinity_config,
+            Some("sk-parity"),
+            req(),
+            SSE_TEXT,
+            200,
+        )
+        .await;
+        assert_parity("openrouter affinity", &wasm, &native);
+        assert_eq!(
+            wasm.recorded
+                .headers
+                .get("x-session-id")
+                .map(String::as_str),
+            Some("sess-1")
+        );
+
+        // HTTP 429 error parity
+        let (wasm, native) = run_parity_case(
+            &temp,
+            &base_config,
+            Some("sk-parity"),
+            req(),
+            "rate limited",
+            429,
+        )
+        .await;
+        assert_parity("http 429", &wasm, &native);
+        let error = wasm.error.unwrap_or_default();
+        assert!(error.contains("status 429"), "wasm error: {error}");
+
+        // no key: both sides omit Authorization
+        let (wasm, native) = run_parity_case(&temp, &base_config, None, req(), SSE_TEXT, 200).await;
+        assert_parity("no api key", &wasm, &native);
+        assert!(!wasm.recorded.headers.contains_key("authorization"));
+    }
+
+    #[tokio::test]
+    async fn wasm_flag_routes_declarative_provider_through_component() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let (base_url, rx) = spawn_recording_server(200, "text/event-stream", SSE_TEXT);
+        let project = temp.path().join("project");
+        let home = temp.path().join("home");
+        let manifest = format!(
+            r#"{{
+              "id": "acme.example_extension",
+              "version": "1.0.0",
+              "oino": "^0.1",
+              "runtime": {{ "kind": "built_in" }},
+              "contributes": {{
+                "providers": [{{
+                  "id": "p",
+                  "provider_id": "decl",
+                  "display_name": "Declarative",
+                  "model_ids": ["decl/m"],
+                  "runtime": {{
+                    "protocol": "open_ai_chat_completions",
+                    "base_url": "{base_url}",
+                    "api_key": {{ "kind": "env_var", "name": "DECL_KEY" }}
+                  }}
+                }}]
+              }}
+            }}"#
+        );
+        let extension_dir = project.join(".oino/extensions/acme-example");
+        fs::create_dir_all(&extension_dir).unwrap_or_else(|err| panic!("dir: {err}"));
+        fs::write(extension_dir.join("oino.extension.json"), manifest)
+            .unwrap_or_else(|err| panic!("manifest: {err}"));
+        fs::create_dir_all(project.join(".oino")).unwrap_or_else(|err| panic!("dir: {err}"));
+        fs::write(
+            project.join(".oino/settings.json"),
+            r#"{ "extensions": { "extensions": { "acme.example_extension": "enabled" } } }"#,
+        )
+        .unwrap_or_else(|err| panic!("settings: {err}"));
+
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("paths: {err}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let auth = AuthStorage::new(
+            AuthConfig::new(temp.path().join("auth.json"))
+                .with_runtime_override("decl", "sk-decl")
+                .with_process_env(false),
+        );
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, Some(&auth), "wasm").await;
+        assert!(
+            wasm.providers.contains_key("decl"),
+            "declarative wasm provider missing: {:?}",
+            wasm.diagnostics
+                .lock()
+                .map(|d| d.iter().map(|x| x.format_message()).collect::<Vec<_>>())
+        );
+        let router = ProviderRouter::new(
+            auth,
+            extension_runtime_providers(&snapshot),
+            wasm.provider_map(),
+        );
+        let events = StreamProvider::stream(
+            &router,
+            parity_stream_request(
+                "decl",
+                "m",
+                oino_agent_loop::CacheRetention::Short,
+                Some("s".into()),
+            ),
+            AbortSignal::new(),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("stream: {err}"));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            AssistantStreamEvent::TextDelta { delta } if delta == "hello"
+        )));
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn wasm_openai_compat_models_and_abort_parity() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let base_config = OpenAiCompatibleConfig::new("parity", "Parity", "http://127.0.0.1:1");
+
+        // models listing parity
+        let models_body = r#"{"data":[{"id":"m1","name":"Model One"},{"id":"m2"}]}"#;
+        let (native_url, _rx) = spawn_recording_server(200, "application/json", models_body);
+        let (wasm_url, _rx2) = spawn_recording_server(200, "application/json", models_body);
+        let mut native_config = base_config.clone();
+        native_config.base_url = native_url;
+        let native_models = oino_provider_openrouter::list_openai_compatible_models(&native_config)
+            .await
+            .unwrap_or_else(|err| panic!("native models: {err}"));
+
+        let paths =
+            ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path().join("project"))
+                .unwrap_or_else(|err| panic!("paths: {err}"));
+        let engine = WasmHostEngine::new(temp.path().join("wasm-cache"))
+            .unwrap_or_else(|err| panic!("engine: {err}"));
+        let mut wasm_config = base_config.clone();
+        wasm_config.base_url = wasm_url;
+        let mut set = WasmExtensions::empty();
+        wasm_extensions::instantiate_declarative_wasm_provider(
+            "parity",
+            &wasm_config,
+            "none",
+            None,
+            None,
+            None,
+            &paths,
+            &engine,
+            &mut set,
+        )
+        .await;
+        let wasm_models = set
+            .provider_models
+            .get("parity")
+            .unwrap_or_else(|| panic!("no wasm models"));
+        let native_ids: Vec<String> = native_models.iter().map(|m| m.id.clone()).collect();
+        assert_eq!(
+            wasm_models.as_slice(),
+            native_ids.as_slice(),
+            "model id parity"
+        );
+
+        // abort before stream: native emits Aborted; wasm must not hang
+        let wasm_provider = set
+            .providers
+            .get("parity")
+            .unwrap_or_else(|| panic!("wasm provider"))
+            .clone();
+        let signal = AbortSignal::new();
+        signal.abort();
+        let wasm_events = wasm_provider
+            .stream(
+                parity_stream_request("parity", "m", oino_agent_loop::CacheRetention::Short, None),
+                signal.clone(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("wasm abort stream: {err}"));
+        assert!(
+            wasm_events
+                .iter()
+                .any(|e| matches!(e, AssistantStreamEvent::Aborted)),
+            "wasm abort events: {wasm_events:?}"
+        );
     }
 }

@@ -182,10 +182,36 @@ pub mod http {
 
     /// GET `url`, blocking until response headers arrive.
     pub fn get(url: &str) -> Result<Response, String> {
+        request("GET", url, &[], None)
+    }
+
+    /// Send a request with method, headers and optional body; blocks until
+    /// response headers arrive. Streaming bodies are not supported — the body
+    /// is buffered and sent with an explicit content length.
+    pub fn request(
+        method: &str,
+        url: &str,
+        headers: &[(String, String)],
+        body: Option<&[u8]>,
+    ) -> Result<Response, String> {
         let (scheme, authority, path) = split_url(url)?;
-        let request = OutgoingRequest::new(Fields::new());
+        let fields = Fields::new();
+        for (name, value) in headers {
+            fields
+                .set(name, &[value.as_bytes().to_vec()])
+                .map_err(|err| format!("set header `{name}`: {err:?}"))?;
+        }
+        let request = OutgoingRequest::new(fields);
+        let method = match method.to_ascii_uppercase().as_str() {
+            "GET" => ext::wasi::http::types::Method::Get,
+            "POST" => ext::wasi::http::types::Method::Post,
+            "PUT" => ext::wasi::http::types::Method::Put,
+            "DELETE" => ext::wasi::http::types::Method::Delete,
+            "HEAD" => ext::wasi::http::types::Method::Head,
+            other => return Err(format!("unsupported method `{other}`")),
+        };
         request
-            .set_method(&ext::wasi::http::types::Method::Get)
+            .set_method(&method)
             .map_err(|_| "set method".to_string())?;
         request
             .set_scheme(Some(&scheme))
@@ -196,6 +222,18 @@ pub mod http {
         request
             .set_path_with_query(Some(&path))
             .map_err(|_| "set path".to_string())?;
+        if let Some(bytes) = body {
+            let outgoing = request.body().map_err(|_| "request body".to_string())?;
+            let stream = outgoing
+                .write()
+                .map_err(|_| "request body stream".to_string())?;
+            stream
+                .blocking_write_and_flush(bytes)
+                .map_err(|err| format!("write body: {err:?}"))?;
+            drop(stream);
+            ext::wasi::http::types::OutgoingBody::finish(outgoing, None)
+                .map_err(|_| "finish body".to_string())?;
+        }
         let future = ext::wasi::http::outgoing_handler::handle(request, None)
             .map_err(|err| format!("outgoing handle: {err:?}"))?;
         let incoming = wait_incoming(future)?;

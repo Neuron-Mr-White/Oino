@@ -11,9 +11,11 @@ use std::{
 };
 
 use oino_agent_loop::{BeforeToolCallResult, StreamProvider, ToolCall};
+use oino_auth::AuthStorage;
 use oino_extension_core::{
     DiagnosticPhase, DiagnosticSeverity, ExtensionDiagnostic, ExtensionId, ExtensionManifest,
-    ExtensionSessionEntry, HealthState, HookEventKind, HookMode, SourceScope, MANIFEST_FILE,
+    ExtensionPermissions, ExtensionSessionEntry, HealthState, HookEventKind, HookMode, SourceScope,
+    MANIFEST_FILE,
 };
 use oino_extension_manager::ExtensionManagerSnapshot;
 use oino_harness::HookRegistry;
@@ -21,8 +23,8 @@ use oino_resource::ResourcePaths;
 use oino_session::SessionManager;
 use oino_types::Message;
 use oino_wasm_host::{
-    CallLimits, HostCaps, HostSession, HostUi, ProgressRouter, SecretResolver, WasmExtension,
-    WasmHostEngine, WasmStreamProvider,
+    CallLimits, HostCaps, HostSession, HostUi, NoopSession, NoopUi, ProgressRouter, SecretResolver,
+    WasmExtension, WasmHostEngine, WasmStreamProvider,
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -60,6 +62,22 @@ pub(crate) struct WasmExtensions {
 }
 
 impl WasmExtensions {
+    /// Empty set — tests and flag-disabled paths.
+    #[cfg(test)]
+    pub(crate) fn empty() -> Self {
+        Self {
+            extensions: BTreeMap::new(),
+            providers: BTreeMap::new(),
+            provider_models: BTreeMap::new(),
+            tools: BTreeMap::new(),
+            commands: BTreeMap::new(),
+            hooks: Vec::new(),
+            progress: ProgressRouter::default(),
+            diagnostics: Arc::new(Mutex::new(Vec::new())),
+            session: Arc::new(Mutex::new(None)),
+        }
+    }
+
     /// Attach the harness session handle once the harness exists (instances
     /// are built before the harness so providers can feed `build_runtime_provider`).
     pub fn set_session(&self, session: Arc<tokio::sync::Mutex<SessionManager>>) {
@@ -212,6 +230,8 @@ pub(crate) async fn build_wasm_extensions(
     snapshot: &ExtensionManagerSnapshot,
     paths: &ResourcePaths,
     ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
+    auth: Option<&AuthStorage>,
+    providers_runtime: &str,
 ) -> Arc<WasmExtensions> {
     let diagnostics: Arc<Mutex<Vec<ExtensionDiagnostic>>> = Arc::new(Mutex::new(Vec::new()));
     let progress = ProgressRouter::default();
@@ -617,7 +637,288 @@ pub(crate) async fn build_wasm_extensions(
         set.extensions.insert(extension_id.clone(), extension);
     }
 
+    if providers_runtime == "wasm" {
+        build_declarative_wasm_providers(snapshot, paths, auth, &engine, &mut set).await;
+    }
+
     Arc::new(set)
+}
+
+/// The bundled openai-compat component (provider-extension world). One
+/// instance is created per declarative provider contribution when
+/// `providers.runtime` is `wasm`; the host synthesizes permissions from the
+/// resolved provider config (network hosts + `api_key` secret).
+const OPENAI_COMPAT_WASM: &[u8] = include_bytes!("../assets/providers/openai_compat.wasm");
+
+/// Secret resolver serving exactly one resolved credential under `api_key`.
+struct StaticSecretResolver(Option<String>);
+
+impl SecretResolver for StaticSecretResolver {
+    fn secret(&self, name: &str) -> Option<String> {
+        if name == "api_key" {
+            self.0.clone()
+        } else {
+            None
+        }
+    }
+}
+
+/// Host part of a URL (port ignored — matches `send_request` gating).
+fn url_host(url: &str) -> String {
+    let authority = url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    // strip optional port; bracketed IPv6 keeps its brackets off the port part
+    let host = if let Some(end) = authority.strip_prefix('[').and_then(|a| a.find(']')) {
+        &authority[1..=end]
+    } else {
+        authority.split(':').next().unwrap_or_default()
+    };
+    host.to_ascii_lowercase()
+}
+
+/// Instantiate `provider-openai-compat` once per declarative
+/// (`runtime.protocol = open_ai_chat_completions`) provider contribution with
+/// the same resolved config the native `OpenAiCompatibleProvider` would use.
+async fn build_declarative_wasm_providers(
+    snapshot: &ExtensionManagerSnapshot,
+    paths: &ResourcePaths,
+    auth: Option<&AuthStorage>,
+    engine: &Arc<WasmHostEngine>,
+    set: &mut WasmExtensions,
+) {
+    let contributions = crate::extension_provider_runtime::extension_runtime_providers(snapshot);
+    for provider in contributions {
+        let provider_id = provider.provider_id.clone();
+        let config =
+            match crate::extension_provider_runtime::extension_runtime_config_for_provider_id(
+                &provider_id,
+                std::slice::from_ref(&provider),
+            ) {
+                Ok(Some(config)) => config,
+                Ok(None) => continue,
+                Err(err) => {
+                    set.diagnostics
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(diagnostic(
+                            None,
+                            DiagnosticSeverity::Error,
+                            DiagnosticPhase::RuntimeLoad,
+                            format!("wasm provider `{provider_id}` config failed: {err}"),
+                        ));
+                    continue;
+                }
+            };
+
+        // Mirror `OpenAiCompatibleAuth` semantics host-side: required keys
+        // fail the instance build, optional keys resolve best-effort.
+        let (auth_kind, api_key_header, api_key) = match &config.auth {
+            oino_provider_openrouter::OpenAiCompatibleAuth::None => ("none", None, None),
+            oino_provider_openrouter::OpenAiCompatibleAuth::Bearer { spec } => {
+                let key = match auth {
+                    Some(auth) => match auth.resolve_api_key(spec).await {
+                        Ok(key) => Some(key),
+                        Err(err) => {
+                            set.diagnostics
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .push(diagnostic(
+                                    None,
+                                    DiagnosticSeverity::Error,
+                                    DiagnosticPhase::RuntimeLoad,
+                                    format!("wasm provider `{provider_id}` api key: {err}"),
+                                ));
+                            continue;
+                        }
+                    },
+                    None => None,
+                };
+                ("required", None, key)
+            }
+            oino_provider_openrouter::OpenAiCompatibleAuth::OptionalBearer { spec } => {
+                let key = match auth {
+                    Some(auth) => auth
+                        .resolve(spec)
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|credential| credential.as_api_key().map(str::to_string)),
+                    None => None,
+                };
+                ("optional", None, key)
+            }
+            oino_provider_openrouter::OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => {
+                let key = match auth {
+                    Some(auth) => match auth.resolve_api_key(spec).await {
+                        Ok(key) => Some(key),
+                        Err(err) => {
+                            set.diagnostics
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .push(diagnostic(
+                                    None,
+                                    DiagnosticSeverity::Error,
+                                    DiagnosticPhase::RuntimeLoad,
+                                    format!("wasm provider `{provider_id}` api key: {err}"),
+                                ));
+                            continue;
+                        }
+                    },
+                    None => None,
+                };
+                ("required", Some(header_name.clone()), key)
+            }
+        };
+
+        let models_url = provider
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.models_url.clone());
+        instantiate_declarative_wasm_provider(
+            &provider_id,
+            &config,
+            auth_kind,
+            api_key_header,
+            api_key,
+            models_url,
+            paths,
+            engine,
+            set,
+        )
+        .await;
+    }
+}
+
+/// Instantiate the bundled openai-compat component for one provider id and
+/// register it (plus `list_models` ids) on `set`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn instantiate_declarative_wasm_provider(
+    provider_id: &str,
+    config: &oino_provider_openrouter::OpenAiCompatibleConfig,
+    auth_kind: &str,
+    api_key_header: Option<String>,
+    api_key: Option<String>,
+    models_url: Option<String>,
+    paths: &ResourcePaths,
+    engine: &Arc<WasmHostEngine>,
+    set: &mut WasmExtensions,
+) {
+    let mut permissions = ExtensionPermissions::default();
+    for url in [
+        config.base_url.clone(),
+        models_url
+            .clone()
+            .unwrap_or_else(|| config.models_endpoint()),
+    ] {
+        let host = url_host(&url);
+        if !host.is_empty() {
+            permissions.network.hosts.push(host);
+        }
+    }
+    permissions.secrets.insert("api_key".into());
+
+    let kv_dir = paths
+        .home_dir
+        .join(".oino/extension-data")
+        .join(format!("provider-{provider_id}"));
+    let _ = fs::create_dir_all(&kv_dir);
+    let caps = HostCaps {
+        permissions,
+        secrets: Arc::new(StaticSecretResolver(api_key)),
+        ui: Arc::new(NoopUi),
+        session: Arc::new(NoopSession),
+        progress: set.progress.sink(),
+        kv_dir,
+    };
+    let extension = match WasmExtension::new(
+        engine.clone(),
+        OPENAI_COMPAT_WASM,
+        caps,
+        CallLimits::default(),
+        true,
+    ) {
+        Ok(extension) => Arc::new(extension),
+        Err(err) => {
+            set.diagnostics
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(diagnostic(
+                    None,
+                    DiagnosticSeverity::Error,
+                    DiagnosticPhase::RuntimeLoad,
+                    format!("wasm provider `{provider_id}` component load failed: {err}"),
+                ));
+            return;
+        }
+    };
+    let init = json!({
+        "provider_id": provider_id,
+        "display_name": config.display_name,
+        "base_url": config.base_url,
+        "models_url": models_url,
+        "headers": config.headers,
+        "auth": auth_kind,
+        "api_key_header": api_key_header,
+        "model_id_policy": "strip_provider_prefix",
+        "compat": {
+            "send_prompt_cache_key": config.send_prompt_cache_key,
+            "session_affinity": config.session_affinity.map(|format| match format {
+                oino_provider_openrouter::SessionAffinityFormat::OpenAi => "openai",
+                oino_provider_openrouter::SessionAffinityFormat::OpenRouter => "openrouter",
+            }),
+            "cache_control_format": config.cache_control_format.map(|_| "anthropic"),
+        },
+    });
+    if let Err(err) = extension.init(init).await {
+        set.diagnostics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(diagnostic(
+                None,
+                DiagnosticSeverity::Error,
+                DiagnosticPhase::RuntimeLoad,
+                format!("wasm provider `{provider_id}` init failed: {err}"),
+            ));
+        return;
+    }
+    match WasmStreamProvider::new(extension) {
+        Ok(provider_instance) => {
+            let provider_instance = Arc::new(provider_instance);
+            if let Ok(models) = provider_instance.list_models().await {
+                let list = models["models"].as_array().or(models.as_array());
+                let ids = list
+                    .map(|models| {
+                        models
+                            .iter()
+                            .filter_map(|model| {
+                                model["id"]
+                                    .as_str()
+                                    .or(model["name"].as_str())
+                                    .map(str::to_string)
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                set.provider_models.insert(provider_id.to_string(), ids);
+            }
+            set.providers
+                .insert(provider_id.to_string(), provider_instance);
+        }
+        Err(err) => set
+            .diagnostics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(diagnostic(
+                None,
+                DiagnosticSeverity::Error,
+                DiagnosticPhase::RuntimeLoad,
+                format!("wasm provider `{provider_id}` adapter failed: {err}"),
+            )),
+    }
 }
 
 /// Holder for the current wasm set so hook handlers always dispatch to the
