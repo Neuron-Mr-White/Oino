@@ -44,7 +44,7 @@
     "commands": [
       {
         "id": "ralph",
-        "description": "Manage Oino Ralph loops: start, auto-continue, run once, steer, status, list, resume, pause, cancel, archive, and record iteration promise tags.",
+        "description": "Manage Oino Ralph loops: start, auto-continue, run once, steer, status, list, resume, pause, cancel, archive, clean, nuke, and record iteration promise tags.",
         "handler": "ralph.command"
       }
     ],

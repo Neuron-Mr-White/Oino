@@ -267,7 +267,12 @@ pub enum RalphCommand {
     Archive {
         name: String,
     },
-    CleanArchive,
+    Clean {
+        all: bool,
+    },
+    Nuke {
+        yes: bool,
+    },
     Record {
         name: String,
         promise: RalphRecordPromise,
@@ -1140,7 +1145,11 @@ fn ralph_command_help() -> String {
             ("pause", "pause a loop"),
             ("cancel", "cancel a loop"),
             ("archive", "archive a loop"),
-            ("clean", "remove archived loop files"),
+            (
+                "clean",
+                "remove archived loops; --all also removes complete/cancelled loops",
+            ),
+            ("nuke", "delete all .oino/ralph data; requires --yes"),
             ("record", "record an iteration promise"),
             ("help", "show Ralph usage"),
         ],
@@ -1353,7 +1362,16 @@ fn parse_ralph_command(input: &str) -> Option<RalphCommand> {
         }
         "cancel" => single_arg(tail).map(|name| RalphCommand::Cancel { name }),
         "archive" => single_arg(tail).map(|name| RalphCommand::Archive { name }),
-        "clean" => tail.is_empty().then_some(RalphCommand::CleanArchive),
+        "clean" => match tail.trim() {
+            "" => Some(RalphCommand::Clean { all: false }),
+            "--all" => Some(RalphCommand::Clean { all: true }),
+            _ => None,
+        },
+        "nuke" => match tail.trim() {
+            "--yes" => Some(RalphCommand::Nuke { yes: true }),
+            "" => Some(RalphCommand::Nuke { yes: false }),
+            _ => None,
+        },
         "record" => parse_ralph_record(tail),
         _ => None,
     }
@@ -2337,7 +2355,11 @@ fn ralph_suggestions(context: SuggestionContext) -> Option<CommandSuggestionsVie
         ("pause", "pause an active loop"),
         ("cancel", "cancel a loop"),
         ("archive", "archive a loop"),
-        ("clean", "remove archived loop files"),
+        (
+            "clean",
+            "remove archived loops; use --all for terminal loops too",
+        ),
+        ("nuke", "delete all Ralph data; requires --yes"),
         ("record", "record an iteration promise"),
         ("panel", "toggle persisted floating progress panel"),
         ("help", "show Ralph command usage"),
@@ -2384,6 +2406,16 @@ fn ralph_value_suggestions(
             context,
             "[name]",
             "optional loop name; omit to use current/default behavior",
+        ),
+        ("clean", None) => fixed_value_suggestions(
+            "Ralph clean option",
+            context,
+            &[("--all", "also remove complete/cancelled loop directories")],
+        ),
+        ("nuke", None) => fixed_value_suggestions(
+            "Ralph nuke confirmation",
+            context,
+            &[("--yes", "confirm deletion of all .oino/ralph data")],
         ),
         ("panel", None) => fixed_value_suggestions(
             "Ralph panel",

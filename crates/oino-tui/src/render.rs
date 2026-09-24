@@ -2775,7 +2775,7 @@ fn render_router_external_overlay(
     };
     frame.render_widget(
         Paragraph::new(if state.router_external.url.is_empty() {
-            "https://router.oino.dev".to_string()
+            "http://localhost:20128".to_string()
         } else {
             state.router_external.url.clone()
         })
@@ -2813,7 +2813,7 @@ fn render_router_external_overlay(
     let help = vec![
         Line::from("Connect Oino to an external OmniRoute endpoint."),
         Line::from("Enter verifies /v1/models with the API key before saving."),
-        Line::from("URL normalizes like router.oino.dev → https://router.oino.dev/v1."),
+        Line::from("URL normalizes like localhost:20128 → http://localhost:20128/v1."),
         Line::from("Key saves to Oino auth storage as provider `router`."),
     ];
     frame.render_widget(
@@ -4396,7 +4396,7 @@ pub(crate) fn render_model_panel(
                         crate::settings::ModelAvailability::Unknown => None,
                         availability => Some(availability.label()),
                     };
-                    let mut label = if model.provider == model.id || model.provider == "unknown" {
+                    let label = if model.provider == model.id || model.provider == "unknown" {
                         availability_label.map_or_else(
                             || model.display_name.clone(),
                             |availability| format!("{} ({availability})", model.display_name),
@@ -4409,12 +4409,6 @@ pub(crate) fn render_model_panel(
                     } else {
                         format!("[{}] {}", provider_label, model.display_name)
                     };
-                    if selector.show_pricing
-                        && !selector.search_active
-                        && selector.search.is_empty()
-                    {
-                        label.push_str(&model_pricing_suffix(model));
-                    }
                     let mut result = Vec::new();
                     if show_group && !active {
                         result.push(Line::styled(
@@ -4442,49 +4436,6 @@ pub(crate) fn render_model_panel(
     );
 }
 
-fn model_pricing_suffix(model: &crate::settings::ModelOption) -> String {
-    let Some(pricing) = model.pricing.as_ref() else {
-        return "  in n/a out n/a cache n/a".into();
-    };
-    let source = if pricing.source.trim().is_empty() {
-        ""
-    } else {
-        match pricing.source.as_str() {
-            "provider" => " src:provider",
-            source => {
-                return format!(
-                    "  in {} out {} cache {} src:{}",
-                    format_model_price_per_million(pricing.input_per_token.as_deref()),
-                    format_model_price_per_million(pricing.output_per_token.as_deref()),
-                    format_model_price_per_million(pricing.cache_hit_per_token.as_deref()),
-                    source
-                )
-            }
-        }
-    };
-    format!(
-        "  in {} out {} cache {}{}",
-        format_model_price_per_million(pricing.input_per_token.as_deref()),
-        format_model_price_per_million(pricing.output_per_token.as_deref()),
-        format_model_price_per_million(pricing.cache_hit_per_token.as_deref()),
-        source
-    )
-}
-
-fn format_model_price_per_million(value: Option<&str>) -> String {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return "n/a".into();
-    };
-    let Ok(per_token) = value.parse::<f64>() else {
-        return "n/a".into();
-    };
-    if per_token == 0.0 {
-        "$0/M".into()
-    } else {
-        format!("${:.2}/M", per_token * 1_000_000.0)
-    }
-}
-
 fn model_search_line(
     selector: &crate::model_selector::ModelSelector,
     width: usize,
@@ -4502,7 +4453,7 @@ fn model_search_line(
     }
     if selector.search.is_empty() {
         Line::styled(
-            truncate_with_ellipsis("Press / to search models • p toggle prices", width),
+            truncate_with_ellipsis("Press / to search models", width),
             settings_muted_style(theme),
         )
     } else {
@@ -6435,44 +6386,6 @@ mod tests {
         assert!(text.contains("Ext:"));
         assert!(text.contains("Tiny"));
         Ok(())
-    }
-
-    #[test]
-    fn model_selector_browse_rows_show_pricing_and_search_hides_pricing() {
-        let mut state =
-            TuiState::with_settings("router:openai/gpt-4o", oino_types::ThinkingLevel::Off);
-        state.overlay = Some(crate::app::OverlayKind::Settings);
-        state.settings.open_model_selection();
-        state.set_model_catalog(
-            vec![crate::settings::ModelOption::new("router:openai/gpt-4o")
-                .with_display_name("GPT-4o")
-                .with_provider_label("OmniRoute/openai")
-                .with_pricing(Some(crate::settings::ModelPricing {
-                    input_per_token: Some("0.0000025".into()),
-                    output_per_token: Some("0.00001".into()),
-                    cache_hit_per_token: Some("0.00000125".into()),
-                    cache_write_per_token: None,
-                    source: "openrouter".into(),
-                }))],
-            "loaded",
-        );
-
-        let text = buffer_text(&draw_state(140, 24, &state));
-        assert!(text.contains("$2.50/M"));
-        assert!(text.contains("$10.00/M"));
-        assert!(text.contains("$1.25/M"));
-        assert!(text.contains("src:openrouter"));
-
-        state.settings.model_selector.search_active = true;
-        let text = buffer_text(&draw_state(140, 24, &state));
-        assert!(text.contains("[OmniRoute/openai] GPT-4o"));
-        assert!(!text.contains("$2.50/M"));
-
-        state.settings.model_selector.search_active = false;
-        state.settings.model_selector.show_pricing = false;
-        let text = buffer_text(&draw_state(140, 24, &state));
-        assert!(text.contains("[OmniRoute/openai] GPT-4o"));
-        assert!(!text.contains("$2.50/M"));
     }
 
     #[test]

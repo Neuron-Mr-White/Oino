@@ -3,10 +3,9 @@
 use oino_auth::{AuthError, AuthStorage};
 use oino_provider_catalog::{providers, ProviderTarget};
 use oino_provider_openrouter::{
-    list_models as list_openrouter_models, OpenAiCompatibleAuth, OpenAiCompatibleConfig,
-    OpenRouterConfig, OpenRouterModelInfo,
+    OpenAiCompatibleAuth, OpenAiCompatibleConfig, OpenRouterConfig, OpenRouterModelInfo,
 };
-use oino_tui::{all_thinking_levels, ModelAvailability, ModelOption, ModelPricing};
+use oino_tui::{all_thinking_levels, ModelAvailability, ModelOption};
 use oino_types::{Model, ThinkingLevel};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -48,8 +47,6 @@ struct CachedModel {
     supported_parameters: Vec<String>,
     #[serde(default)]
     context_length: Option<usize>,
-    #[serde(default)]
-    pricing: Option<ModelPricing>,
 }
 
 #[allow(dead_code)]
@@ -153,27 +150,6 @@ pub async fn refresh_all_update_with_historical_provider_catalog(
         status,
         refreshing: false,
     }
-}
-
-pub async fn refresh_openrouter_pricing_sidecar(
-    openrouter_config: &OpenRouterConfig,
-) -> Result<usize, String> {
-    let models = list_openrouter_models(openrouter_config)
-        .await
-        .map_err(|err| err.to_string())?;
-    let cached = CachedModelCatalog {
-        fetched_at_unix: now_unix(),
-        provider_id: oino_auth::OPENROUTER_PROVIDER_ID.into(),
-        models: models
-            .into_iter()
-            .map(openai_compatible_to_cached)
-            .collect(),
-    };
-    let count = cached.models.len();
-    save_cache(&cached)
-        .await
-        .map_err(|err| format!("cache save failed: {err}"))?;
-    Ok(count)
 }
 
 pub async fn refresh_openai_proxy_update(
@@ -786,13 +762,6 @@ fn openai_compatible_to_cached_with_availability(
         id: model.id,
         supported_parameters: model.supported_parameters,
         context_length: model.context_length,
-        pricing: model.pricing.map(|pricing| ModelPricing {
-            input_per_token: pricing.prompt,
-            output_per_token: pricing.completion,
-            cache_hit_per_token: pricing.input_cache_read,
-            cache_write_per_token: pricing.input_cache_write,
-            source: "provider".into(),
-        }),
     }
 }
 
@@ -814,7 +783,6 @@ fn cached_to_option(provider_id: &str, model: CachedModel) -> ModelOption {
             &model.supported_parameters,
         ))
         .with_context_length(model.context_length)
-        .with_pricing(model.pricing)
 }
 
 fn provider_display_label(provider_id: &str) -> String {
@@ -956,20 +924,15 @@ fn enrich_router_metadata_from_openrouter_cache(
         by_id.insert(model.id.as_str(), model);
         if let Some(base) = model.id.rsplit('/').next() {
             by_base.entry(base.to_string()).or_insert(model);
-            by_base
-                .entry(canonical_pricing_match_key(base))
-                .or_insert(model);
         }
     }
     for model in &mut cache.models {
         let matched = by_id.get(model.id.as_str()).copied().or_else(|| {
-            model.id.rsplit('/').next().and_then(|base| {
-                by_base.get(base).copied().or_else(|| {
-                    by_base
-                        .get(canonical_pricing_match_key(base).as_str())
-                        .copied()
-                })
-            })
+            model
+                .id
+                .rsplit('/')
+                .next()
+                .and_then(|base| by_base.get(base).copied())
         });
         let Some(source) = matched else {
             continue;
@@ -977,32 +940,7 @@ fn enrich_router_metadata_from_openrouter_cache(
         if model.context_length.is_none() {
             model.context_length = source.context_length;
         }
-        if model.pricing.is_none() {
-            model.pricing = source.pricing.clone().map(|mut pricing| {
-                pricing.source = "openrouter".into();
-                pricing
-            });
-        }
     }
-}
-
-fn canonical_pricing_match_key(value: &str) -> String {
-    let mut key = value.to_string();
-    key = key.replace("-thinking", "");
-    for suffix in ["-extra-low", "-xhigh", "-high", "-medium", "-low"] {
-        if let Some(stripped) = key.strip_suffix(suffix) {
-            key = stripped.to_string();
-            break;
-        }
-    }
-    if key.len() > 9 {
-        let split = key.len() - 9;
-        let (prefix, suffix) = key.split_at(split);
-        if suffix.starts_with('-') && suffix[1..].chars().all(|ch| ch.is_ascii_digit()) {
-            key = prefix.to_string();
-        }
-    }
-    key
 }
 
 #[cfg(test)]
@@ -1032,7 +970,6 @@ mod tests {
                 availability: ModelAvailability::Configured,
                 supported_parameters: Vec::new(),
                 context_length: Some(200_000),
-                pricing: None,
             },
         );
 
@@ -1050,7 +987,6 @@ mod tests {
                 owned_by: Some("openai".into()),
                 supported_parameters: vec!["reasoning".into()],
                 context_length: Some(128_000),
-                pricing: None,
             }),
         );
 
@@ -1136,7 +1072,6 @@ mod tests {
                 availability: ModelAvailability::Unknown,
                 supported_parameters: Vec::new(),
                 context_length: None,
-                pricing: None,
             }],
         };
 
@@ -1156,7 +1091,6 @@ mod tests {
                     availability: ModelAvailability::Unknown,
                     supported_parameters: Vec::new(),
                     context_length: None,
-                    pricing: None,
                 },
                 CachedModel {
                     id: "openai/gpt-4o-mini".into(),
@@ -1165,7 +1099,6 @@ mod tests {
                     availability: ModelAvailability::Unknown,
                     supported_parameters: Vec::new(),
                     context_length: Some(128_000),
-                    pricing: None,
                 },
             ],
         };
@@ -1174,24 +1107,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_pricing_match_key_strips_router_variants_only() {
-        assert_eq!(
-            canonical_pricing_match_key("claude-sonnet-4-5-20250929"),
-            "claude-sonnet-4-5"
-        );
-        assert_eq!(canonical_pricing_match_key("gpt-5.5-xhigh"), "gpt-5.5");
-        assert_eq!(
-            canonical_pricing_match_key("gemini-2.5-flash-thinking"),
-            "gemini-2.5-flash"
-        );
-        assert_eq!(
-            canonical_pricing_match_key("gemini-3.5-flash-extra-low"),
-            "gemini-3.5-flash"
-        );
-    }
-
-    #[test]
-    fn router_metadata_enrichment_copies_openrouter_pricing_by_exact_id_and_base() {
+    fn router_metadata_enrichment_copies_openrouter_context_by_exact_id_and_base() {
         let openrouter_cache = CachedModelCatalog {
             fetched_at_unix: now_unix(),
             provider_id: "openrouter".into(),
@@ -1202,13 +1118,6 @@ mod tests {
                 availability: ModelAvailability::Unknown,
                 supported_parameters: Vec::new(),
                 context_length: Some(128_000),
-                pricing: Some(ModelPricing {
-                    input_per_token: Some("0.0000025".into()),
-                    output_per_token: Some("0.00001".into()),
-                    cache_hit_per_token: Some("0.00000125".into()),
-                    cache_write_per_token: None,
-                    source: "provider".into(),
-                }),
             }],
         };
         let mut router_cache = CachedModelCatalog {
@@ -1221,19 +1130,12 @@ mod tests {
                 availability: ModelAvailability::Unknown,
                 supported_parameters: Vec::new(),
                 context_length: None,
-                pricing: None,
             }],
         };
 
         enrich_router_metadata_from_openrouter_cache(&mut router_cache, &openrouter_cache);
 
-        let model = &router_cache.models[0];
-        assert_eq!(model.context_length, Some(128_000));
-        let pricing = model.pricing.as_ref().expect("pricing should be copied");
-        assert_eq!(pricing.input_per_token.as_deref(), Some("0.0000025"));
-        assert_eq!(pricing.output_per_token.as_deref(), Some("0.00001"));
-        assert_eq!(pricing.cache_hit_per_token.as_deref(), Some("0.00000125"));
-        assert_eq!(pricing.source, "openrouter");
+        assert_eq!(router_cache.models[0].context_length, Some(128_000));
     }
 
     #[test]
@@ -1248,7 +1150,6 @@ mod tests {
                     owned_by: Some("openai".into()),
                     supported_parameters: Vec::new(),
                     context_length: None,
-                    pricing: None,
                 },
                 &availability,
             ),
@@ -1262,7 +1163,6 @@ mod tests {
                     owned_by: Some("claude".into()),
                     supported_parameters: Vec::new(),
                     context_length: None,
-                    pricing: None,
                 },
                 &availability,
             ),
@@ -1323,7 +1223,6 @@ mod tests {
                     availability: ModelAvailability::Unknown,
                     supported_parameters: vec![],
                     context_length: Some(202_752),
-                    pricing: None,
                 },
                 CachedModel {
                     id: "openai/gpt-4o".into(),
@@ -1332,7 +1231,6 @@ mod tests {
                     availability: ModelAvailability::Unknown,
                     supported_parameters: vec![],
                     context_length: Some(128_000),
-                    pricing: None,
                 },
             ],
         };
@@ -1354,7 +1252,6 @@ mod tests {
                     availability: ModelAvailability::Unknown,
                     supported_parameters: vec![],
                     context_length: None,
-                    pricing: None,
                 },
                 CachedModel {
                     id: "openai/gpt-4o".into(),
@@ -1363,7 +1260,6 @@ mod tests {
                     availability: ModelAvailability::Unknown,
                     supported_parameters: vec![],
                     context_length: None,
-                    pricing: None,
                 },
                 CachedModel {
                     id: "unknown/mystery-model".into(),
@@ -1372,7 +1268,6 @@ mod tests {
                     availability: ModelAvailability::Unknown,
                     supported_parameters: vec![],
                     context_length: None,
-                    pricing: None,
                 },
             ],
         };

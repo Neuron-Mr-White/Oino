@@ -6347,12 +6347,44 @@ fn execute_ralph_command(command: RalphCommand, project_root: &Path) -> Result<S
             let state = ralph_loop::archive_loop(project_root, &name)?;
             Ok(format!("Archived Ralph loop `{}`", state.name))
         }
-        RalphCommand::CleanArchive => {
-            let count = ralph_loop::clean_archive(project_root)?;
-            Ok(format!(
-                "Removed {count} archived Ralph loop file{}",
-                if count == 1 { "" } else { "s" }
-            ))
+        RalphCommand::Clean { all } => {
+            let summary = ralph_loop::clean_loops(project_root, all)?;
+            if all {
+                Ok(format!(
+                    "Removed {} Ralph loop item{} ({} archived, {} complete/cancelled)",
+                    summary.total_removed(),
+                    if summary.total_removed() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    },
+                    summary.archived_removed,
+                    summary.terminal_removed
+                ))
+            } else {
+                Ok(format!(
+                    "Removed {} archived Ralph loop item{}",
+                    summary.archived_removed,
+                    if summary.archived_removed == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
+                ))
+            }
+        }
+        RalphCommand::Nuke { yes } => {
+            if !yes {
+                return Err(AppError::InvalidArguments(
+                    "Refusing to delete all Ralph data without confirmation. Run `/ralph nuke --yes` to remove .oino/ralph entirely.".into(),
+                ));
+            }
+            let removed = ralph_loop::nuke_all(project_root)?;
+            Ok(if removed {
+                "Deleted all Ralph loop data under .oino/ralph".into()
+            } else {
+                "No Ralph loop data found under .oino/ralph".into()
+            })
         }
         RalphCommand::Record {
             name,
@@ -6486,7 +6518,8 @@ fn ralph_help_text() -> String {
         "  /ralph pause <name>",
         "  /ralph cancel <name>",
         "  /ralph archive <name>",
-        "  /ralph clean",
+        "  /ralph clean [--all]",
+        "  /ralph nuke --yes",
         "  /ralph record <name> <continue|complete|blocked|decide|done> [note/task-id]",
     ]
     .join("\n")
@@ -7252,7 +7285,6 @@ fn spawn_model_catalog_task(
             .await;
             let _ = tx.send(TuiRuntimeEvent::ModelCatalog(update));
             if let Ok(config) = load_router_config() {
-                let _ = model_catalog::refresh_openrouter_pricing_sidecar(&openrouter_config).await;
                 let base_url = resolved_router_base_url(&config);
                 let update = model_catalog::refresh_openai_proxy_update(
                     model_catalog::ROUTER_PROVIDER_ID,
@@ -8234,9 +8266,15 @@ mod tests {
             temp.path(),
         )
         .unwrap_or_else(|err| panic!("archive failed: {err}"));
-        let cleaned = execute_ralph_command(RalphCommand::CleanArchive, temp.path())
+        let cleaned = execute_ralph_command(RalphCommand::Clean { all: false }, temp.path())
             .unwrap_or_else(|err| panic!("clean failed: {err}"));
-        assert!(cleaned.contains("Removed 1 archived Ralph loop file"));
+        assert!(cleaned.contains("Removed 1 archived Ralph loop item"));
+
+        let nuked = execute_ralph_command(RalphCommand::Nuke { yes: true }, temp.path())
+            .unwrap_or_else(|err| panic!("nuke failed: {err}"));
+        assert!(
+            nuked.contains("Deleted all Ralph loop data") || nuked.contains("No Ralph loop data")
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "oino": "^0.1",
   "publisher": "oino",
-  "description": "Optional built-in iterative development loop controller with Oino-native auto-continue, steering, history, state files, and promise tags.",
+  "description": "Optional built-in iterative development loop controller with Oino-native auto-continue, steering, history, state files, cleanup/nuke commands, and promise tags.",
   "extensions": [
     {
       "manifest": "extensions/ralph-loop/oino.extension.json",

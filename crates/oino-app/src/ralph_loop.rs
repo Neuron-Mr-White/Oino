@@ -538,6 +538,19 @@ pub fn append_steering(
     Ok(state)
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RalphCleanSummary {
+    pub archived_removed: usize,
+    pub terminal_removed: usize,
+}
+
+impl RalphCleanSummary {
+    #[must_use]
+    pub const fn total_removed(self) -> usize {
+        self.archived_removed + self.terminal_removed
+    }
+}
+
 pub fn clean_archive(project_root: &Path) -> Result<usize, RalphLoopError> {
     let archive_dir = project_root
         .join(".oino")
@@ -571,6 +584,41 @@ pub fn clean_archive(project_root: &Path) -> Result<usize, RalphLoopError> {
         }
     }
     Ok(removed)
+}
+
+pub fn clean_loops(project_root: &Path, all: bool) -> Result<RalphCleanSummary, RalphLoopError> {
+    let archived_removed = clean_archive(project_root)?;
+    let mut terminal_removed = 0usize;
+    if all {
+        for state in list_states(project_root)? {
+            if matches!(
+                state.status,
+                RalphLoopStatus::Complete | RalphLoopStatus::Cancelled
+            ) {
+                let paths = RalphLoopPaths::for_project(project_root, &state.name);
+                if paths.root.exists() {
+                    fs::remove_dir_all(&paths.root).map_err(|source| RalphLoopError::Io {
+                        path: paths.root.clone(),
+                        source,
+                    })?;
+                    terminal_removed = terminal_removed.saturating_add(1);
+                }
+            }
+        }
+    }
+    Ok(RalphCleanSummary {
+        archived_removed,
+        terminal_removed,
+    })
+}
+
+pub fn nuke_all(project_root: &Path) -> Result<bool, RalphLoopError> {
+    let root = project_root.join(".oino").join(RALPH_DIR);
+    if !root.exists() {
+        return Ok(false);
+    }
+    fs::remove_dir_all(&root).map_err(|source| RalphLoopError::Io { path: root, source })?;
+    Ok(true)
 }
 
 pub fn archive_loop(project_root: &Path, name: &str) -> Result<RalphLoopState, RalphLoopError> {

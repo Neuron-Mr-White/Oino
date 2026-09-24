@@ -159,7 +159,7 @@ Developer guides:
 | Prompt | A reusable text template included with `/prompt:<name>`. |
 | Skill | A reusable workflow folder included with `/skill:<name>`. |
 | Session | Saved conversation state under `~/.oino/sessions/`. |
-| Model catalog | Cached model list under `~/.oino/model-catalogs/`; pricing fields are provider-reported only. Missing or unmatched pricing is shown as `n/a`, not estimated. OmniRoute models may be enriched from exact OpenRouter catalog pricing and marked with source `openrouter`. |
+| Model catalog | Cached model list under `~/.oino/model-catalogs/`. Oino does not display model-list price estimates for OmniRoute because OpenRouter catalog prices do not necessarily reflect final OmniRoute route billing. |
 
 ## Development
 

@@ -27,13 +27,16 @@ After install, use `/extensions` project/global toggles to enable or disable the
 /ralph pause <name>
 /ralph cancel <name>
 /ralph archive <name>
-/ralph clean
+/ralph clean [--all]
+/ralph nuke --yes
 /ralph record <name> <continue|complete|blocked|decide|done> [note-or-task-id]
 ```
 
 `/ralph start` creates the task/state/log/steering/history files and immediately starts the first iteration in the TUI. When the assistant ends with `CONTINUE` or `TASK-ID:DONE`, Oino records the output and automatically queues the next iteration until the loop completes, blocks, asks for a decision, or reaches the max iteration count. `/ralph once` runs exactly one iteration without auto-continuing, and `/ralph steer` appends urgent instructions to the steering file that is included in every future iteration prompt.
 
 `/ralph panel [on|off]` toggles a persisted project floating progress panel. When on, Oino renders the current Ralph loop name, status, iteration, task, and next reflection checkpoint in the existing floating panel surface.
+
+`/ralph clean` is routine housekeeping: it removes already archived loop directories under `.oino/ralph/archive/`. `/ralph clean --all` also removes terminal active-tree loop directories whose state is `complete` or `cancelled`; it intentionally leaves `active`, `paused`, `blocked`, and `awaiting_decision` loops intact. `/ralph nuke --yes` is destructive reset: it deletes the entire `.oino/ralph/` directory, including active loops, archived loops, history, steering, logs, and panel settings.
 
 `record` remains the low-level/manual command used to persist an iteration promise; for `done`, pass the task id first and any note after it, e.g. `/ralph record docs done TASK-1 updated README`.
 

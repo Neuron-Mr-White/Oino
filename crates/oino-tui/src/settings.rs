@@ -54,21 +54,6 @@ pub struct ModelOption {
     pub availability: ModelAvailability,
     pub thinking_levels: Vec<ThinkingLevel>,
     pub context_length: Option<usize>,
-    pub pricing: Option<ModelPricing>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModelPricing {
-    /// USD per token, provider-reported. String preserves exact decimal payload.
-    pub input_per_token: Option<String>,
-    /// USD per token, provider-reported. String preserves exact decimal payload.
-    pub output_per_token: Option<String>,
-    /// USD per cached-input token read / cache hit, provider-reported.
-    pub cache_hit_per_token: Option<String>,
-    /// USD per cached-input token write, provider-reported.
-    pub cache_write_per_token: Option<String>,
-    /// Pricing source, e.g. `router` or `openrouter`.
-    pub source: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,7 +111,6 @@ impl ModelOption {
             availability: ModelAvailability::Unknown,
             thinking_levels: vec![ThinkingLevel::Off],
             context_length: None,
-            pricing: None,
         }
     }
 
@@ -163,12 +147,6 @@ impl ModelOption {
     #[must_use]
     pub const fn with_context_length(mut self, context_length: Option<usize>) -> Self {
         self.context_length = context_length;
-        self
-    }
-
-    #[must_use]
-    pub fn with_pricing(mut self, pricing: Option<ModelPricing>) -> Self {
-        self.pricing = pricing;
         self
     }
 }

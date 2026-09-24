@@ -1015,7 +1015,7 @@ pub struct RouterExternalState {
 impl Default for RouterExternalState {
     fn default() -> Self {
         Self {
-            url: "https://router.oino.dev".into(),
+            url: "http://localhost:20128".into(),
             api_key: String::new(),
             focus_api_key: false,
         }
