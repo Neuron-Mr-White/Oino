@@ -10,6 +10,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use oino_agent_loop::AbortSignal;
 use oino_agent_loop::{BeforeToolCallResult, StreamProvider, ToolCall};
 use oino_auth::AuthStorage;
 use oino_extension_core::{
@@ -21,10 +22,10 @@ use oino_extension_manager::ExtensionManagerSnapshot;
 use oino_harness::HookRegistry;
 use oino_resource::ResourcePaths;
 use oino_session::SessionManager;
-use oino_types::Message;
+use oino_types::{AssistantStreamEvent, ContentBlock, Message, Model, ThinkingLevel};
 use oino_wasm_host::{
-    CallLimits, HostCaps, HostSession, HostUi, NoopSession, NoopUi, ProgressRouter, SecretResolver,
-    WasmExtension, WasmHostEngine, WasmStreamProvider,
+    CallLimits, HostCaps, HostModel, HostSession, HostUi, NoopModel, NoopSession, NoopUi,
+    ProgressRouter, SecretResolver, WasmExtension, WasmHostEngine, WasmStreamProvider,
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -62,6 +63,7 @@ pub(crate) struct WasmExtensions {
     /// via `/extensions`.
     pub diagnostics: Arc<Mutex<Vec<ExtensionDiagnostic>>>,
     session: Arc<Mutex<Option<Arc<tokio::sync::Mutex<SessionManager>>>>>,
+    model_service: Arc<Mutex<Option<ModelService>>>,
 }
 
 impl WasmExtensions {
@@ -79,6 +81,36 @@ impl WasmExtensions {
             progress: ProgressRouter::default(),
             diagnostics: Arc::new(Mutex::new(Vec::new())),
             session: Arc::new(Mutex::new(None)),
+            model_service: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Share the model-service slot with another set (rebuilds keep
+    /// `host.complete` wired). `self` is wrapped in Arc at call sites, so
+    /// swap the slot contents instead.
+    pub(crate) fn inherit_model_service(&self, other: &WasmExtensions) {
+        let Ok(mut mine) = self.model_service.lock() else {
+            return;
+        };
+        let Ok(theirs) = other.model_service.lock() else {
+            return;
+        };
+        *mine = theirs.clone();
+    }
+
+    /// Wire `host.complete` backing once the app's router exists.
+    pub(crate) fn set_model_service(
+        &self,
+        provider: Arc<dyn StreamProvider>,
+        session: Arc<tokio::sync::Mutex<SessionManager>>,
+        current_model: Arc<dyn Fn() -> String + Send + Sync>,
+    ) {
+        if let Ok(mut slot) = self.model_service.lock() {
+            *slot = Some(ModelService {
+                provider,
+                session,
+                current_model,
+            });
         }
     }
 
@@ -183,12 +215,150 @@ impl HostUi for TuiHostUi {
 }
 
 /// `host.session-append` → `ExtensionCustom` session entries.
+/// Router-facing state for `host.complete`.
+#[derive(Clone)]
+struct ModelService {
+    provider: Arc<dyn StreamProvider>,
+    session: Arc<tokio::sync::Mutex<SessionManager>>,
+    current_model: Arc<dyn Fn() -> String + Send + Sync>,
+}
+
+/// `host.complete` → `ModelService` on a dedicated thread (guest WIT calls
+/// are synchronous; the router is async and must not deadlock the agent
+/// turn's runtime).
+struct AppHostModel {
+    extension_id: ExtensionId,
+    service: Arc<Mutex<Option<ModelService>>>,
+}
+
+impl HostModel for AppHostModel {
+    fn complete(&self, request: &str) -> Result<String, String> {
+        let Some(service) = self
+            .service
+            .lock()
+            .map_err(|_| "model service lock poisoned".to_string())?
+            .clone()
+        else {
+            return Err("model completion unavailable (no provider router)".into());
+        };
+        let request: Value =
+            serde_json::from_str(request).map_err(|err| format!("invalid request: {err}"))?;
+        let model_identifier = request["model"]
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| (service.current_model)());
+        let Some(model) = Model::from_identifier(&model_identifier) else {
+            return Err(format!("invalid model `{model_identifier}`"));
+        };
+        let mut messages: Vec<Message> = Vec::new();
+        if let Some(system) = request["system"].as_str() {
+            messages.push(Message::System {
+                id: oino_types::OinoId::new_v4(),
+                content: system.to_string(),
+                sections: Vec::new(),
+                tools_added: Vec::new(),
+                tools_removed: Vec::new(),
+            });
+        }
+        for message in request["messages"].as_array().cloned().unwrap_or_default() {
+            let text = message["text"].as_str().unwrap_or_default().to_string();
+            match message["role"].as_str() {
+                Some("assistant") => {
+                    messages.push(Message::Assistant {
+                        id: oino_types::OinoId::new_v4(),
+                        content: vec![ContentBlock::Text {
+                            text,
+                            signature: None,
+                        }],
+                        stop_reason: None,
+                        usage: None,
+                        provider: None,
+                        response_model: None,
+                        error_message: None,
+                        provider_thinking_level: None,
+                    });
+                }
+                _ => messages.push(Message::user_text(text)),
+            }
+        }
+        let stream_request = oino_agent_loop::StreamRequest {
+            model,
+            thinking_level: ThinkingLevel::Off,
+            transcript: oino_types::transcript::Transcript::new(messages),
+            session_id: None,
+            cache_retention: oino_agent_loop::CacheRetention::None,
+            max_output_tokens: request["max_output_tokens"].as_u64().map(|v| v as u32),
+        };
+        let extension_id = self.extension_id.to_string();
+        // Dedicated thread + current-thread runtime: never blocks the caller
+        // (which may be a tokio worker inside an agent turn).
+        std::thread::scope(|scope| {
+            scope
+                .spawn(move || {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(|err| err.to_string())?;
+                    runtime.block_on(async {
+                        let events = service
+                            .provider
+                            .stream(stream_request, AbortSignal::new())
+                            .await
+                            .map_err(|err| err.to_string())?;
+                        let mut text = String::new();
+                        let mut usage = oino_types::Usage::default();
+                        for event in events {
+                            match event {
+                                AssistantStreamEvent::TextDelta { delta } => text.push_str(&delta),
+                                AssistantStreamEvent::Usage { usage: u } => usage = u,
+                                _ => {}
+                            }
+                        }
+                        service.session.lock().await.append_usage(
+                            format!("extension:{extension_id}"),
+                            model_for_usage(&text, &usage),
+                            usage.clone(),
+                        );
+                        serde_json::to_string(&json!({"text": text, "usage": usage}))
+                            .map_err(|err| err.to_string())
+                    })
+                })
+                .join()
+                .map_err(|_| "model worker panicked".to_string())?
+        })
+    }
+}
+
+fn model_for_usage(_text: &str, _usage: &oino_types::Usage) -> oino_types::Model {
+    Model::new("extension", "complete")
+}
+
 struct AppHostSession {
     extension_id: ExtensionId,
     session: Arc<Mutex<Option<Arc<tokio::sync::Mutex<SessionManager>>>>>,
 }
 
 impl HostSession for AppHostSession {
+    fn entries(&self, all_branches: bool) -> Result<String, String> {
+        let session = self
+            .session
+            .lock()
+            .map_err(|_| "session lock poisoned".to_string())?
+            .clone()
+            .ok_or_else(|| "session not attached yet".to_string())?;
+        let session = session
+            .try_lock()
+            .map_err(|_| "session busy; try again".to_string())?;
+        let entries = if all_branches {
+            session.get_entries()
+        } else {
+            session
+                .get_branch(session.get_leaf_id())
+                .map_err(|err| err.to_string())?
+        };
+        serde_json::to_string(&entries).map_err(|err| err.to_string())
+    }
+
     fn append(&self, kind: &str, payload: &str) -> Result<(), String> {
         let payload: Value =
             serde_json::from_str(payload).map_err(|err| format!("invalid payload JSON: {err}"))?;
@@ -236,6 +406,10 @@ pub(crate) async fn build_wasm_extensions(
     ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
     auth: Option<&AuthStorage>,
     providers_runtime: &str,
+    // Extra init-config fields merged into each extension's config.json
+    // before `init` (keyed by extension id). Used for host-resolved config
+    // like notify's `resolve_notify_config` output.
+    init_config_extras: Option<&BTreeMap<String, Value>>,
 ) -> Arc<WasmExtensions> {
     let diagnostics: Arc<Mutex<Vec<ExtensionDiagnostic>>> = Arc::new(Mutex::new(Vec::new()));
     let progress = ProgressRouter::default();
@@ -254,6 +428,7 @@ pub(crate) async fn build_wasm_extensions(
         provider_model_details: BTreeMap::new(),
         tools: BTreeMap::new(),
         commands: BTreeMap::new(),
+        model_service: Arc::new(Mutex::new(None)),
         hooks: Vec::new(),
         progress: progress.clone(),
         diagnostics: Arc::clone(&diagnostics),
@@ -425,41 +600,6 @@ pub(crate) async fn build_wasm_extensions(
             .join(extension_id.as_str())
             .join("kv");
         let _ = fs::create_dir_all(&kv_dir);
-        let caps = HostCaps {
-            permissions,
-            secrets: Arc::new(ExtensionSecretResolver {
-                extension_id: extension_id.to_string(),
-            }),
-            ui: Arc::new(TuiHostUi {
-                extension_id: extension_id.to_string(),
-                tx: ui_tx.clone(),
-            }),
-            session: Arc::new(AppHostSession {
-                extension_id: extension_id.clone(),
-                session: Arc::clone(&set.session),
-            }),
-            progress: progress.sink(),
-            kv_dir,
-        };
-        let has_provider = provider_contribs.iter().any(|(id, _)| id == extension_id);
-        let extension = match WasmExtension::new(
-            engine.clone(),
-            &bytes,
-            caps,
-            CallLimits::default(),
-            has_provider,
-        ) {
-            Ok(extension) => Arc::new(extension),
-            Err(err) => {
-                push_diag(diagnostic(
-                    Some(extension_id),
-                    DiagnosticSeverity::Error,
-                    DiagnosticPhase::RuntimeLoad,
-                    format!("component load failed: {err}"),
-                ));
-                continue;
-            }
-        };
         let mut config: Value = fs::read_to_string(
             paths
                 .home_dir
@@ -492,7 +632,61 @@ pub(crate) async fn build_wasm_extensions(
                 }
             }
         }
-        let registration = match extension.init(config).await {
+        if let Some(extra) = init_config_extras.and_then(|extras| extras.get(extension_id.as_str()))
+        {
+            if let (Some(object), Some(extra)) = (config.as_object_mut(), extra.as_object()) {
+                for (key, value) in extra {
+                    object.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        if let Some(object) = config.as_object_mut() {
+            object.insert(
+                "project_root".into(),
+                Value::String(paths.project_root.to_string_lossy().into_owned()),
+            );
+        }
+        resolve_hosts_from_config(&mut permissions, &config, &push_diag, extension_id);
+        let caps = HostCaps {
+            permissions,
+            secrets: Arc::new(ExtensionSecretResolver {
+                extension_id: extension_id.to_string(),
+            }),
+            ui: Arc::new(TuiHostUi {
+                extension_id: extension_id.to_string(),
+                tx: ui_tx.clone(),
+            }),
+            session: Arc::new(AppHostSession {
+                extension_id: extension_id.clone(),
+                session: Arc::clone(&set.session),
+            }),
+            progress: progress.sink(),
+            kv_dir,
+            model: Arc::new(AppHostModel {
+                extension_id: extension_id.clone(),
+                service: Arc::clone(&set.model_service),
+            }),
+        };
+        let has_provider = provider_contribs.iter().any(|(id, _)| id == extension_id);
+        let extension = match WasmExtension::new(
+            engine.clone(),
+            &bytes,
+            caps,
+            CallLimits::default(),
+            has_provider,
+        ) {
+            Ok(extension) => Arc::new(extension),
+            Err(err) => {
+                push_diag(diagnostic(
+                    Some(extension_id),
+                    DiagnosticSeverity::Error,
+                    DiagnosticPhase::RuntimeLoad,
+                    format!("component load failed: {err}"),
+                ));
+                continue;
+            }
+        };
+        let registration = match extension.init(config.clone()).await {
             Ok(registration) => registration,
             Err(err) => {
                 push_diag(diagnostic(
@@ -917,6 +1111,7 @@ pub(crate) async fn instantiate_declarative_wasm_provider(
         session: Arc::new(NoopSession),
         progress: set.progress.sink(),
         kv_dir,
+        model: Arc::new(NoopModel),
     };
     let Some(component) = component_for_protocol(protocol) else {
         set.diagnostics
@@ -1423,6 +1618,38 @@ fn substitute_permission_paths(
             *path = path
                 .replace("${project}", &project)
                 .replace("${home}", &home);
+        }
+    }
+}
+
+/// `hosts_from_config`: grant network access to the host of each listed
+/// config key's URL value (resolved from init config; bad values warn).
+fn resolve_hosts_from_config(
+    permissions: &mut oino_extension_core::ExtensionPermissions,
+    config: &Value,
+    push_diag: &dyn Fn(ExtensionDiagnostic),
+    extension_id: &ExtensionId,
+) {
+    for key in permissions.network.hosts_from_config.clone() {
+        let Some(url) = config[&key].as_str() else {
+            push_diag(diagnostic(
+                Some(extension_id),
+                DiagnosticSeverity::Warning,
+                DiagnosticPhase::RuntimeLoad,
+                format!("hosts_from_config `{key}`: no config value"),
+            ));
+            continue;
+        };
+        let host = url_host(url);
+        if !host.is_empty() {
+            permissions.network.hosts.push(host);
+        } else {
+            push_diag(diagnostic(
+                Some(extension_id),
+                DiagnosticSeverity::Warning,
+                DiagnosticPhase::RuntimeLoad,
+                format!("hosts_from_config `{key}`: invalid url `{url}`"),
+            ));
         }
     }
 }

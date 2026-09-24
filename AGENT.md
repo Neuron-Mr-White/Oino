@@ -10,6 +10,8 @@ From today onwards, keep all conventions we know so far in this file so future a
   - `cargo fmt --all`
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
+  - Guest extension crates with host-target-testable pure logic:
+    `cargo test --manifest-path extensions/Cargo.toml -p <crate> --lib --target x86_64-unknown-linux-gnu` (e.g. ext-ralph, ext-vcc).
 - Record completed implementation notes under `.unipi/docs/quick-work/` or `.unipi/docs/fix/` as appropriate, then commit with a descriptive message.
 
 ## Search, fuzzy matching, and pickers

@@ -6,7 +6,9 @@
   "oino": "^0.1",
   "protocol": 1,
   "runtime": {
-    "kind": "built_in"
+    "kind": "wasm",
+    "entry": "plugin.wasm",
+    "abi": "oino:extension@0.1.0"
   },
   "permissions": {
     "tools": [
@@ -16,10 +18,7 @@
       "compact",
       "recall"
     ],
-    "host_capabilities": [
-      "vcc_compaction",
-      "vcc_recall"
-    ],
+    "host_capabilities": [],
     "ui": [],
     "filesystem": [],
     "shell_process": {
@@ -32,7 +31,7 @@
     },
     "secrets": [],
     "session_persistence": [
-      "session"
+      "project"
     ],
     "provider_mutation": [],
     "package_management": []
@@ -68,19 +67,19 @@
           }
         },
         "execution_mode": "parallel",
-        "handler": "vcc.recall"
+        "handler": "vcc_recall"
       }
     ],
     "commands": [
       {
         "id": "compact",
         "description": "Compact older active-branch session history with deterministic Oino VCC sections.",
-        "handler": "vcc.compact"
+        "handler": "compact"
       },
       {
         "id": "recall",
         "description": "Search raw Oino session history and optionally inject the recall result as context.",
-        "handler": "vcc.recall_command"
+        "handler": "recall"
       }
     ],
     "resources": [],

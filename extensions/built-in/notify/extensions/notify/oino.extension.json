@@ -6,7 +6,9 @@
   "oino": "^0.1",
   "protocol": 1,
   "runtime": {
-    "kind": "built_in"
+    "kind": "wasm",
+    "entry": "plugin.wasm",
+    "abi": "oino:extension@0.1.0"
   },
   "permissions": {
     "tools": [],
@@ -14,7 +16,7 @@
       "notify"
     ],
     "host_capabilities": [
-      "notify"
+      "model.complete"
     ],
     "ui": [],
     "filesystem": [],
@@ -23,9 +25,10 @@
       "commands": []
     },
     "network": {
-      "raw_network": true,
-      "hosts": [
-        "*"
+      "raw_network": false,
+      "hosts": [],
+      "hosts_from_config": [
+        "server"
       ]
     },
     "secrets": [
@@ -48,18 +51,22 @@
     "keymaps": [],
     "hooks": [
       {
-        "id": "notify_agent_end",
-        "event": "after_agent_turn",
-        "priority": 0,
+        "id": "notify.message_end",
+        "event": "message_end",
         "mode": "observe",
-        "handler": "notify.agent_end"
+        "handler": "message_end"
       },
       {
-        "id": "notify_tool_result",
-        "event": "tool_result",
-        "priority": 0,
+        "id": "notify.agent_end",
+        "event": "agent_end",
         "mode": "observe",
-        "handler": "notify.tool_result"
+        "handler": "agent_end"
+      },
+      {
+        "id": "notify.tool_execution_end",
+        "event": "tool_execution_end",
+        "mode": "observe",
+        "handler": "tool_execution_end"
       }
     ],
     "ui_surfaces": [],

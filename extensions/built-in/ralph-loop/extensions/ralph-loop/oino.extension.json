@@ -6,22 +6,22 @@
   "oino": "^0.1",
   "protocol": 1,
   "runtime": {
-    "kind": "built_in"
+    "kind": "wasm",
+    "entry": "plugin.wasm",
+    "abi": "oino:extension@0.1.0"
   },
   "permissions": {
     "tools": [],
     "commands": [
       "ralph"
     ],
-    "host_capabilities": [
-      "ralph_loop"
-    ],
+    "host_capabilities": [],
     "ui": [],
     "filesystem": [
       {
         "access": "read_write",
         "paths": [
-          ".oino/ralph/**"
+          "${project}/.oino/ralph"
         ]
       }
     ],
@@ -45,7 +45,7 @@
       {
         "id": "ralph",
         "description": "Manage Oino Ralph loops: start, auto-continue, run once, steer, status, list, resume, pause, cancel, archive, clean, nuke, and record iteration promise tags.",
-        "handler": "ralph.command"
+        "handler": "ralph"
       }
     ],
     "resources": [
@@ -57,7 +57,14 @@
     ],
     "tools": [],
     "keymaps": [],
-    "hooks": [],
+    "hooks": [
+      {
+        "id": "ralph.turn_end",
+        "event": "turn_end",
+        "mode": "mutable",
+        "handler": "turn_end"
+      }
+    ],
     "ui_surfaces": [],
     "settings_pages": [],
     "themes": [],

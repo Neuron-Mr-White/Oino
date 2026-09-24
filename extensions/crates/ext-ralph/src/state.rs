@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 use serde::{Deserialize, Serialize};
 use std::{
     fs, io,
@@ -170,6 +168,7 @@ pub struct RalphPanelSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct RalphPanelSummary {
     pub name: String,
     pub status: RalphLoopStatus,
@@ -347,6 +346,7 @@ pub fn set_panel_enabled(
     Ok(settings)
 }
 
+#[allow(dead_code)]
 pub fn panel_summary(project_root: &Path) -> Result<Option<RalphPanelSummary>, RalphLoopError> {
     let mut states = list_states(project_root)?;
     if states.is_empty() {
@@ -643,6 +643,7 @@ fn panel_settings_path(project_root: &Path) -> PathBuf {
         .join(RALPH_PANEL_FILE)
 }
 
+#[allow(dead_code)]
 fn state_rank(status: &RalphLoopStatus) -> u8 {
     match status {
         RalphLoopStatus::Active => 0,
@@ -653,6 +654,7 @@ fn state_rank(status: &RalphLoopStatus) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 fn next_reflection_iteration(
     iteration: u32,
     max_iterations: u32,
@@ -665,6 +667,7 @@ fn next_reflection_iteration(
     (next <= max_iterations).then_some(next)
 }
 
+#[allow(dead_code)]
 fn first_task_heading_or_file(project_root: &Path, state: &RalphLoopState) -> String {
     let paths = RalphLoopPaths::for_project(project_root, &state.name);
     let Ok(text) = read_file(&paths.task_file) else {

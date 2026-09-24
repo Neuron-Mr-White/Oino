@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release --target wasm32-wasip2 --manifest-path extensions/Cargo.toml \
-    -p fixture -p fixture-provider -p provider-openai-compat -p provider-anthropic -p provider-openai-responses -p ext-budget -p ext-presets -p ext-search
+    -p fixture -p fixture-provider -p provider-openai-compat -p provider-anthropic -p provider-openai-responses -p ext-budget -p ext-presets -p ext-search -p ext-ralph -p ext-vcc -p ext-notify
 target="extensions/target/wasm32-wasip2/release"
 mkdir -p crates/oino-wasm-host/tests/fixtures examples/extensions/rust-wasm-fixture
 cp "$target/fixture.wasm" crates/oino-wasm-host/tests/fixtures/fixture.wasm
@@ -18,3 +18,6 @@ cp "$target/provider_openai_responses.wasm" crates/oino-app/assets/providers/ope
 cp "$target/ext_budget.wasm" extensions/built-in/budget/extensions/budget/plugin.wasm
 cp "$target/ext_presets.wasm" extensions/built-in/presets/extensions/presets/plugin.wasm
 cp "$target/ext_search.wasm" extensions/built-in/search/extensions/search/plugin.wasm
+cp "$target/ext_ralph.wasm" extensions/built-in/ralph-loop/extensions/ralph-loop/plugin.wasm
+cp "$target/ext_vcc.wasm" extensions/built-in/vcc/extensions/vcc/plugin.wasm
+cp "$target/ext_notify.wasm" extensions/built-in/notify/extensions/notify/plugin.wasm

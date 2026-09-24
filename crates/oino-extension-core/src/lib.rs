@@ -498,6 +498,11 @@ pub struct ShellProcessPermission {
 pub struct NetworkPermission {
     #[serde(default)]
     pub raw_network: bool,
+    /// Config keys whose URL value's host is granted at instantiation time
+    /// (resolved host-side from the extension's init config; invalid/missing
+    /// values are ignored with a diagnostic).
+    #[serde(default)]
+    pub hosts_from_config: Vec<String>,
     #[serde(default)]
     pub hosts: Vec<String>,
 }

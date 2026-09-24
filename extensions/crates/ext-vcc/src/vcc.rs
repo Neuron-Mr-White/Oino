@@ -1,4 +1,4 @@
-use oino_session::{SessionEntry, SessionEntryKind};
+use crate::types::{SessionEntry, SessionEntryKind};
 use oino_types::{ContentBlock, Message, OinoId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -601,39 +601,44 @@ fn shellish_paths(command: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oino_session::{SessionHeader, SessionManager};
     use oino_types::StopReason;
     use uuid::Uuid;
 
+    fn entry(message: Message) -> SessionEntry {
+        SessionEntry {
+            id: Uuid::new_v4(),
+            parent: None,
+            kind: SessionEntryKind::Message { message },
+        }
+    }
+
     #[test]
     fn compacts_before_latest_user_and_keeps_tail() {
-        let mut session = SessionManager::new(SessionHeader::new("test", "/tmp".into()));
-        session.append_message(Message::user_text(
-            "Please edit README.md and prefer simple code",
-        ));
-        session.append_message(Message::assistant_text(
-            "I'll inspect it",
-            StopReason::ToolUse,
-        ));
-        session.append_message(Message::Assistant {
-            id: Uuid::new_v4(),
-            content: vec![ContentBlock::ToolCall {
+        let branch = vec![
+            entry(Message::user_text(
+                "Please edit README.md and prefer simple code",
+            )),
+            entry(Message::assistant_text(
+                "I'll inspect it",
+                StopReason::ToolUse,
+            )),
+            entry(Message::Assistant {
                 id: Uuid::new_v4(),
-                name: "read".into(),
-                arguments: serde_json::json!({"path":"README.md"}),
-                native_id: None,
-            }],
-            stop_reason: Some(StopReason::ToolUse),
-            usage: None,
-            provider: None,
-            response_model: None,
-            error_message: None,
-            provider_thinking_level: None,
-        });
-        session.append_message(Message::user_text("Now continue"));
-        let branch = session
-            .get_branch(session.get_leaf_id())
-            .unwrap_or_else(|err| panic!("branch failed: {err}"));
+                content: vec![ContentBlock::ToolCall {
+                    id: Uuid::new_v4(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({"path":"README.md"}),
+                    native_id: None,
+                }],
+                stop_reason: Some(StopReason::ToolUse),
+                usage: None,
+                provider: None,
+                response_model: None,
+                error_message: None,
+                provider_thinking_level: None,
+            }),
+            entry(Message::user_text("Now continue")),
+        ];
         let compacted = compact_branch(&branch).unwrap_or_else(|| panic!("should compact"));
         assert_eq!(compacted.kept_entries, 1);
         assert_eq!(compacted.compacted_entries, 3);
@@ -643,12 +648,10 @@ mod tests {
 
     #[test]
     fn recall_searches_active_branch() {
-        let mut session = SessionManager::new(SessionHeader::new("test", "/tmp".into()));
-        session.append_message(Message::user_text("alpha task"));
-        session.append_message(Message::assistant_text("beta result", StopReason::EndTurn));
-        let branch = session
-            .get_branch(session.get_leaf_id())
-            .unwrap_or_else(|err| panic!("branch failed: {err}"));
+        let branch = vec![
+            entry(Message::user_text("alpha task")),
+            entry(Message::assistant_text("beta result", StopReason::EndTurn)),
+        ];
         let result = recall(
             &branch,
             &branch,

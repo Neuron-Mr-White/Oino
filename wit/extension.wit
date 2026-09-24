@@ -69,6 +69,15 @@ interface host {
     kv-get: func(key: string) -> option<list<u8>>;
     kv-set: func(key: string, value: list<u8>) -> result<_, string>;
     session-append: func(kind: string, payload: json) -> result<_, string>;
+    /// Serialized `SessionEntry` list for the active branch (`all-branches` =
+    /// every entry in the session). Requires non-empty `session_persistence`.
+    session-entries: func(all-branches: bool) -> result<json, string>;
+    /// Non-streaming model completion via the app's provider router:
+    /// request `{model?, system?, messages: [{role, text}], max_output_tokens?}`
+    /// → `{text, usage}`; gated by `host_capabilities` containing
+    /// `"model.complete"`. Usage is recorded on the session as
+    /// `extension:<id>`.
+    complete: func(request: json) -> result<json, string>;
     notify: func(level: u8, text: string);
     confirm: func(title: string, body: string) -> bool;
     tool-progress: func(call-id: string, message: string, details: option<json>);
@@ -129,6 +138,9 @@ interface provider {
 world extension {
     import host;
     import wasi:http/outgoing-handler@0.2.12;
+    import wasi:clocks/monotonic-clock@0.2.12;
+    import wasi:filesystem/types@0.2.12;
+    import wasi:filesystem/preopens@0.2.12;
     export guest;
 }
 

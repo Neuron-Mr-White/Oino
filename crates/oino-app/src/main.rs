@@ -43,15 +43,15 @@ mod extension_provider_runtime;
 mod extension_readiness;
 mod llm_compact;
 mod model_catalog;
-mod notify;
+mod notify_types;
 mod provider_config;
 mod provider_runtime;
-mod ralph_loop;
+mod ralph_panel;
 mod router;
 mod updater;
 mod usage;
 mod user_settings;
-mod vcc;
+
 mod wasm_extensions;
 
 use ask_user::{AskUserRequester, AskUserTool, ASK_USER_TOOL_NAME};
@@ -88,8 +88,8 @@ use extension_readiness::{
 };
 use model_catalog::ModelCatalogUpdate;
 use oino_agent_loop::{
-    AbortSignal, AgentEvent, BeforeToolCallResult, BoxFuture, LoopError, StreamProvider,
-    StreamRequest, Tool, ToolCall, ToolDefinition, ToolResult, ToolUpdateCallback,
+    AbortSignal, AgentEvent, BeforeToolCallResult, BoxFuture, LoopError, StreamProvider, Tool,
+    ToolCall,
 };
 use oino_auth::{AuthConfig, AuthCredential, AuthError, AuthStorage, ProviderAuthSpec};
 #[cfg(test)]
@@ -123,10 +123,7 @@ use oino_tui::{
     ThemeSourceKind, ThemeSourceScope, ToolSettingsItem, ToolSettingsScope, TuiAction, TuiState,
     HELP_STATUS,
 };
-use oino_types::{
-    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, PromptSection, StopReason,
-    ThinkingLevel,
-};
+use oino_types::{ContentBlock, Message, Model, OinoId, PromptSection, StopReason, ThinkingLevel};
 #[cfg(test)]
 use oino_wasm_host::WasmHostEngine;
 #[cfg(test)]
@@ -392,7 +389,7 @@ enum AppError {
     #[error(transparent)]
     Resource(#[from] oino_resource::ResourceError),
     #[error(transparent)]
-    Ralph(#[from] ralph_loop::RalphLoopError),
+    Ralph(#[from] ralph_panel::RalphPanelError),
     #[error(transparent)]
     Update(#[from] updater::UpdateError),
     #[error("invalid arguments: {0}")]
@@ -660,12 +657,14 @@ async fn main() -> Result<(), AppError> {
     let mut tool_settings = load_tool_settings(&resource_paths).await;
     apply_headless_extension_overrides(&cli, &mut tool_settings);
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+    let extras = wasm_init_config_extras(&tool_settings);
     let wasm = build_wasm_extensions(
         &extension_snapshot,
         &resource_paths,
         None,
         Some(&auth),
         providers_runtime_setting(&tool_settings),
+        Some(&extras),
     )
     .await;
     let provider = build_runtime_provider(
@@ -677,7 +676,7 @@ async fn main() -> Result<(), AppError> {
     let harness = build_harness(
         config.model.clone(),
         config.thinking_level,
-        provider,
+        provider.clone(),
         auth.clone(),
         session,
         &resource_catalog,
@@ -686,6 +685,14 @@ async fn main() -> Result<(), AppError> {
     )
     .await?;
     wasm.set_session(harness.session_handle());
+    wasm.set_model_service(
+        Arc::clone(&provider),
+        harness.session_handle(),
+        Arc::new({
+            let model = config.model.clone();
+            move || model.clone()
+        }),
+    );
     let wasm_holder: wasm_extensions::WasmHolder = Arc::new(std::sync::RwLock::new(wasm.clone()));
     register_wasm_hooks(&harness.hooks(), wasm_holder.clone()).await;
     configure_cache_tracker(&harness, &tool_settings, &wasm_holder, None).await;
@@ -1073,7 +1080,7 @@ fn reset_theme(settings: &mut ToolSettingsSnapshot, scope: ToolSettingsScope) {
 fn notify_settings_mut(
     settings: &mut ToolSettingsSnapshot,
     scope: ToolSettingsScope,
-) -> &mut notify::NotifySettings {
+) -> &mut notify_types::NotifySettings {
     match scope {
         ToolSettingsScope::Global => &mut settings.global.notify,
         ToolSettingsScope::Project => &mut settings.project.notify,
@@ -1100,7 +1107,8 @@ fn set_notify_field(
         NotifyField::Topic => notify.ntfy.topic = value,
         NotifyField::Token => notify.ntfy.token = value,
         NotifyField::Priority => {
-            notify.ntfy.priority = value.and_then(|value| notify::normalize_ntfy_priority(&value));
+            notify.ntfy.priority =
+                value.and_then(|value| notify_types::normalize_ntfy_priority(&value));
         }
         NotifyField::SummaryModel => notify.summarizer.model = value,
         NotifyField::SummaryPrompt => {
@@ -1139,8 +1147,8 @@ fn set_notify_event(
     let notify = notify_settings_mut(settings, scope);
     let mut events = notify.events.clone().unwrap_or_else(|| {
         std::collections::BTreeSet::from([
-            notify::NotifyEvent::AgentEnd,
-            notify::NotifyEvent::ToolError,
+            notify_types::NotifyEvent::AgentEnd,
+            notify_types::NotifyEvent::ToolError,
         ])
     });
     let event = app_notify_event_from_tui(event);
@@ -1950,7 +1958,7 @@ fn extension_settings_page_enabled(snapshot: &ExtensionManagerSnapshot, id: &str
         .any(|active| active.effective_id.as_str() == id)
 }
 
-fn notify_settings_to_tui(settings: &notify::NotifySettings) -> NotifyScopeSettings {
+fn notify_settings_to_tui(settings: &notify_types::NotifySettings) -> NotifyScopeSettings {
     NotifyScopeSettings {
         enabled: settings.enabled,
         server: settings.ntfy.server.clone(),
@@ -1972,17 +1980,17 @@ fn notify_settings_to_tui(settings: &notify::NotifySettings) -> NotifyScopeSetti
     }
 }
 
-fn tui_notify_event_from_app(event: notify::NotifyEvent) -> TuiNotifyEventKind {
+fn tui_notify_event_from_app(event: notify_types::NotifyEvent) -> TuiNotifyEventKind {
     match event {
-        notify::NotifyEvent::AgentEnd => TuiNotifyEventKind::AgentEnd,
-        notify::NotifyEvent::ToolError => TuiNotifyEventKind::ToolError,
+        notify_types::NotifyEvent::AgentEnd => TuiNotifyEventKind::AgentEnd,
+        notify_types::NotifyEvent::ToolError => TuiNotifyEventKind::ToolError,
     }
 }
 
-fn app_notify_event_from_tui(event: TuiNotifyEventKind) -> notify::NotifyEvent {
+fn app_notify_event_from_tui(event: TuiNotifyEventKind) -> notify_types::NotifyEvent {
     match event {
-        TuiNotifyEventKind::AgentEnd => notify::NotifyEvent::AgentEnd,
-        TuiNotifyEventKind::ToolError => notify::NotifyEvent::ToolError,
+        TuiNotifyEventKind::AgentEnd => notify_types::NotifyEvent::AgentEnd,
+        TuiNotifyEventKind::ToolError => notify_types::NotifyEvent::ToolError,
     }
 }
 
@@ -2100,10 +2108,10 @@ fn extension_ui_surfaces(
 }
 
 fn ralph_panel_surface(project_root: &Path) -> Option<ActiveContribution<UiSurfaceContribution>> {
-    if !ralph_loop::load_panel_settings(project_root).ok()?.enabled {
+    if !ralph_panel::load_panel_settings(project_root).ok()?.enabled {
         return None;
     }
-    let summary = ralph_loop::panel_summary(project_root).ok().flatten()?;
+    let summary = ralph_panel::panel_summary(project_root).ok().flatten()?;
     let title = format!(
         "Ralph: {} • status: {:?} • iter: {}/{} • task: {} • reflect: {}",
         summary.name,
@@ -3000,12 +3008,22 @@ async fn verify_and_save_router_external(
     ))
 }
 
+/// Result of an extension command: display text plus optional follow-up the
+/// host performs (submit a prompt — `/ralph` — or append a context entry —
+/// `/recall`).
+#[derive(Debug)]
+struct ExtensionCommandOutput {
+    message: String,
+    prompt: Option<String>,
+    append_context: bool,
+}
+
 async fn execute_extension_command(
     input: &str,
     snapshot: &ExtensionManagerSnapshot,
     auth: Option<&AuthStorage>,
     wasm: Option<&WasmExtensions>,
-) -> Option<Result<String, AppError>> {
+) -> Option<Result<ExtensionCommandOutput, AppError>> {
     let trimmed = input.trim();
     let command_name = trimmed
         .strip_prefix('/')?
@@ -3040,10 +3058,20 @@ async fn execute_extension_command(
             if let Some(result) =
                 configure_router_use_external_from_inline_command(trimmed, auth).await
             {
-                return Some(result);
+                return Some(result.map(|message| ExtensionCommandOutput {
+                    message,
+                    prompt: None,
+                    append_context: false,
+                }));
             }
         }
-        return Some(execute_router_command_input(trimmed).await);
+        return Some(execute_router_command_input(trimmed).await.map(|message| {
+            ExtensionCommandOutput {
+                message,
+                prompt: None,
+                append_context: false,
+            }
+        }));
     }
     // WASM extension commands route through the component host.
     let (extension, guest_name) = wasm
@@ -3054,13 +3082,20 @@ async fn execute_extension_command(
         extension
             .run_command(&guest_name, &args)
             .await
-            .map(|result| match &result {
-                serde_json::Value::String(text) => text.clone(),
-                serde_json::Value::Object(map) if map.contains_key("message") => {
-                    map["message"].as_str().unwrap_or_default().to_string()
+            .map(|result| {
+                let message = match &result {
+                    serde_json::Value::String(text) => text.clone(),
+                    serde_json::Value::Object(map) if map.contains_key("message") => {
+                        map["message"].as_str().unwrap_or_default().to_string()
+                    }
+                    other => serde_json::to_string_pretty(other)
+                        .unwrap_or_else(|err| panic!("command result serialization failed: {err}")),
+                };
+                ExtensionCommandOutput {
+                    message,
+                    prompt: result["prompt"].as_str().map(str::to_string),
+                    append_context: result["append_to_context"].as_bool().unwrap_or(false),
                 }
-                other => serde_json::to_string_pretty(other)
-                    .unwrap_or_else(|err| panic!("command result serialization failed: {err}")),
             })
             .map_err(|err| AppError::InvalidArguments(err.to_string())),
     )
@@ -3068,6 +3103,19 @@ async fn execute_extension_command(
 
 /// `cacheWarming` user setting: `"off" | "tools" | "tools+idle"`, project
 /// wins; unset defaults to `tools`.
+/// Init-config extras for wasm extensions (notify's resolved config).
+fn wasm_init_config_extras(settings: &ToolSettingsSnapshot) -> BTreeMap<String, Value> {
+    let mut extras = BTreeMap::new();
+    if let Some(config) =
+        notify_types::resolve_notify_config(&settings.global.notify, &settings.project.notify)
+    {
+        if let Ok(value) = serde_json::to_value(&config) {
+            extras.insert("oino.notify".to_string(), value);
+        }
+    }
+    extras
+}
+
 fn cache_warming_mode_setting(settings: &ToolSettingsSnapshot) -> oino_harness::CacheWarmingMode {
     let value = settings
         .project
@@ -3151,9 +3199,19 @@ async fn rebuild_wasm(
     providers_runtime: &str,
     settings: &ToolSettingsSnapshot,
 ) -> Arc<WasmExtensions> {
-    let wasm = build_wasm_extensions(snapshot, paths, ui_tx.clone(), auth, providers_runtime).await;
+    let extras = wasm_init_config_extras(settings);
+    let wasm = build_wasm_extensions(
+        snapshot,
+        paths,
+        ui_tx.clone(),
+        auth,
+        providers_runtime,
+        Some(&extras),
+    )
+    .await;
     wasm.set_session(harness.session_handle());
     if let Ok(mut guard) = holder.write() {
+        wasm.inherit_model_service(&guard);
         *guard = wasm.clone();
     }
     configure_cache_tracker(harness, settings, holder, ui_tx).await;
@@ -3175,12 +3233,6 @@ async fn apply_tool_settings_to_harness(
         oino_tools::session_title_tool(harness.session_title_setter()),
     );
     let snapshot = load_extension_snapshot(paths, settings);
-    if optional_package_tool_active(&snapshot, VCC_PACKAGE_ID, VCC_RECALL_TOOL_NAME) {
-        available.insert(
-            VCC_RECALL_TOOL_NAME.into(),
-            Arc::new(VccRecallTool::new(harness.session_handle())) as Arc<dyn Tool>,
-        );
-    }
     if optional_package_tool_active(&snapshot, ASK_USER_PACKAGE_ID, ASK_USER_TOOL_NAME) {
         let requester = ask_user_tx.map(ask_user_requester);
         available.insert(
@@ -3519,12 +3571,14 @@ async fn run_tui(
     if mode_sandbox_enabled_in_snapshot(&extension_snapshot) {
         let _ = ensure_mode_sandbox_profiles(&resource_paths);
     }
+    let init_extras = wasm_init_config_extras(&tool_settings);
     let mut wasm = build_wasm_extensions(
         &extension_snapshot,
         &resource_paths,
         None,
         Some(&auth),
         providers_runtime_setting(&tool_settings),
+        Some(&init_extras),
     )
     .await;
     let wasm_holder: wasm_extensions::WasmHolder = Arc::new(std::sync::RwLock::new(wasm.clone()));
@@ -3615,13 +3669,6 @@ async fn run_tui(
     register_tui_stream_hooks(&harness, tx.clone()).await;
     register_mode_hooks(&harness, Arc::clone(&agent_mode), resource_paths.clone()).await;
     let btw_provider_config = provider_config.clone();
-    let notify_stream = build_runtime_provider(
-        auth.clone(),
-        provider_config.clone(),
-        extension_runtime_providers(&extension_snapshot),
-        wasm.provider_map(),
-    );
-    register_notify_hooks(&harness, resource_paths.clone(), notify_stream).await;
     spawn_model_catalog_task(
         tx.clone(),
         auth.clone(),
@@ -3635,11 +3682,9 @@ async fn run_tui(
     > = std::collections::HashMap::new();
     let mut btw_harness: Option<Arc<Harness>> = None;
     let mut btw_in_flight = false;
-    let mut ralph_controller = RalphRunController::default();
     let mut pending_ask_user: Option<oneshot::Sender<AskUserOutcome>> = None;
     loop {
         let mut prompt_finished = false;
-        let mut finished_prompt_result: Option<Result<Vec<Message>, String>> = None;
         while let Ok(event) = rx.try_recv() {
             match event {
                 TuiRuntimeEvent::AskUserPrompt { request, responder } => {
@@ -3668,9 +3713,8 @@ async fn run_tui(
                         }
                         continue;
                     }
-                    if let TuiRuntimeEvent::PromptFinished(result) = &other {
+                    if let TuiRuntimeEvent::PromptFinished(_result) = &other {
                         prompt_finished = true;
-                        finished_prompt_result = Some(result.clone());
                     }
                     apply_tui_runtime_event(
                         &mut state,
@@ -3683,22 +3727,6 @@ async fn run_tui(
             }
         }
         if prompt_finished {
-            if let Some(Ok(messages)) = finished_prompt_result {
-                continue_ralph_after_prompt_if_needed(
-                    &mut state,
-                    &mut ralph_controller,
-                    &auth,
-                    &harness,
-                    &tx,
-                    &session_path,
-                    &resource_paths,
-                    &tool_settings,
-                    &mut prompt_in_flight,
-                    &extension_runtime_provider_ids,
-                    &messages,
-                )
-                .await;
-            }
             start_next_queued_prompt_if_idle(
                 &mut state,
                 &auth,
@@ -3718,6 +3746,7 @@ async fn run_tui(
                 &extension_snapshot,
                 &session_path,
                 &cwd,
+                &wasm,
             )
             .await;
         }
@@ -3994,7 +4023,7 @@ async fn run_tui(
                 match user_settings.compact.method {
                     oino_types::CompactMethod::Vcc => {
                         if vcc_command_enabled(&resource_paths, &tool_settings, "compact") {
-                            match compact_session_with_vcc(&harness).await {
+                            match compact_session_with_vcc(&harness, Some(&wasm)).await {
                                 Ok((message, messages)) => {
                                     state.set_messages_from_oino(&messages);
                                     save_tui_session(&mut state, &harness, &session_path).await;
@@ -4061,7 +4090,7 @@ async fn run_tui(
             }
             TuiAction::Recall { query } => {
                 if vcc_command_enabled(&resource_paths, &tool_settings, "recall") {
-                    match recall_session_with_vcc(&harness, query, true).await {
+                    match recall_session_with_vcc(&harness, Some(&wasm), query, true).await {
                         Ok((output, Some(messages))) => {
                             state.set_messages_from_oino(&messages);
                             save_tui_session(&mut state, &harness, &session_path).await;
@@ -4092,7 +4121,7 @@ async fn run_tui(
                 match method {
                     CompactMethodOverride::Vcc => {
                         if vcc_command_enabled(&resource_paths, &tool_settings, "compact") {
-                            match compact_session_with_vcc(&harness).await {
+                            match compact_session_with_vcc(&harness, Some(&wasm)).await {
                                 Ok((message, messages)) => {
                                     state.set_messages_from_oino(&messages);
                                     save_tui_session(&mut state, &harness, &session_path).await;
@@ -4375,22 +4404,12 @@ async fn run_tui(
                 };
             }
             TuiAction::Ralph(command) => {
-                match handle_tui_ralph_command(
-                    &mut state,
-                    &mut ralph_controller,
-                    &auth,
-                    &harness,
-                    &tx,
-                    &session_path,
-                    &resource_paths,
-                    &tool_settings,
-                    &mut prompt_in_flight,
-                    &extension_runtime_provider_ids,
-                    command,
-                )
-                .await
+                let ralph_input = format!("/ralph {}", ralph_command_args(&command));
+                let snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                match execute_extension_command(&ralph_input, &snapshot, Some(&auth), Some(&wasm))
+                    .await
                 {
-                    Ok(message) => {
+                    Some(Ok(output)) => {
                         let extension_snapshot =
                             load_extension_snapshot(&resource_paths, &tool_settings);
                         apply_extension_snapshot_to_tui_state(
@@ -4400,10 +4419,30 @@ async fn run_tui(
                             &resource_paths,
                         );
                         state.clear_error();
-                        state.status = message;
+                        state.status = compact_status_line(&output.message);
+                        state.append_command_output("/ralph", output.message);
+                        if let Some(prompt) = output.prompt {
+                            let _ = start_prompt(
+                                &mut state,
+                                &auth,
+                                &harness,
+                                &tx,
+                                &session_path,
+                                &mut prompt_in_flight,
+                                &extension_runtime_provider_ids,
+                                prompt,
+                            )
+                            .await;
+                        }
                     }
-                    Err(err) => {
+                    Some(Err(err)) => {
                         state.set_error(err.to_string());
+                        state.status = HELP_STATUS.into();
+                    }
+                    None => {
+                        state.set_error(
+                            "Ralph loop extension is not enabled; install `builtin:ralph-loop` from `/extensions` first",
+                        );
                         state.status = HELP_STATUS.into();
                     }
                 }
@@ -4411,14 +4450,33 @@ async fn run_tui(
             TuiAction::RunExtensionCommand { input } => {
                 let snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
                 match execute_extension_command(&input, &snapshot, Some(&auth), Some(&wasm)).await {
-                    Some(Ok(message)) => {
+                    Some(Ok(output)) => {
                         let refresh_models = matches!(
                             input.split_whitespace().collect::<Vec<_>>().as_slice(),
                             ["/router", "models"] | ["/router", "fetch-models"]
                         );
                         state.clear_error();
-                        state.status = compact_status_line(&message);
-                        state.append_command_output(input, message);
+                        state.status = compact_status_line(&output.message);
+                        let summary = output.message.clone();
+                        state.append_command_output(input, output.message);
+                        if let Some(prompt) = output.prompt {
+                            let _ = start_prompt(
+                                &mut state,
+                                &auth,
+                                &harness,
+                                &tx,
+                                &session_path,
+                                &mut prompt_in_flight,
+                                &extension_runtime_provider_ids,
+                                prompt,
+                            )
+                            .await;
+                        }
+                        if output.append_context {
+                            if let Ok(messages) = harness.append_branch_summary(summary).await {
+                                state.set_messages_from_oino(&messages);
+                            }
+                        }
                         if refresh_models {
                             apply_cached_model_catalog_to_tui_state(&mut state, &extension_models)
                                 .await;
@@ -5271,265 +5329,6 @@ async fn open_tui_session(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn handle_tui_ralph_command(
-    state: &mut TuiState,
-    controller: &mut RalphRunController,
-    auth: &AuthStorage,
-    harness: &Arc<Harness>,
-    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
-    session_path: &Path,
-    paths: &ResourcePaths,
-    settings: &ToolSettingsSnapshot,
-    prompt_in_flight: &mut bool,
-    extension_runtime_provider_ids: &BTreeSet<String>,
-    command: RalphCommand,
-) -> Result<String, AppError> {
-    if !ralph_loop_command_enabled(paths, settings) {
-        return Err(AppError::InvalidArguments(
-            "Ralph loop extension is not enabled; install `builtin:ralph-loop` from `/extensions` first".into(),
-        ));
-    }
-    match command {
-        RalphCommand::Start { name, task } => {
-            let state_loop = ralph_loop::start_loop(
-                &paths.project_root,
-                ralph_loop::RalphLoopStart::new(name, task),
-            )?;
-            controller.active_loop = Some(state_loop.name.clone());
-            controller.auto_continue = true;
-            start_ralph_iteration_prompt(
-                state,
-                controller,
-                auth,
-                harness,
-                tx,
-                session_path,
-                &paths.project_root,
-                prompt_in_flight,
-                extension_runtime_provider_ids,
-                &state_loop,
-                true,
-            )
-            .await?;
-            Ok(format!(
-                "Started Ralph loop `{}` and queued iteration {}/{}",
-                state_loop.name,
-                state_loop.iteration.saturating_add(1),
-                state_loop.max_iterations
-            ))
-        }
-        RalphCommand::Resume { name } => {
-            let state_loop = ralph_loop::resume_loop(&paths.project_root, &name)?;
-            controller.active_loop = Some(state_loop.name.clone());
-            controller.auto_continue = true;
-            start_ralph_iteration_prompt(
-                state,
-                controller,
-                auth,
-                harness,
-                tx,
-                session_path,
-                &paths.project_root,
-                prompt_in_flight,
-                extension_runtime_provider_ids,
-                &state_loop,
-                true,
-            )
-            .await?;
-            Ok(format!("Resumed Ralph loop `{}`", state_loop.name))
-        }
-        RalphCommand::Continue { name } => {
-            let state_loop = load_ralph_target(&paths.project_root, name.as_deref())?;
-            controller.active_loop = Some(state_loop.name.clone());
-            controller.auto_continue = true;
-            start_ralph_iteration_prompt(
-                state,
-                controller,
-                auth,
-                harness,
-                tx,
-                session_path,
-                &paths.project_root,
-                prompt_in_flight,
-                extension_runtime_provider_ids,
-                &state_loop,
-                true,
-            )
-            .await?;
-            Ok(format!("Continuing Ralph loop `{}`", state_loop.name))
-        }
-        RalphCommand::Once { name } => {
-            let state_loop = load_ralph_target(&paths.project_root, name.as_deref())?;
-            controller.active_loop = Some(state_loop.name.clone());
-            controller.auto_continue = false;
-            start_ralph_iteration_prompt(
-                state,
-                controller,
-                auth,
-                harness,
-                tx,
-                session_path,
-                &paths.project_root,
-                prompt_in_flight,
-                extension_runtime_provider_ids,
-                &state_loop,
-                false,
-            )
-            .await?;
-            Ok(format!(
-                "Running one Ralph iteration for `{}`",
-                state_loop.name
-            ))
-        }
-        RalphCommand::Steer { name, note } => {
-            let state_loop = ralph_loop::append_steering(&paths.project_root, &name, &note)?;
-            Ok(format!(
-                "Added steering to Ralph loop `{}` ({})",
-                state_loop.name, state_loop.steering_file
-            ))
-        }
-        RalphCommand::Pause { name } => {
-            let state_loop = ralph_loop::pause_loop(&paths.project_root, &name)?;
-            if controller.active_loop.as_deref() == Some(state_loop.name.as_str()) {
-                controller.auto_continue = false;
-                controller.prompt_loop_in_flight = None;
-            }
-            Ok(format!("Paused Ralph loop `{}`", state_loop.name))
-        }
-        RalphCommand::Cancel { name } => {
-            let state_loop = ralph_loop::cancel_loop(&paths.project_root, &name)?;
-            if controller.active_loop.as_deref() == Some(state_loop.name.as_str()) {
-                controller.active_loop = None;
-                controller.auto_continue = false;
-                controller.prompt_loop_in_flight = None;
-            }
-            Ok(format!("Cancelled Ralph loop `{}`", state_loop.name))
-        }
-        other => execute_ralph_command_if_enabled(other, paths, settings),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn continue_ralph_after_prompt_if_needed(
-    state: &mut TuiState,
-    controller: &mut RalphRunController,
-    auth: &AuthStorage,
-    harness: &Arc<Harness>,
-    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
-    session_path: &Path,
-    paths: &ResourcePaths,
-    settings: &ToolSettingsSnapshot,
-    prompt_in_flight: &mut bool,
-    extension_runtime_provider_ids: &BTreeSet<String>,
-    messages: &[Message],
-) {
-    let Some(loop_name) = controller.prompt_loop_in_flight.take() else {
-        return;
-    };
-    let output = last_assistant_text(messages).unwrap_or_default();
-    match ralph_loop::record_iteration_output(&paths.project_root, &loop_name, &output) {
-        Ok(state_loop) => {
-            let extension_snapshot = load_extension_snapshot(paths, settings);
-            apply_extension_snapshot_to_tui_state(state, &extension_snapshot, settings, paths);
-            state.status = format!(
-                "Ralph `{}` recorded iteration {}/{} ({:?})",
-                state_loop.name, state_loop.iteration, state_loop.max_iterations, state_loop.status
-            );
-            if state_loop.status == ralph_loop::RalphLoopStatus::Active && controller.auto_continue
-            {
-                if let Err(err) = start_ralph_iteration_prompt(
-                    state,
-                    controller,
-                    auth,
-                    harness,
-                    tx,
-                    session_path,
-                    &paths.project_root,
-                    prompt_in_flight,
-                    extension_runtime_provider_ids,
-                    &state_loop,
-                    true,
-                )
-                .await
-                {
-                    state.set_error(format!("Ralph continue failed: {err}"));
-                    controller.auto_continue = false;
-                }
-            } else if state_loop.status != ralph_loop::RalphLoopStatus::Active {
-                controller.auto_continue = false;
-                controller.active_loop = Some(state_loop.name);
-            }
-        }
-        Err(err) => {
-            controller.auto_continue = false;
-            state.set_error(format!("Ralph record failed: {err}"));
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn start_ralph_iteration_prompt(
-    state: &mut TuiState,
-    controller: &mut RalphRunController,
-    auth: &AuthStorage,
-    harness: &Arc<Harness>,
-    tx: &mpsc::UnboundedSender<TuiRuntimeEvent>,
-    session_path: &Path,
-    project_root: &Path,
-    prompt_in_flight: &mut bool,
-    extension_runtime_provider_ids: &BTreeSet<String>,
-    loop_state: &ralph_loop::RalphLoopState,
-    auto_continue: bool,
-) -> Result<(), AppError> {
-    if loop_state.status != ralph_loop::RalphLoopStatus::Active {
-        return Err(AppError::InvalidArguments(format!(
-            "Ralph loop `{}` is {:?}; resume it before continuing",
-            loop_state.name, loop_state.status
-        )));
-    }
-    let prompt = ralph_loop::build_iteration_prompt(project_root, loop_state)?;
-    if start_prompt(
-        state,
-        auth,
-        harness,
-        tx,
-        session_path,
-        prompt_in_flight,
-        extension_runtime_provider_ids,
-        prompt,
-    )
-    .await
-    {
-        controller.active_loop = Some(loop_state.name.clone());
-        controller.auto_continue = auto_continue;
-        controller.prompt_loop_in_flight = Some(loop_state.name.clone());
-        Ok(())
-    } else {
-        Err(AppError::InvalidArguments(
-            "Could not start Ralph iteration because another prompt is running or credentials are missing".into(),
-        ))
-    }
-}
-
-fn load_ralph_target(
-    project_root: &Path,
-    name: Option<&str>,
-) -> Result<ralph_loop::RalphLoopState, AppError> {
-    if let Some(name) = name {
-        return Ok(ralph_loop::load_state(project_root, name)?);
-    }
-    let active = ralph_loop::list_states(project_root)?
-        .into_iter()
-        .find(|state| state.status == ralph_loop::RalphLoopStatus::Active)
-        .ok_or_else(|| {
-            AppError::InvalidArguments(
-                "No active Ralph loop found; pass a loop name or start one with `/ralph start <name> <task>`".into(),
-            )
-        })?;
-    Ok(active)
-}
-
 fn last_assistant_text(messages: &[Message]) -> Option<String> {
     messages
         .iter()
@@ -6221,6 +6020,7 @@ async fn run_non_interactive(
             &session_path,
             &resource_catalog,
             &extension_runtime_provider_ids,
+            wasm,
         )
         .await?;
         if cli.input.is_none() {
@@ -6282,6 +6082,7 @@ async fn run_non_interactive(
                 &session_path,
                 &resource_catalog,
                 &extension_runtime_provider_ids,
+                wasm,
             )
             .await?;
             println!("{message}");
@@ -6289,9 +6090,13 @@ async fn run_non_interactive(
         }
         let tool_settings = load_tool_settings(&resource_catalog.paths).await;
         let snapshot = load_extension_snapshot(&resource_catalog.paths, &tool_settings);
-        if let Some(message) = execute_extension_command(&input, &snapshot, Some(&auth), wasm).await
+        if let Some(output) = execute_extension_command(&input, &snapshot, Some(&auth), wasm).await
         {
-            println!("{}", message?);
+            let output = output?;
+            println!("{}", output.message);
+            if let Some(prompt) = output.prompt {
+                println!("{prompt}");
+            }
             return Ok(());
         }
         return Err(AppError::InvalidArguments(format!(
@@ -6561,98 +6366,69 @@ fn longest_backtick_run(content: &str) -> usize {
 }
 
 const RALPH_LOOP_PACKAGE_ID: &str = "oino.ralph_loop";
-const RALPH_LOOP_COMMAND_ID: &str = "ralph";
 const MODE_SANDBOX_PACKAGE_ID: &str = "oino.mode_sandbox";
-const NOTIFY_PACKAGE_ID: &str = "oino.notify";
 const VCC_PACKAGE_ID: &str = "oino.vcc";
-const VCC_RECALL_TOOL_NAME: &str = "vcc_recall";
 const ASK_USER_PACKAGE_ID: &str = "oino.ask_user";
 
-#[derive(Clone)]
-struct VccRecallTool {
-    session: Arc<tokio::sync::Mutex<SessionManager>>,
-}
+static VCC_EXTENSION_ID: std::sync::LazyLock<ExtensionId> = std::sync::LazyLock::new(|| {
+    ExtensionId::new("oino.vcc").unwrap_or_else(|err| panic!("vcc extension id: {err}"))
+});
 
-impl VccRecallTool {
-    fn new(session: Arc<tokio::sync::Mutex<SessionManager>>) -> Self {
-        Self { session }
-    }
-}
-
-#[async_trait]
-impl Tool for VccRecallTool {
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition {
-            name: VCC_RECALL_TOOL_NAME.into(),
-            description: "Search raw Oino session history outside the compacted model context. Use this when prior details may have been compacted away.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                    "query": {"type": "string", "description": "Words to search for. Omit or leave empty to browse recent history."},
-                    "scope": {"type": "string", "enum": ["active", "all"], "description": "Search the active branch by default, or all session entries."},
-                    "offset": {"type": "number", "description": "Pagination offset, zero-based."},
-                    "limit": {"type": "number", "description": "Maximum results to return, capped at 20."},
-                    "expand": {"type": "boolean", "description": "Return full matching entries instead of snippets."}
-                }
-            }),
+/// Render a parsed `/ralph` command back into args for the `oino.ralph_loop`
+/// extension's `/ralph` command.
+fn ralph_command_args(command: &RalphCommand) -> String {
+    match command {
+        RalphCommand::Help => "help".into(),
+        RalphCommand::List => "list".into(),
+        RalphCommand::Status { name } => name
+            .as_ref()
+            .map_or_else(|| "status".into(), |name| format!("status {name}")),
+        RalphCommand::Panel { setting } => match setting {
+            None => "panel".into(),
+            Some(oino_tui::RalphPanelSetting::On) => "panel on".into(),
+            Some(oino_tui::RalphPanelSetting::Off) => "panel off".into(),
+        },
+        RalphCommand::Start { name, task } => format!("start {name} {task}"),
+        RalphCommand::Pause { name } => format!("pause {name}"),
+        RalphCommand::Resume { name } => format!("resume {name}"),
+        RalphCommand::Continue { name } => name
+            .as_ref()
+            .map_or_else(|| "continue".into(), |name| format!("continue {name}")),
+        RalphCommand::Once { name } => name
+            .as_ref()
+            .map_or_else(|| "once".into(), |name| format!("once {name}")),
+        RalphCommand::Steer { name, note } => format!("steer {name} {note}"),
+        RalphCommand::Cancel { name } => format!("cancel {name}"),
+        RalphCommand::Archive { name } => format!("archive {name}"),
+        RalphCommand::Clean { all } => {
+            if *all {
+                "clean --all".into()
+            } else {
+                "clean".into()
+            }
+        }
+        RalphCommand::Nuke { yes } => {
+            if *yes {
+                "nuke --yes".into()
+            } else {
+                "nuke".into()
+            }
+        }
+        RalphCommand::Record {
+            name,
+            promise,
+            note,
+        } => {
+            let kind = match promise {
+                RalphRecordPromise::Continue => "continue".to_string(),
+                RalphRecordPromise::Complete => "complete".to_string(),
+                RalphRecordPromise::Blocked(reason) => format!("blocked {reason}"),
+                RalphRecordPromise::Decide(question) => format!("decide {question}"),
+                RalphRecordPromise::TaskDone(task_id) => format!("done {task_id}"),
+            };
+            format!("record {name} {kind} {note}").trim().to_string()
         }
     }
-
-    async fn execute(
-        &self,
-        call: ToolCall,
-        _updates: ToolUpdateCallback,
-        signal: AbortSignal,
-    ) -> oino_agent_loop::LoopResult<ToolResult> {
-        if signal.is_aborted() {
-            return Err(LoopError::Aborted);
-        }
-        let options = recall_options_from_value(&call.arguments);
-        let session = self.session.lock().await;
-        let branch = session
-            .get_branch(session.get_leaf_id())
-            .map_err(|err| LoopError::Tool(err.to_string()))?;
-        let all_entries = session.get_entries();
-        drop(session);
-        if signal.is_aborted() {
-            return Err(LoopError::Aborted);
-        }
-        let result = vcc::recall(&branch, &all_entries, options);
-        let mut tool_result = ToolResult::text(&call, result.output);
-        tool_result.details = Some(serde_json::json!({
-            "total": result.total,
-            "offset": result.offset,
-            "limit": result.limit
-        }));
-        Ok(tool_result)
-    }
-}
-
-fn recall_options_from_value(value: &serde_json::Value) -> vcc::VccRecallOptions {
-    let mut options = vcc::VccRecallOptions::default();
-    if let Some(query) = value.get("query").and_then(serde_json::Value::as_str) {
-        if !query.trim().is_empty() {
-            options.query = Some(query.trim().to_string());
-        }
-    }
-    if value
-        .get("scope")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|scope| scope.eq_ignore_ascii_case("all"))
-    {
-        options.scope_all = true;
-    }
-    if let Some(offset) = value.get("offset").and_then(serde_json::Value::as_u64) {
-        options.offset = offset as usize;
-    }
-    if let Some(limit) = value.get("limit").and_then(serde_json::Value::as_u64) {
-        options.limit = limit as usize;
-    }
-    if let Some(expand) = value.get("expand").and_then(serde_json::Value::as_bool) {
-        options.expand = expand;
-    }
-    options
 }
 
 fn package_contribution_active<T>(
@@ -6697,33 +6473,12 @@ fn optional_package_tool_active(
         .any(|active| package_contribution_active(active, package, tool))
 }
 
-fn ralph_loop_command_enabled(paths: &ResourcePaths, settings: &ToolSettingsSnapshot) -> bool {
-    optional_package_command_enabled(
-        paths,
-        settings,
-        RALPH_LOOP_PACKAGE_ID,
-        RALPH_LOOP_COMMAND_ID,
-    )
-}
-
 fn vcc_command_enabled(
     paths: &ResourcePaths,
     settings: &ToolSettingsSnapshot,
     command: &str,
 ) -> bool {
     optional_package_command_enabled(paths, settings, VCC_PACKAGE_ID, command)
-}
-
-fn notify_extension_enabled(paths: &ResourcePaths, settings: &ToolSettingsSnapshot) -> bool {
-    let snapshot = load_extension_snapshot(paths, settings);
-    snapshot.registries.hooks.active.iter().any(|active| {
-        active
-            .entry
-            .metadata
-            .package_id
-            .as_ref()
-            .is_some_and(|package_id| package_id.as_str() == NOTIFY_PACKAGE_ID)
-    })
 }
 
 const MODE_SANDBOX_DIR: &str = "sandbox-mode";
@@ -6922,168 +6677,36 @@ fn mode_before_tool_call_result(
     }
 }
 
-fn execute_ralph_command_if_enabled(
-    command: RalphCommand,
-    paths: &ResourcePaths,
-    settings: &ToolSettingsSnapshot,
-) -> Result<String, AppError> {
-    if !ralph_loop_command_enabled(paths, settings) {
+async fn compact_session_with_vcc(
+    harness: &Harness,
+    wasm: Option<&WasmExtensions>,
+) -> Result<(String, Vec<Message>), AppError> {
+    let Some(extension) = wasm.and_then(|wasm| wasm.extensions.get(&VCC_EXTENSION_ID)) else {
         return Err(AppError::InvalidArguments(
-            "Ralph loop extension is not enabled; install `builtin:ralph-loop` from `/extensions` first".into(),
+            "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/compact`".into(),
+        ));
+    };
+    let branch = harness.active_branch_entries().await?;
+    let result = extension
+        .handle_event(
+            "session_before_compact",
+            serde_json::json!({"branch": branch}),
+        )
+        .await
+        .map_err(|err| AppError::InvalidArguments(err.to_string()))?;
+    let summary = result["summary"].as_str().unwrap_or_default().to_string();
+    if summary.is_empty() {
+        return Err(AppError::InvalidArguments(
+            "Nothing to compact yet; VCC needs at least one earlier entry before the latest user message".into(),
         ));
     }
-    execute_ralph_command(command, &paths.project_root)
-}
-
-fn execute_ralph_command(command: RalphCommand, project_root: &Path) -> Result<String, AppError> {
-    match command {
-        RalphCommand::Help => Ok(ralph_help_text()),
-        RalphCommand::List => {
-            let states = ralph_loop::list_states(project_root)?;
-            if states.is_empty() {
-                Ok("No Ralph loops found; start one with `/ralph start <name> <task>`".into())
-            } else {
-                Ok(states
-                    .iter()
-                    .map(ralph_loop::status_line)
-                    .collect::<Vec<_>>()
-                    .join("\n"))
-            }
-        }
-        RalphCommand::Status { name } => {
-            if let Some(name) = name {
-                let state = ralph_loop::load_state(project_root, &name)?;
-                Ok(ralph_loop::status_line(&state))
-            } else {
-                execute_ralph_command(RalphCommand::List, project_root)
-            }
-        }
-        RalphCommand::Panel { setting } => {
-            let enabled = match setting {
-                Some(oino_tui::RalphPanelSetting::On) => true,
-                Some(oino_tui::RalphPanelSetting::Off) => false,
-                None => !ralph_loop::load_panel_settings(project_root)?.enabled,
-            };
-            ralph_loop::set_panel_enabled(project_root, enabled)?;
-            Ok(format!(
-                "Ralph progress floating panel {}",
-                if enabled { "enabled" } else { "disabled" }
-            ))
-        }
-        RalphCommand::Start { name, task } => {
-            let state =
-                ralph_loop::start_loop(project_root, ralph_loop::RalphLoopStart::new(name, task))?;
-            Ok(format!(
-                "Started Ralph loop `{}` at {}",
-                state.name, state.task_file
-            ))
-        }
-        RalphCommand::Pause { name } => {
-            let state = ralph_loop::pause_loop(project_root, &name)?;
-            Ok(format!("Paused Ralph loop `{}`", state.name))
-        }
-        RalphCommand::Resume { name } => {
-            let state = ralph_loop::resume_loop(project_root, &name)?;
-            Ok(format!("Resumed Ralph loop `{}`", state.name))
-        }
-        RalphCommand::Continue { name } | RalphCommand::Once { name } => {
-            let state = load_ralph_target(project_root, name.as_deref())?;
-            let prompt = ralph_loop::build_iteration_prompt(project_root, &state)?;
-            Ok(format!(
-                "Ralph loop `{}` is ready for iteration {}/{}. In the TUI, `/ralph continue {}` auto-runs it. Iteration prompt:\n\n{}",
-                state.name,
-                state.iteration.saturating_add(1).min(state.max_iterations),
-                state.max_iterations,
-                state.name,
-                prompt
-            ))
-        }
-        RalphCommand::Steer { name, note } => {
-            let state = ralph_loop::append_steering(project_root, &name, note)?;
-            Ok(format!("Added steering to Ralph loop `{}`", state.name))
-        }
-        RalphCommand::Cancel { name } => {
-            let state = ralph_loop::cancel_loop(project_root, &name)?;
-            Ok(format!("Cancelled Ralph loop `{}`", state.name))
-        }
-        RalphCommand::Archive { name } => {
-            let state = ralph_loop::archive_loop(project_root, &name)?;
-            Ok(format!("Archived Ralph loop `{}`", state.name))
-        }
-        RalphCommand::Clean { all } => {
-            let summary = ralph_loop::clean_loops(project_root, all)?;
-            if all {
-                Ok(format!(
-                    "Removed {} Ralph loop item{} ({} archived, {} complete/cancelled)",
-                    summary.total_removed(),
-                    if summary.total_removed() == 1 {
-                        ""
-                    } else {
-                        "s"
-                    },
-                    summary.archived_removed,
-                    summary.terminal_removed
-                ))
-            } else {
-                Ok(format!(
-                    "Removed {} archived Ralph loop item{}",
-                    summary.archived_removed,
-                    if summary.archived_removed == 1 {
-                        ""
-                    } else {
-                        "s"
-                    }
-                ))
-            }
-        }
-        RalphCommand::Nuke { yes } => {
-            if !yes {
-                return Err(AppError::InvalidArguments(
-                    "Refusing to delete all Ralph data without confirmation. Run `/ralph nuke --yes` to remove .oino/ralph entirely.".into(),
-                ));
-            }
-            let removed = ralph_loop::nuke_all(project_root)?;
-            Ok(if removed {
-                "Deleted all Ralph loop data under .oino/ralph".into()
-            } else {
-                "No Ralph loop data found under .oino/ralph".into()
-            })
-        }
-        RalphCommand::Record {
-            name,
-            promise,
-            note,
-        } => {
-            let promise = ralph_promise_from_command(promise);
-            let note = if note.trim().is_empty() {
-                format!("recorded {promise:?}")
-            } else {
-                note
-            };
-            let state = ralph_loop::record_iteration(project_root, &name, promise, note)?;
-            Ok(format!(
-                "Recorded Ralph loop `{}` iteration {} ({:?})",
-                state.name, state.iteration, state.status
-            ))
-        }
-    }
-}
-
-async fn compact_session_with_vcc(harness: &Harness) -> Result<(String, Vec<Message>), AppError> {
-    let branch = harness.active_branch_entries().await?;
-    let compaction = vcc::compact_branch(&branch).ok_or_else(|| {
-        AppError::InvalidArguments(
-            "Nothing to compact yet; VCC needs at least one earlier entry before the latest user message".into(),
-        )
-    })?;
-    let compacted_entries = compaction.compacted_entries;
-    let kept_entries = compaction.kept_entries;
+    let first_kept = serde_json::from_value(result["first_kept"].clone())
+        .map_err(|err| AppError::InvalidArguments(err.to_string()))?;
+    let tokens_before = result["tokens_before"].as_u64().unwrap_or_default();
+    let compacted_entries = result["compacted_entries"].as_u64().unwrap_or_default();
+    let kept_entries = result["kept_entries"].as_u64().unwrap_or_default();
     let messages = harness
-        .append_compaction(
-            compaction.summary,
-            compaction.first_kept,
-            compaction.tokens_before,
-        )
+        .append_compaction(summary, first_kept, tokens_before)
         .await?;
     Ok((
         format!(
@@ -7137,32 +6760,33 @@ async fn compact_session_with_llm(
 
 async fn recall_session_with_vcc(
     harness: &Harness,
+    wasm: Option<&WasmExtensions>,
     query: Option<String>,
     append_to_context: bool,
 ) -> Result<(String, Option<Vec<Message>>), AppError> {
-    let branch = harness.active_branch_entries().await?;
-    let all_entries = harness.all_session_entries().await;
-    let options = vcc::VccRecallOptions {
-        query,
-        ..Default::default()
+    let Some(extension) = wasm.and_then(|wasm| wasm.extensions.get(&VCC_EXTENSION_ID)) else {
+        return Err(AppError::InvalidArguments(
+            "VCC extension is not enabled; install `builtin:vcc` from `/extensions` before using `/recall`".into(),
+        ));
     };
-    let result = vcc::recall(&branch, &all_entries, options);
+    let output = extension
+        .run_command("recall", query.as_deref().unwrap_or_default())
+        .await
+        .map_err(|err| AppError::InvalidArguments(err.to_string()))?;
+    let text = match &output {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Object(map) if map.contains_key("message") => {
+            map["message"].as_str().unwrap_or_default().to_string()
+        }
+        other => serde_json::to_string_pretty(other)
+            .unwrap_or_else(|err| panic!("recall result serialization failed: {err}")),
+    };
     let messages = if append_to_context {
-        Some(harness.append_branch_summary(result.output.clone()).await?)
+        Some(harness.append_branch_summary(text.clone()).await?)
     } else {
         None
     };
-    Ok((result.output, messages))
-}
-
-fn ralph_promise_from_command(promise: RalphRecordPromise) -> ralph_loop::RalphPromise {
-    match promise {
-        RalphRecordPromise::Continue => ralph_loop::RalphPromise::Continue,
-        RalphRecordPromise::Complete => ralph_loop::RalphPromise::Complete,
-        RalphRecordPromise::Blocked(reason) => ralph_loop::RalphPromise::Blocked(reason),
-        RalphRecordPromise::Decide(question) => ralph_loop::RalphPromise::Decide(question),
-        RalphRecordPromise::TaskDone(task_id) => ralph_loop::RalphPromise::TaskDone(task_id),
-    }
+    Ok((text, messages))
 }
 
 fn compact_status_line(message: &str) -> String {
@@ -7175,27 +6799,7 @@ fn compact_status_line(message: &str) -> String {
         .collect()
 }
 
-fn ralph_help_text() -> String {
-    [
-        "Ralph loop commands:",
-        "  /ralph start <name> <task>",
-        "  /ralph list",
-        "  /ralph status [name]",
-        "  /ralph panel [on|off]",
-        "  /ralph resume <name>",
-        "  /ralph continue [name]",
-        "  /ralph once [name]",
-        "  /ralph steer <name> <urgent instruction>",
-        "  /ralph pause <name>",
-        "  /ralph cancel <name>",
-        "  /ralph archive <name>",
-        "  /ralph clean [--all]",
-        "  /ralph nuke --yes",
-        "  /ralph record <name> <continue|complete|blocked|decide|done> [note/task-id]",
-    ]
-    .join("\n")
-}
-
+#[allow(clippy::too_many_arguments)]
 async fn execute_runtime_command(
     command: ParsedCommand,
     harness: &Harness,
@@ -7204,6 +6808,7 @@ async fn execute_runtime_command(
     session_path: &std::path::Path,
     resource_catalog: &ResourceCatalog,
     extension_runtime_provider_ids: &BTreeSet<String>,
+    wasm: Option<&WasmExtensions>,
 ) -> Result<String, AppError> {
     let message = match command {
         ParsedCommand::OinoUpdate(command) => {
@@ -7257,7 +6862,7 @@ async fn execute_runtime_command(
             match user_settings.compact.method {
                 oino_types::CompactMethod::Vcc => {
                     if vcc_command_enabled(&resource_catalog.paths, &settings, "compact") {
-                        let (message, _messages) = compact_session_with_vcc(harness).await?;
+                        let (message, _messages) = compact_session_with_vcc(harness, wasm).await?;
                         harness.save_session_jsonl(session_path).await?;
                         return Ok(message);
                     }
@@ -7276,7 +6881,7 @@ async fn execute_runtime_command(
             CompactMethodOverride::Vcc => {
                 let settings = load_tool_settings(&resource_catalog.paths).await;
                 if vcc_command_enabled(&resource_catalog.paths, &settings, "compact") {
-                    let (message, _messages) = compact_session_with_vcc(harness).await?;
+                    let (message, _messages) = compact_session_with_vcc(harness, wasm).await?;
                     harness.save_session_jsonl(session_path).await?;
                     return Ok(message);
                 }
@@ -7372,7 +6977,8 @@ async fn execute_runtime_command(
         ParsedCommand::Recall { query } => {
             let settings = load_tool_settings(&resource_catalog.paths).await;
             if vcc_command_enabled(&resource_catalog.paths, &settings, "recall") {
-                let (output, _messages) = recall_session_with_vcc(harness, query, false).await?;
+                let (output, _messages) =
+                    recall_session_with_vcc(harness, wasm, query, false).await?;
                 return Ok(output);
             }
             return Err(AppError::InvalidArguments(
@@ -7459,8 +7065,29 @@ async fn execute_runtime_command(
             return Ok(format_auth_quickstart());
         }
         ParsedCommand::Ralph(command) => {
+            let ralph_input = format!("/ralph {}", ralph_command_args(&command));
             let settings = load_tool_settings(&resource_catalog.paths).await;
-            return execute_ralph_command_if_enabled(command, &resource_catalog.paths, &settings);
+            let snapshot = load_extension_snapshot(&resource_catalog.paths, &settings);
+            match execute_extension_command(&ralph_input, &snapshot, Some(auth), wasm).await {
+                Some(Ok(output)) => {
+                    let mut message = output.message;
+                    if matches!(
+                        command,
+                        RalphCommand::Continue { .. } | RalphCommand::Once { .. }
+                    ) {
+                        if let Some(prompt) = output.prompt {
+                            message = format!("{message}\n\n{prompt}");
+                        }
+                    }
+                    return Ok(message);
+                }
+                Some(Err(err)) => return Err(err),
+                None => {
+                    return Err(AppError::InvalidArguments(
+                        "Ralph loop extension is not enabled; install `builtin:ralph-loop` from `/extensions` first".into(),
+                    ));
+                }
+            }
         }
         ParsedCommand::ShowAgentModeUsage => {
             return Ok("Usage: /mode plan | /mode work | /mode <profile>".into());
@@ -7760,13 +7387,6 @@ fn format_skill_list(catalog: &ResourceCatalog) -> String {
         .join("\n")
 }
 
-#[derive(Debug, Default)]
-struct RalphRunController {
-    active_loop: Option<String>,
-    auto_continue: bool,
-    prompt_loop_in_flight: Option<String>,
-}
-
 #[derive(Debug)]
 enum TuiRuntimeEvent {
     Agent(AgentEvent),
@@ -7818,6 +7438,7 @@ async fn refresh_tui_context_status(state: &mut TuiState, harness: &Harness, cwd
 
 /// Check if auto-compaction should trigger based on settings and current context usage.
 /// Returns true if compaction was performed.
+#[allow(clippy::too_many_arguments)]
 async fn try_auto_compact(
     state: &mut TuiState,
     harness: &Harness,
@@ -7826,7 +7447,9 @@ async fn try_auto_compact(
     extension_snapshot: &ExtensionManagerSnapshot,
     session_path: &std::path::Path,
     cwd: &Path,
+    wasm: &WasmExtensions,
 ) -> bool {
+    let wasm = Some(wasm);
     let user_settings = match user_settings::UserSettings::load_default().await {
         Ok(s) => s,
         Err(_) => return false,
@@ -7863,7 +7486,7 @@ async fn try_auto_compact(
     // Auto-compact triggered
     let method = user_settings.compact.method;
     match method {
-        oino_types::CompactMethod::Vcc => match compact_session_with_vcc(harness).await {
+        oino_types::CompactMethod::Vcc => match compact_session_with_vcc(harness, wasm).await {
             Ok((message, messages)) => {
                 state.set_messages_from_oino(&messages);
                 let _ = harness.save_session_jsonl(session_path).await;
@@ -8010,148 +7633,6 @@ async fn register_mode_hooks(harness: &Harness, mode: Arc<Mutex<AgentMode>>, pat
             })
         }))
         .await;
-}
-
-async fn register_notify_hooks(
-    harness: &Harness,
-    paths: ResourcePaths,
-    stream: Arc<dyn StreamProvider>,
-) {
-    let client = Arc::new(reqwest::Client::new());
-    let last_assistant_message = Arc::new(Mutex::new(None::<String>));
-    for hook in [
-        NotificationHook::MessageEnd,
-        NotificationHook::AgentEnd,
-        NotificationHook::ToolExecutionEnd,
-    ] {
-        let paths = paths.clone();
-        let client = Arc::clone(&client);
-        let last_assistant_message = Arc::clone(&last_assistant_message);
-        let stream = Arc::clone(&stream);
-        harness
-            .hooks()
-            .on_notification(
-                hook,
-                Arc::new(move |event| {
-                    let paths = paths.clone();
-                    let client = Arc::clone(&client);
-                    let last_assistant_message = Arc::clone(&last_assistant_message);
-                    let stream = Arc::clone(&stream);
-                    Box::pin(async move {
-                        if let AgentEvent::MessageEnd { message } = &event {
-                            if let Some(text) = assistant_message_text(message) {
-                                if let Ok(mut guard) = last_assistant_message.lock() {
-                                    *guard = Some(text);
-                                }
-                            }
-                            return;
-                        }
-                        let summary_source = last_assistant_message
-                            .lock()
-                            .ok()
-                            .and_then(|guard| guard.clone());
-                        send_notify_event_if_enabled(paths, client, event, summary_source, stream)
-                            .await;
-                    })
-                }),
-            )
-            .await;
-    }
-}
-
-fn assistant_message_text(message: &Message) -> Option<String> {
-    let Message::Assistant { content, .. } = message else {
-        return None;
-    };
-    let text = content
-        .iter()
-        .filter_map(|block| match block {
-            ContentBlock::Text { text, .. } => Some(text.trim()),
-            _ => None,
-        })
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    (!text.trim().is_empty()).then_some(text)
-}
-
-async fn send_notify_event_if_enabled(
-    paths: ResourcePaths,
-    client: Arc<reqwest::Client>,
-    event: AgentEvent,
-    summary_source: Option<String>,
-    stream: Arc<dyn StreamProvider>,
-) {
-    let settings = load_tool_settings(&paths).await;
-    if !notify_extension_enabled(&paths, &settings) {
-        return;
-    }
-    let Some(config) =
-        notify::resolve_notify_config(&settings.global.notify, &settings.project.notify)
-    else {
-        return;
-    };
-    let Some(mut message) = notify::notify_message_for_event(&event) else {
-        return;
-    };
-    if !config.events.contains(&message.event) {
-        return;
-    }
-    if message.event == notify::NotifyEvent::AgentEnd {
-        if let Some(source) = summary_source.filter(|source| !source.trim().is_empty()) {
-            if config.summarizer.enabled {
-                message.body = summarize_notify_body(&config, &source, stream).await;
-            }
-        }
-    }
-    if let Err(err) = notify::send_ntfy_notification(&client, &config, &message).await {
-        eprintln!("Oino notify failed: {err}");
-    }
-}
-
-async fn summarize_notify_body(
-    config: &notify::EffectiveNotifyConfig,
-    source: &str,
-    stream: Arc<dyn StreamProvider>,
-) -> String {
-    let fallback = notify::notification_summary_from_text(source, config.summarizer.max_chars);
-    let Some(model_id) = config.summarizer.model.as_deref() else {
-        return fallback;
-    };
-    let Some(model) = Model::from_identifier(model_id) else {
-        return fallback;
-    };
-    let prompt = format!(
-        "{}\n\nReturn only the notification body. Maximum characters: {}.\n\nRun output:\n{}",
-        config.summarizer.prompt, config.summarizer.max_chars, source
-    );
-    let request = StreamRequest {
-        model,
-        thinking_level: ThinkingLevel::Off,
-        transcript: oino_types::transcript::normalize(
-            Some("You write concise desktop/mobile notification summaries.".into()),
-            Vec::new(),
-            vec![Message::user_text(prompt)],
-        ),
-        session_id: None,
-        cache_retention: oino_agent_loop::CacheRetention::default(),
-        max_output_tokens: None,
-    };
-    let Ok(events) = stream.stream(request, AbortSignal::new()).await else {
-        return fallback;
-    };
-    let text = events
-        .into_iter()
-        .filter_map(|event| match event {
-            AssistantStreamEvent::TextDelta { delta } => Some(delta),
-            _ => None,
-        })
-        .collect::<String>();
-    if text.trim().is_empty() {
-        fallback
-    } else {
-        notify::notification_summary_from_text(&text, config.summarizer.max_chars)
-    }
 }
 
 async fn register_tui_stream_hooks(harness: &Harness, tx: mpsc::UnboundedSender<TuiRuntimeEvent>) {
@@ -8887,96 +8368,6 @@ mod tests {
     }
 
     #[test]
-    fn executes_ralph_commands_against_project_state() {
-        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
-        let help = execute_ralph_command(RalphCommand::Help, temp.path())
-            .unwrap_or_else(|err| panic!("help failed: {err}"));
-        assert!(help.contains("/ralph start"));
-
-        let started = execute_ralph_command(
-            RalphCommand::Start {
-                name: "Demo Loop".into(),
-                task: "Build iterative feature".into(),
-            },
-            temp.path(),
-        )
-        .unwrap_or_else(|err| panic!("start failed: {err}"));
-        assert!(started.contains("demo-loop"));
-        assert!(temp
-            .path()
-            .join(".oino/ralph/demo-loop/state.json")
-            .is_file());
-
-        let recorded = execute_ralph_command(
-            RalphCommand::Record {
-                name: "demo-loop".into(),
-                promise: RalphRecordPromise::TaskDone("TASK-1".into()),
-                note: "scaffolded".into(),
-            },
-            temp.path(),
-        )
-        .unwrap_or_else(|err| panic!("record failed: {err}"));
-        assert!(recorded.contains("iteration 1"));
-
-        let status = execute_ralph_command(
-            RalphCommand::Status {
-                name: Some("demo-loop".into()),
-            },
-            temp.path(),
-        )
-        .unwrap_or_else(|err| panic!("status failed: {err}"));
-        assert!(status.contains("demo-loop: Active iteration 1/60"));
-
-        let panel = execute_ralph_command(RalphCommand::Panel { setting: None }, temp.path())
-            .unwrap_or_else(|err| panic!("panel toggle failed: {err}"));
-        assert!(panel.contains("enabled"));
-        assert!(temp.path().join(".oino/ralph/panel.json").is_file());
-        let surface = ralph_panel_surface(temp.path())
-            .unwrap_or_else(|| panic!("enabled panel should create surface"));
-        assert_eq!(
-            surface.entry.contribution.surface,
-            UiSurfaceKind::FloatingPanel
-        );
-        assert!(surface
-            .entry
-            .contribution
-            .title
-            .contains("Ralph: demo-loop"));
-        assert!(surface.entry.contribution.title.contains("iter: 1/60"));
-        let panel = execute_ralph_command(
-            RalphCommand::Panel {
-                setting: Some(oino_tui::RalphPanelSetting::Off),
-            },
-            temp.path(),
-        )
-        .unwrap_or_else(|err| panic!("panel off failed: {err}"));
-        assert!(panel.contains("disabled"));
-        assert!(ralph_panel_surface(temp.path()).is_none());
-
-        let empty = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
-        ralph_loop::set_panel_enabled(empty.path(), true)
-            .unwrap_or_else(|err| panic!("panel on failed: {err}"));
-        assert!(ralph_panel_surface(empty.path()).is_none());
-
-        execute_ralph_command(
-            RalphCommand::Archive {
-                name: "demo-loop".into(),
-            },
-            temp.path(),
-        )
-        .unwrap_or_else(|err| panic!("archive failed: {err}"));
-        let cleaned = execute_ralph_command(RalphCommand::Clean { all: false }, temp.path())
-            .unwrap_or_else(|err| panic!("clean failed: {err}"));
-        assert!(cleaned.contains("Removed 1 archived Ralph loop item"));
-
-        let nuked = execute_ralph_command(RalphCommand::Nuke { yes: true }, temp.path())
-            .unwrap_or_else(|err| panic!("nuke failed: {err}"));
-        assert!(
-            nuked.contains("Deleted all Ralph loop data") || nuked.contains("No Ralph loop data")
-        );
-    }
-
-    #[test]
     fn prepares_optional_builtin_extension_install_sources() {
         let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
         let prepared = prepare_install_source("builtin:footer-status", temp.path(), temp.path())
@@ -9228,8 +8619,8 @@ mod tests {
             .await
             .unwrap_or_else(|| panic!("OmniRoute extension command should be known"))
             .unwrap_or_else(|err| panic!("OmniRoute extension command failed: {err}"));
-        assert!(router_guide.contains("OmniRoute guide"));
-        assert!(router_guide.contains("Managed sidecar command"));
+        assert!(router_guide.message.contains("OmniRoute guide"));
+        assert!(router_guide.message.contains("Managed sidecar command"));
 
         assert!(command_suggestions.contains("/ralph"));
         assert!(command_suggestions.contains("/mode"));
@@ -9248,8 +8639,8 @@ mod tests {
             .iter()
             .map(|active| active.effective_id.as_str().to_string())
             .collect::<BTreeSet<_>>();
-        assert!(hooks.contains("notify_agent_end"));
-        assert!(hooks.contains("notify_tool_result"));
+        assert!(hooks.contains("notify.agent_end"));
+        assert!(hooks.contains("notify.tool_execution_end"));
 
         let tools = snapshot
             .registries
@@ -9760,7 +9151,7 @@ mod tests {
                 chat_style: Some(oino_tui::ChatStyle::Minimal),
                 keymap: None,
                 theme: oino_tui::ThemeSettings::default(),
-                notify: notify::NotifySettings::default(),
+                notify: notify_types::NotifySettings::default(),
                 btw_model: None,
                 tools: BTreeMap::new(),
                 extensions: oino_extension_core::ExtensionPolicySettings::default(),
@@ -10015,7 +9406,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
         assert!(
             wasm.tools.contains_key("echo"),
             "wasm tools missing echo: {:?} diags {:?}",
@@ -10065,7 +9456,7 @@ mod tests {
             .await
             .unwrap_or_else(|| panic!("hello command not routed"))
             .unwrap_or_else(|err| panic!("hello command failed: {err}"));
-        assert!(output.contains("hello there"), "{output}");
+        assert!(output.message.contains("hello there"), "{}", output.message);
 
         // input hook uppercases the prompt before it reaches the provider
         let stream = Arc::new(CapturingStream::once(vec![
@@ -10157,7 +9548,7 @@ mod tests {
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
         assert!(
             wasm.providers.contains_key("faux"),
             "faux provider missing: {:?} diags {:?}",
@@ -10893,7 +10284,7 @@ mod tests {
                 .with_runtime_override("decl", "sk-decl")
                 .with_process_env(false),
         );
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, Some(&auth), "wasm").await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, Some(&auth), "wasm", None).await;
         assert!(
             wasm.providers.contains_key("decl"),
             "declarative wasm provider missing: {:?}",
@@ -11810,7 +11201,7 @@ pi: {expected:?}"
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
         assert!(
             wasm.extensions.contains_key(
                 &oino_extension_core::ExtensionId::new("oino.budget")
@@ -11902,7 +11293,7 @@ pi: {expected:?}"
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
 
         let stream = Arc::new(TurnCappedStream {
             requests: Arc::new(tokio::sync::Mutex::new(Vec::new())),
@@ -12037,7 +11428,7 @@ pi: {expected:?}"
             .unwrap_or_else(|err| panic!("resource paths: {err}"));
         let settings = load_tool_settings(&paths).await;
         let snapshot = load_extension_snapshot(&paths, &settings);
-        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native").await;
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
         assert!(
             wasm.tools.contains_key("grep"),
             "grep missing: {:?}",
@@ -12160,5 +11551,322 @@ pi: {expected:?}"
         .await
         .unwrap_or_else(|err| panic!("tool_search load failed: {err}"));
         assert_eq!(result.added_tool_names, vec!["grep".to_string()]);
+    }
+    /// A mutable hook contribution without `handler` is rejected by registry
+    /// validation — and must produce a visible diagnostic, not vanish.
+    #[tokio::test]
+    async fn handlerless_hook_contribution_produces_diagnostic() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        install_builtin_extension(&project, "budget", "budget");
+        // strip the handler from the mutable turn_end hook
+        let manifest_path = project.join(".oino/extensions/budget/oino.extension.json");
+        let mut manifest: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&manifest_path).unwrap_or_else(|e| panic!("read: {e}")),
+        )
+        .unwrap_or_else(|e| panic!("parse: {e}"));
+        for hook in manifest["contributes"]["hooks"]
+            .as_array_mut()
+            .unwrap_or(&mut Vec::new())
+        {
+            if hook["event"].as_str() == Some("turn_end") {
+                hook.as_object_mut()
+                    .unwrap_or(&mut serde_json::Map::new())
+                    .remove("handler");
+            }
+        }
+        fs::write(&manifest_path, manifest.to_string()).unwrap_or_else(|e| panic!("write: {e}"));
+
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        assert!(
+            snapshot.diagnostics.iter().any(|d| {
+                d.contribution_id
+                    .as_ref()
+                    .is_some_and(|id| id.as_str() == "budget.turn_end")
+            }),
+            "no diagnostic for dropped hook: {:?}",
+            snapshot
+                .diagnostics
+                .iter()
+                .map(|d| (d.contribution_id.clone(), d.message.clone()))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// `/ralph start` returns an iteration prompt and the guest's `turn_end`
+    /// hook records the promise + injects the next iteration (the old
+    /// `continue_ralph_after_prompt_if_needed` behavior, now in WASM).
+    #[tokio::test]
+    async fn wasm_ralph_loop_drives_iterations_via_turn_end() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        install_builtin_extension(&project, "ralph-loop", "ralph-loop");
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        fs::create_dir_all(project.join(".oino")).unwrap_or_else(|e| panic!("settings dir: {e}"));
+        fs::write(
+            project.join(".oino/settings.json"),
+            r#"{"extensions":{"extensions":{"oino.ralph_loop":"enabled"}}}"#,
+        )
+        .unwrap_or_else(|e| panic!("settings: {e}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+
+        // /ralph start returns the iteration prompt for the host to submit.
+        let (extension, guest) = wasm.commands.get("ralph").cloned().unwrap_or_else(|| {
+            panic!(
+                "ralph command not contributed: {:?}",
+                wasm.commands.keys().collect::<Vec<_>>()
+            )
+        });
+        let output = extension
+            .run_command(&guest, "start demo-loop fix the thing")
+            .await
+            .unwrap_or_else(|err| panic!("ralph start failed: {err}"));
+        let prompt = output["prompt"]
+            .as_str()
+            .unwrap_or_else(|| panic!("no prompt in {output}"));
+        assert!(prompt.contains("demo-loop"));
+
+        // Iteration turn: assistant emits <promise>CONTINUE</promise>.
+        let stream = Arc::new(FauxStream::turns(vec![
+            vec![
+                AssistantStreamEvent::TextDelta {
+                    delta: "did work\n<promise>CONTINUE</promise>".into(),
+                },
+                AssistantStreamEvent::Done {
+                    stop_reason: StopReason::EndTurn,
+                    provider: None,
+                },
+            ],
+            vec![AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            }],
+        ]));
+        let auth =
+            AuthStorage::new(AuthConfig::new(home.join("auth.json")).with_process_env(false));
+        let session = SessionManager::new(SessionHeader::new("t", project.clone()));
+        let harness = build_harness(
+            "faux:faux-1".into(),
+            ThinkingLevel::Off,
+            stream,
+            auth,
+            session,
+            &paths.load_catalog(),
+            false,
+            None,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("harness: {err}"));
+        wasm.set_session(harness.session_handle());
+        register_wasm_hooks(
+            &harness.hooks(),
+            Arc::new(std::sync::RwLock::new(wasm.clone())),
+        )
+        .await;
+        harness
+            .prompt(Message::user_text(prompt))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
+        // Promise recorded: state.json iteration == 1, still Active.
+        let state_text = fs::read_to_string(project.join(".oino/ralph/demo-loop/state.json"))
+            .unwrap_or_else(|e| panic!("state: {e}"));
+        let state: serde_json::Value =
+            serde_json::from_str(&state_text).unwrap_or_else(|e| panic!("json: {e}"));
+        assert_eq!(state["iteration"].as_u64(), Some(1));
+        assert_eq!(state["status"].as_str(), Some("active"));
+    }
+
+    /// `/compact` (VCC) runs `session_before_compact` on the component and the
+    /// host appends the returned compaction — same summary format as the old
+    /// native `vcc::compact_branch`.
+    #[tokio::test]
+    async fn wasm_vcc_compact_via_session_before_compact() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        install_builtin_extension(&project, "vcc", "vcc");
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        fs::create_dir_all(project.join(".oino")).unwrap_or_else(|e| panic!("settings dir: {e}"));
+        fs::write(
+            project.join(".oino/settings.json"),
+            r#"{"extensions":{"extensions":{"oino.vcc":"enabled"}}}"#,
+        )
+        .unwrap_or_else(|e| panic!("settings: {e}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None, None, "native", None).await;
+
+        let mut session = SessionManager::new(SessionHeader::new("t", project.clone()));
+        session.append_message(Message::user_text(
+            "please edit src/lib.rs and prefer clarity",
+        ));
+        session.append_message(Message::assistant_text(
+            "I'll look at it",
+            StopReason::ToolUse,
+        ));
+        session.append_message(Message::user_text("go ahead"));
+        let stream = Arc::new(FauxStream::once(vec![AssistantStreamEvent::Done {
+            stop_reason: StopReason::EndTurn,
+            provider: None,
+        }]));
+        let harness = Harness::new(HarnessConfig::new(
+            Model::new("faux", "faux-1"),
+            stream,
+            session,
+        ));
+        wasm.set_session(harness.session_handle());
+        let (message, messages) = compact_session_with_vcc(&harness, Some(&wasm))
+            .await
+            .unwrap_or_else(|err| panic!("compact failed: {err}"));
+        assert!(
+            message.contains("VCC compacted 2 session entries and kept 1 live tail entries"),
+            "{message}"
+        );
+        let summary = messages
+            .iter()
+            .find_map(|m| match m {
+                Message::CompactionSummary { summary, .. } => Some(summary.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no compaction summary"));
+        assert!(summary.contains("[Session Goal]"));
+        assert!(summary.contains("src/lib.rs"));
+    }
+
+    /// `oino.notify` POSTs to the configured ntfy server on `agent_end` and
+    /// summarizes the last assistant message via `host.complete` when the
+    /// summarizer is enabled.
+    #[tokio::test]
+    async fn wasm_notify_posts_to_ntfy_and_completes_summary() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        // Tiny ntfy stub recording the POST.
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|e| panic!("bind: {e}"));
+        let port = listener
+            .local_addr()
+            .unwrap_or_else(|e| panic!("addr: {e}"))
+            .port();
+        let received = Arc::new(std::sync::Mutex::new(String::new()));
+        {
+            let received = Arc::clone(&received);
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { continue };
+                    let mut reader =
+                        BufReader::new(stream.try_clone().unwrap_or_else(|e| panic!("clone: {e}")));
+                    let mut request = String::new();
+                    let mut content_length = 0usize;
+                    loop {
+                        let mut line = String::new();
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                            break;
+                        }
+                        request.push_str(&line);
+                        if let Some(v) = line
+                            .trim()
+                            .to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(str::to_string)
+                        {
+                            content_length = v.trim().parse().unwrap_or(0);
+                        }
+                        if line.trim().is_empty() {
+                            break;
+                        }
+                    }
+                    let mut body = vec![0u8; content_length];
+                    let _ = reader.read_exact(&mut body);
+                    request.push_str(&String::from_utf8_lossy(&body));
+                    *received.lock().unwrap_or_else(|e| e.into_inner()) = request;
+                    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+                }
+            });
+        }
+
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        install_builtin_extension(&project, "notify", "notify");
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        fs::create_dir_all(project.join(".oino")).unwrap_or_else(|e| panic!("settings dir: {e}"));
+        fs::write(
+            project.join(".oino/settings.json"),
+            format!(
+                r#"{{"extensions":{{"extensions":{{"oino.notify":"enabled"}}}},"notify":{{"enabled":true,"ntfy":{{"server":"http://127.0.0.1:{port}","topic":"oino-test","token":"tk","priority":"high","tags":["oino"]}},"summarizer":{{"enabled":true,"model":"faux:faux-1","max_chars":280}}}}}}"#
+            ),
+        )
+        .unwrap_or_else(|e| panic!("settings: {e}"));
+        let mut settings = load_tool_settings(&paths).await;
+        settings.project.notify.enabled = Some(true);
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let extras = wasm_init_config_extras(&settings);
+        let wasm =
+            build_wasm_extensions(&snapshot, &paths, None, None, "native", Some(&extras)).await;
+        // host.complete backing: faux provider returns a canned summary.
+        let session = SessionManager::new(SessionHeader::new("t", project.clone()));
+        let session = Arc::new(tokio::sync::Mutex::new(session));
+        let faux = Arc::new(FauxStream::once(vec![
+            AssistantStreamEvent::TextDelta {
+                delta: "LLM summary body".into(),
+            },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            },
+        ])) as Arc<dyn StreamProvider>;
+        wasm.set_model_service(
+            faux,
+            Arc::clone(&session),
+            Arc::new(|| "faux:faux-1".to_string()),
+        );
+        let extension = wasm
+            .extensions
+            .values()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| panic!("no extension"));
+        // message_end feeds the summarizer's source text.
+        extension
+            .handle_event(
+                "message_end",
+                serde_json::json!({"event": {"kind": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "raw run output"}]}}}),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("message_end failed: {err}"));
+        extension
+            .handle_event(
+                "agent_end",
+                serde_json::json!({"event": {"kind": "agent_end", "run_id": oino_types::OinoId::nil(), "stop_reason": "end_turn"}}),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("agent_end failed: {err}"));
+        for _ in 0..100 {
+            if !received
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let request = received.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        assert!(request.starts_with("POST /oino-test"), "{request}");
+        let lower = request.to_ascii_lowercase();
+        assert!(lower.contains("title: oino run finished"), "{request}");
+        assert!(lower.contains("priority: high"), "{request}");
+        assert!(lower.contains("tags: oino"), "{request}");
+        assert!(lower.contains("authorization: bearer tk"), "{request}");
+        assert!(request.contains("LLM summary body"), "{request}");
     }
 }

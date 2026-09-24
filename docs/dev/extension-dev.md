@@ -140,6 +140,25 @@ provider request carries a `System { tools_added }` delta).
   `false` after emitting a notice (interactive confirm is not wired yet).
 - `permissions.filesystem[].paths` may use `${project}` (project root) and
   `${home}` placeholders; the host substitutes them before building preopens.
+  Read-write paths are created if missing (e.g. `.oino/ralph`).
+- `network.hosts_from_config` lists init-config keys whose URL value's host is
+  granted at instantiation (resolved host-side; invalid/missing → warning
+  diagnostic). Use it for config-driven endpoints (e.g. notify's `server`).
+- `host.session-entries(all_branches)` returns the serialized `SessionEntry`
+  list for the active branch (`false`) or all entries (`true`); requires a
+  non-empty `session_persistence` declaration.
+- `host.complete(request)` runs a non-streaming model completion through the
+  app's provider router (`{model?, system?, messages: [{role, text}],
+  max_output_tokens?}` → `{text, usage}`); requires `host_capabilities`
+  containing `"model.complete"`. It runs on a dedicated host thread so it
+  cannot deadlock a running agent turn; usage is recorded on the session as
+  `extension:<id>`.
+
+### Prompt-injection command contract
+
+A `run_command` result object may carry `"prompt"`: the TUI submits it as a
+user turn (used by `/ralph start|continue|once`). `"append_to_context": true`
+asks the host to append the message as a `BranchSummary` entry (`/recall`).
 - `network.hosts` gates `wasi:http` outgoing requests by exact host match.
   **`raw_network` is currently not granted to anything**: raw `wasi:sockets`
   (TCP/UDP) and DNS lookups are disabled in every component regardless of the

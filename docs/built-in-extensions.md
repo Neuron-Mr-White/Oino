@@ -17,11 +17,11 @@ Then run `/reload` or restart Oino.
 | --- | --- |
 | `oino.router` | `/router` setup, dashboard, status, model refresh, restart, and password reset commands. |
 | `oino.footer_status` | Extra footer status lines for model, thinking, working directory, and context. |
-| `oino.ralph_loop` | Iterative development loops controlled from inside Oino. |
+| `oino.ralph_loop` | Iterative development loops controlled from inside Oino (WASM component; owns `.oino/ralph` state and drives iterations via `turn_end`). |
 | `oino.mode_sandbox` | `/mode <profile>` sandbox/profile controls. |
-| `oino.notify` | Notification hooks for selected lifecycle events. |
+| `oino.notify` | ntfy.sh notifications for selected lifecycle events (WASM component; optional LLM summary via `host.complete`). |
 | `oino.craft_skill` | Help creating Oino skills. |
-| `oino.vcc` | Session compaction and recall. |
+| `oino.vcc` | Session compaction and recall (WASM component; `/compact` calls `session_before_compact`, recall reads `host.session_entries`). |
 | `oino.ask_user` | Structured question tool with an Oino modal. |
 | `oino.provider_anthropic` | Declarative `anthropic` provider (Anthropic Messages via bundled WASM component). |
 | `oino.provider_openai` | Declarative `openai` provider (OpenAI Responses via bundled WASM component). |

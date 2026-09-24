@@ -354,6 +354,7 @@ async fn undeclared_host_denied() {
     let permissions = ExtensionPermissions {
         network: oino_extension_core::NetworkPermission {
             raw_network: false,
+            hosts_from_config: Vec::new(),
             hosts: vec!["example.com".into()],
         },
         ..full_permissions()
@@ -377,6 +378,7 @@ async fn declared_host_allowed() {
     let permissions = ExtensionPermissions {
         network: oino_extension_core::NetworkPermission {
             raw_network: false,
+            hosts_from_config: Vec::new(),
             hosts: vec!["127.0.0.1".into()],
         },
         ..full_permissions()
@@ -401,6 +403,7 @@ async fn raw_network_does_not_grant_http() {
     let permissions = ExtensionPermissions {
         network: oino_extension_core::NetworkPermission {
             raw_network: true,
+            hosts_from_config: Vec::new(),
             hosts: Vec::new(),
         },
         ..full_permissions()
@@ -643,6 +646,7 @@ async fn provider_sse_mode() {
     let permissions = ExtensionPermissions {
         network: oino_extension_core::NetworkPermission {
             raw_network: false,
+            hosts_from_config: Vec::new(),
             hosts: vec!["127.0.0.1".into()],
         },
         ..full_permissions()

@@ -103,9 +103,32 @@ pub trait HostUi: Send + Sync {
     fn confirm(&self, title: &str, body: &str) -> bool;
 }
 
-/// Session surface for `host.session-append`.
+/// Session surface for `host.session-append` / `host.session-entries`.
 pub trait HostSession: Send + Sync {
     fn append(&self, kind: &str, payload: &str) -> Result<(), String>;
+    /// Serialized `SessionEntry` list (active branch, or all entries when
+    /// `all_branches`).
+    fn entries(&self, all_branches: bool) -> Result<String, String> {
+        let _ = all_branches;
+        Err("session entries unavailable".into())
+    }
+}
+
+/// Non-streaming model completion for `host.complete`. Implemented by the
+/// app against its `ProviderRouter` (runs on its own runtime; the guest call
+/// stays synchronous WIT-side).
+pub trait HostModel: Send + Sync {
+    /// request/response are the JSON contract documented in `extension.wit`.
+    fn complete(&self, request: &str) -> Result<String, String>;
+}
+
+/// Never-granted `HostModel` (capability not declared or app did not wire a
+/// router).
+pub struct NoopModel;
+impl HostModel for NoopModel {
+    fn complete(&self, _request: &str) -> Result<String, String> {
+        Err("model completion unavailable".into())
+    }
 }
 
 /// `host.tool-progress` sink.
@@ -130,6 +153,9 @@ impl HostSession for NoopSession {
     fn append(&self, _kind: &str, _payload: &str) -> Result<(), String> {
         Ok(())
     }
+    fn entries(&self, _all_branches: bool) -> Result<String, String> {
+        Ok("[]".into())
+    }
 }
 
 /// Capability context built from a manifest plus injected surfaces.
@@ -141,6 +167,9 @@ pub struct HostCaps {
     pub session: Arc<dyn HostSession>,
     pub progress: ProgressSink,
     pub kv_dir: PathBuf,
+    /// `host.complete` backing (router); gated by `host_capabilities`
+    /// containing `"model.complete"`.
+    pub model: Arc<dyn HostModel>,
 }
 
 impl Default for HostCaps {
@@ -152,6 +181,7 @@ impl Default for HostCaps {
             session: Arc::new(NoopSession),
             progress: Arc::new(|_, _, _| {}),
             kv_dir: PathBuf::new(),
+            model: Arc::new(NoopModel),
         }
     }
 }
@@ -399,6 +429,28 @@ impl bindings::oino::extension::host::Host for HostState {
         self.caps.session.append(&kind, &payload)
     }
 
+    fn session_entries(&mut self, all_branches: bool) -> Result<String, String> {
+        if self.caps.permissions.session_persistence.is_empty() {
+            return Err(host_capability_error("session_persistence not declared"));
+        }
+        self.caps.session.entries(all_branches)
+    }
+
+    fn complete(&mut self, request: String) -> Result<String, String> {
+        if !self
+            .caps
+            .permissions
+            .host_capabilities
+            .iter()
+            .any(|cap| cap == "model.complete")
+        {
+            return Err(host_capability_error(
+                "host capability `model.complete` not declared",
+            ));
+        }
+        self.caps.model.complete(&request)
+    }
+
     fn notify(&mut self, level: u8, text: String) {
         self.caps.ui.notify(level, &text);
     }
@@ -483,6 +535,11 @@ fn build_wasi_ctx(caps: &HostCaps) -> WasmResult<WasiCtx> {
             }
         };
         for path in &permission.paths {
+            if matches!(perms, wasmtime_wasi::FsPerms::ReadWrite) {
+                // Read-write preopens must exist; extension-writable roots are
+                // created on demand (e.g. `.oino/ralph`).
+                let _ = std::fs::create_dir_all(path);
+            }
             builder
                 .preopened_dir(path, path, perms)
                 .map_err(|err| WasmHostError::Instantiate(format!("preopen {path}: {err}")))?;

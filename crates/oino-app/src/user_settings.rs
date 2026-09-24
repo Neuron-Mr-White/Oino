@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::notify::NotifySettings;
+use crate::notify_types::NotifySettings;
 use oino_extension_core::ExtensionPolicySettings;
 use oino_tui::{ChatStyle, CollapseMode, KeymapConfig, ThemeSettings};
 use oino_types::{CompactMethod, ThinkingLevel};

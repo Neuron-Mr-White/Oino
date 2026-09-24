@@ -80,6 +80,19 @@ pub mod host {
     pub fn kv_set(key: &str, value: &[u8]) -> Result<(), String> {
         h::kv_set(key, value)
     }
+    /// Serialized session entries for the active branch (or all entries).
+    pub fn session_entries(all_branches: bool) -> Result<Value, String> {
+        let raw = h::session_entries(all_branches)?;
+        serde_json::from_str(&raw).map_err(|err| format!("invalid entries json: {err}"))
+    }
+
+    /// Non-streaming model completion (capability `model.complete`).
+    pub fn complete(request: &Value) -> Result<Value, String> {
+        let raw = serde_json::to_string(request).map_err(|e| e.to_string())?;
+        let out = h::complete(&raw)?;
+        serde_json::from_str(&out).map_err(|err| format!("invalid complete json: {err}"))
+    }
+
     pub fn session_append(kind: &str, payload: &Value) -> Result<(), String> {
         h::session_append(kind, &serde_json::to_string(payload).unwrap_or_default())
     }
