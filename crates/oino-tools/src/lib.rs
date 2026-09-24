@@ -525,6 +525,7 @@ impl Tool for EditTool {
             is_error: false,
             terminate: false,
             details: Some(json!({"replacements": args.edits.len()})),
+            added_tool_names: Vec::new(),
         })
     }
 }

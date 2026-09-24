@@ -1660,6 +1660,7 @@ dependencies = [
  "oino-tools",
  "oino-tui",
  "oino-types",
+ "oino-wasm-host",
  "ratatui",
  "reqwest",
  "semver",

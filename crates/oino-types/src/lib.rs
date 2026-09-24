@@ -246,6 +246,36 @@ impl Message {
         }
     }
 
+    /// Concatenated text of the user message's text blocks (empty for
+    /// non-user messages and messages without text blocks).
+    #[must_use]
+    pub fn text_content(&self) -> Option<String> {
+        let content = match self {
+            Self::User { content, .. } | Self::Assistant { content, .. } => content,
+            _ => return None,
+        };
+        let text = content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// Replace the message's content with a single text block (extension
+    /// `input`/`context` hooks use this to rewrite user text).
+    pub fn replace_text(&mut self, text: &str) {
+        match self {
+            Self::User { content, .. } | Self::Assistant { content, .. } => {
+                *content = vec![ContentBlock::Text { text: text.into() }];
+            }
+            _ => {}
+        }
+    }
+
     #[must_use]
     pub fn assistant_text(text: impl Into<String>, stop_reason: StopReason) -> Self {
         Self::Assistant {

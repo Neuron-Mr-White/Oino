@@ -269,6 +269,10 @@ pub struct ToolResult {
     pub terminate: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
+    /// Tool names the execution exposed for subsequent turns (extension tools
+    /// may declare additional tools at run time).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub added_tool_names: Vec<String>,
 }
 
 impl ToolResult {
@@ -281,6 +285,7 @@ impl ToolResult {
             is_error: false,
             terminate: false,
             details: None,
+            added_tool_names: Vec::new(),
         }
     }
     #[must_use]
@@ -292,6 +297,7 @@ impl ToolResult {
             is_error: true,
             terminate: false,
             details: None,
+            added_tool_names: Vec::new(),
         }
     }
 }
@@ -688,7 +694,7 @@ async fn run_agent_loop_continue_inner(
                             terminate: result.terminate,
                             details: result.details.clone(),
                             usage: None,
-                            added_tool_names: Vec::new(),
+                            added_tool_names: result.added_tool_names.clone(),
                         };
                         config
                             .event_sink
@@ -1433,6 +1439,7 @@ impl Tool for FakeTool {
                 is_error: true,
                 terminate: true,
                 details: None,
+                added_tool_names: Vec::new(),
             });
         }
         updates

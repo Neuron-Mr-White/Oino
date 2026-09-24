@@ -17,7 +17,12 @@ use oino_agent_loop::{AbortSignal, BoxFuture, LoopResult, StreamProvider};
 use oino_extension_core::ExtensionPermissions;
 use oino_types::{AssistantStreamEvent, OinoId, StopReason};
 use serde_json::Value;
-use std::{collections::BTreeSet, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use wasmtime::{
@@ -267,7 +272,6 @@ impl Default for CallLimits {
 /// HTTP gating hooks: `send_request` allows only exact-host matches from
 /// `permissions.network.hosts` (or any host when `raw_network` is true).
 struct GatedHooks {
-    raw_network: bool,
     hosts: BTreeSet<String>,
 }
 
@@ -296,7 +300,9 @@ impl WasiHttpHooks for GatedHooks {
             .host()
             .map(str::to_ascii_lowercase)
             .unwrap_or_default();
-        if !self.raw_network && !self.hosts.contains(&host) {
+        // `raw_network` never grants wasi:http; only an exact declared host
+        // match does. Raw sockets are denied entirely in `build_wasi_ctx`.
+        if !self.hosts.contains(&host) {
             return Box::new(async move { Err(wasmtime_wasi_http::Error::HttpRequestDenied) });
         }
         Box::new(async move {
@@ -411,8 +417,30 @@ impl bindings::oino::extension::host::Host for HostState {
         if !permission.allowed || !permission.commands.iter().any(|allowed| allowed == &cmd) {
             return Err(host_capability_error(&format!("exec `{cmd}` not allowed")));
         }
+        if let Some(cwd) = &cwd {
+            // cwd must resolve inside a declared preopen (paths are absolute).
+            let cwd_path = std::path::Path::new(cwd);
+            let allowed = self.caps.permissions.filesystem.iter().any(|perm| {
+                perm.paths.iter().any(|base| {
+                    let base = std::path::Path::new(base);
+                    cwd_path == base || cwd_path.starts_with(base)
+                })
+            });
+            if !allowed {
+                return Err(host_capability_error(&format!(
+                    "exec cwd `{cwd}` outside declared filesystem permissions"
+                )));
+            }
+        }
         let mut command = std::process::Command::new(&cmd);
         command.args(&args);
+        // Never inherit the host environment: it may hold provider API keys.
+        command.env_clear();
+        for name in ["PATH", "HOME"] {
+            if let Ok(value) = std::env::var(name) {
+                command.env(name, value);
+            }
+        }
         if let Some(cwd) = cwd {
             command.current_dir(cwd);
         }
@@ -440,6 +468,12 @@ impl HostState {
 fn build_wasi_ctx(caps: &HostCaps) -> WasmResult<WasiCtx> {
     let mut builder = WasiCtxBuilder::new();
     builder.inherit_stderr();
+    // Raw sockets and DNS are reserved for a later version; `raw_network` in
+    // the manifest is currently not granted to anything.
+    builder
+        .allow_tcp(false)
+        .allow_udp(false)
+        .allow_ip_name_lookup(false);
     for permission in &caps.permissions.filesystem {
         use oino_extension_core::FilesystemAccess;
         let perms = match permission.access {
@@ -463,7 +497,6 @@ fn new_store(engine: &Engine, caps: HostCaps, limits: &CallLimits) -> Store<Host
         wasi_ctx: build_wasi_ctx(&caps).unwrap_or_else(|_| WasiCtx::builder().build()),
         http_ctx: WasiHttpCtx::new(),
         hooks: GatedHooks {
-            raw_network: caps.permissions.network.raw_network,
             hosts: caps
                 .permissions
                 .network
@@ -843,6 +876,19 @@ pub struct GuestToolOutput {
 }
 
 impl GuestToolOutput {
+    /// Map a guest tool output to the agent-loop [`ToolResult`].
+    pub fn into_tool_result(self, call: &oino_agent_loop::ToolCall) -> oino_agent_loop::ToolResult {
+        oino_agent_loop::ToolResult {
+            call_id: call.id,
+            tool_name: call.name.clone(),
+            content: self.content,
+            is_error: self.is_error,
+            terminate: self.terminate,
+            details: self.details,
+            added_tool_names: self.added_tool_names,
+        }
+    }
+
     fn from_wit(output: bindings::exports::oino::extension::guest::ToolOutput) -> Self {
         let content = output
             .content
@@ -942,6 +988,33 @@ impl WasmStreamProvider {
             ));
         }
         Ok(Self { extension })
+    }
+
+    /// `provider.list-models()` → JSON (extension-defined schema).
+    pub async fn list_models(&self) -> WasmResult<Value> {
+        let mut slot = self.extension.slot.lock().await;
+        self.extension.ensure(&mut slot).await?;
+        let Some(ExtensionKind::Provider(ProviderInstance { instance, store })) =
+            slot.instance.as_mut()
+        else {
+            return Err(WasmHostError::Instantiate(
+                "component is not a provider".into(),
+            ));
+        };
+        store.set_epoch_deadline(self.extension.deadline(self.extension.limits.hook));
+        match instance
+            .oino_extension_provider()
+            .call_list_models(&mut *store)
+            .await
+        {
+            Ok(Ok(json)) => serde_json::from_str(&json)
+                .map_err(|err| WasmHostError::Serialization(err.to_string())),
+            Ok(Err(err)) => Err(WasmHostError::Guest(err)),
+            Err(err) => {
+                self.extension.failed(&mut slot).await;
+                Err(classify_error(err))
+            }
+        }
     }
 }
 
@@ -1109,5 +1182,109 @@ fn stop_reason_from_str(value: Option<&str>) -> StopReason {
         Some("error") => StopReason::Error,
         Some("aborted") => StopReason::Aborted,
         _ => StopReason::Unknown,
+    }
+}
+
+/// Routes per-tool-call progress from guests to the right
+/// `ToolUpdateCallback`, keyed by call id.
+#[derive(Clone, Default)]
+pub struct ProgressRouter {
+    callbacks: Arc<std::sync::Mutex<BTreeMap<String, oino_agent_loop::ToolUpdateCallback>>>,
+}
+
+impl ProgressRouter {
+    /// A `ProgressSink` that forwards updates to the callback registered for
+    /// the given call id. Unregistered ids are dropped.
+    pub fn sink(&self) -> ProgressSink {
+        let callbacks = Arc::clone(&self.callbacks);
+        Arc::new(
+            move |call_id: &str, message: &str, details: Option<String>| {
+                let callback = callbacks
+                    .lock()
+                    .ok()
+                    .and_then(|map| map.get(call_id).cloned());
+                if let Some(callback) = callback {
+                    let details = details.and_then(|json| serde_json::from_str(&json).ok());
+                    let update = oino_agent_loop::ToolUpdate {
+                        message: message.to_string(),
+                        details,
+                    };
+                    tokio::spawn(async move {
+                        let _ = callback.update(update).await;
+                    });
+                }
+            },
+        )
+    }
+
+    pub fn register(&self, call_id: uuid::Uuid, callback: oino_agent_loop::ToolUpdateCallback) {
+        if let Ok(mut map) = self.callbacks.lock() {
+            map.insert(call_id.to_string(), callback);
+        }
+    }
+
+    pub fn unregister(&self, call_id: uuid::Uuid) {
+        if let Ok(mut map) = self.callbacks.lock() {
+            map.remove(&call_id.to_string());
+        }
+    }
+}
+
+/// An agent-loop `Tool` backed by a wasm extension's `run_tool` export.
+pub struct WasmTool {
+    extension: Arc<WasmExtension>,
+    progress: ProgressRouter,
+    /// Name passed to the guest's `run_tool` (the registration name).
+    guest_name: String,
+    definition: oino_agent_loop::ToolDefinition,
+    execution_mode: oino_agent_loop::ToolExecutionMode,
+}
+
+impl WasmTool {
+    #[must_use]
+    pub fn new(
+        extension: Arc<WasmExtension>,
+        progress: ProgressRouter,
+        guest_name: impl Into<String>,
+        definition: oino_agent_loop::ToolDefinition,
+        execution_mode: oino_agent_loop::ToolExecutionMode,
+    ) -> Self {
+        Self {
+            extension,
+            progress,
+            guest_name: guest_name.into(),
+            definition,
+            execution_mode,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl oino_agent_loop::Tool for WasmTool {
+    fn definition(&self) -> oino_agent_loop::ToolDefinition {
+        self.definition.clone()
+    }
+    fn execution_mode(&self) -> oino_agent_loop::ToolExecutionMode {
+        self.execution_mode
+    }
+    async fn execute(
+        &self,
+        call: oino_agent_loop::ToolCall,
+        updates: oino_agent_loop::ToolUpdateCallback,
+        signal: AbortSignal,
+    ) -> oino_agent_loop::LoopResult<oino_agent_loop::ToolResult> {
+        if signal.is_aborted() {
+            return Ok(oino_agent_loop::ToolResult::error(&call, "aborted"));
+        }
+        self.progress.register(call.id, updates);
+        let output = self
+            .extension
+            .run_tool(&self.guest_name, call.id, call.arguments.clone())
+            .await;
+        self.progress.unregister(call.id);
+        match output {
+            Ok(output) => Ok(output.into_tool_result(&call)),
+            Err(err) => Err(oino_agent_loop::LoopError::Tool(err.to_string())),
+        }
     }
 }

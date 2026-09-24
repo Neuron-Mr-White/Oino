@@ -13,14 +13,22 @@ use std::sync::Arc;
 pub(crate) struct ProviderRouter {
     auth: AuthStorage,
     extension_providers: Vec<ProviderContribution>,
+    /// WASM component providers, checked before OpenAI-compatible extension
+    /// providers.
+    wasm_providers: std::collections::BTreeMap<String, Arc<dyn StreamProvider>>,
 }
 
 impl ProviderRouter {
     #[must_use]
-    pub(crate) fn new(auth: AuthStorage, extension_providers: Vec<ProviderContribution>) -> Self {
+    pub(crate) fn new(
+        auth: AuthStorage,
+        extension_providers: Vec<ProviderContribution>,
+        wasm_providers: std::collections::BTreeMap<String, Arc<dyn StreamProvider>>,
+    ) -> Self {
         Self {
             auth,
             extension_providers,
+            wasm_providers,
         }
     }
 
@@ -28,6 +36,9 @@ impl ProviderRouter {
         &self,
         model: &Model,
     ) -> Result<Arc<dyn StreamProvider>, LoopError> {
+        if let Some(provider) = self.wasm_providers.get(&model.provider) {
+            return Ok(Arc::clone(provider));
+        }
         if let Some(config) =
             extension_runtime_config_for_provider_id(&model.provider, &self.extension_providers)?
         {
@@ -69,8 +80,13 @@ pub(crate) fn build_runtime_provider(
     auth: AuthStorage,
     _openrouter_config: OpenRouterConfig,
     extension_providers: Vec<ProviderContribution>,
+    wasm_providers: std::collections::BTreeMap<String, Arc<dyn StreamProvider>>,
 ) -> Arc<dyn StreamProvider> {
-    Arc::new(ProviderRouter::new(auth, extension_providers)) as Arc<dyn StreamProvider>
+    Arc::new(ProviderRouter::new(
+        auth,
+        extension_providers,
+        wasm_providers,
+    )) as Arc<dyn StreamProvider>
 }
 
 #[must_use]

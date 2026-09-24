@@ -94,3 +94,39 @@ other ABIs are rejected as `UnsupportedWasmAbi` and the extension is skipped
 with a diagnostic. Host-side limits: 256 MiB memory per store, epoch deadlines
 (hooks 2 s, commands 30 s, tools 10 min, provider `next` 120 s), traps mark an
 extension unhealthy after three failed re-instantiations.
+
+### `handle_event` result contract
+
+`guest.handle_event(kind, payload)` returns a JSON value:
+
+- `null` → no-op.
+- `input`: request `{"text": <user text>}` → `{"payload": <replacement text>}`.
+- `context`: request `{"messages": [Message]}` → `{"payload": [Message]}`.
+- `tool_call`: request `{"call": ToolCall}` → `{"payload": ToolCall}` to
+  rewrite, or `{"block": {"reason": str, "terminate": bool}}` to block.
+- `tool_result`: request `{"result": ToolResult}` → `{"result": ToolResult}`.
+- `before_agent_start` → `{"section_edits": [PromptSection]}`.
+- `turn_end`: request `{"message", "tool_results"}` →
+  `{"entries": [Message], "continue_run": bool}`.
+- observe-only kinds (`agent_start`, `agent_end`, `agent_settled`,
+  `message_start`, `message_end`, `turn_start`, `tool_execution_start`,
+  `tool_execution_end`) receive `{"event": <AgentEvent JSON>}`; results are
+  ignored. Hook errors/timeouts mark the extension unhealthy and fall back to
+  no-op.
+
+### Host capability policy
+
+- `host.secret(name)` resolves only names declared in `permissions.secrets`,
+  from `~/.oino/extensions/<id>/config.json` then the environment.
+- `host.kv-*` persists under `~/.oino/extension-data/<id>/kv/` and requires a
+  non-empty `session_persistence` declaration.
+- `host.exec` requires `shell_process.allowed` and an exact program match in
+  `shell_process.commands`; the child environment is cleared and only carries
+  `PATH` and `HOME`; an optional `cwd` must lie inside a declared filesystem
+  preopen.
+- `host.notify` is surfaced in the TUI; `host.confirm` currently returns
+  `false` after emitting a notice (interactive confirm is not wired yet).
+- `network.hosts` gates `wasi:http` outgoing requests by exact host match.
+  **`raw_network` is currently not granted to anything**: raw `wasi:sockets`
+  (TCP/UDP) and DNS lookups are disabled in every component regardless of the
+  manifest flag.

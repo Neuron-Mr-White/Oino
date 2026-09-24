@@ -41,7 +41,7 @@ impl Extension for Fixture {
     fn handle_event(kind: &str, payload: Value) -> Result<Value, String> {
         if kind == "input" {
             let text = payload["text"].as_str().unwrap_or_default();
-            Ok(json!({ "text": text.to_uppercase() }))
+            Ok(json!({ "payload": text.to_uppercase() }))
         } else {
             Ok(Value::Null)
         }
@@ -81,7 +81,10 @@ impl Extension for Fixture {
                     .map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
                 Ok(json!({ "value": value }))
             }
-            "spin" => loop {},
+                        "spin" => {
+                #[allow(clippy::empty_loop)]
+                loop {}
+            }
             "hog" => {
                 let mut chunks: Vec<Vec<u8>> = Vec::new();
                 loop {

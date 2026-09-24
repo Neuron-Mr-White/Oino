@@ -51,6 +51,7 @@ mod updater;
 mod usage;
 mod user_settings;
 mod vcc;
+mod wasm_extensions;
 
 use ask_user::{AskUserRequester, AskUserTool, ASK_USER_TOOL_NAME};
 use async_trait::async_trait;
@@ -152,6 +153,7 @@ use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use usage::{account_usage_progress_placeholder, UsageReport};
 use user_settings::UserSettings;
+use wasm_extensions::{build_wasm_extensions, register_wasm_hooks, WasmExtensions};
 
 const DEFAULT_MODEL: &str = "router:kr/claude-sonnet-4.5";
 #[cfg(test)]
@@ -546,10 +548,12 @@ async fn main() -> Result<(), AppError> {
     };
     let tool_settings = load_tool_settings(&resource_paths).await;
     let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+    let wasm = build_wasm_extensions(&extension_snapshot, &resource_paths, None).await;
     let provider = build_runtime_provider(
         auth.clone(),
         provider_config.clone(),
         extension_runtime_providers(&extension_snapshot),
+        wasm.provider_map(),
     );
     let harness = build_harness(
         config.model.clone(),
@@ -560,6 +564,12 @@ async fn main() -> Result<(), AppError> {
         &resource_catalog,
     )
     .await?;
+    wasm.set_session(harness.session_handle());
+    register_wasm_hooks(
+        &harness.hooks(),
+        Arc::new(std::sync::RwLock::new(wasm.clone())),
+    )
+    .await;
     apply_tool_settings_to_harness(
         &harness,
         &tool_settings,
@@ -567,6 +577,7 @@ async fn main() -> Result<(), AppError> {
         &cwd,
         AgentMode::Work,
         None,
+        Some(&wasm),
     )
     .await;
 
@@ -578,7 +589,8 @@ async fn main() -> Result<(), AppError> {
             config,
             session_path,
             resource_catalog,
-            extension_runtime_provider_ids_from_snapshot(&extension_snapshot),
+            extension_runtime_provider_ids_from_snapshot(&extension_snapshot, Some(&wasm)),
+            Some(&wasm),
         )
         .await;
     }
@@ -2261,15 +2273,20 @@ const fn extension_theme_source(scope: SourceScope) -> ThemeSource {
 
 fn extension_runtime_provider_ids_from_snapshot(
     snapshot: &ExtensionManagerSnapshot,
+    wasm: Option<&WasmExtensions>,
 ) -> BTreeSet<String> {
-    snapshot
+    let mut ids: BTreeSet<String> = snapshot
         .registries
         .providers
         .active
         .iter()
         .filter(|active| active.entry.contribution.runtime.is_some())
         .map(|active| active.entry.contribution.provider_id.clone())
-        .collect()
+        .collect();
+    if let Some(wasm) = wasm {
+        ids.extend(wasm.provider_ids());
+    }
+    ids
 }
 
 fn validate_model_identifier_with_extensions(
@@ -2290,8 +2307,11 @@ fn validate_model_identifier_with_extensions(
     ))
 }
 
-fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOption> {
-    snapshot
+fn extension_model_options(
+    snapshot: &ExtensionManagerSnapshot,
+    wasm: Option<&WasmExtensions>,
+) -> Vec<ModelOption> {
+    let mut options: Vec<ModelOption> = snapshot
         .registries
         .providers
         .active
@@ -2326,7 +2346,24 @@ fn extension_model_options(snapshot: &ExtensionManagerSnapshot) -> Vec<ModelOpti
                     })
                 })
         })
-        .collect()
+        .collect();
+    if let Some(wasm) = wasm {
+        let known: BTreeSet<String> = options.iter().map(|option| option.id.clone()).collect();
+        for (provider_id, models) in &wasm.provider_models {
+            for model_id in models {
+                let id = format!("{provider_id}:{model_id}");
+                if known.contains(&id) || Model::from_identifier(&id).is_none() {
+                    continue;
+                }
+                options.push(
+                    ModelOption::new(id)
+                        .with_display_name(format!("{provider_id} {model_id}"))
+                        .with_provider_label(format!("{provider_id} extension")),
+                );
+            }
+        }
+    }
+    options
 }
 
 fn merge_extension_models(
@@ -2584,8 +2621,11 @@ fn synthetic_ui_surface(
     }
 }
 
-fn extension_tool_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, Arc<dyn Tool>> {
-    let tools = BTreeMap::new();
+fn extension_tool_map(
+    snapshot: &ExtensionManagerSnapshot,
+    wasm: Option<&WasmExtensions>,
+) -> BTreeMap<String, Arc<dyn Tool>> {
+    let mut tools = BTreeMap::new();
     for active in &snapshot.registries.tools.active {
         if active.entry.metadata.source.scope == SourceScope::BuiltIn
             || active
@@ -2599,9 +2639,36 @@ fn extension_tool_map(snapshot: &ExtensionManagerSnapshot) -> BTreeMap<String, A
         {
             continue;
         }
-        // TODO(P2b): wire the real Wasmtime host here; the fixture JSON-v1
-        // runtime was removed, so non-built-in extension tools contribute
-        // nothing for now.
+        // Non-built-in tools run through the wasm host; the contribution's
+        // effective id is the exposed tool name, the manifest `handler` (or
+        // contribution id) is the guest `run_tool` name.
+        let contribution = &active.entry.contribution;
+        let Some((extension, guest_name)) = wasm
+            .and_then(|wasm| wasm.tools.get(&active.effective_id.to_string()))
+            .cloned()
+        else {
+            continue;
+        };
+        let definition = oino_agent_loop::ToolDefinition {
+            name: active.effective_id.to_string(),
+            description: contribution.description.clone(),
+            input_schema: contribution.input_schema.clone(),
+        };
+        tools.insert(
+            active.effective_id.to_string(),
+            Arc::new(oino_wasm_host::WasmTool::new(
+                extension,
+                wasm.map(|wasm| wasm.progress.clone()).unwrap_or_default(),
+                guest_name,
+                definition,
+                match contribution.execution_mode {
+                    oino_extension_core::ToolExecutionMode::Sequential => {
+                        oino_agent_loop::ToolExecutionMode::Sequential
+                    }
+                    _ => oino_agent_loop::ToolExecutionMode::Parallel,
+                },
+            )) as Arc<dyn Tool>,
+        );
     }
     tools
 }
@@ -2670,6 +2737,7 @@ async fn execute_extension_command(
     input: &str,
     snapshot: &ExtensionManagerSnapshot,
     auth: Option<&AuthStorage>,
+    wasm: Option<&WasmExtensions>,
 ) -> Option<Result<String, AppError>> {
     let trimmed = input.trim();
     let command_name = trimmed
@@ -2710,11 +2778,42 @@ async fn execute_extension_command(
         }
         return Some(execute_router_command_input(trimmed).await);
     }
-    // TODO(P2b): route extension commands through the Wasmtime host; the
-    // fixture JSON-v1 runtime was removed, so non-built-in extension commands
-    // are skipped for now.
-    let _ = (active, contribution, trimmed);
-    None
+    // WASM extension commands route through the component host.
+    let (extension, guest_name) = wasm
+        .and_then(|wasm| wasm.commands.get(&contribution_id.to_string()))?
+        .clone();
+    let args = trimmed[command_name.len() + 1..].trim().to_string();
+    Some(
+        extension
+            .run_command(&guest_name, &args)
+            .await
+            .map(|result| match &result {
+                serde_json::Value::String(text) => text.clone(),
+                serde_json::Value::Object(map) if map.contains_key("message") => {
+                    map["message"].as_str().unwrap_or_default().to_string()
+                }
+                other => serde_json::to_string_pretty(other)
+                    .unwrap_or_else(|err| panic!("command result serialization failed: {err}")),
+            })
+            .map_err(|err| AppError::InvalidArguments(err.to_string())),
+    )
+}
+
+/// Rebuild wasm extension instances for a fresh snapshot, attach the harness
+/// session, and swap the holder the hook handlers dispatch through.
+async fn rebuild_wasm(
+    snapshot: &ExtensionManagerSnapshot,
+    paths: &ResourcePaths,
+    harness: &Harness,
+    holder: &wasm_extensions::WasmHolder,
+    ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
+) -> Arc<WasmExtensions> {
+    let wasm = build_wasm_extensions(snapshot, paths, ui_tx).await;
+    wasm.set_session(harness.session_handle());
+    if let Ok(mut guard) = holder.write() {
+        *guard = wasm.clone();
+    }
+    wasm
 }
 
 async fn apply_tool_settings_to_harness(
@@ -2724,6 +2823,7 @@ async fn apply_tool_settings_to_harness(
     cwd: &Path,
     mode: AgentMode,
     ask_user_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
+    wasm: Option<&WasmExtensions>,
 ) {
     let mut available = oino_tools::default_tools(harness.env(), cwd.to_path_buf());
     available.insert(
@@ -2744,7 +2844,7 @@ async fn apply_tool_settings_to_harness(
             Arc::new(AskUserTool::new(requester)) as Arc<dyn Tool>,
         );
     }
-    available.extend(extension_tool_map(&snapshot));
+    available.extend(extension_tool_map(&snapshot, wasm));
     let mode_profile = mode_sandbox_enabled_in_snapshot(&snapshot)
         .then(|| load_mode_sandbox_profile(paths, &mode));
     let active_tool_names = match oino_extension_builtins::tool_registry_from_tools(&available) {
@@ -3009,6 +3109,7 @@ async fn run_tui(
         &cwd,
         AgentMode::Work,
         None,
+        None,
     )
     .await;
     let mut state = TuiState::with_settings(initial_model.clone(), initial_thinking_level);
@@ -3016,13 +3117,15 @@ async fn run_tui(
     state.set_working_directory(path_to_string(&cwd));
     state.set_git_branch(current_git_branch(&cwd));
     let agent_mode = Arc::new(Mutex::new(state.agent_mode.clone()));
-    let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+    let mut extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
     if mode_sandbox_enabled_in_snapshot(&extension_snapshot) {
         let _ = ensure_mode_sandbox_profiles(&resource_paths);
     }
-    let mut extension_models = extension_model_options(&extension_snapshot);
+    let mut wasm = build_wasm_extensions(&extension_snapshot, &resource_paths, None).await;
+    let wasm_holder: wasm_extensions::WasmHolder = Arc::new(std::sync::RwLock::new(wasm.clone()));
+    let mut extension_models = extension_model_options(&extension_snapshot, Some(&wasm));
     let mut extension_runtime_provider_ids =
-        extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+        extension_runtime_provider_ids_from_snapshot(&extension_snapshot, Some(&wasm));
     state.set_session_title(harness.session_title().await);
     state.set_tool_settings(tool_settings_items(&tool_settings));
     state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
@@ -3037,6 +3140,9 @@ async fn run_tui(
             user_settings.compact.model.clone(),
             user_settings.compact.prompt.clone(),
         );
+    }
+    if let Ok(diags) = wasm.diagnostics.lock() {
+        extension_snapshot.diagnostics.extend(diags.iter().cloned());
     }
     apply_extension_snapshot_to_tui_state(
         &mut state,
@@ -3079,6 +3185,15 @@ async fn run_tui(
     let mut applied_thinking_level = initial_thinking_level;
     let harness = Arc::new(harness);
     let (tx, mut rx) = mpsc::unbounded_channel();
+    wasm = rebuild_wasm(
+        &extension_snapshot,
+        &resource_paths,
+        &harness,
+        &wasm_holder,
+        Some(tx.clone()),
+    )
+    .await;
+    register_wasm_hooks(&harness.hooks(), wasm_holder.clone()).await;
     apply_tool_settings_to_harness(
         &harness,
         &tool_settings,
@@ -3086,6 +3201,7 @@ async fn run_tui(
         &cwd,
         state.agent_mode.clone(),
         Some(tx.clone()),
+        Some(&wasm),
     )
     .await;
     register_tui_stream_hooks(&harness, tx.clone()).await;
@@ -3095,6 +3211,7 @@ async fn run_tui(
         auth.clone(),
         provider_config.clone(),
         extension_runtime_providers(&extension_snapshot),
+        wasm.provider_map(),
     );
     register_notify_hooks(&harness, resource_paths.clone(), notify_stream).await;
     spawn_model_catalog_task(
@@ -3310,6 +3427,15 @@ async fn run_tui(
             } => {
                 set_tool_enabled(&mut tool_settings, scope, name, enabled);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                wasm = rebuild_wasm(
+                    &extension_snapshot,
+                    &resource_paths,
+                    &harness,
+                    &wasm_holder,
+                    Some(tx.clone()),
+                )
+                .await;
                 apply_tool_settings_to_harness(
                     &harness,
                     &tool_settings,
@@ -3317,12 +3443,12 @@ async fn run_tui(
                     &cwd,
                     state.agent_mode.clone(),
                     Some(tx.clone()),
+                    Some(&wasm),
                 )
                 .await;
-                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
-                extension_models = extension_model_options(&extension_snapshot);
+                extension_models = extension_model_options(&extension_snapshot, Some(&wasm));
                 extension_runtime_provider_ids =
-                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot, Some(&wasm));
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -3496,6 +3622,7 @@ async fn run_tui(
                             auth.clone(),
                             provider_config.clone(),
                             extension_runtime_providers(&extension_snapshot),
+                            wasm.provider_map(),
                         );
                         match compact_session_with_llm(
                             &harness,
@@ -3594,6 +3721,7 @@ async fn run_tui(
                             auth.clone(),
                             provider_config.clone(),
                             extension_runtime_providers(&extension_snapshot),
+                            wasm.provider_map(),
                         );
                         match compact_session_with_llm(
                             &harness,
@@ -3871,7 +3999,7 @@ async fn run_tui(
             }
             TuiAction::RunExtensionCommand { input } => {
                 let snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
-                match execute_extension_command(&input, &snapshot, Some(&auth)).await {
+                match execute_extension_command(&input, &snapshot, Some(&auth), Some(&wasm)).await {
                     Some(Ok(message)) => {
                         let refresh_models = matches!(
                             input.split_whitespace().collect::<Vec<_>>().as_slice(),
@@ -3925,6 +4053,7 @@ async fn run_tui(
                         &cwd,
                         mode,
                         Some(tx.clone()),
+                        Some(&wasm),
                     )
                     .await;
                 } else {
@@ -3943,6 +4072,15 @@ async fn run_tui(
             } => {
                 set_extension_enabled(&mut tool_settings, target, id, scope, enabled);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                wasm = rebuild_wasm(
+                    &extension_snapshot,
+                    &resource_paths,
+                    &harness,
+                    &wasm_holder,
+                    Some(tx.clone()),
+                )
+                .await;
                 apply_tool_settings_to_harness(
                     &harness,
                     &tool_settings,
@@ -3950,12 +4088,12 @@ async fn run_tui(
                     &cwd,
                     state.agent_mode.clone(),
                     Some(tx.clone()),
+                    Some(&wasm),
                 )
                 .await;
-                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
-                extension_models = extension_model_options(&extension_snapshot);
+                extension_models = extension_model_options(&extension_snapshot, Some(&wasm));
                 extension_runtime_provider_ids =
-                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot, Some(&wasm));
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -3972,6 +4110,15 @@ async fn run_tui(
             } => {
                 set_extension_override(&mut tool_settings, contribution_id, entry_key, scope);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                wasm = rebuild_wasm(
+                    &extension_snapshot,
+                    &resource_paths,
+                    &harness,
+                    &wasm_holder,
+                    Some(tx.clone()),
+                )
+                .await;
                 apply_tool_settings_to_harness(
                     &harness,
                     &tool_settings,
@@ -3979,12 +4126,12 @@ async fn run_tui(
                     &cwd,
                     state.agent_mode.clone(),
                     Some(tx.clone()),
+                    Some(&wasm),
                 )
                 .await;
-                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
-                extension_models = extension_model_options(&extension_snapshot);
+                extension_models = extension_model_options(&extension_snapshot, Some(&wasm));
                 extension_runtime_provider_ids =
-                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot, Some(&wasm));
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -4000,6 +4147,15 @@ async fn run_tui(
             } => {
                 clear_extension_override(&mut tool_settings, contribution_id, scope);
                 save_tool_settings(&tool_settings, &resource_paths, scope, &mut state).await;
+                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
+                wasm = rebuild_wasm(
+                    &extension_snapshot,
+                    &resource_paths,
+                    &harness,
+                    &wasm_holder,
+                    Some(tx.clone()),
+                )
+                .await;
                 apply_tool_settings_to_harness(
                     &harness,
                     &tool_settings,
@@ -4007,12 +4163,12 @@ async fn run_tui(
                     &cwd,
                     state.agent_mode.clone(),
                     Some(tx.clone()),
+                    Some(&wasm),
                 )
                 .await;
-                let extension_snapshot = load_extension_snapshot(&resource_paths, &tool_settings);
-                extension_models = extension_model_options(&extension_snapshot);
+                extension_models = extension_model_options(&extension_snapshot, Some(&wasm));
                 extension_runtime_provider_ids =
-                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+                    extension_runtime_provider_ids_from_snapshot(&extension_snapshot, Some(&wasm));
                 state.set_tool_settings(tool_settings_items(&tool_settings));
                 apply_extension_snapshot_to_tui_state(
                     &mut state,
@@ -4070,6 +4226,16 @@ async fn run_tui(
                                 state.set_error(format!("Mode profile setup failed: {err}"));
                             }
                         }
+                        let extension_snapshot =
+                            load_extension_snapshot(&resource_paths, &tool_settings);
+                        wasm = rebuild_wasm(
+                            &extension_snapshot,
+                            &resource_paths,
+                            &harness,
+                            &wasm_holder,
+                            Some(tx.clone()),
+                        )
+                        .await;
                         apply_tool_settings_to_harness(
                             &harness,
                             &tool_settings,
@@ -4077,13 +4243,16 @@ async fn run_tui(
                             &cwd,
                             state.agent_mode.clone(),
                             Some(tx.clone()),
+                            Some(&wasm),
                         )
                         .await;
-                        let extension_snapshot =
-                            load_extension_snapshot(&resource_paths, &tool_settings);
-                        extension_models = extension_model_options(&extension_snapshot);
+                        extension_models =
+                            extension_model_options(&extension_snapshot, Some(&wasm));
                         extension_runtime_provider_ids =
-                            extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+                            extension_runtime_provider_ids_from_snapshot(
+                                &extension_snapshot,
+                                Some(&wasm),
+                            );
                         state.set_tool_settings(tool_settings_items(&tool_settings));
                         apply_extension_snapshot_to_tui_state(
                             &mut state,
@@ -4118,6 +4287,8 @@ async fn run_tui(
                     &mut extension_models,
                     &mut extension_runtime_provider_ids,
                     Some(tx.clone()),
+                    &mut wasm,
+                    &wasm_holder,
                 )
                 .await;
                 state.append_command_output("/extensions update", message.clone());
@@ -4137,6 +4308,8 @@ async fn run_tui(
                             &mut extension_models,
                             &mut extension_runtime_provider_ids,
                             Some(tx.clone()),
+                            &mut wasm,
+                            &wasm_holder,
                         )
                         .await;
                         state.append_command_output("/update", message.clone());
@@ -4171,6 +4344,16 @@ async fn run_tui(
                                     &mut state,
                                 )
                                 .await;
+                                let extension_snapshot =
+                                    load_extension_snapshot(&resource_paths, &tool_settings);
+                                wasm = rebuild_wasm(
+                                    &extension_snapshot,
+                                    &resource_paths,
+                                    &harness,
+                                    &wasm_holder,
+                                    Some(tx.clone()),
+                                )
+                                .await;
                                 apply_tool_settings_to_harness(
                                     &harness,
                                     &tool_settings,
@@ -4178,14 +4361,15 @@ async fn run_tui(
                                     &cwd,
                                     state.agent_mode.clone(),
                                     Some(tx.clone()),
+                                    Some(&wasm),
                                 )
                                 .await;
-                                let extension_snapshot =
-                                    load_extension_snapshot(&resource_paths, &tool_settings);
-                                extension_models = extension_model_options(&extension_snapshot);
+                                extension_models =
+                                    extension_model_options(&extension_snapshot, Some(&wasm));
                                 extension_runtime_provider_ids =
                                     extension_runtime_provider_ids_from_snapshot(
                                         &extension_snapshot,
+                                        Some(&wasm),
                                     );
                                 state.set_tool_settings(tool_settings_items(&tool_settings));
                                 apply_extension_snapshot_to_tui_state(
@@ -4310,6 +4494,8 @@ async fn run_tui(
                     &mut extension_models,
                     &mut extension_runtime_provider_ids,
                     Some(tx.clone()),
+                    &mut wasm,
+                    &wasm_holder,
                 )
                 .await;
                 apply_cached_model_catalog_to_tui_state(&mut state, &extension_models).await;
@@ -4529,8 +4715,19 @@ async fn reload_tui_everything(
     extension_models: &mut Vec<ModelOption>,
     extension_runtime_provider_ids: &mut BTreeSet<String>,
     ask_user_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
+    wasm: &mut Arc<WasmExtensions>,
+    wasm_holder: &wasm_extensions::WasmHolder,
 ) {
     *tool_settings = load_tool_settings(resource_paths).await;
+    let mut extension_snapshot = load_extension_snapshot(resource_paths, tool_settings);
+    *wasm = rebuild_wasm(
+        &extension_snapshot,
+        resource_paths,
+        harness,
+        wasm_holder,
+        ask_user_tx.clone(),
+    )
+    .await;
     apply_tool_settings_to_harness(
         harness,
         tool_settings,
@@ -4538,6 +4735,7 @@ async fn reload_tui_everything(
         cwd,
         state.agent_mode.clone(),
         ask_user_tx,
+        Some(wasm),
     )
     .await;
 
@@ -4545,10 +4743,14 @@ async fn reload_tui_everything(
         Ok(catalog) => {
             let (base, sections) = system_prompt_parts(cwd, &catalog);
             harness.sync_system(base, sections).await;
-            let extension_snapshot = load_extension_snapshot(resource_paths, tool_settings);
-            *extension_models = extension_model_options(&extension_snapshot);
-            *extension_runtime_provider_ids =
-                extension_runtime_provider_ids_from_snapshot(&extension_snapshot);
+            *extension_models = extension_model_options(&extension_snapshot, Some(wasm.as_ref()));
+            *extension_runtime_provider_ids = extension_runtime_provider_ids_from_snapshot(
+                &extension_snapshot,
+                Some(wasm.as_ref()),
+            );
+            if let Ok(diags) = wasm.diagnostics.lock() {
+                extension_snapshot.diagnostics.extend(diags.iter().cloned());
+            }
             state.set_tool_settings(tool_settings_items(tool_settings));
             state.set_theme_settings(&tool_settings.global.theme, &tool_settings.project.theme);
             apply_extension_snapshot_to_tui_state(
@@ -4977,10 +5179,14 @@ async fn create_btw_harness(
         Model::from_identifier(&effective_model)
             .ok_or_else(|| AppError::InvalidModelIdentifier(effective_model.clone()))?,
     );
+    // btw side sessions keep the extension OpenAI-compatible providers but
+    // do not get wasm component providers (their model ids are not exposed
+    // to the btw model picker yet).
     let provider = build_runtime_provider(
         auth.clone(),
         provider_config.clone(),
         extension_runtime_providers(extension_snapshot),
+        std::collections::BTreeMap::new(),
     );
     let harness = Arc::new(
         build_harness(
@@ -4993,12 +5199,14 @@ async fn create_btw_harness(
         )
         .await?,
     );
+    // btw sessions skip wasm extension tools/commands for now.
     apply_tool_settings_to_harness(
         &harness,
         tool_settings,
         resource_paths,
         cwd,
         AgentMode::Plan,
+        None,
         None,
     )
     .await;
@@ -5550,6 +5758,7 @@ fn current_git_branch(cwd: &Path) -> Option<String> {
     (!branch.is_empty()).then_some(branch)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_non_interactive(
     cli: CliArgs,
     harness: Harness,
@@ -5558,6 +5767,7 @@ async fn run_non_interactive(
     session_path: PathBuf,
     resource_catalog: ResourceCatalog,
     extension_runtime_provider_ids: BTreeSet<String>,
+    wasm: Option<&WasmExtensions>,
 ) -> Result<(), AppError> {
     if let Some(model) = cli.model.clone() {
         let command =
@@ -5623,7 +5833,8 @@ async fn run_non_interactive(
         }
         let tool_settings = load_tool_settings(&resource_catalog.paths).await;
         let snapshot = load_extension_snapshot(&resource_catalog.paths, &tool_settings);
-        if let Some(message) = execute_extension_command(&input, &snapshot, Some(&auth)).await {
+        if let Some(message) = execute_extension_command(&input, &snapshot, Some(&auth), wasm).await
+        {
             println!("{}", message?);
             return Ok(());
         }
@@ -7076,6 +7287,7 @@ enum TuiRuntimeEvent {
         request: AskUserRequest,
         responder: oneshot::Sender<AskUserOutcome>,
     },
+    ExtensionNotice(String),
 }
 
 async fn persist_current_settings(state: &mut TuiState) {
@@ -7185,6 +7397,7 @@ async fn try_auto_compact(
                 auth.clone(),
                 provider_config.clone(),
                 extension_runtime_providers(extension_snapshot),
+                std::collections::BTreeMap::new(),
             );
             match compact_session_with_llm(
                 harness,
@@ -7539,6 +7752,9 @@ fn apply_tui_runtime_event(
         TuiRuntimeEvent::SessionTitle(title) => {
             state.set_session_title(title);
         }
+        TuiRuntimeEvent::ExtensionNotice(text) => {
+            state.status = text;
+        }
         TuiRuntimeEvent::ModelCatalog(update) => {
             if update.models.is_empty() {
                 state.settings.status = update.status;
@@ -7747,7 +7963,7 @@ mod tests {
             AuthConfig::new(std::env::temp_dir().join("oino-app-extension-runtime-auth.json"))
                 .with_process_env(false),
         );
-        let router = ProviderRouter::new(auth, vec![provider]);
+        let router = ProviderRouter::new(auth, vec![provider], Default::default());
         let model = Model::from_identifier("router:kr/test-model")
             .unwrap_or_else(|| panic!("model should parse"));
         let result = router.provider_for_model(&model);
@@ -8513,7 +8729,7 @@ mod tests {
             .map(|command| command.label)
             .collect::<BTreeSet<_>>();
         assert!(command_suggestions.contains("/router"));
-        let router_guide = execute_extension_command("/router guide", &snapshot, None)
+        let router_guide = execute_extension_command("/router guide", &snapshot, None, None)
             .await
             .unwrap_or_else(|| panic!("OmniRoute extension command should be known"))
             .unwrap_or_else(|err| panic!("OmniRoute extension command failed: {err}"));
@@ -8981,7 +9197,7 @@ mod tests {
         let disabled_snapshot = load_extension_snapshot(&paths, &ToolSettingsSnapshot::default());
         assert!(disabled_snapshot.registries.tools.active.is_empty());
         assert!(
-            execute_extension_command("/visible_command now", &disabled_snapshot, None)
+            execute_extension_command("/visible_command now", &disabled_snapshot, None, None)
                 .await
                 .is_none()
         );
@@ -8997,10 +9213,10 @@ mod tests {
             .any(|active| active.effective_id.as_str() == "visible_tool"));
         // P2a: non-built-in extension tools/commands are skipped until the
         // Wasmtime host is wired into the app (TODO(P2b)).
-        let tools = extension_tool_map(&snapshot);
+        let tools = extension_tool_map(&snapshot, None);
         assert!(!tools.contains_key("visible_tool"));
         assert!(
-            execute_extension_command("/visible_command now", &snapshot, None)
+            execute_extension_command("/visible_command now", &snapshot, None, None)
                 .await
                 .is_none()
         );
@@ -9219,5 +9435,264 @@ mod tests {
         assert!(prompt.contains("# User Request\n\nfix crash"));
         assert!(!prompt.contains("<skill"));
         assert_eq!(prompt.matches("## Included Skill: `debug`").count(), 1);
+    }
+
+    struct CapturingStream {
+        events: tokio::sync::Mutex<std::collections::VecDeque<Vec<AssistantStreamEvent>>>,
+        requests: Arc<tokio::sync::Mutex<Vec<oino_agent_loop::StreamRequest>>>,
+    }
+
+    impl CapturingStream {
+        fn once(events: Vec<AssistantStreamEvent>) -> Self {
+            Self {
+                events: tokio::sync::Mutex::new([events].into_iter().collect()),
+                requests: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StreamProvider for CapturingStream {
+        async fn stream(
+            &self,
+            request: oino_agent_loop::StreamRequest,
+            _signal: AbortSignal,
+        ) -> oino_agent_loop::LoopResult<Vec<AssistantStreamEvent>> {
+            self.requests.lock().await.push(request);
+            let mut events = self.events.lock().await;
+            Ok(events.pop_front().unwrap_or_else(|| {
+                vec![AssistantStreamEvent::Done {
+                    stop_reason: StopReason::EndTurn,
+                    provider: None,
+                }]
+            }))
+        }
+    }
+
+    fn wasm_fixture_paths() -> (PathBuf, PathBuf) {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| panic!("repo root"))
+            .to_path_buf();
+        (
+            repo.join(
+                "examples/extensions/rust-wasm-fixture/extensions/example/oino.extension.json",
+            ),
+            repo.join("examples/extensions/rust-wasm-fixture/plugin.wasm"),
+        )
+    }
+
+    fn install_fixture_extension(project: &Path, manifest_text: &str, plugin: &Path) -> PathBuf {
+        let extension_dir = project.join(".oino/extensions/acme-example");
+        fs::create_dir_all(&extension_dir)
+            .unwrap_or_else(|err| panic!("create extension dir failed: {err}"));
+        fs::write(extension_dir.join("oino.extension.json"), manifest_text)
+            .unwrap_or_else(|err| panic!("write manifest failed: {err}"));
+        fs::copy(plugin, extension_dir.join("plugin.wasm"))
+            .unwrap_or_else(|err| panic!("copy plugin failed: {err}"));
+        fs::create_dir_all(project.join(".oino"))
+            .unwrap_or_else(|err| panic!("settings dir failed: {err}"));
+        fs::write(
+            project.join(".oino/settings.json"),
+            r#"{ "extensions": { "extensions": { "acme.example_extension": "enabled" } } }"#,
+        )
+        .unwrap_or_else(|err| panic!("write settings failed: {err}"));
+        extension_dir
+    }
+
+    #[tokio::test]
+    async fn wasm_fixture_extension_runs_tools_commands_and_input_hook() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let (manifest_path, plugin_path) = wasm_fixture_paths();
+        let manifest_text = fs::read_to_string(&manifest_path)
+            .unwrap_or_else(|err| panic!("read fixture manifest: {err}"));
+        install_fixture_extension(&project, &manifest_text, &plugin_path);
+
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None).await;
+        assert!(
+            wasm.tools.contains_key("echo"),
+            "wasm tools missing echo: {:?} diags {:?}",
+            wasm.tools.keys(),
+            wasm.diagnostics
+        );
+
+        // tool round-trip + progress
+        let tools = extension_tool_map(&snapshot, Some(&wasm));
+        let echo = tools
+            .get("echo")
+            .unwrap_or_else(|| panic!("echo tool not registered"));
+        let sink = Arc::new(oino_agent_loop::VecEventSink::new());
+        let call = oino_agent_loop::ToolCall {
+            id: OinoId::nil(),
+            name: "echo".into(),
+            arguments: serde_json::json!({"message": "hi"}),
+        };
+        let result = oino_agent_loop::Tool::execute(
+            echo.as_ref(),
+            call,
+            oino_agent_loop::ToolUpdateCallback::new(
+                Arc::clone(&sink) as Arc<dyn oino_agent_loop::EventSink>,
+                OinoId::nil(),
+            ),
+            AbortSignal::new(),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("echo tool failed: {err}"));
+        assert!(
+            matches!(&result.content[0], oino_types::ContentBlock::Text { text } if text.contains("hi")),
+            "unexpected tool result: {:?}",
+            result.content
+        );
+        // progress updates are forwarded via spawned tasks; give them a beat
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let progress_events = sink.events().await;
+        assert!(
+            progress_events
+                .iter()
+                .any(|event| matches!(event, AgentEvent::ToolExecutionUpdate { .. })),
+            "expected tool progress events, got {progress_events:?}"
+        );
+
+        // command dispatch
+        let output = execute_extension_command("/hello there", &snapshot, None, Some(&wasm))
+            .await
+            .unwrap_or_else(|| panic!("hello command not routed"))
+            .unwrap_or_else(|err| panic!("hello command failed: {err}"));
+        assert!(output.contains("hello there"), "{output}");
+
+        // input hook uppercases the prompt before it reaches the provider
+        let stream = Arc::new(CapturingStream::once(vec![
+            AssistantStreamEvent::TextDelta { delta: "ok".into() },
+            AssistantStreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                provider: None,
+            },
+        ]));
+        let requests = Arc::clone(&stream.requests);
+        let session = SessionManager::new(SessionHeader::new("test", project.clone()));
+        let auth = AuthStorage::new(
+            AuthConfig::new(temp.path().join("auth.json")).with_process_env(false),
+        );
+        let resource_catalog = ResourceCatalog {
+            paths: paths.clone(),
+            system_prompt: None,
+            project_instructions: None,
+            prompts: Vec::new(),
+            skills: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        let harness = build_harness(
+            "openrouter:test/model".into(),
+            ThinkingLevel::Off,
+            stream as Arc<dyn StreamProvider>,
+            auth,
+            session,
+            &resource_catalog,
+        )
+        .await
+        .unwrap_or_else(|err| panic!("harness build failed: {err}"));
+        wasm.set_session(harness.session_handle());
+        register_wasm_hooks(
+            &harness.hooks(),
+            Arc::new(std::sync::RwLock::new(wasm.clone())),
+        )
+        .await;
+        harness
+            .prompt(Message::user_text("shout"))
+            .await
+            .unwrap_or_else(|err| panic!("prompt failed: {err}"));
+        let requests = requests.lock().await;
+        let last = requests.last().unwrap_or_else(|| panic!("no requests"));
+        let text = last
+            .transcript
+            .messages()
+            .iter()
+            .filter_map(|message| message.text_content())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(text.contains("SHOUT"), "input hook did not apply: {text}");
+    }
+
+    #[tokio::test]
+    async fn wasm_fixture_provider_streams_through_router() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let home = temp.path().join("home");
+        let project = temp.path().join("project");
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| panic!("repo root"))
+            .to_path_buf();
+        let plugin = repo.join("crates/oino-wasm-host/tests/fixtures/fixture_provider.wasm");
+        let manifest = r#"{
+          "id": "acme.example_extension",
+          "version": "1.0.0",
+          "oino": "^0.1",
+          "runtime": { "kind": "wasm", "entry": "plugin.wasm", "abi": "oino:extension@0.1.0" },
+          "permissions": {},
+          "contributes": {
+            "providers": [{
+              "id": "faux_provider",
+              "provider_id": "faux",
+              "display_name": "Faux Provider",
+              "model_ids": [],
+              "privacy": { "can_receive_prompts": true, "can_receive_tools": false, "can_mutate_requests": false }
+            }]
+          }
+        }"#;
+        install_fixture_extension(&project, manifest, &plugin);
+
+        let paths = ResourcePaths::from_home_and_cwd(&home, &project)
+            .unwrap_or_else(|err| panic!("resource paths: {err}"));
+        let settings = load_tool_settings(&paths).await;
+        let snapshot = load_extension_snapshot(&paths, &settings);
+        let wasm = build_wasm_extensions(&snapshot, &paths, None).await;
+        assert!(
+            wasm.providers.contains_key("faux"),
+            "faux provider missing: {:?} diags {:?}",
+            wasm.providers.keys(),
+            wasm.diagnostics
+        );
+        assert!(
+            wasm.provider_models
+                .get("faux")
+                .is_some_and(|models| models.iter().any(|m| m == "faux-1")),
+            "list_models not merged: {:?}",
+            wasm.provider_models
+        );
+
+        let auth = AuthStorage::new(
+            AuthConfig::new(temp.path().join("auth.json")).with_process_env(false),
+        );
+        let router = ProviderRouter::new(auth, Vec::new(), wasm.provider_map());
+        let model = Model::from_identifier("faux:faux-1").unwrap_or_else(|| panic!("model id"));
+        let request = oino_agent_loop::StreamRequest {
+            model,
+            thinking_level: ThinkingLevel::Off,
+            transcript: oino_types::transcript::Transcript::new(vec![Message::user_text("hi")]),
+            session_id: Some(serde_json::json!({"faux_events": 5}).to_string()),
+            cache_retention: oino_agent_loop::CacheRetention::None,
+        };
+        let events = router
+            .stream(request, AbortSignal::new())
+            .await
+            .unwrap_or_else(|err| panic!("stream failed: {err}"));
+        let deltas: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                AssistantStreamEvent::TextDelta { delta } => Some(delta.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(deltas.len(), 5, "expected 5 faux deltas: {events:?}");
+        assert_eq!(deltas[0], "event-0");
+        assert_eq!(deltas[4], "event-4");
     }
 }

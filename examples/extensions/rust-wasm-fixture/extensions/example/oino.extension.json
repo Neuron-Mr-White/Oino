@@ -12,10 +12,10 @@
   },
   "permissions": {
     "tools": [
-      "example_tool"
+      "echo"
     ],
     "commands": [
-      "example_command"
+      "hello"
     ],
     "host_capabilities": [
       "host.persistence.delete",
@@ -56,21 +56,12 @@
   "contributes": {
     "tools": [
       {
-        "id": "example_tool",
-        "description": "Echo a message through the extension runtime",
+        "id": "echo",
+        "description": "Echo tool args back",
         "input_schema": {
-          "properties": {
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "message"
-          ],
           "type": "object"
         },
         "execution_mode": "parallel",
-        "handler": "handle_tool",
         "conflict": {
           "strategy": "namespaced",
           "priority": 0,
@@ -80,9 +71,9 @@
     ],
     "commands": [
       {
-        "id": "example_command",
-        "description": "Run the example extension command",
-        "handler": "handle_command",
+        "id": "hello",
+        "description": "Greet",
+        "handler": "hello",
         "conflict": {
           "strategy": "namespaced",
           "priority": 0,
@@ -107,11 +98,11 @@
     ],
     "hooks": [
       {
-        "id": "example_tool_hook",
-        "event": "tool_call",
-        "priority": 10,
+        "id": "input_hook",
+        "event": "input",
+        "priority": 0,
         "mode": "mutable",
-        "handler": "handle_tool_hook",
+        "handler": "input",
         "conflict": {
           "strategy": "namespaced",
           "priority": 0,
@@ -452,26 +443,7 @@
         }
       }
     ],
-    "providers": [
-      {
-        "id": "example_provider",
-        "provider_id": "example-provider",
-        "display_name": "Example Provider Metadata",
-        "model_ids": [
-          "example-provider/example-model"
-        ],
-        "privacy": {
-          "can_receive_prompts": false,
-          "can_receive_tools": false,
-          "can_mutate_requests": false
-        },
-        "conflict": {
-          "strategy": "namespaced",
-          "priority": 0,
-          "allow_user_override": true
-        }
-      }
-    ],
+    "providers": [],
     "resources": [
       {
         "id": "example_prompt",

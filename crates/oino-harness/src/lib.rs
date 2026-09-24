@@ -118,6 +118,10 @@ pub type AfterToolCallHandler =
     Arc<dyn Fn(ToolResult) -> BoxFuture<'static, LoopResult<ToolResult>> + Send + Sync>;
 pub type StringMutationHandler =
     Arc<dyn Fn(String) -> BoxFuture<'static, LoopResult<String>> + Send + Sync>;
+/// `input` handlers may rewrite the user's prompt message before it is
+/// appended to the transcript and sent to the provider.
+pub type InputHandler =
+    Arc<dyn Fn(Message) -> BoxFuture<'static, LoopResult<Message>> + Send + Sync>;
 pub type AuthResolver =
     Arc<dyn Fn(String) -> BoxFuture<'static, LoopResult<Option<String>>> + Send + Sync>;
 
@@ -134,6 +138,7 @@ pub struct HookRegistry {
     before_compaction: Arc<Mutex<Vec<StringMutationHandler>>>,
     before_tree_navigation: Arc<Mutex<Vec<StringMutationHandler>>>,
     turn_end: Arc<Mutex<Vec<TurnEndHandler>>>,
+    input: Arc<Mutex<Vec<InputHandler>>>,
 }
 
 impl HookRegistry {
@@ -183,6 +188,12 @@ impl HookRegistry {
     pub async fn on_turn_end(&self, handler: TurnEndHandler) {
         self.turn_end.lock().await.push(handler);
     }
+    /// Register an `input` hook: handlers may rewrite the user message before
+    /// it is persisted and sent to the provider. Extension `input` events map
+    /// here.
+    pub async fn on_input(&self, handler: InputHandler) {
+        self.input.lock().await.push(handler);
+    }
 
     async fn notify(&self, event: AgentEvent) {
         let Some(hook) = hook_for_event(&event) else {
@@ -206,6 +217,13 @@ impl HookRegistry {
             edits.extend(handler().await?);
         }
         Ok(edits)
+    }
+
+    async fn run_input(&self, mut message: Message) -> LoopResult<Message> {
+        for handler in self.input.lock().await.clone() {
+            message = handler(message).await?;
+        }
+        Ok(message)
     }
 
     async fn run_turn_end(&self, context: TurnContext) -> LoopResult<TurnEndResult> {
@@ -511,6 +529,11 @@ impl Harness {
             .map_err(oino_agent::AgentError::Loop)?;
         self.merge_section_edits(edits).await;
         self.flush_system().await?;
+        let message = self
+            .hooks
+            .run_input(message)
+            .await
+            .map_err(oino_agent::AgentError::Loop)?;
         let output = self.agent.prompt(message).await?;
         self.persist_messages(&output.messages).await;
         self.hooks
