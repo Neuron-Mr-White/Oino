@@ -1567,6 +1567,7 @@ mod tests {
             transcript: oino_types::transcript::normalize(Some("be kind".into()), tools, messages),
             session_id: None,
             cache_retention: oino_agent_loop::CacheRetention::default(),
+            max_output_tokens: None,
         }
     }
 
@@ -2110,6 +2111,7 @@ mod tests {
             transcript,
             session_id: None,
             cache_retention: oino_agent_loop::CacheRetention::default(),
+            max_output_tokens: None,
         };
         let built = match build_chat_request(&req) {
             Ok(value) => value,
@@ -2162,6 +2164,7 @@ mod tests {
             ),
             session_id: session_id.map(Into::into),
             cache_retention: retention,
+            max_output_tokens: None,
         }
     }
 

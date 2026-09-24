@@ -1,0 +1,29 @@
+{
+  "error": null,
+  "events": [
+    {
+      "delta": "hello",
+      "kind": "text_delta"
+    },
+    {
+      "kind": "done",
+      "provider": {
+        "model": null,
+        "request_id": null,
+        "values": {
+          "id": "r1"
+        }
+      },
+      "stop_reason": "end_turn"
+    }
+  ],
+  "request": {
+    "body": "{\"model\":\"anthropic/x\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hello\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"}}]}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"reasoning\":{\"effort\":\"low\"}}",
+    "headers": {
+      "authorization": "Bearer sk-parity",
+      "content-length": "226",
+      "content-type": "application/json"
+    },
+    "path": "/chat/completions"
+  }
+}

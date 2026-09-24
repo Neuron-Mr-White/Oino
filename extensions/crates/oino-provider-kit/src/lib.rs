@@ -69,6 +69,8 @@ pub struct StreamRequest {
     pub transcript: RequestTranscript,
     pub session_id: Option<String>,
     pub cache_retention: CacheRetention,
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
 }
 
 /// Resolved component configuration (auth excluded — resolved via
@@ -196,6 +198,8 @@ pub struct OpenRouterChatRequest {
     pub reasoning: Option<OpenRouterReasoning>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -350,6 +354,7 @@ pub fn build_openai_compatible_chat_request_with_cache(
         tools,
         reasoning: openrouter_reasoning(request.thinking_level),
         prompt_cache_key,
+        max_tokens: request.max_output_tokens,
     })
 }
 

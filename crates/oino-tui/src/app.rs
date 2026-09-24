@@ -4235,6 +4235,10 @@ impl TuiState {
                 self.status = "Starting new session…".into();
                 TuiAction::NewSession
             }
+            ParsedCommand::Session => {
+                self.status = "Session info is only available via the shell command output".into();
+                TuiAction::SessionInfo
+            }
             ParsedCommand::Sessions => {
                 self.open_sessions_overlay();
                 TuiAction::ListSessions

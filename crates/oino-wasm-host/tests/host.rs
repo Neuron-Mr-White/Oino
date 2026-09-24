@@ -759,5 +759,6 @@ fn faux_request(payload: Value) -> oino_agent_loop::StreamRequest {
         transcript: oino_types::transcript::Transcript::new(Vec::new()),
         session_id: Some(payload.to_string()),
         cache_retention: CacheRetention::None,
+        max_output_tokens: None,
     }
 }

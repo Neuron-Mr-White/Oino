@@ -117,6 +117,11 @@ pub const COMMANDS: &[CommandSpec] = &[
         kind: CommandKind::Session,
     },
     CommandSpec {
+        name: "/session",
+        summary: "Current session info and cache status",
+        kind: CommandKind::Session,
+    },
+    CommandSpec {
         name: "/help",
         summary: "Open keyboard and command help",
         kind: CommandKind::Settings,
@@ -193,6 +198,7 @@ pub enum ParsedCommand {
     Help,
     NewSession,
     Sessions,
+    Session,
     Prompts,
     Skills,
     ReloadResources,
@@ -784,6 +790,7 @@ pub fn parse_command(input: &str) -> Option<ParsedCommand> {
             model: Some(Some((*model).to_string())),
         }),
         ["/sessions"] => Some(ParsedCommand::Sessions),
+        ["/session"] => Some(ParsedCommand::Session),
         ["/prompts"] => Some(ParsedCommand::Prompts),
         ["/skills"] => Some(ParsedCommand::Skills),
         ["/reload"] => Some(ParsedCommand::ReloadResources),

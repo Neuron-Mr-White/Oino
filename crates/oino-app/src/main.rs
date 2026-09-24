@@ -44,6 +44,7 @@ mod extension_readiness;
 mod llm_compact;
 mod model_catalog;
 mod notify;
+mod provider_config;
 mod provider_runtime;
 mod ralph_loop;
 mod router;
@@ -106,8 +107,6 @@ use oino_extension_manager::{
 };
 use oino_harness::{AuthResolver, Harness, HarnessConfig, HarnessError, NotificationHook};
 use oino_provider_catalog::{provider_by_id, resolve_provider, ProviderDescriptor};
-#[cfg(test)]
-use oino_provider_openrouter::OpenAiCompatibleConfig;
 use oino_provider_openrouter::OpenRouterConfig;
 use oino_resource::{PromptTemplate, ResourceCatalog, ResourcePaths, Skill};
 use oino_session::{SessionHeader, SessionManager, SessionRepository};
@@ -125,10 +124,13 @@ use oino_tui::{
     HELP_STATUS,
 };
 use oino_types::{
-    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, PromptSection, ThinkingLevel,
+    AssistantStreamEvent, ContentBlock, Message, Model, OinoId, PromptSection, StopReason,
+    ThinkingLevel,
 };
 #[cfg(test)]
 use oino_wasm_host::WasmHostEngine;
+#[cfg(test)]
+use provider_config::OpenAiCompatibleConfig;
 #[cfg(test)]
 use provider_runtime::ProviderRouter;
 use provider_runtime::{build_runtime_provider, provider_status_for_model_identifier};
@@ -144,6 +146,7 @@ use router::{
     validate_router_tag, RouterConfig, RouterHealth, ROUTER_DEFAULT_BASE_URL,
     ROUTER_KNOWN_GOOD_TAG,
 };
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -175,6 +178,11 @@ struct CliArgs {
     session: Option<OinoId>,
     update: Option<updater::OinoUpdatePlan>,
     input: Option<String>,
+    /// `-p/--prompt` one-shot prompt (`-` reads stdin).
+    prompt: Option<String>,
+    json: bool,
+    max_turns: Option<u32>,
+    no_session: bool,
 }
 
 impl CliArgs {
@@ -191,6 +199,10 @@ impl CliArgs {
             session: None,
             update: None,
             input: None,
+            prompt: None,
+            json: false,
+            max_turns: None,
+            no_session: false,
         };
         let mut input_parts = Vec::new();
         while let Some(arg) = args.next() {
@@ -201,6 +213,26 @@ impl CliArgs {
             match arg.as_str() {
                 "--help" | "-h" => parsed.show_help = true,
                 "--settings" => parsed.settings = true,
+                "--json" => parsed.json = true,
+                "--no-session" => parsed.no_session = true,
+                "--max-turns" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "--max-turns requires a value".into(),
+                        ));
+                    };
+                    parsed.max_turns = Some(value.parse().map_err(|_| {
+                        AppError::InvalidArguments(format!("invalid --max-turns `{value}`"))
+                    })?);
+                }
+                "-p" | "--prompt" => {
+                    let Some(value) = args.next() else {
+                        return Err(AppError::InvalidArguments(
+                            "-p/--prompt requires a value".into(),
+                        ));
+                    };
+                    parsed.prompt = Some(value);
+                }
                 "--model" => {
                     let Some(value) = args.next() else {
                         return Err(AppError::InvalidArguments(
@@ -261,6 +293,31 @@ fn normalize_cli_command_input(input: &str) -> String {
         }
         _ => trimmed.to_string(),
     }
+}
+
+/// `/session` output: session identity + last cache hit rate, last miss
+/// diagnosis and next warming decision (P4.2).
+fn format_session_info(harness: &Harness, session_path: &std::path::Path) -> String {
+    let mut lines = vec![format!("session: {}", session_id_from_path(session_path))];
+    let status = harness.cache_status();
+    lines.push(format!(
+        "cache hit (last request): {}",
+        status
+            .last_hit_rate
+            .map(|rate| format!("{:.1}%", rate * 100.0))
+            .unwrap_or_else(|| "n/a".into())
+    ));
+    lines.push(format!(
+        "cache miss diagnosis: {}",
+        status
+            .last_diagnosis
+            .unwrap_or_else(|| "none recorded".into())
+    ));
+    lines.push(format!(
+        "next warming decision: {}",
+        status.next_decision.unwrap_or_else(|| "none yet".into())
+    ));
+    lines.join("\n")
 }
 
 fn usage() -> &'static str {
@@ -573,14 +630,14 @@ async fn main() -> Result<(), AppError> {
         auth.clone(),
         session,
         &resource_catalog,
+        cli.json,
+        cli.max_turns,
     )
     .await?;
     wasm.set_session(harness.session_handle());
-    register_wasm_hooks(
-        &harness.hooks(),
-        Arc::new(std::sync::RwLock::new(wasm.clone())),
-    )
-    .await;
+    let wasm_holder: wasm_extensions::WasmHolder = Arc::new(std::sync::RwLock::new(wasm.clone()));
+    register_wasm_hooks(&harness.hooks(), wasm_holder.clone()).await;
+    configure_cache_tracker(&harness, &tool_settings, &wasm_holder, None).await;
     apply_tool_settings_to_harness(
         &harness,
         &tool_settings,
@@ -592,7 +649,7 @@ async fn main() -> Result<(), AppError> {
     )
     .await;
 
-    if cli.settings || cli.input.is_some() || cli.update.is_some() {
+    if cli.settings || cli.input.is_some() || cli.update.is_some() || cli.prompt.is_some() {
         return run_non_interactive(
             cli,
             harness,
@@ -670,6 +727,110 @@ fn build_auth_resolver(auth: AuthStorage) -> AuthResolver {
     })
 }
 
+/// Headless `--json` event sink: one `AgentEvent` JSON per stdout line.
+struct JsonLinesEventSink;
+
+#[async_trait]
+impl oino_agent_loop::EventSink for JsonLinesEventSink {
+    async fn emit(&self, event: AgentEvent) -> oino_agent_loop::LoopResult<()> {
+        let line = serde_json::to_string(&event)
+            .unwrap_or_else(|_| "{\"kind\":\"serialization_error\"}".into());
+        println!("{line}");
+        Ok(())
+    }
+}
+
+/// Summary fields collected from the messages a prompt run appended.
+struct HeadlessSummary {
+    turns: usize,
+    stop_reason: Option<StopReason>,
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_write: u64,
+    reasoning: u64,
+    cost_usd: f64,
+}
+
+fn headless_summary(messages: &[Message]) -> HeadlessSummary {
+    let mut summary = HeadlessSummary {
+        turns: 0,
+        stop_reason: None,
+        input: 0,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        reasoning: 0,
+        cost_usd: 0.0,
+    };
+    for message in messages {
+        let Message::Assistant {
+            stop_reason, usage, ..
+        } = message
+        else {
+            continue;
+        };
+        summary.turns += 1;
+        if stop_reason.is_some() {
+            summary.stop_reason = stop_reason.clone();
+        }
+        if let Some(usage) = usage {
+            summary.input += usage.input_tokens;
+            summary.output += usage.output_tokens;
+            summary.cache_read += usage.cache_read_tokens;
+            summary.cache_write += usage.cache_write_tokens;
+            summary.reasoning += usage.reasoning_tokens;
+            if let Some(cost) = &usage.cost {
+                if cost.currency == "USD" {
+                    summary.cost_usd += cost.amount;
+                }
+            }
+        }
+    }
+    summary
+}
+
+fn headless_summary_json(summary: &HeadlessSummary, wall_ms: u128) -> Value {
+    let prompt_tokens = summary.input + summary.cache_read + summary.cache_write;
+    let cache_hit_rate = if prompt_tokens > 0 {
+        summary.cache_read as f64 / prompt_tokens as f64
+    } else {
+        0.0
+    };
+    json!({
+        "type": "summary",
+        "turns": summary.turns,
+        "stop_reason": summary
+            .stop_reason
+            .as_ref()
+            .map(|reason| serde_json::to_value(reason).unwrap_or_default()),
+        "usage": {
+            "input": summary.input,
+            "output": summary.output,
+            "cache_read": summary.cache_read,
+            "cache_write": summary.cache_write,
+            "reasoning": summary.reasoning,
+        },
+        "cost_usd": summary.cost_usd,
+        "cache_hit_rate_token_weighted": cache_hit_rate,
+        "wall_ms": wall_ms,
+    })
+}
+
+/// Exit-code mapping for one-shot prompts: 0 done, 1 error, 2 aborted or
+/// cap-hit (stop_reason aborted/length or `--max-turns` reached).
+fn headless_exit_code(summary: &HeadlessSummary, max_turns: Option<u32>, failed: bool) -> i32 {
+    if failed || summary.stop_reason == Some(StopReason::Error) {
+        return 1;
+    }
+    let cap_hit = max_turns.is_some_and(|max| summary.turns >= max as usize);
+    if summary.stop_reason == Some(StopReason::Aborted) || cap_hit {
+        return 2;
+    }
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn build_harness(
     model_identifier: String,
     thinking_level: ThinkingLevel,
@@ -677,6 +838,8 @@ async fn build_harness(
     auth: AuthStorage,
     session: SessionManager,
     resource_catalog: &ResourceCatalog,
+    json_events: bool,
+    max_turns: Option<u32>,
 ) -> Result<Harness, AppError> {
     let cwd = session.header().cwd.clone();
     let model = Model::from_identifier(&model_identifier)
@@ -685,6 +848,10 @@ async fn build_harness(
     config.tools = oino_tools::default_tools(Arc::clone(&config.env), cwd.clone());
     config.thinking_level = thinking_level;
     config.auth_resolver = Some(build_auth_resolver(auth));
+    if json_events {
+        config.event_sink = Arc::new(JsonLinesEventSink);
+    }
+    config.max_turns = max_turns;
     let harness = Harness::new(config);
     let (base, sections) = system_prompt_parts(&cwd, resource_catalog);
     harness.sync_system(base, sections).await;
@@ -2810,23 +2977,81 @@ async fn execute_extension_command(
     )
 }
 
+/// `cacheWarming` user setting: `"off" | "tools" | "tools+idle"`, project
+/// wins; unset defaults to `tools`.
+fn cache_warming_mode_setting(settings: &ToolSettingsSnapshot) -> oino_harness::CacheWarmingMode {
+    let value = settings
+        .project
+        .cache_warming
+        .as_deref()
+        .or(settings.global.cache_warming.as_deref());
+    match value {
+        Some("off") => oino_harness::CacheWarmingMode::Off,
+        Some("tools+idle") => oino_harness::CacheWarmingMode::ToolsAndIdle,
+        _ => oino_harness::CacheWarmingMode::Tools,
+    }
+}
+
+fn cache_miss_notices_setting(settings: &ToolSettingsSnapshot) -> bool {
+    settings
+        .project
+        .show_cache_miss_notices
+        .or(settings.global.show_cache_miss_notices)
+        .unwrap_or(false)
+}
+
+/// Push cache-warming config + veto + notifier into the harness tracker.
+async fn configure_cache_tracker(
+    harness: &Harness,
+    settings: &ToolSettingsSnapshot,
+    holder: &wasm_extensions::WasmHolder,
+    ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
+) {
+    let tracker = harness.cache_tracker();
+    tracker.set_session(harness.session_handle()).await;
+    tracker
+        .set_veto(Some(wasm_extensions::wasm_cache_warming_veto(
+            holder.clone(),
+        )))
+        .await;
+    tracker
+        .set_notifier(ui_tx.map(|tx| {
+            Arc::new(move |notice: oino_harness::CacheMissNotice| {
+                let _ = tx.send(TuiRuntimeEvent::ExtensionNotice(format!(
+                    "cache miss ({:.0}% hit): {}",
+                    notice.hit_rate * 100.0,
+                    notice.diagnosis
+                )));
+            }) as oino_harness::CacheMissNotifier
+        }))
+        .await;
+    tracker
+        .configure(oino_harness::CacheWarmingConfig {
+            mode: cache_warming_mode_setting(settings),
+            show_miss_notices: cache_miss_notices_setting(settings),
+            model_info: Some(wasm_extensions::wasm_model_cache_lookup(holder.clone())),
+        })
+        .await;
+}
+
 /// `providers.runtime` user setting: project value wins over global; unset
-/// or anything other than `wasm` is `native`.
+/// defaults to `wasm` (the native adapter remains as an explicit fallback).
 fn providers_runtime_setting(settings: &ToolSettingsSnapshot) -> &'static str {
     let value = settings.project.providers.runtime.as_deref().or(settings
         .global
         .providers
         .runtime
         .as_deref());
-    if value == Some("wasm") {
-        "wasm"
-    } else {
+    if value == Some("native") {
         "native"
+    } else {
+        "wasm"
     }
 }
 
 /// Rebuild wasm extension instances for a fresh snapshot, attach the harness
 /// session, and swap the holder the hook handlers dispatch through.
+#[allow(clippy::too_many_arguments)]
 async fn rebuild_wasm(
     snapshot: &ExtensionManagerSnapshot,
     paths: &ResourcePaths,
@@ -2835,12 +3060,14 @@ async fn rebuild_wasm(
     ui_tx: Option<mpsc::UnboundedSender<TuiRuntimeEvent>>,
     auth: Option<&AuthStorage>,
     providers_runtime: &str,
+    settings: &ToolSettingsSnapshot,
 ) -> Arc<WasmExtensions> {
-    let wasm = build_wasm_extensions(snapshot, paths, ui_tx, auth, providers_runtime).await;
+    let wasm = build_wasm_extensions(snapshot, paths, ui_tx.clone(), auth, providers_runtime).await;
     wasm.set_session(harness.session_handle());
     if let Ok(mut guard) = holder.write() {
         *guard = wasm.clone();
     }
+    configure_cache_tracker(harness, settings, holder, ui_tx).await;
     wasm
 }
 
@@ -3228,6 +3455,7 @@ async fn run_tui(
         Some(tx.clone()),
         Some(&auth),
         providers_runtime_setting(&tool_settings),
+        &tool_settings,
     )
     .await;
     register_wasm_hooks(&harness.hooks(), wasm_holder.clone()).await;
@@ -3473,6 +3701,7 @@ async fn run_tui(
                     Some(tx.clone()),
                     Some(&auth),
                     providers_runtime_setting(&tool_settings),
+                    &tool_settings,
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4120,6 +4349,7 @@ async fn run_tui(
                     Some(tx.clone()),
                     Some(&auth),
                     providers_runtime_setting(&tool_settings),
+                    &tool_settings,
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4160,6 +4390,7 @@ async fn run_tui(
                     Some(tx.clone()),
                     Some(&auth),
                     providers_runtime_setting(&tool_settings),
+                    &tool_settings,
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4199,6 +4430,7 @@ async fn run_tui(
                     Some(tx.clone()),
                     Some(&auth),
                     providers_runtime_setting(&tool_settings),
+                    &tool_settings,
                 )
                 .await;
                 apply_tool_settings_to_harness(
@@ -4281,6 +4513,7 @@ async fn run_tui(
                             Some(tx.clone()),
                             Some(&auth),
                             providers_runtime_setting(&tool_settings),
+                            &tool_settings,
                         )
                         .await;
                         apply_tool_settings_to_harness(
@@ -4403,6 +4636,7 @@ async fn run_tui(
                                     Some(tx.clone()),
                                     Some(&auth),
                                     providers_runtime_setting(&tool_settings),
+                                    &tool_settings,
                                 )
                                 .await;
                                 apply_tool_settings_to_harness(
@@ -4522,6 +4756,9 @@ async fn run_tui(
                 } else {
                     start_new_tui_session(&mut state, &harness, &mut session_path).await;
                 }
+            }
+            TuiAction::SessionInfo => {
+                state.status = format_session_info(&harness, &session_path);
             }
             TuiAction::ListSessions => {
                 load_tui_sessions(&mut state, &session_path).await;
@@ -4781,6 +5018,7 @@ async fn reload_tui_everything(
         ask_user_tx.clone(),
         Some(auth),
         providers_runtime_setting(tool_settings),
+        tool_settings,
     )
     .await;
     apply_tool_settings_to_harness(
@@ -5251,6 +5489,8 @@ async fn create_btw_harness(
             auth.clone(),
             session,
             resource_catalog,
+            false,
+            None,
         )
         .await?,
     );
@@ -5870,7 +6110,22 @@ async fn run_non_interactive(
         return Ok(());
     }
 
-    let Some(input) = cli.input else {
+    let mut input = match cli.prompt.clone() {
+        Some(prompt) if prompt == "-" => {
+            let mut buffer = String::new();
+            io::Read::read_to_string(&mut io::stdin(), &mut buffer)?;
+            Some(buffer.trim().to_string())
+        }
+        Some(prompt) => Some(prompt),
+        None => cli.input.clone(),
+    };
+    // `-p -` also works via the trailing-words input form.
+    if input.as_deref() == Some("-") {
+        let mut buffer = String::new();
+        io::Read::read_to_string(&mut io::stdin(), &mut buffer)?;
+        input = Some(buffer.trim().to_string());
+    }
+    let Some(input) = input else {
         return Ok(());
     };
 
@@ -5905,14 +6160,42 @@ async fn run_non_interactive(
     preflight_model_credentials(&auth, &config.model, &extension_runtime_provider_ids)
         .await
         .map_err(AppError::InvalidArguments)?;
-    let messages = harness
+    let start = std::time::Instant::now();
+    let outcome = harness
         .prompt(prompt_message_from_input(input).map_err(AppError::InvalidArguments)?)
-        .await?;
-    harness.save_session_jsonl(&session_path).await?;
-    if let Some(text) = last_assistant_text(&messages) {
-        println!("{text}");
+        .await;
+    if !cli.no_session {
+        harness.save_session_jsonl(&session_path).await?;
     }
-    eprintln!("session: {}", session_id_from_path(&session_path));
+    match outcome {
+        Ok(messages) => {
+            let summary = headless_summary(&messages);
+            if cli.json {
+                println!(
+                    "{}",
+                    headless_summary_json(&summary, start.elapsed().as_millis())
+                );
+            } else if let Some(text) = last_assistant_text(&messages) {
+                println!("{text}");
+            }
+            let code = headless_exit_code(&summary, cli.max_turns, false);
+            if code != 0 {
+                std::process::exit(code);
+            }
+        }
+        Err(err) => {
+            if cli.json {
+                println!(
+                    "{}",
+                    json!({"type": "summary", "error": err.to_string(), "wall_ms": start.elapsed().as_millis()})
+                );
+            }
+            return Err(err.into());
+        }
+    }
+    if !cli.json {
+        eprintln!("session: {}", session_id_from_path(&session_path));
+    }
     Ok(())
 }
 
@@ -6789,6 +7072,9 @@ async fn execute_runtime_command(
             return Err(AppError::InvalidArguments(
                 "`/new` opens a fresh session in the TUI; start `oino` without `--session` to create a new non-interactive session".into(),
             ));
+        }
+        ParsedCommand::Session => {
+            return Ok(format_session_info(harness, session_path));
         }
         ParsedCommand::Sessions => {
             let sessions = session_list_items(None).await?;
@@ -7701,6 +7987,7 @@ async fn summarize_notify_body(
         ),
         session_id: None,
         cache_retention: oino_agent_loop::CacheRetention::default(),
+        max_output_tokens: None,
     };
     let Ok(events) = stream.stream(request, AbortSignal::new()).await else {
         return fallback;
@@ -9331,6 +9618,8 @@ mod tests {
                 extensions: oino_extension_core::ExtensionPolicySettings::default(),
                 compact: user_settings::CompactSettings::default(),
                 providers: user_settings::ProvidersSettings::default(),
+                cache_warming: None,
+                show_cache_miss_notices: None,
             },
             None,
             None,
@@ -9430,6 +9719,8 @@ mod tests {
             auth,
             session,
             &resource_catalog,
+            false,
+            None,
         )
         .await
         {
@@ -9658,6 +9949,8 @@ mod tests {
             auth,
             session,
             &resource_catalog,
+            false,
+            None,
         )
         .await
         .unwrap_or_else(|err| panic!("harness build failed: {err}"));
@@ -9742,6 +10035,7 @@ mod tests {
             transcript: oino_types::transcript::Transcript::new(vec![Message::user_text("hi")]),
             session_id: Some(serde_json::json!({"faux_events": 5}).to_string()),
             cache_retention: oino_agent_loop::CacheRetention::None,
+            max_output_tokens: None,
         };
         let events = router
             .stream(request, AbortSignal::new())
@@ -9911,6 +10205,7 @@ mod tests {
             transcript: oino_types::transcript::Transcript::new(vec![Message::user_text("hello")]),
             session_id,
             cache_retention: retention,
+            max_output_tokens: None,
         }
     }
 
@@ -10067,6 +10362,233 @@ mod tests {
         );
     }
 
+    /// Run one request through a wasm declarative provider only (golden path).
+    async fn run_wasm_case(
+        temp: &tempfile::TempDir,
+        config: &OpenAiCompatibleConfig,
+        api_key: Option<&str>,
+        request: oino_agent_loop::StreamRequest,
+        sse: &'static str,
+        status: u16,
+    ) -> ParityOutcome {
+        let (wasm_url, wasm_rx) = spawn_recording_server(status, "text/event-stream", sse);
+        let paths =
+            ResourcePaths::from_home_and_cwd(temp.path().join("home"), temp.path().join("project"))
+                .unwrap_or_else(|err| panic!("paths: {err}"));
+        let engine = WasmHostEngine::new(temp.path().join("wasm-cache"))
+            .unwrap_or_else(|err| panic!("engine: {err}"));
+        let mut wasm_config = config.clone();
+        wasm_config.base_url = wasm_url;
+        let mut set = WasmExtensions::empty();
+        wasm_extensions::instantiate_declarative_wasm_provider(
+            oino_extension_core::ProviderRuntimeProtocol::OpenAiChatCompletions,
+            "parity",
+            &wasm_config,
+            "optional",
+            None,
+            api_key.map(str::to_string),
+            None,
+            &paths,
+            &engine,
+            &mut set,
+        )
+        .await;
+        let provider = set
+            .providers
+            .get("parity")
+            .unwrap_or_else(|| panic!("wasm provider missing"))
+            .clone();
+        let outcome = provider.stream(request, AbortSignal::new()).await;
+        let mut recorded = wasm_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|err| panic!("request not recorded: {err}"));
+        if recorded.path == "/models" {
+            recorded = wasm_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .unwrap_or_else(|err| panic!("stream request not recorded: {err}"));
+        }
+        match outcome {
+            Ok(events) => ParityOutcome {
+                events,
+                error: None,
+                recorded,
+            },
+            Err(err) => ParityOutcome {
+                events: Vec::new(),
+                error: Some(err.to_string()),
+                recorded,
+            },
+        }
+    }
+
+    /// Golden fixture path (frozen wire + event outputs of the wasm
+    /// component; keeps coverage when the native crate is deleted).
+    fn openai_compat_golden(case: &str) -> std::path::PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/openai_compat")
+            .join(format!("{case}.json"))
+    }
+
+    fn golden_headers(recorded: &RecordedRequest) -> Value {
+        let mut headers = Map::new();
+        for name in [
+            "authorization",
+            "content-type",
+            "content-length",
+            "x-session-id",
+            "session_id",
+            "x-client-request-id",
+            "x-session-affinity",
+        ] {
+            if let Some(value) = recorded.headers.get(name) {
+                headers.insert(name.to_string(), json!(value));
+            }
+        }
+        Value::Object(headers)
+    }
+
+    /// Compare a wasm outcome against the recorded golden; set
+    /// `OINO_GOLDEN_RECORD=1` to (re)write goldens.
+    fn assert_openai_compat_golden(case: &str, outcome: &ParityOutcome) {
+        let actual = json!({
+            "request": {
+                "path": outcome.recorded.path,
+                "headers": golden_headers(&outcome.recorded),
+                "body": String::from_utf8_lossy(&outcome.recorded.body),
+            },
+            "events": outcome.events,
+            "error": outcome.error,
+        });
+        let path = openai_compat_golden(case);
+        if std::env::var("OINO_GOLDEN_RECORD").ok().as_deref() == Some("1") {
+            fs::create_dir_all(path.parent().unwrap_or_else(|| panic!("dir")))
+                .unwrap_or_else(|err| panic!("golden dir: {err}"));
+            fs::write(
+                &path,
+                serde_json::to_string_pretty(&actual).unwrap_or_default(),
+            )
+            .unwrap_or_else(|err| panic!("write golden: {err}"));
+            return;
+        }
+        let expected: Value = serde_json::from_str(
+            &fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("read golden {}: {err}", path.display())),
+        )
+        .unwrap_or_else(|err| panic!("parse golden: {err}"));
+        assert_eq!(
+            actual,
+            expected,
+            "{case}: golden mismatch\nactual: {}",
+            serde_json::to_string_pretty(&actual).unwrap_or_default()
+        );
+    }
+
+    /// Wire + event goldens for every openai-compat parity case (native-free).
+    #[tokio::test]
+    async fn wasm_openai_compat_golden_fixtures() {
+        let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
+        let base_config = OpenAiCompatibleConfig::new("parity", "Parity", "http://127.0.0.1:1");
+        let req = || {
+            parity_stream_request(
+                "parity",
+                "m",
+                oino_agent_loop::CacheRetention::Short,
+                Some("sess-1".into()),
+            )
+        };
+        let cases: Vec<(
+            &str,
+            OpenAiCompatibleConfig,
+            Option<&str>,
+            _,
+            &'static str,
+            u16,
+        )> = vec![
+            (
+                "plain_text",
+                base_config.clone(),
+                Some("sk-parity"),
+                req(),
+                SSE_TEXT,
+                200,
+            ),
+            (
+                "rich_stream",
+                base_config.clone(),
+                Some("sk-parity"),
+                req(),
+                SSE_RICH,
+                200,
+            ),
+            (
+                "anthropic_cache_control",
+                {
+                    let mut c = base_config.clone();
+                    c.cache_control_format = Some(provider_config::CacheControlFormat::Anthropic);
+                    c
+                },
+                Some("sk-parity"),
+                parity_stream_request(
+                    "parity",
+                    "anthropic/x",
+                    oino_agent_loop::CacheRetention::Long,
+                    Some("sess-1".into()),
+                ),
+                SSE_TEXT,
+                200,
+            ),
+            (
+                "retention_none",
+                {
+                    let mut c = base_config.clone();
+                    c.cache_control_format = Some(provider_config::CacheControlFormat::Anthropic);
+                    c
+                },
+                Some("sk-parity"),
+                parity_stream_request(
+                    "parity",
+                    "anthropic/x",
+                    oino_agent_loop::CacheRetention::None,
+                    Some("sess-1".into()),
+                ),
+                SSE_TEXT,
+                200,
+            ),
+            (
+                "openrouter_affinity",
+                {
+                    let mut c = base_config.clone();
+                    c.session_affinity = Some(provider_config::SessionAffinityFormat::OpenRouter);
+                    c
+                },
+                Some("sk-parity"),
+                req(),
+                SSE_TEXT,
+                200,
+            ),
+            (
+                "http_429",
+                base_config.clone(),
+                Some("sk-parity"),
+                req(),
+                "rate limited",
+                429,
+            ),
+            (
+                "no_api_key",
+                base_config.clone(),
+                None,
+                req(),
+                SSE_TEXT,
+                200,
+            ),
+        ];
+        for (case, config, key, request, sse, status) in cases {
+            let outcome = run_wasm_case(&temp, &config, key, request, sse, status).await;
+            assert_openai_compat_golden(case, &outcome);
+        }
+    }
+
     #[tokio::test]
     async fn wasm_openai_compat_matches_native_on_the_wire() {
         let temp = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir: {err}"));
@@ -10074,11 +10596,9 @@ mod tests {
         // mirrors what extension_runtime_config_for_provider_id produces for
         // an env-var api_key contribution.
         let base_config = OpenAiCompatibleConfig::new("parity", "Parity", "http://127.0.0.1:1")
-            .with_auth(
-                oino_provider_openrouter::OpenAiCompatibleAuth::OptionalBearer {
-                    spec: ProviderAuthSpec::new("parity", "parity", "OINO_PARITY_TEST_KEY"),
-                },
-            );
+            .with_auth(provider_config::OpenAiCompatibleAuth::OptionalBearer {
+                spec: ProviderAuthSpec::new("parity", "parity", "OINO_PARITY_TEST_KEY"),
+            });
 
         let req = || {
             parity_stream_request(
@@ -10103,7 +10623,7 @@ mod tests {
         // anthropic cache_control breakpoints (byte-identical body)
         let mut anthropic_config = base_config.clone();
         anthropic_config.cache_control_format =
-            Some(oino_provider_openrouter::CacheControlFormat::Anthropic);
+            Some(provider_config::CacheControlFormat::Anthropic);
         let (wasm, native) = run_parity_case(
             &temp,
             &anthropic_config,
@@ -10139,8 +10659,7 @@ mod tests {
 
         // openrouter-format affinity headers via config override
         let mut affinity_config = base_config.clone();
-        affinity_config.session_affinity =
-            Some(oino_provider_openrouter::SessionAffinityFormat::OpenRouter);
+        affinity_config.session_affinity = Some(provider_config::SessionAffinityFormat::OpenRouter);
         let (wasm, native) = run_parity_case(
             &temp,
             &affinity_config,
@@ -10700,6 +11219,7 @@ mod tests {
             )),
             session_id: Some("sess-1234".into()),
             cache_retention: retention,
+            max_output_tokens: None,
         };
         let outcome = provider
             .stream(request, AbortSignal::new())
@@ -10977,5 +11497,87 @@ pi: {expected:?}"
             }
             let _ = fixture;
         }
+    }
+
+    #[test]
+    fn cli_parses_headless_flags() {
+        let cli = CliArgs::parse_from([
+            "--json".to_string(),
+            "--max-turns".into(),
+            "4".into(),
+            "--no-session".into(),
+            "-p".into(),
+            "do it".into(),
+        ])
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+        assert!(cli.json);
+        assert!(cli.no_session);
+        assert_eq!(cli.max_turns, Some(4));
+        assert_eq!(cli.prompt.as_deref(), Some("do it"));
+
+        let cli = CliArgs::parse_from(["-p".to_string(), "-".into()])
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+        assert_eq!(cli.prompt.as_deref(), Some("-"));
+
+        assert!(CliArgs::parse_from(["--max-turns".to_string(), "nope".into()]).is_err());
+    }
+
+    fn headless_test_message(
+        stop: Option<StopReason>,
+        usage: Option<oino_types::Usage>,
+    ) -> Message {
+        Message::Assistant {
+            id: OinoId::new_v4(),
+            content: vec![ContentBlock::Text {
+                text: "x".into(),
+                signature: None,
+            }],
+            stop_reason: stop,
+            usage,
+            provider: None,
+            response_model: None,
+            error_message: None,
+            provider_thinking_level: None,
+        }
+    }
+
+    #[test]
+    fn headless_summary_math_and_exit_codes() {
+        let usage = |input, output, read, write| oino_types::Usage {
+            input_tokens: input,
+            output_tokens: output,
+            cache_read_tokens: read,
+            cache_write_tokens: write,
+            cache_write_1h_tokens: None,
+            reasoning_tokens: 0,
+            cost: None,
+        };
+        let messages = vec![
+            headless_test_message(Some(StopReason::ToolUse), Some(usage(100, 10, 300, 100))),
+            headless_test_message(Some(StopReason::EndTurn), Some(usage(50, 5, 400, 0))),
+        ];
+        let summary = headless_summary(&messages);
+        assert_eq!(summary.turns, 2);
+        assert_eq!(summary.input, 150);
+        assert_eq!(summary.cache_read, 700);
+        assert_eq!(summary.cache_write, 100);
+        let json = headless_summary_json(&summary, 42);
+        assert_eq!(json["turns"], 2);
+        assert_eq!(json["stop_reason"], "end_turn");
+        assert_eq!(json["usage"]["output"], 15);
+        // 700 / (150 + 700 + 100) = 0.7368…
+        let rate = json["cache_hit_rate_token_weighted"]
+            .as_f64()
+            .unwrap_or_default();
+        assert!((rate - 700.0 / 950.0).abs() < 1e-9, "rate {rate}");
+
+        assert_eq!(headless_exit_code(&summary, None, false), 0);
+        assert_eq!(headless_exit_code(&summary, Some(2), false), 2);
+        assert_eq!(headless_exit_code(&summary, Some(3), false), 0);
+        assert_eq!(headless_exit_code(&summary, None, true), 1);
+        let aborted = headless_summary(&[headless_test_message(Some(StopReason::Aborted), None)]);
+        assert_eq!(headless_exit_code(&aborted, None, false), 2);
+        let errored = headless_summary(&[headless_test_message(Some(StopReason::Error), None)]);
+        assert_eq!(headless_exit_code(&errored, None, false), 1);
     }
 }

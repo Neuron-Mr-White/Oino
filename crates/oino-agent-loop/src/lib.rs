@@ -381,6 +381,9 @@ pub struct StreamRequest {
     pub transcript: Transcript,
     pub session_id: Option<String>,
     pub cache_retention: CacheRetention,
+    /// Provider-side output cap override (used by cache warming: `Some(1)`).
+    /// Providers that cannot express it may ignore it.
+    pub max_output_tokens: Option<u32>,
 }
 
 /// How long provider-side prompt caches should be retained for this request.
@@ -670,6 +673,7 @@ async fn run_agent_loop_continue_inner(
                 transcript,
                 session_id: config.session_id.clone(),
                 cache_retention: config.cache_retention,
+                max_output_tokens: None,
             };
             let assistant = consume_stream(&config, request).await?;
             let stop_reason = assistant_stop(&assistant);

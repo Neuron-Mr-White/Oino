@@ -104,6 +104,9 @@ impl Provider for Anthropic {
             &request.transcript.messages,
         );
         options.api_key = api_key_owned.as_deref();
+        if let Some(max) = request.max_output_tokens {
+            options.max_tokens = Some(u64::from(max));
+        }
         let (body, betas) = anthropic::build_params(&model, &request, &config.headers, &options)
             .map_err(|err| err.to_string())?;
 

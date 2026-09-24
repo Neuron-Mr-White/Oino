@@ -120,11 +120,16 @@ injected into the component at `init`/`host.secret` time.
 
 ## Cutover
 
-1. Ship components next to the native provider behind a setting
-   (`providers.runtime = "wasm" | "native"`, default `native`).
-2. Flip default to `wasm` once fixtures, determinism and a manual smoke run against the
-   router pass.
-3. Delete `oino-provider-openrouter`, `ProviderRuntimeProtocol`, and the setting.
+1. ~~Ship components next to the native provider behind a setting~~ — done
+   (P3a/P3b; `providers.runtime = "wasm" | "native"`).
+2. ~~Flip default to `wasm`~~ — done (P3c). Native-vs-wasm wire behavior is
+   frozen as goldens under `crates/oino-app/tests/fixtures/openai_compat/`
+   (regenerate with `OINO_GOLDEN_RECORD=1`); one live native-vs-wasm parity
+   test remains while the native crate exists.
+3. Delete `oino-provider-openrouter`, `ProviderRuntimeProtocol`, and the
+   setting — pending a real user smoke run. App-side usage is already
+   isolated behind `crates/oino-app/src/provider_config.rs` +
+   `provider_runtime.rs`.
 
 ## Acceptance
 

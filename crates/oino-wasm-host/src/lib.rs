@@ -1125,6 +1125,7 @@ fn stream_request_json(request: &oino_agent_loop::StreamRequest) -> Value {
         "transcript": { "messages": request.transcript.messages() },
         "session_id": request.session_id,
         "cache_retention": request.cache_retention,
+        "max_output_tokens": request.max_output_tokens,
     })
 }
 
@@ -1328,6 +1329,7 @@ mod stream_request_mirror_tests {
             transcript: Transcript::new(vec![Message::user_text("hi")]),
             session_id: Some("s".into()),
             cache_retention: CacheRetention::Long,
+            max_output_tokens: None,
         };
         let value = stream_request_json(&request);
         // mirror field-for-field
@@ -1351,6 +1353,7 @@ mod stream_request_mirror_tests {
             keys,
             [
                 "cache_retention",
+                "max_output_tokens",
                 "model",
                 "session_id",
                 "thinking_level",

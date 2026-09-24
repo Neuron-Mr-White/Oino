@@ -43,6 +43,12 @@ use oino_agent_loop::{
     StreamRequest, Tool, ToolCall, ToolResult, TransformContext, TurnContext, TurnDecision,
     TurnUpdate,
 };
+mod cache;
+
+pub use cache::{
+    CacheMissNotice, CacheMissNotifier, CacheStatus, CacheTracker, CacheWarmingConfig,
+    CacheWarmingMode, CacheWarmingVeto, ModelCacheInfo, ModelCacheInfoLookup,
+};
 use oino_env::{ExecutionEnv, LocalExecutionEnv};
 use oino_session::{SessionEntry, SessionEntryKind, SessionManager};
 use oino_types::{
@@ -333,6 +339,7 @@ fn hook_for_event(event: &AgentEvent) -> Option<NotificationHook> {
 struct HookedStreamProvider {
     inner: Arc<dyn StreamProvider>,
     hooks: HookRegistry,
+    cache: Arc<CacheTracker>,
 }
 
 #[async_trait::async_trait]
@@ -359,11 +366,24 @@ impl StreamProvider for HookedStreamProvider {
             .hooks
             .mutate_before_provider_payload("payload".into())
             .await?;
-        self.inner.stream_events(request, signal, sink).await?;
+        let previous = self.cache.request_fingerprints(&request);
+        self.cache.begin_request(&request);
+        let usage = Arc::new(std::sync::Mutex::new(None::<oino_types::Usage>));
+        let usage_sink = usage.clone();
+        let wrapped: StreamEventSink = Arc::new(move |event| {
+            if let AssistantStreamEvent::Usage { usage: reported } = &event {
+                *usage_sink.lock().unwrap_or_else(|e| e.into_inner()) = Some(reported.clone());
+            }
+            sink(event)
+        });
+        self.inner.stream_events(request, signal, wrapped).await?;
         let _response_marker = self
             .hooks
             .mutate_after_provider_response("response".into())
             .await?;
+        if let Some(usage) = usage.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+            self.cache.complete_request(previous, &usage);
+        }
         Ok(())
     }
 }
@@ -371,12 +391,14 @@ impl StreamProvider for HookedStreamProvider {
 struct HookEventSink {
     registry: HookRegistry,
     inner: Arc<dyn EventSink>,
+    cache: Arc<CacheTracker>,
 }
 #[async_trait::async_trait]
 impl EventSink for HookEventSink {
     async fn emit(&self, event: AgentEvent) -> LoopResult<()> {
         self.inner.emit(event.clone()).await?;
-        self.registry.notify(event).await;
+        self.registry.notify(event.clone()).await;
+        self.cache.on_agent_event(&event).await;
         Ok(())
     }
 }
@@ -392,6 +414,8 @@ pub struct HarnessConfig {
     pub env: Arc<dyn ExecutionEnv>,
     pub resources: Vec<String>,
     pub auth_resolver: Option<AuthResolver>,
+    /// Agent-loop turn cap override (`None` keeps the default).
+    pub max_turns: Option<u32>,
 }
 
 impl HarnessConfig {
@@ -408,6 +432,7 @@ impl HarnessConfig {
             env: Arc::new(LocalExecutionEnv),
             resources: Vec::new(),
             auth_resolver: None,
+            max_turns: None,
         }
     }
 }
@@ -429,6 +454,7 @@ pub struct Harness {
     resources: Arc<Mutex<Vec<String>>>,
     tools: Arc<Mutex<BTreeMap<String, Arc<dyn Tool>>>>,
     auth_resolver: Option<AuthResolver>,
+    cache_tracker: Arc<CacheTracker>,
     /// Desired prompt state set by [`Harness::sync_system`]; flushed into the
     /// transcript as one delta `System` message before the next prompt.
     pending_system: Arc<Mutex<Option<PendingSystemState>>>,
@@ -457,18 +483,24 @@ impl Harness {
         let before_hooks = hooks.clone();
         let after_hooks = hooks.clone();
         let turn_end_hooks = hooks.clone();
+        let cache_tracker = Arc::new(CacheTracker::new(Arc::clone(&config.stream)));
         let stream = Arc::new(HookedStreamProvider {
             inner: Arc::clone(&config.stream),
             hooks: hooks.clone(),
+            cache: Arc::clone(&cache_tracker),
         }) as Arc<dyn StreamProvider>;
         let mut loop_config = AgentLoopConfig::new(initial_model, stream);
         loop_config.thinking_level = initial_thinking_level;
         loop_config.system_prompt = config.system_prompt.clone();
         loop_config.session_id = Some(config.session.header().session_id.to_string());
         loop_config.tools = config.tools.clone();
+        if let Some(max_turns) = config.max_turns {
+            loop_config.max_turns = max_turns;
+        }
         loop_config.event_sink = Arc::new(HookEventSink {
             registry: hooks.clone(),
             inner: config.event_sink,
+            cache: Arc::clone(&cache_tracker),
         });
         loop_config.transform_context = Some(Arc::new(move |messages| {
             let hooks = context_hooks.clone();
@@ -507,6 +539,7 @@ impl Harness {
             resources: Arc::new(Mutex::new(config.resources)),
             tools: Arc::new(Mutex::new(config.tools)),
             auth_resolver: config.auth_resolver,
+            cache_tracker,
             pending_system: Arc::new(Mutex::new(None)),
             system_prompt_fallback: config.system_prompt,
         }
@@ -911,6 +944,19 @@ impl Harness {
             }
         }
         self.system_prompt_fallback.clone()
+    }
+
+    /// Cache telemetry/warming handle (fingerprints, hit rates, warm config).
+    #[must_use]
+    pub fn cache_tracker(&self) -> Arc<CacheTracker> {
+        Arc::clone(&self.cache_tracker)
+    }
+
+    /// `/session` cache lines: last hit rate, last miss diagnosis, next
+    /// warming decision.
+    #[must_use]
+    pub fn cache_status(&self) -> CacheStatus {
+        self.cache_tracker.status()
     }
 
     pub async fn inspect_full_prompt(&self) -> HarnessResult<FullPromptInspect> {

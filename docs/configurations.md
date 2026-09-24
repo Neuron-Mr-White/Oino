@@ -38,18 +38,33 @@ OINO_MODEL=router:openai/gpt-4.1 oino
 `providers.runtime` in `~/.oino/settings.json` (or project `.oino/settings.json`,
 project wins) selects how declarative extension providers are executed:
 
-- `"native"` (default): the in-process OpenAI-compatible adapter
-  (`open_ai_chat_completions` protocol only).
-- `"wasm"`: bundled Wasmtime components, one instance per provider id, with
+- `"wasm"` (default): bundled Wasmtime components, one instance per provider
+  id, with
   host-resolved config and an `api_key` host secret:
   - `open_ai_chat_completions` → `provider-openai-compat`
   - `anthropic_messages` → `provider-anthropic`
   - `open_ai_responses` → `provider-openai-responses`
 
-  The built-in `provider-anthropic` (`ANTHROPIC_API_KEY`,
-  `api.anthropic.com`) and `provider-openai` (`OPENAI_API_KEY`,
-  `api.openai.com/v1`) packages only work under `"wasm"` and report a
-  readiness diagnostic under the native runtime.
+- `"native"` (fallback): the in-process OpenAI-compatible adapter
+  (`open_ai_chat_completions` protocol only). The built-in
+  `provider-anthropic` (`ANTHROPIC_API_KEY`, `api.anthropic.com`) and
+  `provider-openai` (`OPENAI_API_KEY`, `api.openai.com/v1`) packages report a
+  readiness diagnostic under `"native"`.
+
+## Prompt-cache telemetry and warming
+
+- `cacheWarming`: `"off"` | `"tools"` (default) | `"tools+idle"` — sends a
+  1-output-token warming request before the provider-side prompt cache
+  expires when a tool is still running (`tools`) or also when idle
+  (`tools+idle`, at most 3 in a row). Requires the model's catalog to expose
+  `prompt_cache` lifetimes and prices; warm requests are never added to the
+  context and record a `cache_warm` usage entry. Extensions may veto a warm
+  via the `cache_warming_decision` hook (`{"veto": true}`).
+- `showCacheMissNotices`: `true`/`false` (default `false`) — surface a notice
+  when a request's cache hit rate drops below 50% of the previous prompt,
+  naming the first diverging prefix block. The last diagnosis is always
+  visible via `/session` along with the last hit rate and next warming
+  decision.
 
 ## Reloading
 

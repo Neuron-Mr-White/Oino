@@ -1,9 +1,10 @@
 #![forbid(unsafe_code)]
 
+use crate::provider_config::OpenRouterUsageReport;
 use crate::{auth_readiness, AppError};
+use oino_auth::OPENROUTER_PROVIDER_ID;
 use oino_auth::{AuthStorage, ProviderAuthSpec};
 use oino_provider_catalog::{provider_by_id, ProviderDescriptor, ProviderRuntimeSupport};
-use oino_provider_openrouter::{OpenRouterUsageReport, OPENROUTER_PROVIDER_ID};
 use oino_tui::{UsagePanelProvider, UsagePanelReport, UsagePanelSession};
 use oino_types::{Message, Usage, UsageCost};
 use serde::{Deserialize, Serialize};
@@ -647,7 +648,7 @@ fn now_unix() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oino_provider_openrouter::parse_openrouter_usage_payloads;
+    use crate::provider_config::parse_openrouter_usage_payloads;
     use oino_types::{ContentBlock, Model, OinoId, ProviderMetadata, StopReason};
 
     fn assistant(provider: Option<&str>, usage: Option<Usage>) -> Message {

@@ -1,0 +1,61 @@
+{
+  "error": null,
+  "events": [
+    {
+      "delta": "think",
+      "kind": "thinking_delta"
+    },
+    {
+      "arguments_delta": "{\"a\"",
+      "id": "070e304d-069a-4549-92fc-8f0128d3fe30",
+      "kind": "tool_call_delta",
+      "name": "lookup",
+      "native_id": null
+    },
+    {
+      "arguments_delta": ":1}",
+      "id": "070e304d-069a-4549-92fc-8f0128d3fe30",
+      "kind": "tool_call_delta",
+      "name": null,
+      "native_id": null
+    },
+    {
+      "kind": "usage",
+      "usage": {
+        "cache_read_tokens": 3,
+        "cache_write_1h_tokens": null,
+        "cache_write_tokens": 2,
+        "cost": {
+          "amount": 0.001,
+          "currency": "USD"
+        },
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "reasoning_tokens": 4
+      }
+    },
+    {
+      "arguments": {
+        "a": 1
+      },
+      "id": "070e304d-069a-4549-92fc-8f0128d3fe30",
+      "kind": "tool_call_done",
+      "name": "lookup",
+      "native_id": null
+    },
+    {
+      "kind": "done",
+      "provider": null,
+      "stop_reason": "tool_use"
+    }
+  ],
+  "request": {
+    "body": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"reasoning\":{\"effort\":\"low\"}}",
+    "headers": {
+      "authorization": "Bearer sk-parity",
+      "content-length": "143",
+      "content-type": "application/json"
+    },
+    "path": "/chat/completions"
+  }
+}

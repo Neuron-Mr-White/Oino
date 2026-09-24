@@ -49,6 +49,9 @@ pub(crate) struct WasmExtensions {
     pub providers: BTreeMap<String, Arc<WasmStreamProvider>>,
     /// provider_id -> model ids from `list_models`.
     pub provider_models: BTreeMap<String, Vec<String>>,
+    /// provider_id -> raw `list_models` entries (for cache warming
+    /// `prompt_cache` lifetimes and cost data).
+    pub provider_model_details: BTreeMap<String, Vec<Value>>,
     /// effective contribution id -> (extension, guest tool name).
     pub tools: BTreeMap<String, (Arc<WasmExtension>, String)>,
     /// effective contribution id -> (extension, guest command name).
@@ -69,6 +72,7 @@ impl WasmExtensions {
             extensions: BTreeMap::new(),
             providers: BTreeMap::new(),
             provider_models: BTreeMap::new(),
+            provider_model_details: BTreeMap::new(),
             tools: BTreeMap::new(),
             commands: BTreeMap::new(),
             hooks: Vec::new(),
@@ -247,6 +251,7 @@ pub(crate) async fn build_wasm_extensions(
         extensions: BTreeMap::new(),
         providers: BTreeMap::new(),
         provider_models: BTreeMap::new(),
+        provider_model_details: BTreeMap::new(),
         tools: BTreeMap::new(),
         commands: BTreeMap::new(),
         hooks: Vec::new(),
@@ -622,6 +627,10 @@ pub(crate) async fn build_wasm_extensions(
                             })
                             .unwrap_or_default();
                         set.provider_models.insert(provider_id.clone(), ids);
+                        if let Some(entries) = list {
+                            set.provider_model_details
+                                .insert(provider_id.clone(), entries.to_vec());
+                        }
                     }
                     set.providers.insert(provider_id.clone(), provider);
                 }
@@ -762,8 +771,8 @@ async fn build_declarative_wasm_providers(
         // Mirror `OpenAiCompatibleAuth` semantics host-side: required keys
         // fail the instance build, optional keys resolve best-effort.
         let (auth_kind, api_key_header, api_key) = match &config.auth {
-            oino_provider_openrouter::OpenAiCompatibleAuth::None => ("none", None, None),
-            oino_provider_openrouter::OpenAiCompatibleAuth::Bearer { spec } => {
+            crate::provider_config::OpenAiCompatibleAuth::None => ("none", None, None),
+            crate::provider_config::OpenAiCompatibleAuth::Bearer { spec } => {
                 let key = match auth {
                     Some(auth) => match auth.resolve_api_key(spec).await {
                         Ok(key) => Some(key),
@@ -784,7 +793,7 @@ async fn build_declarative_wasm_providers(
                 };
                 ("required", None, key)
             }
-            oino_provider_openrouter::OpenAiCompatibleAuth::OptionalBearer { spec } => {
+            crate::provider_config::OpenAiCompatibleAuth::OptionalBearer { spec } => {
                 let key = match auth {
                     Some(auth) => auth
                         .resolve(spec)
@@ -796,7 +805,7 @@ async fn build_declarative_wasm_providers(
                 };
                 ("optional", None, key)
             }
-            oino_provider_openrouter::OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => {
+            crate::provider_config::OpenAiCompatibleAuth::ApiKeyHeader { spec, header_name } => {
                 let key = match auth {
                     Some(auth) => match auth.resolve_api_key(spec).await {
                         Ok(key) => Some(key),
@@ -850,7 +859,7 @@ async fn build_declarative_wasm_providers(
 pub(crate) async fn instantiate_declarative_wasm_provider(
     protocol: ProviderRuntimeProtocol,
     provider_id: &str,
-    config: &oino_provider_openrouter::OpenAiCompatibleConfig,
+    config: &crate::provider_config::OpenAiCompatibleConfig,
     auth_kind: &str,
     api_key_header: Option<String>,
     api_key: Option<String>,
@@ -926,8 +935,8 @@ pub(crate) async fn instantiate_declarative_wasm_provider(
         "compat": {
             "send_prompt_cache_key": config.send_prompt_cache_key,
             "session_affinity": config.session_affinity.map(|format| match format {
-                oino_provider_openrouter::SessionAffinityFormat::OpenAi => "openai",
-                oino_provider_openrouter::SessionAffinityFormat::OpenRouter => "openrouter",
+                crate::provider_config::SessionAffinityFormat::OpenAi => "openai",
+                crate::provider_config::SessionAffinityFormat::OpenRouter => "openrouter",
             }),
             "cache_control_format": config.cache_control_format.map(|_| "anthropic"),
         },
@@ -963,6 +972,10 @@ pub(crate) async fn instantiate_declarative_wasm_provider(
                     })
                     .unwrap_or_default();
                 set.provider_models.insert(provider_id.to_string(), ids);
+                if let Some(entries) = list {
+                    set.provider_model_details
+                        .insert(provider_id.to_string(), entries.to_vec());
+                }
             }
             set.providers
                 .insert(provider_id.to_string(), provider_instance);
@@ -1315,4 +1328,57 @@ fn hook_diag(
             format!("hook `{slug}` failed: {err}"),
         ));
     }
+}
+
+/// `cache_warming_decision` veto consult: mutable wasm hooks registered for
+/// the event may veto via `{"veto": true}`.
+pub(crate) fn wasm_cache_warming_veto(holder: WasmHolder) -> oino_harness::CacheWarmingVeto {
+    Arc::new(move |payload: Value| {
+        let holder = holder.clone();
+        Box::pin(async move {
+            let wasm = holder.read().ok().map(|guard| guard.clone());
+            let Some(wasm) = wasm else { return false };
+            for contribution in
+                wasm.hooks_matching(HookEventKind::CacheWarmingDecision, HookMode::Mutable)
+            {
+                match contribution
+                    .extension
+                    .handle_event(&contribution.slug, payload.clone())
+                    .await
+                {
+                    Ok(result) if result["veto"].as_bool() == Some(true) => return true,
+                    Ok(_) => {}
+                    Err(err) => hook_diag(
+                        &wasm.diagnostics,
+                        &contribution.extension_id,
+                        &contribution.slug,
+                        &err,
+                    ),
+                }
+            }
+            false
+        }) as oino_agent_loop::BoxFuture<'static, bool>
+    })
+}
+
+/// Catalog lookup for warming eligibility: resolves `prompt_cache` lifetimes
+/// and prices from wasm `list_models` details.
+pub(crate) fn wasm_model_cache_lookup(holder: WasmHolder) -> oino_harness::ModelCacheInfoLookup {
+    Arc::new(move |model: &oino_types::Model| {
+        let wasm = holder.read().ok().map(|guard| guard.clone())?;
+        let entries = wasm.provider_model_details.get(&model.provider)?;
+        let entry = entries
+            .iter()
+            .find(|e| e["id"].as_str() == Some(model.name.as_str()))?;
+        let f64v = |v: &Value| v.as_f64().or_else(|| v.as_str()?.parse().ok());
+        let u64v = |v: &Value| v.as_u64().or_else(|| v.as_f64().map(|f| f as u64));
+        let cache = &entry["prompt_cache"];
+        let cost = &entry["cost"];
+        Some(oino_harness::ModelCacheInfo {
+            short_secs: u64v(&cache["short_secs"]),
+            long_secs: u64v(&cache["long_secs"]),
+            input_price: f64v(&cost["input"]),
+            cache_read_price: f64v(&cost["cache_read"]),
+        })
+    })
 }

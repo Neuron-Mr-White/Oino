@@ -94,6 +94,7 @@ impl Provider for Responses {
             effort_owned = effort;
             effort_owned.as_deref()
         };
+        options.max_tokens = request.max_output_tokens.map(u64::from);
         let body = responses::build_params(&model, &request, &options);
 
         let mut headers: Vec<(String, String)> = vec![

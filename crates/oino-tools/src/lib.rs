@@ -72,10 +72,11 @@ enum ToolInputError {
     EmptyEdits,
     #[error("oldText for edit #{index} was not found in {path}")]
     EditNotFound { index: usize, path: String },
-    #[error("oldText for edit #{index} matched {matches} times in {path}; it must be unique")]
+    #[error("oldText for edit #{index} matched {matches} times in {path} (lines {lines:?}); it must be unique")]
     EditNotUnique {
         index: usize,
         matches: usize,
+        lines: Vec<usize>,
         path: String,
     },
     #[error("edit #{index} overlaps with another edit; merge nearby/overlapping changes into one replacement")]
@@ -199,10 +200,22 @@ impl ReadTool {
 
 #[derive(Debug, Deserialize)]
 struct ReadArgs {
+    path: Option<String>,
+    #[serde(default)]
+    paths: Vec<ReadPathArg>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadPathArg {
     path: String,
     offset: Option<usize>,
     limit: Option<usize>,
 }
+
+/// Combined output cap for multi-path reads.
+const MULTI_READ_MAX_CHARS: usize = 30_000;
 
 #[async_trait]
 impl Tool for ReadTool {
@@ -216,9 +229,22 @@ impl Tool for ReadTool {
             input_schema: json!({
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["path"],
                 "properties": {
-                    "path": {"type": "string", "description": "Path to the file to read (relative or absolute)"},
+                    "path": {"type": "string", "description": "Path to the file to read (relative or absolute). Use `paths` to read several files in one call."},
+                    "paths": {
+                        "type": "array",
+                        "description": "Read several files in one call. Output is `==> path <==` sections with per-file errors inline; combined output is capped at 30k characters.",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["path"],
+                            "properties": {
+                                "path": {"type": "string", "description": "Path to the file to read"},
+                                "offset": {"type": "number", "description": "Line number to start reading from (1-indexed)"},
+                                "limit": {"type": "number", "description": "Maximum number of lines to read"}
+                            }
+                        }
+                    },
                     "offset": {"type": "number", "description": "Line number to start reading from (1-indexed)"},
                     "limit": {"type": "number", "description": "Maximum number of lines to read"}
                 }
@@ -235,7 +261,15 @@ impl Tool for ReadTool {
         abort_if_needed(&signal)?;
         let args: ReadArgs = serde_json::from_value(call.arguments.clone())
             .map_err(|_| LoopError::Tool(ToolInputError::InvalidArgument("path").to_string()))?;
-        let path = resolve_to_cwd(&self.cwd, &args.path);
+        if !args.paths.is_empty() {
+            return self.execute_multi(&call, &args.paths, &signal).await;
+        }
+        let Some(arg_path) = args.path.as_deref() else {
+            return Err(LoopError::Tool(
+                ToolInputError::InvalidArgument("path").to_string(),
+            ));
+        };
+        let path = resolve_to_cwd(&self.cwd, arg_path);
         if image_mime_from_path(&path).is_some() {
             let mime = image_mime_from_path(&path).unwrap_or("image/*");
             // The first OpenRouter adapter only supports text model-visible content, so avoid
@@ -250,8 +284,56 @@ impl Tool for ReadTool {
         }
         let content = self.env.read_text(&path).await.map_err(env_to_loop)?;
         abort_if_needed(&signal)?;
-        let text = format_read_output(&args.path, &content, args.offset, args.limit)?;
+        let text = format_read_output(arg_path, &content, args.offset, args.limit)?;
         Ok(ToolResult::text(&call, text))
+    }
+}
+
+impl ReadTool {
+    /// Multi-file read: `==> path <==` sections, per-file errors inline, and a
+    /// shared 30k character cap with an explicit truncation footer.
+    async fn execute_multi(
+        &self,
+        call: &ToolCall,
+        paths: &[ReadPathArg],
+        signal: &AbortSignal,
+    ) -> LoopResult<ToolResult> {
+        let mut out = String::new();
+        let mut remaining = MULTI_READ_MAX_CHARS;
+        for entry in paths {
+            abort_if_needed(signal)?;
+            if remaining == 0 {
+                break;
+            }
+            let resolved = resolve_to_cwd(&self.cwd, &entry.path);
+            let section = match self.env.read_text(&resolved).await {
+                Ok(content) => {
+                    match format_read_output(&entry.path, &content, entry.offset, entry.limit) {
+                        Ok(text) => text,
+                        Err(err) => format!("<error: {err}>"),
+                    }
+                }
+                Err(err) => format!("<error: {err}>"),
+            };
+            let header = format!("==> {} <==\n", entry.path);
+            let available = remaining.saturating_sub(header.len());
+            if section.len() > available {
+                let kept = &section[..available];
+                out.push_str(&header);
+                out.push_str(kept);
+                out.push_str(&format!(
+                    "\n[truncated: {} more chars; call read with offset/limit for {}]",
+                    section.len() - available,
+                    entry.path
+                ));
+                break;
+            }
+            out.push_str(&header);
+            out.push_str(&section);
+            out.push('\n');
+            remaining = remaining.saturating_sub(header.len() + section.len());
+        }
+        Ok(ToolResult::text(call, out))
     }
 }
 
@@ -745,11 +827,11 @@ struct LocatedEdit<'a> {
 fn apply_exact_edits(path: &str, original: &str, edits: &[EditReplacement]) -> LoopResult<String> {
     let mut located = Vec::with_capacity(edits.len());
     for (index, edit) in edits.iter().enumerate() {
-        let matches: Vec<usize> = original
+        let positions: Vec<usize> = original
             .match_indices(&edit.old_text)
             .map(|(idx, _)| idx)
             .collect();
-        match matches.len() {
+        match positions.len() {
             0 => {
                 return Err(LoopError::Tool(
                     ToolInputError::EditNotFound {
@@ -761,19 +843,24 @@ fn apply_exact_edits(path: &str, original: &str, edits: &[EditReplacement]) -> L
             }
             1 => located.push(LocatedEdit {
                 index: index + 1,
-                start: matches[0],
-                end: matches[0] + edit.old_text.len(),
+                start: positions[0],
+                end: positions[0] + edit.old_text.len(),
                 new_text: &edit.new_text,
             }),
-            matches => {
+            count => {
+                let lines: Vec<usize> = positions
+                    .iter()
+                    .map(|start| original[..*start].matches('\n').count() + 1)
+                    .collect();
                 return Err(LoopError::Tool(
                     ToolInputError::EditNotUnique {
                         index: index + 1,
-                        matches,
+                        matches: count,
+                        lines,
                         path: path.into(),
                     }
                     .to_string(),
-                ))
+                ));
             }
         }
     }
@@ -864,6 +951,76 @@ mod tests {
                 text: "two\n\n[1 more lines in file. Use offset=3 to continue.]".into(),
                 signature: None
             }]
+        );
+    }
+
+    #[tokio::test]
+    async fn read_multi_path_sections_errors_and_cap() {
+        let dir = tempfile::tempdir().unwrap_or_else(|err| panic!("tempdir failed: {err}"));
+        let env = Arc::new(LocalExecutionEnv) as Arc<dyn ExecutionEnv>;
+        env.write_text(dir.path().join("a.txt").as_path(), "alpha")
+            .await
+            .unwrap_or_else(|err| panic!("write failed: {err}"));
+        env.write_text(dir.path().join("b.txt").as_path(), "beta")
+            .await
+            .unwrap_or_else(|err| panic!("write failed: {err}"));
+        let tool = ReadTool::new(env.clone(), dir.path());
+        let result = tool
+            .execute(
+                call(
+                    "read",
+                    json!({"paths":[{"path":"a.txt"},{"path":"missing.txt"},{"path":"b.txt"}]}),
+                ),
+                ToolUpdateCallback::new(Arc::new(oino_agent_loop::NoopEventSink), Uuid::new_v4()),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("read failed: {err}"));
+        let ContentBlock::Text { text, .. } = &result.content[0] else {
+            panic!("text block expected");
+        };
+        assert!(
+            text.starts_with(
+                "==> a.txt <==
+alpha"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "==> missing.txt <==
+<error:"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "==> b.txt <==
+beta"
+            ),
+            "{text}"
+        );
+
+        // cap: big file truncates with the explicit footer
+        let big = "x".repeat(31_000);
+        env.write_text(dir.path().join("big.txt").as_path(), &big)
+            .await
+            .unwrap_or_else(|err| panic!("write failed: {err}"));
+        let result = tool
+            .execute(
+                call("read", json!({"paths":[{"path":"big.txt"}]})),
+                ToolUpdateCallback::new(Arc::new(oino_agent_loop::NoopEventSink), Uuid::new_v4()),
+                AbortSignal::new(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("read failed: {err}"));
+        let ContentBlock::Text { text, .. } = &result.content[0] else {
+            panic!("text block expected");
+        };
+        assert!(text.len() < 31_000 + 512, "len {}", text.len());
+        assert!(
+            text.contains("[truncated:") && text.contains("offset/limit for big.txt"),
+            "{text}"
         );
     }
 

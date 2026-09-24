@@ -78,6 +78,7 @@ pub async fn compact_with_llm(
         transcript: oino_types::transcript::normalize(Some(system_prompt), Vec::new(), messages),
         session_id: None,
         cache_retention: oino_agent_loop::CacheRetention::default(),
+        max_output_tokens: None,
     };
 
     // Call the LLM

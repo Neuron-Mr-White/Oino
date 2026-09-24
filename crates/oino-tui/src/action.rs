@@ -23,6 +23,8 @@ pub enum TuiAction {
     ConfigureBtwModel(Option<String>),
     NewSession,
     ListSessions,
+    /// Print current-session info + cache status as a notice.
+    SessionInfo,
     OpenSession(String),
     ReloadResources,
     OpenInspect,
