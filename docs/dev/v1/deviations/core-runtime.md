@@ -32,6 +32,12 @@ Subcrate deviations (reported by the implementers, also binding here):
   `apiKey` > registration `authEnv` (§13 lists env before `apiKey`). A model is available only
   when a loaded component implements its API. Router state equal to the stored state is not
   re-stored. OAuth refresh has no built-in timeout (host enforces it).
+- **oino-tools:** bash temp files are `<agent>/tmp/oino-bash-<16hex>.log` (§8); `blockImages`
+  is applied in core's `convertToLlm` (pi), not in `read`; no JS `spawnHook`; grep/find walk the
+  local fs with the ripgrep/ignore crates (results in sorted path order, rg per-file error texts
+  approximated, non-local `ExecutionEnv` unsupported); `ls` approximates ICU `localeCompare`
+  outside ASCII; re-encoded image bytes differ from Photon (dimensions/MIME/notes match);
+  detached bash results carry no `structuredContent`; Windows paths compile but are untested.
 - **compaction:** summary requests set no `maxTokens` (pi 1.4.0, issue #9512); prompt-cache
   writes disabled via `cacheRetention: none`; pi's provider `env` option is dropped.
 
