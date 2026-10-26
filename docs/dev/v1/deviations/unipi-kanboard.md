@@ -28,7 +28,7 @@ Work item `unipi-kanboard` (unipi-port §3.16). Owned paths: `crates/oino-kanboa
 | E1 | `process.env.UNIPI_KANBOARD_{SESSION,PID,PROJECT,MAX_SESSIONS}` is inherited by the agent's bash | the `tool_call` handler puts `export OINO_KANBOARD_SESSION=… OINO_KANBOARD_PID=… OINO_KANBOARD_MAX_SESSIONS=… OINO_KANBOARD_PROJECT=…` (PowerShell: `$env:…`) in front of every bash/powershell command that calls the binary, via the returned `input` | guests cannot change the host environment. Only kanboard commands are touched |
 | E2 | session id `pi-<sessionId>`, claim pid = pi pid | `oino-<sessionId>`, pid = `process.self-pid()` (the Oino process) | — |
 | E3 | binary search: `UNIPI_KANBOARD_BIN` → npm platform package → dev build | `$OINO_KANBOARD_BIN` (permission `env`) → `oino-kanboard` on the host search path. After the first `status`, the reported absolute path is cached and handed to the agent | D22 (`kanboard-bin` replaced by the installer) |
-| E4 | slug cached with `setSettings("kanboard", {slug, root}, "project")` on onboard | settings `slug` if set, else an in-memory cache, else the binary resolves the project for the cwd/git root (`project show`) | guests cannot write settings (unipi-core R1). The binary's own resolution already does this |
+| E4 | slug cached with `setSettings("kanboard", {slug, root}, "project")` on onboard | onboarding writes `slug` to the project settings file (`registry.set-extension-setting`; ignored when the project is untrusted); reads: settings `slug`, else an in-memory cache, else the binary resolves the project for the cwd/git root (`project show`). `root` is not written | the binary's own resolution covers the root |
 | E5 | `SettleInfo` from the unipi arbiter | built in the guest: tool calls are counted between `agent_start` and settle, and the last assistant text and tool calls come from `agent_end.messages` | the host `propose-nudge` has no settle info |
 | E6 | nudge `details.unipiHarness` | `details.oinoProvenance {source, title, synopsis, severity?, delivery}`; delivery is counted on `nudge-delivered(id)` | runtime §2 provenance |
 | E7 | web board + `openBrowser` | `/unipi:kanboard open` starts the daemon, prints the API URLs and opens the board **panel** (`sidePane`: lane lists in a `split`, a detail section with allowed-move buttons, a comment prompt when a move needs one, keys r/a/s), live from SSE `/events`. `openBrowser` is kept as a stored setting (label "Open board panel") | D22 |
@@ -49,7 +49,7 @@ Work item `unipi-kanboard` (unipi-port §3.16). Owned paths: `crates/oino-kanboa
   ship `oino-kanboard` next to `oino` in the installers and bundles.
 - **RK2 (core-runtime):** implement the turn arbiter (`propose-nudge` / `nudge-delivered`).
   `oino-core` does not call it yet, so the kanboard monitor is reachable only from tests.
-- **RK3 (wit-v1):** add a guest way to write extension settings (same as unipi-core R1). It
+- **RK3 (wit-v1): done (core-settings).** Add a guest way to write extension settings (same as unipi-core R1). It
   would let onboarding persist `slug` the way unipi did (E4).
 - **RK4 (integration):** add `crates/oino-kanboard` to the root workspace lints when they are
   switched on (it mirrors quality.md §2 locally, plus a crate `clippy.toml`). Run

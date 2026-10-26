@@ -1,16 +1,21 @@
-//! `permission` settings namespace (unipi `src/permission/settings.ts`) and the guest-side
-//! store for values the gate writes itself (mode, saved rules).
+//! `permission` settings namespace (unipi `src/permission/settings.ts`) and the values the gate
+//! writes itself (project `mode`, saved `rules`).
 //!
-//! unipi wrote `mode` and `rules` into its settings files. Oino has no guest settings write
-//! path (deviations R1), so they live in `/ext-workspace/<wsid>/permission.json` (project)
-//! and `/ext-global/permission.json` (global) and are layered over the host settings.
+//! Like unipi, `mode` goes to the project settings file and saved rules to the settings file of
+//! their scope (`extensionSettings.permission.rules`), through the host settings write path.
+//! Rules are read per file and concatenated (global ++ project), so a project list does not
+//! shadow global rules. The pre-write-path stores `/ext-workspace/<wsid>/permission.json`
+//! (project) and `/ext-global/permission.json` (global) are imported once ([`import_legacy`])
+//! and remain the fallback when a write is refused (untrusted project, host without writes).
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use unipi_kit::jev;
-use unipi_kit::settings::{Field, Kind, Namespace, Scope, Section, Values, choice};
+use unipi_kit::settings::{
+    Field, Kind, Namespace, Scope, Section, Store, Values, WriteScope, choice,
+};
 
 use crate::decide::Mode;
 use crate::rules::{PermissionRule, RuleScope, normalize_rules};
@@ -133,6 +138,148 @@ pub fn save(scope: RuleScope, s: &Stored) {
     let _ = unipi_kit::paths::write_json(&file(scope), s);
 }
 
+/// The settings file of a rule scope.
+#[must_use]
+pub fn write_scope(scope: RuleScope) -> WriteScope {
+    match scope {
+        RuleScope::Project => WriteScope::Project,
+        RuleScope::Global => WriteScope::Global,
+    }
+}
+
+/// Saved rules of one settings file (`None` when the host cannot read files separately).
+#[must_use]
+pub fn file_rules(store: &Store, scope: RuleScope) -> Option<Vec<PermissionRule>> {
+    store.layer(NAMESPACE, write_scope(scope)).map(|layer| {
+        scoped(
+            normalize_rules(layer.get("rules").unwrap_or(&Value::Null)),
+            scope,
+        )
+    })
+}
+
+fn scoped(mut rules: Vec<PermissionRule>, scope: RuleScope) -> Vec<PermissionRule> {
+    for r in &mut rules {
+        r.scope = scope;
+    }
+    rules
+}
+
+/// Saved rules from the settings files: `(global, project)`.
+pub type FileRules = Option<(Vec<PermissionRule>, Vec<PermissionRule>)>;
+
+/// Reads both files' rules.
+#[must_use]
+pub fn read_file_rules(store: &Store) -> FileRules {
+    Some((
+        file_rules(store, RuleScope::Global)?,
+        file_rules(store, RuleScope::Project)?,
+    ))
+}
+
+/// Writes `rules` as the saved rules of `scope`'s settings file (`[]` unsets the key).
+fn write_rules(store: &Store, scope: RuleScope, rules: &[PermissionRule]) -> bool {
+    let target = write_scope(scope);
+    if rules.is_empty() {
+        return store.unset(NAMESPACE, "rules", target).is_ok();
+    }
+    let value = serde_json::to_value(rules).unwrap_or_else(|_| json!([]));
+    store.write(NAMESPACE, "rules", &value, target).is_ok()
+}
+
+fn with_rule(mut rules: Vec<PermissionRule>, rule: PermissionRule) -> Vec<PermissionRule> {
+    rules.retain(|r| !(r.tool == rule.tool && r.pattern == rule.pattern));
+    rules.push(rule);
+    rules
+}
+
+/// Saves a rule in its scope's settings file (replacing one with the same tool and pattern);
+/// falls back to the local store when the write is refused.
+pub fn persist_rule(store: &Store, rule: PermissionRule) {
+    let scope = rule.scope;
+    if let Some(current) = file_rules(store, scope)
+        && write_rules(store, scope, &with_rule(current, rule.clone()))
+    {
+        return;
+    }
+    add_rule(rule);
+}
+
+/// Sets the project mode in the project settings file; falls back to the local store.
+pub fn persist_mode(store: &Store, mode: &str) {
+    if store
+        .write(NAMESPACE, "mode", &json!(mode), WriteScope::Project)
+        .is_ok()
+    {
+        let mut s = load(RuleScope::Project);
+        if s.mode.take().is_some() {
+            save(RuleScope::Project, &s);
+        }
+        return;
+    }
+    let mut s = load(RuleScope::Project);
+    s.mode = Some(mode.to_owned());
+    save(RuleScope::Project, &s);
+}
+
+/// Forgets every saved rule (both files and both local stores).
+pub fn clear_rules(store: &Store) {
+    for scope in [RuleScope::Project, RuleScope::Global] {
+        if file_rules(store, scope).is_some_and(|r| !r.is_empty()) {
+            let _ = write_rules(store, scope, &[]);
+        }
+        let mut s = load(scope);
+        if !s.rules.is_empty() {
+            s.rules.clear();
+            save(scope, &s);
+        }
+    }
+}
+
+/// One-time import of the local stores into the settings files: rules are appended to the
+/// file's rules (deduplicated by tool + pattern), the stored project mode becomes the project
+/// `mode` unless the project file sets one. A store is removed once imported; refused writes
+/// keep it as the fallback layer. Returns the number of rules imported.
+pub fn import_legacy(store: &Store) -> usize {
+    let mut imported = 0;
+    for scope in [RuleScope::Global, RuleScope::Project] {
+        let path = file(scope);
+        if !path.exists() {
+            continue;
+        }
+        let stored = load(scope);
+        let Some(current) = file_rules(store, scope) else {
+            continue;
+        };
+        let mut ok = true;
+        if !stored.rules.is_empty() {
+            let merged = stored.rules.iter().cloned().fold(current, |acc, r| {
+                with_rule(acc, PermissionRule { scope, ..r })
+            });
+            ok = write_rules(store, scope, &merged);
+            if ok {
+                imported += stored.rules.len();
+            }
+        }
+        if ok
+            && scope == RuleScope::Project
+            && let Some(mode) = &stored.mode
+        {
+            let project_has_mode = store
+                .layer(NAMESPACE, WriteScope::Project)
+                .is_some_and(|l| l.get("mode").is_some());
+            ok = project_has_mode
+                || store
+                    .write(NAMESPACE, "mode", &json!(mode), WriteScope::Project)
+                    .is_ok();
+        }
+        if ok {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    imported
+}
+
 /// Resolved permission settings (unipi `PermissionSettings`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Resolved {
@@ -151,9 +298,10 @@ pub struct Resolved {
 }
 
 /// Layers stored values over the host settings: stored project `mode` → settings `mode` →
-/// `defaultMode` → `auto`.
+/// `defaultMode` → `auto`. Rules: the settings files' rules (`files`, else the effective
+/// `rules`) ++ the local stores.
 #[must_use]
-pub fn resolve(v: &Values, project: &Stored, global: &Stored) -> Resolved {
+pub fn resolve(v: &Values, files: FileRules, project: &Stored, global: &Stored) -> Resolved {
     let project_mode = project
         .mode
         .clone()
@@ -167,7 +315,14 @@ pub fn resolve(v: &Values, project: &Stored, global: &Stored) -> Resolved {
         .and_then(Value::as_f64)
         .filter(|c| (0.0..=1.0).contains(c))
         .unwrap_or(0.7);
-    let mut rules = normalize_rules(v.get("rules").unwrap_or(&Value::Null));
+    let mut rules = match files {
+        Some((global_rules, project_rules)) => {
+            let mut all = global_rules;
+            all.extend(project_rules);
+            all
+        }
+        None => normalize_rules(v.get("rules").unwrap_or(&Value::Null)),
+    };
     rules.extend(project.rules.iter().cloned());
     rules.extend(global.rules.iter().cloned());
     Resolved {
@@ -212,13 +367,13 @@ mod tests {
             &defaults(),
             &json!({"jevConfidence": 2}),
         ));
-        let r = resolve(&v, &Stored::default(), &Stored::default());
+        let r = resolve(&v, None, &Stored::default(), &Stored::default());
         assert_eq!(r.mode, Mode::Auto);
         assert_eq!(r.project_mode, None);
         assert!((r.jev_confidence - 0.7).abs() < f64::EPSILON);
         let v = Values(json!({"mode": "ask", "defaultMode": "full"}));
         assert_eq!(
-            resolve(&v, &Stored::default(), &Stored::default()).mode,
+            resolve(&v, None, &Stored::default(), &Stored::default()).mode,
             Mode::Ask
         );
         let stored = Stored {
@@ -230,12 +385,38 @@ mod tests {
                 scope: RuleScope::Project,
             }],
         };
-        let r = resolve(&v, &stored, &Stored::default());
+        let r = resolve(&v, None, &stored, &Stored::default());
         assert_eq!(r.mode, Mode::Full);
         assert_eq!(r.rules.len(), 1);
+        let rule = |p: &str, scope| PermissionRule {
+            tool: "bash".into(),
+            pattern: p.into(),
+            decision: RuleDecision::Deny,
+            scope,
+        };
+        let files = Some((
+            vec![rule("g", RuleScope::Global)],
+            vec![rule("p", RuleScope::Project)],
+        ));
+        let r = resolve(
+            &Values(json!({"rules": [{"pattern": "ignored", "decision": "allow"}]})),
+            files,
+            &stored,
+            &Stored::default(),
+        );
+        let patterns: Vec<&str> = r.rules.iter().map(|r| r.pattern.as_str()).collect();
+        assert_eq!(patterns, ["g", "p", "x"], "files then local stores");
+        assert_eq!(
+            with_rule(
+                vec![rule("a", RuleScope::Global)],
+                rule("a", RuleScope::Global)
+            )
+            .len(),
+            1
+        );
         let v = Values(json!({"defaultMode": "full"}));
         assert_eq!(
-            resolve(&v, &Stored::default(), &Stored::default()).mode,
+            resolve(&v, None, &Stored::default(), &Stored::default()).mode,
             Mode::Full
         );
     }

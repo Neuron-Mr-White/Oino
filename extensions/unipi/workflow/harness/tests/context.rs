@@ -309,6 +309,107 @@ async fn workflow_gate_and_plan_mode() {
     assert_eq!(reminder["message"]["display"], false);
 }
 
+/// Rules, the project mode and skill states go through `registry.set-extension-setting`; the
+/// pre-write-path state files are imported once and removed.
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_write_path_and_legacy_import() {
+    use oino_extension_api::ops::SettingsScope;
+    let env = Env::new();
+    let state = |id: &str| env.agent.path().join("state").join(id).join("global");
+    std::fs::create_dir_all(state("unipi.workflow")).unwrap();
+    let legacy = state("unipi.workflow").join("permission.json");
+    std::fs::write(
+        &legacy,
+        json!({"rules": [{"tool": "bash", "pattern": "cargo publish*", "decision": "deny", "scope": "global"}]}).to_string(),
+    )
+    .unwrap();
+    std::fs::create_dir_all(state("unipi.skill-registry")).unwrap();
+    let states = state("unipi.skill-registry").join("states.json");
+    std::fs::write(&states, json!({"alpha": {"enabled": false}}).to_string()).unwrap();
+    std::fs::write(
+        state("unipi.skill-registry").join("proxy.json"),
+        json!({"proxy": true}).to_string(),
+    )
+    .unwrap();
+
+    let (wf, _) = env.load("workflow").await;
+    env.event(
+        &wf,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    assert!(!legacy.exists(), "imported store is removed");
+    let global = env
+        .host
+        .extension_setting_layer(SettingsScope::Global, "permission");
+    assert_eq!(global["rules"][0]["pattern"], "cargo publish*");
+    assert_eq!(global["rules"][0]["decision"], "deny");
+    let denied = env.event(&wf, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "d1", "input": {"command": "cargo publish --dry-run"}})).await.unwrap();
+    assert_eq!(
+        denied["block"], true,
+        "imported deny rule applies: {denied}"
+    );
+
+    env.host
+        .queue_dialog_answer(json!({"value": {"optionId": "allow_always"}}));
+    let first = env.event(&wf, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "a1", "input": {"command": "rm -rf /tmp/x"}})).await;
+    assert_eq!(first, None);
+    let project = env
+        .host
+        .extension_setting_layer(SettingsScope::Project, "permission");
+    assert_eq!(project["rules"][0]["pattern"], "rm -rf /tmp/x");
+    assert_eq!(project["rules"][0]["scope"], "project");
+    let dialogs = env.host.calls_named("ui_dialog").len();
+    let again = env.event(&wf, EventKind::ToolCall, json!({"type": "tool_call", "toolName": "bash", "toolCallId": "a2", "input": {"command": "rm -rf /tmp/x"}})).await;
+    assert_eq!(again, None);
+    assert_eq!(
+        env.host.calls_named("ui_dialog").len(),
+        dialogs,
+        "saved rule allows without asking"
+    );
+
+    env.command(&wf, "unipi:permission", "full").await;
+    assert_eq!(
+        env.host
+            .extension_setting_layer(SettingsScope::Project, "permission")["mode"],
+        "full"
+    );
+    env.command(&wf, "unipi:permission-clear-rules", "").await;
+    assert!(
+        env.host
+            .extension_setting_layer(SettingsScope::Project, "permission")
+            .get("rules")
+            .is_none()
+    );
+
+    let (sr, _) = env.load("skill-registry").await;
+    env.event(
+        &sr,
+        EventKind::SessionStart,
+        json!({"type": "session_start", "reason": "startup"}),
+    )
+    .await;
+    assert!(!states.exists());
+    assert!(!state("unipi.skill-registry").join("proxy.json").exists());
+    let skills = env
+        .host
+        .extension_setting_layer(SettingsScope::Global, "skills");
+    assert_eq!(skills["states"], json!({"alpha": {"enabled": false}}));
+    assert_eq!(skills["proxy"], true);
+    let writes: Vec<String> = env
+        .host
+        .calls_named("set_extension_setting")
+        .iter()
+        .map(|c| c.ext.clone().unwrap_or_default())
+        .collect();
+    assert!(
+        writes
+            .iter()
+            .all(|e| e == "unipi.workflow" || e == "unipi.skill-registry")
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn skill_registry_exposure() {
     let env = Env::new();

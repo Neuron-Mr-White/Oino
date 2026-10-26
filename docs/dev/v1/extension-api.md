@@ -186,6 +186,8 @@ interface registry {
     enum renderer-target { custom-message, custom-entry, tool }
     record renderer-spec { target: renderer-target, key: string }   // customType or tool name
     record arbiter-roles { nudge-provider: bool, wait-source: bool }
+    enum settings-scope { global, project }
+    enum settings-layer { effective, global, project }
 
     record registration {
         events: list<event-kind>,
@@ -216,6 +218,12 @@ interface registry {
     set-arbiter-roles: func(roles: arbiter-roles);
     /// JSON of oino_protocol::ext::SettingsNamespace.
     register-settings: func(namespace: json) -> result<_, host-error>;
+    /// Values of a namespace (`effective` = defaults ⊕ global ⊕ project, or one file). Secret
+    /// fields resolve for the owner and for extensions matching the schema's `secretReaders`.
+    extension-settings: func(namespace: string, layer: settings-layer) -> result<json, host-error>;
+    /// Writes one dot-path key of a namespace this extension registered (`none` deletes);
+    /// secret fields go to the secret store; the owner then gets `oino_settings_changed`.
+    set-extension-setting: func(namespace: string, key: string, value: option<json>, scope: settings-scope) -> result<_, host-error>;
     /// Provider registration (pi registerProvider): JSON of oino_protocol::ext::ProviderRegistration.
     /// Only from components exporting `provider`, or a config-only override (baseUrl/headers/models) from any extension.
     register-provider: func(config: json) -> result<_, host-error>;
@@ -647,7 +655,7 @@ include the `type` field (pi `type` strings), so `on-event` handlers can decode 
 | `oino_bus` | `{type, topic, data, sticky, publisher}` |
 | `oino_ui_action` | `{type, panelId, actionId, value?}` (ui-protocol §5.3) |
 | `oino_editor` | `{type, intent: "changed"\|"cleared"\|"emptyArrowDown"\|"submit"\|"tokenBackspace", text, tokenId?}` (ui-protocol §7) |
-| `oino_settings_changed` | `{type, namespace, keys}` |
+| `oino_settings_changed` | `{type, namespace, keys, scope}` |
 | `oino_process` | `{type, pid, event: "exit", status}` (for spawned children with `subscribe`) |
 | `oino_agent` | `{type, agentId, event: ClientEvent}` |
 | `oino_task` | `{type, id, state: "running"\|"done"\|"failed"\|"killed", exitCode?}` |
@@ -758,7 +766,9 @@ them.
 ### 5.9 Secrets
 
 `~/.oino/secrets.json` (0600, file lock), keys namespaced `<ext-id>/<name>`; extensions only
-see their own namespace. Settings fields of type `secret` read/write through this store.
+see their own namespace. Settings fields of type `secret` read/write through this store at
+`<owner-ext-id>/<namespace>/<key>` (the entry a guest's own `secrets.set("<namespace>/<key>")`
+addresses), written by the settings registry (runtime §10.3).
 
 ## 6. `oino-extension-api` crate (Rust contracts)
 

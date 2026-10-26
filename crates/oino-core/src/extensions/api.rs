@@ -268,6 +268,9 @@ pub struct Registration {
     /// Turn arbiter roles (runtime §7.6).
     #[serde(default)]
     pub arbiter: ArbiterRoles,
+    /// Settings namespaces (ui-protocol §6.6 declarations, runtime §10.3).
+    #[serde(default)]
+    pub settings: Vec<JsonValue>,
 }
 
 /// Turn arbiter roles of an extension (runtime §7.6, D9).

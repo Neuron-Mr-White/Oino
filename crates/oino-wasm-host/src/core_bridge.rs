@@ -22,10 +22,12 @@ use oino_ai::{JsonObject, JsonValue, Model, ProviderEvent};
 use oino_core::agents::ChildAgent;
 use oino_core::extensions::api as ca;
 use oino_core::extensions::host::{self as ch, HostApi, HostOp};
+use oino_core::extensions::settings as cs;
 use oino_core::services::ExtensionLoader;
 use oino_extension_api::manifest::ExtensionKind;
 use oino_extension_api::ops::{
-    ControlOp, ControlReply, DeviceOp, PanelOp, SessionQuery, SessionWrite,
+    ControlOp, ControlReply, DeviceOp, PanelOp, SessionQuery, SessionWrite, SettingsLayer,
+    SettingsScope,
 };
 use oino_extension_api::registry as ar;
 use oino_extension_api::{
@@ -448,6 +450,53 @@ impl HostServices for CoreHost {
         self.registry(ext, HostOp::RegisterProvider(cfg.to_value()))
             .map(|_| ())
     }
+    fn register_settings(&self, ext: &ExtensionId, ns: RawJson) -> Result<(), HostError> {
+        self.registry(ext, HostOp::RegisterSettings(ns.to_value()))
+            .map(|_| ())
+    }
+    fn extension_settings(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        layer: SettingsLayer,
+    ) -> Result<RawJson, HostError> {
+        let layer = match layer {
+            SettingsLayer::Effective => cs::SettingsLayer::Effective,
+            SettingsLayer::Global => cs::SettingsLayer::Global,
+            SettingsLayer::Project => cs::SettingsLayer::Project,
+        };
+        self.registry(
+            ext,
+            HostOp::GetExtensionSettings {
+                namespace: namespace.to_owned(),
+                layer,
+            },
+        )
+        .map(RawJson::from)
+    }
+    fn set_extension_setting(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        key: &str,
+        value: Option<RawJson>,
+        scope: SettingsScope,
+    ) -> Result<(), HostError> {
+        let scope = match scope {
+            SettingsScope::Global => oino_settings::SettingsScope::Global,
+            SettingsScope::Project => oino_settings::SettingsScope::Project,
+        };
+        self.registry(
+            ext,
+            HostOp::SetExtensionSetting {
+                namespace: namespace.to_owned(),
+                key: key.to_owned(),
+                value: value.map(|v| v.to_value()),
+                scope,
+            },
+        )
+        .map(|_| ())
+    }
     fn unregister_provider(&self, ext: &ExtensionId, id: &str) {
         let _ = self.registry(ext, HostOp::UnregisterProvider(id.to_owned()));
     }
@@ -820,6 +869,7 @@ impl AgentHandle for CoreAgent {
 /// `oino_core` instance wrapper around a loaded component.
 pub struct CoreInstance {
     inner: Arc<dyn ExtensionInstance>,
+    api: Arc<dyn HostApi>,
     progress: Arc<ProgressRoutes>,
     prepare: Mutex<HashSet<String>>,
     path: String,
@@ -834,10 +884,25 @@ impl std::fmt::Debug for CoreInstance {
 }
 
 impl CoreInstance {
-    fn init_input(&self) -> InitInput {
+    /// Manifest plus `{namespace: values}` of every namespace known so far, as this extension
+    /// sees them (its own namespaces register during `init`, so their secrets resolve on the
+    /// first `extension-settings` read).
+    async fn init_input(&self, cx: &ca::CallContext) -> InitInput {
+        let settings = self
+            .api
+            .call(
+                self.inner.id().as_str(),
+                cx,
+                HostOp::GetAllExtensionSettings,
+            )
+            .await
+            .ok()
+            .and_then(|v| RawJson::from_value(&v).ok())
+            .unwrap_or_else(|| RawJson::from(json!({})));
         InitInput {
             manifest: RawJson::from_value(self.inner.manifest())
                 .unwrap_or_else(|_| RawJson::null()),
+            settings,
             ..InitInput::default()
         }
     }
@@ -864,9 +929,10 @@ impl ca::ExtensionInstance for CoreInstance {
         cx: ca::CallContext,
     ) -> BoxFuture<'_, Result<ca::Registration, ca::ExtensionCallError>> {
         Box::pin(async move {
+            let input = self.init_input(&cx).await;
             let reg = self
                 .inner
-                .init(self.init_input(), api_cx(&cx).with_kind(CallKind::Init))
+                .init(input, api_cx(&cx).with_kind(CallKind::Init))
                 .await
                 .map_err(|e| call_error(&e))?;
             lock(&self.prepare).extend(
@@ -890,6 +956,7 @@ impl ca::ExtensionInstance for CoreInstance {
                     .collect(),
                 apis: self.inner.manifest().provides.apis.clone(),
                 arbiter: arbiter_roles(reg.arbiter),
+                settings: reg.settings.iter().map(RawJson::to_value).collect(),
             })
         })
     }
@@ -1202,6 +1269,7 @@ impl ExtensionLoader for CoreLoader {
                 match self.runtime.load(sourced.package.clone(), services).await {
                     Ok(inner) => out.push(Arc::new(CoreInstance {
                         inner,
+                        api: Arc::clone(&core_host.api),
                         progress: Arc::clone(&core_host.progress),
                         prepare: Mutex::new(HashSet::new()),
                         path,

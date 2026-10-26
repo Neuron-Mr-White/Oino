@@ -16,7 +16,7 @@ use crate::manifest::Manifest;
 use crate::ops::{
     ControlOp, ControlReply, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply, PanelOp,
     ProviderHook, ProviderHookReply, SecretOp, SessionQuery, SessionWrite, SessionsIndexQuery,
-    TaskOp,
+    SettingsLayer, SettingsScope, TaskOp,
 };
 use crate::registry::{
     ArbiterRoles, CommandSpec, EventKind, FlagSpec, Registration, RendererSpec, ShortcutSpec,
@@ -290,6 +290,34 @@ pub trait HostServices: Send + Sync {
     /// Unsupported, invalid namespace.
     fn register_settings(&self, ext: &ExtensionId, ns: RawJson) -> Result<(), HostError> {
         unsupported!("registry.register-settings")
+    }
+    /// `registry.extension-settings`: one namespace's values as `ext` sees them.
+    ///
+    /// # Errors
+    ///
+    /// Unsupported, invalid namespace.
+    fn extension_settings(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        layer: SettingsLayer,
+    ) -> Result<RawJson, HostError> {
+        unsupported!("registry.extension-settings")
+    }
+    /// `registry.set-extension-setting`: writes one key of a namespace `ext` registered.
+    ///
+    /// # Errors
+    ///
+    /// Unsupported, not the owner, invalid key or value, untrusted project, I/O.
+    fn set_extension_setting(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        key: &str,
+        value: Option<RawJson>,
+        scope: SettingsScope,
+    ) -> Result<(), HostError> {
+        unsupported!("registry.set-extension-setting")
     }
     /// `registry.register-provider`.
     ///

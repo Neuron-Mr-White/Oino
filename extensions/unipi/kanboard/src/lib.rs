@@ -377,6 +377,14 @@ impl Kanboard {
                     cx.cwd().to_string_lossy().into_owned(),
                     project.slug.clone(),
                 );
+                // unipi `setSettings("kanboard", {slug}, "project")`; untrusted projects keep
+                // the in-memory cache only.
+                let _ = self.settings.write(
+                    NAMESPACE,
+                    "slug",
+                    &json!(project.slug),
+                    unipi_kit::settings::WriteScope::Project,
+                );
                 notify(
                     &[
                         format!("kanboard: {} ({}) registered", project.name, project.slug),

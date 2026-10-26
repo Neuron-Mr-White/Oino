@@ -222,8 +222,8 @@ impl Registry {
             })
             .collect();
         skills.sort_by(|a, b| a.name.cmp(&b.name));
-        let global = settings::read_layer(Layer::Global);
-        let project = settings::read_layer(Layer::Project);
+        let global = settings::read_layer(&self.settings, Layer::Global);
+        let project = settings::read_layer(&self.settings, Layer::Project);
         let proxy = self.resolved().proxy;
         let ed = Editor {
             skills,
@@ -262,11 +262,15 @@ impl Registry {
                 ui::panel_close(&id);
                 let writes =
                     editor::count_changes((&before_g, &before_p), (&ed.global, &ed.project));
-                settings::write_layer(Layer::Global, &ed.global);
-                settings::write_layer(Layer::Project, &ed.project);
+                if ed.global != before_g {
+                    settings::write_layer(&self.settings, Layer::Global, &ed.global);
+                }
+                if ed.project != before_p {
+                    settings::write_layer(&self.settings, Layer::Project, &ed.project);
+                }
                 let proxy_changed = ed.proxy != before_proxy;
                 if proxy_changed {
-                    settings::set_stored_proxy(ed.proxy);
+                    settings::set_proxy(&self.settings, ed.proxy);
                 }
                 if writes > 0 || proxy_changed {
                     self.sessions.with(&sid, |s| s.judge.judged = false);
@@ -517,6 +521,9 @@ impl Extension for Registry {
         });
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.settings.refresh();
+            if !cx.is_child() {
+                settings::import_legacy(&ext.settings);
+            }
             let entries = session::entries().unwrap_or_default();
             ext.sessions.with(cx.session_id(), |s| {
                 *s = Session {

@@ -16,6 +16,7 @@
 //! | [`tools`] | `DEFAULT_TOOL_NAMES`, tool modifiers | [`tools::resolve_default_tools`], [`tools::apply_tool_modifiers`], [`tools::tool_list_error`] |
 //! | [`paths`] | `config.ts`, `utils/paths.ts` | [`paths::agent_dir`], [`paths::project_dir`], file-name constants, [`paths::env`] names, tilde/`file://` resolution |
 //! | [`storage`] | `proper-lockfile` use | [`storage::FileLock`] (`<file>.lock`), [`storage::write_atomic`] (shared with other agent-dir files) |
+//! | [`secrets`] | — (Oino) | [`SecretStore`]: `<agent>/secrets.json` (0600, locked), extension secrets and secret settings fields |
 //!
 //! # Semantics (pi parity)
 //!
@@ -43,6 +44,7 @@ pub mod error;
 pub mod json;
 pub mod manager;
 pub mod paths;
+pub mod secrets;
 pub mod storage;
 pub mod tools;
 pub mod types;
@@ -51,6 +53,7 @@ pub mod view;
 pub use error::{InvalidSettingError, SettingsError, SettingsErrorKind, SettingsScope};
 pub use json::JsonObject;
 pub use manager::SettingsManager;
+pub use secrets::SecretStore;
 pub use types::{
     BranchSummarySettings, CacheWarmingMode, CompactionSettings, FilteredPackageSource,
     ImageSettings, PackageSource, ProjectTrustDefault, ProviderRetrySettings, QueueMode,

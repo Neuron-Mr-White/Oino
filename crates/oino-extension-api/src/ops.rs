@@ -545,6 +545,33 @@ pub enum SecretOp {
     Delete(String),
 }
 
+// ── settings ─────────────────────────────────────────────────────────────
+
+/// Settings file a write targets (`registry.settings-scope`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SettingsScope {
+    /// `<agent>/settings.json` (and the secret store for secret fields).
+    Global,
+    /// `<cwd>/.oino/settings.json` (trusted projects only).
+    Project,
+}
+
+/// Values a settings read returns (`registry.settings-layer`).
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum SettingsLayer {
+    /// `defaults ⊕ global ⊕ project`.
+    #[default]
+    Effective,
+    /// The global file's values.
+    Global,
+    /// The project file's values.
+    Project,
+}
+
 // ── provider-host ────────────────────────────────────────────────────────
 
 /// `provider-host` calls made by provider components.

@@ -15,7 +15,7 @@ use crate::json::RawJson;
 use crate::manifest::Manifest;
 use crate::ops::{
     ControlOp, ControlReply, DeviceOp, EditorOp, HostContextInfo, PanelOp, SecretOp, SessionQuery,
-    SessionWrite,
+    SessionWrite, SettingsLayer, SettingsScope,
 };
 use crate::registry::{
     ArbiterRoles, CommandSpec, EventKind, FlagSpec, Registration, RendererSpec, ShortcutSpec,
@@ -53,6 +53,51 @@ pub struct RecordingHostServices {
     flags: Mutex<HashMap<String, RawJson>>,
     editor: Mutex<String>,
     panels: Mutex<u32>,
+    /// Extension settings layers: `(scope, namespace)` → values object.
+    ext_settings: Mutex<BTreeMap<(String, String), Value>>,
+}
+
+/// Sets dot path `key` in `target` (`None` removes it).
+fn set_dotted(target: &mut Value, key: &str, value: Option<Value>) {
+    if !target.is_object() {
+        *target = json!({});
+    }
+    let segments: Vec<&str> = key.split('.').collect();
+    let Some((last, parents)) = segments.split_last() else {
+        return;
+    };
+    let mut cursor = target;
+    for segment in parents {
+        let Value::Object(map) = cursor else { return };
+        let next = map
+            .entry((*segment).to_owned())
+            .or_insert_with(|| json!({}));
+        if !next.is_object() {
+            *next = json!({});
+        }
+        cursor = next;
+    }
+    if let Value::Object(map) = cursor {
+        match value {
+            Some(v) => {
+                map.insert((*last).to_owned(), v);
+            }
+            None => {
+                map.remove(*last);
+            }
+        }
+    }
+}
+
+fn merge_values(base: &mut Value, over: &Value) {
+    match (base, over) {
+        (Value::Object(b), Value::Object(o)) => {
+            for (k, v) in o {
+                merge_values(b.entry(k.clone()).or_insert(Value::Null), v);
+            }
+        }
+        (b, o) => *b = o.clone(),
+    }
 }
 
 impl std::fmt::Debug for RecordingHostServices {
@@ -117,9 +162,40 @@ impl RecordingHostServices {
         guard(&self.dialog_waiters).len()
     }
 
+    /// Values stored by `set-extension-setting` in one scope (`{}` when none).
+    #[must_use]
+    pub fn extension_setting_layer(&self, scope: SettingsScope, namespace: &str) -> Value {
+        guard(&self.ext_settings)
+            .get(&(scope_name(scope).to_owned(), namespace.to_owned()))
+            .cloned()
+            .unwrap_or_else(|| json!({}))
+    }
+
+    /// Presets one key of an extension settings layer (as if a user had edited it).
+    pub fn preset_extension_setting(
+        &self,
+        scope: SettingsScope,
+        namespace: &str,
+        key: &str,
+        value: Value,
+    ) {
+        let mut all = guard(&self.ext_settings);
+        let layer = all
+            .entry((scope_name(scope).to_owned(), namespace.to_owned()))
+            .or_insert_with(|| json!({}));
+        set_dotted(layer, key, Some(value));
+    }
+
     /// Sets a CLI flag value.
     pub fn set_flag(&self, name: &str, value: Value) {
         guard(&self.flags).insert(name.to_owned(), RawJson::from(value));
+    }
+}
+
+fn scope_name(scope: SettingsScope) -> &'static str {
+    match scope {
+        SettingsScope::Global => "global",
+        SettingsScope::Project => "project",
     }
 }
 
@@ -176,6 +252,55 @@ impl HostServices for RecordingHostServices {
     }
     fn register_settings(&self, ext: &ExtensionId, ns: RawJson) -> Result<(), HostError> {
         self.record("register_settings", Some(ext), ns.to_value());
+        Ok(())
+    }
+    fn extension_settings(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        layer: SettingsLayer,
+    ) -> Result<RawJson, HostError> {
+        self.record(
+            "extension_settings",
+            Some(ext),
+            json!({"namespace": namespace, "layer": layer}),
+        );
+        let all = guard(&self.ext_settings);
+        let get = |scope: SettingsScope| {
+            all.get(&(scope_name(scope).to_owned(), namespace.to_owned()))
+                .cloned()
+                .unwrap_or_else(|| json!({}))
+        };
+        let value = match layer {
+            SettingsLayer::Effective => {
+                let mut v = get(SettingsScope::Global);
+                merge_values(&mut v, &get(SettingsScope::Project));
+                v
+            }
+            SettingsLayer::Global => get(SettingsScope::Global),
+            SettingsLayer::Project => get(SettingsScope::Project),
+        };
+        Ok(RawJson::from(value))
+    }
+    fn set_extension_setting(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        key: &str,
+        value: Option<RawJson>,
+        scope: SettingsScope,
+    ) -> Result<(), HostError> {
+        let value = value.map(|v| v.to_value());
+        self.record(
+            "set_extension_setting",
+            Some(ext),
+            json!({"namespace": namespace, "key": key, "value": value, "scope": scope}),
+        );
+        let mut all = guard(&self.ext_settings);
+        let layer = all
+            .entry((scope_name(scope).to_owned(), namespace.to_owned()))
+            .or_insert_with(|| json!({}));
+        set_dotted(layer, key, value.filter(|v| !v.is_null()));
         Ok(())
     }
     fn register_provider(&self, ext: &ExtensionId, cfg: RawJson) -> Result<(), HostError> {

@@ -1,15 +1,18 @@
 //! `skills` settings namespace (unipi `src/settings.ts`).
 //!
-//! Per-skill states edited in the skill editor are stored by the extension in
-//! `/ext-global/states.json` (global) and `/ext-workspace/<wsid>/states.json` (project) and
-//! layered over `extensionSettings.skills.states` (no guest settings write path, deviations).
+//! Per-skill states edited in the skill editor are written to `extensionSettings.skills.states`
+//! of the global or project settings file, and the editor's proxy toggle to the global
+//! `proxy`, through the host settings write path (unipi `setSettings`). The pre-write-path
+//! stores `/ext-global/states.json`, `/ext-workspace/<wsid>/states.json` and
+//! `/ext-global/proxy.json` are imported once ([`import_legacy`]) and remain the fallback layer
+//! when a write is refused (untrusted project, host without writes).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use unipi_kit::jev;
-use unipi_kit::settings::{Field, Kind, Namespace, Section, Values, choice};
+use unipi_kit::settings::{Field, Kind, Namespace, Section, Store, Values, WriteScope, choice};
 
 use crate::registry::{SkillState, normalize_states};
 
@@ -198,32 +201,113 @@ fn layer_file(l: Layer) -> PathBuf {
     }
 }
 
-/// Reads a stored layer.
+fn write_scope(l: Layer) -> WriteScope {
+    match l {
+        Layer::Global => WriteScope::Global,
+        Layer::Project => WriteScope::Project,
+    }
+}
+
+/// Reads a local (fallback) store layer.
 #[must_use]
-pub fn read_layer(l: Layer) -> BTreeMap<String, SkillState> {
+pub fn read_local(l: Layer) -> BTreeMap<String, SkillState> {
     unipi_kit::paths::read_json::<Value>(&layer_file(l))
         .map(|v| normalize_states(&v))
         .unwrap_or_default()
 }
 
-/// Writes a stored layer.
-pub fn write_layer(l: Layer, states: &BTreeMap<String, SkillState>) {
-    let _ = unipi_kit::paths::write_json(&layer_file(l), states);
+fn write_local(l: Layer, states: &BTreeMap<String, SkillState>) {
+    let path = layer_file(l);
+    if states.is_empty() {
+        let _ = std::fs::remove_file(path);
+    } else {
+        let _ = unipi_kit::paths::write_json(&path, states);
+    }
 }
 
-/// Stored proxy override (`/ext-global/proxy.json`), set from the editor.
+/// States of one settings file (`None` when the host cannot read files separately).
+fn file_states(store: &Store, l: Layer) -> Option<BTreeMap<String, SkillState>> {
+    store
+        .layer(NAMESPACE, write_scope(l))
+        .map(|v| normalize_states(v.get("states").unwrap_or(&Value::Null)))
+}
+
+/// The states one scope shows in the editor: its settings file merged with its local store.
+#[must_use]
+pub fn read_layer(store: &Store, l: Layer) -> BTreeMap<String, SkillState> {
+    merge_states(
+        &file_states(store, l).unwrap_or_default(),
+        &read_local(l),
+        &BTreeMap::new(),
+    )
+}
+
+/// Writes one scope's states to its settings file (the local store is cleared); falls back to
+/// the local store when the write is refused.
+pub fn write_layer(store: &Store, l: Layer, states: &BTreeMap<String, SkillState>) {
+    let target = write_scope(l);
+    let written = if states.is_empty() {
+        store.unset(NAMESPACE, "states", target).is_ok()
+    } else {
+        serde_json::to_value(states)
+            .is_ok_and(|v| store.write(NAMESPACE, "states", &v, target).is_ok())
+    };
+    let empty = BTreeMap::new();
+    write_local(l, if written { &empty } else { states });
+}
+
+fn proxy_file() -> PathBuf {
+    unipi_kit::paths::global("proxy.json")
+}
+
+/// Local (fallback) proxy override.
 #[must_use]
 pub fn stored_proxy() -> Option<bool> {
-    unipi_kit::paths::read_json::<Value>(&unipi_kit::paths::global("proxy.json"))
+    unipi_kit::paths::read_json::<Value>(&proxy_file())
         .and_then(|v| v.get("proxy").and_then(Value::as_bool))
 }
 
-/// Stores the proxy override.
-pub fn set_stored_proxy(on: bool) {
-    let _ = unipi_kit::paths::write_json(
-        &unipi_kit::paths::global("proxy.json"),
-        &json!({"proxy": on}),
-    );
+/// Sets the proxy toggle in the global settings file; falls back to the local store.
+pub fn set_proxy(store: &Store, on: bool) {
+    if store
+        .write(NAMESPACE, "proxy", &json!(on), WriteScope::Global)
+        .is_ok()
+    {
+        let _ = std::fs::remove_file(proxy_file());
+    } else {
+        let _ = unipi_kit::paths::write_json(&proxy_file(), &json!({"proxy": on}));
+    }
+}
+
+/// One-time import of the local stores into the settings files (states merged per option
+/// under the file's own, proxy unless the global file sets one). Imported stores are
+/// removed; refused writes keep them. Returns the number of skill states imported.
+pub fn import_legacy(store: &Store) -> usize {
+    let mut imported = 0;
+    for l in [Layer::Global, Layer::Project] {
+        let local = read_local(l);
+        if local.is_empty() || !layer_file(l).exists() {
+            continue;
+        }
+        let Some(current) = file_states(store, l) else {
+            continue;
+        };
+        let merged = merge_states(&local, &current, &BTreeMap::new());
+        write_layer(store, l, &merged);
+        if !layer_file(l).exists() {
+            imported += local.len();
+        }
+    }
+    if let Some(on) = stored_proxy()
+        && let Some(global) = store.layer(NAMESPACE, WriteScope::Global)
+    {
+        if global.get("proxy").is_some() {
+            let _ = std::fs::remove_file(proxy_file());
+        } else {
+            set_proxy(store, on);
+        }
+    }
+    imported
 }
 
 /// Merges per option: project over global over settings.
@@ -278,8 +362,8 @@ pub fn resolve(v: &Values, utility: Option<&Value>, stored: Option<bool>) -> Ski
         proxy: stored.unwrap_or_else(|| v.bool("proxy", false)),
         states: merge_states(
             &normalize_states(v.get("states").unwrap_or(&Value::Null)),
-            &read_layer(Layer::Global),
-            &read_layer(Layer::Project),
+            &read_local(Layer::Global),
+            &read_local(Layer::Project),
         ),
         exposure: normalize_exposure(&exposure_raw),
     }

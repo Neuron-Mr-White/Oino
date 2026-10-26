@@ -2,13 +2,17 @@
 //!
 //! The host passes resolved values per namespace in `InitInput.settings`; afterwards
 //! `oino_settings_changed {namespace, keys}` tells the owner to re-read, which [`Store`] does
-//! from `control.get-settings()["extensionSettings"][namespace]` layered over the registered
-//! defaults. Reads never fail: missing or malformed layers fall back to defaults (unipi
-//! `getSettings` never throws).
+//! with `registry.extension-settings(namespace)` (secret fields resolved by the host), falling
+//! back to `control.get-settings()["extensionSettings"][namespace]` on hosts without it, layered
+//! over the registered defaults. Reads never fail: missing or malformed layers fall back to
+//! defaults (unipi `getSettings` never throws). [`Store::write`] / [`Store::unset`] persist
+//! through `registry.set-extension-setting` (unipi `setSettings`).
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use oino_extension::settings::Layer;
+pub use oino_extension::settings::Scope as WriteScope;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
@@ -149,13 +153,33 @@ impl Store {
         self.load(settings.get("extensionSettings").unwrap_or(&Value::Null));
     }
 
-    /// Re-reads from the host (`control.get-settings`); keeps current values on failure.
+    /// Re-reads every declared namespace from the host; keeps current values on failure.
     pub fn refresh(&self) {
-        if let Ok(settings) = oino_extension::control::settings()
+        let names: Vec<String> = self.inner.borrow().keys().cloned().collect();
+        let mut fallback = false;
+        for ns in &names {
+            if !self.refresh_one(ns) {
+                fallback = true;
+            }
+        }
+        if fallback
+            && let Ok(settings) = oino_extension::control::settings()
             && settings.get("extensionSettings").is_some()
         {
             self.load_from_settings(&settings);
         }
+    }
+
+    /// Re-reads one namespace through `registry.extension-settings`; `false` when the host
+    /// cannot serve it.
+    fn refresh_one(&self, namespace: &str) -> bool {
+        let Ok(layer) = oino_extension::settings::get(namespace, Layer::Effective) else {
+            return false;
+        };
+        if let Some((defaults, values)) = self.inner.borrow_mut().get_mut(namespace) {
+            *values = deep_merge(defaults, &layer);
+        }
+        true
     }
 
     /// Handles an `oino_settings_changed` payload; returns the namespace when it is ours.
@@ -164,8 +188,56 @@ impl Store {
         if !self.inner.borrow().contains_key(&ns) {
             return None;
         }
-        self.refresh();
+        if !self.refresh_one(&ns) {
+            self.refresh();
+        }
         Some(ns)
+    }
+
+    /// Persists `key` of an owned namespace in `scope` (unipi `setSettings`), then re-reads the
+    /// namespace (a project value may still shadow a global write).
+    ///
+    /// # Errors
+    ///
+    /// The host rejected the write (not the owner, invalid value, untrusted project, I/O).
+    pub fn write(
+        &self,
+        namespace: &str,
+        key: &str,
+        value: &Value,
+        scope: WriteScope,
+    ) -> oino_extension::Result<()> {
+        oino_extension::settings::set(namespace, key, Some(value), scope)?;
+        if !self.refresh_one(namespace) {
+            self.set_local(namespace, key, value.clone());
+        }
+        Ok(())
+    }
+
+    /// Deletes `key` in `scope` ("use default"), then re-reads the namespace.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::write`].
+    pub fn unset(
+        &self,
+        namespace: &str,
+        key: &str,
+        scope: WriteScope,
+    ) -> oino_extension::Result<()> {
+        oino_extension::settings::set(namespace, key, None, scope)?;
+        self.refresh_one(namespace);
+        Ok(())
+    }
+
+    /// One file's values of `namespace` (`None` when the host cannot serve it).
+    #[must_use]
+    pub fn layer(&self, namespace: &str, scope: WriteScope) -> Option<Value> {
+        let layer = match scope {
+            WriteScope::Global => Layer::Global,
+            WriteScope::Project => Layer::Project,
+        };
+        oino_extension::settings::get(namespace, layer).ok()
     }
 
     /// Current values of `namespace` (`{}` when undeclared).

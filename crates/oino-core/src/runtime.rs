@@ -443,6 +443,14 @@ impl AgentSessionRuntime {
         &self.core.services
     }
 
+    /// Extension settings for frontends (settings hub, modes §4 `_oino/get_settings_schema`,
+    /// `get_extension_settings`, `set_extension_setting`): schema, layered values with masked
+    /// secrets, scoped writes and change notifications.
+    #[must_use]
+    pub fn extension_settings(&self) -> &Arc<crate::extensions::settings::ExtensionSettings> {
+        &self.core.services.extension_settings
+    }
+
     /// The current session.
     #[must_use]
     pub fn session(&self) -> AgentSession {

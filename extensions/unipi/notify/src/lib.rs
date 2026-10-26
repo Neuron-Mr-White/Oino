@@ -34,14 +34,15 @@ use oino_extension::kv::Scope;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
 use unipi_kit::bus::Delivery;
-use unipi_kit::settings::{Store, deep_merge, set_field};
+use unipi_kit::settings::{Store, WriteScope, deep_merge, set_field};
 use unipi_kit::topics::{self, NotificationSent};
 
 use crate::config::{EVENTS, NAMESPACE, NotifyConfig, PLATFORMS, SECRET_KEYS};
 use crate::messages::{PRODUCT, is_blocking, title_for};
 use crate::platforms::PlatformResult;
 
-/// Kv key of the local settings overlay.
+/// Kv key of the local settings overlay (fallback when a settings write is refused; imported
+/// into the global settings file once).
 const OVERLAY_KEY: &str = "settings-overlay";
 /// unipi `FINISH_GRACE_MS`.
 const FINISH_GRACE_MS: u64 = 1500;
@@ -172,6 +173,24 @@ fn notify_user_schema() -> Value {
     })
 }
 
+/// Leaf values of an object as dot-path keys (`{"a": {"b": 1}}` → `[("a.b", 1)]`).
+fn flatten(prefix: &str, v: &Value, out: &mut Vec<(String, Value)>) {
+    match v {
+        Value::Object(map) if !map.is_empty() || prefix.is_empty() => {
+            for (k, child) in map {
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{prefix}.{k}")
+                };
+                flatten(&key, child, out);
+            }
+        }
+        _ if prefix.is_empty() => {}
+        other => out.push((prefix.to_owned(), other.clone())),
+    }
+}
+
 /// Removes a dot-path key; `true` when something was removed.
 fn remove_field(v: &mut Value, key: &str) -> bool {
     match key.split_once('.') {
@@ -228,10 +247,47 @@ impl Notify {
         v
     }
 
-    fn write_overlay(&self, key: &str, value: Value) {
+    /// Persists a wizard / `/unipi:notify-event` choice in the global settings file (unipi
+    /// `setSettings`); the local overlay holds it only when the host refuses the write.
+    fn write_setting(&self, key: &str, value: Value) {
+        if self
+            .settings
+            .write(NAMESPACE, key, &value, WriteScope::Global)
+            .is_ok()
+        {
+            self.forget_overlay(&[key.to_owned()]);
+            return;
+        }
         let v = set_field(&self.overlay(), key, value);
         let _ = kv::set_json(Scope::Global, OVERLAY_KEY, &v);
         *self.overlay.borrow_mut() = Some(v);
+    }
+
+    /// One-time import of the overlay into the global settings file (leaf keys; written keys
+    /// leave the overlay). Returns the number of keys imported.
+    fn import_overlay(&self) -> usize {
+        let overlay = self.overlay();
+        let mut leaves = Vec::new();
+        flatten("", &overlay, &mut leaves);
+        let mut imported = Vec::new();
+        for (key, value) in leaves {
+            if self
+                .settings
+                .write(NAMESPACE, &key, &value, WriteScope::Global)
+                .is_ok()
+            {
+                imported.push(key);
+            }
+        }
+        self.forget_overlay(&imported);
+        if self
+            .overlay()
+            .as_object()
+            .is_some_and(serde_json::Map::is_empty)
+        {
+            kv::delete(Scope::Global, OVERLAY_KEY);
+        }
+        imported.len()
     }
 
     /// Drops overlay keys the host now carries (a real settings write supersedes them).
@@ -563,7 +619,7 @@ impl Notify {
             );
             return;
         }
-        self.write_overlay(&format!("events.{event}.enabled"), json!(value == "on"));
+        self.write_setting(&format!("events.{event}.enabled"), json!(value == "on"));
         let _ = ui::notify(&format!("notify: {event} is now {value}."), "info");
     }
 
@@ -636,7 +692,18 @@ impl Notify {
             .map(|s| s.trim().to_owned())
     }
 
-    fn save_secret(key: &str, value: Option<&str>) {
+    /// Stores a secret field through the settings registry (the host keeps it in the secret
+    /// store at the same `notify/<key>` entry); falls back to a direct secret write.
+    fn save_secret(&self, key: &str, value: Option<&str>) {
+        let written = match value.filter(|v| !v.is_empty()) {
+            Some(v) => self
+                .settings
+                .write(NAMESPACE, key, &json!(v), WriteScope::Global),
+            None => self.settings.unset(NAMESPACE, key, WriteScope::Global),
+        };
+        if written.is_ok() {
+            return;
+        }
         let name = format!("{NAMESPACE}/{key}");
         match value.filter(|v| !v.is_empty()) {
             Some(v) => {
@@ -696,10 +763,10 @@ impl Notify {
         match platforms::post(&test, "Gotify").await {
             Ok(()) => {
                 let url = url.trim_end_matches('/').to_owned();
-                self.write_overlay("gotify.enabled", json!(true));
-                self.write_overlay("gotify.serverUrl", json!(url));
-                self.write_overlay("gotify.priority", json!(priority));
-                Self::save_secret("gotify.appToken", Some(&token));
+                self.write_setting("gotify.enabled", json!(true));
+                self.write_setting("gotify.serverUrl", json!(url));
+                self.write_setting("gotify.priority", json!(priority));
+                self.save_secret("gotify.appToken", Some(&token));
                 let _ = ui::notify("✓ Gotify configured — test message sent.", "info");
             }
             Err(e) => {
@@ -752,9 +819,9 @@ impl Notify {
                 Err(_) => None,
             };
             if let Some(chat) = found {
-                self.write_overlay("telegram.enabled", json!(true));
-                Self::save_secret("telegram.botToken", Some(&token));
-                Self::save_secret("telegram.chatId", Some(&chat));
+                self.write_setting("telegram.enabled", json!(true));
+                self.save_secret("telegram.botToken", Some(&token));
+                self.save_secret("telegram.chatId", Some(&chat));
                 let _ = ui::notify(&format!("✓ Telegram configured (chat {chat})."), "info");
                 return;
             }
@@ -837,11 +904,11 @@ impl Notify {
         .await
         {
             Ok(()) => {
-                self.write_overlay("ntfy.enabled", json!(true));
-                self.write_overlay("ntfy.serverUrl", json!(server));
-                self.write_overlay("ntfy.topic", json!(topic));
-                self.write_overlay("ntfy.priority", json!(priority));
-                Self::save_secret("ntfy.token", token.as_deref());
+                self.write_setting("ntfy.enabled", json!(true));
+                self.write_setting("ntfy.serverUrl", json!(server));
+                self.write_setting("ntfy.topic", json!(topic));
+                self.write_setting("ntfy.priority", json!(priority));
+                self.save_secret("ntfy.token", token.as_deref());
                 let _ = ui::notify(
                     &format!("✓ ntfy configured — test sent to {server}/{topic}."),
                     "info",
@@ -969,6 +1036,10 @@ impl Extension for Notify {
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.sessions
                 .with(cx.session_id(), |s| *s = SessionState::default());
+            if !cx.is_child() {
+                ext.settings.refresh();
+                ext.import_overlay();
+            }
             unipi_kit::bus::subscribe(WORK_TOPICS);
             Ok(())
         });

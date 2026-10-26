@@ -41,6 +41,7 @@ End-to-end smoke (release `oino`, temp agent dir):
 | Resources: AGENTS.md/CLAUDE.md, SYSTEM.md, APPEND_SYSTEM.md, skills, prompt templates, themes discovery, trust | ✅ | custom theme files are discovered but not rendered |
 | System prompt (sections, docs section, D13 substitutions) | ✅ | docs root = bundled `oino.docs` |
 | Settings manager (layers, migrations, locking) | ✅ | |
+| Extension settings registry (schema, layered values, scoped writes, secret fields, change events) | ✅ | `oino_core::extensions::settings::ExtensionSettings` (`AgentSessionRuntime::extension_settings`); secrets in `secrets.json` at `<owner>/<namespace>/<key>`; no `oino:settings:<ns>` bus topic (core-runtime #22); `_oino/*` settings commands and the hub UI ❌ |
 | Models: registry, `models.json`, auth.json, resolver, scopes, virtual models | ✅ | dynamic catalogs refreshed at startup (integration #5) |
 | Providers (pi-ai wires) | 🟡 | Anthropic Messages, OpenAI Responses, chat completions, Oino Router ✅; Copilot, Codex sign-in, Azure, Bedrock, Gemini/Vertex native, Cloudflare, WebSockets ❌ (providers-v1) |
 | OAuth `/login` `/logout` | ❌ | Anthropic OAuth exists in the component; core/frontends do not drive it |
@@ -50,7 +51,7 @@ End-to-end smoke (release `oino`, temp agent dir):
 | Interactive TUI | 🟡 | full chrome, dialogs, panels, pickers ✅; inline (non-alt-screen) mode, inline images, extension settings hub, extension argument completion, editor events ❌ (tui-client deviations) |
 | Package manager (`oino install/remove/update/list/config`), `oino auth`, `oino update` | ❌ | install packages by copying into `~/.oino/extensions` |
 | `/share`, `/bug`, pi telemetry, pi-mcp, codemode | ❌ | out of scope (charter) |
-| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI dialogs/fire/panels, settings read, models.complete, nested agents (`agents.*`), turn arbiter, `control.{run-state,shutdown,system-prompt-options,new-session,fork,switch-session,reload}` ✅; settings **write**, provider hooks, editor read, `control.{bash-detach,running-bash}` ❌ |
+| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI dialogs/fire/panels, settings read + write (`registry.{register-settings,extension-settings,set-extension-setting}`), models.complete, nested agents (`agents.*`), turn arbiter, `control.{run-state,shutdown,system-prompt-options,new-session,fork,switch-session,reload}` ✅; provider hooks, editor read, `control.{bash-detach,running-bash}` ❌ |
 | ACP (Zed etc.) | ✅ | protocol v1 incl. permissions, elicitation, client fs/terminal; Zed interop not yet tried by hand |
 | `oino serve`, `--remote`, multi-client | ❌ | specified (modes §5) |
 
@@ -62,12 +63,12 @@ works only once the listed host capability exists.
 | Package | Status | Missing / reason |
 |---|---|---|
 | core (hints, header, work tray) | ✅ | local-time hints need `host-info` UTC offset (unipi-core R3) |
-| workflow (permissions, plan mode) | 🟡 | gate, rules, plan mode ✅; `auto` mode's jev judge now has `models.complete`; saved rules live in state files, not settings (no settings write) |
+| workflow (permissions, plan mode) | ✅ | gate, rules, plan mode ✅; `auto` mode's jev judge has `models.complete`; project mode and saved rules are written to the settings files (state files imported once) |
 | long-horizon | ✅ | goal/ralph/swarm/graph state machines ✅; goal kickoff + continuation through the turn arbiter verified e2e (faux); graph runs use the subagents spawn path (not e2e-tested) |
 | memory | 🟡 | markdown memories, tools, recall reminder, side-save pass (nested agent, memory tools only; e2e) ✅; MemPalace untested against a real install |
 | dream | ✅ | digests, tray, proposals, dream runs (nested agent, `only: [unipi.memory]`, file persistence in the staging dir; e2e) ✅ |
 | utility | ❌ | not ported (render styles, auto-rename, `/unipi:answer`, `/unipi:move`, image tools) |
-| skill-registry | ✅ | jev judging via `models.complete`; skill-state edits stay in state files |
+| skill-registry | ✅ | jev judging via `models.complete`; skill states and the proxy toggle are written to the settings files (state files imported once) |
 | info-screen | ✅ | panels now served by the core bridge |
 | subagents | ✅ | `run_subagent` foreground/background, completion notification, `read_subagent` verified e2e; UI policy fixed at spawn (unipi-agents R2) |
 | background-tasks | ✅ | notification `deliverAs: followUp` (unipi-agents R1) open |
@@ -75,11 +76,11 @@ works only once the listed host capability exists.
 | web-api | ✅ | TLS fingerprinting not implemented (`impersonated: false`) |
 | ask-user | ✅ | |
 | mcp | 🟡 | stdio + HTTP ✅; pi `mcp.json` not readable by the guest (R1); ACP `mcpServers` not forwarded (R3) |
-| notify | ✅ | setup wizards write a local overlay (no settings write) |
+| notify | ✅ | setup wizards and `/unipi:notify-event` write the global settings file, tokens go to secret fields (the old overlay is imported once) |
 | kanboard | 🟡 | CLI/daemon + panel ✅; core now calls its nudge provider (arbiter); monitor nudges not e2e-tested against a live `oino-kanboard` board; installers ship `oino-kanboard` |
 | command-enchantment | 🟡 | completions need frontend `get_completions` (`_oino/*`) |
 | compactor | ✅ | `llm` method's previous-summary handling (unipi-context R1) open |
-| footer | ✅ | |
+| footer | ✅ | `/unipi:footer on\|off` writes `footer.enabled` (old override imported once) |
 | updater | ✅ | never installs (by design) |
 | input-shortcuts | 🟡 | needs `editor_event` from frontends (TUI/desktop do not send it) |
 | fusion | ✅ | persistent sidekick child (file under `/ext-session/<sid>/sidekick`), handoff via `sidekick` verified e2e |
@@ -97,9 +98,12 @@ Herdr, the unipi desktop app.
 2. Turn arbiter: frontends get `run_state{waiting}` but `ctx.shutdown()` is not acted on by any
    mode yet; `control.bash-detach` / `running-bash` remain unsupported (watchdog kill,
    background-tasks adopt).
-3. **No guest settings write path** (unipi-core R1 / RK3 / integrations R4 / context R2):
-   extensions keep user choices in their state files; `extensionSettings` is read-only to them,
-   and no frontend renders the extension settings hub.
+3. **No frontend renders the extension settings hub** yet: the registry (schema, values with
+   masked secrets, scoped writes, change notifications) is in `oino-core`
+   (`AgentSessionRuntime::extension_settings`), but the `_oino/get_settings_schema` /
+   `get_extension_settings` / `set_extension_setting` RPC commands and the TUI/desktop hub are
+   not wired. Only the rebuilt dists (core, workflow, skill-registry, notify, footer, kanboard,
+   utility) carry the new `unipi_kit` settings store; other components pick it up on rebuild.
 4. Frontend `_oino/*` commands (`get_completions`, `ui_action`, `invoke_shortcut`,
    `editor_event`, settings schema, `service_call`, `login`) are missing: panel buttons in the
    desktop app and extension argument completion do nothing.
@@ -117,8 +121,10 @@ Herdr, the unipi desktop app.
    keep the `BashDetachRegistry` of the session's built-in tools and hand the process to the
    task service); `agents.agent.set-ui-policy` (R2). **modes**: exit on
    `AgentSessionRuntime::shutdown_requested()` once idle (print/RPC/TUI/ACP).
-2. **wit-v1 + core-runtime**: `registry.set-extension-setting` + `extension-settings` read,
-   secret-field resolution; then the settings hub in TUI and desktop.
+2. **modes + tui-client + gpui-desktop**: wire `_oino/get_settings_schema`,
+   `get_extension_settings`, `set_extension_setting` / `unset_extension_setting` to
+   `AgentSessionRuntime::extension_settings()` and render the settings hub (TUI `LocalHost`
+   should write through the registry instead of flat `extensionSettings` keys).
 3. **modes**: `_oino/*` frontend commands (completions, ui actions, shortcuts, editor events,
    settings schema, service calls, login), `oino serve` + `--remote`, package manager
    subcommands, `oino update`; resolve `--model` for ACP sessions.

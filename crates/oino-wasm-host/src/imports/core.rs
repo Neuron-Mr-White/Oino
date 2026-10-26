@@ -2,7 +2,7 @@
 
 use std::future::Future;
 
-use oino_extension_api::ops::ProviderHook;
+use oino_extension_api::ops::{ProviderHook, SettingsLayer, SettingsScope};
 use oino_extension_api::{HostError, LogLevel};
 use wasmtime::component::{Access, Accessor, Resource};
 
@@ -262,6 +262,42 @@ impl<T: Send> wr::HostWithStore<T> for HostState {
     ) -> impl Future<Output = HostResult<()>> + Send {
         let (ext, _) = current(&mut host);
         ready_wit(json(namespace).and_then(|ns| ext.host.register_settings(&ext.id, ns)))
+    }
+
+    fn extension_settings(
+        mut host: Access<'_, T, Self>,
+        namespace: String,
+        layer: wr::SettingsLayer,
+    ) -> impl Future<Output = HostResult<String>> + Send {
+        let (ext, _) = current(&mut host);
+        let layer = match layer {
+            wr::SettingsLayer::Effective => SettingsLayer::Effective,
+            wr::SettingsLayer::Global => SettingsLayer::Global,
+            wr::SettingsLayer::Project => SettingsLayer::Project,
+        };
+        ready_wit(
+            ext.host
+                .extension_settings(&ext.id, &namespace, layer)
+                .map(|v| v.as_str().to_owned()),
+        )
+    }
+
+    fn set_extension_setting(
+        mut host: Access<'_, T, Self>,
+        namespace: String,
+        key: String,
+        value: Option<String>,
+        scope: wr::SettingsScope,
+    ) -> impl Future<Output = HostResult<()>> + Send {
+        let (ext, _) = current(&mut host);
+        let scope = match scope {
+            wr::SettingsScope::Global => SettingsScope::Global,
+            wr::SettingsScope::Project => SettingsScope::Project,
+        };
+        ready_wit(value.map(json).transpose().and_then(|value| {
+            ext.host
+                .set_extension_setting(&ext.id, &namespace, &key, value, scope)
+        }))
     }
 
     fn register_provider(

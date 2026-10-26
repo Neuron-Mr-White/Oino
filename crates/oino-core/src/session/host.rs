@@ -452,6 +452,21 @@ impl AgentSession {
                 self.reload().await.map_err(failed)?;
                 Ok(JsonValue::Null)
             }
+            op @ (HostOp::RegisterSettings(_)
+            | HostOp::GetExtensionSettings { .. }
+            | HostOp::SetExtensionSetting { .. }
+            | HostOp::GetAllExtensionSettings) => {
+                let router = self
+                    .inner
+                    .agents
+                    .router
+                    .get()
+                    .and_then(std::sync::Weak::upgrade)
+                    .ok_or_else(|| {
+                        HostError::Failed("extension settings are not available".into())
+                    })?;
+                router.settings_call(extension, op)
+            }
         };
         if registry_changed {
             self.refresh_tool_registry(None, false);

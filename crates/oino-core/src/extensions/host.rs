@@ -290,6 +290,43 @@ pub enum HostOp {
     SwitchSession(std::path::PathBuf),
     /// `control.reload` (command context only).
     Reload,
+    /// `registry.register-settings`: a ui-protocol §6.6 namespace declaration.
+    RegisterSettings(JsonValue),
+    /// `registry.extension-settings`: one namespace's values as the caller sees them.
+    GetExtensionSettings {
+        /// Namespace.
+        namespace: String,
+        /// Layer.
+        layer: crate::extensions::settings::SettingsLayer,
+    },
+    /// `registry.set-extension-setting`: writes one key of an owned namespace.
+    SetExtensionSetting {
+        /// Namespace.
+        namespace: String,
+        /// Dot-path key.
+        key: String,
+        /// Value (`None` deletes: "use default").
+        value: Option<JsonValue>,
+        /// Target file.
+        scope: oino_settings::SettingsScope,
+    },
+    /// `{namespace: values}` of every known namespace as the caller sees them (init input).
+    GetAllExtensionSettings,
+}
+
+impl HostOp {
+    /// Operations served by the settings registry, independent of any session.
+    #[must_use]
+    pub fn is_settings_op(&self) -> bool {
+        matches!(
+            self,
+            Self::RegisterSettings(_)
+                | Self::GetExtensionSettings { .. }
+                | Self::SetExtensionSetting { .. }
+                | Self::GetAllExtensionSettings
+                | Self::GetSettings
+        )
+    }
 }
 
 /// Failure of a host operation.

@@ -11,7 +11,7 @@
 //! | 1 s incremental branch scan | [`scan`] on an `oino_timer` tick; fires UI requests only on change |
 //! | `unipi.footer.shared-tps` | sticky topic `unipi:footer:tps` |
 //! | sticky `LH_STATE`, `WORKFLOW_STATUS`, `KANBOARD_STATUS`, `FUSION_STATUS` | bus reads + `oino_bus` repaint |
-//! | `/unipi:footer [on\|off]` | command (persisted as a global override until the setting changes, see deviations) |
+//! | `/unipi:footer [on\|off]` | command; writes `footer.enabled` to the global settings file (a local override only when the host refuses the write) |
 //! | settings `footer` | [`settings`] |
 
 #![allow(
@@ -132,6 +132,35 @@ impl Footer {
             s.enabled = on;
         }
         s
+    }
+
+    /// unipi `setSettings("footer", {enabled})` in the global file; falls back to the local
+    /// override when the write is refused.
+    fn persist_enabled(&self, enable: bool) -> Result<()> {
+        if self
+            .settings
+            .write(
+                settings::NAMESPACE,
+                "enabled",
+                &json!(enable),
+                unipi_kit::settings::WriteScope::Global,
+            )
+            .is_ok()
+        {
+            kv::delete(Scope::Global, OVERRIDE_KEY);
+            return Ok(());
+        }
+        kv::set_json(Scope::Global, OVERRIDE_KEY, &enable)
+    }
+
+    /// One-time import of the pre-write-path override into the global settings file.
+    fn import_override(&self) {
+        if let Some(on) = kv::get_json::<bool>(Scope::Global, OVERRIDE_KEY)
+            .ok()
+            .flatten()
+        {
+            let _ = self.persist_enabled(on);
+        }
     }
 
     fn fire_if_changed(&self, sid: &str, slot: usize, request: Value) {
@@ -332,7 +361,7 @@ impl Footer {
             "off" => false,
             _ => !self.current().enabled,
         };
-        kv::set_json(Scope::Global, OVERRIDE_KEY, &enable)?;
+        self.persist_enabled(enable)?;
         if enable {
             self.sessions.with(cx.session_id(), |s| {
                 s.scanner.reset();
@@ -375,6 +404,9 @@ impl Extension for Footer {
         );
         cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.settings.refresh();
+            if !cx.is_child() {
+                ext.import_override();
+            }
             ext.sessions.remove(cx.session_id());
             unipi_kit::bus::emit(&ModuleReady {
                 name: unipi_kit::suite::pkg::FOOTER.npm.to_owned(),

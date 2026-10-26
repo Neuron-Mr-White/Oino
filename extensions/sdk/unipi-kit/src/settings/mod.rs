@@ -13,4 +13,4 @@ pub mod schema;
 pub mod values;
 
 pub use schema::{Choice, Field, Kind, Namespace, Scope, Section, Unit, choice, plain};
-pub use values::{Store, Values, deep_merge, get_field, set_field};
+pub use values::{Store, Values, WriteScope, deep_merge, get_field, set_field};

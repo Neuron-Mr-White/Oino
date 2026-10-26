@@ -6,8 +6,10 @@
 //! each consumer may carry a `decisionModel` block with `source: inherit|custom`.
 //!
 //! Key order (first hit wins): the stored key of the resolved settings → secret
-//! `decision-model/apiKey` in the caller's own secret store → env `TYPESAFE_API_KEY` /
-//! `OPENROUTER_API_KEY` (permission `env`) → `credential-for` (provider matching the base URL).
+//! `decision-model/apiKey` in the caller's own secret store → the shared `decision-model`
+//! `apiKey` secret field through the host settings registry (the namespace lets `unipi.*` read
+//! it) → env `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` (permission `env`) → `credential-for`
+//! (provider matching the base URL).
 
 use std::collections::BTreeMap;
 
@@ -325,6 +327,13 @@ pub async fn resolve_key(settings: &Settings) -> Option<String> {
     {
         return Some(k);
     }
+    if let Ok(shared) =
+        oino_extension::settings::get(NAMESPACE, oino_extension::settings::Layer::Effective)
+        && let Some(k) = shared.get("apiKey").and_then(Value::as_str)
+        && !k.trim().is_empty()
+    {
+        return Some(k.to_owned());
+    }
     if let Ok(Some(k)) = oino_extension::host::env(settings.env_var())
         && !k.trim().is_empty()
     {
@@ -446,6 +455,7 @@ pub fn model_fields(prefix: &str, empty_model: Option<&str>) -> Vec<Field> {
 pub fn namespace(extension_id: &str) -> Namespace {
     let d = Settings::default();
     Namespace::new(NAMESPACE, "Decision Model", extension_id)
+        .secret_readers(&["unipi.*"])
         .defaults(json!({"provider": "openrouter", "model": d.model, "baseUrl": "", "timeoutMs": 0}))
         .section(
             Section::new("decision-model", "Decision model")

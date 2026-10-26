@@ -19,6 +19,7 @@ use crate::extensions::api::{
 };
 use crate::extensions::host::{HostApi, HostError, HostOp};
 use crate::extensions::runner::{ExtensionSet, LoadedExtension};
+use crate::extensions::settings::{ExtensionSettings, ExtensionSettingsError, SettingsChange};
 use crate::provider::ProviderStream;
 use crate::session::{AgentSession, Inner, lock};
 
@@ -137,6 +138,20 @@ pub struct HostRouter {
     sessions: Mutex<HashMap<String, Weak<Inner>>>,
     extensions: OnceLock<Arc<ExtensionSet>>,
     models: OnceLock<ModelRegistry>,
+    settings: OnceLock<Arc<ExtensionSettings>>,
+    base_cx: OnceLock<CallContext>,
+}
+
+/// Kind of the event announcing a settings write to the owning extension.
+pub const SETTINGS_CHANGED_EVENT: &str = "oino_settings_changed";
+
+fn settings_error(error: ExtensionSettingsError) -> HostError {
+    match error {
+        ExtensionSettingsError::Settings(_) | ExtensionSettingsError::Secrets(_) => {
+            HostError::Failed(error.to_string())
+        }
+        other => HostError::Invalid(other.to_string()),
+    }
 }
 
 impl std::fmt::Debug for HostRouter {
@@ -164,6 +179,111 @@ impl HostRouter {
             sessions.remove(id);
             None
         }
+    }
+
+    /// The extension settings registry (set once by [`Services::create`]).
+    #[must_use]
+    pub fn extension_settings(&self) -> Option<&Arc<ExtensionSettings>> {
+        self.settings.get()
+    }
+
+    /// Serves the settings operations ([`HostOp::is_settings_op`]) for `extension`.
+    ///
+    /// # Errors
+    ///
+    /// Registry failures; [`HostError::Failed`] before the registry is attached.
+    pub fn settings_call(&self, extension: &str, op: HostOp) -> Result<JsonValue, HostError> {
+        let registry = self
+            .settings
+            .get()
+            .ok_or_else(|| HostError::Failed("extension settings are not available".into()))?;
+        match op {
+            HostOp::RegisterSettings(schema) => registry
+                .register(extension, schema)
+                .map(|()| JsonValue::Null)
+                .map_err(settings_error),
+            HostOp::GetExtensionSettings { namespace, layer } => {
+                Ok(registry.values_for(extension, &namespace, layer))
+            }
+            HostOp::SetExtensionSetting {
+                namespace,
+                key,
+                value,
+                scope,
+            } => registry
+                .set_as(extension, &namespace, &key, value, scope)
+                .map(|()| JsonValue::Null)
+                .map_err(settings_error),
+            HostOp::GetAllExtensionSettings => Ok(registry.all_for(extension)),
+            HostOp::GetSettings => Ok(JsonValue::Object(registry.merged_settings())),
+            other => Err(HostError::Invalid(format!(
+                "not a settings operation: {other:?}"
+            ))),
+        }
+    }
+
+    /// Delivers `oino_settings_changed` to the namespace owner when it subscribed.
+    async fn deliver_settings_change(&self, change: SettingsChange) {
+        let Some(owner) = change.extension_id.as_deref() else {
+            return;
+        };
+        let Some(extension) = self
+            .extensions
+            .get()
+            .and_then(|set| set.get(owner).cloned())
+        else {
+            return;
+        };
+        if !extension.state().events.contains(SETTINGS_CHANGED_EVENT) {
+            return;
+        }
+        let mut cx = self.base_cx.get().cloned().unwrap_or_else(|| CallContext {
+            session_id: String::new(),
+            mode: ExtensionMode::Print,
+            has_ui: false,
+            cwd: PathBuf::new(),
+            is_child: false,
+            child_role: None,
+            call_kind: CallKind::Event,
+        });
+        if let Some(id) = self.any_root_session() {
+            cx.session_id = id;
+        }
+        let payload = json!({
+            "type": SETTINGS_CHANGED_EVENT,
+            "namespace": change.namespace,
+            "keys": change.keys,
+            "scope": change.scope,
+        });
+        let deadline = crate::extensions::runner::deadline_for(SETTINGS_CHANGED_EVENT);
+        match tokio::time::timeout(
+            deadline,
+            extension
+                .instance
+                .on_event(SETTINGS_CHANGED_EVENT, payload, cx),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    extension = owner,
+                    "{SETTINGS_CHANGED_EVENT}: {}",
+                    error.message
+                );
+            }
+            Err(_) => tracing::warn!(extension = owner, "{SETTINGS_CHANGED_EVENT} timed out"),
+        }
+    }
+
+    /// Id of a live root session (event context for host-produced events).
+    fn any_root_session(&self) -> Option<String> {
+        let sessions = lock(&self.sessions);
+        sessions
+            .iter()
+            .filter_map(|(id, weak)| weak.upgrade().map(|inner| (id, inner)))
+            .find(|(_, inner)| inner.agents.link.is_none())
+            .map(|(id, _)| id.clone())
     }
 
     /// Registry operations that do not need a session (calls during `init` or after the
@@ -213,6 +333,9 @@ impl HostApi for HostRouter {
         op: HostOp,
     ) -> BoxFuture<'a, Result<JsonValue, HostError>> {
         Box::pin(async move {
+            if op.is_settings_op() {
+                return self.settings_call(extension, op);
+            }
             match self.session(&cx.session_id) {
                 Some(session) => session.host_call(extension, cx, op).await,
                 None => self.without_session(extension, op),
@@ -253,6 +376,8 @@ pub struct Services {
     pub project_trusted: bool,
     /// Settings.
     pub settings: Arc<Mutex<SettingsManager>>,
+    /// Extension settings registry over [`Self::settings`] (runtime §10.3).
+    pub extension_settings: Arc<ExtensionSettings>,
     /// Resources.
     pub resources: Arc<RwLock<ResourceLoader>>,
     /// Models and auth.
@@ -341,8 +466,14 @@ impl Services {
                 ModelRegistryOptions::for_agent_dir(&options.agent_dir),
             )
         });
+        let settings = Arc::new(Mutex::new(settings));
+        let extension_settings = Arc::new(ExtensionSettings::new(
+            Arc::clone(&settings),
+            Some(oino_settings::SecretStore::new(&options.agent_dir)),
+        ));
         let host = Arc::new(HostRouter::default());
         let _ = host.models.set(models.clone());
+        let _ = host.settings.set(Arc::clone(&extension_settings));
         let instances = options
             .loader
             .load(Arc::clone(&host) as Arc<dyn HostApi>, trusted)
@@ -356,16 +487,19 @@ impl Services {
             child_role: None,
             call_kind: CallKind::Event,
         };
+        let _ = host.base_cx.set(cx.clone());
         let loaded = init_extensions(
             instances,
             &cx,
             &models,
+            &extension_settings,
             options.flags.no_extensions,
             &mut diagnostics,
         )
         .await;
         let extensions = Arc::new(ExtensionSet::new(loaded));
         let _ = host.extensions.set(Arc::clone(&extensions));
+        forward_settings_changes(&extension_settings, &host);
         if !(options.flags.offline || offline_env()) {
             refresh_dynamic_models(&extensions, &models).await;
         }
@@ -376,7 +510,8 @@ impl Services {
             mode: options.mode,
             has_ui: options.has_ui,
             project_trusted: trusted,
-            settings: Arc::new(Mutex::new(settings)),
+            settings,
+            extension_settings,
             resources: Arc::new(RwLock::new(resources)),
             models,
             stream: Arc::new(ProviderStream::new(Arc::clone(&extensions))),
@@ -416,6 +551,7 @@ async fn init_extensions(
     instances: Vec<Arc<dyn ExtensionInstance>>,
     cx: &CallContext,
     models: &ModelRegistry,
+    settings: &ExtensionSettings,
     no_extensions: bool,
     diagnostics: &mut Vec<String>,
 ) -> Vec<Arc<LoadedExtension>> {
@@ -446,6 +582,11 @@ async fn init_extensions(
                             .push(format!("{}: invalid provider: {error}", instance.id())),
                     }
                 }
+                for namespace in &registration.settings {
+                    if let Err(error) = settings.register(instance.id(), namespace.clone()) {
+                        diagnostics.push(format!("{}: settings: {error}", instance.id()));
+                    }
+                }
                 for definition in &registration.virtual_models {
                     match serde_json::from_value(definition.clone()) {
                         Ok(definition) => {
@@ -467,6 +608,32 @@ async fn init_extensions(
         }
     }
     loaded
+}
+
+/// Forwards registry writes to the owning extensions (`oino_settings_changed`) until the
+/// registry or the router is gone.
+fn forward_settings_changes(registry: &ExtensionSettings, router: &Arc<HostRouter>) {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    let mut changes = registry.subscribe();
+    let router = Arc::downgrade(router);
+    handle.spawn(async move {
+        loop {
+            match changes.recv().await {
+                Ok(change) => {
+                    let Some(router) = router.upgrade() else {
+                        break;
+                    };
+                    router.deliver_settings_change(change).await;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(missed)) => {
+                    tracing::warn!("{missed} settings change notifications dropped");
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
 }
 
 /// Fetches `list-models` for providers registered with dynamic models.

@@ -687,6 +687,10 @@ pub struct Namespace {
     pub sections: Vec<Section>,
     /// Defaults object (`defaults ⊕ global ⊕ project`).
     pub defaults: Value,
+    /// Extension id patterns (`unipi.*`, exact ids, `*`) that may read this namespace's secret
+    /// fields through the host (the owner always can).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_readers: Vec<String>,
 }
 
 impl Namespace {
@@ -699,7 +703,15 @@ impl Namespace {
             extension_id: extension_id.to_owned(),
             sections: Vec::new(),
             defaults: Value::Object(Map::new()),
+            secret_readers: Vec::new(),
         }
+    }
+
+    /// Lets extensions matching `patterns` read the secret fields through the host.
+    #[must_use]
+    pub fn secret_readers(mut self, patterns: &[&str]) -> Self {
+        self.secret_readers = patterns.iter().map(|p| (*p).to_owned()).collect();
+        self
     }
 
     /// Defaults object; fills field defaults that are not set explicitly.

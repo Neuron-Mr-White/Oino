@@ -119,6 +119,17 @@ impl Env {
         };
         let host: Arc<dyn HostServices> = Arc::clone(&self.host) as Arc<dyn HostServices>;
         let ext = self.runtime.load(package, host).await.unwrap();
+        // The host serves the same values on later reads (`registry.extension-settings`).
+        for (ns, values) in settings.as_object().into_iter().flatten() {
+            for (key, value) in values.as_object().into_iter().flatten() {
+                self.host.preset_extension_setting(
+                    oino_extension_api::ops::SettingsScope::Global,
+                    ns,
+                    key,
+                    value.clone(),
+                );
+            }
+        }
         let input = InitInput {
             settings: RawJson::from(settings),
             ..InitInput::default()

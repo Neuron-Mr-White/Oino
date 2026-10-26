@@ -115,6 +115,7 @@ impl Workflow {
     fn resolved(&self) -> settings::Resolved {
         settings::resolve(
             &self.settings.get(NAMESPACE),
+            settings::read_file_rules(&self.settings),
             &settings::load(RuleScope::Project),
             &settings::load(RuleScope::Global),
         )
@@ -154,9 +155,7 @@ impl Workflow {
     // ── permission mode ──────────────────────────────────────────────────────
 
     fn set_mode(&self, mode: Mode) {
-        let mut s = settings::load(RuleScope::Project);
-        s.mode = Some(mode.as_str().to_owned());
-        settings::save(RuleScope::Project, &s);
+        settings::persist_mode(&self.settings, mode.as_str());
         update_status(None, Some(mode.as_str()));
         unipi_kit::bus::emit(&PermissionModeChanged {
             mode: mode.as_str().into(),
@@ -166,13 +165,7 @@ impl Workflow {
 
     fn clear_rules(&self) -> usize {
         let count = self.resolved().rules.len();
-        for scope in [RuleScope::Project, RuleScope::Global] {
-            let mut s = settings::load(scope);
-            if !s.rules.is_empty() {
-                s.rules.clear();
-                settings::save(scope, &s);
-            }
-        }
+        settings::clear_rules(&self.settings);
         self.register_namespace();
         count
     }
@@ -230,12 +223,15 @@ impl Workflow {
                 Ok(())
             }
             "allow_always" => {
-                settings::add_rule(PermissionRule {
-                    tool: tool.to_owned(),
-                    pattern: pattern.clone(),
-                    decision: RuleDecision::Allow,
-                    scope: RuleScope::Project,
-                });
+                settings::persist_rule(
+                    &self.settings,
+                    PermissionRule {
+                        tool: tool.to_owned(),
+                        pattern: pattern.clone(),
+                        decision: RuleDecision::Allow,
+                        scope: RuleScope::Project,
+                    },
+                );
                 self.register_namespace();
                 if cx.has_ui() {
                     let _ = ui::notify(
@@ -650,6 +646,12 @@ impl Workflow {
 
     fn on_session_start(&self, cx: &Ctx) {
         self.settings.refresh();
+        if !cx.is_child() {
+            let imported = settings::import_legacy(&self.settings);
+            if imported > 0 {
+                self.debug(&format!("imported {imported} saved rules into settings"));
+            }
+        }
         let cwd = cx.cwd().display().to_string();
         let entries = session::entries().unwrap_or_default();
         let state = plan::restore(&entries, &cwd, cx.session_id(), timers::now_ms());

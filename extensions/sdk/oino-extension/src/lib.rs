@@ -18,6 +18,7 @@
 //! | [`fs`] | `fs` + WASI | named preopens, atomic writes, locks, watchers |
 //! | [`timers`] | `timers` | `oino_timer` events, `sleep`, wall clock |
 //! | [`kv`] | `kv` | scoped key-value state |
+//! | [`settings`] | `registry` | extension settings reads and writes |
 //! | [`secrets`], [`bus`], [`services`] | same | secrets, pub/sub, inter-extension calls |
 //! | [`host`] | `host-info`, `log` | platform, workspace, env, logging |
 //! | [`provider`] (feature `provider`) | `provider`, `provider-host` | provider components |
@@ -110,6 +111,7 @@ pub mod rt;
 pub mod secrets;
 pub mod services;
 pub mod session;
+pub mod settings;
 pub mod sync;
 pub mod tasks;
 pub mod timers;

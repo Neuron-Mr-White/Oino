@@ -11,7 +11,7 @@ use std::time::Duration;
 use oino_extension_api::ops::{
     ControlOp, ControlReply, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply, PanelOp,
     ProviderHook, ProviderHookReply, SecretOp, SendOptions, SessionQuery, SessionWrite,
-    SessionsIndexQuery, TaskOp,
+    SessionsIndexQuery, SettingsLayer, SettingsScope, TaskOp,
 };
 use oino_extension_api::registry::{
     ArbiterRoles, CommandSpec, FlagSpec, RendererSpec, ShortcutSpec, ToolSpec,
@@ -399,6 +399,25 @@ impl HostServices for Composite {
     }
     fn register_settings(&self, ext: &ExtensionId, ns: RawJson) -> Result<(), HostError> {
         self.inner.register_settings(ext, ns)
+    }
+    fn extension_settings(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        layer: SettingsLayer,
+    ) -> Result<RawJson, HostError> {
+        self.inner.extension_settings(ext, namespace, layer)
+    }
+    fn set_extension_setting(
+        &self,
+        ext: &ExtensionId,
+        namespace: &str,
+        key: &str,
+        value: Option<RawJson>,
+        scope: SettingsScope,
+    ) -> Result<(), HostError> {
+        self.inner
+            .set_extension_setting(ext, namespace, key, value, scope)
     }
     fn register_provider(&self, ext: &ExtensionId, cfg: RawJson) -> Result<(), HostError> {
         self.inner.register_provider(ext, cfg)

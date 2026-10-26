@@ -1,7 +1,9 @@
 //! `~/.oino/secrets.json` (0600, file lock), keys namespaced `<ext-id>/<name>` (§5.9).
+//!
+//! A thin per-extension view over [`oino_settings::SecretStore`], the same store the core
+//! settings registry uses for `secret` fields (`<owner-ext-id>/<namespace>/<key>`).
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use oino_extension_api::ops::SecretOp;
 use oino_extension_api::{ExtensionId, HostError};
@@ -9,7 +11,7 @@ use oino_extension_api::{ExtensionId, HostError};
 /// The secrets file.
 #[derive(Clone, Debug)]
 pub struct SecretStore {
-    path: PathBuf,
+    inner: oino_settings::SecretStore,
 }
 
 impl SecretStore {
@@ -17,42 +19,8 @@ impl SecretStore {
     #[must_use]
     pub fn new(agent_dir: &Path) -> Self {
         Self {
-            path: agent_dir.join("secrets.json"),
+            inner: oino_settings::SecretStore::new(agent_dir),
         }
-    }
-
-    fn with_lock<R>(
-        &self,
-        f: impl FnOnce(&mut BTreeMap<String, String>) -> (R, bool),
-    ) -> Result<R, HostError> {
-        let lock_path = self.path.with_extension("json.lock");
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| HostError::io(&e))?;
-        }
-        let lock = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(&lock_path)
-            .map_err(|e| HostError::io(&e))?;
-        lock.lock().map_err(|e| HostError::io(&e))?;
-        let mut map: BTreeMap<String, String> = std::fs::read(&self.path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
-        let (out, dirty) = f(&mut map);
-        let result = if dirty {
-            serde_json::to_vec_pretty(&map)
-                .map_err(|e| HostError::Failed(e.to_string()))
-                .and_then(|bytes| {
-                    crate::kv::atomic_write(&self.path, &bytes, Some(0o600))
-                        .map_err(|e| HostError::io(&e))
-                })
-        } else {
-            Ok(())
-        };
-        let _ = lock.unlock();
-        result.map(|()| out)
     }
 
     /// Runs `op` in `ext`'s namespace.
@@ -62,17 +30,15 @@ impl SecretStore {
     /// I/O failures.
     pub fn apply(&self, ext: &ExtensionId, op: SecretOp) -> Result<Option<String>, HostError> {
         let key = |name: &str| format!("{ext}/{name}");
+        let io = |e: std::io::Error| HostError::io(&e);
         match op {
-            SecretOp::Get(name) => self.with_lock(|m| (m.get(&key(&name)).cloned(), false)),
-            SecretOp::Set { name, value } => self.with_lock(|m| {
-                m.insert(key(&name), value);
-                (None, true)
-            }),
-            SecretOp::Delete(name) => self.with_lock(|m| {
-                let old = m.remove(&key(&name));
-                let dirty = old.is_some();
-                (old, dirty)
-            }),
+            SecretOp::Get(name) => self.inner.get(&key(&name)).map_err(io),
+            SecretOp::Set { name, value } => self
+                .inner
+                .set(&key(&name), &value)
+                .map_err(io)
+                .map(|()| None),
+            SecretOp::Delete(name) => self.inner.delete(&key(&name)).map_err(io),
         }
     }
 }

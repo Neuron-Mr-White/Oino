@@ -625,11 +625,18 @@ Oino keys:
 
 ### 10.3 Extension settings registry
 
-`settings-register(namespace, schema, defaults)`; schema = ui-protocol §6.6 settings schema.
-Reads layer `defaults ⊕ global ⊕ project`; writes go to one scope; `use default` deletes the
-project key; `oino_settings_changed` event to the owning extension (and bus topic
-`oino:settings:<namespace>`). Secret fields are stored via the secret store, never in
-`settings.json`. Frontends render the settings hub from `get_settings_schema` (modes §4).
+`registry.register-settings(namespace)` (or `registration.settings` at `init`); schema =
+ui-protocol §6.6 settings schema (+ optional `secretReaders` id patterns). Implemented by
+`oino_core::extensions::settings::ExtensionSettings` (one per `Services`). Reads layer
+`defaults ⊕ global ⊕ project` (`registry.extension-settings`); writes go to one scope
+(`registry.set-extension-setting` from the owner, `ExtensionSettings::set` from frontends);
+`use default` deletes the key; keys are dot paths stored as nested objects. Each write sends
+`oino_settings_changed {namespace, keys, scope}` to the owning extension and to
+`ExtensionSettings::subscribe()` listeners (the `oino:settings:<namespace>` bus topic is not
+published, core-runtime #22). Secret fields are stored in the secret store at
+`<owner>/<namespace>/<key>`, never in `settings.json`; frontends see a mask, the owner (and
+`secretReaders`) the value. Frontends render the settings hub from `get_settings_schema`
+(modes §4) = `ExtensionSettings::schema()`.
 
 ## 11. Compaction, branch summaries, recovery, retry (`oino-core::compaction`, `::retry`)
 

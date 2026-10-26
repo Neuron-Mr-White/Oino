@@ -68,6 +68,10 @@ interface registry {
     enum renderer-target { custom-message, custom-entry, tool }
     record renderer-spec { target: renderer-target, key: string }   // customType or tool name
     record arbiter-roles { nudge-provider: bool, wait-source: bool }
+    /// Settings file a write targets (runtime §10.1).
+    enum settings-scope { global, project }
+    /// Values a settings read returns: `defaults ⊕ global ⊕ project`, or one file's values.
+    enum settings-layer { effective, global, project }
 
     record registration {
         events: list<event-kind>,
@@ -98,6 +102,13 @@ interface registry {
     set-arbiter-roles: func(roles: arbiter-roles);
     /// JSON of oino_protocol::ext::SettingsNamespace.
     register-settings: func(namespace: json) -> result<_, host-error>;
+    /// Values of a settings namespace (JSON object). Secret fields are resolved for the owner
+    /// and for extensions matching the namespace's `secretReaders`; others do not see them.
+    extension-settings: func(namespace: string, layer: settings-layer) -> result<json, host-error>;
+    /// Writes one dot-path key of a namespace this extension registered; `none` deletes it
+    /// ("use default"). Secret fields go to the secret store (always global). The owner then
+    /// receives `oino_settings_changed {namespace, keys, scope}`.
+    set-extension-setting: func(namespace: string, key: string, value: option<json>, scope: settings-scope) -> result<_, host-error>;
     /// Provider registration (pi registerProvider): JSON of oino_protocol::ext::ProviderRegistration.
     /// Only from components exporting `provider`, or a config-only override (baseUrl/headers/models) from any extension.
     register-provider: func(config: json) -> result<_, host-error>;

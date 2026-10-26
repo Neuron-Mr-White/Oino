@@ -23,6 +23,7 @@ oino-agent = { path = "../oino-agent", optional = true }
 oino-ai = { path = "../oino-ai" }
 oino-core = { path = "../oino-core", optional = true }
 oino-extension-api = { path = "../oino-extension-api" }
+oino-settings = { path = "../oino-settings" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
@@ -42,7 +43,6 @@ nix = { workspace = true, features = ["signal", "process"] }
 indexmap.workspace = true
 oino-core = { path = "../oino-core", features = ["testing"] }
 oino-models = { path = "../oino-models" }
-oino-settings = { path = "../oino-settings" }
 oino-extension-api = { path = "../oino-extension-api", features = ["testing"] }
 oino-wasm-host = { path = ".", default-features = false, features = ["testing"] }
 tempfile.workspace = true
