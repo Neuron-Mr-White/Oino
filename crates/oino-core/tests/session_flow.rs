@@ -528,3 +528,81 @@ async fn nested_tool_calls_are_recorded() {
         ]
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abort_settles_with_aborted_and_delivers_queued_steering() {
+    let provider = FauxProvider::new(vec![
+        FauxResponse::ToolCalls(vec![("c1".into(), "slow".into(), args(json!({})))]),
+        FauxResponse::Text("never".into()),
+    ]);
+    let extension = FakeExtension::new(
+        "ext",
+        Registration {
+            tools: vec![ToolSpec {
+                name: "slow".into(),
+                label: "slow".into(),
+                description: "slow".into(),
+                parameters: json!({"type": "object"}),
+                prompt_snippet: None,
+                prompt_guidelines: Vec::new(),
+                exposure: oino_core::extensions::api::ToolExposure::Direct,
+                default_active: None,
+                execution_mode: None,
+                namespace: None,
+                annotations: None,
+                reaches_tools: None,
+                output_schema: None,
+                prepare_arguments: false,
+            }],
+            ..Registration::default()
+        },
+    )
+    .on_tool(|_, _| {
+        std::thread::sleep(Duration::from_millis(100));
+        Ok(AgentToolResult::text("slept"))
+    });
+    let session = TestSession {
+        extensions: vec![Arc::new(extension)],
+        ..TestSession::default()
+    }
+    .build(provider)
+    .await;
+    let events = session.subscribe();
+    session
+        .prompt("go".into(), PromptOptions::default())
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    session
+        .steer(
+            "queued".into(),
+            Vec::new(),
+            oino_core::session::InputSource::Interactive,
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), session.abort())
+        .await
+        .unwrap();
+    assert!(session.is_idle());
+    let settled: Vec<bool> = events
+        .drain_now()
+        .into_iter()
+        .filter_map(|e| match e {
+            ClientEvent::Session(AgentSessionEvent::AgentSettled { aborted }) => Some(aborted),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(settled, vec![true]);
+    // pi polls steering after the running batch even when aborted: the queued message is
+    // delivered into the (aborted) next request, nothing is discarded.
+    assert_eq!(session.steering_messages().len(), 0);
+    assert!(
+        session
+            .messages()
+            .iter()
+            .any(|m| matches!(m, AgentMessage::User(u) if u.content.text("") == "queued"))
+    );
+    let last = session.last_assistant_message().unwrap();
+    assert_eq!(last.stop_reason, StopReason::Aborted);
+}

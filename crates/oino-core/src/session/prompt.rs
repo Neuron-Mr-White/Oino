@@ -693,7 +693,9 @@ impl AgentSession {
         Ok(messages)
     }
 
-    pub(crate) fn last_assistant_message(&self) -> Option<oino_ai::AssistantMessage> {
+    /// The last assistant message of the transcript.
+    #[must_use]
+    pub fn last_assistant_message(&self) -> Option<oino_ai::AssistantMessage> {
         self.messages().into_iter().rev().find_map(|m| match m {
             AgentMessage::Assistant(a) => Some(a),
             _ => None,
