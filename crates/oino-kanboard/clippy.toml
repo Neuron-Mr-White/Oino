@@ -1,0 +1,5 @@
+# Mirrors quality.md §2 (root clippy.toml is owned by integration).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true

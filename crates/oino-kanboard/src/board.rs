@@ -1,0 +1,199 @@
+//! Board access: read/write every task file in a project.
+
+use std::fs;
+use std::path::PathBuf;
+
+use crate::error::{Error, Problem, Result};
+use crate::format;
+use crate::model::Task;
+use crate::store::{Layout, Project, write_atomic};
+
+/// One project's task files, read and written under the project's lock.
+pub struct Board<'a> {
+    /// Storage layout.
+    pub layout: &'a Layout,
+    /// The project this board belongs to.
+    pub project: Project,
+}
+
+impl<'a> Board<'a> {
+    /// Opens the board of `project` (creates its folders when missing).
+    pub fn open(layout: &'a Layout, project: Project) -> Result<Board<'a>> {
+        layout.ensure_project_dirs(&project.slug)?;
+        Ok(Board { layout, project })
+    }
+
+    /// `<project>/tasks/`.
+    #[must_use]
+    pub fn tasks_dir(&self) -> PathBuf {
+        self.layout.tasks_dir(&self.project.slug)
+    }
+
+    /// `<project>/tasks/<ID>.md`.
+    #[must_use]
+    pub fn task_path(&self, id: &str) -> PathBuf {
+        self.layout.task_path(&self.project.slug, id)
+    }
+
+    /// Every READABLE task. Unparseable files are skipped (and reported by
+    /// [`Board::problems`]) rather than taking the whole board offline: one
+    /// hand-edited file must not block every command.
+    pub fn tasks(&self) -> Result<Vec<Task>> {
+        Ok(self.scan()?.0)
+    }
+
+    /// Parse problems found while loading (file, line, message).
+    pub fn problems(&self) -> Result<Vec<Problem>> {
+        Ok(self.scan()?.1)
+    }
+
+    /// Tasks plus the problems, for callers that show both (list, the hub, the UI).
+    pub fn state(&self) -> Result<(Vec<Task>, Vec<Problem>)> {
+        self.scan()
+    }
+
+    /// Cold-storage dir: frozen Archived/Cancelled tasks live here, out of
+    /// every scan but still readable for dependency lookups.
+    #[must_use]
+    pub fn cold_dir(&self) -> PathBuf {
+        self.layout.project_dir(&self.project.slug).join("cold")
+    }
+
+    /// `<project>/cold/<ID>.md` (cold storage).
+    #[must_use]
+    pub fn cold_path(&self, id: &str) -> PathBuf {
+        self.cold_dir().join(format!("{id}.md"))
+    }
+
+    /// Every distinct label used anywhere in the project — live tasks in
+    /// every lane (`Status::ALL` includes `Archived`) union cold-storage
+    /// files (old archived/cancelled tasks moved there by retention) — so a
+    /// label a user typed once stays reusable even after its only task is
+    /// archived or retained to cold storage (UNI-100). Order is first-seen;
+    /// case and surrounding whitespace are exactly as stored.
+    pub fn project_labels(&self) -> Result<Vec<String>> {
+        let mut labels: Vec<String> = Vec::new();
+        for task in self.tasks()? {
+            for label in task.labels {
+                if !labels.iter().any(|existing| existing == &label) {
+                    labels.push(label);
+                }
+            }
+        }
+        let cold_dir = self.cold_dir();
+        if cold_dir.exists() {
+            let mut entries: Vec<PathBuf> = fs::read_dir(&cold_dir)?
+                .filter_map(std::result::Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+                .collect();
+            entries.sort();
+            for path in entries {
+                let Ok(text) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                let (task, problems) = format::parse(&path.to_string_lossy(), &text);
+                if !problems.is_empty() {
+                    continue;
+                }
+                let Some(task) = task else { continue };
+                for label in task.labels {
+                    if !labels.iter().any(|existing| existing == &label) {
+                        labels.push(label);
+                    }
+                }
+            }
+        }
+        Ok(labels)
+    }
+
+    /// Dep-aware lookup: live tasks first, then the cold file (the frozen
+    /// status still counts — archived-from-done satisfies a chain gate).
+    pub fn dep_lookup<'t>(&self, tasks: &'t [Task]) -> impl Fn(&str) -> Option<Task> + use<'_, 't> {
+        move |id| {
+            tasks
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .cloned()
+                .or_else(|| {
+                    let path = self.cold_path(id);
+                    let text = fs::read_to_string(&path).ok()?;
+                    format::parse(&path.to_string_lossy(), &text).0
+                })
+        }
+    }
+
+    /// Parsed tasks plus per-file problems (used by `validate`).
+    pub fn scan(&self) -> Result<(Vec<Task>, Vec<Problem>)> {
+        let dir = self.tasks_dir();
+        let mut tasks = Vec::new();
+        let mut problems = Vec::new();
+        if !dir.exists() {
+            return Ok((tasks, problems));
+        }
+        let mut entries: Vec<PathBuf> = fs::read_dir(&dir)?
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+            .collect();
+        entries.sort();
+        for path in entries {
+            let text = fs::read_to_string(&path)?;
+            let file = path
+                .strip_prefix(&self.layout.home)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .to_string();
+            let (task, mut file_problems) = format::parse(&file, &text);
+            if file_problems.is_empty()
+                && let Some(task) = task
+            {
+                if format::render(&task) != text {
+                    file_problems.push(
+                        Problem::new(&file, 1, "formatting differs from canonical form")
+                            .fixable(true),
+                    );
+                }
+                tasks.push(task);
+            }
+            // A file with problems is skipped entirely: acting on a
+            // half-understood task could move the wrong lane.
+            problems.append(&mut file_problems);
+        }
+        Ok((tasks, problems))
+    }
+
+    /// Reads one task; unreadable files are rule errors naming `validate --fix`.
+    pub fn get(&self, id: &str) -> Result<Task> {
+        let path = self.task_path(id);
+        let cold = self.cold_path(id);
+        let text = fs::read_to_string(&path).map_err(|_| {
+            if cold.exists() {
+                return Error::not_found(format!("{id} is in cold storage: {}", cold.display()));
+            }
+            Error::not_found(format!("task {id} not found ({})", path.display()))
+        })?;
+        let file = path.to_string_lossy().to_string();
+        let (task, problems) = format::parse(&file, &text);
+        if let Some(first) = problems.first() {
+            return Err(Error::rule(format!(
+                "{id} is unreadable: {} (line {}); run `oino-kanboard validate --fix`",
+                first.message, first.line
+            )));
+        }
+        task.ok_or_else(|| Error::rule(format!("{id} has no usable frontmatter")))
+    }
+
+    /// Writes one task atomically.
+    pub fn save(&self, task: &Task) -> Result<()> {
+        write_atomic(&self.task_path(&task.id), &format::render(task))
+    }
+
+    /// Replace `task` in a list of already-loaded tasks (for validation passes).
+    pub fn find<'t>(tasks: &'t [Task], id: &str) -> Result<&'t Task> {
+        tasks
+            .iter()
+            .find(|task| task.id == id)
+            .ok_or_else(|| Error::not_found(format!("task {id} not found")))
+    }
+}

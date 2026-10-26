@@ -1,0 +1,362 @@
+//! The transition table and its rules (actors, required comments, final states).
+
+use crate::error::{Error, Result};
+use crate::model::{Actor, Staleness, Status};
+
+/// What a transition needs in the way of an added note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Comment {
+    /// No comment needed.
+    NotNeeded,
+    /// `--comment` is mandatory; the hint names what it must say.
+    Required(&'static str),
+}
+
+/// One row of the transition table.
+#[derive(Debug, Clone, Copy)]
+pub struct Rule {
+    /// From status.
+    pub from: Status,
+    /// To status.
+    pub to: Status,
+    /// Who may make the move.
+    pub actors: &'static [Actor],
+    /// Whether a comment is needed.
+    pub comment: Comment,
+}
+
+const U: Actor = Actor::User;
+const A: Actor = Actor::Agent;
+const S: Actor = Actor::System;
+
+const USER: &[Actor] = &[U];
+const USER_AGENT: &[Actor] = &[U, A];
+const USER_SYSTEM: &[Actor] = &[U, S];
+const AGENT_SYSTEM: &[Actor] = &[A, S];
+const AGENT: &[Actor] = &[A];
+
+/// Every row of the spec's table, in order.
+pub const RULES: &[Rule] = &[
+    // backlog ↔ todo | user, agent | —
+    Rule {
+        from: Status::Backlog,
+        to: Status::Todo,
+        actors: USER_AGENT,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Todo,
+        to: Status::Backlog,
+        actors: USER_AGENT,
+        comment: Comment::NotNeeded,
+    },
+    // todo → in_progress | agent (`start`, self-claim) + system
+    // | deps satisfied, not claimed — enforced by `start`, not `move`
+    Rule {
+        from: Status::Todo,
+        to: Status::InProgress,
+        actors: AGENT_SYSTEM,
+        comment: Comment::NotNeeded,
+    },
+    // blocked → in_progress | agent (`start`, resume)
+    // | UNI-105: `start` also resumes a task it blocked, same claim and
+    // session-cap rules as todo — enforced by `start`, not `move`
+    Rule {
+        from: Status::Blocked,
+        to: Status::InProgress,
+        actors: AGENT,
+        comment: Comment::NotNeeded,
+    },
+    // in_progress → in_review | agent (`finish`, own claim) + system (`release`)
+    // | summary note
+    Rule {
+        from: Status::InProgress,
+        to: Status::InReview,
+        actors: AGENT_SYSTEM,
+        comment: Comment::Required("run summary"),
+    },
+    // in_progress → blocked | agent, system | comment required (what is needed)
+    Rule {
+        from: Status::InProgress,
+        to: Status::Blocked,
+        actors: AGENT_SYSTEM,
+        comment: Comment::Required("what you need in order to continue"),
+    },
+    // in_progress (stale) → todo | user, system | note added
+    Rule {
+        from: Status::InProgress,
+        to: Status::Todo,
+        actors: USER_SYSTEM,
+        comment: Comment::Required("why the stale run is being released"),
+    },
+    // in_progress (stale) → backlog | user, system | note added
+    Rule {
+        from: Status::InProgress,
+        to: Status::Backlog,
+        actors: USER_SYSTEM,
+        comment: Comment::Required("why the stale run is being released"),
+    },
+    // in_review → done | user | —
+    Rule {
+        from: Status::InReview,
+        to: Status::Done,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    // in_review → todo | user | comment optional (UNI-106: a rework note, when
+    // there is one)
+    Rule {
+        from: Status::InReview,
+        to: Status::Todo,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    // in_review → backlog | user | comment optional (UNI-106: a rework note,
+    // when there is one)
+    Rule {
+        from: Status::InReview,
+        to: Status::Backlog,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    // blocked → todo | user, agent (UNI-105: an agent may unblock itself, e.g.
+    // to resume with `start`) | comment optional (UNI-106: the answer, when there
+    // is one, shown to the agent on next claim)
+    Rule {
+        from: Status::Blocked,
+        to: Status::Todo,
+        actors: USER_AGENT,
+        comment: Comment::NotNeeded,
+    },
+    // blocked → done | user (UNI-63: a blocked task the user closes directly)
+    Rule {
+        from: Status::Blocked,
+        to: Status::Done,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    // backlog/todo/blocked → cancelled | user only | —
+    Rule {
+        from: Status::Backlog,
+        to: Status::Cancelled,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Todo,
+        to: Status::Cancelled,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Blocked,
+        to: Status::Cancelled,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    // in_review → archived | user (one-click archive without going through done)
+    Rule {
+        from: Status::InReview,
+        to: Status::Archived,
+        actors: USER,
+        comment: Comment::NotNeeded,
+    },
+    // done/cancelled → archived | user, or auto after archiveAfterDays
+    Rule {
+        from: Status::Done,
+        to: Status::Archived,
+        actors: USER_SYSTEM,
+        comment: Comment::NotNeeded,
+    },
+    Rule {
+        from: Status::Cancelled,
+        to: Status::Archived,
+        actors: USER_SYSTEM,
+        comment: Comment::NotNeeded,
+    },
+];
+
+/// The rule for `from → to`, if the move exists.
+#[must_use]
+pub fn rule_for(from: Status, to: Status) -> Option<&'static Rule> {
+    RULES.iter().find(|rule| rule.from == from && rule.to == to)
+}
+
+/// Check a move. `comment` is the trimmed `--comment` value (if any).
+pub fn check(
+    from: Status,
+    to: Status,
+    actor: Actor,
+    comment: Option<&str>,
+    staleness: Staleness,
+) -> Result<()> {
+    if from == to {
+        return Err(Error::rule(format!("task is already in {to}")));
+    }
+
+    let Some(rule) = rule_for(from, to) else {
+        return Err(Error::rule(not_allowed(from, to, actor, staleness)));
+    };
+
+    if !rule.actors.contains(&actor) {
+        return Err(Error::rule(actor_denied(from, to, actor)));
+    }
+
+    if from == Status::InProgress && actor == Actor::User && staleness == Staleness::Running {
+        return Err(Error::rule(
+            "in_progress → * while its session is alive is agent/system only: the agent that `start`ed it moves it on \
+             (`finish <ID> --comment` or `move <ID> blocked --comment`); if that process died, `reap` hands it back \
+             (or re-run once it reads as stale)",
+        ));
+    }
+
+    if from == Status::InProgress && actor == Actor::User && staleness == Staleness::Unknown {
+        return Err(Error::rule(
+            "in_progress run is claimed on another host and cannot be verified as dead — confirm staleness first",
+        ));
+    }
+
+    if let Comment::Required(hint) = rule.comment {
+        let text = comment.unwrap_or("").trim();
+        if text.is_empty() {
+            return Err(Error::rule(format!(
+                "{} → {} requires --comment ({hint})",
+                from.as_str(),
+                to.as_str()
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn actor_denied(from: Status, to: Status, actor: Actor) -> String {
+    match (from, to) {
+        (Status::Todo, Status::InProgress) => {
+            "todo → in_progress is agent/system only — an agent claims a ready task for its session \
+             with `start <ID>`"
+                .to_string()
+        }
+        (Status::Blocked, Status::InProgress) => {
+            "blocked → in_progress is agent only — an agent resumes a blocked task for its session \
+             with `start <ID>`"
+                .to_string()
+        }
+        (Status::InProgress, Status::InReview) => {
+            "in_progress → in_review is agent/system only — the agent that `start`ed the task hands it \
+             over with `finish <ID> --comment`"
+                .to_string()
+        }
+        (_, Status::Done) if actor == Actor::Agent => {
+            "agents cannot mark tasks done — hand it to in_review (`finish <ID> --comment`) and let the user confirm \
+             (actor=user is an honour system the skill forbids agents from breaking)"
+                .to_string()
+        }
+        (_, Status::Cancelled) if actor == Actor::Agent => {
+            "agents cannot cancel tasks — move your task to blocked with \"suggest cancel: <why>\" \
+             (actor=user is an honour system the skill forbids agents from breaking)"
+                .to_string()
+        }
+        (Status::Archived, _) | (_, Status::Archived) => {
+            "only done/cancelled tasks can be archived".to_string()
+        }
+        _ => format!(
+            "{} → {} is not allowed for actor {actor} (allowed: {}); actor=user is an honour system the skill forbids agents from breaking",
+            from.as_str(),
+            to.as_str(),
+            rule_for(from, to).map_or_else(|| "nobody".to_string(), |rule| rule
+                    .actors
+                    .iter()
+                    .map(|actor| actor.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "))
+        ),
+    }
+}
+
+fn not_allowed(from: Status, to: Status, actor: Actor, staleness: Staleness) -> String {
+    if from == Status::Archived {
+        return "archived is final — nothing leaves it".to_string();
+    }
+    if from.is_final() && to != Status::Archived {
+        return format!(
+            "{from} is final — nothing moves out of it; use `duplicate` to create a new task instead"
+        );
+    }
+    if to == Status::InProgress {
+        return "in_progress is reachable only from a ready todo task, or a blocked task being \
+                resumed, claimed with `start <ID>`"
+            .to_string();
+    }
+    if to == Status::Archived {
+        return match from {
+            Status::Done | Status::Cancelled | Status::InReview => {
+                "only done/cancelled/in_review tasks can be archived".to_string()
+            }
+            _ => format!(
+                "only done/cancelled/in_review tasks can be archived ({from} is not finished)"
+            ),
+        };
+    }
+    if from == Status::InReview && to == Status::Cancelled {
+        return "cancelling from in_review is not allowed — move it back to todo (with a rework note) first, or mark it done".to_string();
+    }
+    if from == Status::Blocked && to == Status::Backlog {
+        return "blocked → backlog is not allowed — unblock to todo with the answer as --comment"
+            .to_string();
+    }
+    if from == Status::Todo && to == Status::Blocked {
+        return "only a task in progress can be blocked — claim it first".to_string();
+    }
+    if from == Status::InProgress && actor == Actor::User && staleness != Staleness::Stale {
+        return format!(
+            "in_progress → {to} needs a confirmed stale run (pid dead on this host); staleness is {staleness}",
+            staleness = staleness.as_str()
+        );
+    }
+    format!(
+        "{} → {} is not an allowed transition (see the kanboard transition table)",
+        from.as_str(),
+        to.as_str()
+    )
+}
+
+/// Statuses that may follow `status` for the given actor — used by the UI and
+/// by `move`'s error hints.
+#[must_use]
+pub fn allowed_targets(from: Status, actor: Actor) -> Vec<Status> {
+    RULES
+        .iter()
+        .filter(|rule| rule.from == from && rule.actors.contains(&actor))
+        .map(|rule| rule.to)
+        .collect()
+}
+
+/// Whether moving to `to` needs a comment.
+#[must_use]
+pub fn comment_required(from: Status, to: Status) -> bool {
+    matches!(
+        rule_for(from, to).map(|rule| rule.comment),
+        Some(Comment::Required(_))
+    )
+}
+
+/// Whether a completed `from → to` move deserves an undo offer: a user move
+/// into a terminal lane whose reverse is not a plain user move (no reverse
+/// rule, the user is not allowed, or the reverse needs a comment). Routine,
+/// reversible moves never carry an undo token (UNI-57).
+#[must_use]
+pub fn undo_worthy(from: Status, to: Status, actor: Actor) -> bool {
+    if actor != Actor::User || from == Status::InProgress {
+        return false;
+    }
+    if !matches!(to, Status::Done | Status::Cancelled | Status::Archived) {
+        return false;
+    }
+    match rule_for(to, from) {
+        None => true,
+        Some(rule) => {
+            !rule.actors.contains(&Actor::User) || matches!(rule.comment, Comment::Required(_))
+        }
+    }
+}

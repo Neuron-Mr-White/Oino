@@ -25,6 +25,7 @@ members = [
   "crates/oino-acp",
   "crates/oino-view",
   "crates/oino-tui",
+  "crates/oino-kanboard",
 ]
 resolver = "2"
 

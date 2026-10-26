@@ -1,0 +1,21 @@
+[package]
+name = "unipi-kanboard"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.kanboard: per-project task board over the oino-kanboard binary (commands, write guard, settle monitor, reminders, badges, board panel)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oino-extension.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true

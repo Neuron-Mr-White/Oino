@@ -1,0 +1,434 @@
+//! clap definitions for `oino-kanboard`.
+
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use std::path::PathBuf;
+
+use crate::model::{ChainGate, Priority, Status};
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "oino-kanboard",
+    version,
+    about = "unipi kanboard — deferred-work board for a project",
+    long_about = "Every write goes through this binary: it validates the task format and transition rules and writes atomically under a per-project lock."
+)]
+/// Command line of `oino-kanboard`.
+pub struct Cli {
+    /// Project slug (defaults to the project registered for the current git root).
+    #[arg(long, global = true, value_name = "SLUG")]
+    pub project: Option<String>,
+
+    /// Who is acting: user | agent | system (defaults to $`OINO_KANBOARD_ACTOR`, else user).
+    #[arg(long, global = true, value_name = "ACTOR")]
+    pub actor: Option<String>,
+
+    /// Session identity for `start`/`finish` claims and activity tags
+    /// (defaults to $`OINO_KANBOARD_SESSION`).
+    #[arg(long, global = true, value_name = "ID")]
+    pub session: Option<String>,
+
+    /// Chain gate for readiness: `in_review` | done.
+    #[arg(long, global = true, value_name = "GATE", default_value = "in_review")]
+    pub gate: String,
+
+    /// Machine-readable output.
+    #[arg(long, global = true)]
+    pub json: bool,
+
+    /// The subcommand.
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+/// `settings` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum SettingsSub {
+    /// Print piCommand, the model list and effective limits.
+    Show,
+    /// Change a setting: `pi-command` (JSON argv), `models` (JSON array),
+    /// `summary-model` (provider/id, empty clears).
+    Set {
+        /// The field name.
+        #[arg(value_name = "FIELD")]
+        field: String,
+        /// The new value (empty string clears).
+        #[arg(value_name = "VALUE", default_value = "")]
+        value: String,
+    },
+}
+
+/// Every subcommand.
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Register or inspect projects.
+    #[command(subcommand)]
+    Project(ProjectCommand),
+
+    /// Create a task (Backlog by default).
+    Add {
+        /// Task title (optional when the body carries the point).
+        title: Option<String>,
+        /// Body text, or `-` to read stdin.
+        #[arg(long)]
+        body: Option<String>,
+        /// Read the body from a file (overrides --body).
+        #[arg(long, value_name = "FILE")]
+        body_file: Option<PathBuf>,
+        /// Attach a file (may repeat); the file's path in the body is replaced
+        /// by its attachment markdown.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
+        /// Attach a file only when it exists (may repeat; `~/` expands to
+        /// `$HOME`). Used by Oino for paths pasted into a description.
+        #[arg(long, value_name = "FILE", hide = true)]
+        attach_existing: Vec<String>,
+        /// Landing lane.
+        #[arg(long, value_name = "backlog|todo")]
+        status: Option<String>,
+        /// Priority.
+        #[arg(long, value_name = "none|low|medium|high|urgent")]
+        priority: Option<String>,
+        /// Dependency ids (may repeat).
+        #[arg(long = "after", value_name = "ID")]
+        after: Vec<String>,
+        /// Label (may repeat). Must already exist on the project
+        /// (case-insensitive) unless --new-label is also given.
+        #[arg(long = "label", value_name = "LABEL")]
+        labels: Vec<String>,
+        /// Opt in to creating a label that does not already exist.
+        #[arg(long)]
+        new_label: bool,
+    },
+
+    /// List tasks. Bare `list` shows the active lanes only (todo,
+    /// `in_progress`, blocked, `in_review`, done) — `--all` adds backlog,
+    /// cancelled and archived, `--status` narrows to one lane.
+    List {
+        /// Only this status.
+        #[arg(long, value_name = "STATUS")]
+        status: Option<String>,
+        /// Every lane, including backlog, cancelled and archived.
+        #[arg(long)]
+        all: bool,
+        /// Only tasks whose deps reached the chain gate.
+        #[arg(long)]
+        ready: bool,
+    },
+
+    /// Show one task.
+    Show {
+        /// Task id.
+        id: String,
+    },
+
+    /// Move a task to another lane.
+    Move {
+        /// Task id.
+        id: String,
+        /// Target status.
+        status: String,
+        /// Required for some transitions (e.g. blocking, or releasing a
+        /// confirmed-stale claim); optional for others (rework notes,
+        /// unblock answers — UNI-106).
+        #[arg(long)]
+        comment: Option<String>,
+        /// Attach a file (may repeat); its path in the comment is replaced by
+        /// the attachment markdown, else the reference is appended.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
+    },
+
+    /// Append an activity note.
+    Note {
+        /// Task id.
+        id: String,
+        /// Note text.
+        text: String,
+        /// Attach a file (may repeat); its path in the comment is replaced by
+        /// the attachment markdown, else the reference is appended.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
+    },
+
+    /// Attach a file (image, log, document…) to a task and log a comment embedding it.
+    Attach {
+        /// Task id.
+        id: String,
+        /// File to attach.
+        file: PathBuf,
+        /// Comment text shown above the attachment.
+        #[arg(long)]
+        note: Option<String>,
+        /// Name to store it under (defaults to the file name).
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// List a task's attachments.
+    Attachments {
+        /// Task id.
+        id: String,
+    },
+
+    /// Edit task fields.
+    Edit {
+        /// Task id.
+        id: String,
+        /// New title.
+        #[arg(long)]
+        title: Option<String>,
+        /// New body, or `-` to read stdin.
+        #[arg(long)]
+        body: Option<String>,
+        /// New priority: none, low, medium, high or urgent.
+        #[arg(long, value_name = "PRIORITY")]
+        priority: Option<String>,
+        /// Comma-separated labels. Each must already exist on the project
+        /// (case-insensitive) unless --new-label is also given.
+        #[arg(long, value_name = "A,B")]
+        labels: Option<String>,
+        /// Opt in to creating labels that do not already exist.
+        #[arg(long)]
+        new_label: bool,
+    },
+
+    /// Add a dependency.
+    Link {
+        /// Task id.
+        id: String,
+        /// The dependency that must reach the gate first.
+        #[arg(long = "after", value_name = "DEP")]
+        after: String,
+    },
+
+    /// Remove a dependency.
+    Unlink {
+        /// Task id.
+        id: String,
+        /// The dependency to remove.
+        #[arg(long = "after", value_name = "DEP")]
+        after: String,
+    },
+
+    /// Reposition a task inside its lane.
+    Order {
+        /// Task id.
+        id: String,
+        /// Place before this task.
+        #[arg(long, value_name = "ID")]
+        before: Option<String>,
+        /// Place after this task.
+        #[arg(long = "after-pos", value_name = "ID")]
+        after_pos: Option<String>,
+        /// Move to the top of the lane.
+        #[arg(long)]
+        top: bool,
+        /// Move to the bottom of the lane.
+        #[arg(long)]
+        bottom: bool,
+    },
+
+    /// Start working a todo task yourself: todo → `in_progress`, claimed for
+    /// this session (uses the global --session). Free for agents.
+    Start {
+        /// Task id.
+        id: String,
+        /// The long-lived process that owns the claim (defaults to
+        /// $`OINO_KANBOARD_PID`, else the parent process). The stale-claim
+        /// reaper releases the task when it dies.
+        #[arg(long)]
+        pid: Option<u32>,
+    },
+
+    /// Hand a task you started to review: `in_progress` → `in_review`. Only the
+    /// session that started it; the summary is required.
+    Finish {
+        /// Task id.
+        id: String,
+        /// What you did (the reviewer reads it).
+        #[arg(long)]
+        comment: String,
+        /// Attach a file (may repeat); its path in the comment is replaced by
+        /// the attachment markdown, else the reference is appended.
+        #[arg(long, value_name = "FILE")]
+        attach: Vec<PathBuf>,
+    },
+
+    /// Show which ready todo task would be worked next and why the others
+    /// wait (read-only; `start <ID>` claims it).
+    Next,
+
+    /// Release in-progress tasks whose session pid is gone (system).
+    Reap {
+        /// Report what would be released without writing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Show a task's dependency chain (upstream deps and downstream dependents).
+    Chain {
+        /// Task id.
+        id: String,
+    },
+
+    /// Case-insensitive search over id, title and body.
+    Search {
+        /// Text to search for.
+        text: String,
+        /// Include archived tasks.
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// Release a claimed task (user/system — e.g. a stale claim whose
+    /// session is gone): `in_progress` → todo | `in_review` | blocked.
+    Release {
+        /// Task id.
+        id: String,
+        /// Target status.
+        #[arg(long = "to", value_name = "todo|in_review|blocked")]
+        to: String,
+        /// Why the claim is released.
+        #[arg(long)]
+        comment: String,
+    },
+
+    /// Copy a task into Backlog.
+    Duplicate {
+        /// Task id.
+        id: String,
+    },
+
+    /// Archive done/cancelled tasks older than N days.
+    ArchiveSweep {
+        /// Archive done/cancelled tasks older than N days (0 = off).
+        #[arg(long = "after-days", value_name = "N")]
+        after_days: Option<i64>,
+        /// Move Archived/Cancelled tasks older than N days into cold storage.
+        #[arg(long = "retention-days", value_name = "N")]
+        retention_days: Option<i64>,
+    },
+
+    /// Start the daemon: UI + JSON API + SSE (single instance).
+    Serve {
+        /// Bind address: 127.0.0.1 (default, open) or e.g. 0.0.0.0 (token-gated).
+        #[arg(long, default_value = "127.0.0.1", value_name = "ADDR")]
+        host: String,
+        /// Port to bind (0 = let the OS choose).
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+        /// Shut down after this many idle minutes with no UI and no clients.
+        #[arg(long = "idle-min", value_name = "N")]
+        idle_min: Option<u64>,
+        /// Hidden: idle seconds instead of minutes (tests).
+        #[arg(long = "idle-secs", value_name = "N", hide = true)]
+        idle_secs: Option<u64>,
+        /// Require the access token on loopback binds too (remote always does).
+        #[arg(long = "require-auth")]
+        require_auth: bool,
+        /// Reuse the token stored in `<home>/token` so links survive restarts.
+        #[arg(long = "keep-token")]
+        keep_token: bool,
+    },
+
+    /// Show or change board settings (agent command, effective limits).
+    Settings {
+        /// Settings action.
+        #[command(subcommand)]
+        sub: SettingsSub,
+    },
+
+    /// Drop the persistent access token (the next daemon start mints a fresh one).
+    RotateToken,
+
+    /// Show the recorded daemon (pid, port, version) and whether it is alive.
+    Status,
+
+    /// Stop the daemon (SIGTERM, waits up to --timeout).
+    Stop {
+        /// Seconds to wait for the daemon to exit.
+        #[arg(long, default_value_t = 3, value_name = "SECS")]
+        timeout: u64,
+    },
+
+    /// Check every task file (and the board) for rule violations.
+    Validate {
+        /// Rewrite canonical formatting where the file is otherwise valid.
+        #[arg(long)]
+        fix: bool,
+    },
+}
+
+/// `project` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ProjectCommand {
+    /// Register a project (defaults to the current git root).
+    Add(AddProjectArgs),
+    /// List registered projects.
+    List,
+    /// Show one project and its lane counts.
+    Show,
+    /// Hide a project from the sidebar/overview (still reachable by URL).
+    Archive {
+        /// Project slug.
+        slug: String,
+    },
+    /// Bring an archived project back.
+    Unarchive {
+        /// Project slug.
+        slug: String,
+    },
+    /// Point an existing project at a new root (after the folder moved) —
+    /// the slug, tasks and history are kept; only `root` changes.
+    Rebind {
+        /// Project slug.
+        slug: String,
+        /// The project's new root folder.
+        #[arg(long, value_name = "PATH")]
+        root: PathBuf,
+    },
+}
+
+/// `project add` arguments.
+#[derive(Debug, Args)]
+pub struct AddProjectArgs {
+    /// Project root (default: the git top-level folder, else the current folder).
+    #[arg(long, value_name = "PATH")]
+    pub root: Option<PathBuf>,
+    /// Display name (default: the root folder's name).
+    #[arg(long)]
+    pub name: Option<String>,
+    /// Task id prefix (default: the first three letters or digits of the name).
+    #[arg(long, value_name = "PREFIX")]
+    pub prefix: Option<String>,
+}
+
+/// Values clap validates at parse time.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum GateArg {
+    /// In review.
+    #[value(name = "in_review")]
+    InReview,
+    /// Done.
+    #[value(name = "done")]
+    Done,
+}
+
+impl From<GateArg> for ChainGate {
+    fn from(value: GateArg) -> Self {
+        match value {
+            GateArg::InReview => ChainGate::InReview,
+            GateArg::Done => ChainGate::Done,
+        }
+    }
+}
+
+/// Parses a status name (`backlog`, `todo`, `in_progress`, …).
+pub fn parse_status(value: &str) -> crate::error::Result<Status> {
+    value.parse()
+}
+
+/// Parses a priority name (`none`, `low`, `medium`, `high`, `urgent`).
+pub fn parse_priority(value: &str) -> crate::error::Result<Priority> {
+    value.parse()
+}

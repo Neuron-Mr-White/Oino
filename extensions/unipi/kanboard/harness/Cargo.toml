@@ -1,0 +1,18 @@
+[package]
+name = "unipi-kanboard-harness"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "wasm-host harness tests for unipi.kanboard against the real oino-kanboard binary; native, not part of any workspace"
+
+[dev-dependencies]
+oino-extension-api = { path = "../../../../crates/oino-extension-api", features = ["testing"] }
+oino-wasm-host = { path = "../../../../crates/oino-wasm-host", default-features = false, features = ["testing"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+
+# Standalone: the extensions workspace targets wasm guests and must not pull in wasmtime.
+[workspace]
