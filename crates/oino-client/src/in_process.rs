@@ -412,6 +412,161 @@ impl InProcessBackend {
                 data(json!({ "path": path.display().to_string() }))
             }
             OinoCommand::GetContextUsage => data(session.context_usage()),
+            command => self.frontend(&session, command).await,
+        }
+    }
+
+    /// The frontend command surface (`_oino/*` completions, actions, settings, auth).
+    async fn frontend(
+        &self,
+        session: &AgentSession,
+        command: OinoCommand,
+    ) -> Result<RpcResponseData, ClientError> {
+        match command {
+            OinoCommand::GetCompletions { text, cursor } => {
+                data(json!({ "groups": session.completions(&text, cursor).await }))
+            }
+            OinoCommand::UiAction {
+                panel_id,
+                action_id,
+                value,
+            } => {
+                session
+                    .ui_action(&panel_id, &action_id, value)
+                    .map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::EditorEvent(event) => {
+                let consumed = session.editor_event(event).await;
+                data(json!({ "consumed": consumed }))
+            }
+            OinoCommand::InvokeShortcut { shortcut_id } => {
+                session.invoke_shortcut(&shortcut_id).map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::GetShortcuts => {
+                let shortcuts: Vec<JsonValue> = session
+                    .runner()
+                    .shortcuts()
+                    .into_iter()
+                    .map(|(extension, spec)| {
+                        json!({
+                            "id": spec.id,
+                            "defaultKeys": spec.default_keys,
+                            "description": spec.description,
+                            "extensionId": extension,
+                        })
+                    })
+                    .collect();
+                data(json!({ "shortcuts": shortcuts }))
+            }
+            command @ (OinoCommand::GetSettingsSchema
+            | OinoCommand::GetExtensionSettings { .. }
+            | OinoCommand::SetExtensionSetting { .. }
+            | OinoCommand::UnsetExtensionSetting { .. }
+            | OinoCommand::GetSettings { .. }
+            | OinoCommand::SetSetting { .. }) => self.settings_command(session, command),
+            OinoCommand::ServiceCall {
+                target,
+                name,
+                payload,
+            } => data(
+                session
+                    .service_call(target.as_deref(), &name, payload)
+                    .await
+                    .map_err(failed)?,
+            ),
+            OinoCommand::AuthProviders => data(json!({ "providers": session.auth_providers() })),
+            OinoCommand::Login { provider } => {
+                session.login(&provider).await.map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::Logout { provider } => {
+                session.logout(&provider).map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::SetApiKey { provider, key } => {
+                session.set_api_key(&provider, &key).await.map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::Hello { .. }
+            | OinoCommand::UiSnapshot
+            | OinoCommand::NavigateTree { .. }
+            | OinoCommand::SetLabel { .. }
+            | OinoCommand::ImportJsonl { .. }
+            | OinoCommand::ExportJsonl { .. }
+            | OinoCommand::GetContextUsage => Err(ClientError::Protocol(format!(
+                "{} is not a frontend command",
+                command.kind()
+            ))),
+        }
+    }
+
+    /// Extension settings registry and core settings commands.
+    fn settings_command(
+        &self,
+        session: &AgentSession,
+        command: OinoCommand,
+    ) -> Result<RpcResponseData, ClientError> {
+        let registry = self.runtime.extension_settings();
+        match command {
+            OinoCommand::GetSettingsSchema => data(json!({ "namespaces": registry.schema() })),
+            OinoCommand::GetExtensionSettings { namespace, scope } => {
+                if registry.namespace(&namespace).is_none() {
+                    return Err(ClientError::Command(format!(
+                        "Unknown settings namespace: {namespace}"
+                    )));
+                }
+                data(json!({ "values": registry.values(&namespace, scope) }))
+            }
+            OinoCommand::SetExtensionSetting {
+                namespace,
+                key,
+                value,
+                scope,
+            } => {
+                let value = value.filter(|v| !v.is_null());
+                registry
+                    .set(&namespace, &key, value, scope)
+                    .map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::UnsetExtensionSetting {
+                namespace,
+                key,
+                scope,
+            } => {
+                registry
+                    .set(&namespace, &key, None, scope)
+                    .map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::GetSettings { key } => {
+                let merged = registry.merged_settings();
+                match key {
+                    None => data(json!({ "settings": merged })),
+                    Some(key) => {
+                        let path: Vec<&str> = key.split('.').collect();
+                        let value = oino_settings::json::get_path(&merged, &path).cloned();
+                        data(json!({ "value": value }))
+                    }
+                }
+            }
+            OinoCommand::SetSetting { key, value, scope } => {
+                let path: Vec<&str> = key.split('.').filter(|p| !p.is_empty()).collect();
+                if path.is_empty() {
+                    return Err(ClientError::Command("Setting key cannot be empty".into()));
+                }
+                let value = value.filter(|v| !v.is_null());
+                session
+                    .with_settings(|settings| settings.set(scope, &path, value))
+                    .map_err(failed)?;
+                Ok(None)
+            }
+            other => Err(ClientError::Protocol(format!(
+                "{} is not a settings command",
+                other.kind()
+            ))),
         }
     }
 }

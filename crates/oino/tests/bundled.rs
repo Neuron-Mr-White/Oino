@@ -73,7 +73,10 @@ impl Sandbox {
 #[test]
 fn print_json_and_acp_run_with_the_bundle() {
     let Some(package) = faux_package() else {
-        eprintln!("skipped: run `cargo xtask wasm` to build extensions/dist");
+        let _ = writeln!(
+            std::io::stderr(),
+            "skipped: run `cargo xtask wasm` to build extensions/dist"
+        );
         return;
     };
     let sandbox = Sandbox::new();
@@ -153,7 +156,7 @@ fn acp_round_trip(sandbox: &Sandbox, package: &Path) {
         writeln!(stdin, "{value}").unwrap();
     };
     let mut seen = Vec::new();
-    let mut wait = |id: u64, seen: &mut Vec<Value>| -> Value {
+    let wait = |id: u64, seen: &mut Vec<Value>| -> Value {
         let deadline = Instant::now() + Duration::from_secs(120);
         loop {
             if let Some(found) = seen.iter().find(|v| v["id"] == id) {
@@ -192,7 +195,7 @@ fn acp_round_trip(sandbox: &Sandbox, package: &Path) {
         .filter(|v| v["params"]["update"]["sessionUpdate"] == "agent_message_chunk")
         .filter_map(|v| v["params"]["update"]["content"]["text"].as_str())
         .collect();
-    assert!(!text.is_empty());
+    assert_ne!(text, "");
     drop(stdin);
     let status = child.wait().unwrap();
     assert!(status.success());

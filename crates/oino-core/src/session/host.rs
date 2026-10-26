@@ -272,6 +272,8 @@ impl AgentSession {
             HostOp::GetScopedModels => to_json(self.scoped_models()),
             HostOp::GetRoutedModel => to_json(self.routed_model()),
             HostOp::GetSessionStats => to_json(self.session_stats()),
+            HostOp::EditorText => Ok(json!(self.editor_text())),
+            HostOp::CredentialFor(provider) => self.credential_for(&provider).await,
             HostOp::ModelComplete {
                 model,
                 context,
@@ -527,6 +529,93 @@ impl AgentSession {
         summarizer.observer = None;
         summarizer.thinking_level = None;
         to_json(summarizer.complete(context, options).await)
+    }
+
+    /// Resolves a `provider/id` spec or the session model.
+    fn request_model(&self, spec: Option<&str>) -> Result<oino_ai::Model, HostError> {
+        match spec {
+            Some(spec) => spec
+                .split_once('/')
+                .and_then(|(provider, id)| self.inner.models.find(provider, id))
+                .ok_or_else(|| HostError::Invalid(format!("Unknown model {spec}"))),
+            None => self
+                .model()
+                .ok_or_else(|| HostError::Failed("No model selected".into())),
+        }
+    }
+
+    /// `models.stream`: one provider request (credentials and virtual routing as for
+    /// [`HostOp::ModelComplete`], no retries) as `AssistantMessageEvent` JSON items.
+    pub(crate) async fn model_stream(
+        &self,
+        request: crate::extensions::host::ModelRequest,
+    ) -> Result<futures::stream::BoxStream<'static, JsonValue>, HostError> {
+        use futures::StreamExt;
+        let model = self.request_model(request.model.as_deref())?;
+        let context: oino_ai::Context = serde_json::from_value(request.context)
+            .map_err(|e| HostError::Invalid(format!("context: {e}")))?;
+        let mut options: oino_ai::StreamOptions = if request.options.is_null() {
+            oino_ai::StreamOptions::default()
+        } else {
+            serde_json::from_value(request.options)
+                .map_err(|e| HostError::Invalid(format!("options: {e}")))?
+        };
+        let summarizer = self
+            .summarizer(
+                &model,
+                request.cancel.unwrap_or_default(),
+                crate::events::SummarizationSource::BranchSummary,
+            )
+            .await
+            .map_err(HostError::Failed)?;
+        options.cache_retention = Some(oino_ai::CacheRetention::None);
+        if options.headers.is_none() {
+            options.headers.clone_from(&summarizer.headers);
+        }
+        let events = summarizer.stream.stream(oino_agent::StreamRequest {
+            model: summarizer.model.clone(),
+            context,
+            options,
+            api_key: summarizer.api_key.clone(),
+            cancel: summarizer.cancel.clone(),
+        });
+        Ok(events
+            .map(|event| serde_json::to_value(event).unwrap_or(JsonValue::Null))
+            .boxed())
+    }
+
+    /// `models.credential-for`: `{provider, headers, baseUrl?}` of the first model of
+    /// `provider` (bearer header from the resolved key), or `null` when unconfigured.
+    async fn credential_for(&self, provider: &str) -> Result<JsonValue, HostError> {
+        let Some(model) = self
+            .inner
+            .models
+            .all()
+            .into_iter()
+            .find(|m| m.provider == provider)
+        else {
+            return Ok(JsonValue::Null);
+        };
+        let Ok(auth) = self
+            .inner
+            .models
+            .get_api_key_and_headers(&model, &oino_models::AuthOverrides::default())
+            .await
+        else {
+            return Ok(JsonValue::Null);
+        };
+        let mut headers: Vec<(String, String)> =
+            auth.headers.unwrap_or_default().into_iter().collect();
+        match auth.api_key {
+            Some(key) => headers.push(("Authorization".to_owned(), format!("Bearer {key}"))),
+            None if headers.is_empty() => return Ok(JsonValue::Null),
+            None => {}
+        }
+        let mut value = json!({"provider": provider, "headers": headers});
+        if !model.base_url.is_empty() {
+            value["baseUrl"] = json!(model.base_url);
+        }
+        Ok(value)
     }
 
     async fn ui_dialog(

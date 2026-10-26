@@ -15,9 +15,10 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, SetTitle, disable_raw_mode, enable_raw_mode,
 };
 use futures::StreamExt;
-use oino_client::SessionBackend;
-use ratatui::Terminal;
+use oino_client::{FrontendApi, SessionBackend};
 use ratatui::backend::CrosstermBackend;
+use ratatui::widgets::{Paragraph, Widget};
+use ratatui::{Terminal, TerminalOptions, Viewport};
 use tokio::sync::mpsc;
 
 use crate::app::{App, AppEvent, EditPurpose, Effect, Tag, TuiOptions};
@@ -28,13 +29,26 @@ type Term = Terminal<CrosstermBackend<std::io::Stdout>>;
 
 /// Restores the terminal on drop (also on panic via the hook installed in [`run`]).
 struct TerminalGuard {
-    enhanced: bool,
+    mode: Mode,
 }
 
-fn setup(enhanced: bool) -> std::io::Result<()> {
+/// Terminal setup flags.
+#[derive(Clone, Copy, Debug)]
+struct Mode {
+    /// Keyboard enhancement flags are supported.
+    enhanced: bool,
+    /// Regular layout: no alternate screen.
+    inline: bool,
+}
+
+fn setup(mode: Mode) -> std::io::Result<()> {
     enable_raw_mode()?;
     let mut out = std::io::stdout();
-    execute!(out, EnterAlternateScreen, EnableBracketedPaste)?;
+    if !mode.inline {
+        execute!(out, EnterAlternateScreen)?;
+    }
+    execute!(out, EnableBracketedPaste)?;
+    let enhanced = mode.enhanced;
     if enhanced {
         execute!(
             out,
@@ -47,20 +61,29 @@ fn setup(enhanced: bool) -> std::io::Result<()> {
     Ok(())
 }
 
-fn restore(enhanced: bool) {
+fn restore(mode: Mode) {
     let mut out = std::io::stdout();
-    if enhanced {
+    if mode.enhanced {
         let _ = execute!(out, PopKeyboardEnhancementFlags);
     }
-    let _ = execute!(out, DisableBracketedPaste, LeaveAlternateScreen);
+    let _ = execute!(out, DisableBracketedPaste);
+    if !mode.inline {
+        let _ = execute!(out, LeaveAlternateScreen);
+    }
     let _ = disable_raw_mode();
     let _ = execute!(out, crossterm::cursor::Show);
 }
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        restore(self.enhanced);
+        restore(self.mode);
     }
+}
+
+/// Height of the inline viewport: room for the editor chrome, dialogs and the live turn.
+fn inline_height() -> u16 {
+    let rows = crossterm::terminal::size().map_or(24, |(_, rows)| rows);
+    (rows * 3 / 5).max(14).min(rows)
 }
 
 fn osc(sequence: &str) {
@@ -80,23 +103,32 @@ pub async fn run(
     options: TuiOptions,
 ) -> Result<(), TuiError> {
     let enhanced = crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+    let app = App::new(Arc::clone(&host), options);
+    let mode = Mode {
+        enhanced,
+        inline: app.inline(),
+    };
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        restore(enhanced);
+        restore(mode);
         previous(info);
     }));
-    setup(enhanced)?;
-    let guard = TerminalGuard { enhanced };
-    let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
-    let result = event_loop(
-        &mut terminal,
-        backend.as_ref(),
-        &backend,
-        host,
-        options,
-        enhanced,
-    )
-    .await;
+    setup(mode)?;
+    let guard = TerminalGuard { mode };
+    let mut terminal = if mode.inline {
+        Terminal::with_options(
+            CrosstermBackend::new(std::io::stdout()),
+            TerminalOptions {
+                viewport: Viewport::Inline(inline_height()),
+            },
+        )?
+    } else {
+        Terminal::new(CrosstermBackend::new(std::io::stdout()))?
+    };
+    let result = event_loop(&mut terminal, backend.as_ref(), &backend, app, mode).await;
+    if mode.inline {
+        let _ = terminal.clear();
+    }
     drop(guard);
     backend.shutdown().await;
     result
@@ -110,10 +142,10 @@ async fn event_loop(
     terminal: &mut Term,
     backend: &dyn SessionBackend,
     shared: &Arc<dyn SessionBackend>,
-    host: Arc<dyn TuiHost>,
-    options: TuiOptions,
-    enhanced: bool,
+    mut app: App,
+    mode: Mode,
 ) -> Result<(), TuiError> {
+    let host = app.host();
     let (tx, mut rx) = mpsc::unbounded_channel::<AppEvent>();
     let (queue_tx, mut queue_rx) =
         mpsc::unbounded_channel::<(Tag, oino_client::protocol::RpcCommand, Option<String>)>();
@@ -130,7 +162,6 @@ async fn event_loop(
             }
         });
     }
-    let mut app = App::new(Arc::clone(&host), options);
     let mut events = backend.events();
     let mut input_events = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(80));
@@ -163,18 +194,28 @@ async fn event_loop(
                     action_id,
                     value,
                 } => {
-                    if !host.ui_action(&panel_id, &action_id, value) && action_id != "$close" {
-                        let _ = tx.send(AppEvent::Notice(
-                            "Panel actions need the `_oino/ui_action` backend command".into(),
-                        ));
-                    }
+                    let backend = Arc::clone(shared);
+                    let tx = tx.clone();
+                    tokio::spawn(async move {
+                        let result = backend.ui_action(&panel_id, &action_id, value).await;
+                        // `$close` of a panel the backend already forgot is not an error.
+                        if let Err(error) = result
+                            && action_id != "$close"
+                        {
+                            let _ =
+                                tx.send(AppEvent::Notice(format!("Panel action failed: {error}")));
+                        }
+                    });
                 }
                 Effect::InvokeShortcut(id) => {
-                    if !host.invoke_shortcut(&id) {
-                        let _ = tx.send(AppEvent::Notice(format!(
-                            "Extension shortcut \"{id}\" needs the `_oino/invoke_shortcut` backend command"
-                        )));
-                    }
+                    let backend = Arc::clone(shared);
+                    let tx = tx.clone();
+                    tokio::spawn(async move {
+                        if let Err(error) = backend.invoke_shortcut(&id).await {
+                            let _ =
+                                tx.send(AppEvent::Notice(format!("Shortcut {id} failed: {error}")));
+                        }
+                    });
                 }
                 Effect::ListSessions(scope) => {
                     let host = Arc::clone(&host);
@@ -213,9 +254,9 @@ async fn event_loop(
                     extension,
                     purpose,
                 } => {
-                    restore(enhanced);
+                    restore(mode);
                     let edited = external_editor(&text, &extension);
-                    setup(enhanced)?;
+                    setup(mode)?;
                     terminal.clear()?;
                     match edited {
                         Ok(edited) => app.handle(AppEvent::Edited(purpose, edited)),
@@ -251,9 +292,9 @@ async fn event_loop(
                     let _ = execute!(std::io::stdout(), SetTitle(title));
                 }
                 Effect::Suspend => {
-                    restore(enhanced);
+                    restore(mode);
                     suspend();
-                    setup(enhanced)?;
+                    setup(mode)?;
                     terminal.clear()?;
                     dirty = true;
                 }
@@ -264,6 +305,16 @@ async fn event_loop(
             break;
         }
         if dirty {
+            if mode.inline {
+                let width = terminal.size()?.width;
+                let lines = render::take_scrollback(&mut app, width);
+                if !lines.is_empty() {
+                    let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+                    terminal.insert_before(height, |buffer| {
+                        Paragraph::new(lines).render(buffer.area, buffer);
+                    })?;
+                }
+            }
             terminal.draw(|frame| render::draw(frame, &mut app))?;
             dirty = false;
         }

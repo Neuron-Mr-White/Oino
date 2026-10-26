@@ -13,6 +13,7 @@ testing = []
 
 [dependencies]
 futures.workspace = true
+ignore.workspace = true
 indexmap.workspace = true
 oino-agent = { path = "../oino-agent" }
 oino-ai = { path = "../oino-ai" }

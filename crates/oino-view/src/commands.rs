@@ -111,7 +111,7 @@ pub const BUILTINS: &[BuiltinSpec] = &[
     b(
         Builtin::Logout,
         "logout",
-        "",
+        "[provider]",
         "Remove provider authentication",
     ),
     b(Builtin::New, "new", "", "Start a new session"),

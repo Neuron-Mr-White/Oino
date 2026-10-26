@@ -1,5 +1,9 @@
 # Deviations: tui-client
 
+> Rows #2 (panel actions, shortcuts), #3 (inline mode), #5 (editor intents), #6 (backend
+> completions), #7 (settings hub) and #8 (`/login`, `/logout`) are superseded by
+> [frontend-cmds.md](frontend-cmds.md) T1–T6; #4 (inline images) is still open (T7).
+
 Owner: `tui-client` (`crates/oino-tui`, `crates/oino-view`). Format per README §5: section,
 change, reason, impact. pi 1.4.0 `dist/modes/interactive/*` is the reference where modes.md §7
 is silent.

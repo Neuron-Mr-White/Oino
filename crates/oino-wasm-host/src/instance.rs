@@ -850,8 +850,13 @@ impl ProviderInstance for WasmInstance {
         })
     }
 
-    fn oauth_login(&self, provider_id: &str) -> BoxFut<'_, Result<RawJson, ExtensionError>> {
+    fn oauth_login(
+        &self,
+        provider_id: &str,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<RawJson, ExtensionError>> {
         let provider_id = provider_id.to_owned();
+        let cx = cx.with_kind(CallKind::Provider);
         Box::pin(async move {
             let r = self
                 .call("provider.oauth-login", move |acc, ex| {
@@ -859,7 +864,7 @@ impl ProviderInstance for WasmInstance {
                         let Some(provider) = &ex.provider else {
                             return Ok(Err("no provider export".to_owned()));
                         };
-                        invoke(acc, provider.func_oauth_login(), (provider_id,), None)
+                        invoke(acc, provider.func_oauth_login(), (provider_id,), Some(&cx))
                             .await
                             .map(|(r,)| r)
                     })

@@ -343,6 +343,20 @@ impl HostApi for HostRouter {
         })
     }
 
+    fn model_stream<'a>(
+        &'a self,
+        _extension: &'a str,
+        cx: &'a CallContext,
+        request: crate::extensions::host::ModelRequest,
+    ) -> BoxFuture<'a, Result<futures::stream::BoxStream<'static, JsonValue>, HostError>> {
+        Box::pin(async move {
+            let session = self.session(&cx.session_id).ok_or_else(|| {
+                HostError::StaleContext(crate::extensions::runner::STALE_CONTEXT_MESSAGE.into())
+            })?;
+            session.model_stream(request).await
+        })
+    }
+
     fn spawn_agent<'a>(
         &'a self,
         extension: &'a str,
@@ -499,6 +513,10 @@ impl Services {
         .await;
         let extensions = Arc::new(ExtensionSet::new(loaded));
         let _ = host.extensions.set(Arc::clone(&extensions));
+        models.set_oauth_refresher(Arc::new(ComponentOAuth {
+            extensions: Arc::downgrade(&extensions),
+            models: models.clone(),
+        }));
         forward_settings_changes(&extension_settings, &host);
         if !(options.flags.offline || offline_env()) {
             refresh_dynamic_models(&extensions, &models).await;
@@ -634,6 +652,97 @@ fn forward_settings_changes(registry: &ExtensionSettings, router: &Arc<HostRoute
             }
         }
     });
+}
+
+/// Bridges `auth.json` OAuth refreshes to the registering component's `oauth-refresh`
+/// export (the component implementing the provider registration's `api`).
+struct ComponentOAuth {
+    extensions: Weak<ExtensionSet>,
+    models: ModelRegistry,
+}
+
+/// Deadline of one `oauth-refresh` call (pi: 15 s).
+const OAUTH_REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+impl oino_models::OAuthRefresher for ComponentOAuth {
+    fn refresh<'a>(
+        &'a self,
+        provider: &'a str,
+        credential: JsonValue,
+    ) -> BoxFuture<'a, Result<JsonValue, String>> {
+        Box::pin(async move {
+            let extensions = self
+                .extensions
+                .upgrade()
+                .ok_or_else(|| "extensions are shut down".to_owned())?;
+            let registration = self
+                .models
+                .registration(provider)
+                .ok_or_else(|| format!("Unknown provider: {provider}"))?;
+            let component = provider_component(&extensions, &registration.api)
+                .ok_or_else(|| format!("No provider component for {}", registration.api))?;
+            let provider_instance = component
+                .instance
+                .provider()
+                .ok_or_else(|| format!("{provider}: not a provider"))?;
+            match tokio::time::timeout(
+                OAUTH_REFRESH_TIMEOUT,
+                provider_instance.oauth_refresh(provider, credential),
+            )
+            .await
+            {
+                Ok(result) => result.map_err(|e| e.message),
+                Err(_) => Err(format!("OAuth refresh for {provider} timed out")),
+            }
+        })
+    }
+}
+
+/// The provider component implementing `api` (first in load order).
+fn provider_component(extensions: &ExtensionSet, api: &str) -> Option<Arc<LoadedExtension>> {
+    extensions
+        .extensions()
+        .iter()
+        .find(|e| e.instance.provider().is_some() && e.state().apis.iter().any(|a| a == api))
+        .cloned()
+}
+
+/// Re-fetches the model list of one `models: "dynamic"` provider with `credential` (after
+/// `/login` or a new API key); other providers are left alone.
+pub(crate) async fn refresh_provider_models(
+    extensions: &ExtensionSet,
+    models: &ModelRegistry,
+    provider_id: &str,
+    credential: Option<JsonValue>,
+) {
+    let Some(registration) = models.registration(provider_id) else {
+        return;
+    };
+    if !matches!(registration.models, oino_models::ProviderModels::Dynamic) {
+        return;
+    }
+    let Some(component) = provider_component(extensions, &registration.api) else {
+        return;
+    };
+    let Some(provider) = component.instance.provider() else {
+        return;
+    };
+    match tokio::time::timeout(
+        LIST_MODELS_TIMEOUT,
+        provider.list_models(provider_id, credential),
+    )
+    .await
+    {
+        Ok(Ok(list)) => {
+            if let Err(error) = models.set_provider_models(provider_id, &list) {
+                tracing::warn!(provider = %provider_id, "storing models failed: {error}");
+            }
+        }
+        Ok(Err(error)) => {
+            tracing::warn!(provider = %provider_id, "list-models failed: {}", error.message);
+        }
+        Err(_) => tracing::warn!(provider = %provider_id, "list-models timed out"),
+    }
 }
 
 /// Fetches `list-models` for providers registered with dynamic models.

@@ -225,12 +225,38 @@ fn header_lines(app: &App, width: usize) -> Vec<OLine> {
     out
 }
 
-fn draw_transcript(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
-    let width = usize::from(area.width);
-    let w16 = area.width;
+/// Inline layout: the header and every transcript row not printed yet, once the session
+/// is idle (rows of a running turn still change). The runner writes them above the
+/// viewport (`Terminal::insert_before`); they are never redrawn.
+pub fn take_scrollback(app: &mut App, width: u16) -> Vec<Line<'static>> {
+    if !app.inline || app.busy() || app.bash_running.is_some() || !app.loaded {
+        return Vec::new();
+    }
+    let rows = app.transcript.rows().len();
+    if app.committed_rows > rows {
+        // The transcript was rebuilt (new or switched session): print it again.
+        app.committed_rows = 0;
+    }
+    if app.committed_rows == rows && app.header_committed {
+        return Vec::new();
+    }
+    let lines = transcript_lines(app, width, app.committed_rows, !app.header_committed);
+    app.committed_rows = rows;
+    app.header_committed = true;
+    lines
+}
+
+/// Rendered transcript lines from row `first` (with the header when `header`), blank lines
+/// between rows; uses and fills the row cache.
+fn transcript_lines(app: &mut App, w16: u16, first: usize, header: bool) -> Vec<OLine> {
+    let width = usize::from(w16);
     let flags = u8::from(app.tools_expanded) | (u8::from(app.hide_thinking) << 1);
-    let mut lines = header_lines(app, width);
-    let rows: Vec<_> = app.transcript.rows().to_vec();
+    let mut lines = if header {
+        header_lines(app, width)
+    } else {
+        Vec::new()
+    };
+    let rows: Vec<_> = app.transcript.rows().iter().skip(first).cloned().collect();
     let cx = ctx(app, width);
     let mut fresh: Vec<(u64, CachedRow)> = Vec::new();
     for row in &rows {
@@ -265,6 +291,16 @@ fn draw_transcript(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
     for (id, row) in fresh {
         app.cache.insert(id, row);
     }
+    lines
+}
+
+fn draw_transcript(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
+    let (first, header) = if app.inline {
+        (app.committed_rows, !app.header_committed)
+    } else {
+        (0, true)
+    };
+    let lines = transcript_lines(app, area.width, first, header);
     let visible = usize::from(area.height);
     app.transcript_height = visible;
     let total = lines.len();

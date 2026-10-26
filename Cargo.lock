@@ -2290,9 +2290,12 @@ dependencies = [
  "oino-tools",
  "oino-tui",
  "oino-wasm-host",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-util",
 ]
@@ -2367,6 +2370,7 @@ dependencies = [
  "oino-ai",
  "oino-core",
  "oino-session",
+ "oino-settings",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -2378,6 +2382,7 @@ name = "oino-core"
 version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
+ "ignore",
  "indexmap 2.14.0",
  "oino-agent",
  "oino-ai",

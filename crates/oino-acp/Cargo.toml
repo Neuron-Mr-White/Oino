@@ -14,6 +14,7 @@ oino-agent = { path = "../oino-agent" }
 oino-ai = { path = "../oino-ai" }
 oino-client = { path = "../oino-client" }
 oino-core = { path = "../oino-core" }
+oino-models = { path = "../oino-models" }
 oino-session = { path = "../oino-session" }
 oino-settings = { path = "../oino-settings" }
 oino-tools = { path = "../oino-tools" }
@@ -26,7 +27,6 @@ tracing.workspace = true
 [dev-dependencies]
 indexmap.workspace = true
 oino-core = { path = "../oino-core", features = ["testing"] }
-oino-models = { path = "../oino-models" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "time"] }
 tokio-util = { workspace = true, features = ["compat"] }

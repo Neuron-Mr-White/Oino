@@ -104,16 +104,6 @@ pub trait TuiHost: Send + Sync {
     fn changelog(&self) -> Option<String> {
         None
     }
-    /// Delivers a panel action (`extension_ui_action`); `false` when unsupported.
-    fn ui_action(&self, panel_id: &str, action_id: &str, value: Option<JsonValue>) -> bool {
-        let _ = (panel_id, action_id, value);
-        false
-    }
-    /// Invokes an extension shortcut (`invoke_shortcut`); `false` when unsupported.
-    fn invoke_shortcut(&self, id: &str) -> bool {
-        let _ = id;
-        false
-    }
 }
 
 /// `@path` completion over the filesystem (pi uses `fd`; this lists one directory level,

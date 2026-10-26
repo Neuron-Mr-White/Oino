@@ -330,6 +330,21 @@ fn choose_model(
     choice
 }
 
+/// `--model` / `--provider` / `--models` for a new ACP session in `services`' cwd (pi
+/// `buildSessionOptions` without an existing session); diagnostics go to stderr.
+pub(crate) fn acp_model_choice(args: &Args, services: &Services) -> oino_acp::ModelChoice {
+    let mut diagnostics = Vec::new();
+    let choice = choose_model(args, services, false, &mut diagnostics);
+    for line in crate::report_lines(&diagnostics) {
+        crate::eprintln_line(&line);
+    }
+    oino_acp::ModelChoice {
+        model: choice.model,
+        thinking_level: choice.thinking,
+        scoped_models: choice.scoped,
+    }
+}
+
 /// The bundled docs directory (`{docs_root}` of the system prompt); the agent dir when the
 /// docs cannot be extracted.
 pub(crate) fn docs_root(agent_dir: &Path) -> PathBuf {

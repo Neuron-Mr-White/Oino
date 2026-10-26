@@ -43,8 +43,13 @@ impl App {
         if self.app_action(&key) {
             return;
         }
+        let before = self.composer.text();
         self.editor_key(&key);
-        self.update_completion(false);
+        if self.composer.text() != before {
+            self.update_completion(false);
+            self.request_completions();
+            self.note_editor_change();
+        }
     }
 
     fn matches(&self, action: &str, key: &KeyId) -> bool {
@@ -272,7 +277,13 @@ impl App {
                 c.history_prev();
             }
         } else if kb.matches("tui.editor.cursorDown", key) {
-            if !c.down() {
+            if c.is_empty() {
+                self.editor_intent(
+                    oino_client::protocol::EditorIntent::EmptyArrowDown,
+                    String::new(),
+                    None,
+                );
+            } else if !c.down() {
                 c.history_next();
             }
         } else if kb.matches("tui.editor.cursorWordLeft", key) {
@@ -296,7 +307,18 @@ impl App {
         } else if kb.matches("tui.editor.deleteWordForward", key) {
             c.delete_word_forward();
         } else if kb.matches("tui.editor.deleteCharBackward", key) {
-            c.backspace();
+            // Attachment tokens: extensions may consume the backspace (ui-protocol §7.2);
+            // the default deletion runs when the reply says nobody did.
+            if let Some(token) = c.attachment_before_cursor().map(|a| a.token_id.clone()) {
+                let text = c.text();
+                self.editor_intent(
+                    oino_client::protocol::EditorIntent::TokenBackspace,
+                    text,
+                    Some(token),
+                );
+            } else {
+                c.backspace();
+            }
         } else if kb.matches("tui.editor.deleteCharForward", key) {
             c.delete();
         } else if kb.matches("tui.editor.deleteToLineStart", key) {
@@ -376,6 +398,7 @@ impl App {
                 items,
                 selected: 0,
                 commands: true,
+                replace_from: None,
             });
             return;
         }
@@ -404,6 +427,7 @@ impl App {
                 items,
                 selected: 0,
                 commands: false,
+                replace_from: None,
             });
             return;
         }
@@ -433,8 +457,17 @@ impl App {
         if accept {
             let (value, _) = completion.items[completion.selected].clone();
             let commands = completion.commands;
+            let replace_from = completion.replace_from;
             let token = self.composer.current_token().to_owned();
             self.completion = None;
+            if let Some(from) = replace_from {
+                self.composer.replace_before_cursor(from, &value);
+                if !value.ends_with('/') {
+                    self.composer.insert_char(' ');
+                }
+                self.note_editor_change();
+                return true;
+            }
             if commands {
                 let exact = token == value;
                 if exact && self.keys.matches("tui.input.submit", key) {

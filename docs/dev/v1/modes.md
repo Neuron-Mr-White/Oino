@@ -150,6 +150,9 @@ client opts in with `_oino/hello`.
 | `_oino/get_context_usage` | — | `ContextUsage` |
 | `_oino/agents` | — | nested agents of the session (runtime §12) |
 
+Implemented additions and differences (`_oino/get_shortcuts`, `_oino/service_call`,
+`_oino/auth_providers`, `shortcutId`, completion `from`): [deviations/frontend-cmds.md](deviations/frontend-cmds.md).
+
 `serve` adds session routing (§5.2).
 
 ## 5. `oino serve` (remote and multi-client, D16)

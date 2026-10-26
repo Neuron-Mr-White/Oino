@@ -36,7 +36,7 @@ pub mod render;
 mod runner;
 pub mod theme;
 
-pub use app::{App, AppEvent, Effect, Tag, TuiOptions};
+pub use app::{App, AppEvent, Effect, Tag, TuiMode, TuiOptions};
 pub use host::TuiHost;
 pub use runner::run;
 

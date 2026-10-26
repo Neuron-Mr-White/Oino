@@ -33,14 +33,17 @@ oino-tui = { path = "../oino-tui" }
 oino-settings = { path = "../oino-settings" }
 oino-tools = { path = "../oino-tools" }
 oino-wasm-host = { path = "../oino-wasm-host" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
+sha2.workspace = true
+tempfile.workspace = true
+thiserror = "2"
 tokio = { workspace = true, features = ["io-std", "io-util", "macros", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util.workspace = true
 
 [dev-dependencies]
 oino = { path = ".", features = ["faux"] }
-tempfile.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
 nix = { workspace = true, features = ["term", "fs"] }

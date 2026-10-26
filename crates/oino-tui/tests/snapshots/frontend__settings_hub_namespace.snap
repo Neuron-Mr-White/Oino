@@ -1,0 +1,22 @@
+---
+source: crates/oino-tui/tests/frontend.rs
+expression: "h.frame(80, 18)"
+---
+
+ oino v1.0.0-test
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help.
+
+ Oino can explain its own features and look up its docs. Ask it how to use or e…
+
+
+────────────────────────────────────────────────────────────────────────────────
+ Settings › Notify                                               writes: global
+  Events
+› Agent finished  on
+  Platform        ntfy
+  ntfy token      •••••• (global)
+  Send test       run /unipi:notify-test
+ enter/space change · tab scope · del reset · esc back
+/work/project (main)
+↑1.2k ↓345 $0.012 0.8%/200k (auto)                        (faux) faux-1 • medium

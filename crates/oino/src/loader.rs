@@ -56,7 +56,7 @@ impl Builtin {
         match self {
             #[cfg(feature = "faux")]
             Self::Faux => Arc::new(crate::faux::FauxComponent(
-                crate::faux::FauxProvider::from_env(),
+                crate::faux::FauxProvider::from_env().with_host(host),
             )),
             #[cfg(feature = "faux")]
             Self::UiProbe => Arc::new(crate::faux::UiProbe::new(host)),

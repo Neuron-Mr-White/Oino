@@ -65,7 +65,9 @@ pub use agent::{AcpAgent, AgentInfo};
 pub use client::{ClientCaps, ClientLink};
 pub use env::AcpEnv;
 pub use error::AcpError;
-pub use factory::{CoreSessionFactory, SessionDefaults, SessionFactory, SessionRequest};
+pub use factory::{
+    CoreSessionFactory, ModelChoice, ModelResolver, SessionDefaults, SessionFactory, SessionRequest,
+};
 
 /// Serves ACP on stdin/stdout until the client closes stdin (`oino --mode acp`).
 ///

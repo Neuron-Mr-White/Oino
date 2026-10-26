@@ -19,12 +19,13 @@ const OPTIONS: &str = r#"Usage:
   oino [options] [--] [@files...] [messages...]
 
 Commands:
-  oino install <source> [-l]     Install extension source and add to settings
-  oino remove <source> [-l]      Remove extension source from settings
-  oino uninstall <source> [-l]   Alias for remove
-  oino update [source|self]      Update Oino, extensions, or model catalogs
-  oino list                      List installed extensions from settings
-  oino config [-l]               Open TUI to enable/disable package resources (Tab switches scope)
+  oino install <source> [-l] [-y] Install an extension package (dir, archive, URL, git+https)
+  oino remove <id> [-l]          Remove an installed extension package
+  oino uninstall <id> [-l]       Alias for remove
+  oino update [--check]          Update Oino itself from the latest release
+  oino update <id>|--extensions  Re-install extension packages from their recorded source
+  oino list                      List installed and bundled extension packages
+  oino config                    Print the settings.json paths
   oino auth <command>            Print credentials or check provider readiness
   oino serve                     Serve sessions to remote clients
   oino <command> --help          Show help for install/remove/uninstall/update/list/config/auth

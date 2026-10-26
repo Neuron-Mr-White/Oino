@@ -13,7 +13,7 @@ use oino_core::services::{ExtensionLoader, ServicesOptions};
 use crate::cli::args::Args;
 use crate::loader::{CliLoader, LoaderContext};
 use crate::modes::signals;
-use crate::startup::{Environment, docs_root, resource_flags, tool_selection};
+use crate::startup::{Environment, acp_model_choice, docs_root, resource_flags, tool_selection};
 
 /// Serves ACP until the client disconnects (exit 0) or a signal arrives.
 pub async fn run(args: &Args, env: &Environment) -> i32 {
@@ -24,6 +24,7 @@ pub async fn run(args: &Args, env: &Environment) -> i32 {
     let values = args.unknown_flags.clone();
     let approve = args.project_trust_override;
     let no_extensions = args.no_extensions;
+    let model_args = Arc::new(args.clone());
     let factory = oino_acp::CoreSessionFactory::new(
         move |cwd| {
             let loader = CliLoader::new(
@@ -57,6 +58,9 @@ pub async fn run(args: &Args, env: &Environment) -> i32 {
             thinking_level: args.thinking,
             tools: tool_selection(args),
             exclude_tools: args.exclude_tools.clone().unwrap_or_default(),
+            model_resolver: Some(oino_acp::ModelResolver(Arc::new(move |services| {
+                acp_model_choice(&model_args, services)
+            }))),
         },
     );
     let info = oino_acp::AgentInfo {

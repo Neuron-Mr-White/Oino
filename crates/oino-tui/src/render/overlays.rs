@@ -446,22 +446,36 @@ pub(super) fn overlay_block(
                 .map(|i| text_width(i.label))
                 .max()
                 .unwrap_or(0);
-            let (start, end) = window(settings.selected, settings.items.len(), rows);
-            for (i, item) in settings.items.iter().enumerate().take(end).skip(start) {
-                let value = match &item.kind {
-                    SettingKind::Bool(b) => if *b { "on" } else { "off" }.to_owned(),
-                    SettingKind::Choice(_, v) => v.clone(),
+            let total = settings.items.len() + settings.namespaces.len();
+            let (start, end) = window(settings.selected, total, rows);
+            for i in start..end {
+                let left = if let Some(item) = settings.items.get(i) {
+                    let value = match &item.kind {
+                        SettingKind::Bool(b) => if *b { "on" } else { "off" }.to_owned(),
+                        SettingKind::Choice(_, v) => v.clone(),
+                    };
+                    let pad = label_width.saturating_sub(text_width(item.label));
+                    vec![
+                        Span::styled(format!("{}{}  ", item.label, " ".repeat(pad)), text),
+                        Span::styled(value, Style::default().fg(theme.accent)),
+                    ]
+                } else {
+                    let namespace = &settings.namespaces[i - settings.items.len()];
+                    vec![
+                        Span::styled(format!("{} ›", namespace.title), text),
+                        Span::styled(format!("  {}", namespace.extension_id), muted),
+                    ]
                 };
-                let pad = label_width.saturating_sub(text_width(item.label));
-                let left = vec![
-                    Span::styled(format!("{}{}  ", item.label, " ".repeat(pad)), text),
-                    Span::styled(value, Style::default().fg(theme.accent)),
-                ];
                 lines.push(row_line(app, i == settings.selected, left, None, width));
             }
             if let Some(item) = settings.items.get(settings.selected) {
                 lines.push(truncate_line(
                     Line::from(Span::styled(format!("  {}", item.description), muted)),
+                    width,
+                ));
+            } else if settings.selected < total {
+                lines.push(truncate_line(
+                    Line::from(Span::styled("  Extension settings (enter to open)", muted)),
                     width,
                 ));
             }
@@ -482,8 +496,135 @@ pub(super) fn overlay_block(
                 width,
             ));
         }
+        Overlay::ExtSettings(page) => ext_settings(app, page, rows, width, &mut lines),
+        Overlay::Providers(picker) => {
+            let title = if picker.logout {
+                " Remove credentials"
+            } else {
+                " Sign in to a provider"
+            };
+            lines.push(Line::from(Span::styled(
+                title,
+                text.add_modifier(Modifier::BOLD),
+            )));
+            let (start, end) = window(picker.selected, picker.providers.len(), rows);
+            for (i, provider) in picker.providers.iter().enumerate().take(end).skip(start) {
+                let state = match (&provider.stored, provider.configured) {
+                    (Some(kind), _) => format!("stored ({kind})"),
+                    (None, true) => "configured".to_owned(),
+                    (None, false) => String::new(),
+                };
+                let left = vec![
+                    Span::styled(provider.name.clone(), text),
+                    Span::styled(format!("  {}", provider.id), muted),
+                ];
+                lines.push(row_line(
+                    app,
+                    i == picker.selected,
+                    left,
+                    Some(state),
+                    width,
+                ));
+            }
+            lines.push(hint_line(
+                app,
+                &[
+                    ("enter", if picker.logout { "remove" } else { "sign in" }),
+                    ("esc", "cancel"),
+                ],
+                width,
+            ));
+        }
     }
     Block::new(lines)
+}
+
+/// One extension namespace page of the settings hub (ui-protocol §6.6).
+fn ext_settings(
+    app: &App,
+    page: &crate::app::ExtSettingsPage,
+    rows: usize,
+    width: usize,
+    lines: &mut Vec<OLine>,
+) {
+    use oino_client::protocol::SettingsScope;
+    use oino_view::settings_hub::{FieldScope, value_at};
+    let theme = &app.theme;
+    let muted = Style::default().fg(theme.muted);
+    let text = Style::default().fg(theme.text);
+    let scope = match page.scope {
+        SettingsScope::Global => "global",
+        SettingsScope::Project => "project",
+    };
+    lines.push(spread(
+        vec![Span::styled(
+            format!(" Settings › {}", page.namespace.title),
+            text.add_modifier(Modifier::BOLD),
+        )],
+        vec![Span::styled(format!("writes: {scope} "), muted)],
+        width,
+    ));
+    if page.fields.is_empty() {
+        lines.push(Line::from(Span::styled("  No settings", muted)));
+    }
+    let label_width = page
+        .fields
+        .iter()
+        .map(|f| text_width(&f.label))
+        .max()
+        .unwrap_or(0);
+    let (start, end) = window(page.selected, page.fields.len(), rows);
+    let mut section = None;
+    for (i, field) in page.fields.iter().enumerate().take(end).skip(start) {
+        if section != Some(&field.section) && !field.section.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", field.section),
+                Style::default().fg(theme.dim).add_modifier(Modifier::BOLD),
+            )));
+        }
+        section = Some(&field.section);
+        let value = value_at(&page.values, &field.key);
+        let shown = field.display(value);
+        let pad = label_width.saturating_sub(text_width(&field.label));
+        let mut left = vec![
+            Span::styled(format!("{}{}  ", field.label, " ".repeat(pad)), text),
+            Span::styled(shown, Style::default().fg(theme.accent)),
+        ];
+        let tag = match field.scope {
+            FieldScope::Global => " (global)",
+            FieldScope::Project => " (project)",
+            FieldScope::Both => "",
+        };
+        if !tag.is_empty() {
+            left.push(Span::styled(tag, muted));
+        }
+        lines.push(row_line(app, i == page.selected, left, None, width));
+    }
+    if let Some(input) = &page.editing {
+        lines.push(input_line(" Value: ", &input.text(), app, width));
+    } else if let Some(field) = page.fields.get(page.selected)
+        && let Some(description) = &field.description
+    {
+        lines.extend(wrap_plain(&format!("  {description}"), muted, width));
+    }
+    if let Some(status) = &page.status {
+        lines.extend(wrap_plain(
+            &format!(" {status}"),
+            Style::default().fg(theme.warning),
+            width,
+        ));
+    }
+    let hints: &[(&str, &str)] = if page.editing.is_some() {
+        &[("enter", "save"), ("esc", "cancel")]
+    } else {
+        &[
+            ("enter/space", "change"),
+            ("tab", "scope"),
+            ("del", "reset"),
+            ("esc", "back"),
+        ]
+    };
+    lines.push(hint_line(app, hints, width));
 }
 
 fn now_ms() -> i64 {

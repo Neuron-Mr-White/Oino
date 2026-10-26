@@ -2,8 +2,9 @@
 //!
 //! pi 1.4.0 command line (same flags and semantics): interactive mode (the `oino-tui`
 //! client), print mode, JSON event stream mode, RPC mode and ACP mode on stdio. Every mode
-//! loads the bundled provider and unipi components ([`loader`]). `serve` and the package
-//! subcommands are not available yet.
+//! loads the bundled provider and unipi components ([`loader`]). Package subcommands
+//! (`install`, `remove`, `update`, `list`, `config`) and the self-update (`oino update`) run
+//! before flag parsing; `serve` is not available yet.
 //!
 //! # API map
 //!
@@ -13,6 +14,8 @@
 //! | [`cli::help`] | `printHelp` | help text with extension flags |
 //! | [`cli::files`] | `file-processor.ts`, `initial-message.ts` | `@file` arguments, first message |
 //! | [`cli::list_models`] | `list-models.ts` | `--list-models` table |
+//! | [`cli::packages`] | `package-manager.ts` | `install`/`remove`/`update`/`list`/`config` |
+//! | [`cli::self_update`] | — | `oino update [--check]` from the release manifest |
 //! | [`startup`] | `main.ts` `createRuntime` | services, session selection, model/tool options |
 //! | [`loader`] | resource loader `-e` | bundled, installed and `-e` packages, `builtin:` components |
 //! | [`modes::print`] | `print-mode.ts` | text and JSON output |
@@ -135,27 +138,50 @@ fn environment(args: &cli::args::Args) -> Result<Environment, String> {
     Ok(Environment { cwd, agent_dir })
 }
 
-/// Subcommands handled before flag parsing (pi `handlePackageCommand`, `auth`, Oino
+/// Package manager subcommands (pi `handlePackageCommand`, runtime §15).
+const PACKAGE_COMMANDS: [&str; 6] = ["install", "remove", "uninstall", "update", "list", "config"];
+
+/// Subcommands handled before flag parsing that are not available yet (`auth`, Oino
 /// `serve`/`ext`/`sessions`); owned by other work items.
-const SUBCOMMANDS: [&str; 11] = [
-    "install",
-    "remove",
-    "uninstall",
-    "update",
-    "list",
-    "config",
-    "auth",
-    "mcp",
-    "serve",
-    "ext",
-    "sessions",
-];
+const UNAVAILABLE_SUBCOMMANDS: [&str; 5] = ["auth", "mcp", "serve", "ext", "sessions"];
+
+/// `oino install|remove|uninstall|update|list|config …`; bare `oino update [--check]` is the
+/// self-update (`update <id>…` / `update --extensions` update packages).
+async fn package_command(command: &str, rest: &[String]) -> i32 {
+    let self_update = command == "update" && rest.iter().all(|a| a == "--check" || a == "--self");
+    if self_update {
+        let check = rest.iter().any(|a| a == "--check");
+        return match cli::self_update::self_update(check, None).await {
+            Ok(message) => {
+                print_stdout(&format!("{message}\n"));
+                0
+            }
+            Err(error) => fail(&[format!("Error: {error}")]),
+        };
+    }
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(error) => return fail(&[format!("Error: {error}")]),
+    };
+    let agent_dir = match oino_settings::paths::agent_dir() {
+        Ok(dir) => dir,
+        Err(error) => return fail(&[format!("Error: {error}")]),
+    };
+    let context = cli::packages::PackageContext { agent_dir, cwd };
+    cli::packages::run_command(command, rest, &context).await
+}
 
 /// Runs the CLI with `command_line` (without the program name); returns the exit code.
 pub async fn run(command_line: Vec<String>) -> i32 {
     if let Some(command) = command_line
         .first()
-        .filter(|c| SUBCOMMANDS.contains(&c.as_str()))
+        .filter(|c| PACKAGE_COMMANDS.contains(&c.as_str()))
+    {
+        return package_command(command, &command_line[1..]).await;
+    }
+    if let Some(command) = command_line
+        .first()
+        .filter(|c| UNAVAILABLE_SUBCOMMANDS.contains(&c.as_str()))
     {
         return fail(&[format!(
             "Error: \"oino {command}\" is not available in this build yet"
@@ -199,7 +225,7 @@ pub async fn run(command_line: Vec<String>) -> i32 {
     if let Err(lines) = preflight(&args, mode) {
         return fail(&lines);
     }
-    run_mode(args, mode, &env).await
+    Box::pin(run_mode(args, mode, &env)).await
 }
 
 /// Mode checks before any service starts.
@@ -280,6 +306,10 @@ async fn run_mode(mut args: cli::args::Args, mode: AppMode, env: &Environment) -
             initial_images: initial.images,
             notices,
             theme: None,
+            tui_mode: args.tui_mode.map(|mode| match mode {
+                cli::args::TuiMode::Regular => oino_tui::TuiMode::Regular,
+                cli::args::TuiMode::Fullscreen => oino_tui::TuiMode::Fullscreen,
+            }),
         };
         return modes::interactive::run(started, env, options).await;
     }

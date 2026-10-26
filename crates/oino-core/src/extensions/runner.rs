@@ -390,6 +390,22 @@ impl ExtensionRunner {
         result
     }
 
+    /// Consumable dispatch (`oino_editor` intents, ui-protocol §7.2): `true` once a handler
+    /// returns `{consume: true}`; later handlers are not called.
+    pub async fn emit_consumable(&self, payload: JsonValue) -> bool {
+        let kind = payload["type"].as_str().unwrap_or_default().to_owned();
+        for extension in self.handlers(&kind) {
+            match self.call(&extension, &kind, payload.clone()).await {
+                Ok(Some(value)) if value.get("consume") == Some(&JsonValue::Bool(true)) => {
+                    return true;
+                }
+                Ok(_) => {}
+                Err(error) => self.report(&extension, &kind, &error),
+            }
+        }
+        false
+    }
+
     /// Chain over one payload field: each handler's returned `{field: value}` replaces the
     /// field for the next handler (`before_provider_headers`, `before_provider_request`).
     /// Returns the final field value.

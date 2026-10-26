@@ -75,6 +75,17 @@ impl LocalServices {
         }
     }
 
+    /// Service names `id` registered (`registry.register-service` and `init`).
+    #[must_use]
+    pub fn services_of(&self, id: &ExtensionId) -> Vec<String> {
+        let mut names: Vec<String> = lock(&self.exts)
+            .get(id)
+            .map(|e| e.services.iter().cloned().collect())
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
     /// The task service.
     #[must_use]
     pub fn tasks(&self) -> &Arc<TaskService> {

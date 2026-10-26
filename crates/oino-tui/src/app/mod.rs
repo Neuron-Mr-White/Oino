@@ -7,6 +7,7 @@
 //! terminal or a runtime.
 
 mod dialog;
+mod frontend;
 mod keys;
 pub(crate) mod overlay;
 mod submit;
@@ -33,8 +34,21 @@ use crate::host::TuiHost;
 use crate::theme::Theme;
 
 pub(crate) use dialog::DialogUi;
+pub use frontend::SchemaPurpose;
+pub(crate) use frontend::{ExtSettingsPage, ProviderPicker};
 pub(crate) use overlay::Overlay;
 pub(crate) use submit::group;
+
+/// Terminal layout (pi `tuiMode`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TuiMode {
+    /// Alternate screen with an in-app scrolling transcript.
+    #[default]
+    Fullscreen,
+    /// Inline: finished transcript rows go to the terminal scrollback; editor, status and
+    /// the live run stay in a viewport at the bottom.
+    Regular,
+}
 
 /// Options for the interactive client.
 #[derive(Clone, Debug, Default)]
@@ -49,6 +63,8 @@ pub struct TuiOptions {
     pub notices: Vec<String>,
     /// Theme name override (`--theme`).
     pub theme: Option<String>,
+    /// Layout override (`--tui-mode`); the `tuiMode` setting otherwise.
+    pub tui_mode: Option<TuiMode>,
 }
 
 /// Why a command was sent; routes its reply.
@@ -117,6 +133,30 @@ pub enum Tag {
     Dequeue,
     /// `abort` / `abort_bash` / `abort_retry`.
     Abort,
+    /// `_oino/get_completions` for this composer state.
+    Completions {
+        /// Composer text.
+        text: String,
+        /// Cursor offset (characters).
+        cursor: usize,
+    },
+    /// A consumable `_oino/editor_event` (default behaviour unless consumed).
+    EditorConsumable(oino_client::protocol::EditorIntent),
+    /// `_oino/get_settings_schema`.
+    SettingsSchema(SchemaPurpose),
+    /// `_oino/get_extension_settings` of a namespace.
+    ExtValues(String),
+    /// `_oino/set_extension_setting` / `unset_extension_setting` of a namespace.
+    ExtSet(String),
+    /// `_oino/auth_providers` for `/login` or `/logout`.
+    AuthProviders {
+        /// `/logout`.
+        logout: bool,
+    },
+    /// `_oino/login`.
+    Login(String),
+    /// `_oino/logout`.
+    Logout(String),
 }
 
 /// Purpose of a model list request.
@@ -284,6 +324,9 @@ pub(crate) struct Completion {
     pub(crate) selected: usize,
     /// Command (`/`) completion rather than paths.
     pub(crate) commands: bool,
+    /// Backend items replace `text[from..cursor]` (character offset) instead of the
+    /// current token.
+    pub(crate) replace_from: Option<usize>,
 }
 
 /// Cached rendering of one transcript row.
@@ -341,6 +384,20 @@ pub struct App {
     pub(crate) cache: HashMap<RowId, CachedRow>,
     pub(crate) transcript_height: usize,
     pub(crate) last_title: String,
+    /// `get_settings_schema` namespaces (ui-protocol §6.6).
+    pub(crate) settings_schema: Vec<JsonValue>,
+    /// Composer text last reported through `editor_event`.
+    pub(crate) editor_reported: String,
+    /// First unreported composer change (debounce start).
+    pub(crate) editor_changed_at: Option<Instant>,
+    /// `editor_event` ids issued.
+    pub(crate) editor_events: u64,
+    /// Regular (inline) layout.
+    pub(crate) inline: bool,
+    /// Transcript rows already printed to the terminal scrollback (inline layout).
+    pub(crate) committed_rows: usize,
+    /// The header was printed to the scrollback (inline layout).
+    pub(crate) header_committed: bool,
 }
 
 impl std::fmt::Debug for App {
@@ -384,6 +441,12 @@ impl App {
             .and_then(JsonValue::as_bool)
             .unwrap_or(false);
         let git_branch = host.git_branch();
+        let inline = options.tui_mode.unwrap_or_else(|| {
+            match settings.get("tuiMode").and_then(JsonValue::as_str) {
+                Some("regular") => TuiMode::Regular,
+                _ => TuiMode::Fullscreen,
+            }
+        }) == TuiMode::Regular;
         let mut transcript = Transcript::new();
         for warning in warnings {
             transcript.push_notice(NoticeLevel::Warning, format!("keybindings.json: {warning}"));
@@ -428,12 +491,31 @@ impl App {
             cache: HashMap::new(),
             transcript_height: 20,
             last_title: String::new(),
+            settings_schema: Vec::new(),
+            editor_reported: String::new(),
+            editor_changed_at: None,
+            editor_events: 0,
+            inline,
+            committed_rows: 0,
+            header_committed: false,
         }
     }
 
     /// Takes the queued effects.
     pub fn take_effects(&mut self) -> Vec<Effect> {
         std::mem::take(&mut self.effects)
+    }
+
+    /// The host services.
+    #[must_use]
+    pub fn host(&self) -> Arc<dyn TuiHost> {
+        Arc::clone(&self.host)
+    }
+
+    /// Whether the regular (inline, non-alternate-screen) layout is active.
+    #[must_use]
+    pub const fn inline(&self) -> bool {
+        self.inline
     }
 
     /// Whether the app asked to exit.
@@ -517,7 +599,10 @@ impl App {
         match event {
             AppEvent::Key(key) => self.on_key(key),
             AppEvent::Paste(text) => self.on_paste(&text),
-            AppEvent::Tick => self.tick = self.tick.wrapping_add(1),
+            AppEvent::Tick => {
+                self.tick = self.tick.wrapping_add(1);
+                self.flush_editor_event();
+            }
             AppEvent::Resize => self.cache.clear(),
             AppEvent::Client(event) => self.on_client(*event),
             AppEvent::Reply(tag, result) => self.on_reply(tag, result),
@@ -737,9 +822,12 @@ impl App {
             }
             UiEffect::OpenUrl(url) => self.effects.push(Effect::OpenUrl(url)),
             UiEffect::ClipboardWrite(text) => self.effects.push(Effect::ClipboardWrite(text)),
-            UiEffect::OpenSettings { namespace, query } => {
-                self.open_settings(namespace.or(query));
-            }
+            UiEffect::OpenSettings { namespace, query } => match namespace {
+                Some(namespace) => {
+                    self.request_settings_schema(SchemaPurpose::Namespace(namespace));
+                }
+                None => self.open_settings(query),
+            },
             UiEffect::SetTheme(name) => {
                 self.theme = Theme::named(&name);
                 self.cache.clear();
@@ -761,7 +849,30 @@ impl App {
         };
         let data = data.as_ref();
         match tag {
-            Tag::Ignore | Tag::Hello | Tag::Prompt | Tag::Abort | Tag::Compact => {}
+            Tag::Ignore | Tag::Hello | Tag::Prompt | Tag::Abort | Tag::Compact | Tag::ExtSet(_) => {
+            }
+            Tag::Completions { text, cursor } => self.on_completions(&text, cursor, data),
+            Tag::EditorConsumable(intent) => self.on_editor_consumed(intent, data),
+            Tag::SettingsSchema(purpose) => self.on_settings_schema(purpose, data),
+            Tag::ExtValues(namespace) => self.on_ext_values(&namespace, data),
+            Tag::AuthProviders { logout } => self.on_auth_providers(logout, data),
+            Tag::Login(provider) => {
+                self.notice(NoticeLevel::Info, format!("Signed in to {provider}"));
+                self.send(
+                    Tag::Models(ModelsFor::Footer),
+                    PiCommand::GetAvailableModels,
+                );
+            }
+            Tag::Logout(provider) => {
+                self.notice(
+                    NoticeLevel::Info,
+                    format!("Removed credentials for {provider}"),
+                );
+                self.send(
+                    Tag::Models(ModelsFor::Footer),
+                    PiCommand::GetAvailableModels,
+                );
+            }
             Tag::UiSnapshot => {
                 let requests: Vec<oino_core::ui::UiRequest> =
                     parse(data, "requests").unwrap_or_default();
@@ -997,7 +1108,19 @@ impl App {
                 self.transcript.fail_bash(Some(id), &error.to_string());
             }
             // Optional Oino commands a backend may not implement.
-            Tag::Hello | Tag::UiSnapshot | Tag::ContextUsage => {}
+            Tag::Hello
+            | Tag::UiSnapshot
+            | Tag::ContextUsage
+            | Tag::Completions { .. }
+            | Tag::SettingsSchema(SchemaPurpose::Hub) => {}
+            Tag::EditorConsumable(intent) => self.on_editor_consumed(*intent, None),
+            Tag::ExtSet(_) | Tag::ExtValues(_) => {
+                if let Some(Overlay::ExtSettings(page)) = &mut self.overlay {
+                    page.status = Some(error.to_string());
+                } else {
+                    self.notice(NoticeLevel::Error, format!("Error: {error}"));
+                }
+            }
             _ => self.notice(NoticeLevel::Error, format!("Error: {error}")),
         }
     }

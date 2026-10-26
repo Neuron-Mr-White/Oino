@@ -14,6 +14,7 @@
 //! | [`ous`] | — (ui-protocol §6) | [`ous::OusNode`]: typed Oino UI Spec v1 nodes |
 //! | [`tree`] | `tree-selector.ts` | [`tree::TreeModel`]: flattening, filter modes, folding, search |
 //! | [`sessions`] | `session-selector.ts` | [`sessions::SessionListModel`]: scope, sort, name filter, search |
+//! | [`settings_hub`] | — (ui-protocol §6.6) | extension settings hub: namespaces, flattened fields, display, cycling, parsing |
 //! | [`composer`] | pi-tui `Editor` | [`composer::Composer`]: multi-line buffer, history, kill ring, undo, paste markers |
 //! | [`commands`] | `slash-commands.ts` | built-in slash command table and parsing |
 //! | [`keys`] | `keybindings.ts` | [`keys::KeyId`], [`keys::Keybindings`] with pi defaults |
@@ -41,6 +42,7 @@ pub mod fuzzy;
 pub mod keys;
 pub mod ous;
 pub mod sessions;
+pub mod settings_hub;
 pub mod transcript;
 pub mod tree;
 pub mod ui_state;

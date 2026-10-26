@@ -1,0 +1,20 @@
+---
+source: crates/oino-tui/tests/frontend.rs
+expression: "h.frame(70, 16)"
+---
+
+ oino v1.0.0-test
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · …
+ Press ctrl+o to show full startup help.
+
+ Oino can explain its own features and look up its docs. Ask it how t…
+
+
+
+──────────────────────────────────────────────────────────────────────
+ Sign in to a provider
+› Anthropic  anthropic
+  OpenAI  openai                                        stored (oauth)
+ enter sign in · esc cancel
+/work/project (main)
+↑1.2k ↓345 $0.012 0.8%/200k (auto)              (faux) faux-1 • medium

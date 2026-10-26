@@ -169,14 +169,14 @@ fn metadata_commands_and_cli_errors() {
     assert_eq!(stdout(&none), "No models matching \"zzz\"\n");
 
     let subcommand = std::process::Command::new(support::oino_bin())
-        .args(["install", "x"])
+        .args(["serve"])
         .env("HOME", sandbox.home())
         .output()
         .unwrap();
     assert_eq!(subcommand.status.code(), Some(1));
     assert_eq!(
         stderr(&subcommand).trim(),
-        "Error: \"oino install\" is not available in this build yet"
+        "Error: \"oino serve\" is not available in this build yet"
     );
 
     let unknown = sandbox.run(&json!([]), &["-z"], None);

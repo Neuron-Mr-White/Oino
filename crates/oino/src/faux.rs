@@ -3,9 +3,15 @@
 //! - `builtin:faux` — a scripted provider component (provider `faux`, model `faux-1`, API
 //!   `faux`). Responses come from the JSON array in the file named by `OINO_FAUX_SCRIPT`
 //!   (or inline in `OINO_FAUX_RESPONSES`); credentials from `OINO_FAUX_API_KEY`.
+//!   It also registers provider `faux-oauth` (model `faux-oauth-1`, OAuth only): its
+//!   `oauth-login` asks for a code with an `input` dialog and returns it as the access token.
 //! - `builtin:ui-probe` — an extension with a `/probe <method> [title]` command that raises
 //!   the extension UI method and reports the answer with `notify` (`probe:<method>:<json>`),
-//!   and `/probe-fail` whose command fails (an `extension_error`).
+//!   and `/probe-fail` whose command fails (an `extension_error`). It also exercises the
+//!   frontend surface: `/probe` argument completion, shortcut `probe.ping`, panel actions
+//!   and editor intents (reported as `probe:action:…` / `probe:editor:…`; `emptyArrowDown`
+//!   is consumed), service `probe.echo`, settings namespace `probe` and a `complete-input`
+//!   contributor for `#` tokens.
 //!
 //! Script steps: `{"text"?, "thinking"?, "toolCalls"?: [{id, name, arguments}], "error"?,
 //! "stopReason"?, "delayMs"?}`; `delayMs` is slept before every streamed event, so a step
@@ -24,8 +30,8 @@ use oino_ai::{
     ProviderEvent, StopReason, ToolCall,
 };
 use oino_core::extensions::api::{
-    CallContext, CommandSpec, ExtensionCallError, ExtensionInstance, ExtensionKind,
-    ProviderInstance, Registration,
+    CallContext, CommandSpec, CompletionItem, ExtensionCallError, ExtensionInstance, ExtensionKind,
+    ProviderInstance, Registration, ShortcutSpec,
 };
 use oino_core::extensions::host::{HostApi, HostOp};
 use serde::Deserialize;
@@ -68,8 +74,12 @@ struct ScriptStep {
 
 /// The faux model.
 fn faux_model() -> Option<Model> {
+    model_of("faux", "faux-1")
+}
+
+fn model_of(provider: &str, id: &str) -> Option<Model> {
     serde_json::from_value(json!({
-        "id": "faux-1", "name": "Faux 1", "api": FAUX_API, "provider": "faux", "baseUrl": "",
+        "id": id, "name": id, "api": FAUX_API, "provider": provider, "baseUrl": "",
         "reasoning": true, "input": ["text", "image"],
         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
         "contextWindow": 128_000, "maxTokens": 16_384
@@ -203,9 +213,15 @@ fn aborted() -> ProviderEvent {
 }
 
 /// `builtin:faux`.
-#[derive(Debug)]
 pub struct FauxProvider {
     steps: Mutex<VecDeque<ScriptStep>>,
+    host: Mutex<Option<Weak<dyn HostApi>>>,
+}
+
+impl std::fmt::Debug for FauxProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FauxProvider").finish_non_exhaustive()
+    }
 }
 
 impl FauxProvider {
@@ -223,7 +239,15 @@ impl FauxProvider {
     pub fn from_script(script: &str) -> Self {
         Self {
             steps: Mutex::new(parse_script(script)),
+            host: Mutex::new(None),
         }
+    }
+
+    /// The host OAuth dialogs go to.
+    #[must_use]
+    pub fn with_host(self, host: &Arc<dyn HostApi>) -> Self {
+        *lock(&self.host) = Some(Arc::downgrade(host));
+        self
     }
 }
 
@@ -269,6 +293,50 @@ impl ProviderInstance for FauxProvider {
     ) -> BoxFuture<'_, Result<Vec<Model>, ExtensionCallError>> {
         Box::pin(async { Ok(faux_model().into_iter().collect()) })
     }
+
+    fn oauth_login(
+        &self,
+        provider_id: &str,
+        cx: CallContext,
+    ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
+        let host = lock(&self.host).as_ref().and_then(Weak::upgrade);
+        let provider_id = provider_id.to_owned();
+        Box::pin(async move {
+            let host = host.ok_or_else(|| ExtensionCallError::new("host gone"))?;
+            let params: JsonObject = serde_json::from_value(
+                json!({"title": format!("Sign in to {provider_id}"), "placeholder": "Paste the code"}),
+            )
+            .unwrap_or_default();
+            let answer = host
+                .call(
+                    "faux",
+                    &cx,
+                    HostOp::UiDialog {
+                        method: "input".to_owned(),
+                        params,
+                        cancel: None,
+                    },
+                )
+                .await
+                .map_err(|e| ExtensionCallError::new(e.to_string()))?;
+            let code = answer["value"]
+                .as_str()
+                .filter(|c| !c.is_empty())
+                .ok_or_else(|| ExtensionCallError::new("Login cancelled"))?;
+            Ok(
+                json!({"type": "oauth", "access": code, "refresh": "faux-refresh", "expires": 4_102_444_800_000_i64}),
+            )
+        })
+    }
+
+    fn oauth_refresh(
+        &self,
+        _provider_id: &str,
+        mut credential: JsonValue,
+    ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
+        credential["expires"] = json!(4_102_444_800_000_i64);
+        Box::pin(async move { Ok(credential) })
+    }
 }
 
 /// The faux provider as a component.
@@ -292,11 +360,18 @@ impl ExtensionInstance for FauxComponent {
         Box::pin(async {
             Ok(Registration {
                 apis: vec![FAUX_API.into()],
-                providers: vec![json!({
-                    "id": "faux", "name": "Faux", "api": FAUX_API,
-                    "authEnv": ["OINO_FAUX_API_KEY"],
-                    "models": faux_model().into_iter().collect::<Vec<_>>(),
-                })],
+                providers: vec![
+                    json!({
+                        "id": "faux", "name": "Faux", "api": FAUX_API,
+                        "authEnv": ["OINO_FAUX_API_KEY"],
+                        "models": faux_model().into_iter().collect::<Vec<_>>(),
+                    }),
+                    json!({
+                        "id": "faux-oauth", "name": "Faux OAuth", "api": FAUX_API,
+                        "oauth": true,
+                        "models": model_of("faux-oauth", "faux-oauth-1").into_iter().collect::<Vec<_>>(),
+                    }),
+                ],
                 ..Registration::default()
             })
         })
@@ -404,6 +479,7 @@ impl UiProbe {
                 false,
             ),
             "setTitle" => (params(json!({"title": title})), false),
+            "panel" | "editor-text" => return self.frontend_probe(&method, &title, cx).await,
             "set_editor_text" => (params(json!({"text": title})), false),
             "setFrame" => (
                 params(
@@ -445,6 +521,85 @@ impl UiProbe {
     }
 }
 
+/// `/probe` methods offered by argument completion.
+const PROBE_METHODS: [&str; 14] = [
+    "select",
+    "confirm",
+    "input",
+    "editor",
+    "timeout",
+    "form",
+    "notify",
+    "setStatus",
+    "setWidget",
+    "setTitle",
+    "set_editor_text",
+    "setFrame",
+    "panel",
+    "editor-text",
+];
+
+impl UiProbe {
+    /// `/probe panel` opens a panel with a button; `/probe editor-text` reports
+    /// `ui.editor-text`.
+    async fn frontend_probe(
+        &self,
+        method: &str,
+        title: &str,
+        cx: &CallContext,
+    ) -> Result<(), ExtensionCallError> {
+        let host = self
+            .host
+            .upgrade()
+            .ok_or_else(|| ExtensionCallError::new("host gone"))?;
+        let failed =
+            |e: oino_core::extensions::host::HostError| ExtensionCallError::new(e.to_string());
+        if method == "editor-text" {
+            let text = host
+                .call("ui-probe", cx, HostOp::EditorText)
+                .await
+                .map_err(failed)?;
+            return self.notify(cx, format!("probe:editor-text:{text}")).await;
+        }
+        let spec = json!({"type": "button", "label": "Go", "actionId": "go"});
+        let params: JsonObject = serde_json::from_value(
+            json!({"panelId": "ui-probe/panel-0", "title": title, "placement": "overlay", "spec": spec}),
+        )
+        .unwrap_or_default();
+        host.call(
+            "ui-probe",
+            cx,
+            HostOp::UiFire {
+                method: "openPanel".to_owned(),
+                params,
+            },
+        )
+        .await
+        .map(drop)
+        .map_err(failed)
+    }
+
+    async fn notify(&self, cx: &CallContext, message: String) -> Result<(), ExtensionCallError> {
+        let host = self
+            .host
+            .upgrade()
+            .ok_or_else(|| ExtensionCallError::new("host gone"))?;
+        let params: JsonObject =
+            serde_json::from_value(json!({"message": message})).unwrap_or_default();
+        host.call(
+            "ui-probe",
+            cx,
+            HostOp::UiFire {
+                method: "notify".to_owned(),
+                params,
+            },
+        )
+        .await
+        .map(drop)
+        .map_err(|e| ExtensionCallError::new(e.to_string()))
+    }
+}
+
 impl ExtensionInstance for UiProbe {
     fn id(&self) -> &'static str {
         "ui-probe"
@@ -462,7 +617,7 @@ impl ExtensionInstance for UiProbe {
                         name: "probe".into(),
                         description: Some("Raise an extension UI request".into()),
                         hidden: false,
-                        completions: false,
+                        completions: true,
                     },
                     CommandSpec {
                         name: "probe-fail".into(),
@@ -471,6 +626,21 @@ impl ExtensionInstance for UiProbe {
                         completions: false,
                     },
                 ],
+                shortcuts: vec![ShortcutSpec {
+                    id: "probe.ping".into(),
+                    default_keys: vec!["ctrl+alt+p".into()],
+                    description: "Ping the probe".into(),
+                }],
+                events: vec!["oino_ui_action".into(), "oino_editor".into()],
+                settings: vec![json!({
+                    "namespace": "probe", "title": "Probe",
+                    "sections": [{"id": "main", "title": "Main", "fields": [
+                        {"key": "enabled", "type": "boolean", "label": "Enabled", "default": true},
+                        {"key": "mode", "type": "enum", "label": "Mode", "default": "a",
+                         "options": [{"value": "a", "label": "A"}, {"value": "b", "label": "B"}]},
+                        {"key": "token", "type": "secret", "label": "Token", "scope": "global"}
+                    ]}]
+                })],
                 ..Registration::default()
             })
         })
@@ -478,11 +648,100 @@ impl ExtensionInstance for UiProbe {
 
     fn on_event(
         &self,
-        _kind: &str,
-        _payload: JsonValue,
-        _cx: CallContext,
+        kind: &str,
+        payload: JsonValue,
+        cx: CallContext,
     ) -> BoxFuture<'_, Result<Option<JsonValue>, ExtensionCallError>> {
-        Box::pin(async { Ok(None) })
+        let kind = kind.to_owned();
+        Box::pin(async move {
+            match kind.as_str() {
+                "oino_ui_action" => {
+                    let value = payload.get("value").cloned().unwrap_or(JsonValue::Null);
+                    let message = format!(
+                        "probe:action:{}:{value}",
+                        payload["actionId"].as_str().unwrap_or("")
+                    );
+                    self.notify(&cx, message).await?;
+                    Ok(None)
+                }
+                "oino_editor" => {
+                    let intent = payload["intent"].as_str().unwrap_or_default();
+                    if intent == "emptyArrowDown" {
+                        return Ok(Some(json!({"consume": true})));
+                    }
+                    if intent == "submit" {
+                        let message = format!(
+                            "probe:editor:{intent}:{}",
+                            payload["text"].as_str().unwrap_or("")
+                        );
+                        self.notify(&cx, message).await?;
+                    }
+                    Ok(None)
+                }
+                _ => Ok(None),
+            }
+        })
+    }
+
+    fn complete_command(
+        &self,
+        name: &str,
+        prefix: &str,
+        _cx: CallContext,
+    ) -> BoxFuture<'_, Vec<CompletionItem>> {
+        let items = if name == "probe" {
+            PROBE_METHODS
+                .iter()
+                .filter(|m| m.starts_with(prefix))
+                .map(|m| CompletionItem {
+                    value: (*m).to_owned(),
+                    label: (*m).to_owned(),
+                    description: None,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Box::pin(async move { items })
+    }
+
+    fn run_shortcut(
+        &self,
+        id: &str,
+        cx: CallContext,
+    ) -> BoxFuture<'_, Result<(), ExtensionCallError>> {
+        let message = format!("probe:shortcut:{id}");
+        Box::pin(async move { self.notify(&cx, message).await })
+    }
+
+    fn complete_input(
+        &self,
+        request: JsonValue,
+        _cx: CallContext,
+    ) -> BoxFuture<'_, Option<JsonValue>> {
+        let text = request["text"].as_str().unwrap_or_default().to_owned();
+        Box::pin(async move {
+            text.split_whitespace().last().filter(|t| t.starts_with('#')).map(|_| {
+                json!([{"source": "probe", "items": [{"value": "#probe", "description": "probe tag"}]}])
+            })
+        })
+    }
+
+    fn services(&self) -> Vec<String> {
+        vec!["probe.echo".to_owned()]
+    }
+
+    fn handle_service(
+        &self,
+        name: &str,
+        payload: JsonValue,
+        caller: &str,
+        _cx: CallContext,
+    ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
+        let result = (name == "probe.echo")
+            .then(|| json!({"echo": payload, "caller": caller}))
+            .ok_or_else(|| ExtensionCallError::new(format!("unknown service {name}")));
+        Box::pin(async move { result })
     }
 
     fn run_tool(

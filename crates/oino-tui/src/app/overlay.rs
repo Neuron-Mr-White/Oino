@@ -97,8 +97,9 @@ pub(crate) struct SettingItem {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SettingsOverlay {
     pub(crate) items: Vec<SettingItem>,
+    /// Extension namespaces listed after the core rows (the settings hub).
+    pub(crate) namespaces: Vec<oino_view::settings_hub::HubNamespace>,
     pub(crate) selected: usize,
-    pub(crate) query: String,
     pub(crate) status: Option<String>,
 }
 
@@ -126,6 +127,10 @@ pub(crate) enum Overlay {
     Fork(ForkPicker),
     /// `/settings`.
     Settings(SettingsOverlay),
+    /// One extension namespace of the settings hub.
+    ExtSettings(super::ExtSettingsPage),
+    /// `/login` / `/logout` provider picker.
+    Providers(super::ProviderPicker),
 }
 
 pub(crate) fn model_label(model: &Model) -> String {
@@ -281,6 +286,12 @@ fn settings_items(settings: &oino_ai::JsonObject) -> Vec<SettingItem> {
             kind: boolean(&["quietStartup"], false),
         },
         SettingItem {
+            label: "TUI mode",
+            description: "regular keeps the transcript in the terminal scrollback (next start)",
+            path: &["tuiMode"],
+            kind: choice(&["tuiMode"], vec!["fullscreen", "regular"], "fullscreen"),
+        },
+        SettingItem {
             label: "Cache-miss notices",
             description: "Show prompt cache misses and billed summaries",
             path: &["showCacheMissNotices"],
@@ -423,20 +434,21 @@ impl App {
         }));
     }
 
+    /// `/settings`: core rows plus the extension namespaces (the hub); a `query` naming a
+    /// namespace or extension opens that page.
     pub(crate) fn open_settings(&mut self, query: Option<String>) {
+        if let Some(query) = query.filter(|q| !q.is_empty()) {
+            self.request_settings_schema(super::SchemaPurpose::Namespace(query));
+            return;
+        }
         self.settings = self.host.settings();
-        let mut overlay = SettingsOverlay {
+        let overlay = SettingsOverlay {
             items: settings_items(&self.settings),
-            query: query.unwrap_or_default(),
+            namespaces: oino_view::settings_hub::namespaces(&self.settings_schema),
             ..SettingsOverlay::default()
         };
-        if !overlay.query.is_empty() {
-            overlay.status = Some(format!(
-                "Extension settings for \"{}\" need the settings hub backend (get_settings_schema)",
-                overlay.query
-            ));
-        }
         self.overlay = Some(Overlay::Settings(overlay));
+        self.request_settings_schema(super::SchemaPurpose::Hub);
     }
 
     /// Key handling while a selector is open.
@@ -526,6 +538,8 @@ impl App {
                     true
                 }
             }
+            Overlay::ExtSettings(page) => self.ext_settings_key(page, &key),
+            Overlay::Providers(picker) => self.provider_key(picker, &key),
             Overlay::Settings(settings) => {
                 if cancel {
                     false
@@ -533,9 +547,17 @@ impl App {
                     settings.selected = wrap_index(
                         settings.selected,
                         if up { -1 } else { 1 },
-                        settings.items.len(),
+                        settings.items.len() + settings.namespaces.len(),
                     );
                     true
+                } else if let Some(namespace) = settings
+                    .selected
+                    .checked_sub(settings.items.len())
+                    .and_then(|i| settings.namespaces.get(i))
+                    .filter(|_| confirm || key.key == Key::Right)
+                {
+                    self.open_namespace(namespace.clone());
+                    false
                 } else if confirm
                     || key.key == Key::Space
                     || key.key == Key::Right

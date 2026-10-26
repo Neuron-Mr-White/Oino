@@ -167,8 +167,12 @@ pub trait ProviderInstance: Send + Sync {
         provider_id: &str,
         credential: Option<RawJson>,
     ) -> BoxFut<'_, Result<Vec<Model>, ExtensionError>>;
-    /// `oauth-login`.
-    fn oauth_login(&self, provider_id: &str) -> BoxFut<'_, Result<RawJson, ExtensionError>>;
+    /// `oauth-login`; the flow's `ui` dialogs run in `cx` (the session that asked).
+    fn oauth_login(
+        &self,
+        provider_id: &str,
+        cx: CallContext,
+    ) -> BoxFut<'_, Result<RawJson, ExtensionError>>;
     /// `oauth-refresh`.
     fn oauth_refresh(
         &self,

@@ -58,6 +58,13 @@ impl App {
                 });
             }
             Submitted::Prompt(message) => {
+                self.editor_reported.clear();
+                self.editor_changed_at = None;
+                self.editor_intent(
+                    oino_client::protocol::EditorIntent::Submit,
+                    message.clone(),
+                    None,
+                );
                 let busy = self.session.streaming || self.session.compacting;
                 let command = if busy && follow_up {
                     PiCommand::FollowUp { message, images }
@@ -121,10 +128,8 @@ impl App {
             Builtin::ScopedModels => {
                 self.send(Tag::Models(ModelsFor::Scoped), PiCommand::GetAvailableModels);
             }
-            Builtin::Login | Builtin::Logout => self.notice(
-                NoticeLevel::Warning,
-                "Provider sign-in is handled by provider extensions; set API keys in ~/.oino/auth.json or the provider's environment variable.",
-            ),
+            Builtin::Login => self.auth_command(false, arg),
+            Builtin::Logout => self.auth_command(true, arg),
             Builtin::New => self.send(Tag::Replace("New session"), PiCommand::NewSession { parent_session: None }),
             Builtin::Resume => self.open_sessions(),
             Builtin::Name => if let Some(name) = arg { self.send(Tag::SetName(name.clone()), PiCommand::SetSessionName { name }) } else {

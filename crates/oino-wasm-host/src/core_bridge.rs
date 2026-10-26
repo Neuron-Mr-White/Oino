@@ -226,6 +226,35 @@ impl CoreHost {
         block(self.api.call(ext.as_str(), &cx, op)).map_err(host_error)
     }
 
+    /// A device round trip as a frontend dialog: the answer's `value` (`null` when
+    /// cancelled or empty).
+    fn device_dialog(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        method: &'static str,
+        params: JsonObject,
+    ) -> BoxFut<'_, Result<Option<RawJson>, HostError>> {
+        let (ext, cx) = (ext.clone(), cx.clone());
+        Box::pin(async move {
+            let answer = self
+                .call(
+                    &ext,
+                    &cx,
+                    HostOp::UiDialog {
+                        method: method.to_owned(),
+                        params,
+                        cancel: None,
+                    },
+                )
+                .await?;
+            Ok(answer
+                .get("value")
+                .filter(|v| !v.is_null())
+                .map(|v| RawJson::from(v.clone())))
+        })
+    }
+
     fn registry(&self, ext: &ExtensionId, op: HostOp) -> Result<JsonValue, HostError> {
         let cx = CallContext::default();
         self.call_sync(ext, &cx, op)
@@ -650,8 +679,9 @@ impl HostServices for CoreHost {
             .map_or_else(|| RawJson::from(json!([])), RawJson::from)
     }
 
-    /// `models.complete` and `models.summarize-default` run in the calling session
-    /// (credentials, virtual-model routing); the other model operations are unsupported.
+    /// `models.complete`, `models.stream`, `models.summarize-default` and
+    /// `models.credential-for` run in the calling session (credentials, virtual-model
+    /// routing); `classify` and `generate-image` are unsupported.
     fn models(
         &self,
         ext: &ExtensionId,
@@ -681,6 +711,37 @@ impl HostServices for CoreHost {
                     messages: messages.to_value(),
                     custom_instructions,
                 },
+                ModelsOp::Stream { request } => {
+                    let request = request.to_value();
+                    let request = ch::ModelRequest {
+                        model: request
+                            .get("model")
+                            .and_then(Value::as_str)
+                            .map(ToOwned::to_owned),
+                        context: request.get("context").cloned().unwrap_or(Value::Null),
+                        options: request.get("options").cloned().unwrap_or(Value::Null),
+                        cancel: None,
+                    };
+                    let events = self
+                        .api
+                        .model_stream(ext.as_str(), &core_cx(&cx), request)
+                        .await
+                        .map_err(host_error)?;
+                    return Ok(ModelsReply::Stream(Box::pin(
+                        events.map(|event| event.to_string()),
+                    )));
+                }
+                ModelsOp::CredentialFor(provider) => {
+                    let value = self
+                        .call(&ext, &cx, HostOp::CredentialFor(provider))
+                        .await?;
+                    let credential = if value.is_null() {
+                        None
+                    } else {
+                        serde_json::from_value(value).ok()
+                    };
+                    return Ok(ModelsReply::Credential(credential));
+                }
                 _ => return Err(HostError::unsupported("this models operation")),
             };
             self.call(&ext, &cx, op)
@@ -740,8 +801,41 @@ impl HostServices for CoreHost {
         Ok(id)
     }
 
+    /// `editor-text` returns the composer text the frontend reported (`editor_event`);
+    /// `editor-set` / `editor-insert` fire `set_editor_text` / `insertEditorText`.
+    fn ui_editor(
+        &self,
+        cx: &CallContext,
+        op: oino_extension_api::ops::EditorOp,
+    ) -> Result<Option<String>, HostError> {
+        use oino_extension_api::ops::EditorOp;
+        let ext =
+            ExtensionId::new("oino.host").map_err(|e| HostError::InvalidArgument(e.to_string()))?;
+        let fire = |method: &str, text: String| {
+            let mut params = JsonObject::new();
+            params.insert("text".into(), json!(text));
+            self.call_sync(
+                &ext,
+                cx,
+                HostOp::UiFire {
+                    method: method.to_owned(),
+                    params,
+                },
+            )
+            .map(|_| None)
+        };
+        match op {
+            EditorOp::Text => self
+                .call_sync(&ext, cx, HostOp::EditorText)
+                .map(|v| Some(v.as_str().unwrap_or_default().to_owned())),
+            EditorOp::Set(text) => fire("set_editor_text", text),
+            EditorOp::Insert(text) => fire("insertEditorText", text),
+        }
+    }
+
     /// Fire-and-forget device requests (`osNotify`, `openUrl`, `clipboardWrite`) go to the
-    /// frontend; clipboard reads and external editing need a round trip (unsupported).
+    /// frontend; clipboard image reads and external editing are frontend dialogs
+    /// (`clipboardReadImage`, `editExternally`).
     fn ui_device(
         &self,
         ext: &ExtensionId,
@@ -760,8 +854,20 @@ impl HostServices for CoreHost {
             )),
             DeviceOp::OpenUrl(url) => Ok(("openUrl", json!({"url": url}))),
             DeviceOp::ClipboardWriteText(text) => Ok(("clipboardWrite", json!({"text": text}))),
-            DeviceOp::ClipboardReadImage => Err(HostError::unsupported("ui.clipboard-read-image")),
-            DeviceOp::EditExternally { .. } => Err(HostError::unsupported("ui.edit-externally")),
+            DeviceOp::ClipboardReadImage => {
+                return self.device_dialog(ext, cx, "clipboardReadImage", JsonObject::new());
+            }
+            DeviceOp::EditExternally {
+                text,
+                extension_hint,
+            } => {
+                let mut params = JsonObject::new();
+                params.insert("text".into(), json!(text));
+                if let Some(hint) = extension_hint {
+                    params.insert("extensionHint".into(), json!(hint));
+                }
+                return self.device_dialog(ext, cx, "editExternally", params);
+            }
         };
         let result = request.and_then(|(method, params)| {
             let Value::Object(params) = params else {
@@ -869,6 +975,7 @@ impl AgentHandle for CoreAgent {
 /// `oino_core` instance wrapper around a loaded component.
 pub struct CoreInstance {
     inner: Arc<dyn ExtensionInstance>,
+    hub: Option<Arc<crate::LocalServices>>,
     api: Arc<dyn HostApi>,
     progress: Arc<ProgressRoutes>,
     prepare: Mutex<HashSet<String>>,
@@ -1081,6 +1188,49 @@ impl ca::ExtensionInstance for CoreInstance {
         })
     }
 
+    fn complete_input(
+        &self,
+        request: JsonValue,
+        cx: ca::CallContext,
+    ) -> BoxFuture<'_, Option<JsonValue>> {
+        Box::pin(async move {
+            self.inner
+                .complete_input(RawJson::from(request), api_cx(&cx))
+                .await
+                .map(|v| v.to_value())
+        })
+    }
+
+    fn services(&self) -> Vec<String> {
+        self.hub
+            .as_ref()
+            .map(|hub| hub.services_of(self.inner.id()))
+            .unwrap_or_default()
+    }
+
+    fn handle_service(
+        &self,
+        name: &str,
+        payload: JsonValue,
+        caller: &str,
+        cx: ca::CallContext,
+    ) -> BoxFuture<'_, Result<JsonValue, ca::ExtensionCallError>> {
+        let (name, caller) = (name.to_owned(), ExtensionId::new(caller));
+        Box::pin(async move {
+            let caller = caller.map_err(|e| ca::ExtensionCallError::new(e.to_string()))?;
+            self.inner
+                .handle_service(
+                    &name,
+                    RawJson::from(payload),
+                    &caller,
+                    api_cx(&cx).with_kind(CallKind::Service),
+                )
+                .await
+                .map(|v| v.to_value())
+                .map_err(|e| call_error(&e))
+        })
+    }
+
     fn route_model(
         &self,
         request: JsonValue,
@@ -1182,6 +1332,44 @@ impl ca::ProviderInstance for CoreInstance {
                 .map_err(|e| call_error(&e))
         })
     }
+
+    fn oauth_login(
+        &self,
+        provider_id: &str,
+        cx: ca::CallContext,
+    ) -> BoxFuture<'_, Result<JsonValue, ca::ExtensionCallError>> {
+        let provider_id = provider_id.to_owned();
+        Box::pin(async move {
+            let provider = self
+                .inner
+                .provider()
+                .ok_or_else(|| ca::ExtensionCallError::new("not a provider"))?;
+            provider
+                .oauth_login(&provider_id, api_cx(&cx))
+                .await
+                .map(|v| v.to_value())
+                .map_err(|e| call_error(&e))
+        })
+    }
+
+    fn oauth_refresh(
+        &self,
+        provider_id: &str,
+        credential: JsonValue,
+    ) -> BoxFuture<'_, Result<JsonValue, ca::ExtensionCallError>> {
+        let provider_id = provider_id.to_owned();
+        Box::pin(async move {
+            let provider = self
+                .inner
+                .provider()
+                .ok_or_else(|| ca::ExtensionCallError::new("not a provider"))?;
+            provider
+                .oauth_refresh(&provider_id, RawJson::from(credential))
+                .await
+                .map(|v| v.to_value())
+                .map_err(|e| call_error(&e))
+        })
+    }
 }
 
 // ── loader ───────────────────────────────────────────────────────────────
@@ -1269,6 +1457,7 @@ impl ExtensionLoader for CoreLoader {
                 match self.runtime.load(sourced.package.clone(), services).await {
                     Ok(inner) => out.push(Arc::new(CoreInstance {
                         inner,
+                        hub: self.runtime.local_services().cloned(),
                         api: Arc::clone(&core_host.api),
                         progress: Arc::clone(&core_host.progress),
                         prepare: Mutex::new(HashSet::new()),

@@ -69,6 +69,30 @@ pub struct SessionDefaults {
     pub tools: ToolSelection,
     /// `--exclude-tools`.
     pub exclude_tools: Vec<String>,
+    /// Resolves `--model` / `--provider` / `--models` against a cwd's model registry when
+    /// [`Self::model`] is not set (the registry exists only once that cwd's services do).
+    pub model_resolver: Option<ModelResolver>,
+}
+
+/// Model choice of a new session: model, thinking level and `--models` scope.
+#[derive(Clone, Debug, Default)]
+pub struct ModelChoice {
+    /// Initial model.
+    pub model: Option<Model>,
+    /// Thinking level from `provider/model:level`.
+    pub thinking_level: Option<ThinkingLevel>,
+    /// Cycling scope (`--models`).
+    pub scoped_models: Vec<oino_models::resolver::ScopedModel>,
+}
+
+/// Resolves the [`ModelChoice`] of sessions in a cwd (see [`SessionDefaults::model_resolver`]).
+#[derive(Clone)]
+pub struct ModelResolver(pub Arc<dyn Fn(&Services) -> ModelChoice + Send + Sync>);
+
+impl std::fmt::Debug for ModelResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ModelResolver(..)")
+    }
 }
 
 /// Builds the [`ServicesOptions`] of a cwd.
@@ -181,13 +205,20 @@ impl SessionFactory for CoreSessionFactory {
             let context = Arc::new(SessionToolContext::default());
             let builtin_tools =
                 builtin_tool_entries_with_env(&services, Arc::clone(&context), request.env);
+            let choice = match (&self.defaults.model, &self.defaults.model_resolver) {
+                (None, Some(resolver)) => (resolver.0)(&services),
+                (model, _) => ModelChoice {
+                    model: model.clone(),
+                    ..ModelChoice::default()
+                },
+            };
             let options = SessionOptions {
                 source: request.source,
                 session_dir: self.defaults.session_dir.clone(),
                 name: None,
-                model: self.defaults.model.clone(),
-                thinking_level: self.defaults.thinking_level,
-                scoped_models: Vec::new(),
+                model: choice.model,
+                thinking_level: self.defaults.thinking_level.or(choice.thinking_level),
+                scoped_models: choice.scoped_models,
                 tools: self.defaults.tools.clone(),
                 exclude_tools: self.defaults.exclude_tools.clone(),
                 builtin_tools,

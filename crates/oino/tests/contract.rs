@@ -262,3 +262,76 @@ async fn in_process_and_rpc_backends_behave_the_same() {
     assert_eq!(local.replaced, Some(ReplaceReason::New));
     assert_eq!(local, remote);
 }
+
+/// What the frontend surface (`FrontendApi`) reports, backend-independent.
+#[derive(Debug, PartialEq)]
+struct FrontendObserved {
+    providers: Vec<(String, bool)>,
+    paths: Vec<String>,
+    shortcuts: usize,
+    namespaces: usize,
+    service_error: ClientError,
+    shortcut_error: ClientError,
+    consumed: bool,
+}
+
+async fn frontend_scenario(
+    sandbox: &Sandbox,
+    backend: Arc<dyn SessionBackend>,
+) -> FrontendObserved {
+    use oino_client::FrontendApi;
+    std::fs::write(sandbox.cwd().join("alpha.txt"), "").unwrap();
+    let providers = backend
+        .auth_providers()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|p| (p.id, p.oauth))
+        .collect();
+    let paths = backend
+        .completions("@alp", 4)
+        .await
+        .unwrap()
+        .into_iter()
+        .flat_map(|g| g.items.into_iter().map(|i| i.value))
+        .collect();
+    let event = oino_client::protocol::EditorEvent {
+        event_id: "e".into(),
+        intent: oino_client::protocol::EditorIntent::EmptyArrowDown,
+        text: String::new(),
+        token_id: None,
+    };
+    let observed = FrontendObserved {
+        providers,
+        paths,
+        shortcuts: backend.shortcuts().await.unwrap().len(),
+        namespaces: backend.settings_schema().await.unwrap().len(),
+        service_error: backend
+            .service_call(None, "nope", json!(null))
+            .await
+            .unwrap_err(),
+        shortcut_error: backend.invoke_shortcut("nope").await.unwrap_err(),
+        consumed: backend.editor_event(event).await.unwrap(),
+    };
+    backend.shutdown().await;
+    observed
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn frontend_api_is_the_same_in_process_and_over_rpc() {
+    let local = Sandbox::new();
+    let remote = Sandbox::new();
+    let local_observed = frontend_scenario(&local, in_process(&local).await).await;
+    let remote_observed = frontend_scenario(&remote, over_rpc(&remote).await).await;
+    assert_eq!(
+        local_observed.providers,
+        [("faux".to_owned(), false), ("faux-oauth".to_owned(), true)]
+    );
+    assert_eq!(local_observed.paths, ["@alpha.txt"]);
+    assert_eq!(
+        local_observed.service_error,
+        ClientError::Command("Unknown service: nope".into())
+    );
+    assert!(!local_observed.consumed);
+    assert_eq!(local_observed, remote_observed);
+}

@@ -8,6 +8,7 @@
 mod bash;
 mod boundary;
 mod compaction_flow;
+mod frontend;
 mod hooks;
 mod host;
 mod listener;
@@ -43,6 +44,10 @@ use crate::hub::{EventHub, EventStream};
 use crate::ui::{UiBridge, UiOutput, UiSink};
 
 pub use bash::BashResult;
+pub use frontend::{
+    AuthProviderInfo, CompletionEntry, CompletionGroup, EditorEvent, EditorIntent, FRONTEND_CALLER,
+    FrontendError,
+};
 pub use host::SlashCommandInfo;
 pub(crate) use model::branch_refs as model_branch_refs;
 pub use model::{CycleDirection, CycleModelResult};
@@ -228,6 +233,8 @@ pub(crate) struct Inner {
     pub(crate) agents: crate::agents::AgentsState,
     pub(crate) arbiter: Mutex<boundary::ArbiterState>,
     pub(crate) runtime: std::sync::OnceLock<std::sync::Weak<crate::runtime::RuntimeCore>>,
+    /// Composer text last reported through `editor_event` (`ui.editor-text`).
+    pub(crate) editor_text: Mutex<String>,
 }
 
 /// One live session. Cheap to clone.
@@ -350,6 +357,7 @@ impl AgentSession {
             agents,
             arbiter: Mutex::new(boundary::ArbiterState::default()),
             runtime: std::sync::OnceLock::new(),
+            editor_text: Mutex::new(String::new()),
         });
         let _ = session_stream.inner.set(Arc::downgrade(&inner));
         let session = Self { inner };

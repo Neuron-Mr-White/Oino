@@ -6,7 +6,12 @@
 
 use oino_agent::QueueMode;
 use oino_ai::{ImageContent, JsonObject, JsonValue, Model, ThinkingLevel};
+use oino_core::extensions::settings::SettingsLayer;
+pub use oino_core::session::{
+    AuthProviderInfo, CompletionEntry, CompletionGroup, EditorEvent, EditorIntent,
+};
 use oino_core::session::{NavigateTreeOptions, StreamingBehavior};
+pub use oino_settings::SettingsScope;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -291,6 +296,126 @@ pub enum OinoCommand {
     /// Context window usage.
     #[serde(rename = "_oino/get_context_usage")]
     GetContextUsage,
+    /// Merged completions at the cursor (ui-protocol §7.3) → `{groups}`.
+    #[serde(rename = "_oino/get_completions")]
+    GetCompletions {
+        /// Composer text.
+        text: String,
+        /// Cursor (character offset into `text`).
+        cursor: usize,
+    },
+    /// Panel button / list / input action (ui-protocol §6.1) for the panel's owner.
+    #[serde(rename = "_oino/ui_action", rename_all = "camelCase")]
+    UiAction {
+        /// Panel id.
+        panel_id: String,
+        /// Action id.
+        action_id: String,
+        /// Item id, input text, bool or selected value.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<JsonValue>,
+    },
+    /// Composer intent (ui-protocol §7.2) → `{consumed}`.
+    #[serde(rename = "_oino/editor_event")]
+    EditorEvent(EditorEvent),
+    /// Run an extension shortcut (ui-protocol §8). The field is `shortcutId` because `id`
+    /// is the RPC correlation id.
+    #[serde(rename = "_oino/invoke_shortcut", rename_all = "camelCase")]
+    InvokeShortcut {
+        /// Shortcut action id.
+        shortcut_id: String,
+    },
+    /// Extension shortcuts → `{shortcuts: [{id, defaultKeys, description, extensionId}]}`.
+    #[serde(rename = "_oino/get_shortcuts")]
+    GetShortcuts,
+    /// Extension settings schemas → `{namespaces}` (ui-protocol §6.6).
+    #[serde(rename = "_oino/get_settings_schema")]
+    GetSettingsSchema,
+    /// One namespace's values (secrets masked) → `{values}`.
+    #[serde(rename = "_oino/get_extension_settings")]
+    GetExtensionSettings {
+        /// Namespace.
+        namespace: String,
+        /// `effective` (default) | `global` | `project`.
+        #[serde(default)]
+        scope: SettingsLayer,
+    },
+    /// Write one extension setting.
+    #[serde(rename = "_oino/set_extension_setting")]
+    SetExtensionSetting {
+        /// Namespace.
+        namespace: String,
+        /// Dot-path key.
+        key: String,
+        /// Value (absent or `null` deletes).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<JsonValue>,
+        /// Target file.
+        scope: SettingsScope,
+    },
+    /// Delete one extension setting ("use default").
+    #[serde(rename = "_oino/unset_extension_setting")]
+    UnsetExtensionSetting {
+        /// Namespace.
+        namespace: String,
+        /// Dot-path key.
+        key: String,
+        /// Target file.
+        scope: SettingsScope,
+    },
+    /// Core settings (merged; `key` = dot path) → `{settings}` or `{value}`.
+    #[serde(rename = "_oino/get_settings")]
+    GetSettings {
+        /// Dot path of one value.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+    },
+    /// Write one core setting (frontend keys included).
+    #[serde(rename = "_oino/set_setting")]
+    SetSetting {
+        /// Dot path.
+        key: String,
+        /// Value (absent or `null` deletes).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<JsonValue>,
+        /// Target file.
+        scope: SettingsScope,
+    },
+    /// Call an extension service as the frontend → the service's result.
+    #[serde(rename = "_oino/service_call")]
+    ServiceCall {
+        /// Serving extension (first server of `name` when absent).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<String>,
+        /// Service name.
+        name: String,
+        /// Request payload.
+        #[serde(default)]
+        payload: JsonValue,
+    },
+    /// Providers with sign-in support and credential state → `{providers}`.
+    #[serde(rename = "_oino/auth_providers")]
+    AuthProviders,
+    /// Run a provider's OAuth sign-in (dialogs through the extension UI protocol).
+    #[serde(rename = "_oino/login")]
+    Login {
+        /// Provider id.
+        provider: String,
+    },
+    /// Remove a provider's stored credential.
+    #[serde(rename = "_oino/logout")]
+    Logout {
+        /// Provider id.
+        provider: String,
+    },
+    /// Store an API key in `auth.json`.
+    #[serde(rename = "_oino/set_api_key")]
+    SetApiKey {
+        /// Provider id.
+        provider: String,
+        /// Key.
+        key: String,
+    },
 }
 
 const fn protocol_version() -> u32 {
@@ -298,7 +423,7 @@ const fn protocol_version() -> u32 {
 }
 
 /// Oino command types implemented by [`OinoCommand`].
-pub const OINO_COMMAND_TYPES: [&str; 7] = [
+pub const OINO_COMMAND_TYPES: [&str; 23] = [
     "_oino/hello",
     "_oino/ui_snapshot",
     "_oino/navigate_tree",
@@ -306,6 +431,22 @@ pub const OINO_COMMAND_TYPES: [&str; 7] = [
     "_oino/import_jsonl",
     "_oino/export_jsonl",
     "_oino/get_context_usage",
+    "_oino/get_completions",
+    "_oino/ui_action",
+    "_oino/editor_event",
+    "_oino/invoke_shortcut",
+    "_oino/get_shortcuts",
+    "_oino/get_settings_schema",
+    "_oino/get_extension_settings",
+    "_oino/set_extension_setting",
+    "_oino/unset_extension_setting",
+    "_oino/get_settings",
+    "_oino/set_setting",
+    "_oino/service_call",
+    "_oino/auth_providers",
+    "_oino/login",
+    "_oino/logout",
+    "_oino/set_api_key",
 ];
 
 /// Any command a backend accepts.
@@ -372,6 +513,22 @@ impl OinoCommand {
             Self::ImportJsonl { .. } => "_oino/import_jsonl",
             Self::ExportJsonl { .. } => "_oino/export_jsonl",
             Self::GetContextUsage => "_oino/get_context_usage",
+            Self::GetCompletions { .. } => "_oino/get_completions",
+            Self::UiAction { .. } => "_oino/ui_action",
+            Self::EditorEvent(_) => "_oino/editor_event",
+            Self::InvokeShortcut { .. } => "_oino/invoke_shortcut",
+            Self::GetShortcuts => "_oino/get_shortcuts",
+            Self::GetSettingsSchema => "_oino/get_settings_schema",
+            Self::GetExtensionSettings { .. } => "_oino/get_extension_settings",
+            Self::SetExtensionSetting { .. } => "_oino/set_extension_setting",
+            Self::UnsetExtensionSetting { .. } => "_oino/unset_extension_setting",
+            Self::GetSettings { .. } => "_oino/get_settings",
+            Self::SetSetting { .. } => "_oino/set_setting",
+            Self::ServiceCall { .. } => "_oino/service_call",
+            Self::AuthProviders => "_oino/auth_providers",
+            Self::Login { .. } => "_oino/login",
+            Self::Logout { .. } => "_oino/logout",
+            Self::SetApiKey { .. } => "_oino/set_api_key",
         }
     }
 }

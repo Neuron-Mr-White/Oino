@@ -312,6 +312,11 @@ pub enum HostOp {
     },
     /// `{namespace: values}` of every known namespace as the caller sees them (init input).
     GetAllExtensionSettings,
+    /// `ui.editor-text`: the composer text last reported by the frontend
+    /// (`editor_event`, ui-protocol §7.1).
+    EditorText,
+    /// `models.credential-for`: `{provider, headers, baseUrl?}` for a provider, or `null`.
+    CredentialFor(String),
 }
 
 impl HostOp {
@@ -327,6 +332,19 @@ impl HostOp {
                 | Self::GetSettings
         )
     }
+}
+
+/// A `models.complete` / `models.stream` request.
+#[derive(Clone, Debug, Default)]
+pub struct ModelRequest {
+    /// `provider/id`; the session model when absent.
+    pub model: Option<String>,
+    /// pi `Context` JSON.
+    pub context: JsonValue,
+    /// pi `StreamOptions` JSON (`null` = defaults).
+    pub options: JsonValue,
+    /// Caller cancellation.
+    pub cancel: Option<CancellationToken>,
 }
 
 /// Failure of a host operation.
@@ -359,6 +377,21 @@ pub trait HostApi: Send + Sync {
         cx: &'a CallContext,
         op: HostOp,
     ) -> BoxFuture<'a, Result<JsonValue, HostError>>;
+
+    /// `models.stream`: streams one completion (`AssistantMessageEvent` JSON items) in the
+    /// session of `cx`; same model/credential resolution as [`HostOp::ModelComplete`].
+    fn model_stream<'a>(
+        &'a self,
+        _extension: &'a str,
+        _cx: &'a CallContext,
+        _request: ModelRequest,
+    ) -> BoxFuture<'a, Result<futures::stream::BoxStream<'static, JsonValue>, HostError>> {
+        Box::pin(async {
+            Err(HostError::Failed(
+                "models.stream is not supported by this host".into(),
+            ))
+        })
+    }
 
     /// `agents.spawn`: creates a nested `AgentSession` under the session of `cx`
     /// (runtime §12). `spec` is the `AgentSpec` JSON.

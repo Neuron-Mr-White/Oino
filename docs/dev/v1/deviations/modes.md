@@ -1,5 +1,9 @@
 # Deviations: modes
 
+> #13: the package subcommands (`install`, `remove`/`uninstall`, `update`, `list`, `config`)
+> and `oino update` (self-update) exist now ([frontend-cmds.md](frontend-cmds.md) #13–#15);
+> `auth`, `mcp`, `serve`, `ext`, `sessions` and `--remote` remain unavailable.
+
 Owner: `modes` (`crates/oino`, `crates/oino-client`, `crates/oino-rpc`). Format per README §5:
 section, change, reason, impact. pi 1.4.0 (`dist/main.js`, `cli/args.js`, `modes/print-mode.js`,
 `modes/json-event.js`, `modes/rpc/*.js`) is the reference where modes.md is silent.

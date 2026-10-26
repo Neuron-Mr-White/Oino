@@ -684,6 +684,26 @@ impl Composer {
         &before[start..]
     }
 
+    /// The cursor as a character offset into [`Self::text`] (`get_completions` `cursor`).
+    #[must_use]
+    pub fn cursor_offset(&self) -> usize {
+        self.lines[..self.line]
+            .iter()
+            .map(|l| char_len(l) + 1)
+            .sum::<usize>()
+            + self.col
+    }
+
+    /// Replaces the text between character offset `from` (clamped to the cursor line) and
+    /// the cursor with `replacement` (an accepted `get_completions` item).
+    pub fn replace_before_cursor(&mut self, from: usize, replacement: &str) {
+        let line_start = self.cursor_offset() - self.col;
+        let col = from.clamp(line_start, line_start + self.col) - line_start;
+        self.edit(LastEdit::None);
+        self.take_range((self.line, col), (self.line, self.col));
+        self.raw_insert(replacement);
+    }
+
     /// Replaces the token before the cursor with `replacement`.
     pub fn replace_current_token(&mut self, replacement: &str) {
         let token_len = char_len(self.current_token());
@@ -704,6 +724,16 @@ mod tests {
             c.insert_char(ch);
         }
         c
+    }
+
+    #[test]
+    fn offsets_and_range_replacement() {
+        let mut c = typed("one\n/probe se");
+        assert_eq!(c.cursor_offset(), 13);
+        c.replace_before_cursor(11, "select");
+        assert_eq!(c.text(), "one\n/probe select");
+        c.replace_before_cursor(0, "/x");
+        assert_eq!(c.text(), "one\n/x");
     }
 
     #[test]

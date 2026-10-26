@@ -316,6 +316,27 @@ pub trait ProviderInstance: Send + Sync {
         provider_id: &str,
         credential: Option<JsonValue>,
     ) -> BoxFuture<'_, Result<Vec<Model>, ExtensionCallError>>;
+
+    /// Runs the provider's OAuth sign-in (`oauth-login`) in `cx` (its dialogs reach that
+    /// session's frontend); returns the credential JSON to store.
+    fn oauth_login(
+        &self,
+        provider_id: &str,
+        cx: CallContext,
+    ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
+        let _ = (provider_id, cx);
+        Box::pin(async { Err(ExtensionCallError::new("OAuth sign-in is not supported")) })
+    }
+
+    /// Exchanges the refresh token of a stored OAuth credential (`oauth-refresh`).
+    fn oauth_refresh(
+        &self,
+        provider_id: &str,
+        credential: JsonValue,
+    ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
+        let _ = (provider_id, credential);
+        Box::pin(async { Err(ExtensionCallError::new("OAuth refresh is not supported")) })
+    }
 }
 
 /// One loaded extension instance (≈ `oino_extension_api::ExtensionInstance`).
@@ -385,6 +406,33 @@ pub trait ExtensionInstance: Send + Sync {
         _cx: CallContext,
     ) -> BoxFuture<'_, Result<(), ExtensionCallError>> {
         Box::pin(async { Ok(()) })
+    }
+
+    /// Autocomplete contributor (`complete-input`, ui-protocol §7.3): `{text, cursor}` in,
+    /// `[CompletionGroup]` JSON out.
+    fn complete_input(
+        &self,
+        _request: JsonValue,
+        _cx: CallContext,
+    ) -> BoxFuture<'_, Option<JsonValue>> {
+        Box::pin(async { None })
+    }
+
+    /// Service names this instance serves (`registry.register-service`).
+    fn services(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Serves a service request (`handle-service`) from `caller`.
+    fn handle_service(
+        &self,
+        name: &str,
+        _payload: JsonValue,
+        _caller: &str,
+        _cx: CallContext,
+    ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
+        let message = format!("service {name} is not implemented");
+        Box::pin(async move { Err(ExtensionCallError::new(message)) })
     }
 
     /// Routes a virtual model (`route-model` export): a pi route request in, a route result
