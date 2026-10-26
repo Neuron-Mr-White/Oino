@@ -22,6 +22,13 @@ pi-parity choice is covered by a golden test against the pi oracle (`scripts/pi-
 | 12 | runtime §8 (tools) | Tool-result image normalisation (`normalizeToolResultImages`) and prompt image processing (`processImage`) are not done by core; `oino-tools` `read` resizes its own images. | Deferred. | Extension tools returning large images are passed through. |
 | 13 | runtime §14 | `export_jsonl` resolves a relative path against the session cwd (pi: process cwd). | Libraries do not read the process cwd. | modes pass absolute paths. |
 | 14 | runtime §6.1 tests | Golden session-event comparison ignores `message_update.message` (pi's shallow copy keeps mutating after the event) and the content of the first assistant partial. | pi artefacts, not behaviour; the wire form drops them (modes §3.1). | none. |
+| 15 | runtime §12 | `Persistence::File` writes the child file directly in `sessionDir` (pi `--session-dir` semantics, no `--<cwd>--` subdir) at spawn, header `parentSession` = parent file; default dir `<parent session dir>/children/`; a file child of an in-memory parent without `sessionDir` stays in memory. `Seed::SessionFile` + file persistence continues that file in place (resume). | Guests (fusion, dream) locate their child files by directory. | `/resume` lists never show child files. |
+| 16 | runtime §12 | `AgentSpec` defaults: `ui: none`, `extensions: none`, `tools.builtin` = `defaultTools`, `childRole` = spawning extension id; `tools.extensionTools` patterns match only tools of the child's extensions; `deny` applies to both. `max_depth`: the root allows 4 levels; a child's allowance is `min(maxDepth ?? 2, parent allowance)`. Manifest `agents.maxDepth` is not enforced. | Spec gave no defaults. | — |
+| 17 | runtime §12 | `UiPolicy::Forward` forwards dialogs (title prefixed `[label] `) and `notify` only; other fire-and-forget requests (status, widgets, panels) of a child are dropped. `AutoDeny` answers `approval` with its first `reject_once`/`reject_*` option and `feedback: note`, cancels other dialogs, and gives the child `hasUI: true`; `None` gives `hasUI: false`. | Inherited footer/tray extensions would overwrite the parent's chrome. | — |
+| 18 | runtime §12 | Handle: `prompt` while the child runs queues (`steer` or follow-up); `steer`/`follow-up` on an idle child start a run; `close(grace ≤ 5 s)` aborts after the grace, emits `session_shutdown{quit}` to the child's extensions and ends `events()`; disposing a session closes its children; dropping the last guest handle closes with grace 0. `events()` are `ClientEvent` JSON without the RPC `message_update` transform. `oino_agent` events go only to the spawning extension, when it subscribed. | — | — |
+| 19 | runtime §7.6 | The arbiter also runs when no `agent_before_settle` handler exists. Proposal JSON `{id?, priority, customType, content?, display?(true), details?}`; `nudge-delivered` is synchronous. While `waiting`, wait sources are re-polled every 2 s; `run_state{idle}` is published when they go quiet, `run_state{running}` when a run starts. | Frontends otherwise stay in `waiting`. | — |
+| 20 | runtime §7.2 | Manifest `limits.hookTimeoutMs` / `toolCallHookTimeoutMs` raise core's handler deadline (never below core's default, cap 300 s). | long-horizon's verifier runs in `agent_before_settle` (90 s). | — |
+| 21 | extension-api §3 `control` | `shutdown` sets `AgentSessionRuntime::shutdown_requested()` (a watch flag); modes decide when to exit. `new-session`/`fork`/`switch-session`/`reload`/`system-prompt-options` need a command context of a root session (children: `Failed`). `bash-detach`/`running-bash` stay unsupported. | pi `shutdownHandler` is mode-owned. | modes: exit on the flag once idle. |
 
 Subcrate deviations (reported by the implementers, also binding here):
 
@@ -43,9 +50,9 @@ Subcrate deviations (reported by the implementers, also binding here):
 
 ## Deferred (not in this pass)
 
-Cache warming (§14), event bus (§7.5), turn arbiter (§7.6), nested agents (§12), services and
+Cache warming (§14), event bus (§7.5), services and
 secrets (§7.4/§5.9), extension settings registry (§10.3), package manager (§15), provenance (§2),
-command output capture (§7.4; command echo is implemented), bash detach wiring (§8, the
+command output capture (§7.4; command echo is implemented), bash detach wiring (§8, `control.bash-detach`/`running-bash`; the
 `oino-tools` registry exists), `before_provider_request`/`after_provider_response`/
 `provider_stream_event` routing, `mcp_servers_change` (never emitted by design), virtual-model
 `route` for summaries uses `reason: direct` only.

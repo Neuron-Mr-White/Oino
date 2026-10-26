@@ -1099,6 +1099,7 @@ built component in `oino-wasm-host`'s test harness (`oino_wasm_host::testing::Ha
 | `provider-faux` | provider component reading a **faux script** (quality §4.1) from its request `metadata.fauxScript` or a bundled default; deterministic streaming incl. tool calls, errors, overflow |
 | `ui-probe` | issues every dialog/fire/panel request; asserts responses |
 | `async-probe` | long-running tool waiting on `ui.dialog` while events are dispatched concurrently; timers; cancellation; services between two instances |
+| `agent-probe` | nested agents (`delegate` tool, `spawn`/`close` commands over `AgentSpec` JSON), arbiter nudge provider + wait source, `control.run-state` / `shutdown` |
 
 ## 12. Provider components (`providers-v1`)
 

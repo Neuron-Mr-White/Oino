@@ -46,11 +46,11 @@ End-to-end smoke (release `oino`, temp agent dir):
 | OAuth `/login` `/logout` | ❌ | Anthropic OAuth exists in the component; core/frontends do not drive it |
 | CLI flags and help | ✅ | `--model` ignored in ACP mode (integration #9) |
 | Print / JSON modes | ✅ | golden `print`, `json-mode` |
-| RPC mode (pi commands, extension UI sub-protocol) | ✅ | golden `rpc`; extension `ctx.shutdown()` not wired (modes #11) |
+| RPC mode (pi commands, extension UI sub-protocol) | ✅ | golden `rpc`; `ctx.shutdown()` reaches core (`AgentSessionRuntime::shutdown_requested`) but no mode exits on it yet (modes #11) |
 | Interactive TUI | 🟡 | full chrome, dialogs, panels, pickers ✅; inline (non-alt-screen) mode, inline images, extension settings hub, extension argument completion, editor events ❌ (tui-client deviations) |
 | Package manager (`oino install/remove/update/list/config`), `oino auth`, `oino update` | ❌ | install packages by copying into `~/.oino/extensions` |
 | `/share`, `/bug`, pi telemetry, pi-mcp, codemode | ❌ | out of scope (charter) |
-| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI dialogs/fire/panels, settings read, models.complete ✅; settings **write**, nested agents, turn arbiter, provider hooks, editor read, `control.{run-state,shutdown,new-session,fork,switch-session,reload,bash-detach}` ❌ |
+| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI dialogs/fire/panels, settings read, models.complete, nested agents (`agents.*`), turn arbiter, `control.{run-state,shutdown,system-prompt-options,new-session,fork,switch-session,reload}` ✅; settings **write**, provider hooks, editor read, `control.{bash-detach,running-bash}` ❌ |
 | ACP (Zed etc.) | ✅ | protocol v1 incl. permissions, elicitation, client fs/terminal; Zed interop not yet tried by hand |
 | `oino serve`, `--remote`, multi-client | ❌ | specified (modes §5) |
 
@@ -63,26 +63,26 @@ works only once the listed host capability exists.
 |---|---|---|
 | core (hints, header, work tray) | ✅ | local-time hints need `host-info` UTC offset (unipi-core R3) |
 | workflow (permissions, plan mode) | 🟡 | gate, rules, plan mode ✅; `auto` mode's jev judge now has `models.complete`; saved rules live in state files, not settings (no settings write) |
-| long-horizon | 🟡 | goal/ralph/swarm/graph state machines ✅; continuation via the **turn arbiter** and graph runs via **nested agents** need core (RK2, D8) |
-| memory | 🟡 | markdown memories, tools, recall reminder ✅; MemPalace untested against a real install; side-save pass needs nested agents |
-| dream | 🟡 | digests, tray, proposals ✅; the dream run itself needs nested agents |
+| long-horizon | ✅ | goal/ralph/swarm/graph state machines ✅; goal kickoff + continuation through the turn arbiter verified e2e (faux); graph runs use the subagents spawn path (not e2e-tested) |
+| memory | 🟡 | markdown memories, tools, recall reminder, side-save pass (nested agent, memory tools only; e2e) ✅; MemPalace untested against a real install |
+| dream | ✅ | digests, tray, proposals, dream runs (nested agent, `only: [unipi.memory]`, file persistence in the staging dir; e2e) ✅ |
 | utility | ❌ | not ported (render styles, auto-rename, `/unipi:answer`, `/unipi:move`, image tools) |
 | skill-registry | ✅ | jev judging via `models.complete`; skill-state edits stay in state files |
 | info-screen | ✅ | panels now served by the core bridge |
-| subagents | ❌ (host) | `run_subagent`/`read_subagent` need `agents.spawn` (core §12 not implemented) |
+| subagents | ✅ | `run_subagent` foreground/background, completion notification, `read_subagent` verified e2e; UI policy fixed at spawn (unipi-agents R2) |
 | background-tasks | ✅ | notification `deliverAs: followUp` (unipi-agents R1) open |
-| btw | ❌ (host) | needs nested agents |
+| btw | ✅ | branch-copy aside, never reaches the session (e2e) |
 | web-api | ✅ | TLS fingerprinting not implemented (`impersonated: false`) |
 | ask-user | ✅ | |
 | mcp | 🟡 | stdio + HTTP ✅; pi `mcp.json` not readable by the guest (R1); ACP `mcpServers` not forwarded (R3) |
 | notify | ✅ | setup wizards write a local overlay (no settings write) |
-| kanboard | 🟡 | CLI/daemon + panel ✅; monitor nudges need the turn arbiter; installers now ship `oino-kanboard` |
+| kanboard | 🟡 | CLI/daemon + panel ✅; core now calls its nudge provider (arbiter); monitor nudges not e2e-tested against a live `oino-kanboard` board; installers ship `oino-kanboard` |
 | command-enchantment | 🟡 | completions need frontend `get_completions` (`_oino/*`) |
 | compactor | ✅ | `llm` method's previous-summary handling (unipi-context R1) open |
 | footer | ✅ | |
 | updater | ✅ | never installs (by design) |
 | input-shortcuts | 🟡 | needs `editor_event` from frontends (TUI/desktop do not send it) |
-| fusion | ❌ (host) | sidekick is a nested agent |
+| fusion | ✅ | persistent sidekick child (file under `/ext-session/<sid>/sidekick`), handoff via `sidekick` verified e2e |
 | watchdog | 🟡 | stuck detection + session caps ✅; process stats Linux-only |
 | app-bridge | ✅ | control-centre panel; GPUI native widgets need `_oino/service_call` (R7) |
 
@@ -91,10 +91,12 @@ Herdr, the unipi desktop app.
 
 ## 4. Known issues
 
-1. **Nested agents are not implemented in core** (`agents.spawn` → `unsupported`): subagents,
-   btw, fusion, dream runs and memory side-save fail at runtime.
-2. **Turn arbiter** (`propose-nudge`/`wait-reason`) is not called by core: long-horizon
-   continuation and kanboard nudges do not fire.
+1. Nested agents: `UiPolicy` is fixed at spawn (no `set-ui-policy`, unipi-agents R2); child
+   depth is not visible on `call-context` (R3); `oino_agent` events are delivered only to the
+   spawning extension (deviations/core-runtime #15–#20).
+2. Turn arbiter: frontends get `run_state{waiting}` but `ctx.shutdown()` is not acted on by any
+   mode yet; `control.bash-detach` / `running-bash` remain unsupported (watchdog kill,
+   background-tasks adopt).
 3. **No guest settings write path** (unipi-core R1 / RK3 / integrations R4 / context R2):
    extensions keep user choices in their state files; `extensionSettings` is read-only to them,
    and no frontend renders the extension settings hub.
@@ -111,8 +113,10 @@ Herdr, the unipi desktop app.
 
 ## 5. Next steps
 
-1. **core-runtime**: nested `AgentSession`s behind `agents.spawn` (D8, runtime §12) — unblocks
-   subagents, btw, fusion, dream, memory side-save; then the turn arbiter (runtime §7.6).
+1. **core-runtime**: bash detach (`control.bash-detach`, `running-bash`, `tasks.adopt-bash`:
+   keep the `BashDetachRegistry` of the session's built-in tools and hand the process to the
+   task service); `agents.agent.set-ui-policy` (R2). **modes**: exit on
+   `AgentSessionRuntime::shutdown_requested()` once idle (print/RPC/TUI/ACP).
 2. **wit-v1 + core-runtime**: `registry.set-extension-setting` + `extension-settings` read,
    secret-field resolution; then the settings hub in TUI and desktop.
 3. **modes**: `_oino/*` frontend commands (completions, ui actions, shortcuts, editor events,
