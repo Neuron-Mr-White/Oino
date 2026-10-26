@@ -11,11 +11,6 @@ description = "unipi.subagents: run_subagent/read_subagent over host nested agen
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-## Export the component (off when another component links the `child` module, e.g. fusion).
-default = ["component"]
-component = []
-
 [dependencies]
 futures.workspace = true
 oino-extension.workspace = true

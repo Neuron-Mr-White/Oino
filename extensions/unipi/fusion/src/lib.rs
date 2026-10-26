@@ -27,6 +27,10 @@
     reason = "`Extension::init` is async in the SDK; registration here is synchronous"
 )]
 
+/// Child-agent runtime shared with `unipi.subagents` (same source file; a crate dependency
+/// would link that component's exports into this one).
+#[path = "../../subagents/src/child.rs"]
+pub mod child;
 pub mod policy;
 pub mod preset;
 
@@ -36,6 +40,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
+use crate::child::{Delivery, Done, Progress, Report, Spec, Usage};
 use futures::StreamExt;
 use oino_extension::agents::Agent;
 use oino_extension::prelude::*;
@@ -44,13 +49,9 @@ use oino_extension::wit::registry::RendererTarget;
 use unipi_kit::services::point;
 use unipi_kit::settings::{Field, Kind, Namespace, Section, Store, plain};
 use unipi_kit::topics::{self, FusionStatus};
-use unipi_subagents::child::{self, Delivery, Done, Progress, Report, Spec, Usage};
 
 use crate::policy::Identity;
 use crate::preset::{Active, Pair, Preset, Price};
-
-/// Re-exported child runtime (shared with `unipi.subagents`).
-pub use unipi_subagents::child as runtime;
 
 /// Extension id.
 pub const EXTENSION_ID: &str = "unipi.fusion";

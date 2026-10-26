@@ -1,6 +1,5 @@
 //! Child-agent runs over the host `agents` interface (unipi core `child-agent/runtime.ts` +
-//! `delivery.ts`). Shared with `unipi.fusion` (sidekick) through this crate's library
-//! (feature `component` off).
+//! `delivery.ts`). `unipi.fusion` compiles this same file for its sidekick (`#[path]` module).
 //!
 //! unipi drove a `pi --mode rpc` child over JSONL; Oino runs nested `AgentSession`s (D8) and
 //! reads their `ClientEvent` stream. [`Progress`] folds that stream into unipi's live events
