@@ -172,7 +172,7 @@ Regressions > 20 % fail the weekly job.
 | `layering` + `deny` | ubuntu | `cargo xtask layering`, `cargo deny check` |
 | `golden` | ubuntu | all §4.4 suites (part of `test`, listed for visibility) |
 | `bench` | ubuntu, weekly | §5 |
-| `release` | manual | builds on coffee/desmondgiam via `cargo xtask remote-build <host>` (ssh), Linux locally/CI; assembles GitHub release |
+| `release` | manual | `cargo xtask remote-build <host\|local>` (`xtask/src/remote.rs` → `scripts/release/build-host.sh`): git bundle + `extensions/dist` over ssh, detached build on coffee (Windows) / mac (macOS universal), Linux + Android locally; smoke tests; artifacts in `target/release-artifacts/<target>/`; assembles GitHub release |
 
 Pull requests are not used (agents commit to `v1-alpha`); CI runs on every push to `v1-alpha`.
 The graph owner treats a red CI on `v1-alpha` as a blocking defect for the item that broke it.
