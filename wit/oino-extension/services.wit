@@ -1,0 +1,8 @@
+package oino:extension@1.0.0;
+
+interface services {
+    use types.{json, extension-id, host-error};
+    /// Call a service registered by any extension (or a specific one). Timeout default 5000 ms.
+    call: async func(target: option<extension-id>, name: string, payload: json, timeout-ms: option<u32>) -> result<json, host-error>;
+    %list: func() -> list<tuple<extension-id, string>>;
+}

@@ -1,0 +1,18 @@
+package oino:extension@1.0.0;
+
+interface tasks {
+    use types.{json, host-error};
+    /// Host background-task service (C12). Owned by the host; unipi background-tasks drives it.
+    /// spec = oino_protocol::ext::TaskSpec {name, command, isAgent, description?, timeoutSeconds?,
+    ///        notifyOnCompletion, triggerOnCompletion, maxOutputBytes?}
+    start: func(spec: json) -> result<string, host-error>;     // task id; output file under ~/.oino/tmp/tasks/
+    adopt-bash: func(tool-call-id: string, reason: string) -> result<string, host-error>;
+    %list: func() -> json;                                      // Vec<TaskInfo> (running + last 30 finished)
+    get: func(id: string) -> option<json>;
+    logs: func(id: string, max-bytes: u32, tail: bool) -> result<string, host-error>;
+    kill: func(id: string) -> result<_, host-error>;
+    clear-finished: func();
+    // Completion: host emits `oino_task` events {id, state, exitCode?}; when triggerOnCompletion the
+    // host also delivers <background-task-notification> per unipi-port §3.9 and counts the task as an
+    // arbiter wait source while running.
+}

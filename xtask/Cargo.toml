@@ -1,0 +1,23 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+publish = false
+description = "Oino build tasks: `cargo xtask wasm` builds every extension component into extensions/dist"
+
+[dependencies]
+anyhow = "1"
+serde_json = { workspace = true, features = ["preserve_order"] }
+sha2.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+print_stdout = "allow"
+print_stderr = "allow"

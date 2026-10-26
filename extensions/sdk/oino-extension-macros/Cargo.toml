@@ -1,0 +1,19 @@
+[package]
+name = "oino-extension-macros"
+version = "1.0.0-alpha.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Proc macros for the Oino guest SDK"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+[lints]
+workspace = true

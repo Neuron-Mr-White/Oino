@@ -1,0 +1,9 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.fixture.ui-probe",
+  "name": "UI probe fixture",
+  "version": "1.0.0",
+  "description": "Issues every dialog, fire-and-forget, panel and editor request and reports the answers.",
+  "license": "MIT",
+  "permissions": { "ui": true, "clipboard": { "read": true, "write": true }, "openUrl": true, "editExternally": true, "osNotify": true }
+}

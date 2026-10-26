@@ -1,0 +1,20 @@
+[package]
+name = "fixture-provider-faux"
+version = "1.0.0-alpha.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Oino wit-v1 test fixture: provider-faux"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oino-extension = { workspace = true, features = ["provider"] }
+
+schemars.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,25 @@
+package oino:extension@1.0.0;
+
+interface ui {
+    use types.{json, host-error, cancel-token};
+    /// Dialog (blocks until answered, timeout or cancel). request/response = ui-protocol §4 JSON
+    /// (method select|confirm|input|editor|multiSelect|form|approval|custom).
+    dialog: async func(request: json, cancel: option<borrow<cancel-token>>) -> result<json, host-error>;
+    /// Fire-and-forget (notify|setStatus|setWidget|setTitle|set_editor_text|setFrame|setWorkingMessage|
+    /// setHeader|setFooter|registerAutocomplete…), ui-protocol §4.2.
+    fire: func(request: json) -> result<_, host-error>;
+    /// Panels (ui-protocol §5): open returns panel id; update replaces the spec; close.
+    panel-open: func(spec: json) -> result<string, host-error>;
+    panel-update: func(panel-id: string, spec: json) -> result<_, host-error>;
+    panel-close: func(panel-id: string);
+    /// Editor model (ui-protocol §7).
+    editor-text: func() -> string;
+    editor-set: func(text: string);
+    editor-insert: func(text: string);
+    /// OS / device integration (routed to the active frontend; permissions osNotify, clipboard, openUrl).
+    os-notify: func(title: string, body: string, urgency: string, action-url: option<string>) -> result<_, host-error>;
+    clipboard-write-text: func(text: string) -> result<_, host-error>;
+    clipboard-read-image: async func() -> result<option<json>, host-error>;   // ImageContent
+    open-url: func(url: string) -> result<_, host-error>;
+    edit-externally: async func(text: string, extension-hint: option<string>) -> result<option<string>, host-error>;
+}

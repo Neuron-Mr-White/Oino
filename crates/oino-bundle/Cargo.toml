@@ -1,0 +1,42 @@
+[package]
+name = "oino-bundle"
+version = "1.0.0-alpha.0"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Static table of bundled extension components and resources (built from extensions/dist)"
+build = "build.rs"
+
+[features]
+default = ["providers", "unipi"]
+## Bundle provider components (`kind: "provider"`).
+providers = []
+## Bundle unipi components (`id` starting with `unipi.`).
+unipi = []
+## Also bundle fixture components (`oino.fixture.*`), for tests.
+fixtures = []
+
+[dependencies]
+sha2.workspace = true
+thiserror = "2"
+zstd = "0.13"
+
+[build-dependencies]
+serde_json.workspace = true
+sha2.workspace = true
+zstd = "0.13"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

@@ -1,0 +1,45 @@
+package oino:extension@1.0.0;
+
+interface types {
+    /// Canonical JSON text of a serde type named in the doc comment of each use.
+    type json = string;
+    /// Extension id, `^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$`.
+    type extension-id = string;
+    /// Session entry id (8-hex or legacy string).
+    type entry-id = string;
+
+    enum log-level { trace, debug, info, warn, error }
+    enum mode { tui, rpc, json, print, acp, desktop, mobile }
+    enum call-kind { init, event, tool, command, shortcut, service, nudge, render, route, provider }
+
+    record call-context {
+        session-id: string,
+        mode: mode,
+        has-ui: bool,
+        cwd: string,
+        is-child: bool,
+        child-role: option<string>,
+        kind: call-kind,
+        /// Set while serving a tool call; enables `control.execute-tool` and nested ids.
+        tool-call-id: option<string>,
+    }
+
+    variant host-error {
+        denied(string),          // permission missing (names the permission)
+        stale-context,           // session replaced since this call started (pi assertActive)
+        command-context-required,
+        invalid-argument(string),
+        not-found(string),
+        timeout,
+        cancelled,
+        io(string),
+        failed(string),
+    }
+
+    /// Cooperative cancellation for long calls (tools, commands, dialogs).
+    resource cancel-token {
+        is-cancelled: func() -> bool;
+        /// Resolves when cancelled; never resolves otherwise.
+        wait: async func();
+    }
+}

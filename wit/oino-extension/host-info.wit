@@ -1,0 +1,27 @@
+package oino:extension@1.0.0;
+
+interface host-info {
+    use types.{mode, host-error};
+    record info {
+        oino-version: string,
+        api-version: string,          // "1.0.0"
+        platform: string,             // "linux" | "macos" | "windows" | "android" | "ios"
+        arch: string,
+        mode: mode,
+        has-ui: bool,
+        frontends: list<string>,      // attached frontends: "tui","desktop","mobile","rpc","acp"
+        extension-version: string,
+    }
+    record workspace-info {
+        id: string,                   // D10 wsid
+        root: string,                 // canonical project root
+        git-root: option<string>,
+        git-branch: option<string>,
+        cwd: string,
+    }
+    get: func() -> info;
+    workspace: func() -> workspace-info;
+    /// Requires permission env:[name]; returns none when unset.
+    env-get: func(name: string) -> result<option<string>, host-error>;
+    frontend-focused: func() -> bool;
+}

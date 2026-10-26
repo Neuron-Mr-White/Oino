@@ -1,0 +1,29 @@
+package oino:extension@1.0.0;
+
+interface http {
+    use types.{host-error};
+    enum method { get, head, post, put, patch, delete, options }
+    variant auth { none, provider(string) }                    // inject credential-for(provider) headers
+    record request {
+        method: method, url: string,
+        headers: list<tuple<string, string>>,
+        body: option<list<u8>>,
+        timeout-ms: option<u32>,
+        follow-redirects: bool,
+        auth: auth,
+        /// TLS/HTTP2 fingerprint impersonation profile, e.g. "chrome_145" (permission network.fingerprint).
+        impersonate: option<string>,
+        proxy: option<string>,                                  // overrides settings httpProxy
+    }
+    record response-head { status: u16, headers: list<tuple<string, string>>, final-url: string, impersonated: bool }
+    /// Streaming response; body ends when the stream closes.
+    fetch: async func(req: request) -> result<tuple<response-head, stream<u8>>, host-error>;
+    /// Loopback-only HTTP server (permission network.listenLoopback). port 0 = ephemeral.
+    record incoming { id: u64, method: string, path: string, headers: list<tuple<string, string>>, body: list<u8> }
+    resource listener {
+        bind: static func(port: u16) -> result<listener, host-error>;
+        port: func() -> u16;
+        accept: async func() -> option<incoming>;
+        respond: func(id: u64, status: u16, headers: list<tuple<string, string>>, body: list<u8>) -> result<_, host-error>;
+    }
+}

@@ -1,0 +1,39 @@
+package oino:extension@1.0.0;
+
+interface process {
+    use types.{host-error};
+    enum stdio-mode { null, pipe, inherit-log }               // inherit-log = to logs/ext/<id>.log
+    variant output-target { null, pipe, file(string) }
+    enum signal { term, kill, int, hup }
+    record spawn-spec {
+        command: string, args: list<string>, cwd: option<string>,
+        env: list<tuple<string, string>>, clear-env: bool,
+        stdin: stdio-mode, stdout: output-target, stderr: output-target,
+        new-process-group: bool,
+        /// Keep running after the session/extension shuts down (daemons); permission process.detached.
+        detached: bool,
+        timeout-ms: option<u64>,
+    }
+    record exit-status { code: option<s32>, signal: option<s32>, timed-out: bool }
+    record exec-result { stdout: string, stderr: string, code: option<s32>, killed: bool }  // pi exec shape
+    record exec-options { cwd: option<string>, timeout-ms: option<u64>, env: list<tuple<string, string>> }
+    record proc-stats { pid: u32, ppid: u32, state: string, cpu-ms: u64, rss-bytes: u64, read-bytes: u64, write-bytes: u64, start-time-ms: u64 }
+
+    resource child {
+        spawn: static func(spec: spawn-spec) -> result<child, host-error>;
+        pid: func() -> u32;
+        write-stdin: async func(data: list<u8>) -> result<_, host-error>;
+        close-stdin: func();
+        stdout: func() -> option<stream<u8>>;
+        stderr: func() -> option<stream<u8>>;
+        wait: async func() -> exit-status;
+        try-wait: func() -> option<exit-status>;
+        signal: func(sig: signal, group: bool) -> result<_, host-error>;
+    }
+    /// pi exec(command, args, {timeout, cwd}) → {stdout, stderr, code, killed}.
+    exec: async func(command: string, args: list<string>, options: exec-options) -> result<exec-result, host-error>;
+    process-tree: func(pid: u32) -> result<list<u32>, host-error>;
+    process-stats: func(pid: u32) -> result<proc-stats, host-error>;
+    /// The oino process itself (for watchdog child-tree scans).
+    self-pid: func() -> u32;
+}

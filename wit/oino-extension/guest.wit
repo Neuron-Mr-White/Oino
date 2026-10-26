@@ -1,0 +1,40 @@
+package oino:extension@1.0.0;
+
+interface guest {
+    use types.{json, call-context, cancel-token};
+    use registry.{registration, event-kind};
+
+    record init-input {
+        /// Manifest JSON (as installed) and the extension's resolved settings for its namespaces.
+        manifest: json,
+        settings: json,
+        %flags: json,
+    }
+    record tool-invocation { tool-call-id: string, name: string, args: json, parent-tool-call-id: option<string> }
+    record completion-item { value: string, label: option<string>, description: option<string> }
+
+    init: async func(input: init-input, ctx: call-context) -> result<registration, string>;
+    /// Event dispatch. payload/result = JSON of oino_protocol::ext::events::<Event>/<Result>.
+    /// Return none for "no result" (pi `undefined`).
+    on-event: async func(kind: event-kind, payload: json, ctx: call-context) -> result<option<json>, string>;
+    /// Returns AgentToolResult JSON. Progress via control.tool-progress.
+    run-tool: async func(invocation: tool-invocation, cancel: borrow<cancel-token>, ctx: call-context) -> result<json, string>;
+    prepare-arguments: func(tool: string, raw: json) -> json;
+    prepare-loadout: func(tool: string, loadout: json) -> option<json>;
+    reaches-tools: func(tool: string, input: json) -> json;   // "all" | ["name", …]
+    run-command: async func(name: string, args: string, cancel: borrow<cancel-token>, ctx: call-context) -> result<option<json>, string>;
+    complete-command: async func(name: string, prefix: string, ctx: call-context) -> list<completion-item>;
+    run-shortcut: async func(id: string, ctx: call-context) -> result<_, string>;
+    handle-service: async func(name: string, payload: json, caller: string, ctx: call-context) -> result<json, string>;
+    /// Arbiter (runtime §7.6). Nudge JSON = {id, priority, customType, content, display, details?}.
+    propose-nudge: async func(ctx: call-context) -> option<json>;
+    nudge-delivered: func(id: string, ctx: call-context);
+    wait-reason: async func(ctx: call-context) -> option<string>;
+    /// Render specs (ui-protocol §6.4). request = RenderRequest JSON; result = OUS node JSON.
+    render: func(request: json, ctx: call-context) -> option<json>;
+    /// Virtual model routing (runtime §13). request/response = pi route request/result JSON.
+    route-model: async func(request: json, ctx: call-context) -> result<json, string>;
+    /// Autocomplete contributor (ui-protocol §7.3). request = {text, cursor}; result = Vec<CompletionGroup>.
+    complete-input: async func(request: json, ctx: call-context) -> option<json>;
+    shutdown: async func(reason: string);
+}

@@ -1,0 +1,39 @@
+package oino:extension@1.0.0;
+
+interface session {
+    use types.{json, entry-id, host-error};
+
+    enum delivery { steer, follow-up, next-turn }
+    record provenance { source: string, title: option<string>, synopsis: option<string>, severity: option<string> }
+    record send-options { trigger-turn: bool, deliver-as: option<delivery>, provenance: option<provenance> }
+    record user-message-options { deliver-as: option<delivery>, expand-prompt-templates: bool, provenance: option<provenance> }
+    enum sessions-scope { cwd, all }
+
+    // Reads (pi ReadonlySessionManager). JSON = oino_session types.
+    header: func() -> json;                                   // SessionHeader
+    session-id: func() -> string;
+    session-file: func() -> option<string>;
+    leaf-id: func() -> option<entry-id>;
+    entry: func(id: entry-id) -> option<json>;                // SessionEntry
+    entries: func() -> json;                                  // Vec<SessionEntry>, file order, all branches
+    branch: func(%from: option<entry-id>) -> json;             // Vec<SessionEntry> root→from
+    context-entries: func() -> json;                          // build_context_entries
+    projection: func() -> json;                               // SessionProjection
+    tree: func() -> json;                                     // Vec<SessionTreeNode>
+    label: func(id: entry-id) -> option<string>;
+    session-name: func() -> option<string>;
+
+    // Writes
+    set-session-name: func(name: option<string>) -> result<_, host-error>;
+    set-label: func(id: entry-id, label: option<string>) -> result<_, host-error>;
+    /// pi appendEntry: `custom` entry, emits entry_appended. data = JSON value or none.
+    append-entry: func(custom-type: string, data: option<json>) -> result<entry-id, host-error>;
+    /// pi sendMessage. message = {customType, content, display, details?}.
+    send-message: async func(message: json, options: send-options) -> result<_, host-error>;
+    /// pi sendUserMessage. content = UserContentField.
+    send-user-message: async func(content: json, options: user-message-options) -> result<_, host-error>;
+
+    // Sessions index (C7); permission sessions.readAll.
+    sessions-list: async func(scope: sessions-scope) -> result<json, host-error>;   // Vec<SessionInfo>
+    session-read: async func(path: string) -> result<json, host-error>;             // {header, entries}
+}

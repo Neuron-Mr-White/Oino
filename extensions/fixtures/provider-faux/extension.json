@@ -1,0 +1,11 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.fixture.provider-faux",
+  "name": "Faux provider fixture",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "Deterministic provider streaming a faux script (quality §4.1).",
+  "license": "MIT",
+  "provides": { "apis": ["faux"], "providers": ["faux"] },
+  "permissions": {}
+}

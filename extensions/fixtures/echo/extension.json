@@ -1,0 +1,26 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.fixture.echo",
+  "name": "Echo fixture",
+  "version": "1.0.0",
+  "kind": "extension",
+  "description": "Registers a tool, command, shortcut and flag, records every event, and probes host imports.",
+  "license": "MIT",
+  "permissions": {
+    "sessionControl": true,
+    "sessions": { "readAll": true },
+    "models": { "complete": true },
+    "credentials": ["*"],
+    "agents": { "spawn": true },
+    "process": { "spawn": true, "allow": ["sh", "echo", "cat", "sleep"] },
+    "network": { "hosts": ["127.0.0.1"], "listenLoopback": true },
+    "fs": { "project": "read" },
+    "env": ["HOME"],
+    "secrets": true,
+    "osNotify": true,
+    "openUrl": true,
+    "clipboard": { "read": true, "write": true },
+    "editExternally": true,
+    "services": { "call": ["*"] }
+  }
+}

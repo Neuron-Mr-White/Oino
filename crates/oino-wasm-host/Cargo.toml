@@ -1,35 +1,66 @@
 [package]
 name = "oino-wasm-host"
-version = "0.1.3"
-edition.workspace = true
+version = "1.0.0-alpha.0"
+edition = "2024"
+rust-version = "1.99"
 license.workspace = true
+repository.workspace = true
+description = "Wasmtime component host for oino:extension@1.0.0 components"
+
+[features]
+default = ["core"]
+## Bridge to oino-core's extension runner (`core_bridge`).
+core = ["dep:oino-core", "dep:oino-agent"]
+## Test harness that builds and loads the fixture components.
+testing = ["oino-extension-api/testing", "dep:tempfile"]
 
 [dependencies]
-oino-agent-loop = { path = "../oino-agent-loop" }
-oino-extension-core = { path = "../oino-extension-core" }
-oino-extension-runtime = { path = "../oino-extension-runtime" }
-oino-types = { path = "../oino-types" }
-anyhow = "1"
-async-trait.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-sha2.workspace = true
-thiserror.workspace = true
-tokio.workspace = true
-tracing = "0.1"
-uuid.workspace = true
-wasmtime = { version = "=48.0.2", features = ["component-model", "async", "cranelift", "cache", "pooling-allocator"] }
-wasmtime-wasi = "=48.0.2"
-wasmtime-wasi-http = "=48.0.2"
-wasmtime-wasi-io = "=48.0.2"
-http = "1"
-http-body-util = "0.1"
+base64.workspace = true
 bytes.workspace = true
-http-body = "1.1.0"
+futures.workspace = true
+notify = "8.2"
+oino-agent = { path = "../oino-agent", optional = true }
+oino-ai = { path = "../oino-ai" }
+oino-core = { path = "../oino-core", optional = true }
+oino-extension-api = { path = "../oino-extension-api" }
+reqwest.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
+sha2.workspace = true
+thiserror = "2"
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "process", "rt", "rt-multi-thread", "sync", "time"] }
+tokio-util.workspace = true
+tempfile = { workspace = true, optional = true }
+tracing.workspace = true
+wasmtime = { version = "=48.0.2", default-features = false, features = ["std", "runtime", "component-model", "component-model-async", "async", "cranelift", "cache", "parallel-compilation", "addr2line", "demangle"] }
+wasmtime-wasi = { version = "=48.0.2" }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal", "process"] }
 
 [dev-dependencies]
+indexmap.workspace = true
+oino-core = { path = "../oino-core", features = ["testing"] }
+oino-models = { path = "../oino-models" }
+oino-settings = { path = "../oino-settings" }
+oino-extension-api = { path = "../oino-extension-api", features = ["testing"] }
+oino-wasm-host = { path = ".", default-features = false, features = ["testing"] }
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"

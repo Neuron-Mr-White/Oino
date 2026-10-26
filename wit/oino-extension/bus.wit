@@ -1,0 +1,10 @@
+package oino:extension@1.0.0;
+
+interface bus {
+    use types.{json};
+    publish: func(topic: string, data: json, sticky: bool);
+    /// pattern: exact topic or "prefix:*". Deliveries arrive as oino_bus events.
+    subscribe: func(pattern: string);
+    unsubscribe: func(pattern: string);
+    get: func(topic: string) -> option<json>;                 // last sticky value
+}

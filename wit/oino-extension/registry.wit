@@ -1,0 +1,108 @@
+package oino:extension@1.0.0;
+
+interface registry {
+    use types.{json, host-error};
+
+    enum event-kind {
+        // pi 1.4.0 extension events (wire name = kebab → snake, e.g. session-start → session_start)
+        project-trust, resources-discover, mcp-servers-change,
+        session-start, session-info-changed, session-before-switch, session-before-fork,
+        session-before-compact, session-compact, session-compact-failed, session-shutdown,
+        session-before-tree, session-tree,
+        context, context-with-system, cache-warming-decision,
+        before-provider-headers, before-provider-request, after-provider-response, provider-stream-event,
+        before-agent-start, agent-start, agent-end, agent-before-settle, agent-settled,
+        ui-prompt-start, ui-prompt-end,
+        turn-start, turn-end, message-start, message-update, message-end,
+        tool-execution-start, tool-execution-update, tool-execution-end,
+        model-select, thinking-level-select, tool-call, tool-result, user-bash, input,
+        // Oino host events (wire names prefixed "oino_")
+        oino-timer, oino-bus, oino-ui-action, oino-editor, oino-settings-changed,
+        oino-process, oino-agent, oino-task,
+    }
+
+    enum exposure { direct, model-only, deferred, hidden }
+    enum execution-mode { parallel, sequential }
+    enum replay { never, safe }
+    /// ACP tool kind (research-acp §7).
+    enum tool-kind { read, edit, delete, move, search, execute, think, fetch, switch-mode, other }
+    record tool-namespace { name: string, aliases: list<string>, description: option<string>, instructions: option<string> }
+    record tool-annotations { read-only: option<bool>, destructive: option<bool>, idempotent: option<bool>, open-world: option<bool> }
+    variant reaches-tools { none, all, names(list<string>), dynamic }   // dynamic ⇒ guest export reaches-tools
+    record tool-spec {
+        name: string,
+        label: string,
+        description: string,
+        /// JSON Schema object (draft 2020-12).
+        parameters: json,
+        output-schema: option<json>,
+        prompt-snippet: option<string>,
+        prompt-guidelines: list<string>,
+        exposure: exposure,
+        default-active: bool,
+        execution-mode: execution-mode,
+        replay: option<replay>,
+        kind: tool-kind,
+        namespace: option<tool-namespace>,
+        annotations: option<tool-annotations>,
+        reaches-tools: reaches-tools,
+        /// Guest implements `prepare-arguments` for this tool.
+        prepare-arguments: bool,
+        /// Guest implements `prepare-loadout` for this tool.
+        prepare-loadout: bool,
+        /// JSON of oino_protocol::ui::ToolRenderHints (ui-protocol §6.4), or none.
+        render: option<json>,
+    }
+    record command-spec {
+        name: string,
+        description: string,
+        argument-hint: option<string>,
+        /// Guest implements `complete-command` for this command.
+        completions: bool,
+        /// Listed in get_commands only when false.
+        hidden: bool,
+    }
+    record shortcut-spec { id: string, default-keys: list<string>, description: string }
+    enum flag-type { boolean, %string }
+    record flag-spec { name: string, %type: flag-type, default-value: option<json>, description: string }
+    enum renderer-target { custom-message, custom-entry, tool }
+    record renderer-spec { target: renderer-target, key: string }   // customType or tool name
+    record arbiter-roles { nudge-provider: bool, wait-source: bool }
+
+    record registration {
+        events: list<event-kind>,
+        tools: list<tool-spec>,
+        commands: list<command-spec>,
+        shortcuts: list<shortcut-spec>,
+        %flags: list<flag-spec>,
+        renderers: list<renderer-spec>,
+        services: list<string>,
+        arbiter: arbiter-roles,
+        /// JSON of Vec<oino_protocol::ext::SettingsNamespace> (schema + defaults), ui-protocol §6.6.
+        settings: list<json>,
+    }
+
+    // Dynamic (re)registration at any time after init.
+    subscribe: func(events: list<event-kind>);
+    unsubscribe: func(events: list<event-kind>);
+    register-tool: func(spec: tool-spec) -> result<_, host-error>;      // same name from same ext = replace
+    unregister-tool: func(name: string);
+    register-command: func(spec: command-spec) -> result<string, host-error>;  // returns invocation name
+    unregister-command: func(name: string);
+    register-shortcut: func(spec: shortcut-spec) -> result<_, host-error>;
+    unregister-shortcut: func(id: string);
+    register-flag: func(spec: flag-spec) -> result<_, host-error>;
+    get-flag: func(name: string) -> option<json>;
+    register-renderer: func(spec: renderer-spec);
+    register-service: func(name: string) -> result<_, host-error>;
+    set-arbiter-roles: func(roles: arbiter-roles);
+    /// JSON of oino_protocol::ext::SettingsNamespace.
+    register-settings: func(namespace: json) -> result<_, host-error>;
+    /// Provider registration (pi registerProvider): JSON of oino_protocol::ext::ProviderRegistration.
+    /// Only from components exporting `provider`, or a config-only override (baseUrl/headers/models) from any extension.
+    register-provider: func(config: json) -> result<_, host-error>;
+    unregister-provider: func(provider-id: string);
+    /// JSON of oino_protocol::ext::VirtualModelDefinition (route implemented by guest export `route-model`).
+    register-virtual-model: func(definition: json) -> result<_, host-error>;
+    unregister-virtual-model: func(provider: string, id: string);
+}

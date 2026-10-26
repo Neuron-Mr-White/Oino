@@ -1,0 +1,15 @@
+package oino:extension@1.0.0;
+
+/// Imported by provider components so core can run the provider-level extension events
+/// (pi onPayload / onResponse / onProviderStreamEvent) on the real wire payload.
+interface provider-host {
+    use types.{json};
+    /// Call after building the HTTP request, before sending. Core dispatches
+    /// before_provider_headers (headers) then before_provider_request (payload); returns the
+    /// possibly replaced payload and headers. request-id = the `requestId` from the stream request.
+    before-request: async func(request-id: string, payload: json, headers: list<tuple<string, string>>) -> tuple<json, list<tuple<string, string>>>;
+    /// Call when response headers arrive (after_provider_response).
+    after-response: func(request-id: string, status: u16, headers: list<tuple<string, string>>);
+    /// Call for each raw provider stream event when the request asked for it (provider_stream_event).
+    stream-event: func(request-id: string, data: json);
+}

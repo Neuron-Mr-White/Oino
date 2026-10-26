@@ -1,0 +1,20 @@
+package oino:extension@1.0.0;
+
+interface models {
+    use types.{json, host-error, cancel-token};
+
+    /// Non-session completion against any registered model (permission models.complete).
+    /// request = oino_protocol::ext::CompletionRequest {model?: "provider/id", context, options}
+    /// response = AssistantMessage. Usage is accounted to the session as a `usage` entry kind "ext:<id>".
+    complete: async func(request: json, cancel: option<borrow<cancel-token>>) -> result<json, host-error>;
+    /// Streaming variant: AssistantMessageEvent JSON values (without `partial`).
+    %stream: async func(request: json) -> result<stream<string>, host-error>;
+    /// Core's compaction summarizer (C9/C26). entries = Vec<AgentMessage>; returns {summary, usage?}.
+    summarize-default: async func(messages: json, custom-instructions: option<string>) -> result<json, host-error>;
+    /// Scoped credentials for outbound HTTP (permission credentials:[provider|*]).
+    record credential { headers: list<tuple<string, string>>, base-url: option<string>, provider: string }
+    credential-for: async func(provider-or-base-url: string) -> result<option<credential>, host-error>;
+    /// Classifier / image model calls (pi modelRegistry.classify / image models).
+    classify: async func(request: json) -> result<json, host-error>;
+    generate-image: async func(request: json) -> result<json, host-error>;
+}

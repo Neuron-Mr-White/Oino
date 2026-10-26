@@ -1,0 +1,19 @@
+package oino:extension@1.0.0;
+
+interface fs {
+    use types.{host-error};
+    /// Named preopens available to this extension (§5.8): "ext-global", "ext-workspace",
+    /// "ext-session", "project", "tmp", "cache", "logs", plus manifest fs.paths aliases.
+    record preopen { name: string, guest-path: string, host-path: string, writable: bool }
+    preopens: func() -> list<preopen>;
+    atomic-write: func(path: string, data: list<u8>, mode: option<u32>) -> result<_, host-error>;
+    resource lock {
+        acquire: static async func(path: string, exclusive: bool) -> result<lock, host-error>;
+        release: func();
+    }
+    record fs-event { kind: string, path: string }            // kind: create|modify|remove|rename
+    resource watcher {
+        watch: static func(path: string, recursive: bool) -> result<watcher, host-error>;
+        next: async func() -> option<list<fs-event>>;
+    }
+}

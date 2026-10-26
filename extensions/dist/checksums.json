@@ -1,0 +1,15 @@
+{
+  "toolchain": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "wasmTools": "wasm-tools 1.262.0",
+  "profile": "release",
+  "files": {
+    "oino.fixture.async-probe/component.wasm": "sha256:0b470d4859196dfb27eb1e43070967c48c6157235a13f7d823c6ef92510996e0",
+    "oino.fixture.async-probe/extension.json": "sha256:73d66c73254d49dcde45cdeb0600da0bb0839a19d5f78c33f609bff1e3727f2d",
+    "oino.fixture.echo/component.wasm": "sha256:2e2393f8071feefbe17a793ba0aba24f18fe45400c5fa37eb32e9a3784090c12",
+    "oino.fixture.echo/extension.json": "sha256:3fe50609426aadee675656544525e256e009628c6f9f53e4cf59c5706f90f63b",
+    "oino.fixture.provider-faux/component.wasm": "sha256:e7084c170663c80c4b4517674d13001fcc217a5dd5a489eddaab63e5a5223b1a",
+    "oino.fixture.provider-faux/extension.json": "sha256:dc8886af46b306f5336dc16b73f893e3f380ef14d15a52ff4db895ef143aff74",
+    "oino.fixture.ui-probe/component.wasm": "sha256:69367a1c4e1baf853bbbbf403a5391fc73c7cddc8e493d1508a2758b8ca5c7e9",
+    "oino.fixture.ui-probe/extension.json": "sha256:2dd6d4f277b6af69d06d3913ea3876a886788586591fb4178b6b624108ed3c33"
+  }
+}

@@ -1,0 +1,622 @@
+//! [`LocalServices`]: cross-extension features the WASM host can serve on its own while
+//! `oino-core` does not implement them (core-runtime deviations "Deferred"): the event bus,
+//! services, secrets, the background-task service and delivery of host-produced `oino_*`
+//! events. Every other [`HostServices`] method passes through to the wrapped host.
+
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use std::sync::{Arc, Mutex, Weak};
+use std::time::Duration;
+
+use oino_extension_api::ops::{
+    ControlOp, ControlReply, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply, PanelOp,
+    ProviderHook, ProviderHookReply, SecretOp, SendOptions, SessionQuery, SessionWrite,
+    SessionsIndexQuery, TaskOp,
+};
+use oino_extension_api::registry::{
+    ArbiterRoles, CommandSpec, FlagSpec, RendererSpec, ShortcutSpec, ToolSpec,
+};
+use oino_extension_api::{
+    AgentHandle, BoxFut, CallContext, CallKind, CancellationToken, EventKind, ExtensionId,
+    ExtensionInstance, HostError, HostServices, RawJson, Registration,
+};
+use serde_json::json;
+
+use crate::instance::WasmInstance;
+use crate::secrets::SecretStore;
+use crate::state::lock;
+use crate::tasks::{TaskInfo, TaskService, TaskSpec};
+
+/// Custom message type of task completion notifications.
+pub const TASK_NOTIFICATION_TYPE: &str = "background-task-notification";
+
+#[derive(Default)]
+struct ExtEntry {
+    instance: Option<Weak<WasmInstance>>,
+    inner: Option<Arc<dyn HostServices>>,
+    events: HashSet<EventKind>,
+    services: HashSet<String>,
+    bus: HashSet<String>,
+}
+
+/// Process-wide local services shared by all instances of one [`crate::WasmRuntime`].
+pub struct LocalServices {
+    exts: Mutex<HashMap<ExtensionId, ExtEntry>>,
+    sticky: Mutex<HashMap<String, RawJson>>,
+    secrets: SecretStore,
+    tasks: Arc<TaskService>,
+}
+
+impl std::fmt::Debug for LocalServices {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalServices").finish_non_exhaustive()
+    }
+}
+
+/// `pattern` matches `topic`: exact, or `prefix:*` / `*`.
+#[must_use]
+pub fn topic_matches(pattern: &str, topic: &str) -> bool {
+    pattern == "*"
+        || pattern == topic
+        || pattern
+            .strip_suffix('*')
+            .is_some_and(|prefix| topic.starts_with(prefix))
+}
+
+impl LocalServices {
+    /// Hub rooted at `agent_dir` (secrets file, task output).
+    #[must_use]
+    pub fn new(agent_dir: &Path) -> Self {
+        Self {
+            exts: Mutex::new(HashMap::new()),
+            sticky: Mutex::new(HashMap::new()),
+            secrets: SecretStore::new(agent_dir),
+            tasks: Arc::new(TaskService::new(agent_dir)),
+        }
+    }
+
+    /// The task service.
+    #[must_use]
+    pub fn tasks(&self) -> &Arc<TaskService> {
+        &self.tasks
+    }
+
+    /// Wraps the host given to extension `id`.
+    pub(crate) fn wrap(
+        self: &Arc<Self>,
+        id: &ExtensionId,
+        inner: Arc<dyn HostServices>,
+    ) -> Arc<dyn HostServices> {
+        lock(&self.exts).entry(id.clone()).or_default().inner = Some(Arc::clone(&inner));
+        Arc::new(Composite {
+            inner,
+            hub: Arc::downgrade(self),
+        })
+    }
+
+    pub(crate) fn register_instance(self: &Arc<Self>, instance: &Arc<WasmInstance>) {
+        let _ = instance.hub.set(Arc::downgrade(self));
+        lock(&self.exts)
+            .entry(instance.id().clone())
+            .or_default()
+            .instance = Some(Arc::downgrade(instance));
+    }
+
+    /// Records the `init` registration (events and services the hub routes).
+    pub(crate) fn note_registration(&self, id: &ExtensionId, reg: &Registration) {
+        let mut exts = lock(&self.exts);
+        let entry = exts.entry(id.clone()).or_default();
+        entry.events.extend(reg.events.iter().copied());
+        entry.services.extend(reg.services.iter().cloned());
+    }
+
+    fn instance(&self, id: &ExtensionId) -> Option<Arc<WasmInstance>> {
+        lock(&self.exts)
+            .get(id)
+            .and_then(|e| e.instance.as_ref())
+            .and_then(Weak::upgrade)
+    }
+
+    fn inner(&self, id: &ExtensionId) -> Option<Arc<dyn HostServices>> {
+        lock(&self.exts).get(id).and_then(|e| e.inner.clone())
+    }
+
+    /// Delivers a host-produced event to `id` when it subscribed to `kind`.
+    pub fn deliver(&self, id: &ExtensionId, session_id: &str, kind: EventKind, payload: RawJson) {
+        let subscribed = lock(&self.exts)
+            .get(id)
+            .is_some_and(|e| e.events.contains(&kind));
+        if !subscribed {
+            return;
+        }
+        let Some(instance) = self.instance(id) else {
+            return;
+        };
+        let mut cx = lock(&instance.shared.last_cx)
+            .clone()
+            .with_kind(CallKind::Event);
+        if !session_id.is_empty() {
+            session_id.clone_into(&mut cx.session_id);
+        }
+        tokio::spawn(async move {
+            if let Err(e) = instance.on_event(kind, payload, cx).await {
+                tracing::warn!(extension = %e.extension, call = %e.call, "{}", e.message);
+            }
+        });
+    }
+
+    fn publish(
+        &self,
+        publisher: &ExtensionId,
+        session_id: &str,
+        topic: &str,
+        data: &RawJson,
+        sticky: bool,
+    ) {
+        if sticky {
+            lock(&self.sticky).insert(topic.to_owned(), data.clone());
+        }
+        let targets: Vec<ExtensionId> = lock(&self.exts)
+            .iter()
+            .filter(|(id, e)| *id != publisher && e.bus.iter().any(|p| topic_matches(p, topic)))
+            .map(|(id, _)| id.clone())
+            .collect();
+        let payload = RawJson::from(json!({
+            "type": "oino_bus", "topic": topic, "data": data.to_value(), "sticky": sticky, "publisher": publisher.as_str(),
+        }));
+        for id in targets {
+            lock(&self.exts)
+                .entry(id.clone())
+                .or_default()
+                .events
+                .insert(EventKind::OinoBus);
+            self.deliver(&id, session_id, EventKind::OinoBus, payload.clone());
+        }
+    }
+
+    async fn call_service(
+        &self,
+        caller: &ExtensionId,
+        cx: &CallContext,
+        target: Option<&ExtensionId>,
+        name: &str,
+        payload: RawJson,
+        timeout: Duration,
+    ) -> Result<RawJson, HostError> {
+        let target = match target {
+            Some(t) => t.clone(),
+            None => lock(&self.exts)
+                .iter()
+                .find(|(_, e)| e.services.contains(name))
+                .map(|(id, _)| id.clone())
+                .ok_or_else(|| HostError::NotFound(format!("service {name}")))?,
+        };
+        let registered = lock(&self.exts)
+            .get(&target)
+            .is_some_and(|e| e.services.contains(name));
+        if !registered {
+            return Err(HostError::NotFound(format!("service {target}/{name}")));
+        }
+        let instance = self
+            .instance(&target)
+            .ok_or_else(|| HostError::NotFound(format!("extension {target}")))?;
+        let call = instance.handle_service(name, payload, caller, cx.with_kind(CallKind::Service));
+        match tokio::time::timeout(timeout, call).await {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(HostError::Failed(e.message)),
+            Err(_) => Err(HostError::Timeout),
+        }
+    }
+
+    fn tasks_op(
+        self: &Arc<Self>,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: TaskOp,
+    ) -> Result<RawJson, HostError> {
+        let to_json = |v: serde_json::Value| RawJson::from(v);
+        match op {
+            TaskOp::Start(spec) => {
+                let spec: TaskSpec = spec
+                    .decode()
+                    .map_err(|e| HostError::InvalidArgument(format!("TaskSpec: {e}")))?;
+                let hub = Arc::downgrade(self);
+                let id = self.tasks.start(
+                    ext,
+                    &cx.session_id,
+                    &cx.cwd,
+                    spec,
+                    Arc::new(move |info| {
+                        if let Some(hub) = hub.upgrade() {
+                            hub.task_finished(info);
+                        }
+                    }),
+                )?;
+                Ok(to_json(json!(id)))
+            }
+            TaskOp::AdoptBash { .. } => Err(HostError::unsupported(
+                "tasks.adopt-bash (needs core bash detach)",
+            )),
+            TaskOp::List => Ok(to_json(
+                serde_json::to_value(self.tasks.list(&cx.session_id)).unwrap_or_default(),
+            )),
+            TaskOp::Get(id) => Ok(to_json(
+                self.tasks
+                    .get(&id)
+                    .map(|t| serde_json::to_value(t).unwrap_or_default())
+                    .unwrap_or_default(),
+            )),
+            TaskOp::Logs {
+                id,
+                max_bytes,
+                tail,
+            } => self
+                .tasks
+                .logs(&id, max_bytes, tail)
+                .map(|s| to_json(json!(s))),
+            TaskOp::Kill(id) => self.tasks.kill(&id).map(|()| RawJson::null()),
+            TaskOp::ClearFinished => {
+                self.tasks.clear_finished(&cx.session_id);
+                Ok(RawJson::null())
+            }
+        }
+    }
+
+    fn task_finished(self: Arc<Self>, info: TaskInfo) {
+        let Ok(owner) = ExtensionId::new(info.owner.clone()) else {
+            return;
+        };
+        let state = serde_json::to_value(info.state).unwrap_or_default();
+        let payload = RawJson::from(
+            json!({"type": "oino_task", "id": info.id, "state": state, "exitCode": info.exit_code}),
+        );
+        self.deliver(&owner, &info.session_id, EventKind::OinoTask, payload);
+        if !info.spec.notify_on_completion {
+            return;
+        }
+        let hub = Arc::clone(&self);
+        tokio::spawn(async move {
+            let Some(instance) = hub.instance(&owner) else {
+                return;
+            };
+            let mut cx = lock(&instance.shared.last_cx)
+                .clone()
+                .with_kind(CallKind::Service);
+            cx.session_id.clone_from(&info.session_id);
+            let info_json = RawJson::from(serde_json::to_value(&info).unwrap_or_default());
+            let has_renderer = lock(&hub.exts)
+                .get(&owner)
+                .is_some_and(|e| e.services.contains("tasks.notification"));
+            let rendered = if has_renderer {
+                instance
+                    .handle_service("tasks.notification", info_json, &owner, cx.clone())
+                    .await
+                    .ok()
+                    .and_then(|v| v.to_value().as_str().map(ToOwned::to_owned))
+            } else {
+                None
+            };
+            let text = rendered.unwrap_or_else(|| {
+                format!(
+                    "Background task {} finished with exit code {}",
+                    info.spec.name,
+                    info.exit_code
+                        .map_or_else(|| "none".to_owned(), |c| c.to_string())
+                )
+            });
+            let message = RawJson::from(
+                json!({"customType": TASK_NOTIFICATION_TYPE, "content": text, "display": true, "details": {"taskId": info.id}}),
+            );
+            let options = SendOptions {
+                trigger_turn: info.spec.trigger_on_completion,
+                deliver_as: None,
+                provenance: None,
+            };
+            if let Some(inner) = hub.inner(&owner) {
+                let _ = inner
+                    .session_write(&owner, &cx, SessionWrite::SendMessage { message, options })
+                    .await;
+            }
+        });
+    }
+}
+
+/// Per-extension host: local services first, everything else to `inner`.
+struct Composite {
+    inner: Arc<dyn HostServices>,
+    hub: Weak<LocalServices>,
+}
+
+impl Composite {
+    fn hub(&self) -> Option<Arc<LocalServices>> {
+        self.hub.upgrade()
+    }
+}
+
+impl HostServices for Composite {
+    fn subscribe(&self, ext: &ExtensionId, events: &[EventKind]) {
+        if let Some(hub) = self.hub() {
+            lock(&hub.exts)
+                .entry(ext.clone())
+                .or_default()
+                .events
+                .extend(events.iter().copied());
+        }
+        self.inner.subscribe(ext, events);
+    }
+    fn unsubscribe(&self, ext: &ExtensionId, events: &[EventKind]) {
+        if let Some(hub) = self.hub()
+            && let Some(e) = lock(&hub.exts).get_mut(ext)
+        {
+            for k in events {
+                e.events.remove(k);
+            }
+        }
+        self.inner.unsubscribe(ext, events);
+    }
+    fn register_tool(&self, ext: &ExtensionId, spec: ToolSpec) -> Result<(), HostError> {
+        self.inner.register_tool(ext, spec)
+    }
+    fn unregister_tool(&self, ext: &ExtensionId, name: &str) {
+        self.inner.unregister_tool(ext, name);
+    }
+    fn register_command(&self, ext: &ExtensionId, spec: CommandSpec) -> Result<String, HostError> {
+        self.inner.register_command(ext, spec)
+    }
+    fn unregister_command(&self, ext: &ExtensionId, name: &str) {
+        self.inner.unregister_command(ext, name);
+    }
+    fn register_shortcut(&self, ext: &ExtensionId, spec: ShortcutSpec) -> Result<(), HostError> {
+        self.inner.register_shortcut(ext, spec)
+    }
+    fn unregister_shortcut(&self, ext: &ExtensionId, id: &str) {
+        self.inner.unregister_shortcut(ext, id);
+    }
+    fn register_flag(&self, ext: &ExtensionId, spec: FlagSpec) -> Result<(), HostError> {
+        self.inner.register_flag(ext, spec)
+    }
+    fn get_flag(&self, ext: &ExtensionId, name: &str) -> Option<RawJson> {
+        self.inner.get_flag(ext, name)
+    }
+    fn register_renderer(&self, ext: &ExtensionId, spec: RendererSpec) {
+        self.inner.register_renderer(ext, spec);
+    }
+    fn register_service(&self, ext: &ExtensionId, name: &str) -> Result<(), HostError> {
+        if let Some(hub) = self.hub() {
+            lock(&hub.exts)
+                .entry(ext.clone())
+                .or_default()
+                .services
+                .insert(name.to_owned());
+        }
+        match self.inner.register_service(ext, name) {
+            Err(HostError::Failed(m)) if m.ends_with("not supported by this host") => Ok(()),
+            other => other,
+        }
+    }
+    fn set_arbiter_roles(&self, ext: &ExtensionId, roles: ArbiterRoles) {
+        self.inner.set_arbiter_roles(ext, roles);
+    }
+    fn register_settings(&self, ext: &ExtensionId, ns: RawJson) -> Result<(), HostError> {
+        self.inner.register_settings(ext, ns)
+    }
+    fn register_provider(&self, ext: &ExtensionId, cfg: RawJson) -> Result<(), HostError> {
+        self.inner.register_provider(ext, cfg)
+    }
+    fn unregister_provider(&self, ext: &ExtensionId, id: &str) {
+        self.inner.unregister_provider(ext, id);
+    }
+    fn register_virtual_model(&self, ext: &ExtensionId, def: RawJson) -> Result<(), HostError> {
+        self.inner.register_virtual_model(ext, def)
+    }
+    fn unregister_virtual_model(&self, ext: &ExtensionId, provider: &str, id: &str) {
+        self.inner.unregister_virtual_model(ext, provider, id);
+    }
+    fn session_read(&self, cx: &CallContext, q: SessionQuery) -> Result<RawJson, HostError> {
+        self.inner.session_read(cx, q)
+    }
+    fn session_write(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        w: SessionWrite,
+    ) -> BoxFut<'_, Result<Option<String>, HostError>> {
+        self.inner.session_write(ext, cx, w)
+    }
+    fn sessions_index(
+        &self,
+        ext: &ExtensionId,
+        q: SessionsIndexQuery,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        self.inner.sessions_index(ext, q)
+    }
+    fn control(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: ControlOp,
+    ) -> BoxFut<'_, Result<ControlReply, HostError>> {
+        self.inner.control(ext, cx, op)
+    }
+    fn tool_progress(&self, cx: &CallContext, tool_call_id: &str, partial: RawJson) {
+        self.inner.tool_progress(cx, tool_call_id, partial);
+    }
+    fn models(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: ModelsOp,
+    ) -> BoxFut<'_, Result<ModelsReply, HostError>> {
+        self.inner.models(ext, cx, op)
+    }
+    fn ui_dialog(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        req: RawJson,
+        cancel: Option<CancellationToken>,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        self.inner.ui_dialog(ext, cx, req, cancel)
+    }
+    fn ui_fire(&self, ext: &ExtensionId, cx: &CallContext, req: RawJson) -> Result<(), HostError> {
+        self.inner.ui_fire(ext, cx, req)
+    }
+    fn ui_panel(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: PanelOp,
+    ) -> Result<Option<String>, HostError> {
+        self.inner.ui_panel(ext, cx, op)
+    }
+    fn ui_editor(&self, cx: &CallContext, op: EditorOp) -> Result<Option<String>, HostError> {
+        self.inner.ui_editor(cx, op)
+    }
+    fn ui_device(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: DeviceOp,
+    ) -> BoxFut<'_, Result<Option<RawJson>, HostError>> {
+        self.inner.ui_device(ext, cx, op)
+    }
+    fn agent_spawn(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        spec: RawJson,
+    ) -> BoxFut<'_, Result<Arc<dyn AgentHandle>, HostError>> {
+        self.inner.agent_spawn(ext, cx, spec)
+    }
+    fn agents_list(&self, cx: &CallContext) -> RawJson {
+        self.inner.agents_list(cx)
+    }
+    fn tasks(&self, ext: &ExtensionId, cx: &CallContext, op: TaskOp) -> Result<RawJson, HostError> {
+        match (&op, self.hub()) {
+            (
+                TaskOp::AdoptBash {
+                    tool_call_id,
+                    reason,
+                },
+                _,
+            ) => {
+                let _ = (tool_call_id, reason);
+                self.inner.tasks(ext, cx, op)
+            }
+            (_, Some(hub)) => hub.tasks_op(ext, cx, op),
+            (_, None) => self.inner.tasks(ext, cx, op),
+        }
+    }
+    fn bus_publish(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        topic: &str,
+        data: RawJson,
+        sticky: bool,
+    ) {
+        match self.hub() {
+            Some(hub) => hub.publish(ext, &cx.session_id, topic, &data, sticky),
+            None => self.inner.bus_publish(ext, cx, topic, data, sticky),
+        }
+    }
+    fn bus_subscribe(&self, ext: &ExtensionId, cx: &CallContext, pattern: &str, on: bool) {
+        match self.hub() {
+            Some(hub) => {
+                let mut exts = lock(&hub.exts);
+                let entry = exts.entry(ext.clone()).or_default();
+                if on {
+                    entry.bus.insert(pattern.to_owned());
+                } else {
+                    entry.bus.remove(pattern);
+                }
+            }
+            None => self.inner.bus_subscribe(ext, cx, pattern, on),
+        }
+    }
+    fn bus_get(&self, cx: &CallContext, topic: &str) -> Option<RawJson> {
+        match self.hub() {
+            Some(hub) => lock(&hub.sticky).get(topic).cloned(),
+            None => self.inner.bus_get(cx, topic),
+        }
+    }
+    fn service_call(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        target: Option<&ExtensionId>,
+        name: &str,
+        payload: RawJson,
+        timeout: Duration,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        let (ext, cx, target, name) = (ext.clone(), cx.clone(), target.cloned(), name.to_owned());
+        Box::pin(async move {
+            match self.hub() {
+                Some(hub) => {
+                    hub.call_service(&ext, &cx, target.as_ref(), &name, payload, timeout)
+                        .await
+                }
+                None => {
+                    self.inner
+                        .service_call(&ext, &cx, target.as_ref(), &name, payload, timeout)
+                        .await
+                }
+            }
+        })
+    }
+    fn services_list(&self) -> Vec<(ExtensionId, String)> {
+        match self.hub() {
+            Some(hub) => {
+                let mut out: Vec<(ExtensionId, String)> = lock(&hub.exts)
+                    .iter()
+                    .flat_map(|(id, e)| e.services.iter().map(move |s| (id.clone(), s.clone())))
+                    .collect();
+                out.sort();
+                out
+            }
+            None => self.inner.services_list(),
+        }
+    }
+    fn secret(&self, ext: &ExtensionId, op: SecretOp) -> Result<Option<String>, HostError> {
+        match self.hub() {
+            Some(hub) => hub.secrets.apply(ext, op),
+            None => self.inner.secret(ext, op),
+        }
+    }
+    fn provider_hook(
+        &self,
+        ext: &ExtensionId,
+        hook: ProviderHook,
+    ) -> BoxFut<'_, ProviderHookReply> {
+        self.inner.provider_hook(ext, hook)
+    }
+    fn host_context(&self, cx: &CallContext) -> HostContextInfo {
+        self.inner.host_context(cx)
+    }
+    fn deliver_event(
+        &self,
+        ext: &ExtensionId,
+        session_id: &str,
+        kind: EventKind,
+        payload: RawJson,
+    ) {
+        match self.hub() {
+            Some(hub) => hub.deliver(ext, session_id, kind, payload),
+            None => self.inner.deliver_event(ext, session_id, kind, payload),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::topic_matches;
+
+    #[test]
+    fn topics() {
+        assert!(topic_matches("a:b", "a:b"));
+        assert!(topic_matches("a:*", "a:b"));
+        assert!(topic_matches("*", "x"));
+        assert!(!topic_matches("a:*", "b:a"));
+        assert!(!topic_matches("a", "ab"));
+    }
+}

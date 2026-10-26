@@ -1,0 +1,25 @@
+[package]
+name = "oino-extension"
+version = "1.0.0-alpha.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Guest SDK for Oino WASM component extensions (oino:extension@1.0.0)"
+
+[features]
+## Build against world `provider-extension` (exports `provider`, imports `provider-host`).
+provider = []
+
+[dependencies]
+futures.workspace = true
+oino-ai.workspace = true
+oino-extension-macros.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+wit-bindgen.workspace = true
+
+[lints]
+workspace = true

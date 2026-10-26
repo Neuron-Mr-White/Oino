@@ -1,8 +1,43 @@
 [workspace]
-members = ["crates/*"]
-resolver = "2"
+members = ["*/*"]
+exclude = ["additional", "built-in", "dist", "target"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Neuron-Mr-White/Oino"
+
+[workspace.dependencies]
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+oino-ai = { path = "../crates/oino-ai" }
+oino-extension = { path = "sdk/oino-extension" }
+oino-extension-macros = { path = "sdk/oino-extension-macros" }
+proc-macro2 = "1"
+quote = "1"
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+syn = { version = "2", features = ["full"] }
+thiserror = "2"
+wit-bindgen = { version = "=0.62.0", features = ["async", "async-spawn", "futures-stream"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+dbg_macro = "deny"
 
 [profile.release]
 opt-level = "s"
 lto = true
 strip = true
+codegen-units = 1

@@ -1,0 +1,22 @@
+package oino:extension@1.0.0;
+
+world extension {
+    import wasi:cli/environment@0.2.12;
+    import wasi:cli/stdout@0.2.12;
+    import wasi:cli/stderr@0.2.12;
+    import wasi:clocks/monotonic-clock@0.2.12;
+    import wasi:clocks/wall-clock@0.2.12;
+    import wasi:random/random@0.2.12;
+    import wasi:filesystem/types@0.2.12;
+    import wasi:filesystem/preopens@0.2.12;
+    import log; import host-info; import registry; import session; import control;
+    import models; import ui; import agents; import process; import tasks; import http;
+    import fs; import timers; import kv; import secrets; import bus; import services;
+    export guest;
+}
+
+world provider-extension {
+    include extension;
+    import provider-host;
+    export provider;
+}

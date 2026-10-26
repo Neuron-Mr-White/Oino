@@ -1,0 +1,10 @@
+package oino:extension@1.0.0;
+
+interface kv {
+    use types.{host-error};
+    enum scope { global, workspace, session }
+    get: func(scope: scope, key: string) -> option<list<u8>>;
+    set: func(scope: scope, key: string, value: list<u8>) -> result<_, host-error>;
+    delete: func(scope: scope, key: string);
+    keys: func(scope: scope, prefix: string) -> list<string>;
+}

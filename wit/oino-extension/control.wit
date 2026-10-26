@@ -1,0 +1,54 @@
+package oino:extension@1.0.0;
+
+interface control {
+    use types.{json, host-error, cancel-token};
+
+    // Model / thinking (pi setModel, get/setThinkingLevel; permission sessionControl for setters)
+    model: func() -> option<json>;                            // Model
+    routed-model: func() -> option<json>;
+    set-model: func(provider: string, id: string) -> result<bool, host-error>;  // false when no credentials
+    thinking-level: func() -> string;
+    set-thinking-level: func(level: string) -> result<string, host-error>;     // returns clamped
+    models-list: func() -> json;                              // Vec<Model> available (with credentials)
+    scoped-models: func() -> json;
+
+    // Run state
+    run-state: func() -> json;                                // oino_protocol::events::RunState
+    is-idle: func() -> bool;
+    has-pending-messages: func() -> bool;
+    context-usage: func() -> json;                            // ContextUsage
+    session-stats: func() -> json;                            // SessionStats
+    system-prompt: func() -> string;
+    is-project-trusted: func() -> bool;
+    get-settings: func() -> json;                             // pi getSettings(): merged settings copy
+
+    // Actions
+    abort: func();
+    compact: async func(custom-instructions: option<string>) -> result<json, host-error>;  // CompactionResult
+    shutdown: func();
+
+    // Command-context-only (else command-context-required)
+    system-prompt-options: func() -> result<json, host-error>;
+    wait-for-idle: async func() -> result<_, host-error>;
+    new-session: async func(parent-session: option<string>) -> result<bool, host-error>;   // cancelled?
+    fork: async func(entry-id: string, at: bool) -> result<json, host-error>;              // {cancelled, selectedText?}
+    switch-session: async func(path: string) -> result<bool, host-error>;
+    navigate-tree: async func(target-id: string, options: json) -> result<json, host-error>; // NavigateTreeOptions → NavigateTreeResult
+    reload: async func() -> result<_, host-error>;
+
+    // Tools and commands
+    active-tools: func() -> list<string>;
+    set-active-tools: func(names: list<string>) -> result<_, host-error>;
+    all-tools: func() -> json;                                // Vec<ToolInfo>
+    commands-list: func() -> json;                            // Vec<SlashCommandInfo>
+    /// Run any command (cross-extension) with a command context. Replaces unipi command runners.
+    command-invoke: async func(name: string, args: string) -> result<option<json>, host-error>;
+    /// pi ctx.executeTool (tool-call context only). Returns AgentToolCallOutcome JSON.
+    execute-tool: async func(name: string, args: json, cancel: option<borrow<cancel-token>>) -> result<json, host-error>;
+    /// Report tool progress for the current tool call (pi onUpdate). partial = AgentToolResult JSON.
+    tool-progress: func(tool-call-id: string, partial: json);
+    /// Detach a running built-in bash call into a background task (permission process.spawn).
+    bash-detach: func(tool-call-id: string, reason: string) -> result<string, host-error>;  // task id
+    /// Recent foreground bash calls still running: [{toolCallId, command, startedAt, pid}]
+    running-bash: func() -> json;
+}

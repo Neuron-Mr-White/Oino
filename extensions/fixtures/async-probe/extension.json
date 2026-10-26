@@ -1,0 +1,10 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.fixture.async-probe",
+  "name": "Async probe fixture",
+  "version": "1.0.0",
+  "description": "Long tools waiting on dialogs while events run, timers, cancellation, services between instances, traps.",
+  "license": "MIT",
+  "limits": { "hookTimeoutMs": 200 },
+  "permissions": { "services": { "call": ["*"] }, "process": { "spawn": true, "allow": ["sh"] } }
+}

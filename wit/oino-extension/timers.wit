@@ -1,0 +1,9 @@
+package oino:extension@1.0.0;
+
+interface timers {
+    /// Fires `oino_timer{timerId}` events into on-event. Same id replaces.
+    set: func(id: string, delay-ms: u64, repeat: bool);
+    cancel: func(id: string);
+    sleep: async func(ms: u64);
+    now-ms: func() -> s64;                                     // wall clock, epoch ms
+}

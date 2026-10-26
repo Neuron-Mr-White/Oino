@@ -1,0 +1,14 @@
+package oino:extension@1.0.0;
+
+interface provider {
+    use types.{json};
+    /// request = oino_protocol::ext::ProviderStreamRequest {requestId, model, context, options, apiKey?, headers, wantStreamEvents}
+    /// Each stream item = ProviderEvent JSON (AssistantMessageEvent without `partial`).
+    /// The stream must end with `done` or `error`; dropping the reader cancels.
+    %stream: async func(request: json) -> result<stream<string>, string>;
+    /// Vec<Model> for a provider id this component registered.
+    list-models: async func(provider-id: string, credential: option<json>) -> result<json, string>;
+    /// OAuth (pi provider oauth): uses ui + http imports; returns stored credential JSON.
+    oauth-login: async func(provider-id: string) -> result<json, string>;
+    oauth-refresh: async func(provider-id: string, credential: json) -> result<json, string>;
+}
