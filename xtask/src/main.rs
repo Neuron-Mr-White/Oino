@@ -5,6 +5,7 @@
 //! | `wasm [--debug] [-p <crate>…]` | builds every component under `extensions/{providers,unipi,fixtures}` for `wasm32-wasip2` and writes `extensions/dist/<id>/{extension.json, component.wasm, resources}` + `extensions/dist/checksums.json` |
 //! | `checksums` | verifies `extensions/dist` against `checksums.json` |
 //! | `wit` | validates `wit/oino-extension` with `wasm-tools component wit` |
+//! | `remote-build <host\|local> [opts] [-- build-host args]` | release build over SSH (or locally) via `scripts/release/build-host.sh`; artifacts in `target/release-artifacts/<target>/` (see `remote.rs`) |
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -14,6 +15,8 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+
+mod remote;
 
 const GROUPS: &[&str] = &["providers", "unipi", "fixtures"];
 
@@ -235,6 +238,9 @@ fn main() -> Result<()> {
         Some("wasm") => wasm(&args[1..]),
         Some("checksums") => checksums(),
         Some("wit") => wit(),
-        _ => bail!("usage: cargo xtask <wasm [--debug] [-p crate]… | checksums | wit>"),
+        Some("remote-build") => remote::remote_build(&args[1..]),
+        _ => bail!(
+            "usage: cargo xtask <wasm [--debug] [-p crate]… | checksums | wit | remote-build <host|local> …>"
+        ),
     }
 }
