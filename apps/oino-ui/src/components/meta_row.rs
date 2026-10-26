@@ -155,7 +155,8 @@ impl SessionPane {
             reason = "width estimate"
         )]
         let width = ((f32::from(self.width) - space::S8) / CHAR_PX).max(10.0) as usize;
-        let kept: Vec<&Segment> = fit_segments(&all, width, 3);
+        // Touch keeps the top-2 priority segments (design.md §6.2).
+        let kept: Vec<&Segment> = fit_segments(&all, width, if t.touch() { 2 } else { 3 });
         let dropped: Vec<Segment> = all
             .iter()
             .filter(|s| !kept.iter().any(|k| std::ptr::eq(*k, *s)))

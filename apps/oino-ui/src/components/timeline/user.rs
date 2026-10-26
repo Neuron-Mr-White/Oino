@@ -58,7 +58,10 @@ impl SessionPane {
             })
             .child(
                 div()
-                    .max_w(px(size::BUBBLE))
+                    .when(!t.touch(), |el| el.max_w(px(size::BUBBLE)))
+                    .when(t.touch(), |el| {
+                        el.max_w(gpui_kit::relative(crate::design::tokens::touch::BUBBLE))
+                    })
                     .py(px(space::S3))
                     .px(px(space::S4))
                     .bg(t.surface())

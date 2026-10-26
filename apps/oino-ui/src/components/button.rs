@@ -49,6 +49,8 @@ pub enum BtnSize {
     Default,
     /// 32.
     Lg,
+    /// 44 (touch targets, design.md §6).
+    Touch,
 }
 
 impl BtnSize {
@@ -58,6 +60,7 @@ impl BtnSize {
             Self::Sm => size::CONTROL_SM,
             Self::Default => size::CONTROL,
             Self::Lg => size::CONTROL_LG,
+            Self::Touch => crate::design::tokens::touch::TARGET,
         }
     }
 
@@ -67,6 +70,7 @@ impl BtnSize {
             Self::Sm => space::S2,
             Self::Default => 10.0,
             Self::Lg => space::S3,
+            Self::Touch => space::S4,
         }
     }
 }
@@ -247,6 +251,8 @@ impl RenderOnce for Btn {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let t = OinoTheme::get(cx);
         let h = self.size.height();
+        // No keyboard hints on touch (design.md §6.3: number keys are not shown).
+        let kbd = if t.touch() { None } else { self.kbd };
         let (bg, fg, border, hover) = match self.variant {
             Variant::Primary => (
                 Some(t.primary()),
@@ -326,7 +332,7 @@ impl RenderOnce for Btn {
             .when_some(border, |el, b| el.border_1().border_color(b))
             .children(lead)
             .when(self.kbd_first, |el| {
-                el.children(self.kbd.clone().map(|k| super::badge::kbd(&t, k)))
+                el.children(kbd.clone().map(|k| super::badge::kbd(&t, k)))
             })
             .when_some(self.label, |el, l| {
                 el.child(
@@ -337,7 +343,7 @@ impl RenderOnce for Btn {
                 )
             })
             .when(!self.kbd_first, |el| {
-                el.children(self.kbd.map(|k| super::badge::kbd(&t, k)))
+                el.children(kbd.map(|k| super::badge::kbd(&t, k)))
             })
             .when_some(self.trailing, |el, i| {
                 el.child(icon(i, size::ICON_SM, t.fg_subtle()))

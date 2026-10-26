@@ -128,7 +128,7 @@ impl SessionPane {
             .flex()
             .items_center()
             .gap(px(space::S2))
-            .h(px(size::TOOL_ROW))
+            .h(t.tool_row())
             .min_w_0()
             .cursor_pointer()
             .text_role(t, TextRole::Base)
@@ -394,7 +394,7 @@ impl SessionPane {
                     .flex()
                     .items_center()
                     .gap(px(space::S2))
-                    .h(px(size::TOOL_ROW))
+                    .h(t.tool_row())
                     .child(icon(IconName::SquareTerminal, size::ICON_MD, t.fg_subtle()))
                     .child(
                         div()

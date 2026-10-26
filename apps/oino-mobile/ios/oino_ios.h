@@ -14,6 +14,8 @@ extern "C" {
 #endif
 
 void oino_ios_register_app(void);
+bool oino_ios_open_browser(const char *url, bool dark);
+void oino_ios_set_badge(long count);
 
 void gpui_ios_run_demo(void);
 void *gpui_ios_get_window(void);

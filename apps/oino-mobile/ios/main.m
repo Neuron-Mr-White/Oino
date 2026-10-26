@@ -5,6 +5,8 @@
 // reports no pending frame and the frame waker resumes it, so an idle app costs no CPU.
 
 #import <UIKit/UIKit.h>
+#import <SafariServices/SafariServices.h>
+#import <UserNotifications/UserNotifications.h>
 
 #import "oino_ios.h"
 
@@ -87,6 +89,55 @@ static void OinoResumeFrames(void *context) {
 }
 
 @end
+
+// In-app browser (design.md A1.4): SFSafariViewController over the GPUI window.
+bool oino_ios_open_browser(const char *url, bool dark) {
+    if (!url) {
+        return false;
+    }
+    NSURL *nsurl = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
+    if (!nsurl || !([nsurl.scheme isEqualToString:@"https"] || [nsurl.scheme isEqualToString:@"http"])) {
+        return false;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // GPUI owns the key window (not the delegate's).
+        UIWindow *key = nil;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class]) {
+                continue;
+            }
+            for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                if (w.isKeyWindow || !key) {
+                    key = w;
+                }
+            }
+        }
+        UIViewController *root = key.rootViewController;
+        while (root.presentedViewController) {
+            root = root.presentedViewController;
+        }
+        if (!root) {
+            [UIApplication.sharedApplication openURL:nsurl options:@{} completionHandler:nil];
+            return;
+        }
+        SFSafariViewController *safari = [[SFSafariViewController alloc] initWithURL:nsurl];
+        safari.overrideUserInterfaceStyle = dark ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
+        safari.preferredControlTintColor = [UIColor colorWithRed:0xF0 / 255.0 green:0x30 / 255.0 blue:0x18 / 255.0 alpha:1];
+        [root presentViewController:safari animated:YES completion:nil];
+    });
+    return true;
+}
+
+// App icon badge = sessions that need you (design.md §6.11).
+void oino_ios_set_badge(long count) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (@available(iOS 16.0, *)) {
+            [[UNUserNotificationCenter currentNotificationCenter] setBadgeCount:count withCompletionHandler:nil];
+        } else {
+            UIApplication.sharedApplication.applicationIconBadgeNumber = count;
+        }
+    });
+}
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {

@@ -42,7 +42,7 @@ oino-view = { path = "../crates/oino-view" }
 
 # Mobile platform (gpui-app §4): vendored longbridge/gpui-mobile on gpui-pre =0.3.10, every
 # optional package off except the ones Oino Mobile uses.
-gpui-mobile = { package = "gpui-pre-mobile", path = "vendor/gpui-mobile", default-features = false, features = ["clipboard", "notifications", "file_selector", "share", "path_provider", "shared_preferences", "deeplink"] }
+gpui-mobile = { package = "gpui-pre-mobile", path = "vendor/gpui-mobile", default-features = false, features = ["clipboard", "notifications", "file_selector", "share", "path_provider", "shared_preferences", "deeplink", "vibration"] }
 android-activity = { version = "0.6", features = ["native-activity"] }
 android_logger = "0.15"
 log = "0.4"

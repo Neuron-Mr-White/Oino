@@ -55,7 +55,7 @@ pub extern "C" fn oino_ios_register_app() {
         }
     };
     gpui_mobile::ios::ffi::set_app_configure(Box::new(|application: Application| {
-        application.with_assets(gpui_kit::assets::Assets)
+        application.with_assets(oino_ui::design::icons::OinoAssets)
     }));
     gpui_mobile::ios::ffi::set_app_callback(Box::new(move |cx: &mut App| boot.launch(cx)));
 }

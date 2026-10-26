@@ -147,7 +147,10 @@ impl SessionPane {
             }
             "escape" | "i" => {
                 self.move_cursor(None, cx);
-                Self::focus(&cx.entity(), window, cx);
+                // `self` is being updated: focus the composer directly (reading the pane
+                // entity here would double-lease it).
+                let composer = self.composer.clone();
+                composer.update(cx, |s, cx| s.focus(window, cx));
                 cx.stop_propagation();
                 return;
             }

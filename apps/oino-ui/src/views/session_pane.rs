@@ -321,6 +321,10 @@ pub struct SessionPane {
     /// The composer shows the steering placeholder.
     steering: bool,
     /// `local_previews` keyed by (row count, last row version).
+    #[cfg_attr(
+        not(feature = "browser"),
+        allow(dead_code, reason = "read by the browser preview chip only")
+    )]
     previews: std::cell::RefCell<((usize, u64), Vec<String>)>,
     pub(crate) timeline_kb: bool,
     /// Side pane focus, scroll and the Review file cursor.

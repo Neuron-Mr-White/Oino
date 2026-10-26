@@ -1593,7 +1593,12 @@ impl PlatformWindow for AndroidPlatformWindow {
     fn text_input_state_changed(&self, change: gpui::TextInputStateChange) {
         match change {
             gpui::TextInputStateChange::FocusGained => {
-                super::jni::show_keyboard_android(crate::KeyboardType::Default);
+                // Oino patch: only a tap raises the keyboard (like a native EditText);
+                // programmatic focus (a run settling, a card closing) leaves it down. Apps
+                // can still call `show_keyboard()` explicitly.
+                if recently_tapped() {
+                    super::jni::show_keyboard_android(crate::KeyboardType::Default);
+                }
             }
             gpui::TextInputStateChange::FocusLost => super::jni::hide_keyboard_android(),
             _ => {}
@@ -1728,6 +1733,7 @@ impl PlatformWindow for AndroidPlatformWindow {
                             }
                         }
                         gpui::TouchPhase::Ended => {
+                            mark_tap();
                             // The user hid the keyboard with back while the field kept
                             // focus (see `jni::keyboard_hidden_by_user`): tapping that
                             // field again must bring the keyboard back, as on a native
@@ -2517,4 +2523,23 @@ mod tests {
         assert_ne!(ids[0], ids[3]);
         assert_ne!(ids[1], ids[3]);
     }
+}
+
+/// Milliseconds since `TAP_EPOCH` of the last touch release (Oino patch, see
+/// `text_input_state_changed`).
+static LAST_TAP_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static TAP_EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+fn tap_clock_ms() -> u64 {
+    let epoch = TAP_EPOCH.get_or_init(std::time::Instant::now);
+    u64::try_from(epoch.elapsed().as_millis()).unwrap_or(u64::MAX).max(1)
+}
+
+fn mark_tap() {
+    LAST_TAP_MS.store(tap_clock_ms(), std::sync::atomic::Ordering::Release);
+}
+
+fn recently_tapped() -> bool {
+    let at = LAST_TAP_MS.load(std::sync::atomic::Ordering::Acquire);
+    at != 0 && tap_clock_ms().saturating_sub(at) < 1000
 }

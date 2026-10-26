@@ -3,8 +3,8 @@
 #
 #   apps/oino-mobile/scripts/build.sh android [--release] [--no-wasm] [--no-run] [--demo]
 #                                             [--serial <adb serial>]
-#   apps/oino-mobile/scripts/build.sh ios     [--release] [--no-wasm] [--no-run]
-#                                             [--device | --simulator]
+#   apps/oino-mobile/scripts/build.sh ios     [--release] [--no-wasm] [--no-run] [--demo]
+#                                             [--device | --simulator] [--screenshot <png>]
 #
 # android (Linux or macOS host + USB device):
 #   1. `cargo xtask wasm` (bundle input; skip with --no-wasm when extensions/dist is current)
@@ -18,11 +18,15 @@
 #
 # ios (macOS host only — run remotely with scripts/ios-remote.sh):
 #   1. `cargo xtask wasm` (as above)
-#   2. cargo build --lib -p oino-mobile --target aarch64-apple-ios[-sim]
-#   3. xcodegen + xcodebuild (ios/project.yml) → OinoMobile .app
-#   4. unless --no-run: install + launch with devicectl (device) or simctl (simulator)
+#   2. cargo rustc --crate-type staticlib -p oino-mobile --target aarch64-apple-ios (device) or the simulator
+#      target of the host CPU (aarch64-apple-ios-sim on Apple silicon, x86_64-apple-ios on
+#      Intel Macs)
+#   3. xcodegen + xcodebuild (ios/project.yml) → OinoMobile .app (simulator builds unsigned)
+#   4. unless --no-run: install + launch with devicectl (device) or simctl (simulator; --demo
+#      creates the demo-backend marker in the app container first, --screenshot saves a
+#      `simctl io screenshot` after launch)
 #   Needs: Xcode 16+, `brew install xcodegen`, `rustup target add aarch64-apple-ios
-#   aarch64-apple-ios-sim`, OINO_IOS_TEAM=<Apple team id> for device builds.
+#   aarch64-apple-ios-sim x86_64-apple-ios`, OINO_IOS_TEAM=<Apple team id> for device builds.
 #
 # Memory: set JOBS (default 2); GPUI + wasmtime are heavy to compile.
 set -euo pipefail
@@ -36,11 +40,11 @@ dist="$mobile/dist"
 log() { printf '\033[1;35m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-[[ $# -ge 1 ]] || { sed -n '2,27p' "$0"; exit 2; }
+[[ $# -ge 1 ]] || { sed -n '2,33p' "$0"; exit 2; }
 platform="$1"; shift
 case "$platform" in
   android|ios) ;;
-  -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
   *) die "unknown platform: $platform (android | ios)" ;;
 esac
 
@@ -51,6 +55,7 @@ run=1
 demo=0
 serial="${ANDROID_SERIAL:-}"
 ios_target=device
+screenshot=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --release) profile=release; cargo_profile=(--release) ;;
@@ -60,7 +65,8 @@ while [[ $# -gt 0 ]]; do
     --serial) serial="$2"; shift ;;
     --device) ios_target=device ;;
     --simulator) ios_target=simulator ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    --screenshot) screenshot="$2"; shift ;;
+    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
   shift
@@ -94,7 +100,7 @@ android() {
 
   log "building liboino_mobile.so (arm64-v8a, $profile, NDK $(basename "$ANDROID_NDK_HOME"))"
   (cd "$apps" && cargo ndk -t arm64-v8a -P 26 -o "$mobile/android/app/src/main/jniLibs" \
-    build -j "$jobs" -p oino-mobile "${cargo_profile[@]}")
+    build -j "$jobs" -p oino-mobile ${cargo_profile[@]+"${cargo_profile[@]}"})
   local so="$mobile/android/app/src/main/jniLibs/arm64-v8a/liboino_mobile.so"
   [[ -f $so ]] || die "missing $so"
   log "native library: $(du -h "$so" | cut -f1)"
@@ -122,8 +128,8 @@ android() {
     log "installing on $device"
     "$adb" -s "$device" install -r "$out"
     if [[ $demo == 1 ]]; then
-      "$adb" -s "$device" shell run-as dev.oino.mobile sh -c \
-        'mkdir -p files/oino && touch files/oino/mobile-demo' \
+      "$adb" -s "$device" shell \
+        "run-as dev.oino.mobile sh -c 'mkdir -p files/oino && touch files/oino/mobile-demo'" \
         || log "could not create the demo marker (release build?)"
     fi
     "$adb" -s "$device" shell am start -n dev.oino.mobile/dev.gpui.mobile.GpuiActivity >/dev/null
@@ -137,8 +143,12 @@ ios() {
   [[ "$(uname -s)" == Darwin ]] || die "iOS builds need a macOS host (see scripts/ios-remote.sh)"
   command -v xcodegen >/dev/null || die "xcodegen missing: brew install xcodegen"
   local target sdk
+  local sim_arch=arm64 sim_target=aarch64-apple-ios-sim
+  if [[ "$(uname -m)" == x86_64 ]]; then
+    sim_arch=x86_64; sim_target=x86_64-apple-ios
+  fi
   if [[ $ios_target == simulator ]]; then
-    target=aarch64-apple-ios-sim; sdk=iphonesimulator
+    target=$sim_target; sdk=iphonesimulator
   else
     target=aarch64-apple-ios; sdk=iphoneos
     [[ -n "${OINO_IOS_TEAM:-}" ]] || die "set OINO_IOS_TEAM to your Apple development team id"
@@ -146,19 +156,27 @@ ios() {
   rustup target add "$target" >/dev/null 2>&1 || true
 
   log "building liboino_mobile.a ($target, $profile)"
-  (cd "$apps" && cargo build -j "$jobs" --lib -p oino-mobile --target "$target" "${cargo_profile[@]}")
+  # staticlib only: the cdylib would need main.m's symbols (in-app browser, badge) at link time.
+  (cd "$apps" && cargo rustc -j "$jobs" --lib -p oino-mobile --crate-type staticlib \
+    --target "$target" ${cargo_profile[@]+"${cargo_profile[@]}"})
   [[ -f "$apps/target/$target/$profile/liboino_mobile.a" ]] || die "missing static library"
 
   local config=Debug
   [[ $profile == release ]] && config=Release
   log "xcodegen + xcodebuild ($config, $sdk)"
-  (cd "$mobile/ios" && OINO_IOS_TEAM="${OINO_IOS_TEAM:-}" xcodegen generate --spec project.yml --quiet)
+  (cd "$mobile/ios" && OINO_IOS_TEAM="${OINO_IOS_TEAM:-}" OINO_SIM_ARCH="$sim_arch" \
+    OINO_SIM_TARGET="$sim_target" xcodegen generate --spec project.yml --quiet)
   local derived="$mobile/ios/build"
   local destination="generic/platform=iOS"
-  [[ $ios_target == simulator ]] && destination="generic/platform=iOS Simulator"
-  (cd "$mobile/ios" && xcodebuild -project OinoMobile.xcodeproj -scheme OinoMobile \
-    -configuration "$config" -sdk "$sdk" -destination "$destination" \
-    -derivedDataPath "$derived" -allowProvisioningUpdates build | tail -20)
+  local signing=(-allowProvisioningUpdates)
+  if [[ $ios_target == simulator ]]; then
+    destination="generic/platform=iOS Simulator"
+    # Simulator builds are never signed (nothing is published from here).
+    signing=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=)
+  fi
+  (cd "$mobile/ios" && set -o pipefail && xcodebuild -project OinoMobile.xcodeproj \
+    -scheme OinoMobile -configuration "$config" -sdk "$sdk" -destination "$destination" \
+    -derivedDataPath "$derived" "${signing[@]}" build | tail -20)
   local app
   app="$(find "$derived/Build/Products/$config-$sdk" -maxdepth 1 -name 'Oino.app' -type d | head -1)"
   [[ -n $app ]] || die "Oino.app not found under $derived"
@@ -169,16 +187,32 @@ ios() {
   [[ $run == 1 ]] || return 0
   if [[ $ios_target == simulator ]]; then
     local sim
-    sim="$(xcrun simctl list devices booted | grep -Eo '[0-9A-F-]{36}' | head -1)"
+    sim="$(xcrun simctl list devices booted | grep -Eo '[0-9A-F-]{36}' | head -1 || true)"
     if [[ -z $sim ]]; then
-      sim="$(xcrun simctl list devices available | grep iPhone | grep -Eo '[0-9A-F-]{36}' | head -1)"
+      sim="$(xcrun simctl list devices available | grep iPhone | grep -Eo '[0-9A-F-]{36}' | head -1 || true)"
+      [[ -n $sim ]] || die "no iPhone simulator available"
       xcrun simctl boot "$sim"
+      xcrun simctl bootstatus "$sim" >/dev/null
     fi
     xcrun simctl install "$sim" "$app"
+    if [[ $demo == 1 ]]; then
+      local data
+      data="$(xcrun simctl get_app_container "$sim" dev.oino.mobile data)"
+      # OINO_DEMO_MARKER: marker lines (`scene=run\nopen=new`, see app.rs DEMO_MARKER).
+      mkdir -p "$data/Documents/oino"
+      printf '%b' "${OINO_DEMO_MARKER:-}" > "$data/Documents/oino/mobile-demo"
+    fi
+    xcrun simctl terminate "$sim" dev.oino.mobile >/dev/null 2>&1 || true
     xcrun simctl launch "$sim" dev.oino.mobile
+    if [[ -n $screenshot ]]; then
+      sleep "${OINO_SHOT_DELAY:-20}"
+      mkdir -p "$(dirname "$screenshot")"
+      xcrun simctl io "$sim" screenshot "$screenshot"
+      log "screenshot: $screenshot"
+    fi
   else
     local device
-    device="$(xcrun devicectl list devices 2>/dev/null | awk '/connected/ { print $3; exit }')"
+    device="$(xcrun devicectl list devices 2>/dev/null | awk '/connected/ { print $3; exit }' || true)"
     [[ -n $device ]] || { log "no iOS device connected; app left at $app"; return 0; }
     xcrun devicectl device install app --device "$device" "$app"
     xcrun devicectl device process launch --device "$device" dev.oino.mobile

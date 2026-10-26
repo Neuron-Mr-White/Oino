@@ -60,6 +60,9 @@ pub struct InteractionView {
     pub(crate) opened: Instant,
     pub(crate) max_height: gpui_kit::Pixels,
     pub(crate) focus: FocusHandle,
+    /// Touch: the docked card (with the dock around it) took more than half the screen, so
+    /// it moved into a bottom sheet for good (design.md §6.3).
+    pub(crate) promoted: bool,
 }
 
 impl EventEmitter<InteractionEvent> for InteractionView {}
@@ -177,6 +180,7 @@ impl InteractionView {
             opened: Instant::now(),
             max_height: px(size::DETAIL_MAX),
             focus,
+            promoted: false,
         }
     }
 
@@ -193,6 +197,49 @@ impl InteractionView {
             self.kind,
             InteractionKind::Modal | InteractionKind::Unsupported
         )
+    }
+
+    /// Touch layouts (design.md §6.3): whether the card shows in a bottom sheet instead of
+    /// docking above the composer. Small dialogs and app-level `custom` dialogs always do;
+    /// plan reviews (long markdown) and questions with more than four options (taller than
+    /// half a phone screen) too. Approvals stay docked.
+    #[must_use]
+    pub fn touch_sheet(&self) -> bool {
+        match self.kind {
+            InteractionKind::Dock
+            | InteractionKind::Modal
+            | InteractionKind::Unsupported
+            | InteractionKind::PlanReview => true,
+            InteractionKind::Question => match &self.dialog.kind {
+                DialogKind::Form { questions, .. } => {
+                    questions
+                        .get(self.step)
+                        .is_some_and(|q| q.options.len() > 4 || q.question.len() > 280)
+                        || self.promoted
+                }
+                _ => false,
+            },
+            InteractionKind::Approval => self.promoted,
+        }
+    }
+
+    /// Moves the card into a sheet (touch layouts; the dock measured it too tall).
+    pub fn promote(&mut self, cx: &mut Context<Self>) {
+        if !self.promoted {
+            self.promoted = true;
+            cx.notify();
+        }
+    }
+
+    /// Whether Back / a scrim tap may cancel it (small dialogs only, design.md §6.3).
+    #[must_use]
+    pub fn touch_dismissible(&self) -> bool {
+        matches!(self.kind, InteractionKind::Dock)
+    }
+
+    /// Cancels the dialog (the shell's Back on a small dialog sheet).
+    pub fn dismiss(&mut self, cx: &mut Context<Self>) {
+        self.cancel(cx);
     }
 
     /// The plan markdown of a plan review.

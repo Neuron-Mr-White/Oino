@@ -1,95 +1,194 @@
-//! [`MobileShell`]: the phone window root.
+//! [`MobileShell`]: the phone window root (design.md §6).
 //!
-//! One screen at a time (sessions → conversation, settings) plus at most one bottom sheet
-//! (model + thinking, session actions) or full-screen side sheet (diff, tool output,
-//! `sidePane` extension panels). Sessions keep running in the background when another screen
-//! is shown, as on desktop.
+//! State: a page stack (root = M1 Sessions), at most one bottom sheet, the right drawer flag
+//! and the toasts. Open sessions are [`SessionPane`]s that keep running while another page is
+//! shown, as on desktop. Back pops menu → sheet → drawer → page.
 
+use std::cell::Cell;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::notification::NotificationType;
-use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{
-    ActiveTheme as _, IconName, Sizable as _, WindowExt as _, h_flex, v_flex,
-};
+use gpui_kit::assets::IconName;
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, ClipboardItem, Context, Entity, FocusHandle,
-    Focusable as _, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, div, px,
+    AnyElement, App, AppContext as _, BackGestureEvent, BackGesturePhase, ClickEvent,
+    ClipboardItem, Context, ElementId, Entity, FocusHandle, Focusable as _,
+    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, ScrollHandle,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
+    px,
 };
-use oino_ai::ThinkingLevel;
 
-use crate::design::theme;
+use crate::components::button::{Btn, BtnSize, Variant};
+use crate::components::interaction::InteractionView;
+use crate::components::toast::{ToastKind, Toasts};
+use crate::design::brand::CrabState;
+use crate::design::icons::icon;
+use crate::design::theme::{self, OinoTheme, TextExt as _};
+use crate::design::tokens::touch;
+use crate::design::{TextRole, radius, size, space};
 use crate::host::{AppSettings, ExtensionInfo, OpenRequest, OpenedSession, SessionHost, ThemePref};
-use crate::mobile::MobilePlatform;
-use crate::model::sessions::{LiveStatus, SessionEntry, SessionList, SessionSummary, age};
-use crate::model::ui_state::{NotifyKind, UiEffect};
+use crate::mobile::gesture::Pull;
+use crate::mobile::{Launch, MobilePlatform, RemoteHost};
+use crate::model::palette::Scope;
+use crate::model::sessions::{LiveStatus, SessionList, SessionSummary};
+use crate::model::ui_state::{NotifyKind, PanelPlacement, UiEffect};
 use crate::rt::Tokio;
 use crate::views::session_pane::{PaneEvent, SessionPane, SideTab};
 
-/// Height of the app bar.
-const BAR: f32 = 52.;
-/// Minimum touch target.
-const TOUCH: f32 = 44.;
-
-const LEVELS: [ThinkingLevel; 6] = [
-    ThinkingLevel::Off,
-    ThinkingLevel::Minimal,
-    ThinkingLevel::Low,
-    ThinkingLevel::Medium,
-    ThinkingLevel::High,
-    ThinkingLevel::Xhigh,
-];
-
-/// The visible screen.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Screen {
-    /// Session list (home).
+/// A settings page (M8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SettingsPage {
+    /// The list of pages.
+    Root,
+    /// Theme, text size, motion.
+    Appearance,
+    /// Model and thinking defaults, providers.
+    Models,
+    /// Conversation display.
     Sessions,
-    /// One session's conversation (pane key).
+    /// Workflow permissions.
+    Permissions,
+    /// Extensions list.
+    Extensions,
+    /// Extension settings hub (namespace list).
+    Hub,
+    /// One extension settings namespace.
+    Namespace(String),
+    /// Remote access (M10 hosts).
+    Remote,
+    /// About.
+    About,
+}
+
+/// A page on the navigation stack.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Page {
+    /// M1 home.
+    Sessions,
+    /// M2 conversation of pane `key`.
     Session(u64),
-    /// Settings.
-    Settings,
+    /// M8.
+    Settings(SettingsPage),
+    /// M7.
+    Search,
+    /// M9 board of pane `key`.
+    Board(u64),
+    /// M10 pairing.
+    Pair,
+    /// M5 diff page.
+    Diff {
+        /// Title (path).
+        title: String,
+        /// Unified patch.
+        patch: String,
+    },
+    /// M5 tool output page.
+    Output {
+        /// Title (command).
+        title: String,
+        /// Output text.
+        text: String,
+    },
 }
 
-/// A bottom sheet over the conversation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Sheet {
-    /// Model list + thinking level.
+/// A confirmation sheet.
+#[derive(Clone)]
+pub(crate) struct Confirm {
+    /// Title.
+    pub(crate) title: SharedString,
+    /// Body.
+    pub(crate) body: SharedString,
+    /// Destructive action label.
+    pub(crate) action: SharedString,
+    /// Runs on confirm.
+    pub(crate) run: Rc<dyn Fn(&mut MobileShell, &mut Window, &mut Context<MobileShell>)>,
+}
+
+/// A bottom sheet (M6).
+#[derive(Clone)]
+pub(crate) enum Sheet {
+    /// Model rows + thinking segments.
     Model,
-    /// Session actions (new, compact, panels).
+    /// Session actions.
     Actions,
+    /// Expanded status panel content.
+    Status,
+    /// Rename a session.
+    Rename(String),
+    /// Confirmation.
+    Confirm(Confirm),
+    /// Long-press menu of a session row.
+    RowMenu(String),
+    /// Long-press menu of a board card (task id).
+    CardMenu(String),
+    /// Session list display options.
+    Display,
+    /// Edit one extension setting.
+    Edit {
+        /// Namespace.
+        ns: String,
+        /// Field key.
+        key: String,
+        /// Field label.
+        label: String,
+    },
 }
 
-struct Pane {
-    key: u64,
-    entity: Entity<SessionPane>,
+pub(crate) struct Pane {
+    pub(crate) key: u64,
+    pub(crate) entity: Entity<SessionPane>,
     _subscriptions: Vec<Subscription>,
 }
 
 /// The phone window root view.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent view flags (drawer, opening, refreshing, window active)"
+)]
 pub struct MobileShell {
-    host: Arc<dyn SessionHost>,
-    settings: AppSettings,
-    sessions: SessionList,
-    panes: Vec<Pane>,
+    pub(crate) host: Arc<dyn SessionHost>,
+    pub(crate) settings: AppSettings,
+    pub(crate) sessions: SessionList,
+    pub(crate) panes: Vec<Pane>,
     next_key: u64,
-    screen: Screen,
-    sheet: Option<Sheet>,
-    extensions: Vec<ExtensionInfo>,
-    search: Entity<InputState>,
-    opening: bool,
+    pub(crate) stack: Vec<Page>,
+    pub(crate) sheet: Option<Sheet>,
+    pub(crate) drawer: bool,
+    pub(crate) extensions: Vec<ExtensionInfo>,
+    pub(crate) opening: bool,
+    pub(crate) refreshing: bool,
     focus: FocusHandle,
+    pub(crate) toasts: Toasts,
+    toast_timer: Option<Task<()>>,
+    pub(crate) search: Entity<InputState>,
+    pub(crate) scope: Scope,
+    pub(crate) rename: Option<Entity<InputState>>,
+    pub(crate) pair: Entity<InputState>,
+    pub(crate) hosts: Vec<RemoteHost>,
+    pub(crate) swipes: HashMap<String, ScrollHandle>,
+    pub(crate) pull: Pull,
+    pub(crate) list_scroll: ScrollHandle,
+    pub(crate) page_scroll: ScrollHandle,
+    /// Long presses are ignored while a sheet covers the page.
+    pub(crate) press: Rc<Cell<bool>>,
+    pub(crate) board_lane: usize,
+    pub(crate) hub: crate::mobile::settings::Hub,
+    pub(crate) board_scroll: ScrollHandle,
+    active: bool,
+    /// Last touch-down: programmatic focus (a run settling, a card closing) must not raise
+    /// the soft keyboard over the conversation — only a tap on a field does.
+    last_tap: Rc<Cell<Option<Instant>>>,
+    badge: usize,
+    notified: HashSet<String>,
+    launch: Option<Launch>,
     _subscriptions: Vec<Subscription>,
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -97,56 +196,133 @@ fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
+fn keyboard_hooks(
+    input: &Entity<InputState>,
+    window: &mut Window,
+    cx: &mut Context<MobileShell>,
+) -> Subscription {
+    cx.subscribe_in(
+        input,
+        window,
+        |_, _, event: &InputEvent, _, cx| match event {
+            InputEvent::Focus => (MobilePlatform::get(cx).show_keyboard)(),
+            InputEvent::Blur => (MobilePlatform::get(cx).hide_keyboard)(),
+            _ => {}
+        },
+    )
+}
+
 impl MobileShell {
-    /// The root view; starts on the session list.
-    pub fn new(host: Arc<dyn SessionHost>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let settings = host.app_settings();
-        theme::install(&settings, Some(window), cx);
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Filter sessions"));
-        let subscriptions = vec![cx.subscribe_in(
-            &search,
-            window,
-            |this: &mut Self, input, event, _, cx| match event {
-                InputEvent::Change => {
-                    let query = input.read(cx).value().to_string();
-                    this.sessions.set_query(&query);
+    /// The root view; starts on the session list (or where `launch` points).
+    pub fn new(
+        host: Arc<dyn SessionHost>,
+        launch: Launch,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut settings = host.app_settings();
+        // Phones read at 15 (design.md §6): the desktop default 14 becomes 15 here.
+        if f32::from(settings.ui_font_size) <= crate::design::type_scale::UI_FONT_SIZE {
+            settings.ui_font_size = 15;
+        }
+        Self::install_theme(&settings, window, cx);
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search Oino"));
+        let pair = cx.new(|cx| InputState::new(window, cx).placeholder("oino://host:port?token=…"));
+        let mut subscriptions = vec![
+            keyboard_hooks(&search, window, cx),
+            keyboard_hooks(&pair, window, cx),
+            cx.subscribe_in(&search, window, |_, _, e: &InputEvent, _, cx| {
+                if matches!(e, InputEvent::Change) {
                     cx.notify();
                 }
-                InputEvent::Focus => (MobilePlatform::get(cx).show_keyboard)(),
-                InputEvent::Blur => (MobilePlatform::get(cx).hide_keyboard)(),
-                InputEvent::PressEnter { .. } => {}
-            },
-        )];
+            }),
+            cx.observe_window_appearance(window, |this, window, cx| {
+                if this.settings.theme == ThemePref::System {
+                    Self::install_theme(&this.settings, window, cx);
+                    cx.notify();
+                }
+            }),
+            cx.observe_window_activation(window, |this, window, cx| {
+                this.active = window.is_window_active();
+                if this.active {
+                    this.poll_link(window, cx);
+                }
+            }),
+        ];
+        subscriptions.shrink_to_fit();
+        let hosts = (MobilePlatform::get(cx).load_hosts)();
         let shell = Self {
             host,
             settings,
             sessions: SessionList::new(),
             panes: Vec::new(),
             next_key: 0,
-            screen: Screen::Sessions,
+            stack: vec![Page::Sessions],
             sheet: None,
+            drawer: false,
             extensions: Vec::new(),
-            search,
             opening: false,
+            refreshing: false,
             focus: cx.focus_handle(),
+            toasts: Toasts::default(),
+            toast_timer: None,
+            search,
+            scope: Scope::All,
+            rename: None,
+            pair,
+            hosts,
+            swipes: HashMap::new(),
+            pull: Pull::default(),
+            list_scroll: ScrollHandle::new(),
+            page_scroll: ScrollHandle::new(),
+            press: Rc::new(Cell::new(true)),
+            board_lane: 0,
+            hub: crate::mobile::settings::Hub::default(),
+            board_scroll: ScrollHandle::new(),
+            active: true,
+            last_tap: Rc::new(Cell::new(None)),
+            badge: 0,
+            notified: HashSet::new(),
+            launch: Some(launch),
             _subscriptions: subscriptions,
         };
         shell.refresh_sessions(cx);
         shell
     }
 
-    fn pane(&self, key: u64) -> Option<&Entity<SessionPane>> {
+    fn install_theme(settings: &AppSettings, window: &mut Window, cx: &mut App) {
+        theme::install(settings, Some(window), cx);
+        let t = OinoTheme::get(cx);
+        let [r, g, b, _] = crate::design::tokens::channels(t.p.frame);
+        (MobilePlatform::get(cx).system_bars)(
+            t.dark,
+            (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b),
+        );
+    }
+
+    // ── panes ────────────────────────────────────────────────────────────────
+
+    pub(crate) fn pane(&self, key: u64) -> Option<&Entity<SessionPane>> {
         self.panes.iter().find(|p| p.key == key).map(|p| &p.entity)
     }
 
-    fn active_pane(&self) -> Option<&Entity<SessionPane>> {
-        match self.screen {
-            Screen::Session(key) => self.pane(key),
-            Screen::Sessions | Screen::Settings => None,
-        }
+    pub(crate) fn page(&self) -> &Page {
+        self.stack.last().unwrap_or(&Page::Sessions)
     }
 
-    fn with_pane(
+    /// The pane of the conversation on top (or under the page on top).
+    pub(crate) fn active_key(&self) -> Option<u64> {
+        self.stack.iter().rev().find_map(|p| match p {
+            Page::Session(k) | Page::Board(k) => Some(*k),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn active_pane(&self) -> Option<&Entity<SessionPane>> {
+        self.active_key().and_then(|k| self.pane(k))
+    }
+
+    pub(crate) fn with_pane(
         &self,
         cx: &mut Context<Self>,
         f: impl FnOnce(&mut SessionPane, &mut Context<SessionPane>),
@@ -156,20 +332,41 @@ impl MobileShell {
         }
     }
 
+    /// The pending interaction of the visible conversation when it shows as a sheet.
+    pub(crate) fn sheet_interaction(&self, cx: &App) -> Option<Entity<InteractionView>> {
+        let Page::Session(key) = self.page() else {
+            return None;
+        };
+        let pane = self.pane(*key)?.read(cx);
+        pane.interaction
+            .as_ref()
+            .filter(|v| v.read(cx).touch_sheet())
+            .cloned()
+    }
+
     // ── sessions ─────────────────────────────────────────────────────────────
 
-    fn refresh_sessions(&self, cx: &mut Context<Self>) {
+    pub(crate) fn refresh_sessions(&self, cx: &mut Context<Self>) {
         let task = Tokio::spawn(cx, self.host.list_sessions());
         cx.spawn(async move |this, cx| {
-            if let Ok(Ok(list)) = task.await {
-                let _ = this.update(cx, |shell, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |shell, cx| {
+                shell.refreshing = false;
+                if let Ok(Ok(list)) = result {
                     shell.sessions.set_sessions(list);
                     shell.sync_open_sessions(cx);
-                    cx.notify();
-                });
-            }
+                }
+                cx.notify();
+            });
         })
         .detach();
+    }
+
+    pub(crate) fn pull_refresh(&mut self, cx: &mut Context<Self>) {
+        self.refreshing = true;
+        (MobilePlatform::get(cx).haptic)();
+        self.refresh_sessions(cx);
+        cx.notify();
     }
 
     fn sync_open_sessions(&mut self, cx: &App) {
@@ -185,7 +382,10 @@ impl MobileShell {
                 modified_ms: existing.map_or_else(now_ms, |e| e.modified_ms),
                 message_count: model.transcript.len(),
             });
-            self.sessions.set_live(&model.id, pane.live());
+            let live = pane.live();
+            if live != LiveStatus::Idle || self.sessions.live(&model.id) != LiveStatus::Unread {
+                self.sessions.set_live(&model.id, live);
+            }
         }
     }
 
@@ -202,12 +402,8 @@ impl MobileShell {
                 shell.opening = false;
                 match result {
                     Ok(Ok(opened)) => shell.add_pane(&opened, window, cx),
-                    Ok(Err(e)) => {
-                        window.push_notification((NotificationType::Error, e.to_string()), cx);
-                    }
-                    Err(e) => {
-                        window.push_notification((NotificationType::Error, e.to_string()), cx);
-                    }
+                    Ok(Err(e)) => shell.toast(ToastKind::Error, None, e.to_string(), cx),
+                    Err(e) => shell.toast(ToastKind::Error, None, e.to_string(), cx),
                 }
                 cx.notify();
             });
@@ -226,8 +422,15 @@ impl MobileShell {
             cx.subscribe_in(&entity, window, move |this, pane, event, window, cx| {
                 this.on_pane_event(key, pane, event, window, cx);
             }),
-            cx.on_focus_in(&focus, window, |_, _, cx| {
-                (MobilePlatform::get(cx).show_keyboard)();
+            cx.observe(&entity, |this, _, cx| this.on_pane_changed(cx)),
+            cx.on_focus_in(&focus, window, |this, _, cx| {
+                let tapped = this
+                    .last_tap
+                    .get()
+                    .is_some_and(|at| at.elapsed() < Duration::from_millis(700));
+                if tapped {
+                    (MobilePlatform::get(cx).show_keyboard)();
+                }
             }),
             cx.on_focus_out(&focus, window, |_, _, _, cx| {
                 (MobilePlatform::get(cx).hide_keyboard)();
@@ -240,11 +443,16 @@ impl MobileShell {
         });
         self.show_session(key, cx);
         self.sync_open_sessions(cx);
+        if let Some(launch) = self.launch.take() {
+            self.apply_launch_sheet(&launch, cx);
+        }
     }
 
-    fn show_session(&mut self, key: u64, cx: &mut Context<Self>) {
-        self.screen = Screen::Session(key);
+    pub(crate) fn show_session(&mut self, key: u64, cx: &mut Context<Self>) {
+        self.stack.truncate(1);
+        self.stack.push(Page::Session(key));
         self.sheet = None;
+        self.drawer = false;
         if let Some(pane) = self.pane(key) {
             let id = pane.read(cx).model.id.clone();
             if self.sessions.live(&id) == LiveStatus::Unread {
@@ -254,13 +462,8 @@ impl MobileShell {
         cx.notify();
     }
 
-    fn open_session(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(key) = self
-            .panes
-            .iter()
-            .find(|p| p.entity.read(cx).model.id == id)
-            .map(|p| p.key)
-        {
+    pub(crate) fn open_session(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(key) = self.key_of(id, cx) {
             self.show_session(key, cx);
             return;
         }
@@ -278,12 +481,83 @@ impl MobileShell {
         }
     }
 
-    fn new_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let cwd = self.active_pane().map_or_else(
-            || self.host.info().default_cwd,
-            |p| PathBuf::from(p.read(cx).model.cwd.clone()),
+    pub(crate) fn key_of(&self, id: &str, cx: &App) -> Option<u64> {
+        self.panes
+            .iter()
+            .find(|p| p.entity.read(cx).model.id == id)
+            .map(|p| p.key)
+    }
+
+    pub(crate) fn new_session(
+        &mut self,
+        cwd: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let cwd = cwd.map_or_else(
+            || {
+                self.active_pane().map_or_else(
+                    || self.host.info().default_cwd,
+                    |p| PathBuf::from(p.read(cx).model.cwd.clone()),
+                )
+            },
+            PathBuf::from,
         );
         self.open(OpenRequest::New { cwd }, window, cx);
+    }
+
+    /// Runs `f` on the pane of session `id`, opening it first when needed.
+    pub(crate) fn with_session(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        f: impl FnOnce(&mut SessionPane, &mut Context<SessionPane>) + 'static,
+    ) {
+        if let Some(pane) = self.key_of(id, cx).and_then(|k| self.pane(k).cloned()) {
+            pane.update(cx, f);
+            return;
+        }
+        let Some(summary) = self.sessions.get(id).cloned() else {
+            return;
+        };
+        let Some(path) = summary.path else {
+            return;
+        };
+        let task = Tokio::spawn(
+            cx,
+            self.host.open(OpenRequest::Resume {
+                path,
+                cwd: PathBuf::from(summary.cwd),
+            }),
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if let Ok(Ok(opened)) = task.await {
+                let _ = this.update_in(cx, |shell, window, cx| {
+                    shell.add_pane(&opened, window, cx);
+                    shell.with_pane(cx, f);
+                });
+            }
+        })
+        .detach();
+    }
+
+    fn on_pane_changed(&mut self, cx: &mut Context<Self>) {
+        // Badge = sessions that need you (design.md §6.11).
+        let needs = self
+            .panes
+            .iter()
+            .filter(|p| p.entity.read(cx).live() == LiveStatus::Attention)
+            .count();
+        if needs != self.badge {
+            self.badge = needs;
+            (MobilePlatform::get(cx).set_badge)(needs);
+        }
+    }
+
+    /// Aggregate Unicrab state of every open session.
+    pub(crate) fn crab(&self, cx: &App) -> CrabState {
+        CrabState::aggregate(self.panes.iter().map(|p| p.entity.read(cx).crab()))
     }
 
     fn on_pane_event(
@@ -297,7 +571,7 @@ impl MobileShell {
         match event {
             PaneEvent::Live(status) => {
                 let id = pane.read(cx).model.id.clone();
-                let visible = self.screen == Screen::Session(key);
+                let visible = self.page() == &Page::Session(key) && self.active;
                 let status = if *status == LiveStatus::Idle
                     && self.sessions.live(&id) == LiveStatus::Running
                     && !visible
@@ -306,7 +580,25 @@ impl MobileShell {
                 } else {
                     *status
                 };
+                if status == LiveStatus::Attention
+                    && !self.active
+                    && self.notified.insert(id.clone())
+                {
+                    // A pending interaction while backgrounded → local notification (§6.3).
+                    let p = pane.read(cx);
+                    let title = p.model.title();
+                    let body = p
+                        .model
+                        .ui
+                        .dialog()
+                        .map_or_else(|| "Oino needs you".to_owned(), |d| d.title.clone());
+                    (MobilePlatform::get(cx).notify)(notification_id(&id), &title, &body);
+                }
+                if status != LiveStatus::Attention {
+                    self.notified.remove(&id);
+                }
                 self.sessions.set_live(&id, status);
+                self.on_pane_changed(cx);
                 cx.notify();
             }
             PaneEvent::Changed => {
@@ -314,39 +606,82 @@ impl MobileShell {
                 cx.notify();
             }
             PaneEvent::PickModel => {
-                self.sheet = Some(Sheet::Model);
-                cx.notify();
+                self.open_sheet(Sheet::Model, cx);
             }
             PaneEvent::Effect(effect) => self.perform(effect.clone(), window, cx),
-            PaneEvent::Toast(text) => {
-                window.push_notification((NotificationType::Info, text.clone()), cx);
+            PaneEvent::Toast(text) => self.toast(ToastKind::Info, None, text.clone(), cx),
+            PaneEvent::ShowSide => self.on_show_side(key, pane, cx),
+            PaneEvent::ToggleSide => {
+                self.drawer = !self.drawer;
+                cx.notify();
             }
-            PaneEvent::ShowSide
-            | PaneEvent::ShowBottom
+            PaneEvent::ShowBottom
             | PaneEvent::Focused
             | PaneEvent::ToggleSidebar
-            | PaneEvent::ToggleSide
             | PaneEvent::ToggleBottom
             | PaneEvent::ClosePane => cx.notify(),
         }
     }
 
-    fn perform(&mut self, effect: UiEffect, window: &mut Window, cx: &mut Context<Self>) {
+    /// A side tab was opened: diffs and outputs become full-screen pages (M5), the kanboard
+    /// becomes the board pager (M9), everything else opens the right drawer (M4).
+    fn on_show_side(&mut self, key: u64, pane: &Entity<SessionPane>, cx: &mut Context<Self>) {
+        let current = pane.read(cx).side.current().cloned();
+        let page = match current {
+            Some(SideTab::Diff { title, patch }) => Some(Page::Diff { title, patch }),
+            Some(SideTab::Output { title, text }) => Some(Page::Output { title, text }),
+            Some(SideTab::Panel(id)) if id == crate::model::kanban::BOARD_PANEL => {
+                Some(Page::Board(key))
+            }
+            _ => None,
+        };
+        if let Some(page) = page {
+            self.page_scroll = ScrollHandle::new();
+            if matches!(page, Page::Output { .. }) {
+                self.page_scroll.scroll_to_bottom();
+            }
+            pane.update(cx, |p, _| {
+                let active = p.side.active;
+                p.side.close_at(active);
+            });
+            self.sheet = None;
+            self.drawer = false;
+            if self.page() != &page {
+                self.stack.push(page);
+            }
+        } else if self.page() == &Page::Session(key) {
+            self.drawer = true;
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn perform(
+        &mut self,
+        effect: UiEffect,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match effect {
             UiEffect::Notify { message, kind } => {
                 let kind = match kind {
-                    NotifyKind::Info => NotificationType::Info,
-                    NotifyKind::Warning => NotificationType::Warning,
-                    NotifyKind::Error => NotificationType::Error,
+                    NotifyKind::Info => ToastKind::Info,
+                    NotifyKind::Warning => ToastKind::Warning,
+                    NotifyKind::Error => ToastKind::Error,
                 };
-                window.push_notification((kind, message), cx);
+                self.toast(kind, None, message, cx);
             }
             UiEffect::OsNotify { title, body } => {
-                window.push_notification((NotificationType::Info, format!("{title}: {body}")), cx);
+                if self.active {
+                    self.toast(ToastKind::Info, Some(title.into()), body, cx);
+                } else {
+                    let id = notification_id(&format!("{title}\n{body}"));
+                    (MobilePlatform::get(cx).notify)(id, &title, &body);
+                }
             }
-            UiEffect::OpenUrl(url) => cx.open_url(&url),
+            UiEffect::OpenUrl(url) => self.open_url(&url, cx),
             UiEffect::ClipboardWrite(text) => {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
+                self.toast(ToastKind::Success, None, "Copied", cx);
             }
             UiEffect::SetTheme(name) => {
                 let pref = if name.to_lowercase().contains("light") {
@@ -356,16 +691,69 @@ impl MobileShell {
                 };
                 self.set_theme(pref, window, cx);
             }
-            UiEffect::OpenSettings { .. } => self.open_settings(cx),
+            UiEffect::OpenSettings { namespace } => {
+                let page = namespace.map_or(SettingsPage::Hub, SettingsPage::Namespace);
+                self.open_settings(page, cx);
+            }
             _ => {}
         }
     }
 
+    /// Opens `url` in the in-app browser (design.md A1.4 mobile), else externally.
+    pub(crate) fn open_url(&self, url: &str, cx: &mut Context<Self>) {
+        let dark = OinoTheme::get(cx).dark;
+        if !(MobilePlatform::get(cx).open_browser)(url, dark) {
+            cx.open_url(url);
+        }
+    }
+
+    pub(crate) fn toast(
+        &mut self,
+        kind: ToastKind,
+        title: Option<SharedString>,
+        message: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) {
+        self.toasts.push(kind, title, message);
+        if self.toast_timer.is_none() {
+            self.toast_timer = Some(cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(500))
+                        .await;
+                    let keep = this
+                        .update(cx, |shell, cx| {
+                            if shell.toasts.expire(Instant::now()) {
+                                cx.notify();
+                            }
+                            let keep = shell.toasts.has_timed();
+                            if !keep {
+                                shell.toast_timer = None;
+                            }
+                            keep
+                        })
+                        .unwrap_or(false);
+                    if !keep {
+                        break;
+                    }
+                }
+            }));
+        }
+        cx.notify();
+    }
+
     // ── settings ─────────────────────────────────────────────────────────────
 
-    fn open_settings(&mut self, cx: &mut Context<Self>) {
-        self.screen = Screen::Settings;
+    pub(crate) fn open_settings(&mut self, page: SettingsPage, cx: &mut Context<Self>) {
         self.sheet = None;
+        self.drawer = false;
+        if !matches!(self.page(), Page::Settings(_)) {
+            self.stack.push(Page::Settings(SettingsPage::Root));
+        }
+        if page != SettingsPage::Root {
+            self.stack.push(Page::Settings(page));
+        }
+        self.load_hub(cx);
         let task = Tokio::spawn(cx, self.host.extensions());
         cx.spawn(async move |this, cx| {
             if let Ok(list) = task.await {
@@ -379,16 +767,27 @@ impl MobileShell {
         cx.notify();
     }
 
-    fn set_theme(&mut self, pref: ThemePref, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn set_theme(
+        &mut self,
+        pref: ThemePref,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.settings.theme = pref;
-        theme::install(&self.settings, Some(window), cx);
+        Self::install_theme(&self.settings, window, cx);
         self.host.save_app_settings(&self.settings);
         cx.notify();
     }
 
-    fn update_settings(&mut self, f: impl FnOnce(&mut AppSettings), cx: &mut Context<Self>) {
+    pub(crate) fn update_settings(
+        &mut self,
+        f: impl FnOnce(&mut AppSettings),
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         f(&mut self.settings);
         self.host.save_app_settings(&self.settings);
+        Self::install_theme(&self.settings, window, cx);
         for pane in &self.panes {
             let settings = self.settings.clone();
             pane.entity.update(cx, |p, cx| p.set_settings(settings, cx));
@@ -398,778 +797,570 @@ impl MobileShell {
 
     // ── navigation ───────────────────────────────────────────────────────────
 
-    /// Back: sheet → side sheet → screen. Returns whether anything was popped.
-    fn back(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.sheet.take().is_some() {
+    pub(crate) fn push(&mut self, page: Page, cx: &mut Context<Self>) {
+        self.sheet = None;
+        self.drawer = false;
+        if page == Page::Search {
+            self.scope = Scope::All;
+        }
+        self.stack.push(page);
+        cx.notify();
+    }
+
+    pub(crate) fn open_sheet(&mut self, sheet: Sheet, cx: &mut Context<Self>) {
+        if matches!(sheet, Sheet::Rename(_) | Sheet::Edit { .. }) {
+            self.rename = None;
+        }
+        self.sheet = Some(sheet);
+        cx.notify();
+    }
+
+    pub(crate) fn close_sheet(&mut self, cx: &mut Context<Self>) {
+        self.sheet = None;
+        self.rename = None;
+        cx.notify();
+    }
+
+    /// Back: menu / sheet → drawer → overlay panel → page. Returns whether anything was
+    /// popped.
+    pub(crate) fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        for handle in self.swipes.values() {
+            crate::mobile::gesture::close_row(handle);
+        }
+        if self.sheet.is_some() {
+            self.close_sheet(cx);
+            return true;
+        }
+        // A blocking card in a sheet: Back cancels small dialogs only (design.md §6.3); a
+        // pending approval / question / plan stays pending and Back leaves the page (the
+        // session keeps waiting and shows under Needs you).
+        if let Some(view) = self.sheet_interaction(cx)
+            && view.read(cx).touch_dismissible()
+        {
+            view.update(cx, InteractionView::dismiss);
+            return true;
+        }
+        if self.drawer {
+            self.drawer = false;
             cx.notify();
             return true;
         }
-        if let Some(pane) = self.active_pane().cloned()
-            && pane.read(cx).side.is_open()
-        {
-            pane.update(cx, |p, cx| {
-                p.side.close();
-                cx.notify();
-            });
+        if let Some((key, id)) = self.overlay_panel(cx) {
+            if let Some(p) = self.pane(key).cloned() {
+                p.update(cx, |p, cx| p.close_panel(&id, cx));
+            }
             return true;
         }
-        if self.screen == Screen::Sessions {
+        if self.stack.len() <= 1 {
             return false;
         }
-        self.screen = Screen::Sessions;
-        self.sync_open_sessions(cx);
-        self.refresh_sessions(cx);
+        window.blur(cx);
+        self.stack.pop();
+        if self.page() == &Page::Sessions {
+            self.sync_open_sessions(cx);
+            self.refresh_sessions(cx);
+        }
         cx.notify();
         true
     }
 
+    /// The overlay / fullscreen panel of the visible conversation (rendered as an M5 page).
+    pub(crate) fn overlay_panel(&self, cx: &App) -> Option<(u64, String)> {
+        let Page::Session(key) = self.page() else {
+            return None;
+        };
+        let pane = self.pane(*key)?.read(cx);
+        pane.model
+            .ui
+            .panels()
+            .find(|p| {
+                matches!(
+                    p.placement,
+                    PanelPlacement::Overlay | PanelPlacement::Fullscreen
+                )
+            })
+            .map(|p| (*key, p.id.clone()))
+    }
+
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if event.keystroke.key == "escape" && self.back(cx) {
+        if event.keystroke.key == "escape" && self.back(window, cx) {
             window.blur(cx);
             cx.stop_propagation();
         }
     }
 
-    // ── rendering ────────────────────────────────────────────────────────────
-
-    fn icon_button(id: &'static str, icon: IconName) -> Button {
-        Button::new(id)
-            .ghost()
-            .icon(icon)
-            .min_w(px(TOUCH))
-            .h(px(TOUCH))
+    fn on_back_gesture(
+        &mut self,
+        e: &BackGestureEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if e.phase == BackGesturePhase::Committed {
+            self.back(window, cx);
+        }
     }
 
-    fn app_bar(
-        leading: Option<Button>,
+    // ── launch & deep links ──────────────────────────────────────────────────
+
+    fn poll_link(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(link) = (MobilePlatform::get(cx).take_link)() else {
+            return;
+        };
+        if let Some(launch) = Launch::from_link(&link) {
+            if launch.open.as_deref() == Some("pair") {
+                self.pair
+                    .update(cx, |s, cx| s.set_value(link.clone(), window, cx));
+            }
+            self.apply_launch(launch, window, cx);
+        }
+    }
+
+    /// Applies a launch request once the session list is known.
+    fn apply_launch(&mut self, launch: Launch, window: &mut Window, cx: &mut Context<Self>) {
+        let open = launch.open.clone().unwrap_or_default();
+        let (what, arg) = open.split_once(':').unwrap_or((open.as_str(), ""));
+        let mut pending = Some(launch.clone());
+        match what {
+            "new" => self.new_session(None, window, cx),
+            "resume" => {
+                let first = self
+                    .sessions
+                    .groups()
+                    .into_iter()
+                    .flat_map(|g| g.sessions)
+                    .next();
+                if let Some(e) = first {
+                    self.open_session(&e.summary.id, window, cx);
+                }
+            }
+            "board" => {
+                self.new_session(None, window, cx);
+                pending = Some(Launch {
+                    open: Some("board".into()),
+                    ..launch.clone()
+                });
+            }
+            "settings" => {
+                let page = match arg {
+                    "appearance" => SettingsPage::Appearance,
+                    "models" => SettingsPage::Models,
+                    "sessions" => SettingsPage::Sessions,
+                    "permissions" => SettingsPage::Permissions,
+                    "extensions" => SettingsPage::Extensions,
+                    "hub" => SettingsPage::Hub,
+                    "remote" => SettingsPage::Remote,
+                    "about" => SettingsPage::About,
+                    "" => SettingsPage::Root,
+                    ns => SettingsPage::Namespace(ns.to_owned()),
+                };
+                self.open_settings(page, cx);
+                pending = None;
+            }
+            "search" => {
+                if let Some(q) = &launch.query {
+                    self.search
+                        .update(cx, |s, cx| s.set_value(q.clone(), window, cx));
+                }
+                self.push(Page::Search, cx);
+                pending = None;
+            }
+            "hosts" => {
+                self.open_settings(SettingsPage::Remote, cx);
+                pending = None;
+            }
+            "pair" => {
+                self.open_settings(SettingsPage::Remote, cx);
+                self.push(Page::Pair, cx);
+                pending = None;
+            }
+            _ => {
+                if launch.menu
+                    && let Some(e) = self.first_session()
+                {
+                    self.open_sheet(Sheet::RowMenu(e), cx);
+                }
+                if launch.swipe
+                    && let Some(e) = self.first_session()
+                {
+                    let handle = self.swipes.entry(e).or_default().clone();
+                    crate::mobile::gesture::open_row(&handle, 2);
+                }
+                pending = None;
+            }
+        }
+        self.launch = pending;
+        cx.notify();
+    }
+
+    fn first_session(&self) -> Option<String> {
+        self.sessions
+            .groups()
+            .into_iter()
+            .flat_map(|g| g.sessions)
+            .map(|e| e.summary.id)
+            .next()
+    }
+
+    fn apply_launch_sheet(&mut self, launch: &Launch, cx: &mut Context<Self>) {
+        if launch.open.as_deref() == Some("board")
+            && let Some(key) = self.active_key()
+        {
+            self.open_board(key, false, cx);
+        }
+        match launch.sheet.as_deref() {
+            Some("model") => self.sheet = Some(Sheet::Model),
+            Some("actions") => self.sheet = Some(Sheet::Actions),
+            Some("status") => self.sheet = Some(Sheet::Status),
+            _ => {}
+        }
+        if launch.home {
+            self.stack.truncate(1);
+            self.sync_open_sessions(cx);
+        }
+        if launch.drawer {
+            self.with_pane(cx, |p, cx| {
+                if !p.side.is_open() {
+                    p.side.open(SideTab::Review);
+                }
+                cx.notify();
+            });
+            self.drawer = true;
+        }
+        cx.notify();
+    }
+
+    /// Opens the board page for pane `key`, asking the extension for the board when needed.
+    pub(crate) fn open_board(&mut self, key: u64, ask: bool, cx: &mut Context<Self>) {
+        if ask && let Some(pane) = self.pane(key).cloned() {
+            let has = pane
+                .read(cx)
+                .model
+                .ui
+                .panel(crate::model::kanban::BOARD_PANEL)
+                .is_some();
+            if !has {
+                pane.update(cx, |p, cx| p.run_prompt("/unipi:kanboard", cx));
+            }
+        }
+        self.sheet = None;
+        self.drawer = false;
+        if self.page() != &Page::Board(key) {
+            self.stack.push(Page::Board(key));
+        }
+        cx.notify();
+    }
+
+    // ── shared rendering ─────────────────────────────────────────────────────
+
+    /// App bar (design.md §6.1/§6.2): 52 high, leading, title, trailing actions.
+    pub(crate) fn app_bar(
+        t: &OinoTheme,
+        leading: Option<AnyElement>,
         title: AnyElement,
         actions: Vec<AnyElement>,
-        cx: &App,
     ) -> AnyElement {
-        h_flex()
-            .w_full()
-            .h(px(BAR))
-            .flex_none()
-            .px_1()
-            .gap_1()
+        div()
+            .flex()
+            .flex_row()
             .items_center()
-            .border_b_1()
-            .border_color(cx.theme().border)
+            .flex_none()
+            .w_full()
+            .h(px(touch::APP_BAR))
+            .px(px(space::S1))
+            .gap(px(space::S1))
+            .bg(t.frame())
             .children(leading)
-            .child(div().flex_1().min_w_0().px_2().child(title))
+            .child(div().flex_1().min_w_0().px(px(space::S2)).child(title))
             .children(actions)
             .into_any_element()
     }
 
-    fn status_dot(status: LiveStatus, cx: &App) -> AnyElement {
-        let theme = cx.theme();
-        let color = match status {
-            LiveStatus::Idle => theme.muted_foreground.opacity(0.35),
-            LiveStatus::Running => theme.success,
-            LiveStatus::Attention => theme.warning,
-            LiveStatus::Unread => theme.info,
-        };
-        div()
-            .w(px(10.))
-            .h(px(10.))
-            .flex_none()
-            .rounded_full()
-            .bg(color)
-            .into_any_element()
-    }
-
-    fn session_row(entry: &SessionEntry, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        let id = entry.summary.id.clone();
-        let detail = format!(
-            "{} · {} messages",
-            age(now_ms(), entry.summary.modified_ms),
-            entry.summary.message_count
-        );
-        h_flex()
-            .id(SharedString::from(format!("m-s-{}", entry.summary.id)))
-            .w_full()
-            .min_h(px(60.))
-            .px_4()
-            .py_2()
-            .gap_3()
-            .items_center()
-            .border_b_1()
-            .border_color(theme.border.opacity(0.5))
-            .active(|s| s.bg(theme.accent))
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                this.open_session(&id, window, cx);
-            }))
-            .child(Self::status_dot(entry.status, cx))
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(2.))
-                    .child(div().truncate().font_weight(FontWeight::MEDIUM).child(
-                        SharedString::from(if entry.summary.title.is_empty() {
-                            "Untitled".to_owned()
-                        } else {
-                            entry.summary.title.clone()
-                        }),
-                    ))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(SharedString::from(detail)),
-                    ),
-            )
-            .child(
-                div()
-                    .text_color(theme.muted_foreground)
-                    .child(IconName::ChevronRight),
-            )
-            .into_any_element()
-    }
-
-    fn render_sessions(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        let title = h_flex()
-            .gap_2()
-            .items_center()
-            .child(
-                div()
-                    .text_lg()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("Oino"),
-            )
-            .when(self.opening, |el| {
-                el.child(
-                    div()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child("starting…"),
-                )
-            })
-            .into_any_element();
-        let bar = Self::app_bar(
-            None,
-            title,
-            vec![
-                Self::icon_button("m-settings", IconName::Settings)
-                    .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx)))
-                    .into_any_element(),
-            ],
-            cx,
-        );
-        let mut list = v_flex().w_full();
-        let pinned = self.sessions.pinned();
-        if !pinned.is_empty() {
-            list = list.child(Self::section("Pinned", cx));
-            for entry in &pinned {
-                list = list.child(Self::session_row(entry, cx));
-            }
-        }
-        for group in self.sessions.groups() {
-            list = list.child(Self::section(&group.label, cx));
-            for entry in &group.sessions {
-                list = list.child(Self::session_row(entry, cx));
-            }
-        }
-        if self.sessions.is_empty() {
-            list = list.child(
-                v_flex()
-                    .w_full()
-                    .py_12()
-                    .gap_2()
-                    .items_center()
-                    .text_color(theme.muted_foreground)
-                    .child("No sessions yet")
-                    .child(div().text_xs().child("Tap “New session” to start.")),
-            );
-        }
-        let new_session = div().w_full().px_4().py_3().flex_none().child(
-            Button::new("m-new")
-                .primary()
-                .w_full()
-                .h(px(TOUCH))
-                .icon(IconName::Plus)
-                .label("New session")
-                .loading(self.opening)
-                .on_click(cx.listener(|this, _, window, cx| this.new_session(window, cx))),
-        );
-        v_flex()
-            .size_full()
-            .child(bar)
-            .child(
-                div()
-                    .px_4()
-                    .pt_3()
-                    .flex_none()
-                    .child(Input::new(&self.search).cleanable(true)),
-            )
-            .child(
-                div()
-                    .id("m-sessions")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .child(list),
-            )
-            .child(new_session)
-            .into_any_element()
-    }
-
-    fn section(label: &str, cx: &App) -> AnyElement {
-        div()
-            .w_full()
-            .px_4()
-            .pt_4()
-            .pb_1()
-            .text_xs()
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(cx.theme().muted_foreground)
-            .child(SharedString::from(label.to_uppercase()))
-            .into_any_element()
-    }
-
-    fn render_session(
-        pane: &Entity<SessionPane>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+    /// A 44 pt icon button.
+    pub(crate) fn icon_btn(
+        id: impl Into<ElementId>,
+        glyph: IconName,
+        label: &'static str,
+        f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> AnyElement {
-        let theme = cx.theme().clone();
-        let (title, model_label, thinking, busy, side) = {
-            let p = pane.read(cx);
-            (
-                p.model.title(),
-                p.model.model_label(),
-                p.model.thinking,
-                p.model.is_busy(),
-                p.side.is_open() && !p.model.ui.needs_attention(),
-            )
-        };
-        let heading = v_flex()
-            .id("m-title")
+        Btn::icon_only(id, glyph, label)
+            .size(BtnSize::Touch)
+            .on_click(f)
+            .into_any_element()
+    }
+
+    /// The back button of a page header.
+    pub(crate) fn back_btn(cx: &mut Context<Self>) -> AnyElement {
+        Self::icon_btn(
+            "m-back",
+            IconName::ChevronLeft,
+            "Back",
+            cx.listener(|this, _, window, cx| {
+                this.back(window, cx);
+            }),
+        )
+    }
+
+    /// A page title (detail header, design.md §6.5): `Lg` 500, truncated, optional sub-line.
+    pub(crate) fn title(
+        t: &OinoTheme,
+        title: impl Into<SharedString>,
+        sub: Option<String>,
+    ) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
             .min_w_0()
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.sheet = Some(Sheet::Model);
-                cx.notify();
-            }))
             .child(
                 div()
                     .truncate()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(SharedString::from(title)),
+                    .text_role(t, TextRole::Lg)
+                    .weight_medium()
+                    .text_color(t.fg())
+                    .child(title.into()),
             )
+            .when_some(sub, |el, s| {
+                el.child(
+                    div()
+                        .truncate()
+                        .text_role(t, TextRole::Sm)
+                        .text_color(t.fg_subtle())
+                        .child(SharedString::from(s)),
+                )
+            })
+            .into_any_element()
+    }
+
+    /// A section label row (uppercase, muted).
+    pub(crate) fn section(t: &OinoTheme, label: impl Into<SharedString>) -> AnyElement {
+        div()
+            .px(px(space::S4))
+            .pt(px(space::S4))
+            .pb(px(space::S1))
+            .child(crate::components::badge::section_label(t, label))
+            .into_any_element()
+    }
+
+    /// A 56-high list row: optional leading icon, title, sub-line, trailing element.
+    pub(crate) fn list_row(
+        t: &OinoTheme,
+        id: impl Into<ElementId>,
+        glyph: Option<IconName>,
+        title: impl Into<SharedString>,
+        sub: Option<String>,
+        trailing: Option<AnyElement>,
+    ) -> gpui_kit::Stateful<gpui_kit::Div> {
+        div()
+            .id(id.into())
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(space::S3))
+            .w_full()
+            .min_h(px(touch::ROW))
+            .px(px(space::S4))
+            .cursor_pointer()
+            .active(|s| s.bg(t.hover()))
+            .when_some(glyph, |el, g| {
+                el.child(icon(g, size::ICON_LG, t.fg_subtle()))
+            })
             .child(
-                h_flex()
-                    .gap_1()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
                     .child(
                         div()
                             .truncate()
-                            .child(SharedString::from(format!("{model_label} · {thinking}"))),
+                            .text_role(t, TextRole::Base)
+                            .text_color(t.fg())
+                            .child(title.into()),
                     )
-                    .child(IconName::ChevronDown),
-            )
-            .into_any_element();
-        let mut actions = Vec::new();
-        if busy {
-            actions.push(
-                Self::icon_button("m-stop", IconName::Square)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.with_pane(cx, SessionPane::abort);
-                    }))
-                    .into_any_element(),
-            );
-        }
-        actions.push(
-            Self::icon_button("m-more", IconName::EllipsisVertical)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.sheet = Some(Sheet::Actions);
-                    cx.notify();
-                }))
-                .into_any_element(),
-        );
-        let back = Self::icon_button("m-back", IconName::ChevronLeft).on_click(cx.listener(
-            |this, _, window, cx| {
-                window.blur(cx);
-                this.screen = Screen::Sessions;
-                this.sheet = None;
-                this.sync_open_sessions(cx);
-                this.refresh_sessions(cx);
-                cx.notify();
-            },
-        ));
-        let bar = Self::app_bar(Some(back), heading, actions, cx);
-        let side_sheet = if side {
-            Some(pane.update(cx, |p, cx| p.render_side(window, cx)))
-        } else {
-            None
-        };
-        // The side sheet covers the conversation (not the app bar) and swallows its input.
-        // It steps aside while a dialog waits, since the pane renders dialogs beneath it.
-        v_flex()
-            .size_full()
-            .child(bar)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .relative()
-                    .child(pane.clone())
-                    .when_some(side_sheet, |el, side| {
+                    .when_some(sub, |el, s| {
                         el.child(
                             div()
-                                .id("m-side-sheet")
-                                .absolute()
-                                .inset_0()
-                                .occlude()
-                                .bg(theme.background)
-                                .child(side),
-                        )
-                    }),
-            )
-            .into_any_element()
-    }
-
-    fn setting_row(label: &str, detail: &str, control: AnyElement, cx: &App) -> AnyElement {
-        h_flex()
-            .w_full()
-            .min_h(px(56.))
-            .px_4()
-            .py_2()
-            .gap_4()
-            .items_center()
-            .border_b_1()
-            .border_color(cx.theme().border.opacity(0.5))
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .child(div().child(SharedString::from(label.to_owned())))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(SharedString::from(detail.to_owned())),
-                    ),
-            )
-            .child(control)
-            .into_any_element()
-    }
-
-    fn settings_appearance(s: &AppSettings, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        vec![
-            Self::setting_row(
-                "Dark theme",
-                "Follow the Oino dark palette",
-                Switch::new("m-dark")
-                    .checked(s.theme == ThemePref::Dark)
-                    .on_click(cx.listener(|this, on: &bool, window, cx| {
-                        let pref = if *on {
-                            ThemePref::Dark
-                        } else {
-                            ThemePref::Light
-                        };
-                        this.set_theme(pref, window, cx);
-                    }))
-                    .into_any_element(),
-                cx,
-            ),
-            Self::setting_row(
-                "Collapse thinking",
-                "Hide reasoning blocks until tapped",
-                Switch::new("m-think")
-                    .checked(s.hide_thinking)
-                    .on_click(cx.listener(|this, on: &bool, _, cx| {
-                        let on = *on;
-                        this.update_settings(|s| s.hide_thinking = on, cx);
-                    }))
-                    .into_any_element(),
-                cx,
-            ),
-            Self::setting_row(
-                "Expand tool rows",
-                "Show tool output inline by default",
-                Switch::new("m-tools")
-                    .checked(s.expand_tools)
-                    .on_click(cx.listener(|this, on: &bool, _, cx| {
-                        let on = *on;
-                        this.update_settings(|s| s.expand_tools = on, cx);
-                    }))
-                    .into_any_element(),
-                cx,
-            ),
-        ]
-    }
-
-    fn render_settings(&self, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        let s = self.settings.clone();
-        let info = self.host.info();
-        let back = Self::icon_button("m-set-back", IconName::ChevronLeft).on_click(cx.listener(
-            |this, _, _, cx| {
-                this.back(cx);
-            },
-        ));
-        let bar = Self::app_bar(
-            Some(back),
-            div()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child("Settings")
-                .into_any_element(),
-            Vec::new(),
-            cx,
-        );
-        let appearance = Self::settings_appearance(&s, cx);
-        let extensions: Vec<AnyElement> = self
-            .extensions
-            .iter()
-            .map(|e| {
-                let detail = e.error.clone().unwrap_or_else(|| {
-                    format!(
-                        "{} · {}{}",
-                        e.version,
-                        e.kind,
-                        if e.bundled { " · bundled" } else { "" }
-                    )
-                });
-                let status = div()
-                    .text_xs()
-                    .text_color(if e.error.is_some() {
-                        theme.danger
-                    } else {
-                        theme.success
-                    })
-                    .child(if e.error.is_some() {
-                        "failed"
-                    } else {
-                        "loaded"
-                    })
-                    .into_any_element();
-                Self::setting_row(&e.id, &detail, status, cx)
-            })
-            .collect();
-        let about = vec![
-            Self::setting_row("Version", &info.version, div().into_any_element(), cx),
-            Self::setting_row("Backend", &info.backend, div().into_any_element(), cx),
-            Self::setting_row(
-                "Agent directory",
-                &info.agent_dir.display().to_string(),
-                div().into_any_element(),
-                cx,
-            ),
-        ];
-        v_flex()
-            .size_full()
-            .child(bar)
-            .child(
-                div()
-                    .id("m-settings-body")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .child(
-                        v_flex()
-                            .w_full()
-                            .pb_6()
-                            .child(Self::section("Appearance", cx))
-                            .children(appearance)
-                            .child(Self::section("Extensions", cx))
-                            .when(extensions.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .px_4()
-                                        .py_2()
-                                        .text_sm()
-                                        .text_color(theme.muted_foreground)
-                                        .child("Open a session to load extensions."),
-                                )
-                            })
-                            .children(extensions)
-                            .child(Self::section("About", cx))
-                            .children(about),
-                    ),
-            )
-            .into_any_element()
-    }
-
-    fn sheet_frame(
-        id: &'static str,
-        title: &str,
-        body: AnyElement,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let theme = cx.theme().clone();
-        div()
-            .id("m-sheet-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .justify_end()
-            .bg(crate::design::OinoTheme::get(cx).scrim())
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.sheet = None;
-                cx.notify();
-            }))
-            .child(
-                v_flex()
-                    .id(id)
-                    .w_full()
-                    .max_h(gpui_kit::relative(0.8))
-                    .rounded_t_xl()
-                    .border_t_1()
-                    .border_color(theme.border)
-                    .bg(theme.popover)
-                    .shadow_lg()
-                    // Taps inside the sheet must not reach the scrim.
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(
-                        h_flex().w_full().justify_center().pt_2().child(
-                            div()
-                                .w(px(36.))
-                                .h(px(4.))
-                                .rounded_full()
-                                .bg(theme.muted_foreground.opacity(0.4)),
-                        ),
-                    )
-                    .child(
-                        div()
-                            .px_4()
-                            .py_2()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(SharedString::from(title.to_owned())),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("{id}-body")))
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .pb_4()
-                            .child(body),
-                    ),
-            )
-            .into_any_element()
-    }
-
-    fn sheet_row(
-        id: SharedString,
-        label: String,
-        detail: Option<String>,
-        current: bool,
-        cx: &App,
-    ) -> gpui_kit::Stateful<gpui_kit::Div> {
-        let theme = cx.theme();
-        h_flex()
-            .id(id)
-            .w_full()
-            .min_h(px(TOUCH + 4.))
-            .px_4()
-            .gap_3()
-            .items_center()
-            .active(|s| s.bg(theme.accent))
-            .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .child(div().truncate().child(SharedString::from(label)))
-                    .when_some(detail, |el, d| {
-                        el.child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
                                 .truncate()
-                                .child(SharedString::from(d)),
+                                .text_role(t, TextRole::Sm)
+                                .text_color(t.fg_subtle())
+                                .child(SharedString::from(s)),
                         )
                     }),
             )
-            .when(current, |el| {
-                el.child(div().text_color(theme.primary).child(IconName::Check))
-            })
+            .children(trailing)
     }
 
-    fn render_model_sheet(pane: &Entity<SessionPane>, cx: &mut Context<Self>) -> AnyElement {
-        let theme = cx.theme().clone();
-        let (models, current, thinking) = {
-            let p = pane.read(cx);
-            (p.models.clone(), p.model.model.clone(), p.model.thinking)
-        };
-        let chips = h_flex()
-            .px_4()
-            .py_2()
-            .gap_1()
-            .flex_wrap()
-            .children(LEVELS.iter().map(|l| {
-                let level = *l;
-                let selected = level == thinking;
-                Button::new(SharedString::from(format!("m-think-{level}")))
-                    .small()
-                    .when(selected, ButtonVariants::primary)
-                    .when(!selected, Button::outline)
-                    .label(SharedString::from(level.to_string()))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.with_pane(cx, |p, cx| p.set_thinking(level, cx));
-                    }))
-            }));
-        let rows: Vec<AnyElement> = models
-            .into_iter()
-            .map(|m| {
-                let is_current = current
-                    .as_ref()
-                    .is_some_and(|c| c.id == m.id && c.provider == m.provider);
-                let label = if m.name.is_empty() {
-                    m.id.clone()
-                } else {
-                    m.name.clone()
-                };
-                let detail = format!("{} · {}k context", m.provider, m.context_window / 1000);
-                let (provider, id) = (m.provider.clone(), m.id.clone());
-                Self::sheet_row(
-                    SharedString::from(format!("m-model-{provider}-{id}")),
-                    label,
-                    Some(detail),
-                    is_current,
-                    cx,
-                )
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    let (provider, id) = (provider.clone(), id.clone());
-                    this.with_pane(cx, |p, cx| p.set_model(provider, id, cx));
-                    this.sheet = None;
-                    cx.notify();
-                }))
-                .into_any_element()
-            })
-            .collect();
-        let empty = rows.is_empty();
-        let body = v_flex()
-            .w_full()
-            .child(Self::section("Thinking", cx))
-            .child(chips)
-            .child(Self::section("Model", cx))
-            .when(empty, |el| {
-                el.child(
-                    div()
-                        .px_4()
-                        .py_2()
-                        .text_sm()
-                        .text_color(theme.muted_foreground)
-                        .child("No models with credentials. Send /login to add a provider."),
-                )
-            })
-            .children(rows)
-            .into_any_element();
-        Self::sheet_frame("m-model-sheet", "Model", body, cx)
+    /// A chevron for navigable rows.
+    pub(crate) fn chevron(t: &OinoTheme) -> AnyElement {
+        icon(IconName::ChevronRight, size::ICON, t.fg_subtlest()).into_any_element()
     }
 
-    fn render_actions_sheet(pane: &Entity<SessionPane>, cx: &mut Context<Self>) -> AnyElement {
-        let panels = pane.read(cx).side_panels();
-        let mut rows: Vec<AnyElement> = vec![
-            Self::sheet_row("m-act-new".into(), "New session".into(), None, false, cx)
-                .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                    this.sheet = None;
-                    this.new_session(window, cx);
-                }))
-                .into_any_element(),
-            Self::sheet_row(
-                "m-act-compact".into(),
-                "Compact context".into(),
-                Some("Summarise older turns".into()),
-                false,
-                cx,
-            )
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.sheet = None;
-                this.with_pane(cx, SessionPane::compact);
-            }))
-            .into_any_element(),
-            Self::sheet_row(
-                "m-act-login".into(),
-                "Log in to a provider".into(),
-                Some("/login".into()),
-                false,
-                cx,
-            )
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.sheet = None;
-                this.with_pane(cx, |p, cx| p.run_prompt("/login", cx));
-            }))
-            .into_any_element(),
-            Self::sheet_row("m-act-settings".into(), "Settings".into(), None, false, cx)
-                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.open_settings(cx)))
-                .into_any_element(),
-        ];
-        if !panels.is_empty() {
-            rows.push(Self::section("Panels", cx));
-            for (id, title) in panels {
-                let panel = id.clone();
-                rows.push(
-                    Self::sheet_row(
-                        SharedString::from(format!("m-panel-{id}")),
-                        title,
-                        None,
-                        false,
-                        cx,
-                    )
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        this.sheet = None;
-                        let panel = panel.clone();
-                        this.with_pane(cx, |p, cx| {
-                            p.side.open(SideTab::Panel(panel));
-                            cx.notify();
-                        });
-                        cx.notify();
-                    }))
-                    .into_any_element(),
-                );
-            }
+    fn render_toasts(&self, t: &OinoTheme, top: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let visible = self.toasts.visible();
+        if visible.is_empty() {
+            return None;
         }
-        let body = v_flex().w_full().children(rows).into_any_element();
-        Self::sheet_frame("m-actions-sheet", "Session", body, cx)
+        Some(
+            div()
+                .absolute()
+                .top(px(top + touch::APP_BAR))
+                .left(px(space::S3))
+                .right(px(space::S3))
+                .flex()
+                .flex_col()
+                .gap(px(space::S2))
+                .children(visible.iter().map(|toast| {
+                    let (glyph, c) = match toast.kind {
+                        ToastKind::Info => (IconName::Info, t.info()),
+                        ToastKind::Success => (IconName::Check, t.success()),
+                        ToastKind::Warning => (IconName::TriangleAlert, t.warning()),
+                        ToastKind::Error => (IconName::CircleX, t.danger()),
+                    };
+                    let id = toast.id;
+                    div()
+                        .id(ElementId::NamedInteger("m-toast".into(), id))
+                        .flex()
+                        .items_start()
+                        .gap(px(space::S3))
+                        .py(px(space::S3))
+                        .px(px(space::S4))
+                        .rounded(px(radius::R_2XL))
+                        .bg(t.toast())
+                        .border_1()
+                        .border_color(t.popover_border())
+                        .shadow(t.e3())
+                        .occlude()
+                        // Swipe up (or tap) dismisses.
+                        .on_scroll(cx.listener(move |this, e: &gpui_kit::ScrollEvent, _, cx| {
+                            let dy = f32::from(e.delta.pixel_delta(px(size::ICON)).y);
+                            if dy < -space::S2 {
+                                this.toasts.dismiss(id);
+                                cx.notify();
+                            }
+                        }))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.toasts.dismiss(id);
+                            cx.notify();
+                        }))
+                        .child(div().pt(px(space::HALF)).child(icon(glyph, size::ICON, c)))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(space::HALF))
+                                .text_role(t, TextRole::Base)
+                                .text_color(t.fg())
+                                .when_some(toast.title.clone(), |el, title| {
+                                    el.child(div().weight_medium().child(title))
+                                })
+                                .child(div().line_clamp(3).child(toast.message.clone())),
+                        )
+                }))
+                .into_any_element(),
+        )
     }
+}
+
+/// A stable notification id for `key`.
+fn notification_id(key: &str) -> i32 {
+    let h = key.bytes().fold(0x811c_9dc5_u32, |h, b| {
+        (h ^ u32::from(b)).wrapping_mul(0x0100_0193)
+    });
+    i32::try_from(h & 0x7fff_ffff).unwrap_or(1)
 }
 
 impl Render for MobileShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme().clone();
+        if !self.sessions.is_empty()
+            && let Some(launch) = self.launch.take()
+        {
+            self.apply_launch(launch, window, cx);
+        }
+        let t = OinoTheme::get(cx);
         let hooks = MobilePlatform::get(cx);
         let insets = (hooks.safe_area)();
         let keyboard = (hooks.keyboard_height)();
         let bottom = insets.bottom.max(keyboard);
-        let pane = self.active_pane().cloned();
-        let body = match (self.screen, pane.as_ref()) {
-            (Screen::Session(_), Some(pane)) => Self::render_session(pane, window, cx),
-            (Screen::Settings, _) => self.render_settings(cx),
-            _ => self.render_sessions(cx),
+        let page = self.page().clone();
+        let body = match &page {
+            Page::Sessions => self.render_sessions(window, cx),
+            Page::Session(key) => match self.pane(*key).cloned() {
+                Some(pane) => match self.overlay_panel(cx) {
+                    Some((_, id)) => self.render_panel_page(&pane, &id, window, cx),
+                    None => self.render_conversation(&pane, window, cx),
+                },
+                None => self.render_sessions(window, cx),
+            },
+            Page::Settings(p) => self.render_settings(p, window, cx),
+            Page::Search => self.render_search(window, cx),
+            Page::Board(key) => match self.pane(*key).cloned() {
+                Some(pane) => self.render_board(&pane, window, cx),
+                None => self.render_sessions(window, cx),
+            },
+            Page::Pair => self.render_pair(window, cx),
+            Page::Diff { title, patch } => self.render_diff_page(title, patch, cx),
+            Page::Output { title, text } => self.render_output_page(title, text, cx),
         };
-        let sheet = match (self.sheet, pane.as_ref()) {
-            (Some(Sheet::Model), Some(pane)) => Some(Self::render_model_sheet(pane, cx)),
-            (Some(Sheet::Actions), Some(pane)) => Some(Self::render_actions_sheet(pane, cx)),
+        let drawer = match (&page, self.drawer) {
+            (Page::Session(key), true) => self
+                .pane(*key)
+                .cloned()
+                .map(|pane| self.render_drawer(&pane, window, cx)),
             _ => None,
         };
-        v_flex()
+        let sheet = self.render_sheet(window, cx);
+        self.press.set(sheet.is_none() && drawer.is_none());
+        let toasts = self.render_toasts(&t, insets.top, cx);
+        div()
+            .id("m-root")
             .size_full()
             .relative()
-            .bg(theme.background)
-            .text_color(theme.foreground)
-            .font_family(theme.font_family.clone())
+            .bg(t.frame())
+            .text_color(t.fg())
+            .font_family(t.ui_font())
+            .text_role(&t, TextRole::Base)
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::on_key))
+            // Capture: Back (= `escape` on Android) navigates before the pane sees it.
+            .capture_key_down(cx.listener(Self::on_key))
+            .capture_any_mouse_down({
+                let tap = Rc::clone(&self.last_tap);
+                move |_, _, _| tap.set(Some(Instant::now()))
+            })
+            .on_back_gesture(cx.listener(Self::on_back_gesture))
             .pt(px(insets.top))
             .pb(px(bottom))
             .pl(px(insets.left))
             .pr(px(insets.right))
-            // Sheets are absolutely positioned, which ignores the root's padding: keep them
+            // Overlays are absolutely positioned, which ignores the root's padding: keep them
             // inside a box that already excludes the safe areas and the keyboard.
             .child(
                 div()
                     .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
+                    .size_full()
+                    .flex()
+                    .flex_col()
                     .child(body)
+                    .children(drawer)
                     .children(sheet),
             )
+            .children(toasts)
+    }
+}
+
+/// Button helper re-exported to the screen modules.
+pub(crate) fn pill_btn(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    glyph: Option<IconName>,
+    variant: Variant,
+) -> Btn {
+    let b = Btn::new(id)
+        .label(label)
+        .variant(variant)
+        .size(BtnSize::Touch);
+    match glyph {
+        Some(g) => b.icon(g),
+        None => b,
     }
 }

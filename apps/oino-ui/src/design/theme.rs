@@ -259,6 +259,42 @@ impl OinoTheme {
         })]
     }
 
+    /// Touch density is active (Oino Mobile).
+    #[must_use]
+    pub fn touch(&self) -> bool {
+        self.density == Density::Touch
+    }
+
+    /// Timeline tool row height (24 desktop, 32 touch).
+    #[must_use]
+    pub fn tool_row(&self) -> Pixels {
+        px(if self.touch() {
+            tokens::touch::TOOL_ROW
+        } else {
+            tokens::size::TOOL_ROW
+        })
+    }
+
+    /// Option row height in docked cards and dialogs (36 desktop, 56 touch).
+    #[must_use]
+    pub fn option_row(&self) -> Pixels {
+        px(if self.touch() {
+            tokens::touch::ROW
+        } else {
+            tokens::size::OPTION_ROW
+        })
+    }
+
+    /// Timeline / conversation gutter (16 desktop, 12 touch).
+    #[must_use]
+    pub fn gutter(&self) -> Pixels {
+        px(if self.touch() {
+            tokens::touch::GUTTER
+        } else {
+            tokens::space::S4
+        })
+    }
+
     /// Row height scaled for the density (touch rows are taller).
     #[must_use]
     pub fn row(&self, desktop: f32) -> Pixels {

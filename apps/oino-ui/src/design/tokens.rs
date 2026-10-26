@@ -554,6 +554,50 @@ pub mod size {
     pub const THUMB: f32 = 48.0;
 }
 
+/// Touch layout (design.md §6, Oino Mobile; read through [`crate::design::Density::Touch`]).
+pub mod touch {
+    /// App bar / page detail header height.
+    pub const APP_BAR: f32 = 52.0;
+    /// Minimum touch target.
+    pub const TARGET: f32 = 44.0;
+    /// List rows (sessions, sheets, settings, search).
+    pub const ROW: f32 = 56.0;
+    /// Timeline tool rows.
+    pub const TOOL_ROW: f32 = 32.0;
+    /// Floating "New session" pill height.
+    pub const FAB: f32 = 48.0;
+    /// Right drawer width (fraction of the window).
+    pub const DRAWER: f32 = 0.88;
+    /// Bottom sheet max height (fraction of the visible height).
+    pub const SHEET_MAX: f32 = 0.9;
+    /// Sheet drag handle (36 × 4).
+    pub const HANDLE: (f32, f32) = (36.0, 4.0);
+    /// Timeline gutters.
+    pub const GUTTER: f32 = 12.0;
+    /// User bubble max width (fraction of the row).
+    pub const BUBBLE: f32 = 0.85;
+    /// Editable text size (composer, fields).
+    pub const EDIT_FONT: f32 = 16.0;
+    /// Width from which phones in landscape and tablets use the desktop shell.
+    pub const TABLET: f32 = 720.0;
+    /// Width of one swipe action behind a row.
+    pub const SWIPE_ACTION: f32 = 76.0;
+    /// Horizontal travel before a press becomes a swipe.
+    pub const SWIPE_SLOP: f32 = 12.0;
+    /// Pull distance that triggers refresh.
+    pub const PULL_REFRESH: f32 = 72.0;
+    /// Long-press delay in milliseconds.
+    pub const LONG_PRESS_MS: u64 = 450;
+    /// Board lane pill height.
+    pub const PILL: f32 = 32.0;
+    /// Thinking level segment height in the model sheet.
+    pub const SEGMENT: f32 = 40.0;
+    /// App bar crab glyph.
+    pub const CRAB: f32 = 28.0;
+    /// Status dot in rows.
+    pub const DOT: f32 = 8.0;
+}
+
 /// Window-width breakpoints (design.md §3.2).
 pub mod breakpoint {
     /// Status panel expanded.

@@ -162,7 +162,7 @@ impl InteractionView {
                 .flex()
                 .items_center()
                 .gap(px(space::S3))
-                .min_h(px(size::OPTION_ROW))
+                .min_h(t.option_row())
                 .px(px(space::S3))
                 .rounded(px(radius::R_INPUT))
                 .cursor_pointer()
@@ -172,7 +172,9 @@ impl InteractionView {
                     this.pick(i, cx);
                     cx.notify();
                 }))
-                .when(i < 9, |el| el.child(kbd(&t, (i + 1).to_string())))
+                .when(i < 9 && !t.touch(), |el| {
+                    el.child(kbd(&t, (i + 1).to_string()))
+                })
                 .when_some(mark, |el, m| el.child(check(&t, m, false)))
                 .child(
                     div()

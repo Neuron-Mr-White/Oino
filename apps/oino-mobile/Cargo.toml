@@ -44,6 +44,8 @@ rust-embed = { version = "8.7.2", default-features = false, features = ["debug-e
 [target.'cfg(target_os = "android")'.dependencies]
 android-activity.workspace = true
 android_logger.workspace = true
+# JNI calls into the host project's Java helpers (in-app browser), same version as gpui-mobile.
+jni = "0.22.4"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

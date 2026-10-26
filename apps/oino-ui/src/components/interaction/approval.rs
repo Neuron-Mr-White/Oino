@@ -124,6 +124,9 @@ impl InteractionView {
             _ => None,
         };
         let highlighted = self.highlighted;
+        // Touch: 44 pt buttons, stacked full width when there are more than two (design.md §6.3).
+        let touch = t.touch();
+        let stacked = touch && options.len() > 2;
         let buttons: Vec<AnyElement> = options
             .iter()
             .enumerate()
@@ -138,8 +141,13 @@ impl InteractionView {
                     .label(SharedString::from(o.label.clone()))
                     .kbd_lead((i + 1).to_string())
                     .variant(variant)
-                    .size(BtnSize::Default)
-                    .selected(i == highlighted && variant != Variant::Primary)
+                    .size(if touch {
+                        BtnSize::Touch
+                    } else {
+                        BtnSize::Default
+                    })
+                    .when(stacked, Btn::full)
+                    .selected(i == highlighted && variant != Variant::Primary && !touch)
                     .on_click(cx.listener(move |this, _, _, cx| this.approve_at(i, cx)))
                     .into_any_element()
             })
@@ -148,6 +156,24 @@ impl InteractionView {
             .into_iter()
             .zip(options.iter())
             .partition(|(_, o)| o.kind.is_allow());
+        let actions = if stacked {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(space::S2))
+                .children(allow.into_iter().map(|(b, _)| b))
+                .children(reject.into_iter().map(|(b, _)| b))
+        } else {
+            div()
+                .flex()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(px(space::S2))
+                .children(allow.into_iter().map(|(b, _)| b))
+                .child(div().flex_1())
+                .children(reject.into_iter().map(|(b, _)| b))
+        };
         shell
             .child(
                 div()
@@ -196,17 +222,7 @@ impl InteractionView {
                     )
                     .children(detail_el)
                     .when_some(field, |el, s| el.child(Input::new(&s)))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .flex_wrap()
-                            .items_center()
-                            .gap(px(space::S2))
-                            .children(allow.into_iter().map(|(b, _)| b))
-                            .child(div().flex_1())
-                            .children(reject.into_iter().map(|(b, _)| b)),
-                    ),
+                    .child(actions),
             )
             .into_any_element()
     }

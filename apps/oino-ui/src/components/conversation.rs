@@ -62,17 +62,46 @@ impl SessionPane {
         let t = OinoTheme::get(cx);
         let widgets = self.render_widgets(WidgetPlacement::AboveEditor, window, cx);
         let queue = self.render_queue(&t, cx);
+        // Touch: cards that prefer a bottom sheet are rendered by the mobile shell instead.
         let card = self
             .interaction
             .as_ref()
-            .filter(|v| !v.read(cx).is_modal())
+            .filter(|v| {
+                let v = v.read(cx);
+                !v.is_modal() && (!t.touch() || !v.touch_sheet())
+            })
             .cloned();
         if let Some(card) = &card {
-            let h = self.width.max(px(size::CONVERSATION_MIN)) * 0.3;
+            let h = if t.touch() {
+                window.viewport_size().height * 0.5
+            } else {
+                self.width.max(px(size::CONVERSATION_MIN)) * 0.3
+            };
             card.update(cx, |v, _| v.set_max_height(h));
         }
         let run = self.render_run_state(&t, cx);
+        // Touch: a dock taller than half the screen moves its card into a bottom sheet
+        // (design.md §6.3), measured after layout.
+        let promote = (t.touch())
+            .then(|| card.as_ref().map(gpui_kit::Entity::downgrade))
+            .flatten()
+            .map(|weak| {
+                canvas(
+                    move |bounds, window, cx| {
+                        if bounds.size.height > window.viewport_size().height * 0.5 {
+                            let _ = weak.update(
+                                cx,
+                                crate::components::interaction::InteractionView::promote,
+                            );
+                        }
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .size_full()
+            });
         div()
+            .relative()
             .flex()
             .flex_col()
             .w_full()
@@ -81,6 +110,7 @@ impl SessionPane {
             .children(queue)
             .when_some(card, gpui_kit::ParentElement::child)
             .children(run)
+            .children(promote)
             .into_any_element()
     }
 
@@ -125,6 +155,54 @@ impl SessionPane {
         let composer = self.render_composer(true, window, cx);
         let meta = self.render_meta_row(&t, cx);
         let suggestions = self.render_suggestions(&t, cx);
+        if t.touch() {
+            // Touch (design.md §6.2): the composer stays docked at the bottom so the soft
+            // keyboard lifts it; the hero, greeting and suggestions scroll above.
+            return div()
+                .relative()
+                .flex()
+                .flex_col()
+                .size_full()
+                .child(
+                    div()
+                        .id("welcome")
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .px(t.gutter())
+                        .child(div().flex_1().min_h(px(space::S6)))
+                        .child(hero)
+                        .child(
+                            div()
+                                .pt(px(space::S6))
+                                .pb(px(space::S2))
+                                .text_role(&t, TextRole::Display)
+                                .weight_semibold()
+                                .text_color(t.fg())
+                                .child(greeting(local_hour())),
+                        )
+                        .child(suggestions)
+                        .child(div().flex_1().min_h(px(space::S4))),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_none()
+                        .gap(px(space::S2))
+                        .w_full()
+                        .px(t.gutter())
+                        .pb(px(space::S2))
+                        .child(dock)
+                        .child(composer)
+                        .children(meta),
+                )
+                .child(self.measure(cx))
+                .into_any_element();
+        }
         div()
             .id("welcome")
             .relative()
@@ -415,7 +493,9 @@ impl SessionPane {
             }
         }
         let state = self.header_state;
-        let header = self.render_header(state, &t, cx);
+        // Touch: the mobile shell draws the app bar and the status capsule row (design.md §6.2).
+        let touch = t.touch();
+        let header = (!touch).then(|| self.render_header(state, &t, cx));
         if self.model.transcript.is_empty() {
             let welcome = self.render_welcome(window, cx);
             return div()
@@ -424,7 +504,7 @@ impl SessionPane {
                 .size_full()
                 .track_focus(&self.focus)
                 .on_key_down(cx.listener(Self::on_pane_key))
-                .child(header)
+                .children(header)
                 .child(div().flex_1().min_h_0().child(welcome))
                 .into_any_element();
         }
@@ -448,8 +528,16 @@ impl SessionPane {
             .chain(self.render_widgets(WidgetPlacement::Header, window, cx))
             .collect();
         let timeline = list(self.list.clone(), cx.processor(SessionPane::render_row)).size_full();
-        let rail = self.render_rail(&t, cx);
-        let mut status = self.render_status_panel(&t, cx);
+        let rail = if touch {
+            None
+        } else {
+            self.render_rail(&t, cx)
+        };
+        let mut status = if touch {
+            None
+        } else {
+            self.render_status_panel(&t, cx)
+        };
         let mini_status = self.status_is_mini();
         let find = self.render_find(&t, cx);
         let pill = self.jump_pill(&t, cx);
@@ -464,7 +552,7 @@ impl SessionPane {
             .size_full()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_pane_key))
-            .child(header)
+            .children(header)
             .when(!header_widgets.is_empty(), |el| {
                 el.child(
                     div()
@@ -504,7 +592,7 @@ impl SessionPane {
                     .flex()
                     .flex_col()
                     .w_full()
-                    .px(px(space::S4))
+                    .px(t.gutter())
                     .pb(px(space::S2))
                     .child(
                         div()

@@ -49,10 +49,7 @@ fn contrast_rules() {
 }
 
 /// Files allowed to contain literal styles, with the reason.
-const EXCEPTIONS: &[(&str, &str)] = &[(
-    "src/mobile/",
-    "owned by design-mobile; migrates to design tokens in M-P1",
-)];
+const EXCEPTIONS: &[(&str, &str)] = &[];
 
 fn scan(dir: &Path, root: &Path, hits: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(dir) else {

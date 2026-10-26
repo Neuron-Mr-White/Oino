@@ -143,8 +143,8 @@ impl SessionPane {
         let cursor = self.timeline_kb && self.cursor == Some(ix);
         div()
             .w_full()
-            .pl(px(space::S4))
-            .pr(px(space::S4 + shift))
+            .pl(t.gutter())
+            .pr(t.gutter() + px(shift))
             .pt(px(top))
             .pb(px(space::S1_5))
             .child(
@@ -207,7 +207,7 @@ impl SessionPane {
             .flex()
             .items_center()
             .gap(px(space::S2))
-            .h(px(size::TOOL_ROW))
+            .h(t.tool_row())
             .cursor_pointer()
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 if !this.explore_open.remove(&key) {
@@ -268,7 +268,7 @@ impl SessionPane {
                         .flex()
                         .items_center()
                         .gap(px(space::S1_5))
-                        .h(px(size::TOOL_ROW))
+                        .h(t.tool_row())
                         .cursor_pointer()
                         .text_role(t, TextRole::Sm)
                         .text_color(t.fg_subtle())

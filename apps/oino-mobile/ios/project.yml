@@ -42,9 +42,12 @@ targets:
         DEAD_CODE_STRIPPING: NO
         HEADER_SEARCH_PATHS: ["$(PROJECT_DIR)"]
         ARCHS: arm64
+        # Simulator: the host CPU (build.sh sets OINO_SIM_ARCH / OINO_SIM_TARGET: arm64 +
+        # aarch64-apple-ios-sim on Apple silicon, x86_64 + x86_64-apple-ios on Intel).
+        "ARCHS[sdk=iphonesimulator*]": ${OINO_SIM_ARCH}
         ONLY_ACTIVE_ARCH: YES
         OINO_PROFILE: debug
-        "OINO_STATIC_LIB[sdk=iphonesimulator*]": "$(PROJECT_DIR)/../../target/aarch64-apple-ios-sim/$(OINO_PROFILE)/liboino_mobile.a"
+        "OINO_STATIC_LIB[sdk=iphonesimulator*]": "$(PROJECT_DIR)/../../target/${OINO_SIM_TARGET}/$(OINO_PROFILE)/liboino_mobile.a"
         "OINO_STATIC_LIB[sdk=iphoneos*]": "$(PROJECT_DIR)/../../target/aarch64-apple-ios/$(OINO_PROFILE)/liboino_mobile.a"
         OTHER_LDFLAGS:
           - "-force_load"
@@ -61,6 +64,7 @@ targets:
           - "-framework Security"
           - "-framework SystemConfiguration"
           - "-framework UserNotifications"
+          - "-framework SafariServices"
           - "-framework UniformTypeIdentifiers"
           # Linked by gpui-mobile modules that are compiled regardless of package features.
           - "-framework AVFoundation"

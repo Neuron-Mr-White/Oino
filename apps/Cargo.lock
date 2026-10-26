@@ -5718,6 +5718,7 @@ dependencies = [
  "gpui-kit",
  "gpui-pre-mobile",
  "indexmap",
+ "jni 0.22.4",
  "log",
  "oino-ai",
  "oino-bundle",

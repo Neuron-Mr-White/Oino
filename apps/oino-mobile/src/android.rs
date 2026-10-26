@@ -23,6 +23,15 @@ fn android_main(app: AndroidApp) {
             .with_tag("oino"),
     );
     jni::install_panic_hook();
+    // Log a backtrace with every panic (logcat has no RUST_BACKTRACE).
+    let report = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!(
+            "panic backtrace:\n{}",
+            std::backtrace::Backtrace::force_capture()
+        );
+        report(info);
+    }));
     // `Context.getFilesDir()/oino` is the app-private `~/.oino`.
     let Some(agent_dir) = app.internal_data_path().map(|dir| dir.join("oino")) else {
         log::error!("android_main: no internal data path");
@@ -43,7 +52,11 @@ fn android_main(app: AndroidApp) {
     // `Platform::run` drives the Android event loop and runs the callback once the native
     // window exists; it returns when the activity finishes.
     Application::with_platform(shared.into_rc())
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(oino_ui::design::icons::OinoAssets)
         .run(move |cx: &mut App| boot.launch(cx));
     log::info!("android_main: event loop exited");
+    // GPUI binds its executors to this thread: a later activity in the same process would
+    // start on a new native thread and fail GPUI's main-thread check, so end the process and
+    // let the next launch start fresh.
+    std::process::exit(0);
 }

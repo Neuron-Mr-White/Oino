@@ -89,6 +89,10 @@ impl SessionPane {
             .w_full()
             .min_h(px(size::CONTROL_LG))
             .text_role(&t, TextRole::Base)
+            // Touch: editable text is 16 (no zoom-on-focus sizes, design.md §6).
+            .when(t.touch(), |el| {
+                el.text_size(px(crate::design::tokens::touch::EDIT_FONT))
+            })
             .text_color(t.fg())
             .capture_key_down(cx.listener(Self::on_composer_key))
             .child(Textarea::new(&self.composer).appearance(false).token({

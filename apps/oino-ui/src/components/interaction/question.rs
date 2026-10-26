@@ -198,7 +198,7 @@ impl InteractionView {
                 .flex()
                 .items_center()
                 .gap(px(space::S3))
-                .min_h(px(size::OPTION_ROW))
+                .min_h(t.option_row())
                 .px(px(space::S3))
                 .rounded(px(radius::R_INPUT))
                 .cursor_pointer()
@@ -214,7 +214,9 @@ impl InteractionView {
                     this.toggle_option(step, oi);
                     cx.notify();
                 }))
-                .when(oi < 9, |el| el.child(kbd(&t, (oi + 1).to_string())))
+                .when(oi < 9 && !t.touch(), |el| {
+                    el.child(kbd(&t, (oi + 1).to_string()))
+                })
                 .child(check(&t, checked, !q.multi))
                 .child(
                     div()

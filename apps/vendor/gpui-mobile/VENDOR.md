@@ -37,9 +37,19 @@ Java glue lives, trimmed, in `apps/oino-mobile/android/app/src/main/java/dev/gpu
    `safe_area_insets()` is the max of those and the content-rect insets, and the IME inset
    feeds `keyboard_height()`. Edge-to-edge windows (enforced at targetSdk 35+) otherwise
    report zero insets and the keyboard height was never set on Android.
+6. `src/android/platform.rs` + `src/ios/platform.rs`: `Platform::platform_info` (new in
+   gpui-pre 0.3.10; reports `Android` / `Ios`, `Native`). Added by design-mobile after the
+   gpui-pre 0.3.10 bump.
+7. `src/ios/platform_view.rs`: the AVPlayer / AVCaptureSession layer hookups are
+   `#[cfg(feature = "video_player")]` / `#[cfg(feature = "camera")]` (upstream referenced
+   the packages unconditionally, so iOS builds without those features failed).
+8. `src/android/window.rs`: `TextInputStateChange::FocusGained` raises the soft keyboard
+   only within 1 s of a touch release (programmatic focus no longer pops the keyboard over
+   the conversation; explicit `show_keyboard()` still works).
 
 Default features are off in `apps/Cargo.toml`; Oino enables `clipboard`, `notifications`,
-`file_selector`, `share`, `path_provider`, `shared_preferences`, `deeplink`.
+`file_selector`, `share`, `path_provider`, `shared_preferences`, `deeplink`, `vibration`
+(haptic ticks, design-mobile).
 
 ## Updating
 
