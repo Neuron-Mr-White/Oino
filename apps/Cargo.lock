@@ -5014,6 +5014,7 @@ dependencies = [
  "oino-ai",
  "oino-core",
  "oino-session",
+ "oino-settings",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -5025,6 +5026,7 @@ name = "oino-core"
 version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
+ "ignore",
  "indexmap",
  "oino-agent",
  "oino-ai",
@@ -5199,11 +5201,26 @@ dependencies = [
  "oino-client",
  "oino-core",
  "oino-session",
+ "oino-view",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "oino-view"
+version = "1.0.0-alpha.1"
+dependencies = [
+ "indexmap",
+ "oino-agent",
+ "oino-ai",
+ "oino-core",
+ "oino-session",
+ "serde",
+ "serde_json",
+ "unicode-width",
 ]
 
 [[package]]
@@ -5219,6 +5236,7 @@ dependencies = [
  "oino-ai",
  "oino-core",
  "oino-extension-api",
+ "oino-settings",
  "reqwest",
  "serde",
  "serde_json",

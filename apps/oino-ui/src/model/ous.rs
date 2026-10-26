@@ -194,6 +194,25 @@ pub struct KeyHint {
     pub label: String,
 }
 
+/// Frontend animation hint (design.md §4.27, request R1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Effect {
+    /// One highlight sweep on a card, then static.
+    Shimmer,
+    /// A meter drains from full to empty over `durationMs`.
+    Drain,
+}
+
+impl Effect {
+    fn of(value: &JsonValue) -> Option<Self> {
+        match value.get("effect").and_then(JsonValue::as_str)? {
+            "shimmer" => Some(Self::Shimmer),
+            "drain" => Some(Self::Drain),
+            _ => None,
+        }
+    }
+}
+
 /// One OUS node.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(
@@ -266,6 +285,7 @@ pub enum OusNode {
         rail: Option<Tone>,
         source: Option<String>,
         body: Box<OusNode>,
+        effect: Option<Effect>,
     },
     Badge {
         value: Rich,
@@ -276,6 +296,8 @@ pub enum OusNode {
         max: f64,
         label: Option<String>,
         tone: Tone,
+        effect: Option<Effect>,
+        duration_ms: Option<u64>,
     },
     Gauge {
         value: f64,
@@ -327,6 +349,11 @@ pub enum OusNode {
     },
     Empty {
         message: Option<String>,
+    },
+    /// Oino `responsive` (R1): the first variant whose `min_width` (columns) fits.
+    Responsive {
+        variants: Vec<(u32, OusNode)>,
+        fallback: Box<OusNode>,
     },
 }
 
@@ -555,6 +582,7 @@ impl OusNode {
                 rail: value.get("rail").map(|r| Tone::of(Some(r))),
                 source: st(value, "source"),
                 body: Box::new(Self::child(value, "body", d, budget)),
+                effect: Effect::of(value),
             },
             "badge" => Self::Badge {
                 value: rich(value.get("value")),
@@ -565,6 +593,8 @@ impl OusNode {
                 max: num(value, "max").unwrap_or(1.0),
                 label: st(value, "label"),
                 tone: Tone::of(value.get("tone")),
+                effect: Effect::of(value),
+                duration_ms: value.get("durationMs").and_then(JsonValue::as_u64),
             },
             "gauge" => Self::Gauge {
                 value: num(value, "value").unwrap_or(0.0).clamp(0.0, 1.0),
@@ -634,6 +664,15 @@ impl OusNode {
             },
             "empty" => Self::Empty {
                 message: st(value, "message"),
+            },
+            "responsive" => Self::Responsive {
+                variants: array(value, "variants")
+                    .filter_map(|v| {
+                        let min = u32::try_from(v.get("minWidth")?.as_u64()?).ok()?;
+                        Some((min, Self::child(v, "node", d, budget)))
+                    })
+                    .collect(),
+                fallback: Box::new(Self::child(value, "fallback", d, budget)),
             },
             _ => value
                 .get("fallback")
@@ -716,8 +755,37 @@ impl OusNode {
             Self::BarChart { bars } => {
                 out.extend(bars.iter().map(|b| format!("{}: {}", b.label, b.value)));
             }
+            Self::Responsive { variants, fallback } => match variants.first() {
+                Some((_, node)) => node.lines_into(out),
+                None => fallback.lines_into(out),
+            },
             Self::Area { .. } | Self::Input { .. } | Self::Toggle { .. } | Self::Select { .. } => {}
         }
+    }
+}
+
+impl OusNode {
+    /// Resolves `responsive` nodes for a width of `columns` (≈ px / 8): the first variant
+    /// whose `minWidth` fits (variants are ordered widest first), else the fallback.
+    #[must_use]
+    pub fn resolve(&self, columns: u32) -> &Self {
+        match self {
+            Self::Responsive { variants, fallback } => variants
+                .iter()
+                .find(|(min, _)| *min <= columns)
+                .map_or(fallback.as_ref(), |(_, node)| node)
+                .resolve(columns),
+            other => other,
+        }
+    }
+
+    /// Stable content hash (render caches key on it).
+    #[must_use]
+    pub fn content_hash(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        format!("{self:?}").hash(&mut h);
+        h.finish()
     }
 }
 
@@ -827,6 +895,29 @@ mod tests {
         };
         assert_eq!(lines.len(), MAX_LOG_LINES);
         assert_eq!(Tone::parse("c13"), Tone::Default);
+    }
+
+    #[test]
+    fn responsive_and_effects() {
+        let node = OusNode::parse(&json!({"t":"responsive","variants":[
+            {"minWidth":76,"node":{"t":"card","effect":"shimmer","body":{"t":"meter","value":1,"max":1,"effect":"drain","durationMs":2500}}},
+            {"minWidth":44,"node":{"t":"text","value":"small"}}],
+            "fallback":{"t":"empty"}}));
+        let OusNode::Card { effect, body, .. } = node.resolve(100) else {
+            panic!()
+        };
+        assert_eq!(*effect, Some(Effect::Shimmer));
+        assert!(matches!(
+            body.as_ref(),
+            OusNode::Meter {
+                effect: Some(Effect::Drain),
+                duration_ms: Some(2500),
+                ..
+            }
+        ));
+        assert!(matches!(node.resolve(50), OusNode::Text { .. }));
+        assert!(matches!(node.resolve(10), OusNode::Empty { .. }));
+        assert_eq!(node.content_hash(), node.clone().content_hash());
     }
 
     #[test]

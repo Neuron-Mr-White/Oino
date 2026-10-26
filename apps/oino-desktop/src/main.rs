@@ -103,6 +103,24 @@ fn default_cwd(explicit: Option<PathBuf>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// Default window size (design.md §5).
+const DEFAULT_SIZE: (f32, f32) = (1400.0, 900.0);
+/// Minimum window size.
+const MIN_SIZE: (f32, f32) = (720.0, 480.0);
+/// macOS traffic-light origin inside the sidebar top row.
+const TRAFFIC_LIGHTS: (f32, f32) = (16.0, 16.0);
+
+/// Window size: `OINO_DESKTOP_SIZE=WxH` (screenshots) or the default.
+fn window_size() -> (f32, f32) {
+    std::env::var("OINO_DESKTOP_SIZE")
+        .ok()
+        .and_then(|v| {
+            let (w, h) = v.split_once('x')?;
+            Some((w.parse().ok()?, h.parse().ok()?))
+        })
+        .unwrap_or(DEFAULT_SIZE)
+}
+
 fn main() -> anyhow::Result<()> {
     let args = parse_args()?;
     let agent_dir = oino_settings::paths::agent_dir().context("locating the agent dir")?;
@@ -123,18 +141,25 @@ fn main() -> anyhow::Result<()> {
     };
     let handle = runtime.handle().clone();
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        .with_assets(oino_ui::design::icons::OinoAssets)
         .run(move |cx: &mut App| {
             gpui_kit::init(cx);
+            oino_ui::design::theme::register_fonts(cx);
             Tokio::init(cx, handle);
             views::init(cx);
             cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
-            let bounds = Bounds::centered(None, size(px(1320.), px(860.)), cx);
+            let (w, h) = window_size();
+            let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Oino".into()),
-                    ..TitlebarOptions::default()
+                    // macOS: content under a transparent title bar, traffic lights in the
+                    // sidebar's 78 px safe area (design.md §3.1).
+                    appears_transparent: cfg!(target_os = "macos"),
+                    traffic_light_position: cfg!(target_os = "macos")
+                        .then(|| gpui_kit::point(px(TRAFFIC_LIGHTS.0), px(TRAFFIC_LIGHTS.1))),
                 }),
                 app_id: Some("dev.oino.desktop".into()),
                 ..WindowOptions::default()

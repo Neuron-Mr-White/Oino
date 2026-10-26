@@ -90,21 +90,103 @@ pub struct HostInfo {
     pub backend: String,
 }
 
-/// Theme preference.
+/// Theme preference (design.md §2.1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemePref {
-    /// Light.
-    Light,
-    /// Dark.
+    /// Follow the window appearance (dark when unknown).
     #[default]
+    System,
+    /// Oino Light.
+    Light,
+    /// Oino Dark.
     Dark,
+}
+
+/// Reduce motion (design.md §2.10).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReduceMotion {
+    /// Follow the OS (`OINO_REDUCE_MOTION=1` forces it where GPUI has no OS signal).
+    #[default]
+    FollowOs,
+    /// Always reduce.
+    On,
+    /// Never reduce.
+    Off,
+}
+
+impl ReduceMotion {
+    /// Whether motion is reduced.
+    #[must_use]
+    pub fn resolve(self) -> bool {
+        match self {
+            Self::On => true,
+            Self::Off => false,
+            Self::FollowOs => std::env::var("OINO_REDUCE_MOTION").is_ok_and(|v| v == "1"),
+        }
+    }
+}
+
+/// Status panel mode (design.md §4.19).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StatusPanelMode {
+    /// Expanded at ≥ 1280 px, mini below.
+    #[default]
+    Auto,
+    /// Always expanded.
+    Expanded,
+    /// Always the mini capsule.
+    Mini,
+}
+
+/// Tool row density (unipi utility render styles, design.md §4.9).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolDensity {
+    /// One line, no detail until expanded.
+    #[default]
+    Simple,
+    /// One line plus a short preview for edits and shell commands.
+    Regular,
+    /// Details expanded.
+    Advanced,
+}
+
+impl ToolDensity {
+    /// Wire name (`render{density}`).
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Simple => "simple",
+            Self::Regular => "regular",
+            Self::Advanced => "advanced",
+        }
+    }
+}
+
+/// Thinking block display.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ThinkingBlocks {
+    /// One collapsed line (default).
+    #[default]
+    Collapsed,
+    /// Expanded.
+    Expanded,
+    /// Not shown (`hideThinkingBlock`).
+    Hidden,
 }
 
 /// Desktop-only preferences (`~/.oino/desktop.json`); agent settings stay in
 /// `settings.json`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent persisted preferences"
+)]
 pub struct AppSettings {
     /// Theme.
     pub theme: ThemePref,
@@ -116,16 +198,40 @@ pub struct AppSettings {
     pub expand_tools: bool,
     /// Recently used working directories (most recent first).
     pub recent_cwds: Vec<String>,
+    /// UI font size in px (12–18).
+    pub ui_font_size: u8,
+    /// Code / diff / log font size in px (10–20).
+    pub code_font_size: u8,
+    /// Reduce motion.
+    pub reduce_motion: ReduceMotion,
+    /// Status panel mode.
+    pub status_panel: StatusPanelMode,
+    /// Tool row density.
+    pub tool_density: ToolDensity,
+    /// Thinking blocks.
+    pub thinking_blocks: ThinkingBlocks,
+    /// Onboarding finished (or skipped).
+    pub onboarded: bool,
+    /// Palette history (most recent first, max 20).
+    pub palette_history: Vec<String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            theme: ThemePref::Dark,
+            theme: ThemePref::System,
             hide_thinking: true,
             compact: false,
             expand_tools: false,
             recent_cwds: Vec::new(),
+            ui_font_size: 14,
+            code_font_size: 13,
+            reduce_motion: ReduceMotion::FollowOs,
+            status_panel: StatusPanelMode::Auto,
+            tool_density: ToolDensity::Simple,
+            thinking_blocks: ThinkingBlocks::Collapsed,
+            onboarded: false,
+            palette_history: Vec::new(),
         }
     }
 }
@@ -136,6 +242,17 @@ impl AppSettings {
         self.recent_cwds.retain(|c| c != cwd);
         self.recent_cwds.insert(0, cwd.to_owned());
         self.recent_cwds.truncate(10);
+    }
+
+    /// Records a palette query (max 20, most recent first).
+    pub fn push_palette_history(&mut self, query: &str) {
+        let query = query.trim();
+        if query.is_empty() {
+            return;
+        }
+        self.palette_history.retain(|q| q != query);
+        self.palette_history.insert(0, query.to_owned());
+        self.palette_history.truncate(20);
     }
 }
 
@@ -169,6 +286,15 @@ mod tests {
         let parsed: AppSettings = serde_json::from_str(r#"{"theme":"light"}"#).unwrap();
         assert_eq!(parsed.theme, ThemePref::Light);
         assert!(parsed.hide_thinking);
+        assert_eq!(parsed.ui_font_size, 14);
+        assert_eq!(AppSettings::default().theme, ThemePref::System);
+        let mut h = AppSettings::default();
+        for i in 0..25 {
+            h.push_palette_history(&format!("q{i}"));
+        }
+        h.push_palette_history("q3");
+        assert_eq!(h.palette_history.len(), 20);
+        assert_eq!(h.palette_history[0], "q3");
         let mut s = AppSettings::default();
         for i in 0..12 {
             s.touch_cwd(&format!("/p{i}"));

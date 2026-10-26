@@ -31,6 +31,7 @@ oino-session = { path = "../crates/oino-session" }
 oino-settings = { path = "../crates/oino-settings" }
 oino-wasm-host = { path = "../crates/oino-wasm-host" }
 oino-ui = { path = "oino-ui" }
+oino-view = { path = "../crates/oino-view" }
 
 # Mobile platform (gpui-app §4): vendored longbridge/gpui-mobile on gpui-pre =0.3.9, every
 # optional package off except the ones Oino Mobile uses.

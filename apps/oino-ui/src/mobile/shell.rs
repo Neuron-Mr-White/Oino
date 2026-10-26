@@ -25,13 +25,13 @@ use gpui_kit::{
 };
 use oino_ai::ThinkingLevel;
 
+use crate::design::theme;
 use crate::host::{AppSettings, ExtensionInfo, OpenRequest, OpenedSession, SessionHost, ThemePref};
 use crate::mobile::MobilePlatform;
 use crate::model::sessions::{LiveStatus, SessionEntry, SessionList, SessionSummary, age};
 use crate::model::ui_state::{NotifyKind, UiEffect};
 use crate::rt::Tokio;
 use crate::views::session_pane::{PaneEvent, SessionPane, SideTab};
-use crate::views::theme;
 
 /// Height of the app bar.
 const BAR: f32 = 52.;
@@ -101,7 +101,7 @@ impl MobileShell {
     /// The root view; starts on the session list.
     pub fn new(host: Arc<dyn SessionHost>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = host.app_settings();
-        theme::apply(settings.theme, Some(window), cx);
+        theme::install(&settings, Some(window), cx);
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Filter sessions"));
         let subscriptions = vec![cx.subscribe_in(
             &search,
@@ -318,6 +318,16 @@ impl MobileShell {
                 cx.notify();
             }
             PaneEvent::Effect(effect) => self.perform(effect.clone(), window, cx),
+            PaneEvent::Toast(text) => {
+                window.push_notification((NotificationType::Info, text.clone()), cx);
+            }
+            PaneEvent::ShowSide
+            | PaneEvent::ShowBottom
+            | PaneEvent::Focused
+            | PaneEvent::ToggleSidebar
+            | PaneEvent::ToggleSide
+            | PaneEvent::ToggleBottom
+            | PaneEvent::ClosePane => cx.notify(),
         }
     }
 
@@ -371,7 +381,7 @@ impl MobileShell {
 
     fn set_theme(&mut self, pref: ThemePref, window: &mut Window, cx: &mut Context<Self>) {
         self.settings.theme = pref;
-        theme::apply(pref, Some(window), cx);
+        theme::install(&self.settings, Some(window), cx);
         self.host.save_app_settings(&self.settings);
         cx.notify();
     }
@@ -395,10 +405,10 @@ impl MobileShell {
             return true;
         }
         if let Some(pane) = self.active_pane().cloned()
-            && pane.read(cx).side.is_some()
+            && pane.read(cx).side.is_open()
         {
             pane.update(cx, |p, cx| {
-                p.side = None;
+                p.side.close();
                 cx.notify();
             });
             return true;
@@ -619,7 +629,11 @@ impl MobileShell {
             .into_any_element()
     }
 
-    fn render_session(pane: &Entity<SessionPane>, cx: &mut Context<Self>) -> AnyElement {
+    fn render_session(
+        pane: &Entity<SessionPane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme().clone();
         let (title, model_label, thinking, busy, side) = {
             let p = pane.read(cx);
@@ -628,7 +642,7 @@ impl MobileShell {
                 p.model.model_label(),
                 p.model.thinking,
                 p.model.is_busy(),
-                p.side.is_some() && !p.model.ui.needs_attention(),
+                p.side.is_open() && !p.model.ui.needs_attention(),
             )
         };
         let heading = v_flex()
@@ -687,7 +701,7 @@ impl MobileShell {
         ));
         let bar = Self::app_bar(Some(back), heading, actions, cx);
         let side_sheet = if side {
-            pane.update(cx, |p, cx| p.render_side(cx))
+            Some(pane.update(cx, |p, cx| p.render_side(window, cx)))
         } else {
             None
         };
@@ -894,7 +908,7 @@ impl MobileShell {
             .flex()
             .flex_col()
             .justify_end()
-            .bg(theme::scrim())
+            .bg(crate::design::OinoTheme::get(cx).scrim())
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.sheet = None;
                 cx.notify();
@@ -1102,7 +1116,7 @@ impl MobileShell {
                         this.sheet = None;
                         let panel = panel.clone();
                         this.with_pane(cx, |p, cx| {
-                            p.side = Some(SideTab::Panel(panel));
+                            p.side.open(SideTab::Panel(panel));
                             cx.notify();
                         });
                         cx.notify();
@@ -1117,7 +1131,7 @@ impl MobileShell {
 }
 
 impl Render for MobileShell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let hooks = MobilePlatform::get(cx);
         let insets = (hooks.safe_area)();
@@ -1125,7 +1139,7 @@ impl Render for MobileShell {
         let bottom = insets.bottom.max(keyboard);
         let pane = self.active_pane().cloned();
         let body = match (self.screen, pane.as_ref()) {
-            (Screen::Session(_), Some(pane)) => Self::render_session(pane, cx),
+            (Screen::Session(_), Some(pane)) => Self::render_session(pane, window, cx),
             (Screen::Settings, _) => self.render_settings(cx),
             _ => self.render_sessions(cx),
         };

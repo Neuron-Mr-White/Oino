@@ -23,6 +23,7 @@ oino-ai.workspace = true
 oino-client = { workspace = true }
 oino-core.workspace = true
 oino-session.workspace = true
+oino-view.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

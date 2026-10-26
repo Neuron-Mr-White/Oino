@@ -1,0 +1,20 @@
+Oino Desktop bundles the following third-party assets and libraries.
+
+Lucide icons (via gpui-kit-assets) — ISC License
+  Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT).
+  All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+  https://lucide.dev/license
+
+Inter (apps/oino-ui/assets/fonts/Inter-*.ttf) — SIL Open Font License 1.1
+  Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  Full text: apps/oino-ui/assets/fonts/OFL-Inter.txt
+
+JetBrains Mono (apps/oino-ui/assets/fonts/JetBrainsMono-*.ttf) — SIL Open Font License 1.1
+  Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+  Full text: apps/oino-ui/assets/fonts/OFL-JetBrainsMono.txt
+
+gpui-kit / gpui-component / gpui-pre — Apache License 2.0
+  https://github.com/longbridge/gpui-kit
+
+Design tokens follow ZCode (github.com/zai-org/ZCode, Apache-2.0) Zai Light / Zai Dark values;
+no ZCode code or assets are included.

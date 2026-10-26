@@ -38,7 +38,7 @@ Linux tar.gz (+ AppImage/deb), macOS `.app`/`.dmg` (`--universal` = lipo), Windo
 (config: `[package.metadata.packager]` in `oino-desktop/Cargo.toml`).
 
 `oino-desktop/scripts/screenshot.sh [out]` renders the demo headless (Xvfb + lavapipe) and
-captures `oino-desktop/screenshots/*.png`.
+captures `docs/dev/v1/design/shots/desktop/*.png`.
 
 ## Keys
 
@@ -46,3 +46,34 @@ Ctrl/Cmd+K palette (`>` commands, `#` sessions) · +N new session · +O new in f
 +T thinking · +B sidebar · +J side pane · +. abort · +, settings. Composer: Enter send (steer while
 running) · Ctrl+Enter follow-up · Shift+Enter newline · ↑/↓ history · Tab completes `/command` ·
 Esc aborts.
+
+## Design system (design-desktop)
+
+`apps/oino-ui` follows [docs/dev/v1/design.md](../docs/dev/v1/design.md):
+
+| Module | Contents |
+|---|---|
+| `design::{tokens, type_scale, tones, brand, perf}` | Oino Light/Dark palettes (Zai values), spacing/radii/sizes, text roles, OUS tone map, Unicrab data, frame-time ring (toolkit-free, tested) |
+| `design::{theme, icons, syntax, ticker}` | `OinoTheme` global + derived gpui-kit theme, bundled Inter / JetBrains Mono, Lucide `OinoAssets` (vocabulary only + gpui-kit defaults), highlight theme, shared 12 fps ticker that stops when idle |
+| `components::*` | Button, controls, menu/popover, tabs, badges, toasts, dialogs, sidebar, header, timeline rows, composer + completion menu, dock (widgets, hints, queue, run state), docked interactions (approval / question / plan review / dock dialog), meta row, status panel, query rail + find bar, side and bottom frames, OUS renderer (+ kanban board), palette, model menu, settings parts, Unicrab |
+| `model::{timeline, interaction, status, kanban, palette, composer}` | toolkit-free view models for the above |
+| `views::{shell, session_pane, settings_page, board, extensions_page, onboarding}` | D1–D14 screens |
+
+`design::tests::no_literal_styles` fails on `hsla(`/`rgb(`/`px(<number>` in `src/views`,
+`src/components` (and `src/mobile`, currently excepted). Colors come only from `OinoTheme`.
+
+### Screenshots and perf
+
+```sh
+cargo build -j 8 -p oino-desktop
+oino-desktop/scripts/screenshot.sh                       # → docs/dev/v1/design/shots/desktop/*.png
+oino-desktop/scripts/screenshot.sh /tmp/shots "" 07-board  # one shot
+cargo build -j 8 --release -p oino-desktop
+oino-desktop/scripts/perf.sh target/release/oino-desktop 25 4   # 4 streaming panes, p99 budget 10 ms
+```
+
+Demo hooks (`--demo`): `OINO_DESKTOP_DEMO_SCENE=welcome|run|approval|question|plan|board|info|stream`,
+`OINO_DESKTOP_PANES=N`, `OINO_DESKTOP_OPEN=palette|settings[:ns]|board|extensions|side|model`,
+`OINO_DESKTOP_THEME=light|dark`, `OINO_DESKTOP_SIZE=WxH`, `OINO_DESKTOP_DEMO_PACE=N`,
+`OINO_LOCAL_HOUR`. Frame times: `OINO_FRAME_LOG=1` logs p50/p99/max every 120 frames to
+`~/.oino/logs/desktop.log`; `Ctrl+Alt+Shift+F` (or `OINO_FRAME_OVERLAY=1`) shows the overlay.

@@ -1,0 +1,342 @@
+//! `Button` and `IconButton` (design.md §4.1–§4.2).
+
+use std::rc::Rc;
+
+use gpui_kit::assets::IconName;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    AnyElement, App, ClickEvent, ElementId, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _,
+    Window, div, px,
+};
+
+use crate::components::tooltip::tip;
+use crate::design::icons::{icon, spinner};
+use crate::design::theme::{OinoTheme, TextExt as _};
+use crate::design::{TextRole, radius, size, space};
+
+/// Visual variant.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Variant {
+    /// `primary` fill.
+    Primary,
+    /// `secondary` fill.
+    Secondary,
+    /// Transparent with a border.
+    Outline,
+    /// Transparent, hover fill.
+    #[default]
+    Ghost,
+    /// `danger` fill, white text.
+    Danger,
+    /// Ghost with `danger_surface_fg` text.
+    GhostDanger,
+    /// Outline with `danger_surface_fg` text.
+    OutlineDanger,
+    /// Text link.
+    Link,
+}
+
+/// Height preset.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BtnSize {
+    /// 20.
+    Xs,
+    /// 24.
+    Sm,
+    /// 28.
+    #[default]
+    Default,
+    /// 32.
+    Lg,
+}
+
+impl BtnSize {
+    const fn height(self) -> f32 {
+        match self {
+            Self::Xs => size::CONTROL_XS,
+            Self::Sm => size::CONTROL_SM,
+            Self::Default => size::CONTROL,
+            Self::Lg => size::CONTROL_LG,
+        }
+    }
+
+    const fn pad(self) -> f32 {
+        match self {
+            Self::Xs => space::S1_5,
+            Self::Sm => space::S2,
+            Self::Default => 10.0,
+            Self::Lg => space::S3,
+        }
+    }
+}
+
+/// Click handler.
+pub type OnClick = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
+/// A button.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent visual flags of one element"
+)]
+#[derive(IntoElement)]
+pub struct Btn {
+    id: ElementId,
+    label: Option<SharedString>,
+    icon: Option<IconName>,
+    trailing: Option<IconName>,
+    kbd: Option<SharedString>,
+    variant: Variant,
+    size: BtnSize,
+    square: bool,
+    disabled: bool,
+    loading: bool,
+    selected: bool,
+    radius: f32,
+    tooltip: Option<(SharedString, Option<SharedString>)>,
+    color: Option<Hsla>,
+    full: bool,
+    on_click: Option<OnClick>,
+}
+
+impl Btn {
+    /// A button with `id`.
+    pub fn new(id: impl Into<ElementId>) -> Self {
+        Self {
+            id: id.into(),
+            label: None,
+            icon: None,
+            trailing: None,
+            kbd: None,
+            variant: Variant::Ghost,
+            size: BtnSize::Default,
+            square: false,
+            disabled: false,
+            loading: false,
+            selected: false,
+            radius: radius::R_LG,
+            tooltip: None,
+            color: None,
+            full: false,
+            on_click: None,
+        }
+    }
+
+    /// An icon-only ghost button (tooltip mandatory, design.md §4.2).
+    pub fn icon_only(
+        id: impl Into<ElementId>,
+        name: IconName,
+        tooltip: impl Into<SharedString>,
+    ) -> Self {
+        let mut b = Self::new(id).icon(name);
+        b.square = true;
+        b.tooltip = Some((tooltip.into(), None));
+        b
+    }
+
+    /// Label.
+    #[must_use]
+    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+
+    /// Leading icon.
+    #[must_use]
+    pub fn icon(mut self, name: IconName) -> Self {
+        self.icon = Some(name);
+        self
+    }
+
+    /// Trailing icon (chevron).
+    #[must_use]
+    pub fn trailing(mut self, name: IconName) -> Self {
+        self.trailing = Some(name);
+        self
+    }
+
+    /// Key hint shown after the label (`1` for approval options).
+    #[must_use]
+    pub fn kbd(mut self, keys: impl Into<SharedString>) -> Self {
+        self.kbd = Some(keys.into());
+        self
+    }
+
+    /// Variant.
+    #[must_use]
+    pub fn variant(mut self, variant: Variant) -> Self {
+        self.variant = variant;
+        self
+    }
+
+    /// Size.
+    #[must_use]
+    pub fn size(mut self, size: BtnSize) -> Self {
+        self.size = size;
+        self
+    }
+
+    /// Disabled.
+    #[must_use]
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    /// Loading (spinner replaces the icon).
+    #[must_use]
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.loading = loading;
+        self
+    }
+
+    /// Selected (filled with `selected`).
+    #[must_use]
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+
+    /// Radius (nesting rule: `R_MD` inside `R_LG` parents).
+    #[must_use]
+    pub fn radius(mut self, r: f32) -> Self {
+        self.radius = r;
+        self
+    }
+
+    /// Tooltip with an optional shortcut.
+    #[must_use]
+    pub fn tooltip(mut self, text: impl Into<SharedString>, keys: Option<&str>) -> Self {
+        self.tooltip = Some((text.into(), keys.map(|k| SharedString::from(k.to_owned()))));
+        self
+    }
+
+    /// Text color override (tone buttons).
+    #[must_use]
+    pub fn color(mut self, color: Hsla) -> Self {
+        self.color = Some(color);
+        self
+    }
+
+    /// Full width.
+    #[must_use]
+    pub fn full(mut self) -> Self {
+        self.full = true;
+        self
+    }
+
+    /// Click handler.
+    #[must_use]
+    pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
+        self.on_click = Some(Rc::new(f));
+        self
+    }
+}
+
+impl RenderOnce for Btn {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let t = OinoTheme::get(cx);
+        let h = self.size.height();
+        let (bg, fg, border, hover) = match self.variant {
+            Variant::Primary => (
+                Some(t.primary()),
+                t.primary_fg(),
+                None,
+                Some(t.primary().opacity(0.9)),
+            ),
+            Variant::Secondary => (Some(t.secondary()), t.fg(), None, Some(t.border_hover())),
+            Variant::Outline => (None, t.fg(), Some(t.border()), Some(t.hover())),
+            Variant::OutlineDanger => (
+                None,
+                t.danger_surface_fg(),
+                Some(t.border()),
+                Some(t.danger_surface()),
+            ),
+            Variant::Ghost => (None, t.fg(), None, Some(t.hover())),
+            Variant::GhostDanger => (None, t.danger_surface_fg(), None, Some(t.danger_surface())),
+            Variant::Danger => (
+                Some(t.danger()),
+                t.fg_inverse(),
+                None,
+                Some(t.danger().opacity(0.9)),
+            ),
+            Variant::Link => (None, t.fg(), None, None),
+        };
+        let fg = if self.disabled {
+            t.fg_subtlest()
+        } else {
+            self.color.unwrap_or(fg)
+        };
+        let bg = if self.disabled && matches!(self.variant, Variant::Primary) {
+            Some(t.secondary())
+        } else if self.selected {
+            Some(t.selected())
+        } else {
+            bg
+        };
+        let icon_size = if h <= size::CONTROL_SM {
+            size::ICON_MD
+        } else {
+            size::ICON
+        };
+        let lead: Option<AnyElement> = if self.loading {
+            Some(
+                spinner(crate::design::ticker::Ticker::frame(cx), icon_size, fg).into_any_element(),
+            )
+        } else {
+            self.icon.map(|i| icon(i, icon_size, fg).into_any_element())
+        };
+        let on_click = self.on_click.clone();
+        let disabled = self.disabled;
+        let mut el = div()
+            .id(self.id)
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .flex_shrink_0()
+            .gap(px(space::S1_5))
+            .h(px(h))
+            .rounded(px(self.radius))
+            .text_color(fg)
+            .text_role(
+                &t,
+                if h <= size::CONTROL_XS {
+                    TextRole::Sm
+                } else {
+                    TextRole::Base
+                },
+            )
+            .weight_medium()
+            .when(self.square, |el| el.w(px(h)))
+            .when(!self.square, |el| el.px(px(self.size.pad())))
+            .when(self.full, gpui_kit::Styled::w_full)
+            .when_some(bg, gpui_kit::Styled::bg)
+            .when_some(border, |el, b| el.border_1().border_color(b))
+            .children(lead)
+            .when_some(self.label, |el, l| {
+                el.child(
+                    div()
+                        .truncate()
+                        .when(self.variant == Variant::Link, gpui_kit::Styled::underline)
+                        .child(l),
+                )
+            })
+            .when_some(self.kbd, |el, k| el.child(super::badge::kbd(&t, k)))
+            .when_some(self.trailing, |el, i| {
+                el.child(icon(i, size::ICON_SM, t.fg_subtle()))
+            });
+        if !disabled {
+            el = el
+                .cursor_pointer()
+                .when_some(hover, |el, h| el.hover(move |s| s.bg(h)));
+            if let Some(f) = on_click {
+                el = el.on_click(move |e, w, cx| f(e, w, cx));
+            }
+        }
+        if let Some((text, keys)) = self.tooltip {
+            el = el.tooltip(tip(text, keys));
+        }
+        el
+    }
+}

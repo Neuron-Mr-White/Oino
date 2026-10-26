@@ -59,11 +59,17 @@ pub enum Align {
     Right,
 }
 
-/// An editor frame segment (`setFrame`).
+/// An editor frame / footer segment (`setFrame`, `setFooter` segments).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Segment {
+    /// Segment id (`branch`, `context`, …) when the producer names it.
+    pub id: Option<String>,
     /// Text.
     pub text: String,
+    /// Styled spans (preferred over `text` when present).
+    pub spans: Option<crate::model::ous::Rich>,
+    /// Command run on click (design.md §10 R2), without the leading `/`.
+    pub command: Option<String>,
     /// Tone.
     pub tone: Tone,
     /// Icon name.
@@ -213,6 +219,7 @@ pub struct UiState {
     frames: IndexMap<String, Frame>,
     headers: IndexMap<String, OusNode>,
     footers: IndexMap<String, OusNode>,
+    footer_segments: IndexMap<String, Vec<Segment>>,
     panels: IndexMap<String, Panel>,
     dialogs: VecDeque<Dialog>,
     /// Session title override (`setTitle`).
@@ -242,7 +249,16 @@ fn segments(value: Option<&JsonValue>) -> Vec<Segment> {
         .flatten()
         .filter_map(|seg| {
             Some(Segment {
+                id: seg.get("id").and_then(JsonValue::as_str).map(str::to_owned),
                 text: seg.get("text")?.as_str()?.to_owned(),
+                spans: seg
+                    .get("spans")
+                    .filter(|s| s.is_array())
+                    .map(|s| crate::model::ous::rich(Some(s))),
+                command: seg
+                    .get("command")
+                    .and_then(JsonValue::as_str)
+                    .map(|c| c.trim_start_matches('/').to_owned()),
                 tone: seg
                     .get("tone")
                     .and_then(JsonValue::as_str)
@@ -344,6 +360,35 @@ impl UiState {
     /// Footer specs (`setFooter`).
     pub fn footers(&self) -> impl Iterator<Item = &OusNode> {
         self.footers.values()
+    }
+
+    /// Footer priority segments (`setFooter{segments}`, design.md §4.18), merged in
+    /// registration order.
+    pub fn footer_segments(&self) -> impl Iterator<Item = &Segment> {
+        self.footer_segments.values().flatten()
+    }
+
+    /// Whether any footer content exists (segments or a spec).
+    #[must_use]
+    pub fn has_footer(&self) -> bool {
+        !self.footers.is_empty()
+    }
+
+    /// Status entries with their scoped keys (`<extension>/<key>`).
+    pub fn statuses_keyed(&self) -> impl Iterator<Item = (&str, &Status)> {
+        self.statuses.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// Widgets with their scoped keys.
+    pub fn widgets_keyed(&self) -> impl Iterator<Item = (&str, &Widget)> {
+        self.widgets.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// Visits every frame segment (top then bottom) without cloning.
+    pub fn frame_segments(&self) -> impl Iterator<Item = &Segment> {
+        self.frames
+            .values()
+            .flat_map(|f| f.top.iter().chain(f.bottom.iter()))
     }
 
     /// Open panels in open order.
@@ -477,12 +522,21 @@ impl UiState {
                 } else {
                     &mut self.footers
                 };
+                let is_footer = request.method == "setFooter";
                 match p.get("spec") {
                     Some(spec) => {
-                        map.insert(key, OusNode::parse(spec));
+                        map.insert(key.clone(), OusNode::parse(spec));
                     }
                     None => {
                         map.shift_remove(&key);
+                    }
+                }
+                if is_footer {
+                    let segs = segments(p.get("segments"));
+                    if segs.is_empty() {
+                        self.footer_segments.shift_remove(&key);
+                    } else {
+                        self.footer_segments.insert(key, segs);
                     }
                 }
                 None
@@ -661,6 +715,15 @@ mod tests {
         assert_eq!(ui.footers().count(), 1);
         ui.apply(&req(json!({"method":"setFooter","key":"k"})));
         assert_eq!(ui.footers().count(), 0);
+        ui.apply(&req(json!({"method":"setFooter","key":"strip","spec":{"t":"text","value":"x"},
+            "segments":[{"id":"ctx","text":"ctx 4%","priority":7,"align":"center","command":"/compact",
+                         "spans":[{"text":"ctx ","dim":true},{"text":"4%"}]}]})));
+        let seg = ui.footer_segments().next().unwrap();
+        assert_eq!(seg.id.as_deref(), Some("ctx"));
+        assert_eq!(seg.command.as_deref(), Some("compact"));
+        assert_eq!(seg.spans.as_ref().unwrap().len(), 2);
+        ui.apply(&req(json!({"method":"setFooter","key":"strip"})));
+        assert_eq!(ui.footer_segments().count(), 0);
     }
 
     #[test]
@@ -735,6 +798,9 @@ mod tests {
     #[test]
     fn segments_drop_lowest_priority_first() {
         let seg = |text: &str, priority| Segment {
+            id: None,
+            spans: None,
+            command: None,
             text: text.into(),
             tone: Tone::Default,
             icon: None,

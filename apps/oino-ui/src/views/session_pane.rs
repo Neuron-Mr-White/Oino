@@ -1,50 +1,52 @@
-//! One open session: event pump, conversation list, composer, dialogs, panels and the side
-//! pane (gpui-app §3.1, §5.2–§5.4).
+//! One open session (gpui-app §3.1–§3.2, design.md §5.2): event pump, transcript list state,
+//! composer, docked interactions, panels, side and bottom frame tabs. Rendering lives in
+//! `components::*` (`impl SessionPane` blocks); this module keeps state and orchestration.
 //!
-//! Speed: events are drained from the backend in batches, coalesced, reduced once and turned
-//! into minimal `ListState` updates (`splice` for inserts, `remeasure_items` for changed rows);
-//! the pump waits one frame (8 ms) between batches, so a token burst costs one redraw. Rows are
-//! virtualised by GPUI's `list`; each assistant row owns an incremental markdown state.
+//! Speed: events are drained in batches, coalesced, reduced once and turned into minimal
+//! `ListState` updates (`splice` for inserts, `remeasure_items` for changed rows); the pump
+//! waits one frame between batches, so a token burst costs one redraw. Rows render from
+//! borrowed transcript rows (no per-frame row clones); each assistant row owns an
+//! incremental markdown state.
 
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::StreamExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
-use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::text::{TextView, TextViewState};
-use gpui_kit::component::{ActiveTheme as _, IconName, Sizable as _, h_flex, v_flex};
-use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::input::{InlineToken, InputEvent, TextareaState};
+use gpui_kit::component::text::TextViewState;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, FollowMode, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent,
-    ListAlignment, ListState, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div, list, px,
+    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, FollowMode,
+    ListAlignment, ListState, Pixels, Subscription, Task, Window, px,
 };
-use oino_ai::{AgentMessage, JsonValue, Model, ThinkingLevel};
-use oino_client::{ClientError, OinoCommand, PiCommand, RpcCommand, SessionBackend};
+use oino_ai::{AgentMessage, ImageContent, JsonValue, Model, ThinkingLevel};
+use oino_client::{
+    ClientError, FrontendApi as _, OinoCommand, PiCommand, RpcCommand, SessionBackend,
+};
 use oino_core::events::{ClientEvent, RunState};
-use oino_core::ui::{UiRequest, UiResponse};
+use oino_core::session::{EditorEvent, EditorIntent};
+use oino_core::ui::UiResponse;
 
+use crate::components::interaction::{InteractionEvent, InteractionView};
+use crate::design::brand::CrabState;
 use crate::host::{AppSettings, OpenedSession};
 use crate::model::coalesce::coalesce;
-use crate::model::composer::{self, Drafts, Intent, SubmitKey};
+use crate::model::composer::{self, CompletionRow, Drafts, Intent, ModeChip, SubmitKey};
+use crate::model::interaction::{self, InteractionKind};
 use crate::model::session::{Applied, SessionModel};
 use crate::model::sessions::LiveStatus;
-use crate::model::tools::{self, INLINE_DIFF_LINES, TAIL_LINES, ToolKind};
-use crate::model::transcript::{NoticeTone, Row, RowChange, RowKind, SummaryKind, ToolStatus};
-use crate::model::ui_state::{
-    Align, PanelPlacement, Segment, UiEffect, WidgetPlacement, fit_segments,
-};
+use crate::model::status::StatusModel;
+use crate::model::transcript::{NoticeTone, Row, RowChange, RowKind};
+use crate::model::ui_state::{PanelPlacement, UiEffect};
 use crate::rt::Tokio;
-use crate::views::dialog::{DialogEvent, DialogView};
-use crate::views::ous::{self, ActionFn};
-use crate::views::theme::{self, tone_color};
 
 /// Frame pacing between event batches.
 const FRAME: Duration = Duration::from_millis(8);
+/// Debounce of `editor_event{changed}` (ui-protocol §7.1).
+const EDITOR_DEBOUNCE: Duration = Duration::from_millis(150);
+/// Debounce of backend completions.
+const COMPLETION_DEBOUNCE: Duration = Duration::from_millis(60);
 
 /// Events for the workspace.
 #[derive(Clone, Debug)]
@@ -55,50 +57,218 @@ pub enum PaneEvent {
     Live(LiveStatus),
     /// Title / id / model changed (sidebar + header refresh).
     Changed,
-    /// The palette should open in models mode.
+    /// The model picker should open (mobile sheet; desktop uses the composer menu).
     PickModel,
+    /// A toast from the pane itself (copy confirmations, unsupported actions).
+    Toast(String),
+    /// The side frame should open (a tab was activated).
+    ShowSide,
+    /// The bottom frame should open.
+    ShowBottom,
+    /// The pane took focus (split panes).
+    Focused,
+    /// Show / hide the sidebar.
+    ToggleSidebar,
+    /// Show / hide the side frame.
+    ToggleSide,
+    /// Show / hide the bottom frame.
+    ToggleBottom,
+    /// Close this split pane (the session keeps running).
+    ClosePane,
 }
 
-/// What the side pane shows.
+/// Side frame tab (design.md §4.20).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SideTab {
-    /// A full diff.
+    /// Session file changes.
+    Review,
+    /// Workspace files.
+    Files,
+    /// Plan markdown.
+    Plan,
+    /// Read-only child agent (tool call id).
+    Agent {
+        /// Tool call id.
+        call_id: String,
+        /// Tab title.
+        title: String,
+    },
+    /// Session tree.
+    Tree,
+    /// An extension `sidePane` panel.
+    Panel(String),
+    /// A single diff opened from a tool row.
     Diff {
         /// Title (path).
         title: String,
         /// Unified patch.
         patch: String,
     },
-    /// Tool / bash output.
+    /// Tool output opened from a tool row.
     Output {
         /// Title.
         title: String,
         /// Text.
         text: String,
     },
-    /// An extension panel (`sidePane` placement).
+}
+
+impl SideTab {
+    /// Whether the tab has a close button.
+    #[must_use]
+    pub fn closable(&self) -> bool {
+        !matches!(self, Self::Review)
+    }
+}
+
+/// Tabs of the side frame.
+#[derive(Clone, Debug, Default)]
+pub struct SidePane {
+    /// Open tabs.
+    pub tabs: Vec<SideTab>,
+    /// Active tab.
+    pub active: usize,
+}
+
+impl SidePane {
+    /// Opens (or focuses) `tab`.
+    pub fn open(&mut self, tab: SideTab) {
+        if let Some(i) = self.tabs.iter().position(|t| *t == tab) {
+            self.active = i;
+        } else {
+            self.tabs.push(tab);
+            self.active = self.tabs.len() - 1;
+        }
+    }
+
+    /// Closes tab `i`.
+    pub fn close_at(&mut self, i: usize) -> Option<SideTab> {
+        if i >= self.tabs.len() {
+            return None;
+        }
+        let tab = self.tabs.remove(i);
+        if self.active >= self.tabs.len() {
+            self.active = self.tabs.len().saturating_sub(1);
+        }
+        Some(tab)
+    }
+
+    /// Closes every tab.
+    pub fn close(&mut self) {
+        self.tabs.clear();
+        self.active = 0;
+    }
+
+    /// Whether a tab is open.
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        !self.tabs.is_empty()
+    }
+
+    /// The active tab.
+    #[must_use]
+    pub fn current(&self) -> Option<&SideTab> {
+        self.tabs.get(self.active)
+    }
+}
+
+/// Bottom frame tab (design.md §5.6).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BottomTab {
+    /// Shell output of `!` commands and bash tool calls.
+    Output,
+    /// Background tasks.
+    Tasks,
+    /// An extension `bottomPane` panel.
     Panel(String),
+}
+
+/// Open popover menus of the pane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaneMenu {
+    /// Model menu (⌘M).
+    Model,
+    /// Thinking menu (⌘⇧M).
+    Thinking,
+    /// Workflow mode chip.
+    Mode,
+    /// Attach menu.
+    Attach,
+    /// Header `⋯`.
+    More,
+    /// Header project chip.
+    Project,
+    /// Meta row overflow.
+    MetaOverflow,
+}
+
+/// Backend completion state of the composer.
+#[derive(Default)]
+pub struct Completion {
+    /// Rows.
+    pub rows: Vec<CompletionRow>,
+    /// Highlighted row.
+    pub active: usize,
+    /// Char cursor the rows were computed for.
+    pub cursor: usize,
+    /// Pending request.
+    pub task: Option<Task<()>>,
+}
+
+/// Find-in-conversation state (design.md §4.31).
+pub struct Find {
+    /// Query input.
+    pub input: Entity<gpui_kit::component::input::InputState>,
+    /// Matching row indices.
+    pub matches: Vec<usize>,
+    /// Current match.
+    pub current: usize,
+    /// Case sensitive.
+    pub case: bool,
 }
 
 /// One open session.
 pub struct SessionPane {
     /// Reduced session state.
     pub model: SessionModel,
-    backend: Arc<dyn SessionBackend>,
-    list: ListState,
-    markdown: HashMap<String, (Entity<TextViewState>, usize)>,
-    thinking_open: HashSet<String>,
-    commands: Vec<(String, Option<String>)>,
+    pub(crate) backend: Arc<dyn SessionBackend>,
+    pub(crate) list: ListState,
+    pub(crate) markdown: HashMap<String, (Entity<TextViewState>, usize)>,
+    pub(crate) thinking_open: HashSet<String>,
+    pub(crate) explore_open: HashSet<String>,
+    pub(crate) commands: Vec<(String, Option<String>)>,
     /// Models with credentials (`get_available_models`).
     pub models: Vec<Model>,
-    composer: Entity<TextareaState>,
-    drafts: Drafts,
-    pending_text: Option<String>,
-    dialog: Option<Entity<DialogView>>,
-    /// Side pane content.
-    pub side: Option<SideTab>,
-    settings: AppSettings,
-    focus: FocusHandle,
+    pub(crate) composer: Entity<TextareaState>,
+    pub(crate) drafts: Drafts,
+    pub(crate) pending_text: Option<String>,
+    pub(crate) pending_tokens: Vec<(String, String, String)>,
+    pub(crate) images: HashMap<String, ImageContent>,
+    pub(crate) interaction: Option<Entity<InteractionView>>,
+    /// Side frame tabs.
+    pub side: SidePane,
+    /// Bottom frame tabs and the active one.
+    pub bottom: (Vec<BottomTab>, usize),
+    pub(crate) settings: AppSettings,
+    pub(crate) focus: FocusHandle,
+    pub(crate) menu: Option<PaneMenu>,
+    pub(crate) completion: Completion,
+    pub(crate) find: Option<Find>,
+    pub(crate) status: StatusModel,
+    pub(crate) status_expanded: Option<bool>,
+    pub(crate) width: Pixels,
+    pub(crate) run_started: Option<Instant>,
+    pub(crate) queue_open: bool,
+    pub(crate) hint_index: usize,
+    pub(crate) tree: Option<oino_view::tree::TreeModel>,
+    pub(crate) files: crate::components::side_pane::FileTree,
+    pub(crate) unread: bool,
+    pub(crate) focused_pane: bool,
+    pub(crate) rename: Option<Entity<gpui_kit::component::input::InputState>>,
+    pub(crate) inputs: crate::components::ous::InputStore,
+    /// Shell state reflected by the header.
+    pub header_state: crate::components::header::HeaderState,
+    editor_task: Option<Task<()>>,
     _pump: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -125,10 +295,13 @@ fn response_field<T: serde::de::DeserializeOwned>(data: Option<JsonValue>, key: 
 struct Loaded {
     state: Option<JsonValue>,
     messages: Option<Vec<AgentMessage>>,
-    snapshot: Option<Vec<UiRequest>>,
+    snapshot: Option<Vec<oino_core::ui::UiRequest>>,
     commands: Vec<(String, Option<String>)>,
     models: Vec<Model>,
 }
+
+/// Composer placeholder (design.md §4.11).
+pub const PLACEHOLDER: &str = "Ask Oino anything, @ files, / commands, $ skills";
 
 impl SessionPane {
     /// A pane for `opened`; starts the event pump and loads history.
@@ -141,31 +314,53 @@ impl SessionPane {
         let backend = Arc::clone(&opened.backend);
         let mut model = SessionModel::new(backend.session_id(), opened.cwd.clone());
         model.file = opened.file.as_ref().map(|p| p.display().to_string());
-        let list = ListState::new(0, ListAlignment::Top, px(1200.));
+        let list = ListState::new(0, ListAlignment::Top, px(crate::design::size::OVERDRAW));
         list.set_follow_mode(FollowMode::Tail);
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .auto_grow(1, 10)
+                .auto_grow(1, 12)
                 .submit_on_enter(true)
-                .placeholder("Ask Oino…   / commands · ! shell · Shift+Enter newline")
+                .placeholder(PLACEHOLDER)
         });
         let subscriptions = vec![cx.subscribe_in(&composer, window, Self::on_composer)];
         let pump = Self::pump(&backend, cx);
+        let files = crate::components::side_pane::FileTree::new(&opened.cwd);
         let mut pane = Self {
             model,
             backend,
             list,
             markdown: HashMap::new(),
             thinking_open: HashSet::new(),
+            explore_open: HashSet::new(),
             commands: Vec::new(),
             models: Vec::new(),
             composer,
             drafts: Drafts::default(),
             pending_text: None,
-            dialog: None,
-            side: None,
+            pending_tokens: Vec::new(),
+            images: HashMap::new(),
+            interaction: None,
+            side: SidePane::default(),
+            bottom: (Vec::new(), 0),
             settings,
             focus: cx.focus_handle(),
+            menu: None,
+            completion: Completion::default(),
+            find: None,
+            status: StatusModel::default(),
+            status_expanded: None,
+            width: px(crate::design::size::READING),
+            run_started: None,
+            queue_open: true,
+            hint_index: 0,
+            tree: None,
+            files,
+            unread: false,
+            focused_pane: true,
+            rename: None,
+            inputs: crate::components::ous::InputStore::default(),
+            header_state: crate::components::header::HeaderState::default(),
+            editor_task: None,
             _pump: pump,
             _subscriptions: subscriptions,
         };
@@ -184,6 +379,18 @@ impl SessionPane {
     #[must_use]
     pub fn commands(&self) -> &[(String, Option<String>)] {
         &self.commands
+    }
+
+    /// Whether `name` is a known slash command.
+    #[must_use]
+    pub fn has_command(&self, name: &str) -> bool {
+        self.commands.iter().any(|(n, _)| n == name)
+    }
+
+    /// Desktop preferences.
+    #[must_use]
+    pub fn settings(&self) -> &AppSettings {
+        &self.settings
     }
 
     /// Updates desktop preferences (thinking blocks, density).
@@ -205,6 +412,33 @@ impl SessionPane {
         }
     }
 
+    /// Unicrab state of this session.
+    #[must_use]
+    pub fn crab(&self) -> CrabState {
+        match self.live() {
+            LiveStatus::Attention => CrabState::NeedsYou,
+            LiveStatus::Running => CrabState::Working,
+            LiveStatus::Unread => CrabState::Done,
+            LiveStatus::Idle if self.unread => CrabState::Done,
+            LiveStatus::Idle => CrabState::Idle,
+        }
+    }
+
+    /// The status panel model.
+    #[must_use]
+    pub fn status(&self) -> &StatusModel {
+        &self.status
+    }
+
+    /// The workflow mode chip, when `unipi.workflow` is loaded.
+    #[must_use]
+    pub fn mode(&self) -> Option<ModeChip> {
+        if !self.has_command("unipi:permission") {
+            return None;
+        }
+        Some(ModeChip::from_segments(self.model.ui.frame_segments()).unwrap_or(ModeChip::Auto))
+    }
+
     fn pump(backend: &Arc<dyn SessionBackend>, cx: &mut Context<Self>) -> Task<()> {
         let (tx, mut rx) = futures::channel::mpsc::unbounded::<ClientEvent>();
         let mut stream = backend.events();
@@ -217,14 +451,15 @@ impl SessionPane {
         });
         cx.spawn(async move |this, cx| {
             let _forward = forward;
+            let mut batch = Vec::with_capacity(64);
             while let Some(first) = rx.next().await {
-                let mut batch = vec![first];
+                batch.push(first);
                 while let Ok(event) = rx.try_recv() {
                     batch.push(event);
                 }
-                let batch = coalesce(batch);
+                let reduced = coalesce(std::mem::take(&mut batch));
                 if this
-                    .update(cx, |pane, cx| pane.apply_batch(&batch, cx))
+                    .update(cx, |pane, cx| pane.apply_batch(&reduced, cx))
                     .is_err()
                 {
                     break;
@@ -235,10 +470,18 @@ impl SessionPane {
     }
 
     fn apply_batch(&mut self, batch: &[ClientEvent], cx: &mut Context<Self>) {
-        let before = (self.live(), self.model.id.clone(), self.model.title());
+        let before = (self.live(), self.model.title(), self.model.id.clone());
+        let was_busy = self.model.is_busy();
         let applied = self.model.apply_all(batch);
+        if self.model.is_busy() && !was_busy {
+            self.run_started = Some(Instant::now());
+        }
+        if !self.model.is_busy() && was_busy {
+            self.run_started = None;
+            self.unread = !self.focused_pane;
+        }
         self.absorb(applied, cx);
-        let after = (self.live(), self.model.id.clone(), self.model.title());
+        let after = (self.live(), self.model.title(), self.model.id.clone());
         if before.0 != after.0 {
             cx.emit(PaneEvent::Live(after.0));
         }
@@ -247,10 +490,16 @@ impl SessionPane {
         }
     }
 
-    fn absorb(&mut self, applied: Applied, cx: &mut Context<Self>) {
+    pub(crate) fn absorb(&mut self, applied: Applied, cx: &mut Context<Self>) {
         for change in &applied.rows {
             match *change {
-                RowChange::Inserted { at, count } => self.list.splice(at..at, count),
+                RowChange::Inserted { at, count } => {
+                    self.list.splice(at..at, count);
+                    // A grouped run's header row changes its label when a row joins.
+                    if at > 0 {
+                        self.list.remeasure_items(at - 1..at);
+                    }
+                }
                 RowChange::Updated { at } => self.list.remeasure_items(at..at + 1),
                 RowChange::Reset => {
                     self.markdown.clear();
@@ -267,21 +516,25 @@ impl SessionPane {
                     let current = self.composer.read(cx).value().to_string();
                     self.set_composer_text(&format!("{current}{text}"), cx);
                 }
-                UiEffect::InsertToken { label, .. } => {
-                    let current = self.composer.read(cx).value().to_string();
-                    self.set_composer_text(&format!("{current}[{label}] "), cx);
+                UiEffect::InsertToken { token_id, label } => {
+                    self.pending_tokens
+                        .push((token_id, format!("[{label}]"), label));
+                    cx.notify();
                 }
-                UiEffect::FocusPanel(id) => {
-                    if self
-                        .model
-                        .ui
-                        .panel(&id)
-                        .is_some_and(|p| p.placement == PanelPlacement::SidePane)
-                    {
-                        self.side = Some(SideTab::Panel(id));
-                    }
-                }
+                UiEffect::FocusPanel(id) => self.focus_panel(&id, cx),
                 other => cx.emit(PaneEvent::Effect(other)),
+            }
+        }
+        // Text deltas of the streaming row (the hot path) do not change the status panel.
+        let structural = applied.chrome
+            || applied
+                .rows
+                .iter()
+                .any(|c| !matches!(c, RowChange::Updated { at } if self.model.transcript.is_streaming() && *at + 1 == self.model.transcript.len()));
+        if structural {
+            self.status = StatusModel::from_session(&self.model);
+            if let Some(find) = &mut self.find {
+                find.matches.clear();
             }
         }
         if applied.reload {
@@ -292,6 +545,26 @@ impl SessionPane {
         }
     }
 
+    fn focus_panel(&mut self, id: &str, cx: &mut Context<Self>) {
+        match self.model.ui.panel(id).map(|p| p.placement) {
+            Some(PanelPlacement::SidePane) => {
+                self.side.open(SideTab::Panel(id.to_owned()));
+                cx.emit(PaneEvent::ShowSide);
+            }
+            Some(PanelPlacement::BottomPane) => {
+                let tab = BottomTab::Panel(id.to_owned());
+                if let Some(i) = self.bottom.0.iter().position(|t| *t == tab) {
+                    self.bottom.1 = i;
+                } else {
+                    self.bottom.0.push(tab);
+                    self.bottom.1 = self.bottom.0.len() - 1;
+                }
+                cx.emit(PaneEvent::ShowBottom);
+            }
+            _ => {}
+        }
+    }
+
     /// Keeps one incremental markdown state per assistant row in sync.
     fn sync_markdown(&mut self, changes: &[RowChange], cx: &mut Context<Self>) {
         let mut touched: Vec<usize> = Vec::new();
@@ -299,9 +572,10 @@ impl SessionPane {
             match *change {
                 RowChange::Inserted { at, count } => touched.extend(at..at + count),
                 RowChange::Updated { at } => touched.push(at),
-                RowChange::Reset => {}
+                RowChange::Reset => touched.extend(0..self.model.transcript.len()),
             }
         }
+        touched.sort_unstable();
         touched.dedup();
         for at in touched {
             let Some(Row {
@@ -312,33 +586,30 @@ impl SessionPane {
             else {
                 continue;
             };
-            let (id, text) = (id.clone(), row.text.clone());
-            if let Some((state, len)) = self.markdown.get_mut(&id) {
+            if let Some((state, len)) = self.markdown.get_mut(id) {
+                let text = &row.text;
                 let appended = text.len() >= *len && text.is_char_boundary(*len);
-                let delta = if appended {
-                    text[*len..].to_owned()
-                } else {
-                    String::new()
-                };
+                if appended && text.len() == *len {
+                    continue;
+                }
+                let delta = if appended { &text[*len..] } else { "" };
                 *len = text.len();
                 state.update(cx, |s, cx| {
                     if appended {
-                        if !delta.is_empty() {
-                            s.push_str(&delta, cx);
-                        }
+                        s.push_str(delta, cx);
                     } else {
-                        s.set_text(&text, cx);
+                        s.set_text(text, cx);
                     }
                 });
             } else {
-                let len = text.len();
-                let state = cx.new(|cx| TextViewState::markdown(&text, cx).selectable(true));
-                self.markdown.insert(id, (state, len));
+                let len = row.text.len();
+                let state = cx.new(|cx| TextViewState::markdown(&row.text, cx).selectable(true));
+                self.markdown.insert(id.clone(), (state, len));
             }
         }
     }
 
-    fn send(&self, command: RpcCommand, cx: &mut Context<Self>) {
+    pub(crate) fn send(&self, command: RpcCommand, cx: &mut Context<Self>) {
         let backend = Arc::clone(&self.backend);
         let task = Tokio::spawn(cx, async move { backend.send(command).await });
         cx.spawn(async move |this, cx| {
@@ -347,21 +618,60 @@ impl SessionPane {
                 Ok(Err(e)) => e,
                 Err(e) => ClientError::Transport(e.to_string()),
             };
-            let _ = this.update(cx, |pane, cx| {
-                let change = pane
-                    .model
-                    .transcript
-                    .notice(NoticeTone::Error, error.to_string());
-                pane.absorb(
-                    Applied {
-                        rows: vec![change],
-                        ..Applied::default()
-                    },
-                    cx,
-                );
-            });
+            let _ = this.update(cx, |pane, cx| pane.notice(&error.to_string(), cx));
         })
         .detach();
+    }
+
+    pub(crate) fn notice(&mut self, text: &str, cx: &mut Context<Self>) {
+        let change = self.model.transcript.notice(NoticeTone::Error, text);
+        self.absorb(
+            Applied {
+                rows: vec![change],
+                ..Applied::default()
+            },
+            cx,
+        );
+    }
+
+    /// Runs a frontend call on the runtime and reports failures as a toast.
+    pub(crate) fn frontend<F, Fut>(&self, cx: &mut Context<Self>, f: F)
+    where
+        F: FnOnce(Arc<dyn SessionBackend>) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), ClientError>> + Send + 'static,
+    {
+        let backend = Arc::clone(&self.backend);
+        let task = Tokio::spawn(cx, async move { f(backend).await });
+        cx.spawn(async move |this, cx| {
+            let error = match task.await {
+                Ok(Ok(())) => return,
+                Ok(Err(e)) => e.to_string(),
+                Err(e) => e.to_string(),
+            };
+            let _ = this.update(cx, |_, cx| cx.emit(PaneEvent::Toast(error)));
+        })
+        .detach();
+    }
+
+    /// Sends `extension_ui_action{panelId, actionId, value}` (panel buttons, lists, inputs).
+    pub fn panel_action(
+        &mut self,
+        panel: &str,
+        action: &str,
+        value: JsonValue,
+        cx: &mut Context<Self>,
+    ) {
+        let (panel, action) = (panel.to_owned(), action.to_owned());
+        let value = (!value.is_null()).then_some(value);
+        self.frontend(cx, move |b| async move {
+            b.ui_action(&panel, &action, value).await
+        });
+    }
+
+    /// Invokes an extension shortcut.
+    pub fn invoke_shortcut(&mut self, id: &str, cx: &mut Context<Self>) {
+        let id = id.to_owned();
+        self.frontend(cx, move |b| async move { b.invoke_shortcut(&id).await });
     }
 
     fn say_hello(&self, cx: &mut Context<Self>) {
@@ -369,7 +679,7 @@ impl SessionPane {
             "dialogs": ["select","confirm","input","editor","multiSelect","form","approval","custom"],
             "ous": true,
             "panels": ["overlay","sidePane","editorReplace","bottomPane","fullscreen"],
-            "images": false, "osNotify": true, "clipboard": true
+            "images": false, "osNotify": true, "clipboard": true, "editorTokens": true
         });
         self.send(
             OinoCommand::Hello {
@@ -466,16 +776,35 @@ impl SessionPane {
     // ── composer ─────────────────────────────────────────────────────────────
 
     /// Replaces the composer text on the next render (setting it needs the window).
-    fn set_composer_text(&mut self, text: &str, cx: &mut Context<Self>) {
+    pub(crate) fn set_composer_text(&mut self, text: &str, cx: &mut Context<Self>) {
         self.pending_text = Some(text.to_owned());
         cx.notify();
+    }
+
+    /// Applies pending composer edits (called from render, which has the window).
+    pub(crate) fn flush_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(text) = self.pending_text.take() {
+            let len = text.len();
+            self.composer.update(cx, |s, cx| {
+                s.set_value(text, window, cx);
+                s.set_selected_range(len..len, cx);
+            });
+        }
+        for (id, text, label) in std::mem::take(&mut self.pending_tokens) {
+            self.composer.update(cx, |s, cx| {
+                let token = InlineToken::new(id, text).with_label(label);
+                if s.replace_with_token(token, window, cx).is_ok() {
+                    s.insert(" ", window, cx);
+                }
+            });
+        }
     }
 
     fn on_composer(
         &mut self,
         _: &Entity<TextareaState>,
         event: &InputEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event {
@@ -483,6 +812,10 @@ impl SessionPane {
                 shift: false,
                 secondary,
             } => {
+                if !self.completion.rows.is_empty() {
+                    self.accept_completion(window, cx);
+                    return;
+                }
                 let key = if *secondary {
                     SubmitKey::FollowUp
                 } else {
@@ -490,21 +823,169 @@ impl SessionPane {
                 };
                 self.submit(key, cx);
             }
-            InputEvent::Change => cx.notify(),
+            InputEvent::Change => {
+                self.on_text_changed(cx);
+                cx.notify();
+            }
             _ => {}
         }
     }
 
-    fn submit(&mut self, key: SubmitKey, cx: &mut Context<Self>) {
+    fn on_text_changed(&mut self, cx: &mut Context<Self>) {
+        let (text, cursor) = {
+            let s = self.composer.read(cx);
+            let text = s.value().to_string();
+            let byte = s.cursor().min(text.len());
+            let chars = text.get(..byte).map_or(0, |b| b.chars().count());
+            (text, chars)
+        };
+        self.drafts.save(&self.model.id, &text);
+        // Editor intents (debounced `changed`, immediate `cleared`).
+        let intent = if text.is_empty() {
+            Some(EditorIntent::Cleared)
+        } else {
+            None
+        };
+        let backend = Arc::clone(&self.backend);
+        let report = text.clone();
+        self.editor_task = Some(cx.spawn(async move |_, cx| {
+            if intent.is_none() {
+                cx.background_executor().timer(EDITOR_DEBOUNCE).await;
+            }
+            let event = EditorEvent {
+                event_id: format!("e{}", Instant::now().elapsed().as_nanos()),
+                intent: intent.unwrap_or(EditorIntent::Changed),
+                text: report,
+                token_id: None,
+            };
+            let _ = cx
+                .background_executor()
+                .spawn(async move { backend.editor_event(event).await })
+                .await;
+        }));
+        // Completions.
+        let Some((prefix, from)) = composer::trigger(&text, cursor) else {
+            self.completion = Completion::default();
+            return;
+        };
+        let local = if prefix == '/' {
+            composer::slash_completions(&self.commands, &text, 8)
+                .into_iter()
+                .map(|c| CompletionRow {
+                    section: "Commands".into(),
+                    value: c.value.trim_end().to_owned(),
+                    label: c.label,
+                    description: c.description,
+                    tag: None,
+                    tone: None,
+                    from,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.completion.rows = local;
+        self.completion.active = 0;
+        self.completion.cursor = cursor;
+        let backend = Arc::clone(&self.backend);
+        let task = Tokio::spawn(cx, async move {
+            tokio::time::sleep(COMPLETION_DEBOUNCE).await;
+            backend.completions(&text, cursor).await
+        });
+        self.completion.task = Some(cx.spawn(async move |this, cx| {
+            if let Ok(Ok(groups)) = task.await {
+                let _ = this.update(cx, |pane, cx| {
+                    let rows = composer::merge_completions(&groups, from, 40);
+                    if !rows.is_empty() {
+                        pane.completion.rows = rows;
+                        pane.completion.active = 0;
+                    }
+                    cx.notify();
+                });
+            }
+        }));
+    }
+
+    /// Accepts the highlighted completion (files/skills become tokens).
+    pub(crate) fn accept_completion(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(row) = self.completion.rows.get(self.completion.active).cloned() else {
+            return;
+        };
         let text = self.composer.read(cx).value().to_string();
+        let cursor = self.completion.cursor;
+        self.completion = Completion::default();
+        let tokenize = (row.value.starts_with('@') && !row.value.ends_with('/'))
+            || row.value.starts_with('$')
+            || row.value.starts_with("/skill:");
+        if tokenize {
+            let (before, _) = composer::apply_completion(&text, cursor, row.from, "");
+            let before = before.trim_end().to_owned();
+            let prefix_len = before.len();
+            self.composer.update(cx, |s, cx| {
+                s.set_value(before, window, cx);
+                s.set_selected_range(prefix_len..prefix_len, cx);
+                let token = InlineToken::new(row.value.clone(), row.value.clone())
+                    .with_label(row.label.clone());
+                if s.replace_with_token(token, window, cx).is_ok() {
+                    s.insert(" ", window, cx);
+                }
+            });
+        } else {
+            let (new, new_cursor) = composer::apply_completion(&text, cursor, row.from, &row.value);
+            let byte = new
+                .char_indices()
+                .nth(new_cursor)
+                .map_or(new.len(), |(i, _)| i);
+            self.composer.update(cx, |s, cx| {
+                s.set_value(new, window, cx);
+                s.set_selected_range(byte..byte, cx);
+            });
+        }
+        cx.notify();
+    }
+
+    /// Submits the composer.
+    pub fn submit(&mut self, key: SubmitKey, cx: &mut Context<Self>) {
+        if self.model.ui.needs_attention() {
+            cx.emit(PaneEvent::Toast("Answer the pending request first".into()));
+            return;
+        }
+        let (text, token_ids) = {
+            let s = self.composer.read(cx);
+            (
+                s.value().to_string(),
+                s.tokens()
+                    .iter()
+                    .map(|t| t.token().id().to_string())
+                    .collect::<Vec<_>>(),
+            )
+        };
         let intent = composer::intent(&text, self.model.is_busy(), key);
         if intent == Intent::Nothing {
             return;
         }
+        let images: Vec<ImageContent> = token_ids
+            .iter()
+            .filter_map(|id| self.images.get(id).cloned())
+            .collect();
+        let backend = Arc::clone(&self.backend);
+        let report = text.clone();
+        Tokio::detach(cx, async move {
+            let _ = backend
+                .editor_event(EditorEvent {
+                    event_id: "submit".into(),
+                    intent: EditorIntent::Submit,
+                    text: report,
+                    token_id: None,
+                })
+                .await;
+        });
         self.drafts.history(&self.model.id.clone()).push(&text);
-        if let Some(command) = intent.command(Vec::new()) {
+        self.drafts.save(&self.model.id, "");
+        if let Some(command) = intent.command(images) {
             self.send(command, cx);
         }
+        self.list.scroll_to_end();
         self.set_composer_text("", cx);
     }
 
@@ -515,11 +996,13 @@ impl SessionPane {
 
     /// Selects a model.
     pub fn set_model(&mut self, provider: String, model_id: String, cx: &mut Context<Self>) {
+        self.menu = None;
         self.send(PiCommand::SetModel { provider, model_id }.into(), cx);
     }
 
     /// Sets the thinking level.
     pub fn set_thinking(&mut self, level: ThinkingLevel, cx: &mut Context<Self>) {
+        self.menu = None;
         self.model.thinking = level;
         self.send(PiCommand::SetThinkingLevel { level }.into(), cx);
         cx.notify();
@@ -555,21 +1038,83 @@ impl SessionPane {
         );
     }
 
+    /// Clones the session at its leaf (header `⋯` Fork).
+    pub fn fork_session(&mut self, cx: &mut Context<Self>) {
+        self.send(PiCommand::Clone.into(), cx);
+    }
+
+    /// Edit & resend: forks before the `nth` user message and puts its text in the composer.
+    pub fn fork_at_user(&mut self, nth: usize, text: String, cx: &mut Context<Self>) {
+        let backend = Arc::clone(&self.backend);
+        let task = Tokio::spawn(cx, async move {
+            let data = backend
+                .send(PiCommand::GetForkMessages.into())
+                .await
+                .ok()
+                .flatten();
+            let entry = data
+                .as_ref()
+                .and_then(|d| d.get("messages"))
+                .and_then(JsonValue::as_array)
+                .and_then(|m| m.get(nth))
+                .and_then(|m| m.get("entryId"))
+                .and_then(JsonValue::as_str)
+                .map(str::to_owned);
+            match entry {
+                Some(entry_id) => backend
+                    .send(PiCommand::Fork { entry_id }.into())
+                    .await
+                    .map(drop),
+                None => Err(ClientError::Protocol("message not found".into())),
+            }
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |pane, cx| match result {
+                Ok(Ok(())) => pane.set_composer_text(&text, cx),
+                Ok(Err(e)) => cx.emit(PaneEvent::Toast(e.to_string())),
+                Err(e) => cx.emit(PaneEvent::Toast(e.to_string())),
+            });
+        })
+        .detach();
+    }
+
+    /// Exports the session as HTML.
+    pub fn export_html(&mut self, cx: &mut Context<Self>) {
+        self.send(PiCommand::ExportHtml { output_path: None }.into(), cx);
+        cx.emit(PaneEvent::Toast("Exported the session as HTML".into()));
+    }
+
     /// Focuses the composer of `pane`.
     pub fn focus(pane: &Entity<Self>, window: &mut Window, cx: &mut App) {
         let composer = pane.read(cx).composer.clone();
         composer.update(cx, |s, cx| s.focus(window, cx));
     }
 
-    fn on_composer_key(
+    /// Composer key handling (history, completions, abort, work tray).
+    pub(crate) fn on_composer_key(
         &mut self,
-        event: &KeyDownEvent,
+        event: &gpui_kit::KeyDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let text = self.composer.read(cx).value().to_string();
         let session = self.model.id.clone();
-        match event.keystroke.key.as_str() {
+        let key = event.keystroke.key.as_str();
+        let rows = self.completion.rows.len();
+        if rows > 0 {
+            match key {
+                "down" => self.completion.active = (self.completion.active + 1) % rows,
+                "up" => self.completion.active = (self.completion.active + rows - 1) % rows,
+                "tab" => self.accept_completion(window, cx),
+                "escape" => self.completion = Completion::default(),
+                _ => return,
+            }
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+        match key {
             "up" if text.is_empty() || self.drafts.history(&session).is_browsing() => {
                 if let Some(prev) = self.drafts.history(&session).older().map(str::to_owned) {
                     self.composer
@@ -584,17 +1129,26 @@ impl SessionPane {
                     cx.stop_propagation();
                 }
             }
-            "tab" => {
-                if let Some(first) = composer::slash_completions(&self.commands, &text, 1)
-                    .into_iter()
-                    .next()
-                {
-                    self.composer
-                        .update(cx, |s, cx| s.set_value(first.value, window, cx));
-                    cx.stop_propagation();
-                }
+            "down" if text.is_empty() => {
+                // Consumable intent: the work tray opens when an extension takes it.
+                let backend = Arc::clone(&self.backend);
+                Tokio::detach(cx, async move {
+                    let _ = backend
+                        .editor_event(EditorEvent {
+                            event_id: "down".into(),
+                            intent: EditorIntent::EmptyArrowDown,
+                            text: String::new(),
+                            token_id: None,
+                        })
+                        .await;
+                });
+                cx.stop_propagation();
             }
-            "escape" if self.model.is_busy() => {
+            "enter" if event.keystroke.modifiers.alt => {
+                self.submit(SubmitKey::FollowUp, cx);
+                cx.stop_propagation();
+            }
+            "escape" if self.model.is_busy() && text.is_empty() => {
                 self.abort(cx);
                 cx.stop_propagation();
             }
@@ -602,62 +1156,78 @@ impl SessionPane {
         }
     }
 
-    // ── dialogs & panels ─────────────────────────────────────────────────────
+    // ── interactions & panels ────────────────────────────────────────────────
 
     fn respond(&mut self, response: UiResponse, cx: &mut Context<Self>) {
         self.model.ui.dismiss(&response.id);
-        self.dialog = None;
+        self.interaction = None;
         self.backend.ui_respond(response);
         cx.emit(PaneEvent::Live(self.live()));
         cx.notify();
     }
 
-    fn sync_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Keeps the docked interaction view in sync with the front of the dialog queue.
+    pub(crate) fn sync_interaction(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let front = self.model.ui.dialog().cloned();
-        let current = self.dialog.as_ref().map(|d| d.read(cx).id().to_owned());
+        let current = self
+            .interaction
+            .as_ref()
+            .map(|d| d.read(cx).dialog().id.clone());
         match front {
             Some(dialog) if current.as_deref() != Some(dialog.id.as_str()) => {
-                let view = cx.new(|cx| DialogView::new(dialog, window, cx));
-                cx.subscribe(&view, |this, _, event: &DialogEvent, cx| match event {
-                    DialogEvent::Respond(response) => this.respond(response.clone(), cx),
+                if interaction::kind(&dialog) == InteractionKind::PlanReview
+                    && self.width
+                        >= px(crate::design::tokens::breakpoint::WIDE - crate::design::size::SIDEBAR)
+                {
+                    self.side.open(SideTab::Plan);
+                    cx.emit(PaneEvent::ShowSide);
+                }
+                let count = self.model.ui.dialog_count();
+                let view = cx.new(|cx| InteractionView::new(dialog, count, window, cx));
+                cx.subscribe(&view, |this, _, event: &InteractionEvent, cx| match event {
+                    InteractionEvent::Respond(response) => this.respond(response.clone(), cx),
+                    InteractionEvent::OpenPlan => {
+                        this.side.open(SideTab::Plan);
+                        cx.emit(PaneEvent::ShowSide);
+                    }
                 })
                 .detach();
-                self.dialog = Some(view);
+                self.interaction = Some(view);
             }
-            None if self.dialog.is_some() => {
-                self.dialog = None;
+            None if self.interaction.is_some() => {
+                self.interaction = None;
                 let composer = self.composer.clone();
                 composer.update(cx, |s, cx| s.focus(window, cx));
             }
-            _ => {}
+            _ => {
+                if let Some(view) = &self.interaction {
+                    let count = self.model.ui.dialog_count();
+                    view.update(cx, |v, _| v.set_count(count));
+                }
+            }
         }
     }
 
-    /// Interactive OUS nodes inside panels. `extension_ui_action` is not part of the
-    /// `oino-client` command set yet (requested from modes), so actions are logged only.
-    #[allow(
-        clippy::unused_self,
-        reason = "view helper kept as a method for uniform call sites"
-    )]
-    fn panel_action(&self, panel: &str) -> ActionFn {
-        let panel = panel.to_owned();
-        std::rc::Rc::new(move |action, value, _, _| {
-            tracing::info!(panel = %panel, action, %value, "extension_ui_action (not wired: no client command)");
-        })
-    }
-
-    fn close_panel(&mut self, id: &str, cx: &mut Context<Self>) {
+    /// Closes a panel and tells the owning extension (`$close`).
+    pub fn close_panel(&mut self, id: &str, cx: &mut Context<Self>) {
         self.model.ui.close_panel(id);
-        if self.side == Some(SideTab::Panel(id.to_owned())) {
-            self.side = None;
+        if let Some(i) = self
+            .side
+            .tabs
+            .iter()
+            .position(|t| *t == SideTab::Panel(id.to_owned()))
+        {
+            self.side.close_at(i);
         }
-        tracing::info!(panel = %id, "extension_ui_action $close (not wired: no client command)");
+        self.bottom
+            .0
+            .retain(|t| *t != BottomTab::Panel(id.to_owned()));
+        self.panel_action(id, "$close", JsonValue::Null, cx);
         cx.notify();
     }
 
-    // ── rendering ────────────────────────────────────────────────────────────
-
-    fn toggle_row(&mut self, id: &str, cx: &mut Context<Self>) {
+    /// Toggles a tool / summary row.
+    pub(crate) fn toggle_row(&mut self, id: &str, cx: &mut Context<Self>) {
         if let Some(change) = self.model.transcript.toggle_expanded(id) {
             self.absorb(
                 Applied {
@@ -669,783 +1239,68 @@ impl SessionPane {
         }
     }
 
-    fn render_row(&mut self, ix: usize, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let Some(row) = self.model.transcript.rows().get(ix).cloned() else {
-            return div().into_any_element();
-        };
-        let pad = if self.settings.compact {
-            px(3.)
-        } else {
-            px(6.)
-        };
-        let inner = match &row.kind {
-            RowKind::User(user) => self.render_user(&row.id, user, cx),
-            RowKind::Assistant(_) => self.render_assistant(&row, cx),
-            RowKind::Tool(tool) => self.render_tool(&row.id, tool, cx),
-            RowKind::Bash(bash) => self.render_bash(&row.id, bash, cx),
-            RowKind::Custom(custom) => {
-                let body = ous::render(
-                    &crate::model::ous::OusNode::Markdown {
-                        value: custom.text.clone(),
-                    },
-                    &row.id,
-                    &ous::no_action(),
-                    cx,
-                );
-                card(
-                    custom
-                        .provenance()
-                        .map(str::to_owned)
-                        .or_else(|| Some(custom.custom_type.clone())),
-                    custom.provenance().is_some(),
-                    body,
-                    cx,
-                )
-            }
-            RowKind::Summary(summary) => {
-                let id = row.id.clone();
-                let title = match summary.kind {
-                    SummaryKind::Compaction => format!(
-                        "Compaction summary · {} tokens before",
-                        summary.tokens_before
-                    ),
-                    SummaryKind::Branch => "Branch summary".to_owned(),
-                };
-                v_flex()
-                    .id(SharedString::from(format!("{id}-sum")))
-                    .w_full()
-                    .p_2()
-                    .gap_1()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .cursor_pointer()
-                    .on_click(
-                        cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle_row(&id, cx)),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!(
-                                "{} {title}",
-                                if summary.expanded { "▾" } else { "▸" }
-                            )),
-                    )
-                    .when(summary.expanded, |el| {
-                        el.child(TextView::markdown(
-                            SharedString::from(format!("{}-md", row.id)),
-                            summary.summary.clone(),
-                        ))
-                    })
-                    .into_any_element()
-            }
-            RowKind::Notice(tone, text) => {
-                let color = match tone {
-                    NoticeTone::Info => cx.theme().muted_foreground,
-                    NoticeTone::Warning => cx.theme().warning,
-                    NoticeTone::Error => cx.theme().danger,
-                };
-                div()
-                    .text_xs()
-                    .text_color(color)
-                    .child(SharedString::from(text.clone()))
-                    .into_any_element()
-            }
-        };
-        div()
-            .w_full()
-            .px_6()
-            .py(pad)
-            .child(div().max_w(px(920.)).mx_auto().child(inner))
-            .into_any_element()
+    /// Opens a side tab and asks the shell to show the side frame.
+    pub fn open_side(&mut self, tab: SideTab, cx: &mut Context<Self>) {
+        if matches!(tab, SideTab::Tree) {
+            self.load_tree(cx);
+        }
+        self.side.open(tab);
+        cx.emit(PaneEvent::ShowSide);
+        cx.notify();
     }
 
-    #[allow(
-        clippy::unused_self,
-        reason = "view helper kept as a method for uniform call sites"
-    )]
-    fn render_user(
-        &self,
-        _id: &str,
-        user: &crate::model::transcript::UserRow,
-        cx: &App,
-    ) -> AnyElement {
-        h_flex()
-            .w_full()
-            .justify_end()
-            .child(
-                v_flex()
-                    .max_w(px(720.))
-                    .px_3()
-                    .py_2()
-                    .rounded_lg()
-                    .bg(cx.theme().secondary)
-                    .text_sm()
-                    .child(SharedString::from(user.text.clone()))
-                    .when(user.images > 0, |el| {
-                        el.child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(format!("{} image(s) attached", user.images)),
-                        )
-                    }),
-            )
-            .into_any_element()
-    }
-
-    fn render_assistant(&mut self, row: &Row, cx: &mut Context<Self>) -> AnyElement {
-        let RowKind::Assistant(a) = &row.kind else {
-            return div().into_any_element();
-        };
-        let id = row.id.clone();
-        let muted = cx.theme().muted_foreground;
-        let show_thinking = !self.settings.hide_thinking || self.thinking_open.contains(&id);
-        let thinking = (!a.thinking.is_empty()).then(|| {
-            let toggle_id = id.clone();
-            v_flex()
-                .id(SharedString::from(format!("{id}-think")))
-                .gap_1()
-                .cursor_pointer()
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    if !this.thinking_open.remove(&toggle_id) {
-                        this.thinking_open.insert(toggle_id.clone());
-                    }
-                    if let Some(ix) = this.model.transcript.position(&toggle_id) {
-                        this.list.remeasure_items(ix..ix + 1);
-                    }
+    /// Loads the session tree for the Tree tab.
+    pub fn load_tree(&mut self, cx: &mut Context<Self>) {
+        let backend = Arc::clone(&self.backend);
+        let task = Tokio::spawn(
+            cx,
+            async move { backend.send(PiCommand::GetTree.into()).await },
+        );
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(data))) = task.await {
+                let _ = this.update(cx, |pane, cx| {
+                    pane.tree = Some(oino_view::tree::TreeModel::from_json(&data, None));
                     cx.notify();
-                }))
-                .child(div().text_xs().text_color(muted).child(if show_thinking {
-                    "▾ Thinking"
-                } else if a.streaming && a.text.is_empty() {
-                    "▸ Thinking…"
-                } else {
-                    "▸ Thinking"
-                }))
-                .when(show_thinking, |el| {
-                    el.child(
-                        div()
-                            .pl_3()
-                            .border_l_2()
-                            .border_color(cx.theme().border)
-                            .text_xs()
-                            .text_color(muted)
-                            .italic()
-                            .child(SharedString::from(a.thinking.clone())),
-                    )
-                })
-        });
-        let body = self
-            .markdown
-            .get(&id)
-            .map(|(state, _)| TextView::new(state).selectable(true).into_any_element());
-        v_flex()
-            .w_full()
-            .gap_1()
-            .text_sm()
-            .children(thinking)
-            .children(body)
-            .when(
-                a.streaming && a.text.is_empty() && a.thinking.is_empty(),
-                |el| {
-                    el.child(
-                        h_flex()
-                            .gap_2()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(Spinner::new().xsmall())
-                            .child("Working…"),
-                    )
-                },
-            )
-            .when_some(a.error.clone(), |el, e| {
-                el.child(
-                    div()
-                        .text_xs()
-                        .px_2()
-                        .py_1()
-                        .rounded_md()
-                        .bg(cx.theme().danger.opacity(0.12))
-                        .text_color(cx.theme().danger)
-                        .child(SharedString::from(e)),
-                )
-            })
-            .into_any_element()
-    }
-
-    #[allow(
-        clippy::too_many_lines,
-        reason = "declarative element tree; splitting scatters the layout"
-    )]
-    fn render_tool(
-        &mut self,
-        id: &str,
-        tool: &crate::model::transcript::ToolRow,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let theme = cx.theme().clone();
-        let muted = theme.muted_foreground;
-        let kind = ToolKind::of(&tool.name);
-        let icon: AnyElement = match tool.status {
-            ToolStatus::Preparing | ToolStatus::Running => {
-                Spinner::new().xsmall().into_any_element()
+                });
             }
-            ToolStatus::Done => div()
-                .text_color(theme.success)
-                .child("✓")
-                .into_any_element(),
-            ToolStatus::Error => div().text_color(theme.danger).child("✗").into_any_element(),
-        };
-        let patch = tool.patch();
-        let preview = match (&patch, tool.status) {
-            (Some(p), _) => {
-                let d = tools::diff_preview(p, 0);
-                Some(format!("+{} −{}", d.added, d.removed))
+        })
+        .detach();
+    }
+
+    /// Switches the session leaf to `entry_id` (Tree tab).
+    pub fn navigate_tree(&mut self, entry_id: &str, cx: &mut Context<Self>) {
+        self.send(
+            OinoCommand::NavigateTree {
+                target_id: entry_id.to_owned(),
+                options: oino_core::session::NavigateTreeOptions::default(),
             }
-            (None, ToolStatus::Preparing) => tools::args_preview(&tool.name, &tool.args),
-            _ => None,
-        };
-        let duration = tool.duration_ms.filter(|ms| *ms >= 100).map(|ms| {
-            if ms >= 1000 {
-                format!("{}.{}s", ms / 1000, (ms % 1000) / 100)
-            } else {
-                format!("{ms}ms")
-            }
-        });
-        let toggle = id.to_owned();
-        let header = h_flex()
-            .id(SharedString::from(format!("{id}-hdr")))
-            .w_full()
-            .gap_2()
-            .px_2()
-            .py_1()
-            .rounded_md()
-            .cursor_pointer()
-            .hover(|s| s.bg(theme.list_hover))
-            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle_row(&toggle, cx)))
-            .child(div().w(px(14.)).flex().justify_center().child(icon))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_xs()
-                    .when(kind == ToolKind::Shell, |el| {
-                        el.font_family(theme.mono_font_family.clone())
-                    })
-                    .child(SharedString::from(tool.title())),
-            )
-            .when_some(preview, |el, p| {
-                el.child(
-                    div()
-                        .text_xs()
-                        .text_color(muted)
-                        .child(SharedString::from(p)),
-                )
-            })
-            .when_some(duration, |el, d| {
-                el.child(
-                    div()
-                        .text_xs()
-                        .text_color(muted)
-                        .child(SharedString::from(d)),
-                )
-            })
-            .child(div().text_xs().text_color(muted).child(if tool.expanded {
-                "▾"
-            } else {
-                "▸"
-            }));
-        let expanded = tool.expanded || self.settings.expand_tools;
-        let mut body: Option<AnyElement> = None;
-        if let Some(p) = patch.clone() {
-            let title = tool.title();
-            let open = p.clone();
-            body = Some(
-                v_flex()
-                    .w_full()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(theme.border)
-                    .overflow_hidden()
-                    .child(ous::diff_lines(&p, INLINE_DIFF_LINES, cx))
-                    .child(
-                        h_flex().justify_end().p_1().child(
-                            Button::new(SharedString::from(format!("{id}-opendiff")))
-                                .ghost()
-                                .xsmall()
-                                .label("Open diff")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.side = Some(SideTab::Diff {
-                                        title: title.clone(),
-                                        patch: open.clone(),
-                                    });
-                                    cx.notify();
-                                })),
-                        ),
-                    )
-                    .into_any_element(),
-            );
-        } else if (kind == ToolKind::Shell && (tool.status == ToolStatus::Running || expanded))
-            || (expanded && !tool.output.is_empty())
-        {
-            let lines = if expanded {
-                tools::tail(&tool.output, 30)
-            } else {
-                tools::tail(&tool.output, TAIL_LINES)
-            };
-            let title = tool.title();
-            let text = tool.output.clone();
-            body = Some(
-                v_flex()
-                    .w_full()
-                    .p_2()
-                    .rounded_md()
-                    .bg(theme.muted)
-                    .font_family(theme.mono_font_family.clone())
-                    .text_xs()
-                    .text_color(if tool.status == ToolStatus::Error {
-                        theme.danger
-                    } else {
-                        theme.foreground
-                    })
-                    .children(
-                        lines
-                            .into_iter()
-                            .map(|l| div().whitespace_nowrap().child(SharedString::from(l))),
-                    )
-                    .child(
-                        h_flex().justify_end().child(
-                            Button::new(SharedString::from(format!("{id}-openout")))
-                                .ghost()
-                                .xsmall()
-                                .label("Open output")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.side = Some(SideTab::Output {
-                                        title: title.clone(),
-                                        text: text.clone(),
-                                    });
-                                    cx.notify();
-                                })),
-                        ),
-                    )
-                    .into_any_element(),
-            );
+            .into(),
+            cx,
+        );
+    }
+
+    /// Records the last measured width of the conversation frame.
+    pub fn set_width(&mut self, width: Pixels) {
+        self.width = width;
+    }
+
+    /// Marks this pane focused or not (split panes, unread state).
+    pub fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
+        self.focused_pane = focused;
+        if focused {
+            self.unread = false;
         }
-        v_flex()
-            .w_full()
-            .gap_1()
-            .when(tool.parent.is_some(), gpui_kit::Styled::pl_6)
-            .child(header)
-            .children(body)
-            .into_any_element()
+        cx.notify();
     }
 
-    #[allow(
-        clippy::unused_self,
-        reason = "view helper kept as a method for uniform call sites"
-    )]
-    fn render_bash(
-        &self,
-        _id: &str,
-        bash: &crate::model::transcript::BashRow,
-        cx: &App,
-    ) -> AnyElement {
-        let theme = cx.theme().clone();
-        v_flex()
-            .w_full()
-            .gap_1()
-            .child(
-                div()
-                    .text_xs()
-                    .font_family(theme.mono_font_family.clone())
-                    .child(format!("$ {}", bash.command)),
-            )
-            .child(
-                v_flex()
-                    .p_2()
-                    .rounded_md()
-                    .bg(theme.muted)
-                    .font_family(theme.mono_font_family.clone())
-                    .text_xs()
-                    .children(
-                        tools::tail(&bash.output, 12)
-                            .into_iter()
-                            .map(|l| div().child(SharedString::from(l))),
-                    )
-                    .when_some(bash.exit_code.filter(|c| *c != 0), |el, c| {
-                        el.child(div().text_color(theme.danger).child(format!("exit {c}")))
-                    }),
-            )
-            .into_any_element()
-    }
-
-    fn render_segments(segments: &[Segment], cx: &App) -> AnyElement {
-        let kept = fit_segments(segments, 140, 3);
-        let (left, right): (Vec<&Segment>, Vec<&Segment>) =
-            kept.into_iter().partition(|s| s.align == Align::Left);
-        let seg = |s: &Segment| {
-            div()
-                .text_xs()
-                .text_color(tone_color(s.tone, cx))
-                .child(SharedString::from(s.text.clone()))
-        };
-        h_flex()
-            .w_full()
-            .px_1()
-            .gap_3()
-            .child(
-                h_flex()
-                    .gap_3()
-                    .flex_1()
-                    .children(left.into_iter().map(seg)),
-            )
-            .child(h_flex().gap_3().children(right.into_iter().map(seg)))
-            .into_any_element()
-    }
-
-    fn render_widgets(&self, placement: WidgetPlacement, cx: &App) -> Vec<AnyElement> {
-        self.model
-            .ui
-            .widgets(placement)
-            .enumerate()
-            .map(|(i, w)| {
-                let body = match &w.spec {
-                    Some(spec) => ous::render(spec, &format!("w{i}"), &ous::no_action(), cx),
-                    None => v_flex()
-                        .text_xs()
-                        .children(
-                            w.lines
-                                .iter()
-                                .map(|l| div().child(SharedString::from(l.clone()))),
-                        )
-                        .into_any_element(),
-                };
-                div()
-                    .w_full()
-                    .px_2()
-                    .py_1()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .child(body)
-                    .into_any_element()
-            })
-            .collect()
-    }
-
-    fn render_queue(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.model.steering.is_empty() && self.model.follow_up.is_empty() {
-            return None;
-        }
-        let muted = cx.theme().muted_foreground;
-        let items = self
-            .model
-            .steering
-            .iter()
-            .map(|t| ("steer", t))
-            .chain(self.model.follow_up.iter().map(|t| ("follow-up", t)));
-        Some(
-            v_flex()
-                .w_full()
-                .px_2()
-                .py_1()
-                .gap_1()
-                .rounded_md()
-                .border_1()
-                .border_color(cx.theme().border)
-                .child(
-                    h_flex()
-                        .justify_between()
-                        .text_xs()
-                        .text_color(muted)
-                        .child("Queued")
-                        .child(
-                            Button::new("queue-clear")
-                                .ghost()
-                                .xsmall()
-                                .label("Clear")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.send(PiCommand::ClearQueue.into(), cx);
-                                })),
-                        ),
-                )
-                .children(items.map(|(kind, text)| {
-                    h_flex()
-                        .gap_2()
-                        .text_xs()
-                        .child(div().text_color(muted).w(px(64.)).child(kind))
-                        .child(div().truncate().child(SharedString::from(text.clone())))
-                }))
-                .into_any_element(),
-        )
-    }
-
-    fn render_completions(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let text = self.composer.read(cx).value().to_string();
-        let items = composer::slash_completions(&self.commands, &text, 8);
-        if items.is_empty() {
-            return None;
-        }
-        let muted = cx.theme().muted_foreground;
-        Some(
-            v_flex()
-                .w_full()
-                .p_1()
-                .rounded_md()
-                .border_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().popover)
-                .children(items.into_iter().enumerate().map(|(i, c)| {
-                    let value = c.value.clone();
-                    h_flex()
-                        .id(SharedString::from(format!("cmp{i}")))
-                        .gap_3()
-                        .px_2()
-                        .py_1()
-                        .rounded_sm()
-                        .cursor_pointer()
-                        .hover(|s| s.bg(cx.theme().list_hover))
-                        .when(i == 0, |el| el.bg(cx.theme().list_active))
-                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                            this.set_composer_text(&value, cx);
-                        }))
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_family(cx.theme().mono_font_family.clone())
-                                .child(SharedString::from(c.label)),
-                        )
-                        .when_some(c.description, |el, d| {
-                            el.child(
-                                div()
-                                    .text_xs()
-                                    .truncate()
-                                    .text_color(muted)
-                                    .child(SharedString::from(d)),
-                            )
-                        })
-                }))
-                .into_any_element(),
-        )
-    }
-
-    fn render_model_control(&self, cx: &mut Context<Self>) -> AnyElement {
-        let thinking = self.model.thinking;
-        h_flex()
-            .gap_1()
-            .child(
-                Button::new("model-pick")
-                    .ghost()
-                    .xsmall()
-                    .icon(IconName::Bot)
-                    .label(SharedString::from(self.model.model_label()))
-                    .tooltip("Select model (Ctrl+L)")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::PickModel))),
-            )
-            .when(
-                self.model.model.as_ref().is_some_and(|m| m.reasoning),
-                |el| el.child(thinking_slider(thinking, cx)),
-            )
-            .into_any_element()
-    }
-
-    #[allow(
-        clippy::too_many_lines,
-        reason = "declarative element tree; splitting scatters the layout"
-    )]
-    fn render_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let editor_panel = self
-            .model
-            .ui
-            .panels()
-            .find(|p| {
-                matches!(
-                    p.placement,
-                    PanelPlacement::EditorReplace | PanelPlacement::BottomPane
-                )
-            })
-            .cloned();
-        let frame = self.model.ui.frame();
-        let busy = self.model.is_busy();
-        let theme = cx.theme().clone();
-        let core: AnyElement = if let Some(panel) = editor_panel {
-            let id = panel.id.clone();
-            v_flex()
-                .w_full()
-                .p_2()
-                .gap_2()
-                .rounded_lg()
-                .border_1()
-                .border_color(theme.border)
-                .child(
-                    h_flex()
-                        .justify_between()
-                        .child(
-                            div()
-                                .text_xs()
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(SharedString::from(panel.title.clone())),
-                        )
-                        .child(
-                            Button::new("editor-panel-close")
-                                .ghost()
-                                .xsmall()
-                                .label("Close (Esc)")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.close_panel(&id, cx);
-                                })),
-                        ),
-                )
-                .child(ous::render(
-                    &panel.spec,
-                    &panel.id,
-                    &self.panel_action(&panel.id),
-                    cx,
-                ))
-                .into_any_element()
+    /// Opens a popover menu (toggle).
+    pub fn toggle_menu(&mut self, menu: PaneMenu, cx: &mut Context<Self>) {
+        self.menu = if self.menu == Some(menu) {
+            None
         } else {
-            let _ = window;
-            v_flex()
-                .w_full()
-                .rounded_lg()
-                .border_1()
-                .border_color(if busy {
-                    theme.primary.opacity(0.6)
-                } else {
-                    theme.border
-                })
-                .bg(theme.background)
-                .child(
-                    div()
-                        .id("composer")
-                        .capture_key_down(cx.listener(Self::on_composer_key))
-                        .child(Textarea::new(&self.composer).appearance(false).p_2()),
-                )
-                .child(
-                    h_flex()
-                        .w_full()
-                        .px_1()
-                        .pb_1()
-                        .justify_between()
-                        .child(self.render_model_control(cx))
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .when(busy, |el| {
-                                    el.child(
-                                        Button::new("abort")
-                                            .ghost()
-                                            .xsmall()
-                                            .icon(IconName::Square)
-                                            .label("Stop")
-                                            .tooltip("Abort (Ctrl+. / Esc)")
-                                            .on_click(cx.listener(|this, _, _, cx| this.abort(cx))),
-                                    )
-                                })
-                                .child(
-                                    Button::new("send")
-                                        .primary()
-                                        .xsmall()
-                                        .icon(IconName::ArrowUp)
-                                        .tooltip(if busy {
-                                            "Steer (Enter) · Follow-up (Ctrl+Enter)"
-                                        } else {
-                                            "Send (Enter)"
-                                        })
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.submit(SubmitKey::Enter, cx);
-                                        })),
-                                ),
-                        ),
-                )
-                .into_any_element()
+            Some(menu)
         };
-        v_flex()
-            .w_full()
-            .max_w(px(920.))
-            .mx_auto()
-            .gap_1()
-            .children(self.render_widgets(WidgetPlacement::AboveEditor, cx))
-            .children(self.render_queue(cx))
-            .children(self.render_completions(cx))
-            .when(!frame.top.is_empty(), |el| {
-                el.child(Self::render_segments(&frame.top, cx))
-            })
-            .child(core)
-            .when(!frame.bottom.is_empty(), |el| {
-                el.child(Self::render_segments(&frame.bottom, cx))
-            })
-            .children(self.render_widgets(WidgetPlacement::BelowEditor, cx))
-            .into_any_element()
-    }
-
-    /// Side pane body (diff, output or a `sidePane` panel).
-    pub fn render_side(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let side = self.side.clone()?;
-        let theme = cx.theme().clone();
-        let (title, body): (String, AnyElement) = match side {
-            SideTab::Diff { title, patch } => (title, ous::diff_lines(&patch, 5000, cx)),
-            SideTab::Output { title, text } => (
-                title,
-                v_flex()
-                    .font_family(theme.mono_font_family.clone())
-                    .text_xs()
-                    .children(text.lines().map(|l| {
-                        div()
-                            .whitespace_nowrap()
-                            .child(SharedString::from(l.to_owned()))
-                    }))
-                    .into_any_element(),
-            ),
-            SideTab::Panel(id) => {
-                let panel = self.model.ui.panel(&id)?;
-                (
-                    panel.title.clone(),
-                    ous::render(&panel.spec, &id, &self.panel_action(&id), cx),
-                )
-            }
-        };
-        Some(
-            v_flex()
-                .size_full()
-                .child(
-                    h_flex()
-                        .px_3()
-                        .py_2()
-                        .justify_between()
-                        .border_b_1()
-                        .border_color(cx.theme().border)
-                        .child(
-                            div()
-                                .text_sm()
-                                .truncate()
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(SharedString::from(title)),
-                        )
-                        .child(
-                            Button::new("side-close")
-                                .ghost()
-                                .xsmall()
-                                .icon(IconName::Close)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.side = None;
-                                    cx.notify();
-                                })),
-                        ),
-                )
-                .child(
-                    div()
-                        .id("side-body")
-                        .flex_1()
-                        .overflow_y_scroll()
-                        .p_2()
-                        .child(body),
-                )
-                .into_any_element(),
-        )
+        cx.notify();
     }
 
     /// Side-pane tabs available (panels with `sidePane` placement).
@@ -1457,302 +1312,5 @@ impl SessionPane {
             .filter(|p| p.placement == PanelPlacement::SidePane)
             .map(|p| (p.id.clone(), p.title.clone()))
             .collect()
-    }
-
-    fn render_overlay_panel(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let panel = self
-            .model
-            .ui
-            .panels()
-            .find(|p| {
-                matches!(
-                    p.placement,
-                    PanelPlacement::Overlay | PanelPlacement::Fullscreen
-                )
-            })?
-            .clone();
-        let id = panel.id.clone();
-        let close_id = id.clone();
-        let fullscreen = panel.placement == PanelPlacement::Fullscreen;
-        let theme = cx.theme().clone();
-        let keys = panel.keys.clone();
-        let action = self.panel_action(&id);
-        Some(
-            div()
-                .id("panel-backdrop")
-                .absolute()
-                .inset_0()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(theme::scrim())
-                .on_key_down(cx.listener(move |this, e: &KeyDownEvent, _, cx| {
-                    if e.keystroke.key == "escape" {
-                        this.close_panel(&close_id, cx);
-                    }
-                }))
-                .child(
-                    v_flex()
-                        .id("panel")
-                        .when(fullscreen, gpui_kit::Styled::size_full)
-                        .when(!fullscreen, |el| {
-                            el.w(px(760.))
-                                .max_w(gpui_kit::relative(0.96))
-                                .max_h(px(640.))
-                        })
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(theme.border)
-                        .bg(theme.popover)
-                        .shadow_lg()
-                        .child(
-                            h_flex()
-                                .px_3()
-                                .py_2()
-                                .gap_2()
-                                .border_b_1()
-                                .border_color(theme.border)
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .child(SharedString::from(panel.title.clone())),
-                                )
-                                .children(keys.into_iter().map(|k| {
-                                    let a = std::rc::Rc::clone(&action);
-                                    let action_id = k.action_id.clone();
-                                    Button::new(SharedString::from(format!("pk-{}", k.action_id)))
-                                        .ghost()
-                                        .xsmall()
-                                        .label(SharedString::from(format!(
-                                            "{} ({})",
-                                            k.label, k.key
-                                        )))
-                                        .on_click(move |_, window, cx| {
-                                            a(&action_id, JsonValue::Null, window, cx);
-                                        })
-                                }))
-                                .child(
-                                    Button::new("panel-close")
-                                        .ghost()
-                                        .xsmall()
-                                        .icon(IconName::Close)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.close_panel(&id, cx);
-                                        })),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .id("panel-body")
-                                .flex_1()
-                                .overflow_y_scroll()
-                                .p_3()
-                                .child(ous::render(
-                                    &panel.spec,
-                                    &panel.id,
-                                    &self.panel_action(&panel.id),
-                                    cx,
-                                )),
-                        ),
-                )
-                .into_any_element(),
-        )
-    }
-
-    fn render_rail(&self, cx: &mut Context<Self>) -> AnyElement {
-        let prompts = self.model.transcript.prompt_indices();
-        v_flex()
-            .w(px(12.))
-            .h_full()
-            .py_4()
-            .gap_1()
-            .items_center()
-            .children(prompts.into_iter().take(80).map(|ix| {
-                div()
-                    .id(SharedString::from(format!("rail{ix}")))
-                    .w(px(6.))
-                    .h(px(6.))
-                    .rounded_full()
-                    .bg(cx.theme().muted_foreground.opacity(0.45))
-                    .hover(|s| s.bg(cx.theme().primary))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        this.list.scroll_to_reveal_item(ix);
-                        cx.notify();
-                    }))
-            }))
-            .into_any_element()
-    }
-
-    fn render_empty(&self, cx: &App) -> AnyElement {
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_xl()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("What should Oino do?"),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(SharedString::from(self.model.cwd.clone())),
-            )
-            .child(
-                div()
-                    .pt_2()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(
-                        "Type / for commands · ! for shell · Ctrl+K command palette · Ctrl+L model",
-                    ),
-            )
-            .into_any_element()
-    }
-}
-
-/// Discrete thinking-level control (`ZCode` composer: model name + thinking slider).
-fn thinking_slider(level: ThinkingLevel, cx: &mut Context<SessionPane>) -> AnyElement {
-    const LEVELS: [ThinkingLevel; 6] = [
-        ThinkingLevel::Off,
-        ThinkingLevel::Minimal,
-        ThinkingLevel::Low,
-        ThinkingLevel::Medium,
-        ThinkingLevel::High,
-        ThinkingLevel::Xhigh,
-    ];
-    let theme = cx.theme().clone();
-    let current = LEVELS.iter().position(|l| *l == level).unwrap_or(0);
-    h_flex()
-        .gap(px(2.))
-        .px_1()
-        .items_center()
-        .child(
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .mr_1()
-                .child(SharedString::from(level.to_string())),
-        )
-        .children(LEVELS.iter().enumerate().map(|(i, l)| {
-            let l = *l;
-            div()
-                .id(SharedString::from(format!("think{i}")))
-                .w(px(10.))
-                .h(px(6.))
-                .rounded_sm()
-                .cursor_pointer()
-                .bg(if i <= current && current > 0 {
-                    theme.primary
-                } else {
-                    theme.muted
-                })
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.set_thinking(l, cx)))
-        }))
-        .into_any_element()
-}
-
-fn card(source: Option<String>, harness: bool, body: AnyElement, cx: &App) -> AnyElement {
-    let rail = if harness {
-        theme::harness()
-    } else {
-        cx.theme().border
-    };
-    h_flex()
-        .w_full()
-        .items_start()
-        .rounded_md()
-        .border_1()
-        .border_color(cx.theme().border)
-        .overflow_hidden()
-        .child(div().w(px(3.)).min_h(px(28.)).h_full().bg(rail))
-        .child(
-            v_flex()
-                .flex_1()
-                .p_2()
-                .gap_1()
-                .text_sm()
-                .when_some(source, |el, s| {
-                    el.child(
-                        div()
-                            .text_xs()
-                            .text_color(if harness {
-                                theme::harness()
-                            } else {
-                                cx.theme().muted_foreground
-                            })
-                            .child(SharedString::from(s)),
-                    )
-                })
-                .child(body),
-        )
-        .into_any_element()
-}
-
-impl Render for SessionPane {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(text) = self.pending_text.take() {
-            self.composer
-                .update(cx, |s, cx| s.set_value(text, window, cx));
-        }
-        self.sync_dialog(window, cx);
-        let empty = self.model.transcript.is_empty();
-        let conversation: AnyElement = if empty {
-            self.render_empty(cx)
-        } else {
-            list(self.list.clone(), cx.processor(SessionPane::render_row))
-                .size_full()
-                .into_any_element()
-        };
-        let headers: Vec<AnyElement> = self
-            .model
-            .ui
-            .headers()
-            .enumerate()
-            .map(|(i, h)| ous::render(h, &format!("hdr{i}"), &ous::no_action(), cx))
-            .chain(self.render_widgets(WidgetPlacement::Header, cx))
-            .collect();
-        let composer = self.render_composer(window, cx);
-        let overlay = self.render_overlay_panel(cx);
-        let working = self
-            .model
-            .ui
-            .working_message
-            .clone()
-            .filter(|_| self.model.is_busy());
-        v_flex()
-            .relative()
-            .size_full()
-            .track_focus(&self.focus)
-            .when(!headers.is_empty(), |el| {
-                el.child(v_flex().px_6().py_2().gap_1().children(headers))
-            })
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .child(self.render_rail(cx))
-                    .child(div().flex_1().h_full().min_w_0().child(conversation)),
-            )
-            .when_some(working, |el, w| {
-                el.child(
-                    h_flex()
-                        .px_6()
-                        .gap_2()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(Spinner::new().xsmall())
-                        .child(SharedString::from(w)),
-                )
-            })
-            .child(div().w_full().px_6().pt_1().pb_3().child(composer))
-            .children(overlay)
-            .when_some(self.dialog.clone(), gpui_kit::ParentElement::child)
     }
 }

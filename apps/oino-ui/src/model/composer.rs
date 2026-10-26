@@ -224,6 +224,196 @@ pub fn slash_completions(
     prefix.into_iter().chain(infix).take(limit).collect()
 }
 
+/// Workflow permission mode shown by the composer mode chip (design.md §4.11).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModeChip {
+    /// `ask`: ask before changes.
+    Ask,
+    /// Plan mode.
+    Plan,
+    /// `auto`: jev-judged.
+    Auto,
+    /// `full`: full access.
+    Full,
+}
+
+impl ModeChip {
+    /// Menu order.
+    pub const ALL: [Self; 4] = [Self::Ask, Self::Plan, Self::Auto, Self::Full];
+
+    /// Label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ask => "Ask before changes",
+            Self::Plan => "Plan",
+            Self::Auto => "Auto",
+            Self::Full => "Full access",
+        }
+    }
+
+    /// Lucide icon stem.
+    #[must_use]
+    pub const fn icon(self) -> &'static str {
+        match self {
+            Self::Ask => "hand",
+            Self::Plan => "list-checks",
+            Self::Auto => "sparkles",
+            Self::Full => "shield-off",
+        }
+    }
+
+    /// The workflow commands selecting this mode from `current`.
+    #[must_use]
+    pub fn commands(self, current: Option<Self>) -> Vec<String> {
+        let mode = match self {
+            Self::Plan => return vec!["/unipi:plan on".to_owned()],
+            Self::Ask => "ask",
+            Self::Full => "full",
+            Self::Auto => "auto",
+        };
+        let mut out = Vec::new();
+        if current == Some(Self::Plan) {
+            out.push("/unipi:plan off".to_owned());
+        }
+        out.push(format!("/unipi:permission {mode}"));
+        out
+    }
+
+    /// The mode from the footer frame's `plan` / `permission` segments.
+    #[must_use]
+    pub fn from_segments<'a>(
+        segments: impl IntoIterator<Item = &'a crate::model::ui_state::Segment>,
+    ) -> Option<Self> {
+        let mut permission = None;
+        for seg in segments {
+            match seg.id.as_deref() {
+                Some("plan") => return Some(Self::Plan),
+                Some("permission") => {
+                    permission = Some(match seg.text.trim().to_lowercase().as_str() {
+                        "ask" => Self::Ask,
+                        "full" => Self::Full,
+                        _ => Self::Auto,
+                    });
+                }
+                _ => {}
+            }
+        }
+        permission
+    }
+}
+
+/// Width below which the composer toolbar compresses (design.md §4.11).
+pub const COMPRESS_BELOW: f32 = 520.0;
+
+/// The completion trigger under the cursor: `(prefix char, char offset of the token start)`.
+#[must_use]
+pub fn trigger(text: &str, cursor: usize) -> Option<(char, usize)> {
+    let before: Vec<char> = text.chars().take(cursor).collect();
+    let start = before
+        .iter()
+        .rposition(|c| c.is_whitespace())
+        .map_or(0, |i| i + 1);
+    let first = *before.get(start)?;
+    match first {
+        '@' | '$' | '#' => Some((first, start)),
+        '/' if start == 0 => Some(('/', 0)),
+        _ => None,
+    }
+}
+
+/// One merged completion row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompletionRow {
+    /// Section title (`Files`, `Commands`, …).
+    pub section: String,
+    /// Replacement text.
+    pub value: String,
+    /// Label.
+    pub label: String,
+    /// Description.
+    pub description: Option<String>,
+    /// Source tag (`skill`, `dir`, extension id).
+    pub tag: Option<String>,
+    /// Tone of the tag (`c1`…).
+    pub tone: Option<String>,
+    /// Char offset where the value replaces up to the cursor.
+    pub from: usize,
+}
+
+fn section_of(source: &str) -> String {
+    match source {
+        "commands" => "Commands".to_owned(),
+        "files" => "Files".to_owned(),
+        "skills" => "Skills".to_owned(),
+        "prompts" | "templates" => "Prompts".to_owned(),
+        "sessions" => "Sessions".to_owned(),
+        s if s.starts_with("command:") => format!("/{}", &s["command:".len()..]),
+        other => other.to_owned(),
+    }
+}
+
+/// Merges `_oino/get_completions` groups into rows (sorted by tier within a group, at most
+/// `limit`). `default_from` is the token start for groups without `from`.
+#[must_use]
+pub fn merge_completions(
+    groups: &[oino_core::session::CompletionGroup],
+    default_from: usize,
+    limit: usize,
+) -> Vec<CompletionRow> {
+    let mut out = Vec::new();
+    for group in groups {
+        let mut items: Vec<&oino_core::session::CompletionEntry> = group.items.iter().collect();
+        items.sort_by_key(|i| i.sort_tier.unwrap_or(0));
+        for item in items {
+            if out.len() >= limit {
+                return out;
+            }
+            out.push(CompletionRow {
+                section: section_of(&group.source),
+                value: item.value.clone(),
+                label: item.label.clone().unwrap_or_else(|| item.value.clone()),
+                description: item.description.clone(),
+                tag: item.tag.clone(),
+                tone: item.tone.clone(),
+                from: group.from.unwrap_or(default_from),
+            });
+        }
+    }
+    out
+}
+
+/// Applies a completion: replaces chars `from..cursor` of `text` with `value` (+ a space when
+/// the value does not end a path segment). Returns the new text and cursor.
+#[must_use]
+pub fn apply_completion(text: &str, cursor: usize, from: usize, value: &str) -> (String, usize) {
+    let chars: Vec<char> = text.chars().collect();
+    let from = from.min(chars.len());
+    let cursor = cursor.clamp(from, chars.len());
+    let mut out: String = chars[..from].iter().collect();
+    out.push_str(value);
+    let keep_open = value.ends_with('/');
+    if !keep_open {
+        out.push(' ');
+    }
+    let new_cursor = out.chars().count();
+    out.extend(chars[cursor..].iter());
+    (out, new_cursor)
+}
+
+/// Greeting by local hour (`ZCode` `chat-empty-time-greeting.md`).
+#[must_use]
+pub const fn greeting(hour: u32) -> &'static str {
+    match hour {
+        5..=8 => "Morning, ready when you are",
+        9..=11 => "Morning, how can I help?",
+        12..=13 => "Noon break?",
+        14..=17 => "Good afternoon! Leave the rest to me.",
+        18..=22 => "Evening, nice work today",
+        _ => "It's late — remember to rest.",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +495,63 @@ mod tests {
         assert_eq!(d.draft("a"), "");
         d.history("a").push("x");
         assert_eq!(d.history("a").older(), Some("x"));
+    }
+
+    #[test]
+    fn mode_chip_and_commands() {
+        use crate::model::ous::Tone;
+        use crate::model::ui_state::{Align, Segment};
+        let seg = |id: &str, text: &str| Segment {
+            id: Some(id.into()),
+            text: text.into(),
+            spans: None,
+            command: None,
+            tone: Tone::Default,
+            icon: None,
+            priority: 0,
+            align: Align::Right,
+        };
+        assert_eq!(
+            ModeChip::from_segments(&[seg("permission", "ask")]),
+            Some(ModeChip::Ask)
+        );
+        assert_eq!(
+            ModeChip::from_segments(&[seg("permission", "full"), seg("plan", "PLAN")]),
+            Some(ModeChip::Plan)
+        );
+        assert_eq!(ModeChip::from_segments(&[seg("branch", "main")]), None);
+        assert_eq!(
+            ModeChip::Full.commands(Some(ModeChip::Ask)),
+            vec!["/unipi:permission full"]
+        );
+        assert_eq!(ModeChip::Plan.commands(None), vec!["/unipi:plan on"]);
+        assert_eq!(ModeChip::Ask.commands(Some(ModeChip::Plan)).len(), 2);
+    }
+
+    #[test]
+    fn triggers_and_completions() {
+        assert_eq!(trigger("/comp", 5), Some(('/', 0)));
+        assert_eq!(trigger("fix @src/pa", 11), Some(('@', 4)));
+        assert_eq!(trigger("a $tdd", 6), Some(('$', 2)));
+        assert_eq!(trigger("a /x", 4), None, "slash only at the start");
+        assert_eq!(trigger("plain", 5), None);
+        let groups: Vec<oino_core::session::CompletionGroup> = serde_json::from_value(serde_json::json!([
+            {"source":"files","from":4,"items":[{"value":"@src/","tag":"dir","sortTier":1},{"value":"@src/parser.rs","sortTier":0}]},
+            {"source":"unipi.command-enchantment","items":[{"value":"#s1","label":"Fix parser","tone":"c3"}]}
+        ])).unwrap();
+        let rows = merge_completions(&groups, 0, 10);
+        assert_eq!(rows[0].value, "@src/parser.rs");
+        assert_eq!(rows[1].tag.as_deref(), Some("dir"));
+        assert_eq!(rows[2].section, "unipi.command-enchantment");
+        assert_eq!(rows[2].from, 0);
+        assert_eq!(merge_completions(&groups, 0, 1).len(), 1);
+        assert_eq!(
+            apply_completion("fix @src/pa now", 11, 4, "@src/parser.rs"),
+            ("fix @src/parser.rs  now".to_owned(), 19)
+        );
+        assert_eq!(apply_completion("@s", 2, 0, "@src/").0, "@src/");
+        assert_eq!(greeting(13), "Noon break?");
+        assert_eq!(greeting(2), "It's late — remember to rest.");
     }
 
     #[test]

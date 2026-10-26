@@ -45,6 +45,9 @@
     )
 )]
 
+#[cfg(feature = "views")]
+pub mod components;
+pub mod design;
 pub mod host;
 #[cfg(feature = "mobile")]
 pub mod mobile;
