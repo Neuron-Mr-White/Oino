@@ -1,0 +1,1076 @@
+{
+  "schemas": {
+    "read": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "number"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    },
+    "strict": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "nested": {
+      "type": "object",
+      "properties": {
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "oldText",
+              "newText"
+            ]
+          }
+        }
+      },
+      "required": [
+        "edits"
+      ]
+    },
+    "enums": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "a",
+            "b"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "x",
+            "y"
+          ]
+        },
+        "c": {
+          "const": 3
+        }
+      },
+      "required": []
+    },
+    "bools": {
+      "type": "object",
+      "properties": {
+        "flag": {
+          "type": "boolean"
+        },
+        "n": {
+          "type": "null"
+        }
+      },
+      "required": []
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "s": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 4
+        },
+        "n": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "e": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 5
+        },
+        "a": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2
+        },
+        "i": {
+          "type": "integer",
+          "multipleOf": 3
+        }
+      },
+      "required": []
+    },
+    "pattern": {
+      "type": "object",
+      "properties": {
+        "p": {
+          "type": "string",
+          "pattern": "^[a-z]+$"
+        }
+      },
+      "required": []
+    },
+    "unions": {
+      "type": "object",
+      "properties": {
+        "u": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "o": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "t": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": []
+    },
+    "addl": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "arr": {
+      "type": "object",
+      "properties": {
+        "xs": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "uniq": {
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": []
+    },
+    "minprops": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "minProperties": 1
+    },
+    "anyofLimits": {
+      "type": "object",
+      "properties": {
+        "u": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 5
+            },
+            {
+              "type": "number",
+              "minimum": 10
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "oneofDup": {
+      "type": "object",
+      "properties": {
+        "u": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "arrObj": {
+      "type": "object",
+      "properties": {
+        "e": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "required": []
+    },
+    "twoReq": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        },
+        "b": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ]
+    },
+    "nestedStrict": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "object",
+          "properties": {
+            "y": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "y"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": []
+    },
+    "allOf": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "allOf": [
+            {
+              "type": "string"
+            },
+            {
+              "minLength": 3
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "not": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "not": {
+            "type": "string"
+          }
+        }
+      },
+      "required": []
+    },
+    "tuple": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "array",
+          "items": [
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "contains": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "array",
+          "contains": {
+            "type": "string"
+          }
+        }
+      },
+      "required": []
+    },
+    "rootObj": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "a"
+      ]
+    },
+    "objStr": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "object"
+        },
+        "y": {
+          "type": "array"
+        }
+      },
+      "required": []
+    },
+    "ref": {
+      "type": "object",
+      "properties": {
+        "p": {
+          "$ref": "#/$defs/P"
+        }
+      },
+      "required": [
+        "p"
+      ],
+      "$defs": {
+        "P": {
+          "type": "object",
+          "properties": {
+            "n": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "n"
+          ]
+        }
+      }
+    },
+    "optnull": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "opt": {
+          "type": "number"
+        },
+        "optstr": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "schema": "read",
+      "args": {},
+      "error": "Validation failed for tool \"t\":\n  - path: must have required properties path\n\nReceived arguments:\n{}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": 1
+      },
+      "ok": {
+        "path": "1"
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": "abc"
+      },
+      "error": "Validation failed for tool \"t\":\n  - offset: must be number\n\nReceived arguments:\n{\n  \"path\": \"x\",\n  \"offset\": \"abc\"\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": "5"
+      },
+      "ok": {
+        "path": "x",
+        "offset": 5
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "limit": 2.5
+      },
+      "error": "Validation failed for tool \"t\":\n  - limit: must be integer\n\nReceived arguments:\n{\n  \"path\": \"x\",\n  \"limit\": 2.5\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "limit": "7"
+      },
+      "ok": {
+        "path": "x",
+        "limit": 7
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": true
+      },
+      "ok": {
+        "path": "true"
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": null
+      },
+      "ok": {
+        "path": ""
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": true
+      },
+      "ok": {
+        "path": "x",
+        "offset": 1
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": null
+      },
+      "ok": {
+        "path": "x"
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": [
+          "a"
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - path: must be string\n\nReceived arguments:\n{\n  \"path\": [\n    \"a\"\n  ]\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": {
+          "a": 1
+        }
+      },
+      "error": "Validation failed for tool \"t\":\n  - path: must be string\n\nReceived arguments:\n{\n  \"path\": {\n    \"a\": 1\n  }\n}"
+    },
+    {
+      "schema": "strict",
+      "args": {
+        "path": "x",
+        "extra": 1
+      },
+      "error": "Validation failed for tool \"t\":\n  - extra: schema is false\n  - root: must not have additional properties\n\nReceived arguments:\n{\n  \"path\": \"x\",\n  \"extra\": 1\n}"
+    },
+    {
+      "schema": "strict",
+      "args": {
+        "path": "x"
+      },
+      "ok": {
+        "path": "x"
+      }
+    },
+    {
+      "schema": "strict",
+      "args": {
+        "extra": 1
+      },
+      "error": "Validation failed for tool \"t\":\n  - path: must have required properties path\n  - extra: schema is false\n  - root: must not have additional properties\n\nReceived arguments:\n{\n  \"extra\": 1\n}"
+    },
+    {
+      "schema": "nested",
+      "args": {
+        "edits": [
+          {}
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - edits.0.oldText: must have required properties oldText, newText\n\nReceived arguments:\n{\n  \"edits\": [\n    {}\n  ]\n}"
+    },
+    {
+      "schema": "nested",
+      "args": {
+        "edits": [
+          {
+            "oldText": "a",
+            "newText": "b"
+          },
+          {
+            "oldText": 1
+          }
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - edits.1.newText: must have required properties newText\n\nReceived arguments:\n{\n  \"edits\": [\n    {\n      \"oldText\": \"a\",\n      \"newText\": \"b\"\n    },\n    {\n      \"oldText\": 1\n    }\n  ]\n}"
+    },
+    {
+      "schema": "nested",
+      "args": {
+        "edits": "nope"
+      },
+      "error": "Validation failed for tool \"t\":\n  - edits: must be array\n\nReceived arguments:\n{\n  \"edits\": \"nope\"\n}"
+    },
+    {
+      "schema": "nested",
+      "args": {},
+      "error": "Validation failed for tool \"t\":\n  - edits: must have required properties edits\n\nReceived arguments:\n{}"
+    },
+    {
+      "schema": "enums",
+      "args": {
+        "mode": "c"
+      },
+      "error": "Validation failed for tool \"t\":\n  - mode: must be equal to one of the allowed values\n\nReceived arguments:\n{\n  \"mode\": \"c\"\n}"
+    },
+    {
+      "schema": "enums",
+      "args": {
+        "kind": "z"
+      },
+      "error": "Validation failed for tool \"t\":\n  - kind: must be equal to one of the allowed values\n\nReceived arguments:\n{\n  \"kind\": \"z\"\n}"
+    },
+    {
+      "schema": "enums",
+      "args": {
+        "c": 4
+      },
+      "error": "Validation failed for tool \"t\":\n  - c: must be equal to constant\n\nReceived arguments:\n{\n  \"c\": 4\n}"
+    },
+    {
+      "schema": "enums",
+      "args": {
+        "mode": "a",
+        "kind": "x",
+        "c": 3
+      },
+      "ok": {
+        "mode": "a",
+        "kind": "x",
+        "c": 3
+      }
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "flag": "true"
+      },
+      "ok": {
+        "flag": true
+      }
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "flag": "false"
+      },
+      "ok": {
+        "flag": false
+      }
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "flag": 1
+      },
+      "ok": {
+        "flag": true
+      }
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "flag": "yes"
+      },
+      "error": "Validation failed for tool \"t\":\n  - flag: must be boolean\n\nReceived arguments:\n{\n  \"flag\": \"yes\"\n}"
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "n": ""
+      },
+      "ok": {
+        "n": null
+      }
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "n": 1
+      },
+      "error": "Validation failed for tool \"t\":\n  - n: must be null\n\nReceived arguments:\n{\n  \"n\": 1\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "s": "a"
+      },
+      "error": "Validation failed for tool \"t\":\n  - s: must not have fewer than 2 characters\n\nReceived arguments:\n{\n  \"s\": \"a\"\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "s": "abcde"
+      },
+      "error": "Validation failed for tool \"t\":\n  - s: must not have more than 4 characters\n\nReceived arguments:\n{\n  \"s\": \"abcde\"\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "n": 0
+      },
+      "error": "Validation failed for tool \"t\":\n  - n: must be >= 1\n\nReceived arguments:\n{\n  \"n\": 0\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "n": 11
+      },
+      "error": "Validation failed for tool \"t\":\n  - n: must be <= 10\n\nReceived arguments:\n{\n  \"n\": 11\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "e": 0
+      },
+      "error": "Validation failed for tool \"t\":\n  - e: must be > 0\n\nReceived arguments:\n{\n  \"e\": 0\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "e": 5
+      },
+      "error": "Validation failed for tool \"t\":\n  - e: must be < 5\n\nReceived arguments:\n{\n  \"e\": 5\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "a": []
+      },
+      "error": "Validation failed for tool \"t\":\n  - a: must not have fewer than 1 items\n\nReceived arguments:\n{\n  \"a\": []\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "a": [
+          1,
+          2,
+          3
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - a: must not have more than 2 items\n\nReceived arguments:\n{\n  \"a\": [\n    1,\n    2,\n    3\n  ]\n}"
+    },
+    {
+      "schema": "limits",
+      "args": {
+        "i": 4
+      },
+      "error": "Validation failed for tool \"t\":\n  - i: must be multiple of 3\n\nReceived arguments:\n{\n  \"i\": 4\n}"
+    },
+    {
+      "schema": "pattern",
+      "args": {
+        "p": "ABC"
+      },
+      "error": "Validation failed for tool \"t\":\n  - p: must match pattern \"^[a-z]+$\"\n\nReceived arguments:\n{\n  \"p\": \"ABC\"\n}"
+    },
+    {
+      "schema": "pattern",
+      "args": {
+        "p": "abc"
+      },
+      "ok": {
+        "p": "abc"
+      }
+    },
+    {
+      "schema": "unions",
+      "args": {
+        "u": true
+      },
+      "ok": {
+        "u": "true"
+      }
+    },
+    {
+      "schema": "unions",
+      "args": {
+        "u": 1
+      },
+      "ok": {
+        "u": 1
+      }
+    },
+    {
+      "schema": "unions",
+      "args": {
+        "o": 3
+      },
+      "ok": {
+        "o": "3"
+      }
+    },
+    {
+      "schema": "unions",
+      "args": {
+        "t": 5
+      },
+      "ok": {
+        "t": "5"
+      }
+    },
+    {
+      "schema": "unions",
+      "args": {
+        "t": null
+      },
+      "ok": {
+        "t": null
+      }
+    },
+    {
+      "schema": "addl",
+      "args": {
+        "a": "x",
+        "b": "y"
+      },
+      "error": "Validation failed for tool \"t\":\n  - b: must be number\n  - root: must not have additional properties\n\nReceived arguments:\n{\n  \"a\": \"x\",\n  \"b\": \"y\"\n}"
+    },
+    {
+      "schema": "addl",
+      "args": {
+        "a": "x",
+        "b": "2"
+      },
+      "ok": {
+        "a": "x",
+        "b": 2
+      }
+    },
+    {
+      "schema": "arr",
+      "args": {
+        "xs": [
+          "1",
+          "x"
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - xs.1: must be number\n\nReceived arguments:\n{\n  \"xs\": [\n    \"1\",\n    \"x\"\n  ]\n}"
+    },
+    {
+      "schema": "arr",
+      "args": {
+        "uniq": [
+          1,
+          1
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - uniq: must not have duplicate items\n\nReceived arguments:\n{\n  \"uniq\": [\n    1,\n    1\n  ]\n}"
+    },
+    {
+      "schema": "minprops",
+      "args": {},
+      "error": "Validation failed for tool \"t\":\n  - root: must not have fewer than 1 properties\n\nReceived arguments:\n{}"
+    },
+    {
+      "schema": "optnull",
+      "args": {
+        "path": "x",
+        "opt": null,
+        "optstr": null
+      },
+      "ok": {
+        "path": "x"
+      }
+    },
+    {
+      "schema": "anyofLimits",
+      "args": {
+        "u": {}
+      },
+      "error": "Validation failed for tool \"t\":\n  - u: must be string\n  - u: must be number\n  - u: must match a schema in anyOf\n\nReceived arguments:\n{\n  \"u\": {}\n}"
+    },
+    {
+      "schema": "anyofLimits",
+      "args": {
+        "u": "ab"
+      },
+      "error": "Validation failed for tool \"t\":\n  - u: must not have fewer than 5 characters\n  - u: must be number\n  - u: must match a schema in anyOf\n\nReceived arguments:\n{\n  \"u\": \"ab\"\n}"
+    },
+    {
+      "schema": "oneofDup",
+      "args": {
+        "u": "ab"
+      },
+      "error": "Validation failed for tool \"t\":\n  - u: must match exactly one schema in oneOf\n\nReceived arguments:\n{\n  \"u\": \"ab\"\n}"
+    },
+    {
+      "schema": "arrObj",
+      "args": {
+        "e": [
+          1
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - e.0: must be object\n\nReceived arguments:\n{\n  \"e\": [\n    1\n  ]\n}"
+    },
+    {
+      "schema": "twoReq",
+      "args": {
+        "b": "x"
+      },
+      "error": "Validation failed for tool \"t\":\n  - a: must have required properties a\n  - b: must be number\n\nReceived arguments:\n{\n  \"b\": \"x\"\n}"
+    },
+    {
+      "schema": "twoReq",
+      "args": {
+        "b": "x",
+        "a": {}
+      },
+      "error": "Validation failed for tool \"t\":\n  - a: must be string\n  - b: must be number\n\nReceived arguments:\n{\n  \"b\": \"x\",\n  \"a\": {}\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "limit": "7.5"
+      },
+      "error": "Validation failed for tool \"t\":\n  - limit: must be integer\n\nReceived arguments:\n{\n  \"path\": \"x\",\n  \"limit\": \"7.5\"\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": ""
+      },
+      "error": "Validation failed for tool \"t\":\n  - offset: must be number\n\nReceived arguments:\n{\n  \"path\": \"x\",\n  \"offset\": \"\"\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": " 3 "
+      },
+      "ok": {
+        "path": "x",
+        "offset": 3
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": 1.5
+      },
+      "ok": {
+        "path": "1.5"
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": 1e+21
+      },
+      "ok": {
+        "path": "1e+21"
+      }
+    },
+    {
+      "schema": "nestedStrict",
+      "args": {
+        "x": {
+          "z": 1
+        }
+      },
+      "error": "Validation failed for tool \"t\":\n  - x.y: must have required properties y\n  - x.z: schema is false\n  - x: must not have additional properties\n\nReceived arguments:\n{\n  \"x\": {\n    \"z\": 1\n  }\n}"
+    },
+    {
+      "schema": "allOf",
+      "args": {
+        "x": "ab"
+      },
+      "error": "Validation failed for tool \"t\":\n  - x: must not have fewer than 3 characters\n\nReceived arguments:\n{\n  \"x\": \"ab\"\n}"
+    },
+    {
+      "schema": "not",
+      "args": {
+        "x": "ab"
+      },
+      "error": "Validation failed for tool \"t\":\n  - x: must not be valid\n\nReceived arguments:\n{\n  \"x\": \"ab\"\n}"
+    },
+    {
+      "schema": "tuple",
+      "args": {
+        "x": [
+          1
+        ]
+      },
+      "ok": {
+        "x": [
+          "1"
+        ]
+      }
+    },
+    {
+      "schema": "contains",
+      "args": {
+        "x": [
+          1
+        ]
+      },
+      "error": "Validation failed for tool \"t\":\n  - x: must contain at least 1 valid item\n\nReceived arguments:\n{\n  \"x\": [\n    1\n  ]\n}"
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "flag": 0
+      },
+      "ok": {
+        "flag": false
+      }
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "flag": null
+      },
+      "ok": {}
+    },
+    {
+      "schema": "bools",
+      "args": {
+        "flag": 2
+      },
+      "error": "Validation failed for tool \"t\":\n  - flag: must be boolean\n\nReceived arguments:\n{\n  \"flag\": 2\n}"
+    },
+    {
+      "schema": "strict",
+      "args": {
+        "path": "a",
+        "x": 1,
+        "y": 2
+      },
+      "error": "Validation failed for tool \"t\":\n  - x: schema is false\n  - y: schema is false\n  - root: must not have additional properties\n\nReceived arguments:\n{\n  \"path\": \"a\",\n  \"x\": 1,\n  \"y\": 2\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": "0x10"
+      },
+      "ok": {
+        "path": "x",
+        "offset": 16
+      }
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "offset": "Infinity"
+      },
+      "error": "Validation failed for tool \"t\":\n  - offset: must be number\n\nReceived arguments:\n{\n  \"path\": \"x\",\n  \"offset\": \"Infinity\"\n}"
+    },
+    {
+      "schema": "read",
+      "args": {
+        "path": "x",
+        "limit": true
+      },
+      "ok": {
+        "path": "x",
+        "limit": 1
+      }
+    },
+    {
+      "schema": "objStr",
+      "args": {
+        "x": "{}"
+      },
+      "error": "Validation failed for tool \"t\":\n  - x: must be object\n\nReceived arguments:\n{\n  \"x\": \"{}\"\n}"
+    },
+    {
+      "schema": "objStr",
+      "args": {
+        "y": "[]"
+      },
+      "error": "Validation failed for tool \"t\":\n  - y: must be array\n\nReceived arguments:\n{\n  \"y\": \"[]\"\n}"
+    },
+    {
+      "schema": "ref",
+      "args": {
+        "p": {
+          "n": "4"
+        }
+      },
+      "error": "Validation failed for tool \"t\":\n  - p.n: must be integer\n\nReceived arguments:\n{\n  \"p\": {\n    \"n\": \"4\"\n  }\n}"
+    },
+    {
+      "schema": "ref",
+      "args": {
+        "p": {}
+      },
+      "error": "Validation failed for tool \"t\":\n  - p.n: must have required properties n\n\nReceived arguments:\n{\n  \"p\": {}\n}"
+    },
+    {
+      "schema": "ref",
+      "args": {},
+      "error": "Validation failed for tool \"t\":\n  - p: must have required properties p\n\nReceived arguments:\n{}"
+    },
+    {
+      "schema": "read",
+      "args": {},
+      "argumentsError": "Unexpected end of JSON input",
+      "error": "Invalid arguments for tool \"t\": Unexpected end of JSON input"
+    }
+  ]
+}
