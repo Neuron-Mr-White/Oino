@@ -1,0 +1,11 @@
+{"type":"session","version":3,"id":"019ec8e9-a5c3-7728-8c7d-a2d807ae7388","timestamp":"2026-06-15T01:33:36.067Z","cwd":"/work/project"}
+{"type":"model_change","id":"21f0e54c","parentId":null,"timestamp":"2026-06-15T01:33:37.011Z","provider":"omniroute","modelId":"white/intellegent-long-context"}
+{"type":"thinking_level_change","id":"0f0a2f35","parentId":"21f0e54c","timestamp":"2026-06-15T01:33:37.011Z","thinkingLevel":"off"}
+{"type":"message","id":"a097ba4e","parentId":"0f0a2f35","timestamp":"2026-06-15T01:39:27.133Z","message":{"role":"user","content":[{"type":"text","text":"t1"}],"timestamp":1781487567117}}
+{"type":"custom_message","customType":"unipi-memory-recall-reminder","content":"t2","display":false,"id":"d3b6e966","parentId":"a097ba4e","timestamp":"2026-06-15T01:39:27.133Z"}
+{"type":"message","id":"c5ef21aa","parentId":"d3b6e966","timestamp":"2026-06-15T01:39:27.847Z","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"omniroute","model":"white/intellegent-long-context","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"aborted","timestamp":1781487567135,"errorMessage":"t3"}}
+{"type":"model_change","id":"6571486e","parentId":"c5ef21aa","timestamp":"2026-06-15T01:39:33.287Z","provider":"omniroute","modelId":"openrouter/openrouter/fusion"}
+{"type":"session_info","id":"97854e1f","parentId":"6571486e","timestamp":"2026-06-15T01:39:46.883Z","name":"t4"}
+{"type":"model_change","id":"60b360e9","parentId":"97854e1f","timestamp":"2026-06-15T01:39:50.641Z","provider":"openrouter","modelId":"z-ai/glm-5-turbo"}
+{"type":"thinking_level_change","id":"a9e5b9da","parentId":"60b360e9","timestamp":"2026-06-15T01:39:50.641Z","thinkingLevel":"medium"}
+{"type":"compaction","id":"82ed1d08","parentId":"a9e5b9da","timestamp":"2026-06-15T01:39:53.291Z","summary":"t5","firstKeptEntryId":"","tokensBefore":310,"details":{"compactor":"t6","version":1,"sections":["t7"],"sourceMessageCount":2,"previousSummaryUsed":false},"fromHook":true}

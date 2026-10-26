@@ -1,0 +1,8 @@
+{"type":"session","id":"v1-session","timestamp":"2025-01-01T00:00:00.000Z","cwd":"/work/project"}
+{"type":"message","timestamp":"2025-01-01T00:00:01.000Z","message":{"role":"user","content":"first","timestamp":1735689601000}}
+{"type":"message","timestamp":"2025-01-01T00:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"one"}],"api":"anthropic-messages","provider":"anthropic","model":"claude-3","usage":{"input":1,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":2,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1735689602000}}
+{"type":"thinking_level_change","timestamp":"2025-01-01T00:00:03.000Z","thinkingLevel":"low"}
+{"type":"message","timestamp":"2025-01-01T00:00:04.000Z","message":{"role":"user","content":"second","timestamp":1735689604000}}
+{"type":"message","timestamp":"2025-01-01T00:00:05.000Z","message":{"role":"assistant","content":[{"type":"text","text":"two"}],"api":"anthropic-messages","provider":"anthropic","model":"claude-3","usage":{"input":1,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":2,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1735689605000}}
+{"type":"compaction","timestamp":"2025-01-01T00:00:06.000Z","summary":"Earlier talk","firstKeptEntryIndex":4,"tokensBefore":321}
+{"type":"message","timestamp":"2025-01-01T00:00:07.000Z","message":{"role":"user","content":"third","timestamp":1735689607000}}

@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"01a1765e-9aab-7176-afdf-d2fed7e88433","timestamp":"2026-10-26T04:01:13.899Z","cwd":"/work/project"}
+{"type":"message","id":"95fdcb12","parentId":null,"timestamp":"2026-10-26T04:01:13.899Z","message":{"role":"user","content":"hi","timestamp":1767225681000}}
+{"type":"session_info","id":"d1ca8bc4","parentId":"95fdcb12","timestamp":"2026-10-26T04:01:13.899Z","name":"Named"}
+{"type":"session_info","id":"bd59c9d4","parentId":"d1ca8bc4","timestamp":"2026-10-26T04:01:13.899Z","name":""}

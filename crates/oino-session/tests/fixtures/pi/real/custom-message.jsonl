@@ -1,0 +1,6 @@
+{"type":"session","version":3,"id":"01a0a370-968f-777d-8d84-842f33a7a215","timestamp":"2026-09-15T05:00:59.919Z","cwd":"/work/project"}
+{"type":"model_change","id":"470f0256","parentId":null,"timestamp":"2026-09-15T05:01:01.006Z","provider":"omniroute","modelId":"zai/glm-5.3-flash"}
+{"type":"thinking_level_change","id":"1b3873db","parentId":"470f0256","timestamp":"2026-09-15T05:01:01.006Z","thinkingLevel":"high"}
+{"type":"message","id":"f37b60ec","parentId":"1b3873db","timestamp":"2026-09-15T05:01:30.249Z","message":{"role":"user","content":[{"type":"text","text":"t1"}],"timestamp":1789448489688}}
+{"type":"custom_message","customType":"unipi-memory-recall-reminder","content":"t2","display":false,"id":"3f284b1e","parentId":"f37b60ec","timestamp":"2026-09-15T05:01:30.249Z"}
+{"type":"message","id":"5e462bad","parentId":"3f284b1e","timestamp":"2026-09-15T05:01:31.899Z","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"omniroute","model":"zai/glm-5.3-flash","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"aborted","timestamp":1789448490258,"errorMessage":"t3"}}

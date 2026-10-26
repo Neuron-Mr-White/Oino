@@ -3,6 +3,8 @@ members = [
   "crates/oino-types",
   "crates/oino-agent-loop",
   "crates/oino-agent",
+  "legacy/crates/oino-session",
+  "crates/oino-ai",
   "crates/oino-session",
   "crates/oino-harness",
   "crates/oino-resource",
@@ -31,9 +33,11 @@ async-trait = "0.1"
 futures = "0.3"
 bytes = "1"
 hmac = "0.12"
+indexmap = { version = "2", features = ["serde"] }
 sha2 = "0.10"
 crossterm = "0.28"
 dirs = "5"
+proptest = "1"
 pulldown-cmark = "0.12"
 ratatui = "0.29"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

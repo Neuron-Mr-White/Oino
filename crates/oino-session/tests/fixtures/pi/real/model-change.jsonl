@@ -1,0 +1,5 @@
+{"type":"session","version":3,"id":"01a04464-b4af-74c1-b770-b1e63478f3f3","timestamp":"2026-08-27T18:04:05.679Z","cwd":"/work/project"}
+{"type":"model_change","id":"13dbed95","parentId":null,"timestamp":"2026-08-27T18:04:05.828Z","provider":"omniroute","modelId":"zai/glm-5.3-flash"}
+{"type":"thinking_level_change","id":"98004326","parentId":"13dbed95","timestamp":"2026-08-27T18:04:05.828Z","thinkingLevel":"high"}
+{"type":"message","id":"c3a1e9ef","parentId":"98004326","timestamp":"2026-08-27T18:04:05.833Z","message":{"role":"user","content":[{"type":"text","text":"t1"}],"timestamp":1787853845833}}
+{"type":"message","id":"b685604d","parentId":"c3a1e9ef","timestamp":"2026-08-27T18:04:10.560Z","message":{"role":"assistant","content":[{"type":"text","text":"t2"}],"api":"openai-completions","provider":"omniroute","model":"zai/glm-5.3-flash","usage":{"input":1718,"output":3,"cacheRead":0,"cacheWrite":0,"reasoning":0,"totalTokens":1721,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1787853845851,"responseId":"chatcmpl-keepalive","responseModel":"t3","rawStopReason":"stop"}}

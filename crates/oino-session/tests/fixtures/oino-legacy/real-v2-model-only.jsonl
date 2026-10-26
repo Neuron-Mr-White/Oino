@@ -1,0 +1,2 @@
+{"record":"header","header":{"version":2,"session_id":"344db569-da67-4749-b6bf-8bb01f433618","name":"oino","cwd":"/work/project"},"leaf_id":"31ed0476-2e57-4e4a-9da0-924590d12ced"}
+{"record":"entry","entry":{"id":"31ed0476-2e57-4e4a-9da0-924590d12ced","parent":null,"kind":{"kind":"model_change","model":{"provider":"oino","name":"cc/claude-haiku-4-5-20251001"}}}}

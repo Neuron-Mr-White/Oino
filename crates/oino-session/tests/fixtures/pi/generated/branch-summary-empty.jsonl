@@ -1,0 +1,5 @@
+{"type":"session","version":3,"id":"01a1765e-9aac-7176-afdf-d30483a6b72a","timestamp":"2026-10-26T04:01:13.900Z","cwd":"/work/project"}
+{"type":"message","id":"5c695d07","parentId":null,"timestamp":"2026-10-26T04:01:13.900Z","message":{"role":"user","content":"start","timestamp":1767225693000}}
+{"type":"message","id":"38a1518c","parentId":"5c695d07","timestamp":"2026-10-26T04:01:13.900Z","message":{"role":"assistant","content":[{"type":"text","text":"a"}],"api":"anthropic-messages","provider":"anthropic","model":"claude-sonnet-4-5","usage":{"input":10,"output":5,"cacheRead":2,"cacheWrite":1,"totalTokens":18,"cost":{"input":0.00003,"output":0.000075,"cacheRead":6e-7,"cacheWrite":0.00000375,"total":0.00010935}},"stopReason":"stop","timestamp":1767225694000}}
+{"type":"branch_summary","id":"2039e4cb","parentId":"5c695d07","timestamp":"2026-10-26T04:01:13.900Z","fromId":"38a1518c","summary":""}
+{"type":"message","id":"f7e3f43b","parentId":"2039e4cb","timestamp":"2026-10-26T04:01:13.900Z","message":{"role":"user","content":"next","timestamp":1767225695000}}
