@@ -2,10 +2,7 @@
 //! other providers, capability badges, check mark, "Manage models…".
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, SharedString,
-    StatefulInteractiveElement as _, Styled as _, px,
-};
+use gpui_kit::{AnyElement, Context, IntoElement, SharedString};
 
 use crate::components::menu::{MenuEntry, menu};
 use crate::design::size;
@@ -100,8 +97,6 @@ pub fn model_menu(pane: &SessionPane, t: &OinoTheme, cx: &mut Context<SessionPan
         .icon(IconName::SlidersHorizontal),
     );
     menu("model-menu", t, size::MODEL_MENU, entries)
-        .id("model-menu-scroll")
-        .max_h(px(size::DIALOG_MAX_H * 0.7))
-        .overflow_y_scroll()
+        .max_h(size::DIALOG_MAX_H * 0.7)
         .into_any_element()
 }

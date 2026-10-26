@@ -31,7 +31,7 @@ use crate::model::palette::PaletteAction;
 use crate::model::sessions::{LiveStatus, SessionList, SessionSummary};
 use crate::model::ui_state::{NotifyKind, UiEffect};
 use crate::rt::Tokio;
-use crate::views::session_pane::{PaneEvent, PaneMenu, SessionPane, SideTab};
+use crate::views::session_pane::{BottomTab, PaneEvent, PaneMenu, SessionPane, SideTab};
 use crate::views::settings_page::{SettingsEvent, SettingsSection, SettingsView};
 use crate::views::{
     Abort, CloseFind, CommandPalette, FindInConversation, FocusComposer, NewSession, OpenFolder,
@@ -112,8 +112,47 @@ pub struct Workspace {
     pub(crate) window_width: Pixels,
     pub(crate) update_available: Option<String>,
     pending_panes: usize,
+    /// A sidebar action waiting for its session to open (rename / fork).
+    pub(crate) pending_side: Option<(String, SideAction)>,
+    /// Workspace-group `⋯` menu open for this cwd.
+    pub(crate) group_menu: Option<String>,
+    /// A destructive action waiting for confirmation.
+    pub(crate) confirm: Option<Confirm>,
+    /// Keyboard focus of the session list and its cursor row.
+    pub(crate) sidebar_focus: FocusHandle,
+    pub(crate) sidebar_cursor: Option<usize>,
+    pub(crate) sidebar_kb: bool,
+    /// Press state of the sidebar top-row drag region.
+    pub(crate) drag_armed: Rc<std::cell::Cell<bool>>,
+    /// Extensions page README dialog `(title, markdown)`.
+    pub(crate) ext_readme: Option<(String, String)>,
+    /// D9 board toolbar / cursor / overlay state.
+    pub(crate) board_ui: crate::views::board::BoardUi,
+    /// The mascot window (opt-in) and its bubble.
+    pub(crate) mascot: Option<gpui_kit::WindowHandle<crate::views::mascot::MascotView>>,
+    pub(crate) mascot_bubble: Option<(String, Instant)>,
+    /// The side frame was laid out this frame (browser visibility).
+    side_shown: bool,
     focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
+}
+
+/// A sidebar action applied once its session is open.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SideAction {
+    /// Start the header rename.
+    Rename,
+    /// Clone the session into a new one.
+    Fork,
+}
+
+/// Confirmation dialog for an important action (app-convention).
+#[derive(Clone)]
+pub(crate) struct Confirm {
+    pub title: SharedString,
+    pub body: SharedString,
+    pub action: SharedString,
+    pub run: Rc<dyn Fn(&mut Workspace, &mut Window, &mut Context<Workspace>)>,
 }
 
 pub(crate) fn now_ms() -> i64 {
@@ -141,8 +180,9 @@ impl Workspace {
                     }
                 }),
             ];
-        let onboarding =
-            !settings.onboarded && std::env::var("OINO_DESKTOP_ONBOARDING").is_ok_and(|v| v == "1");
+        // D13 onboarding (`OINO_DESKTOP_ONBOARDING=1`, also with the demo backend). It used to
+        // vanish because the first session's `activate` reset the route (fixed there).
+        let onboarding = std::env::var("OINO_DESKTOP_ONBOARDING").is_ok_and(|v| v == "1");
         let mut ws = Self {
             host,
             settings,
@@ -175,11 +215,30 @@ impl Workspace {
             window_width: window.viewport_size().width,
             update_available: None,
             pending_panes: 0,
+            pending_side: None,
+            group_menu: None,
+            confirm: None,
+            sidebar_focus: cx.focus_handle(),
+            sidebar_cursor: None,
+            sidebar_kb: false,
+            drag_armed: Rc::default(),
+            board_ui: crate::views::board::BoardUi::default(),
+            ext_readme: None,
+            mascot: None,
+            mascot_bubble: None,
+            side_shown: false,
             focus: cx.focus_handle(),
             _subscriptions: subscriptions,
         };
+        let root = cx.entity_id();
+        crate::design::ticker::Ticker::set_root(cx, root);
         ws.refresh_sessions(cx);
         ws.load_extensions(cx);
+        // After the main window exists (opening a window inside its build is not allowed).
+        cx.spawn(async move |this, cx| {
+            let _ = this.update(cx, Self::sync_mascot);
+        })
+        .detach();
         let cwd = ws.host.info().default_cwd;
         ws.open(OpenRequest::New { cwd: cwd.clone() }, window, cx);
         // Demo / screenshot hooks: extra split panes and an initial surface.
@@ -210,11 +269,130 @@ impl Workspace {
             ("settings", ns) => self.open_settings((!ns.is_empty()).then_some(ns), window, cx),
             ("board", _) => self.open_board(window, cx),
             ("extensions", _) => self.run_app_action("extensions", window, cx),
-            ("side", _) => {
-                self.side_open = true;
+            ("model", _) => self.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
+            // Screenshot / evidence hooks (design.md §10.1 P9).
+            ("bottom", tab) => {
+                self.bottom_open = true;
+                let tab = tab.to_owned();
+                self.with_pane(cx, move |p, cx| {
+                    if p.bottom.0.is_empty() {
+                        p.bottom.0 = vec![BottomTab::Output, BottomTab::Tasks];
+                    }
+                    p.bottom.1 = match tab.as_str() {
+                        "tasks" => 1,
+                        _ => 0,
+                    };
+                    cx.notify();
+                });
                 cx.notify();
             }
-            ("model", _) => self.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
+            ("terminal", _) => {
+                self.bottom_open = true;
+                cx.notify();
+            }
+            ("browser", url) => {
+                let url = url.to_owned();
+                self.side_open = true;
+                self.with_pane(cx, move |p, cx| p.open_link(&url, cx));
+            }
+            ("side", tab) => {
+                self.side_open = true;
+                let tab = match tab {
+                    "files" => Some(SideTab::Files),
+                    "tree" => Some(SideTab::Tree),
+                    "plan" => Some(SideTab::Plan),
+                    "launcher" => None,
+                    _ => Some(SideTab::Review),
+                };
+                self.with_pane(cx, move |p, cx| {
+                    if let Some(tab) = tab {
+                        p.open_side(tab, cx);
+                    } else {
+                        p.side.close();
+                        cx.notify();
+                    }
+                });
+                cx.notify();
+            }
+            ("find", q) => {
+                let q = q.to_owned();
+                if let Some(p) = self.active_pane().cloned() {
+                    p.update(cx, |p, cx| {
+                        p.open_find(window, cx);
+                        if let Some(f) = &p.find {
+                            f.input.update(cx, |s, cx| s.set_value(q, window, cx));
+                        }
+                    });
+                }
+            }
+            ("composer", text) => {
+                let text = text.to_owned();
+                self.with_pane(cx, move |p, cx| p.set_composer_text(&text, cx));
+            }
+            ("toast", _) => {
+                self.toast(
+                    ToastKind::Info,
+                    Some("Answered on another device".into()),
+                    "The approval was resolved in the TUI",
+                    cx,
+                );
+                self.toast(
+                    ToastKind::Warning,
+                    None,
+                    "Context at 84 % — compaction suggested",
+                    cx,
+                );
+                self.toast(
+                    ToastKind::Error,
+                    Some("Provider error".into()),
+                    "429 rate limited; retrying in 4 s",
+                    cx,
+                );
+            }
+            ("session-menu", _) => {
+                let id = self.active_pane().map(|p| p.read(cx).model.id.clone());
+                self.sidebar_menu = id;
+                cx.notify();
+            }
+            ("delete", _) => {
+                if let Some(s) = self
+                    .sessions
+                    .groups()
+                    .into_iter()
+                    .flat_map(|g| g.sessions)
+                    .find(|e| e.summary.path.is_some())
+                {
+                    self.confirm_delete(&s.summary.id, &s.summary.title, s.summary.path.clone());
+                    cx.notify();
+                }
+            }
+            // Perf hook: synthetic keystrokes into the composer (keystroke → paint latency).
+            ("type", _) => {
+                if let Some(p) = self.active_pane().cloned() {
+                    SessionPane::focus(&p, window, cx);
+                }
+                cx.spawn_in(window, async move |_, cx| {
+                    const KEYS: [&str; 6] = ["h", "e", "l", "l", "o", "space"];
+                    for i in 0..60 {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(120))
+                            .await;
+                        let ok = cx.update(|window, cx| {
+                            if let Ok(k) = gpui_kit::Keystroke::parse(KEYS[i % KEYS.len()]) {
+                                window.dispatch_keystroke(k, cx);
+                            }
+                        });
+                        if ok.is_err() {
+                            break;
+                        }
+                    }
+                })
+                .detach();
+            }
+            ("onboarding", _) => {
+                self.route = Route::Onboarding;
+                cx.notify();
+            }
             _ => {}
         }
     }
@@ -315,6 +493,7 @@ impl Workspace {
         });
         self.activate(key, window, cx);
         self.sync_open_sessions(cx);
+        self.run_pending_side(window, cx);
         if self.pending_panes > 0 {
             self.pending_panes -= 1;
             self.split(window, cx);
@@ -323,6 +502,7 @@ impl Workspace {
 
     /// Shows pane `key` (replacing the focused slot of the layout) and focuses it.
     pub(crate) fn activate(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
+        perf::mark(cx, "session switch");
         if !self.layout.contains(&key) {
             match self
                 .focused
@@ -333,7 +513,10 @@ impl Workspace {
             }
         }
         self.focus_pane(key, window, cx);
-        self.route = Route::Sessions;
+        // First-run onboarding stays up while the first session opens behind it.
+        if self.route != Route::Onboarding {
+            self.route = Route::Sessions;
+        }
         if let Some(id) = self.pane_by_key(key).map(|p| p.read(cx).model.id.clone()) {
             let (stack, at) = &mut self.history;
             stack.truncate(*at + usize::from(!stack.is_empty()));
@@ -345,7 +528,7 @@ impl Workspace {
         cx.notify();
     }
 
-    fn focus_pane(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn focus_pane(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
         self.focused = Some(key);
         for pane in &self.panes {
             let focused = pane.key == key;
@@ -380,6 +563,23 @@ impl Workspace {
                     *status
                 };
                 self.sessions.set_live(&id, status);
+                if self.settings.mascot_window {
+                    let p = pane.read(cx);
+                    let title = p.model.title();
+                    match status {
+                        LiveStatus::Attention => {
+                            let what = p
+                                .model
+                                .ui
+                                .dialog()
+                                .map(|d| d.title.clone())
+                                .unwrap_or_default();
+                            self.mascot_say(format!("{title} needs you: {what}"), cx);
+                        }
+                        LiveStatus::Unread => self.mascot_say(format!("{title} finished"), cx),
+                        _ => self.sync_mascot(cx),
+                    }
+                }
                 if status == LiveStatus::Attention && !window.is_window_active() {
                     let title = pane
                         .read(cx)
@@ -388,6 +588,17 @@ impl Workspace {
                         .dialog()
                         .map(|d| d.title.clone())
                         .unwrap_or_default();
+                    // OS notification while unfocused (`notifyOnAsk`); the toast stays for
+                    // when the user comes back.
+                    crate::platform::OsNotifier::post(
+                        cx,
+                        "Oino needs you",
+                        if title.is_empty() {
+                            "A session is waiting for your answer".to_owned()
+                        } else {
+                            format!("Oino needs approval: {title}")
+                        },
+                    );
                     self.toast(ToastKind::Warning, Some("Oino needs you".into()), title, cx);
                 }
                 self.update_title(window, cx);
@@ -487,8 +698,13 @@ impl Workspace {
                 self.toast(kind, None, message, cx);
             }
             UiEffect::OsNotify { title, body } => {
-                // Native notifications need a platform integration; a toast with the title bold.
-                self.toast(ToastKind::Info, Some(title.into()), body, cx);
+                // Native notification when the window is not in front (or no integration);
+                // an in-window toast otherwise.
+                let posted = !window.is_window_active()
+                    && crate::platform::OsNotifier::post(cx, title.clone(), body.clone());
+                if !posted {
+                    self.toast(ToastKind::Info, Some(title.into()), body, cx);
+                }
             }
             UiEffect::OpenUrl(url) => cx.open_url(&url),
             UiEffect::ClipboardWrite(text) => {
@@ -522,6 +738,7 @@ impl Workspace {
         f(&mut self.settings);
         self.host.save_app_settings(&self.settings);
         theme::install(&self.settings, Some(window), cx);
+        self.sync_mascot(cx);
         for pane in &self.panes {
             let settings = self.settings.clone();
             pane.entity.update(cx, |p, cx| p.set_settings(settings, cx));
@@ -547,6 +764,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        perf::mark(cx, "palette open");
         let items = self.palette_items(cx);
         let history = self.settings.palette_history.clone();
         let view = cx.new(|cx| PaletteView::new(items, history, query, window, cx));
@@ -771,6 +989,8 @@ impl Workspace {
                 settings, backend, models, shortcuts, extensions, info, section, window, cx,
             )
         });
+        let page_focus = Focusable::focus_handle(view.read(cx), cx);
+        window.focus(&page_focus, cx);
         let sub = cx.subscribe_in(
             &view,
             window,
@@ -792,6 +1012,10 @@ impl Workspace {
                     this.with_pane(cx, |p, cx| p.run_prompt(&command, cx));
                 }
                 SettingsEvent::Toast(text) => this.toast(ToastKind::Info, None, text.clone(), cx),
+                SettingsEvent::OpenExtensions => {
+                    this.settings_view = None;
+                    this.run_app_action("extensions", window, cx);
+                }
             },
         );
         self.settings_view = Some((view, sub));
@@ -924,6 +1148,18 @@ impl Workspace {
         let mut row = div().flex().flex_row().flex_1().min_w_0().h_full();
         let layout = self.layout.clone();
         let multi = layout.len() > 1;
+        let csd = crate::components::window_chrome::client_decorated(window);
+        let maximized = window.is_maximized();
+        let side_fits = width
+            - self.side_width
+            - if sidebar_visible {
+                self.sidebar_width
+            } else {
+                px(space::S0)
+            }
+            >= px(size::CONVERSATION_MIN);
+        let side_visible = self.side_open && side_fits && !narrow;
+        let last = layout.len().saturating_sub(1);
         for (i, key) in layout.iter().enumerate() {
             let Some(pane) = self.pane_by_key(*key).cloned() else {
                 continue;
@@ -935,6 +1171,10 @@ impl Workspace {
                 bottom_open: self.bottom_open,
                 primary: i == 0 || focused,
                 closable: multi,
+                controls: csd && !side_visible && i == last,
+                controls_side: csd && side_visible && focused,
+                maximized,
+                drag: csd,
             };
             pane.update(cx, |p, _| p.header_state = state);
             if i > 0 {
@@ -1012,14 +1252,7 @@ impl Workspace {
                         .child(b),
                 )
             });
-        let side_fits = width
-            - self.side_width
-            - if sidebar_visible {
-                self.sidebar_width
-            } else {
-                px(space::S0)
-            }
-            >= px(size::CONVERSATION_MIN);
+        self.side_shown = side.is_some() && (side_fits || narrow);
         div()
             .flex()
             .flex_row()
@@ -1086,6 +1319,29 @@ impl Render for Workspace {
             .active_pane()
             .cloned()
             .and_then(|p| p.update(cx, |p, cx| p.render_modal(window, cx)));
+        let confirm = self
+            .render_confirm(&t, cx)
+            .or_else(|| self.render_readme(&t, cx));
+        // Native browser views cover GPUI content in their bounds: show only the active
+        // pane's, and only while nothing is drawn over the side pane.
+        let covered = self.palette.is_some()
+            || self.confirm.is_some()
+            || self.ext_readme.is_some()
+            || modal.is_some()
+            || self.route != Route::Sessions
+            || !self.side_open
+            || !self.side_shown;
+        let active = self.focused;
+        let panes: Vec<(u64, Entity<SessionPane>)> = self
+            .panes
+            .iter()
+            .map(|p| (p.key, p.entity.clone()))
+            .collect();
+        for (key, pane) in panes {
+            pane.update(cx, |p, cx| {
+                p.sync_browser(!covered && Some(key) == active, cx);
+            });
+        }
         let on_dismiss: Rc<dyn Fn(u64, &mut Window, &mut App)> = {
             let e = cx.entity().downgrade();
             Rc::new(move |id, _, cx| {
@@ -1130,10 +1386,27 @@ impl Render for Workspace {
                     .child(self.handle(&t, Drag::Sidebar, true, cx))
             }))
             .child(div().flex_1().min_w_0().h_full().child(main));
+        // Client-side chrome (Linux / Windows): resize edges, and on Linux a 16 px shell
+        // radius while the window floats (design.md §3.1).
+        let csd = crate::components::window_chrome::client_decorated(window);
+        let floating = csd && crate::components::window_chrome::floating(window);
+        if csd && window.client_inset() != Some(px(space::S0)) {
+            // No invisible shadow margin: the frames reach the window edge and our own resize
+            // edges (`WINDOW_INSET`) handle resizing.
+            window.set_client_inset(px(space::S0));
+        }
+        let edges = if floating {
+            crate::components::window_chrome::resize_edges(size::WINDOW_INSET)
+        } else {
+            Vec::new()
+        };
         div()
             .id("root")
             .relative()
             .size_full()
+            .when(floating && cfg!(target_os = "linux"), |el| {
+                el.rounded(px(radius::R_CARD)).overflow_hidden()
+            })
             .bg(t.window())
             .text_color(t.fg())
             .font_family(t.ui_font())
@@ -1209,6 +1482,8 @@ impl Render for Workspace {
             }))
             .child(frames)
             .children(modal)
+            .children(confirm)
+            .children(edges)
             .when_some(self.palette.as_ref().map(|(p, _)| p.clone()), |el, p| {
                 el.child(p)
             })

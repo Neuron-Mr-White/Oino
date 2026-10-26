@@ -64,7 +64,7 @@ impl SessionPane {
                     .bg(t.surface())
                     .border_1()
                     .border_color(t.border())
-                    .rounded(px(radius::R_XL))
+                    .rounded(px(radius::R_CARD))
                     .rounded_tr(px(radius::R_SM))
                     .text_role(t, TextRole::Base)
                     .text_color(t.fg())
@@ -93,19 +93,6 @@ impl SessionPane {
                         .size(BtnSize::Sm)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.fork_at_user(nth, edit.clone(), cx);
-                        })),
-                    )
-                    .child(
-                        Btn::icon_only(
-                            row_id("ub-rewind", ix),
-                            IconName::RotateCcw,
-                            "Rewind files to here",
-                        )
-                        .size(BtnSize::Sm)
-                        .on_click(cx.listener(|_, _, _, cx| {
-                            cx.emit(PaneEvent::Toast(
-                                "Rewinding files needs core file checkpoints (requested)".into(),
-                            ));
                         })),
                     ),
             )

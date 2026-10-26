@@ -122,7 +122,7 @@ pub fn args_preview(name: &str, args: &JsonObject) -> Option<String> {
                     str_arg(args, "newText").map_or(0, line_count),
                 ),
             };
-            (removed + added > 0).then(|| format!("−{removed} +{added}"))
+            (removed + added > 0).then(|| format!("+{added} −{removed}"))
         }
         _ => None,
     }
@@ -282,7 +282,7 @@ mod tests {
                 "edit",
                 &args(json!({"edits":[{"oldText":"a\nb","newText":"c"}]}))
             ),
-            Some("−2 +1".into())
+            Some("+1 −2".into())
         );
         assert_eq!(args_preview("read", &JsonObject::new()), None);
     }

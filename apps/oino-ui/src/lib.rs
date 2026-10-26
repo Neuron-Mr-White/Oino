@@ -53,6 +53,8 @@ pub mod host;
 pub mod mobile;
 pub mod model;
 #[cfg(feature = "views")]
+pub mod platform;
+#[cfg(feature = "views")]
 pub mod rt;
 #[cfg(feature = "views")]
 pub mod views;

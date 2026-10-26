@@ -144,52 +144,56 @@ pub fn stack(
             let id = toast.id;
             let dismiss = Rc::clone(&on_dismiss);
             let hover = Rc::clone(&on_hover);
-            div()
-                .id(ElementId::Name(format!("toast-{id}").into()))
-                .w(px(size::TOAST))
-                .flex()
-                .items_start()
-                .gap(px(space::S3))
-                .py(px(space::S3))
-                .px(px(space::S4))
-                .rounded(px(radius::R_2XL))
-                .bg(t.toast())
-                .border_1()
-                .border_color(t.popover_border())
-                .shadow(t.e3())
-                .on_hover(move |h: &bool, w, cx| hover(h.then_some(id), w, cx))
-                .child(div().pt(px(space::HALF)).child(icon(glyph, size::ICON, c)))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(space::S1))
-                        .text_color(t.fg())
-                        .text_role(t, TextRole::Base)
-                        .when_some(toast.title.clone(), |el, title| {
-                            el.child(div().weight_medium().child(title))
-                        })
-                        .child(div().line_clamp(2).child(toast.message.clone()))
-                        .when_some(toast.action.clone(), |el, (label, f)| {
-                            el.child(
-                                Btn::new(ElementId::Name(format!("toast-act-{id}").into()))
-                                    .label(label)
-                                    .variant(Variant::Link)
-                                    .size(BtnSize::Xs)
-                                    .on_click(move |_, w, cx| f(w, cx)),
-                            )
-                        }),
-                )
-                .child(
-                    div()
-                        .id(ElementId::Name(format!("toast-x-{id}").into()))
-                        .cursor_pointer()
-                        .rounded(px(radius::R_SM))
-                        .hover(|s| s.bg(t.hover()))
-                        .on_click(move |_: &ClickEvent, w, cx| dismiss(id, w, cx))
-                        .child(icon(IconName::X, size::ICON_MD, t.fg_subtle())),
-                )
+            crate::design::motion::enter(
+                t,
+                ElementId::Name(format!("toast-in-{id}").into()),
+                div()
+                    .id(ElementId::Name(format!("toast-{id}").into()))
+                    .w(px(size::TOAST))
+                    .flex()
+                    .items_start()
+                    .gap(px(space::S3))
+                    .py(px(space::S3))
+                    .px(px(space::S4))
+                    .rounded(px(radius::R_2XL))
+                    .bg(t.toast())
+                    .border_1()
+                    .border_color(t.popover_border())
+                    .shadow(t.e3())
+                    .on_hover(move |h: &bool, w, cx| hover(h.then_some(id), w, cx))
+                    .child(div().pt(px(space::HALF)).child(icon(glyph, size::ICON, c)))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(space::S1))
+                            .text_color(t.fg())
+                            .text_role(t, TextRole::Base)
+                            .when_some(toast.title.clone(), |el, title| {
+                                el.child(div().weight_medium().child(title))
+                            })
+                            .child(div().line_clamp(2).child(toast.message.clone()))
+                            .when_some(toast.action.clone(), |el, (label, f)| {
+                                el.child(
+                                    Btn::new(ElementId::Name(format!("toast-act-{id}").into()))
+                                        .label(label)
+                                        .variant(Variant::Link)
+                                        .size(BtnSize::Xs)
+                                        .on_click(move |_, w, cx| f(w, cx)),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .id(ElementId::Name(format!("toast-x-{id}").into()))
+                            .cursor_pointer()
+                            .rounded(px(radius::R_SM))
+                            .hover(|s| s.bg(t.hover()))
+                            .on_click(move |_: &ClickEvent, w, cx| dismiss(id, w, cx))
+                            .child(icon(IconName::X, size::ICON_MD, t.fg_subtle())),
+                    ),
+            )
         }))
 }

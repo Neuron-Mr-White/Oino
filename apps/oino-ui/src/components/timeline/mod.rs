@@ -40,6 +40,16 @@ impl SessionPane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        // Rows are built during the list's prepaint: tick this pane only.
+        Ticker::scoped(cx.entity_id(), || self.render_row_inner(ix, window, cx))
+    }
+
+    fn render_row_inner(
+        &mut self,
+        ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let t = OinoTheme::get(cx);
         let rows = self.model.transcript.rows();
         let Some(row) = rows.get(ix) else {
@@ -130,6 +140,7 @@ impl SessionPane {
         } else {
             0.0
         };
+        let cursor = self.timeline_kb && self.cursor == Some(ix);
         div()
             .w_full()
             .pl(px(space::S4))
@@ -141,6 +152,13 @@ impl SessionPane {
                     .w_full()
                     .max_w(px(size::READING))
                     .mx_auto()
+                    // Keyboard row cursor: 2 px shell rail (A1.2 focus colour).
+                    .when(cursor, |el| {
+                        el.border_l_2()
+                            .border_color(t.focus())
+                            .pl(px(space::S2))
+                            .rounded(px(crate::design::radius::R_SM))
+                    })
                     .when_some(find, |el, current| {
                         el.rounded(px(crate::design::radius::R_LG)).bg(if current {
                             t.find_active().opacity(0.35)

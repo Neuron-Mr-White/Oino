@@ -106,6 +106,21 @@ gpui_kit::assets::icon_assets!(
         GripVertical,
         CircleDot,
         Hourglass,
+        LogOut,
+        ArrowRight,
+        ArrowUpDown,
+        GitFork,
+        TextCursorInput,
+        Code,
+        SquareSplitHorizontal,
+        Columns2,
+        LayoutGrid,
+        BookOpen,
+        Power,
+        FolderSearch,
+        RotateCw,
+        AppWindow,
+        Clipboard,
     ]
 );
 

@@ -20,15 +20,19 @@ oino-ai.workspace = true
 oino-bundle.workspace = true
 oino-client.workspace = true
 oino-core.workspace = true
+oino-extension-api.workspace = true
 oino-models.workspace = true
 oino-session.workspace = true
 oino-settings.workspace = true
-oino-ui.workspace = true
+oino-ui = { workspace = true, features = ["browser", "terminal"] }
 oino-wasm-host.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# OS notifications (osNotify, approvals while unfocused): D-Bus on Linux, NSUserNotification
+# on macOS, WinRT toasts on Windows.
+notify-rust.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

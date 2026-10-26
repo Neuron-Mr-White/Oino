@@ -5,7 +5,9 @@
 #
 # Shots (design.md §10.1 P9): 01-welcome 02-streaming 03-approval-docked 04-question
 # 05-palette 06-settings 07-board 08-light-theme 09-info-overlay, plus 10-plan-review
-# 11-side-review 12-model-menu 13-settings-hub 14-extensions 15-split-panes 16-narrow.
+# 11-side-review 12-model-menu 13-settings-hub 14-extensions 15-split-panes 16-narrow, and
+# 17-30 for the review fix-up (terminal, browser, light theme, find, completion, toasts, bottom
+# frame, side tabs, menus, confirm dialog, onboarding, 720 px).
 # Needs: Xvfb, python3-pil (XCB), mesa Vulkan (lvp). Each shot runs its own app instance.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -59,4 +61,19 @@ want 13-settings-hub && shoot 13-settings-hub 11 OINO_DESKTOP_THEME=light OINO_D
 want 14-extensions && shoot 14-extensions 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=extensions
 want 15-split-panes && shoot 15-split-panes 14 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=stream OINO_DESKTOP_PANES=4
 want 16-narrow && SHOT_W=860 SHOT_H=760 shoot 16-narrow 30 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=run OINO_DESKTOP_DEMO_APPROVE_MS=9000
+# Review fix-up evidence (review-desktop.md P1-13, A1.4/A1.5).
+want 17-terminal && shoot 17-terminal 12 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=terminal OINO_DESKTOP_TERM_INPUT='printf "\\033[1;31mred\\033[0m \\033[32mgreen\\033[0m \\033[34mblue\\033[0m\\n"; ls --color=always /'
+want 18-browser && shoot 18-browser 14 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome "OINO_DESKTOP_OPEN=browser:file://$here/preview.html"
+want 19-light-welcome && shoot 19-light-welcome 9 OINO_DESKTOP_THEME=light OINO_DESKTOP_DEMO_SCENE=welcome
+want 20-light-approval && shoot 20-light-approval 18 OINO_DESKTOP_THEME=light OINO_DESKTOP_DEMO_SCENE=approval
+want 21-find && shoot 21-find 14 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=plan OINO_DESKTOP_OPEN=find:parser
+want 22-completion && shoot 22-completion 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=composer:/
+want 23-toasts && shoot 23-toasts 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=toast
+want 24-bottom-output && shoot 24-bottom-output 30 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=run OINO_DESKTOP_DEMO_APPROVE_MS=9000 OINO_DESKTOP_OPEN=bottom:output
+want 25-side-files && shoot 25-side-files 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=side:files
+want 26-side-launcher && shoot 26-side-launcher 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=side:launcher
+want 27-session-menu && shoot 27-session-menu 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=session-menu
+want 28-delete-confirm && shoot 28-delete-confirm 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=delete
+want 29-onboarding && shoot 29-onboarding 8 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_ONBOARDING=1
+want 30-720 && SHOT_W=720 SHOT_H=600 shoot 30-720 30 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=run OINO_DESKTOP_DEMO_APPROVE_MS=9000
 true

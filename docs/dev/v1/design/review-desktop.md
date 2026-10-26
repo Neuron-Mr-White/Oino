@@ -179,3 +179,76 @@ shell, chips and one-line tool rows.
 - Reviewer screenshots (not committed) were taken with the same Xvfb + lavapipe recipe as
   `screenshot.sh`. Light welcome, light approval, 720×600, and the palette with the query "kan"
   were consistent with the findings above.
+
+---
+
+## Resolution (`design-desktop-fix`, 2026-10-27)
+
+Fix-up on `v1-alpha` after this review. A1 is implemented. Gates (`apps/`,
+`TMPDIR=$PWD/target/tmp`): `cargo fmt --all -- --check` ✔, `cargo clippy --workspace
+--all-targets -- -D warnings -W clippy::pedantic` ✔, `cargo test --workspace` ✔ (oino-ui 72
+incl. browser/terminal/menu/keys/board tests, oino-desktop 4, oino-mobile 4),
+`cargo test -p oino-ui --no-default-features` ✔ (62), debug + release builds ✔. Screenshots
+01–16 refreshed and 17–30 added in `shots/desktop/` (`scripts/screenshot.sh`).
+Toolkit bump: gpui-kit `=0.8.1` / gpui-pre `=0.3.10` (needed by gpui-webview 0.8.1); the
+`secondary-` keystroke prefix is gone in 0.3.10, so bindings use `cmd-` on macOS and `ctrl-`
+elsewhere (`views::primary_mod`, `components::secondary`).
+
+Status: **Fixed**, **Partial** (what is left is named), **Open**, **Adapt** (accepted deviation).
+
+### P0
+
+| # | Status | What changed |
+|---|---|---|
+| P0-1 | Fixed | `design/tokens.rs`: Oino Dark = unipi warm OLED (`bg #0A0908` frames on `surface-1 #141211` chrome, `surface-2/3`, `line #2E2825`, `text #F5EFE6`, `text-muted #A39A90`, `text-dim #6E655D`); primary `shell #F03018` (hover `shell-hi`), text on primary `face #181818`; new tokens `focus`, `working` (claw), `amber`, `gold`, `cream` (caret), `deep` (destructive fills), `glow`, `info*` (wm-cyan); semantics = wordmark green/yellow/red/cyan. Oino Light derived from the same hues on warm off-white. Ember glow behind the welcome crab. Contrast test covers the new pairs (`face` on `shell` is 4.35:1 by A1's own values; the test floors it at 4.3 and says why) |
+| P0-2 | Fixed | `Capsule::Waiting` = **Needs you** (shell surface, crab-eyes `!` glyph, pulsing); `Capsule::Running` = **Working** in claw; sidebar needs-you dot pulses; `CrabState` colours: working claw, done wm-green, idle muted, offline/sleep dim; kanban and status-panel "running" use claw |
+| P0-3 | Fixed | `components/browser.rs` over `gpui-webview` 0.8.1: side-pane **Browser** tab (URL bar with search fallback, back / forward / reload, devtools in debug, open externally), one per pane; `openUrl`, transcript links, terminal ⌘/Ctrl-click and a meta-row `localhost:*` preview chip (from bash / shell-tool output) open there; native view hidden while an overlay, other route or another pane covers it. Linux starts on X11/XWayland (`gpui_kit::platform::linux(WindowingModes::X11)`), Settings → Appearance → "Native Wayland" opts out (browser then falls back to the system browser). Shot 18 |
+| P0-4 | Fixed | `components/terminal.rs`: `alacritty_terminal` 0.26 emulation over its platform PTY, painted with GPUI text runs per style span; bottom-frame **Terminal** tabs (`+`, split into two shells, close), keys incl. app-cursor mode / Ctrl / Alt, copy & paste (⌘C/⌘V, Ctrl+Shift+C/V elsewhere, bracketed paste), mouse selection (word / line on double / triple click), ⌘/Ctrl-click links → Browser, 10 000-line scrollback (wheel, Shift+PgUp/PgDn), ANSI + 256 + true colour from tokens, `cream` cursor. Shot 17 |
+| P0-5 | Partial | Measured on the RTX 4070 Ti (GNOME XWayland): 96–101 fps, p50 3.6–3.9 ms, window-p99 median 7.5–8.4 ms, **whole-run p99 9.3–11.6 ms** over five 25 s 4-pane runs on a quiet desktop, 13.3–14.9 ms in three later runs while the shared machine had load average 7–10 (p50 rose from 3.6 to 5.7 ms with it); before the fixes it was 16.0 ms / 72 fps; first frame 280 ms, keystroke → paint median 3–5 ms, session switch 6–12 ms, palette 10k filter 0.98 ms, idle UI-thread CPU 1–3 %. `perf.sh` now gates on the exact whole-run p99 (histogram) and prints all of these. Fixes: ticker notifies only the views that asked (scoped, round-robin) instead of `refresh_windows`; background split panes stream at ≈ 30 fps with a per-session phase; idle crab static. **Left:** the 10 ms run-p99 gate is not reliably met (passes 2 of 8 runs; frames where all four panes re-lay out together cost 6–12 ms); needs a dedicated, unloaded measurement and probably cheaper per-pane layout |
+
+### P1
+
+| # | Status | What changed |
+|---|---|---|
+| P1-1 | Fixed | Radii tokens `R_CARD`/`R_DIALOG` 16, `R_INPUT` 12, `R_SHEET` 24, `R_BUTTON` pill; buttons, segmented controls, chips pill-shaped; cards, docked cards, menus, dialogs 16; option rows/inputs 12; gpui-kit radius derived. Keyboard focus = 2 px shell ring (`focus_visible`) on every button (now Tab stops); input focus border = shell. Section labels uppercase 12/500 muted. (GPUI has no outline offset: the ring is a 2 px border) |
+| P1-2 | Fixed | `views/mascot.rs`: opt-in transparent, frameless, always-on-top (`WindowKind::PopUp`) mascot window at the primary display's bottom-right with the animated aggregate Unicrab and a 6 s bubble for needs-you / finished; click → Oino to front, drag moves; Settings → Appearance → "Mascot window" + crab size 72/96/128. Sidebar footer carries the crab glyph again |
+| P1-3 | Partial | Keyboard tables added: **menus** (`KeyMenu`: focus on open, ↑/↓ wrap skipping disabled, Home/End, Enter/Space, → submenu, type-ahead, Esc/← close and return focus); **sidebar** (↑/↓, Home/End, ←/→ collapse/expand/up to group, Enter, ⌘Enter new pane, F2 rename, Delete confirm, `/` search, Esc back to composer, focus ring); **timeline** (⌘↑ from composer, ↑/↓ k/j, Home/End, PgUp/PgDn, ⌘↑/⌘↓ prompts, Enter/Space expand, `c` copy, `o` open in side pane, Esc/`i` back; shell-colour row rail); **side tabs** (⌘1–9, Ctrl+Tab / Ctrl+Shift+Tab, ⌘W); **Review/Diff** (n/p, ]/[ with scroll-to-file); **board** (h/j/k/l, Enter, m, c, `/`, Esc); **settings** (⌘F, ↑/↓ pages, Esc). **Left:** StatusPanel and Queue keys, DiffViewer `u`, tooltips on keyboard focus |
+| P1-4 | Fixed | A docked approval / plan card no longer takes focus when the composer has it (`InteractionView::new(.., typing, ..)`); ↑ in an empty composer or Shift+Tab moves to the card; resolving keys are ignored for the first 400 ms; Stop stays enabled while a card is pending |
+| P1-5 | Fixed | `oino_ui::platform::OsNotifier` (desktop: `notify-rust`, off-thread): `osNotify` while the window is inactive and approvals/questions while unfocused ("Oino needs approval: …") post OS notifications; in-window toast otherwise |
+| P1-6 | Fixed | TurnFooter Undo and the user-bubble "Rewind files" button are removed until core file checkpoints exist |
+| P1-7 | Fixed | The mini status capsule is a right-aligned strip **above** the timeline (no longer floating over rows); the expanded panel keeps shifting the reading column. Shots 10, 15, 16, 30 |
+| P1-8 | Fixed | Client-side decorations on Linux/Windows (`components/window_chrome.rs`): sidebar top row and pane headers are drag regions (double-click zoom, right-click window menu), min/max/close at the right end of the right-most header (or the side tab bar when the side pane is open), resize edges, Linux 16 px radius while floating, no invisible client inset. Verified on GNOME XWayland (`_MOTIF_WM_HINTS` decorations 0). Xvfb shots have no compositor, so GPUI falls back to server decorations there |
+| P1-9 | Fixed | `fg_subtle` ≥ 4.5:1 restored in `design/tests.rs` (dark 6.3–7.2:1, light 6.9–7.2:1) |
+| P1-10 | Fixed | Session menu: Rename (F2), Pin/Unpin, Fork (clone), Open in new pane, Copy session id, Reveal file, Delete… (confirm dialog, closes its pane, deletes the file). Group `⋯`: Reveal folder, Copy path, Remove from sidebar. `⇅` sort (recent ↔ name). `⌘↵` label goes through `platform_keys`. Marquee titles not done (truncate). Shots 27, 28 |
+| P1-11 | Fixed | Extensions page: name + mono id, version, kind badge (no stretch), state (Loaded / Failed with error tooltip / Disabled), bundled, permission summary from the manifest; row Enable/Disable (`disabledExtensions`, applies to new sessions; the desktop host filters packages), Settings, Readme (dialog); header Install from file… (copies a package directory into `~/.oino/extensions` after validating it) and Open extensions folder; "N loaded · N failed · N disabled". Shot 14 |
+| P1-12 | Fixed | Board: "Board · <project ▾>" picker over the sidebar workspaces, toolbar Filter (all / blocked / high priority / claimed), Display (Backlog, Done/Cancelled), search, Move (m), extension keys, `+ New task` (c); claimed cards show a `bot` chip in the working colour (not danger red); the selected task opens as an overlay dialog; keyboard cursor; sidebar Board nav shows the ready count. Elapsed time on the agent chip needs task timing from the extension (not in the panel spec). Shot 07 |
+| P1-13 | Partial | Shots added: 17 terminal, 18 browser, 19/20 light, 21 find bar, 22 completion menu, 23 toasts, 24 bottom frame, 25 Files tab, 26 side launcher, 27 session menu, 28 confirm dialog, 29 onboarding (`OINO_DESKTOP_ONBOARDING=1` now forces D13 even with onboarded demo settings), 30 720 px. **Left:** query-rail tooltip, editor-replace (tray / btw), DockDialog, ErrorBanner and the Agent tab still have only code / view-model coverage |
+| P1-14 | Fixed | "Log out" asks first (inline "Sign out?" + Cancel / destructive Log out) |
+
+### P2
+
+| # | Status | Note |
+|---|---|---|
+| P2-1 | Partial | Menus, dialogs and toasts enter with fade + 4 px rise (180 ms ease-out, `design::motion`, off with reduce motion); needs-you pulse. Exit animations and the run-label shimmer are not done |
+| P2-2 | Fixed | Number keys are prefix `Kbd` (`Btn::kbd_lead`) on approval and plan options |
+| P2-3 | Fixed | "Steer Oino… (Enter steers, Alt+Enter queues a follow-up)" while running |
+| P2-4 | Open | "Thought for Ns" needs thinking timing in the transcript model |
+| P2-5 | Fixed | Streaming preview is `+n −m` like the final diff meta |
+| P2-6 | Fixed | Plan steps keep inline code (`` `,` ``) instead of dropping the backticks |
+| P2-7 | Partial | Rows fill the width (highlight full-row, `Kbd` right-aligned), sessions use a state-dot icon. History chips and Extensions/App sections not added |
+| P2-8 | Open | Model menu submenus / pinned group / type-ahead filter (type-ahead now comes from `KeyMenu`) |
+| P2-9 | Fixed | Footer: settings · update · model label · `⌘M` · crab. Update detection still heuristic (P2-20) |
+| P2-10 | Fixed | Group folders tinted by a stable cwd hash (visible in every shot) |
+| P2-11 | Partial | Hero Unicrab at 128 with ember glow. Resume card, "Board: N ready" title wording kept; hint strip still above the composer |
+| P2-12 | Fixed | Interface size 12–18 and code font 10–20 steppers, Sidebar density (Comfortable / Compact), Extensions entry in the settings nav, plus Unicrab / window rows (mascot, crab size, Native Wayland) |
+| P2-13 | Open | Secret reveal toggle |
+| P2-14 | Open | Info overlay vertical tabs / fixed large height |
+| P2-15 | Partial | n/p file stepping with a focus ring; no line numbers, per-file actions or split view |
+| P2-16 | Partial | Mini status no longer clips content; 4 × 260 px panes still clip header / meta row text |
+| P2-17 | Open | Compact-now confirmation |
+| P2-18 | Fixed | Stop stays available while a card is pending |
+| P2-19 | Fixed | DockDialog label uses `platform_keys("⌘Enter")` |
+| P2-20 | Open | Update badge still from notify text |
+| P2-21 | Open | Skeleton loaders |
+| P2-22 | Fixed | Light shots 08, 13, 19, 20 |
+| P2-23 | Adapt | QuestionCard keeps the "Cancel esc" ghost button (recorded as Adapt) |

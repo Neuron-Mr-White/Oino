@@ -41,8 +41,11 @@ use crate::model::transcript::{NoticeTone, Row, RowChange, RowKind};
 use crate::model::ui_state::{PanelPlacement, UiEffect};
 use crate::rt::Tokio;
 
-/// Frame pacing between event batches.
+/// Frame pacing between event batches of the focused pane.
 const FRAME: Duration = Duration::from_millis(8);
+/// Pacing of the other split panes while several stream (≈ 30 fps; keeps the 4-pane frame
+/// cost inside the §2.11 budget: each frame re-lays out about one background pane, not three).
+const BACKGROUND_FRAME: Duration = Duration::from_millis(33);
 /// Debounce of `editor_event{changed}` (ui-protocol §7.1).
 const EDITOR_DEBOUNCE: Duration = Duration::from_millis(150);
 /// Debounce of backend completions.
@@ -104,6 +107,8 @@ pub enum SideTab {
         /// Unified patch.
         patch: String,
     },
+    /// The embedded browser (design.md A1.4).
+    Browser,
     /// Tool output opened from a tool row.
     Output {
         /// Title.
@@ -181,6 +186,45 @@ pub enum BottomTab {
     Tasks,
     /// An extension `bottomPane` panel.
     Panel(String),
+    /// An interactive terminal tab (design.md A1.5; id into `SessionPane::terminals`).
+    Terminal(u64),
+}
+
+/// One Terminal tab: one view, or two side by side after Split.
+#[cfg(feature = "terminal")]
+pub struct TerminalTab {
+    /// Stable id (`BottomTab::Terminal`).
+    pub id: u64,
+    /// Views left to right.
+    pub views: Vec<Entity<crate::components::terminal::TerminalView>>,
+    subs: Vec<Subscription>,
+}
+
+#[cfg(feature = "terminal")]
+impl TerminalTab {
+    /// A tab with its first view.
+    #[must_use]
+    pub fn new(
+        id: u64,
+        view: Entity<crate::components::terminal::TerminalView>,
+        sub: Subscription,
+    ) -> Self {
+        Self {
+            id,
+            views: vec![view],
+            subs: vec![sub],
+        }
+    }
+
+    /// Adds a split view.
+    pub fn push(
+        &mut self,
+        view: Entity<crate::components::terminal::TerminalView>,
+        sub: Subscription,
+    ) {
+        self.views.push(view);
+        self.subs.push(sub);
+    }
 }
 
 /// Open popover menus of the pane.
@@ -228,6 +272,10 @@ pub struct Find {
 }
 
 /// One open session.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent view flags (focus, unread, steering…) of one pane"
+)]
 pub struct SessionPane {
     /// Reduced session state.
     pub model: SessionModel,
@@ -268,6 +316,28 @@ pub struct SessionPane {
     pub(crate) inputs: crate::components::ous::InputStore,
     /// Shell state reflected by the header.
     pub header_state: crate::components::header::HeaderState,
+    /// Timeline keyboard cursor (row index) and whether the timeline has focus.
+    pub(crate) cursor: Option<usize>,
+    /// The composer shows the steering placeholder.
+    steering: bool,
+    /// `local_previews` keyed by (row count, last row version).
+    previews: std::cell::RefCell<((usize, u64), Vec<String>)>,
+    pub(crate) timeline_kb: bool,
+    /// Side pane focus, scroll and the Review file cursor.
+    pub(crate) side_focus: FocusHandle,
+    pub(crate) side_scroll: gpui_kit::ScrollHandle,
+    pub(crate) diff_cursor: Option<usize>,
+    /// Press state of the header drag region (client-side chrome).
+    pub(crate) drag_armed: std::rc::Rc<std::cell::Cell<bool>>,
+    /// The side-pane browser (one per pane) and a URL waiting for it.
+    #[cfg(feature = "browser")]
+    pub browser: Option<Entity<crate::components::browser::BrowserView>>,
+    pub(crate) browser_pending: Option<String>,
+    /// Terminal tabs of the bottom frame.
+    #[cfg(feature = "terminal")]
+    pub terminals: Vec<TerminalTab>,
+    #[cfg(feature = "terminal")]
+    pub(crate) next_terminal: u64,
     editor_task: Option<Task<()>>,
     _pump: Task<()>,
     _subscriptions: Vec<Subscription>,
@@ -302,6 +372,8 @@ struct Loaded {
 
 /// Composer placeholder (design.md §4.11).
 pub const PLACEHOLDER: &str = "Ask Oino anything, @ files, / commands, $ skills";
+/// Composer placeholder while a run is active (design.md §4.11 steering).
+pub const PLACEHOLDER_STEER: &str = "Steer Oino… (Enter steers, Alt+Enter queues a follow-up)";
 
 impl SessionPane {
     /// A pane for `opened`; starts the event pump and loads history.
@@ -360,6 +432,21 @@ impl SessionPane {
             rename: None,
             inputs: crate::components::ous::InputStore::default(),
             header_state: crate::components::header::HeaderState::default(),
+            drag_armed: std::rc::Rc::default(),
+            cursor: None,
+            steering: false,
+            previews: std::cell::RefCell::default(),
+            timeline_kb: false,
+            side_focus: cx.focus_handle(),
+            side_scroll: gpui_kit::ScrollHandle::new(),
+            diff_cursor: None,
+            #[cfg(feature = "browser")]
+            browser: None,
+            browser_pending: None,
+            #[cfg(feature = "terminal")]
+            terminals: Vec::new(),
+            #[cfg(feature = "terminal")]
+            next_terminal: 1,
             editor_task: None,
             _pump: pump,
             _subscriptions: subscriptions,
@@ -458,13 +545,25 @@ impl SessionPane {
                     batch.push(event);
                 }
                 let reduced = coalesce(std::mem::take(&mut batch));
-                if this
-                    .update(cx, |pane, cx| pane.apply_batch(&reduced, cx))
-                    .is_err()
-                {
+                let Ok(pace) =
+                    this.update(cx, |pane, cx| {
+                        pane.apply_batch(&reduced, cx);
+                        if pane.focused_pane {
+                            FRAME
+                        } else {
+                            // A per-session phase so background panes do not all re-lay out in
+                            // the same frame.
+                            let phase =
+                                pane.model.id.bytes().fold(0u64, |h, b| {
+                                    h.wrapping_mul(31).wrapping_add(u64::from(b))
+                                }) % 7;
+                            BACKGROUND_FRAME + Duration::from_millis(phase * 3)
+                        }
+                    })
+                else {
                     break;
-                }
-                cx.background_executor().timer(FRAME).await;
+                };
+                cx.background_executor().timer(pace).await;
             }
         })
     }
@@ -522,6 +621,7 @@ impl SessionPane {
                     cx.notify();
                 }
                 UiEffect::FocusPanel(id) => self.focus_panel(&id, cx),
+                UiEffect::OpenUrl(url) => self.open_link(&url, cx),
                 other => cx.emit(PaneEvent::Effect(other)),
             }
         }
@@ -783,12 +883,25 @@ impl SessionPane {
 
     /// Applies pending composer edits (called from render, which has the window).
     pub(crate) fn flush_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let busy = self.model.is_busy();
+        if busy != self.steering {
+            self.steering = busy;
+            self.composer.update(cx, |s, cx| {
+                s.set_placeholder(
+                    if busy { PLACEHOLDER_STEER } else { PLACEHOLDER },
+                    window,
+                    cx,
+                );
+            });
+        }
         if let Some(text) = self.pending_text.take() {
             let len = text.len();
             self.composer.update(cx, |s, cx| {
                 s.set_value(text, window, cx);
                 s.set_selected_range(len..len, cx);
             });
+            // Programmatic edits do not emit `Change`: refresh completions / drafts here.
+            self.on_text_changed(cx);
         }
         for (id, text, label) in std::mem::take(&mut self.pending_tokens) {
             self.composer.update(cx, |s, cx| {
@@ -1098,6 +1211,7 @@ impl SessionPane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        crate::design::perf::mark(cx, "keystroke");
         let text = self.composer.read(cx).value().to_string();
         let session = self.model.id.clone();
         let key = event.keystroke.key.as_str();
@@ -1112,6 +1226,24 @@ impl SessionPane {
             }
             cx.stop_propagation();
             cx.notify();
+            return;
+        }
+        if key == "up" && crate::components::secondary(&event.keystroke.modifiers) {
+            self.focus_timeline(window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        let card = self
+            .interaction
+            .as_ref()
+            .filter(|v| !v.read(cx).is_modal())
+            .cloned();
+        if let Some(card) = card
+            && ((key == "up" && text.is_empty())
+                || (key == "tab" && event.keystroke.modifiers.shift))
+        {
+            card.update(cx, |v, cx| v.focus_card(window, cx));
+            cx.stop_propagation();
             return;
         }
         match key {
@@ -1183,7 +1315,12 @@ impl SessionPane {
                     cx.emit(PaneEvent::ShowSide);
                 }
                 let count = self.model.ui.dialog_count();
-                let view = cx.new(|cx| InteractionView::new(dialog, count, window, cx));
+                let typing = self
+                    .composer
+                    .read(cx)
+                    .focus_handle(cx)
+                    .contains_focused(window, cx);
+                let view = cx.new(|cx| InteractionView::new(dialog, count, typing, window, cx));
                 cx.subscribe(&view, |this, _, event: &InteractionEvent, cx| match event {
                     InteractionEvent::Respond(response) => this.respond(response.clone(), cx),
                     InteractionEvent::OpenPlan => {
@@ -1237,6 +1374,71 @@ impl SessionPane {
                 cx,
             );
         }
+    }
+
+    /// Opens `url` in the side-pane Browser tab (design.md A1.4), or the system browser when
+    /// the embedded one is unavailable.
+    pub fn open_link(&mut self, url: &str, cx: &mut Context<Self>) {
+        if crate::platform::BrowserSupport::get(cx) {
+            self.browser_pending = Some(url.to_owned());
+            self.open_side(SideTab::Browser, cx);
+        } else {
+            cx.emit(PaneEvent::Effect(UiEffect::OpenUrl(url.to_owned())));
+        }
+    }
+
+    /// Shows / hides this pane's native browser view (`shown` = its tab is visible and no
+    /// overlay covers the side pane).
+    pub fn sync_browser(&mut self, shown: bool, cx: &mut Context<Self>) {
+        #[cfg(feature = "browser")]
+        if let Some(b) = &self.browser {
+            let shown = shown && self.side.current() == Some(&SideTab::Browser);
+            b.update(cx, |b, cx| b.set_shown(shown, cx));
+        }
+        #[cfg(not(feature = "browser"))]
+        let _ = (shown, cx);
+    }
+
+    /// Local dev-server URLs printed by shell commands of this session (newest first).
+    #[must_use]
+    pub fn local_previews(&self) -> Vec<String> {
+        #[cfg(feature = "browser")]
+        {
+            let rows = self.model.transcript.rows();
+            let key = (rows.len(), rows.last().map_or(0, |r| r.version));
+            if let Ok(cache) = self.previews.try_borrow()
+                && cache.0 == key
+            {
+                return cache.1.clone();
+            }
+            let mut out: Vec<String> = Vec::new();
+            for r in self.model.transcript.rows().iter().rev() {
+                let text = match &r.kind {
+                    RowKind::Bash(b) => b.output.as_str(),
+                    RowKind::Tool(t)
+                        if crate::model::tools::ToolKind::of(&t.name)
+                            == crate::model::tools::ToolKind::Shell =>
+                    {
+                        t.output.as_str()
+                    }
+                    _ => continue,
+                };
+                for u in crate::components::browser::local_urls(text) {
+                    if !out.contains(&u) {
+                        out.push(u);
+                    }
+                }
+                if out.len() >= 3 {
+                    break;
+                }
+            }
+            if let Ok(mut cache) = self.previews.try_borrow_mut() {
+                *cache = (key, out.clone());
+            }
+            out
+        }
+        #[cfg(not(feature = "browser"))]
+        Vec::new()
     }
 
     /// Opens a side tab and asks the shell to show the side frame.

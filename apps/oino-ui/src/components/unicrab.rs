@@ -16,17 +16,65 @@ use crate::design::{radius, size};
 pub fn state_color(t: &OinoTheme, state: CrabState) -> Hsla {
     match state {
         CrabState::NeedsYou => t.brand(),
-        CrabState::Working => t.warning(),
+        CrabState::Working => t.working(),
         CrabState::Done => t.success(),
-        CrabState::Offline | CrabState::Sleep | CrabState::Idle => t.fg_subtlest(),
+        CrabState::Idle => t.fg_subtle(),
+        CrabState::Offline | CrabState::Sleep => t.fg_subtlest(),
     }
+}
+
+/// Opacity of the needs-you pulse (unipi §1.3 "pulsing", 1.2 s period on the 12 fps
+/// ticker; held at 1 with reduce motion).
+pub fn pulse(cx: &mut App) -> f32 {
+    let frame = Ticker::frame(cx);
+    if OinoTheme::get(cx).reduce_motion {
+        return 1.0;
+    }
+    #[allow(clippy::cast_precision_loss, reason = "frame modulo 14")]
+    let phase = (frame % 14) as f32 / 14.0;
+    0.55 + 0.45 * (phase * std::f32::consts::PI).sin()
+}
+
+/// The needs-you icon: crab eyes with a `!` (unipi §1.3), pulsing in `fg`.
+pub fn needs_you_eyes(px_size: f32, fg: Hsla, cx: &mut App) -> AnyElement {
+    let fg = fg.opacity(pulse(cx));
+    canvas(
+        |_, _, _| (),
+        move |bounds: Bounds<Pixels>, (), window: &mut Window, _| {
+            let u = px_size / 6.0;
+            let o = bounds.origin;
+            let cell = |x: f32, y: f32, w: f32, h: f32| {
+                fill(
+                    Bounds::new(
+                        point(o.x + px(x * u), o.y + px(y * u)),
+                        gsize(px(w * u), px(h * u)),
+                    ),
+                    fg,
+                )
+            };
+            // Two eyes on the visor row, the `!` between and above them.
+            window.paint_quad(cell(0.5, 3.0, 1.5, 2.0));
+            window.paint_quad(cell(4.0, 3.0, 1.5, 2.0));
+            window.paint_quad(cell(2.6, 0.0, 0.8, 2.6));
+            window.paint_quad(cell(2.6, 3.4, 0.8, 0.8));
+        },
+    )
+    .size(px(px_size))
+    .flex_shrink_0()
+    .into_any_element()
 }
 
 /// A Unicrab of `px_size` (16 glyph = silhouette in the state color; ≥ 64 animated).
 pub fn unicrab(state: CrabState, px_size: f32, cx: &mut App) -> AnyElement {
     let t = OinoTheme::get(cx);
     let glyph = px_size < size::CRAB.1;
-    let frame = if glyph || t.reduce_motion {
+    // Only transient states animate (working / needs-you / done): an idle, sleeping or
+    // offline crab holds frame 0 so an idle window renders nothing (idle CPU ≈ 0, §2.11).
+    let still = matches!(
+        state,
+        CrabState::Idle | CrabState::Sleep | CrabState::Offline
+    );
+    let frame = if glyph || t.reduce_motion || still {
         0
     } else {
         // 8 fps from the 12 fps ticker.

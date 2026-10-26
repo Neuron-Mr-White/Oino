@@ -35,7 +35,7 @@ pub fn segmented(
         .p(px(space::HALF))
         .gap(px(space::HALF))
         .h(px(size::CONTROL))
-        .rounded(px(radius::R_LG))
+        .rounded(px(radius::R_BUTTON))
         .bg(t.surface())
         .children(labels.iter().enumerate().map(|(i, label)| {
             let pick = Rc::clone(&on_pick);
@@ -45,7 +45,7 @@ pub fn segmented(
                 .flex()
                 .items_center()
                 .px(px(space::S2))
-                .rounded(px(radius::R_MD))
+                .rounded(px(radius::R_BUTTON))
                 .cursor_pointer()
                 .text_role(t, TextRole::Sm)
                 .weight_medium()

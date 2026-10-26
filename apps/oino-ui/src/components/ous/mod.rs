@@ -652,7 +652,7 @@ pub fn render(
                 .flex()
                 .flex_row()
                 .w_full()
-                .rounded(px(radius::R_XL))
+                .rounded(px(radius::R_CARD))
                 .bg(t.card())
                 .border_1()
                 .border_color(if shimmer {

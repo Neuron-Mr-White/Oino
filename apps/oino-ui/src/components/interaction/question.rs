@@ -91,7 +91,7 @@ impl InteractionView {
             .get(self.step)
             .and_then(Option::as_ref)
             .is_some_and(|s| s.read(cx).focus_handle(cx).contains_focused(window, cx));
-        if key == "enter" && event.keystroke.modifiers.secondary() {
+        if key == "enter" && crate::components::secondary(&event.keystroke.modifiers) {
             self.submit_form(cx);
             return true;
         }
@@ -200,7 +200,7 @@ impl InteractionView {
                 .gap(px(space::S3))
                 .min_h(px(size::OPTION_ROW))
                 .px(px(space::S3))
-                .rounded(px(radius::R_LG))
+                .rounded(px(radius::R_INPUT))
                 .cursor_pointer()
                 .border_1()
                 .border_color(if checked {

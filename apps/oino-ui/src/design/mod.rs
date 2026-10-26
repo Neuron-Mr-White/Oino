@@ -22,6 +22,8 @@ pub mod type_scale;
 #[cfg(feature = "views")]
 pub mod icons;
 #[cfg(feature = "views")]
+pub mod motion;
+#[cfg(feature = "views")]
 pub mod syntax;
 #[cfg(feature = "views")]
 pub mod theme;

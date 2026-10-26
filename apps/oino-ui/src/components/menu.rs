@@ -6,9 +6,9 @@ use std::rc::Rc;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement,
-    MouseDownEvent, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Window, anchored, deferred, div, point, px,
+    Anchor, AnyElement, App, ClickEvent, Div, ElementId, FocusHandle, InteractiveElement as _,
+    IntoElement, KeyDownEvent, MouseDownEvent, ParentElement as _, RenderOnce, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, anchored, deferred, div, point, px,
 };
 
 use crate::components::badge::kbd;
@@ -140,7 +140,7 @@ pub fn shell(t: &OinoTheme, width: f32) -> Div {
         .w(px(width))
         .p(px(space::S1))
         .gap(px(space::HALF))
-        .rounded(px(radius::R_LG))
+        .rounded(px(radius::R_DIALOG))
         .bg(t.menu())
         .border_1()
         .border_color(t.popover_border())
@@ -149,20 +149,208 @@ pub fn shell(t: &OinoTheme, width: f32) -> Div {
         .font_family(t.ui_font())
 }
 
-/// Renders entries into a shell of `width`.
+/// Renders entries into a shell of `width`: a keyboard menu (design.md §4.4 keys) that takes
+/// focus when it opens. ↑/↓ move (wrapping, skipping disabled rows), Enter/Space choose,
+/// → opens a submenu row, type-ahead jumps to the next label starting with the typed text,
+/// and Esc (handled by [`popover`]) closes and returns focus to where it was.
 pub fn menu(
     id: impl Into<SharedString>,
     t: &OinoTheme,
     width: f32,
     entries: Vec<MenuEntry>,
-) -> Div {
-    let id: SharedString = id.into();
-    shell(t, width).children(
-        entries
-            .into_iter()
-            .enumerate()
-            .map(|(i, e)| row(&id, i, t, e)),
-    )
+) -> KeyMenu {
+    KeyMenu {
+        id: id.into(),
+        t: *t,
+        width,
+        entries,
+        max_h: None,
+    }
+}
+
+/// A keyboard-navigable menu (see [`menu`]).
+#[derive(IntoElement)]
+pub struct KeyMenu {
+    id: SharedString,
+    t: OinoTheme,
+    width: f32,
+    entries: Vec<MenuEntry>,
+    max_h: Option<f32>,
+}
+
+impl KeyMenu {
+    /// Caps the height; the rows scroll beyond it.
+    #[must_use]
+    pub fn max_h(mut self, h: f32) -> Self {
+        self.max_h = Some(h);
+        self
+    }
+}
+
+/// Per-menu keyboard state, kept while the menu stays rendered.
+struct MenuState {
+    focus: FocusHandle,
+    previous: Option<FocusHandle>,
+    active: Option<usize>,
+    focused: bool,
+    typed: String,
+    typed_at: Option<std::time::Instant>,
+}
+
+/// Next selectable index from `from` in direction `dir` (wrapping).
+#[must_use]
+pub fn step_enabled(enabled: &[bool], from: Option<usize>, dir: isize) -> Option<usize> {
+    let n = enabled.len();
+    if n == 0 || !enabled.iter().any(|e| *e) {
+        return None;
+    }
+    #[allow(
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss,
+        reason = "menu sizes are small"
+    )]
+    let mut i = from.map_or(if dir > 0 { -1 } else { n as isize }, |f| f as isize);
+    loop {
+        #[allow(
+            clippy::cast_possible_wrap,
+            clippy::cast_sign_loss,
+            reason = "menu sizes are small"
+        )]
+        {
+            i = (i + dir).rem_euclid(n as isize);
+            if enabled[i as usize] {
+                return Some(i as usize);
+            }
+        }
+    }
+}
+
+impl RenderOnce for KeyMenu {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let state = window.use_keyed_state(
+            ElementId::Name(format!("{}-keys", self.id).into()),
+            cx,
+            |window, cx| MenuState {
+                focus: cx.focus_handle(),
+                previous: window.focused(cx),
+                active: None,
+                focused: false,
+                typed: String::new(),
+                typed_at: None,
+            },
+        );
+        let (focus, active, first) = {
+            let s = state.read(cx);
+            (s.focus.clone(), s.active, !s.focused)
+        };
+        if first {
+            window.focus(&focus, cx);
+            state.update(cx, |s, _| s.focused = true);
+        }
+        // What the key handler needs from each row.
+        let rows: Vec<(bool, String, bool, Option<OnSelect>)> = self
+            .entries
+            .iter()
+            .map(|e| match e {
+                MenuEntry::Item {
+                    label,
+                    disabled,
+                    submenu,
+                    on_select,
+                    ..
+                } => (
+                    !*disabled,
+                    label.to_lowercase(),
+                    *submenu,
+                    Some(Rc::clone(on_select)),
+                ),
+                _ => (false, String::new(), false, None),
+            })
+            .collect();
+        let enabled: Vec<bool> = rows.iter().map(|r| r.0).collect();
+        let t = self.t;
+        let id = self.id.clone();
+        let key_state = state.clone();
+        let enter_id = ElementId::Name(format!("{}-enter", self.id).into());
+        let el = shell(&t, self.width)
+            .id(ElementId::Name(format!("{}-menu", self.id).into()))
+            .when_some(self.max_h, |el, h| el.max_h(px(h)).overflow_y_scroll())
+            .track_focus(&focus)
+            .on_key_down(move |e: &KeyDownEvent, window, cx| {
+                let key = e.keystroke.key.as_str();
+                let current = key_state.read(cx).active;
+                let choose = |i: usize, window: &mut Window, cx: &mut App| {
+                    let prev = key_state.read(cx).previous.clone();
+                    if let Some(prev) = prev {
+                        window.focus(&prev, cx);
+                    }
+                    if let Some(f) = rows.get(i).and_then(|r| r.3.clone()) {
+                        f(window, cx);
+                    }
+                };
+                let next = match key {
+                    "down" => step_enabled(&enabled, current, 1),
+                    "up" => step_enabled(&enabled, current, -1),
+                    "home" => step_enabled(&enabled, None, 1),
+                    "end" => step_enabled(&enabled, None, -1),
+                    "enter" | "space" => {
+                        if let Some(i) = current {
+                            choose(i, window, cx);
+                        }
+                        cx.stop_propagation();
+                        return;
+                    }
+                    "right" => {
+                        if let Some(i) = current.filter(|i| rows.get(*i).is_some_and(|r| r.2)) {
+                            choose(i, window, cx);
+                        }
+                        cx.stop_propagation();
+                        return;
+                    }
+                    _ => {
+                        let ch = e.keystroke.key_char.clone().unwrap_or_default();
+                        if ch.chars().count() != 1
+                            || e.keystroke.modifiers.control
+                            || e.keystroke.modifiers.platform
+                            || e.keystroke.modifiers.alt
+                        {
+                            return;
+                        }
+                        let typed = key_state.update(cx, |s, _| {
+                            let fresh = s.typed_at.is_none_or(|at| {
+                                at.elapsed() > std::time::Duration::from_millis(800)
+                            });
+                            if fresh {
+                                s.typed.clear();
+                            }
+                            s.typed.push_str(&ch.to_lowercase());
+                            s.typed_at = Some(std::time::Instant::now());
+                            s.typed.clone()
+                        });
+                        let n = rows.len();
+                        let start = current
+                            .map_or(0, |c| if typed.chars().count() == 1 { c + 1 } else { c });
+                        (0..n)
+                            .map(|k| (start + k) % n.max(1))
+                            .find(|i| rows[*i].0 && rows[*i].1.starts_with(&typed))
+                    }
+                };
+                if let Some(i) = next {
+                    key_state.update(cx, |s, cx| {
+                        s.active = Some(i);
+                        cx.notify();
+                    });
+                }
+                cx.stop_propagation();
+            })
+            .children(self.entries.into_iter().enumerate().map(|(i, mut e)| {
+                if let (MenuEntry::Item { active: a, .. }, Some(k)) = (&mut e, active) {
+                    *a = i == k;
+                }
+                row(&id, i, &t, e)
+            }));
+        crate::design::motion::enter(&t, enter_id, el)
+    }
 }
 
 fn row(id: &SharedString, i: usize, t: &OinoTheme, entry: MenuEntry) -> AnyElement {
@@ -280,9 +468,17 @@ pub fn popover(
         Placement::BelowStart | Placement::BelowEnd => space::S1,
         Placement::AboveStart | Placement::AboveEnd => -space::S1,
     };
+    let on_close = Rc::new(on_close);
+    let on_escape = Rc::clone(&on_close);
     let body = div()
         .occlude()
         .on_mouse_down_out(move |_: &MouseDownEvent, w, cx| on_close(w, cx))
+        .on_key_down(move |e: &KeyDownEvent, w, cx| {
+            if e.keystroke.key == "escape" || e.keystroke.key == "left" {
+                cx.stop_propagation();
+                on_escape(w, cx);
+            }
+        })
         .child(content());
     wrapper.child(
         corner.child(deferred(
@@ -293,4 +489,19 @@ pub fn popover(
                 .child(body),
         )),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::step_enabled;
+
+    #[test]
+    fn steps_wrap_and_skip_disabled() {
+        let e = [true, false, true];
+        assert_eq!(step_enabled(&e, None, 1), Some(0));
+        assert_eq!(step_enabled(&e, Some(0), 1), Some(2));
+        assert_eq!(step_enabled(&e, Some(2), 1), Some(0));
+        assert_eq!(step_enabled(&e, Some(0), -1), Some(2));
+        assert_eq!(step_enabled(&[false], None, 1), None);
+    }
 }

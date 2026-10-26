@@ -13,11 +13,18 @@ default = ["views"]
 views = ["dep:gpui-kit"]
 ## Touch layouts for Oino Mobile (`oino_ui::mobile`, owned by gpui-mobile).
 mobile = ["views"]
+## Side-pane Browser tab (gpui-webview; desktop only, X11/XWayland on Linux).
+browser = ["views", "dep:gpui-webview", "dep:wry"]
+## Bottom-frame Terminal tab (alacritty_terminal + the platform PTY; desktop only).
+terminal = ["views", "dep:alacritty_terminal"]
 
 [dependencies]
 futures.workspace = true
 indexmap.workspace = true
 gpui-kit = { workspace = true, optional = true }
+gpui-webview = { workspace = true, optional = true }
+wry = { workspace = true, optional = true }
+alacritty_terminal = { workspace = true, optional = true }
 oino-agent.workspace = true
 oino-ai.workspace = true
 oino-client = { workspace = true }

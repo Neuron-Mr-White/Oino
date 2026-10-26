@@ -225,6 +225,23 @@ impl SessionPane {
                         .overflow_hidden()
                         .children(left),
                 )
+                // Local dev-server preview chip (design.md A1.4): opens the Browser tab.
+                .children(self.local_previews().into_iter().next().map(|url| {
+                    let label = url
+                        .trim_start_matches("http://")
+                        .trim_start_matches("https://")
+                        .trim_end_matches('/')
+                        .to_owned();
+                    crate::components::button::Btn::new("preview-chip")
+                        .label(SharedString::from(label))
+                        .icon(IconName::Globe)
+                        .size(crate::components::button::BtnSize::Xs)
+                        .variant(crate::components::button::Variant::Outline)
+                        .color(t.info_surface_fg())
+                        .tooltip("Open the preview in the Browser tab", None)
+                        .on_click(cx.listener(move |this, _, _, cx| this.open_link(&url, cx)))
+                        .into_any_element()
+                }))
                 .child(div().flex_1())
                 .child(
                     div()

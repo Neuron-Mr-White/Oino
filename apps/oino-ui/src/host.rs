@@ -75,6 +75,50 @@ pub struct ExtensionInfo {
     pub bundled: bool,
     /// Load error, if any.
     pub error: Option<String>,
+    /// Display name (manifest `name`; empty → the id).
+    pub name: String,
+    /// One-line description.
+    pub description: String,
+    /// Permission summary (`network`, `process`, `secrets`…).
+    pub permissions: Vec<String>,
+    /// Enabled (not in `disabledExtensions`).
+    pub enabled: bool,
+    /// Package directory (README, Open folder).
+    pub root: Option<PathBuf>,
+}
+
+impl ExtensionInfo {
+    /// An info with only the required facts (the rest default: enabled, no extras).
+    #[must_use]
+    pub fn basic(
+        id: &str,
+        version: &str,
+        kind: &str,
+        bundled: bool,
+        error: Option<String>,
+    ) -> Self {
+        Self {
+            id: id.to_owned(),
+            version: version.to_owned(),
+            kind: kind.to_owned(),
+            bundled,
+            error,
+            name: String::new(),
+            description: String::new(),
+            permissions: Vec::new(),
+            enabled: true,
+            root: None,
+        }
+    }
+
+    /// The package README, when the package ships one.
+    #[must_use]
+    pub fn readme(&self) -> Option<String> {
+        let root = self.root.as_ref()?;
+        ["README.md", "readme.md", "README"]
+            .iter()
+            .find_map(|f| std::fs::read_to_string(root.join(f)).ok())
+    }
 }
 
 /// Static facts about the host.
@@ -214,6 +258,15 @@ pub struct AppSettings {
     pub onboarded: bool,
     /// Palette history (most recent first, max 20).
     pub palette_history: Vec<String>,
+    /// Linux: run on native Wayland, which disables the embedded browser (design.md A1.4;
+    /// the default runs on X11/XWayland so `WebKitGTK` can embed).
+    pub native_wayland: bool,
+    /// Opt-in desktop mascot window (design.md A1.2, unipi §1.5.1).
+    pub mascot_window: bool,
+    /// Mascot crab size in px: 72 / 96 / 128.
+    pub mascot_size: u8,
+    /// Sidebar row density: compact rows when `true`.
+    pub sidebar_compact: bool,
 }
 
 impl Default for AppSettings {
@@ -232,6 +285,10 @@ impl Default for AppSettings {
             thinking_blocks: ThinkingBlocks::Collapsed,
             onboarded: false,
             palette_history: Vec::new(),
+            native_wayland: false,
+            mascot_window: false,
+            mascot_size: 96,
+            sidebar_compact: false,
         }
     }
 }
@@ -275,6 +332,33 @@ pub trait SessionHost: Send + Sync + 'static {
 
     /// Persists desktop preferences.
     fn save_app_settings(&self, settings: &AppSettings);
+
+    /// Enables / disables an extension (`disabledExtensions`; applies to new sessions).
+    ///
+    /// # Errors
+    /// The host cannot change extension state, or the settings write failed.
+    fn set_extension_enabled(&self, id: &str, enabled: bool) -> Result<(), HostError> {
+        let _ = (id, enabled);
+        Err(HostError::Session(
+            "this host cannot enable or disable extensions".into(),
+        ))
+    }
+
+    /// Installs the extension package at `path` (a directory with `extension.json`) into the
+    /// user extensions folder; returns its id.
+    fn install_extension(&self, path: PathBuf) -> BoxFuture<'static, Result<String, HostError>> {
+        let _ = path;
+        Box::pin(async {
+            Err(HostError::Session(
+                "this host cannot install extensions".into(),
+            ))
+        })
+    }
+
+    /// The user extensions folder (`~/.oino/extensions`).
+    fn extensions_dir(&self) -> Option<PathBuf> {
+        None
+    }
 }
 
 #[cfg(test)]

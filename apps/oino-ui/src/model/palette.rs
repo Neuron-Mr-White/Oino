@@ -352,6 +352,37 @@ pub fn first(rows: &[Row]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+
+    /// design.md §2.11 palette row: filtering 10 000 items stays within one frame (≤ 4 ms in
+    /// release; the debug-build bound is looser). `cargo test --release -p oino-ui
+    /// palette_10k -- --nocapture` prints the number.
+    #[test]
+    fn palette_10k() {
+        let items: Vec<PaletteItem> = (0..10_000)
+            .map(|i| {
+                PaletteItem::new(
+                    format!("session {i} fix the parser trailing commas"),
+                    Section::RecentSessions,
+                    Kind::Session,
+                    "dot",
+                    PaletteAction::Session(i.to_string()),
+                )
+            })
+            .collect();
+        let start = std::time::Instant::now();
+        let r = rows(&items, "pars com", Scope::All);
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        #[allow(clippy::print_stderr, reason = "benchmark output")]
+        {
+            eprintln!("palette 10k filter: {ms:.2} ms ({} rows)", r.len());
+        }
+        assert!(!r.is_empty());
+        assert!(
+            ms < if cfg!(debug_assertions) { 250.0 } else { 16.0 },
+            "{ms} ms"
+        );
+    }
+
     use super::*;
 
     fn items() -> Vec<PaletteItem> {

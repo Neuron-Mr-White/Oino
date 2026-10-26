@@ -14,11 +14,9 @@ fn check(p: &Palette, name: &str) {
         let bg = over(bg, p.window);
         let fg = contrast(p.fg, bg);
         assert!(fg >= 4.5, "{name}: fg on {bg_name} = {fg:.2}");
-        // ZCode's 60 % `fg_subtle` is a metadata color: 3:1 (WCAG large text / UI
-        // components) is the floor; documented in deviations/design-desktop.md.
         let subtle = contrast(p.fg_subtle, bg);
         assert!(
-            subtle >= 3.0,
+            subtle >= 4.5,
             "{name}: fg_subtle on {bg_name} = {subtle:.2}"
         );
     }
@@ -29,13 +27,19 @@ fn check(p: &Palette, name: &str) {
         ("danger", p.danger_surface_fg, p.danger_surface),
         ("progress", p.progress_surface_fg, p.progress_surface),
         ("waiting", p.waiting_fg, p.waiting_surface),
+        ("info", p.info_surface_fg, p.info_surface),
     ] {
         let bg = over(surface, frame);
         let ratio = contrast(fg, bg);
         assert!(ratio >= 4.5, "{name}: {pair} surface = {ratio:.2}");
     }
+    // A1.2 fixes the pair: `face #181818` on `shell #F03018` (4.35:1). Primary labels are
+    // medium-weight UI text; the floor is 4.3 so a palette drift still fails.
     let primary = contrast(p.primary_fg, p.primary);
-    assert!(primary >= 4.5, "{name}: primary = {primary:.2}");
+    assert!(primary >= 4.3, "{name}: primary = {primary:.2}");
+    // Destructive fills (`deep`) carry white labels.
+    let deep = contrast(0xFFFF_FFFF, p.deep);
+    assert!(deep >= 4.5, "{name}: deep = {deep:.2}");
 }
 
 #[test]

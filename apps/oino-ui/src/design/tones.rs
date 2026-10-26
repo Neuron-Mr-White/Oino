@@ -10,7 +10,7 @@ pub fn fg(tone: Tone, p: &Palette) -> u32 {
         Tone::Default | Tone::Assistant | Tone::Accent | Tone::User => p.fg,
         Tone::Muted => p.fg_subtle,
         Tone::Thinking => p.thinking,
-        Tone::Info | Tone::Tool => p.progress_surface_fg,
+        Tone::Info | Tone::Tool => p.info_surface_fg,
         Tone::Success => p.success_surface_fg,
         Tone::Warning => p.warning_surface_fg,
         Tone::Error => p.danger_surface_fg,
@@ -27,7 +27,7 @@ pub fn rail(tone: Tone, p: &Palette) -> u32 {
         Tone::Muted | Tone::Thinking => p.border,
         Tone::Accent => p.brand,
         Tone::User => p.fg_subtlest,
-        Tone::Info | Tone::Tool => p.ansi[12],
+        Tone::Info | Tone::Tool => p.info,
         Tone::Success => p.success,
         Tone::Warning => p.warning,
         Tone::Error => p.danger,
@@ -43,7 +43,7 @@ pub fn surface(tone: Tone, p: &Palette) -> u32 {
         Tone::Default | Tone::Assistant => p.tag,
         Tone::Muted | Tone::Thinking | Tone::User => p.surface,
         Tone::Accent => p.accent,
-        Tone::Info | Tone::Tool => p.progress_surface,
+        Tone::Info | Tone::Tool => p.info_surface,
         Tone::Success => p.success_surface,
         Tone::Warning => p.warning_surface,
         Tone::Error => p.danger_surface,
@@ -90,9 +90,9 @@ mod tests {
     fn tones_follow_the_table() {
         assert_eq!(fg(Tone::Error, &LIGHT), LIGHT.danger_surface_fg);
         assert_eq!(rail(Tone::Error, &LIGHT), LIGHT.danger);
-        assert_eq!(surface(Tone::Info, &DARK), DARK.progress_surface);
+        assert_eq!(surface(Tone::Info, &DARK), DARK.info_surface);
         assert_eq!(rail(Tone::Accent, &DARK), DARK.brand);
-        assert_eq!(surface(Tone::Palette(0), &LIGHT), 0x0B7F_FF1F);
+        assert_eq!(surface(Tone::Palette(0), &LIGHT), 0x1A8A_C01F);
         assert_eq!(fg(Tone::Palette(13), &LIGHT), LIGHT.categorical[1]);
         assert_eq!(ous_icon("warn"), Some("triangle-alert"));
         assert_eq!(ous_icon("nope"), None);

@@ -15,7 +15,13 @@ pub const BUDGET_120HZ_MS: f32 = 8.3;
 /// Budget of one frame at 60 Hz (ms); slower frames count as dropped.
 pub const BUDGET_60HZ_MS: f32 = 16.7;
 
-/// Ring buffer of frame costs in milliseconds.
+/// Whole-run histogram resolution: 0.1 ms buckets up to [`HIST_MAX_MS`].
+const HIST_BUCKETS: usize = 1000;
+/// Frames slower than this land in the last bucket.
+const HIST_MAX_MS: f32 = 100.0;
+
+/// Ring buffer of frame costs in milliseconds, plus a whole-run histogram (so the run p99 is
+/// exact to 0.1 ms, not a median of window p99s).
 #[derive(Clone, Debug)]
 pub struct FrameStats {
     samples: [f32; WINDOW],
@@ -23,6 +29,8 @@ pub struct FrameStats {
     next: usize,
     total: u64,
     dropped: u64,
+    over_120hz: u64,
+    hist: [u32; HIST_BUCKETS],
 }
 
 impl Default for FrameStats {
@@ -33,6 +41,8 @@ impl Default for FrameStats {
             next: 0,
             total: 0,
             dropped: 0,
+            over_120hz: 0,
+            hist: [0; HIST_BUCKETS],
         }
     }
 }
@@ -65,6 +75,47 @@ impl FrameStats {
         if ms > BUDGET_60HZ_MS {
             self.dropped += 1;
         }
+        if ms > BUDGET_120HZ_MS {
+            self.over_120hz += 1;
+        }
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "clamped bucket index"
+        )]
+        let bucket = ((ms.clamp(0.0, HIST_MAX_MS) * 10.0) as usize).min(HIST_BUCKETS - 1);
+        self.hist[bucket] = self.hist[bucket].saturating_add(1);
+    }
+
+    /// Whole-run percentile `q` (0..1) in ms, from the histogram.
+    #[must_use]
+    pub fn run_percentile(&self, q: f64) -> f32 {
+        let total: u64 = self.hist.iter().map(|c| u64::from(*c)).sum();
+        if total == 0 {
+            return 0.0;
+        }
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss,
+            reason = "rank within the frame count"
+        )]
+        let rank = ((q * total as f64).ceil() as u64).max(1);
+        let mut seen = 0u64;
+        for (i, c) in self.hist.iter().enumerate() {
+            seen += u64::from(*c);
+            if seen >= rank {
+                #[allow(clippy::cast_precision_loss, reason = "bucket index ≤ 1000")]
+                return (i + 1) as f32 / 10.0;
+            }
+        }
+        HIST_MAX_MS
+    }
+
+    /// Frames over the 120 Hz budget since start.
+    #[must_use]
+    pub fn over_120hz(&self) -> u64 {
+        self.over_120hz
     }
 
     /// Samples in recording order (oldest first) into `out`; returns how many.
@@ -134,6 +185,12 @@ mod overlay {
         /// Collected stats.
         pub stats: FrameStats,
         started: Option<Instant>,
+        /// Interaction marks: `(label, start)` closed by the next painted frame
+        /// (session switch, palette open, keystroke → paint, first frame).
+        marks: Vec<(&'static str, Instant)>,
+        /// Process start (first-frame latency), set by the binary.
+        pub process_start: Option<Instant>,
+        first_logged: bool,
         /// Draw the overlay.
         pub overlay: bool,
         /// Log a summary line every [`WINDOW`] frames (`OINO_FRAME_LOG=1`).
@@ -141,6 +198,15 @@ mod overlay {
     }
 
     impl Global for FrameProbe {}
+
+    /// Starts an interaction latency measurement closed by the next painted frame (logged as
+    /// `latency` with `OINO_FRAME_LOG=1`).
+    pub fn mark(cx: &mut App, label: &'static str) {
+        let probe = cx.default_global::<FrameProbe>();
+        if probe.log && probe.marks.len() < 16 {
+            probe.marks.push((label, Instant::now()));
+        }
+    }
 
     /// Marks the start of a root render.
     pub fn begin(cx: &mut App) {
@@ -157,6 +223,25 @@ mod overlay {
                 let probe = cx.default_global::<FrameProbe>();
                 if let Some(start) = probe.started.take() {
                     probe.stats.record(start.elapsed());
+                    if probe.log && !probe.first_logged {
+                        probe.first_logged = true;
+                        if let Some(p) = probe.process_start {
+                            tracing::info!(
+                                target: "oino_frame",
+                                label = "first frame",
+                                ms = p.elapsed().as_secs_f32() * 1000.0,
+                                "latency"
+                            );
+                        }
+                    }
+                    for (label, at) in probe.marks.drain(..) {
+                        tracing::info!(
+                            target: "oino_frame",
+                            label,
+                            ms = at.elapsed().as_secs_f32() * 1000.0,
+                            "latency"
+                        );
+                    }
                     if probe.log && probe.stats.log_due() {
                         let s = probe.stats.summary();
                         tracing::info!(
@@ -164,6 +249,8 @@ mod overlay {
                             p50_ms = s.p50,
                             p99_ms = s.p99,
                             max_ms = s.max,
+                            run_p99_ms = probe.stats.run_percentile(0.99),
+                            over_8ms = probe.stats.over_120hz(),
                             frames = s.total,
                             dropped = s.dropped,
                             "frame times"
@@ -257,6 +344,8 @@ mod tests {
         assert_eq!(sum.count, WINDOW);
         assert_eq!(sum.total, 201);
         assert_eq!(sum.dropped, 1);
+        let run = s.run_percentile(0.99);
+        assert!((1.8..=2.1).contains(&run), "run p99 {run}");
         assert!((sum.max - 30.0).abs() < 0.01);
         assert!(sum.p50 >= 1.0 && sum.p50 <= 2.0);
         let mut out = [0.0; WINDOW];

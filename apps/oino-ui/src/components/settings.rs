@@ -39,7 +39,7 @@ pub fn group(t: &OinoTheme, rows: Vec<AnyElement>) -> Div {
         .flex_col()
         .w_full()
         .px(px(space::S4))
-        .rounded(px(radius::R_XL))
+        .rounded(px(radius::R_CARD))
         .border_1()
         .border_color(t.border())
         .children(rows.into_iter().enumerate().map(move |(i, r)| {

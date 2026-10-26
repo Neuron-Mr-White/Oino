@@ -38,7 +38,89 @@ struct Bundle {
     infos: Vec<ExtensionInfo>,
 }
 
+/// A short permission summary for the Extensions page (design.md D12).
+fn permission_summary(p: &oino_extension_api::manifest::Permissions) -> Vec<String> {
+    let mut out = Vec::new();
+    if p.session_control {
+        out.push("session control".to_owned());
+    }
+    if p.process.spawn {
+        out.push("process".to_owned());
+    }
+    if !p.network.hosts.is_empty() {
+        out.push(if p.network.hosts.iter().any(|h| h == "*") {
+            "network (any host)".to_owned()
+        } else {
+            format!("network ({})", p.network.hosts.len())
+        });
+    }
+    if !p.credentials.is_empty() {
+        out.push("credentials".to_owned());
+    }
+    if p.secrets {
+        out.push("secrets".to_owned());
+    }
+    if !p.fs.paths.is_empty() {
+        out.push("fs paths".to_owned());
+    }
+    if p.os_notify {
+        out.push("notifications".to_owned());
+    }
+    if p.open_url {
+        out.push("open url".to_owned());
+    }
+    if p.edit_externally {
+        out.push("editor".to_owned());
+    }
+    out
+}
+
+fn info_of(
+    manifest: &oino_extension_api::manifest::Manifest,
+    bundled: bool,
+    root: Option<PathBuf>,
+    disabled: &[String],
+) -> ExtensionInfo {
+    let id = manifest.id.to_string();
+    let mut info = ExtensionInfo::basic(
+        &id,
+        &manifest.version,
+        &format!("{:?}", manifest.kind).to_lowercase(),
+        bundled,
+        None,
+    );
+    info.name.clone_from(&manifest.name);
+    info.description.clone_from(&manifest.description);
+    info.permissions = permission_summary(&manifest.permissions);
+    info.enabled = !disabled.contains(&id);
+    info.root = root;
+    info
+}
+
+/// `disabledExtensions` from the global settings.
+fn disabled_ids(agent_dir: &Path) -> Vec<String> {
+    let cwd = oino_settings::paths::home_dir().unwrap_or_else(|| agent_dir.to_path_buf());
+    oino_settings::SettingsManager::create(&cwd, agent_dir, false)
+        .settings()
+        .disabled_extensions()
+}
+
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_tree(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
 fn load_bundle(agent_dir: &Path) -> Bundle {
+    let disabled = disabled_ids(agent_dir);
     let mut bundle = Bundle::default();
     for ext in oino_bundle::BUNDLED {
         let root = ext.extract(agent_dir).ok();
@@ -51,25 +133,21 @@ fn load_bundle(agent_dir: &Path) -> Bundle {
             });
         match package {
             Ok(package) => {
-                bundle.infos.push(ExtensionInfo {
-                    id: package.manifest.id.to_string(),
-                    version: package.manifest.version.clone(),
-                    kind: format!("{:?}", package.manifest.kind).to_lowercase(),
-                    bundled: true,
-                    error: None,
-                });
+                bundle
+                    .infos
+                    .push(info_of(&package.manifest, true, root.clone(), &disabled));
                 bundle.packages.push(SourcedPackage {
                     package,
                     project: false,
                 });
             }
-            Err(error) => bundle.infos.push(ExtensionInfo {
-                id: ext.id.to_owned(),
-                version: ext.version.to_owned(),
-                kind: "unknown".to_owned(),
-                bundled: true,
-                error: Some(error),
-            }),
+            Err(error) => bundle.infos.push(ExtensionInfo::basic(
+                ext.id,
+                ext.version,
+                "unknown",
+                true,
+                Some(error),
+            )),
         }
     }
     bundle
@@ -129,8 +207,18 @@ impl Inner {
             oino_wasm_host::packages::discover(&[self.agent_dir.join("extensions")], false);
         let (project, _) =
             oino_wasm_host::packages::discover(&[cwd.join(".oino").join("extensions")], false);
-        let mut packages = self.bundle.packages.clone();
-        let bundled_ids: Vec<String> = packages
+        // `disabledExtensions` (Extensions page → Disable) applies to new workspaces.
+        let disabled = disabled_ids(&self.agent_dir);
+        let mut packages: Vec<SourcedPackage> = self
+            .bundle
+            .packages
+            .iter()
+            .filter(|p| !disabled.contains(&p.package.manifest.id.to_string()))
+            .cloned()
+            .collect();
+        let bundled_ids: Vec<String> = self
+            .bundle
+            .packages
             .iter()
             .map(|p| p.package.manifest.id.to_string())
             .collect();
@@ -144,17 +232,18 @@ impl Inner {
             if bundled_ids.contains(&id) {
                 continue;
             }
-            extra_infos.push(ExtensionInfo {
-                id,
-                version: package.manifest.version.clone(),
-                kind: format!("{:?}", package.manifest.kind).to_lowercase(),
-                bundled: false,
-                error: None,
-            });
-            packages.push(SourcedPackage {
-                package,
-                project: is_project,
-            });
+            extra_infos.push(info_of(
+                &package.manifest,
+                false,
+                package.root.clone(),
+                &disabled,
+            ));
+            if !disabled.contains(&id) {
+                packages.push(SourcedPackage {
+                    package,
+                    project: is_project,
+                });
+            }
         }
         let loader = Arc::new(CoreLoader::new(runtime, packages));
         let services = Services::create(ServicesOptions {
@@ -307,6 +396,50 @@ impl SessionHost for EmbeddedHost {
 
     fn save_app_settings(&self, settings: &AppSettings) {
         prefs::save(&self.inner.agent_dir, settings);
+    }
+
+    fn set_extension_enabled(&self, id: &str, enabled: bool) -> Result<(), HostError> {
+        let agent_dir = &self.inner.agent_dir;
+        let cwd = oino_settings::paths::home_dir().unwrap_or_else(|| agent_dir.clone());
+        let mut manager = oino_settings::SettingsManager::create(&cwd, agent_dir, false);
+        let mut ids = manager.settings().disabled_extensions();
+        ids.retain(|d| d != id);
+        if !enabled {
+            ids.push(id.to_owned());
+        }
+        manager
+            .set_disabled_extensions(&ids)
+            .map_err(|e| HostError::Io(e.to_string()))?;
+        for info in lock(&self.inner.infos).iter_mut() {
+            if info.id == id {
+                info.enabled = enabled;
+            }
+        }
+        Ok(())
+    }
+
+    fn install_extension(&self, path: PathBuf) -> BoxFuture<'static, Result<String, HostError>> {
+        let dest_root = self.inner.agent_dir.join("extensions");
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                let dir = if path.is_file() {
+                    path.parent().map(Path::to_path_buf).unwrap_or_default()
+                } else {
+                    path
+                };
+                let package = oino_wasm_host::packages::load_dir(&dir, false)
+                    .map_err(|e| HostError::Io(format!("{}: {e}", dir.display())))?;
+                let id = package.manifest.id.to_string();
+                copy_tree(&dir, &dest_root.join(&id)).map_err(|e| HostError::Io(e.to_string()))?;
+                Ok(id)
+            })
+            .await
+            .map_err(|e| HostError::Io(e.to_string()))?
+        })
+    }
+
+    fn extensions_dir(&self) -> Option<PathBuf> {
+        Some(self.inner.agent_dir.join("extensions"))
     }
 }
 

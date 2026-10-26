@@ -117,10 +117,21 @@ impl OinoTheme {
         fg_subtlest,
         fg_inverse,
         primary,
+        primary_hover,
         primary_fg,
         secondary,
         brand,
         accent,
+        focus,
+        working,
+        amber,
+        gold,
+        cream,
+        deep,
+        glow,
+        info,
+        info_surface,
+        info_surface_fg,
         success,
         success_surface,
         success_surface_fg,
@@ -372,8 +383,8 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     kit.mono_font_family = t.mono_font();
     kit.font_size = px(t.ui);
     kit.mono_font_size = px(t.code);
-    kit.radius = px(tokens::radius::R_LG);
-    kit.radius_lg = px(tokens::radius::R_XL);
+    kit.radius = px(tokens::radius::R_INPUT);
+    kit.radius_lg = px(tokens::radius::R_CARD);
     kit.shadow = true;
     kit.focus_ring = false;
     let k = &mut kit.colors;
@@ -390,12 +401,12 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     k.ring = c(p.input_border_focus);
     k.primary = primary;
     k.primary_foreground = c(p.primary_fg);
-    k.primary_hover = primary.opacity(0.9);
-    k.primary_active = primary.opacity(0.8);
+    k.primary_hover = c(p.primary_hover);
+    k.primary_active = c(p.primary_hover);
     k.button_primary = primary;
     k.button_primary_foreground = c(p.primary_fg);
-    k.button_primary_hover = primary.opacity(0.9);
-    k.button_primary_active = primary.opacity(0.8);
+    k.button_primary_hover = c(p.primary_hover);
+    k.button_primary_active = c(p.primary_hover);
     k.accent = c(p.hover);
     k.accent_foreground = c(p.fg);
     k.popover = c(p.popover);
@@ -423,9 +434,9 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     k.success_foreground = c(p.fg_inverse);
     k.warning = c(p.warning);
     k.warning_foreground = c(p.fg_inverse);
-    k.danger = c(p.danger);
+    k.danger = c(p.deep);
     k.danger_foreground = c(0xFFFF_FFFF);
-    k.info = c(p.ansi[12]);
+    k.info = c(p.info);
     k.info_foreground = c(p.fg_inverse);
     k.title_bar = c(p.window);
     k.title_bar_border = c(p.border);
@@ -435,11 +446,11 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     k.scrollbar_thumb = c(p.border);
     k.scrollbar_thumb_hover = c(p.border_hover);
     k.selection = c(p.selection);
-    k.caret = c(p.fg);
+    k.caret = c(if t.dark { p.cream } else { p.fg });
     k.overlay = c(p.scrim);
-    k.link = c(p.ansi[12]);
-    k.link_hover = c(p.ansi[4]);
-    k.link_active = c(p.ansi[4]);
+    k.link = c(p.info);
+    k.link_hover = c(p.info_surface_fg);
+    k.link_active = c(p.info_surface_fg);
     k.switch = c(p.secondary);
     k.switch_thumb = c(p.fg_inverse);
     k.table = c(p.frame);
@@ -449,7 +460,7 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     k.table_active = c(p.selected);
     k.table_row_border = c(p.border);
     k.table_even = c(p.frame);
-    k.progress_bar = c(p.fg);
+    k.progress_bar = c(p.primary);
     k.skeleton = c(p.surface);
     k.drag_border = c(p.resize_handle);
     k.window_border = c(p.border);

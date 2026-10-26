@@ -86,6 +86,7 @@ pub struct Btn {
     icon: Option<IconName>,
     trailing: Option<IconName>,
     kbd: Option<SharedString>,
+    kbd_first: bool,
     variant: Variant,
     size: BtnSize,
     square: bool,
@@ -108,13 +109,14 @@ impl Btn {
             icon: None,
             trailing: None,
             kbd: None,
+            kbd_first: false,
             variant: Variant::Ghost,
             size: BtnSize::Default,
             square: false,
             disabled: false,
             loading: false,
             selected: false,
-            radius: radius::R_LG,
+            radius: radius::R_BUTTON,
             tooltip: None,
             color: None,
             full: false,
@@ -159,6 +161,14 @@ impl Btn {
     #[must_use]
     pub fn kbd(mut self, keys: impl Into<SharedString>) -> Self {
         self.kbd = Some(keys.into());
+        self
+    }
+
+    /// Key hint shown before the label (number keys of docked cards: "1 Allow once").
+    #[must_use]
+    pub fn kbd_lead(mut self, keys: impl Into<SharedString>) -> Self {
+        self.kbd = Some(keys.into());
+        self.kbd_first = true;
         self
     }
 
@@ -242,7 +252,7 @@ impl RenderOnce for Btn {
                 Some(t.primary()),
                 t.primary_fg(),
                 None,
-                Some(t.primary().opacity(0.9)),
+                Some(t.primary_hover()),
             ),
             Variant::Secondary => (Some(t.secondary()), t.fg(), None, Some(t.border_hover())),
             Variant::Outline => (None, t.fg(), Some(t.border()), Some(t.hover())),
@@ -254,11 +264,12 @@ impl RenderOnce for Btn {
             ),
             Variant::Ghost => (None, t.fg(), None, Some(t.hover())),
             Variant::GhostDanger => (None, t.danger_surface_fg(), None, Some(t.danger_surface())),
+            // Destructive = unipi `deep` with a white label (always icon + word).
             Variant::Danger => (
-                Some(t.danger()),
-                t.fg_inverse(),
+                Some(t.deep()),
+                gpui_kit::white(),
                 None,
-                Some(t.danger().opacity(0.9)),
+                Some(t.deep().opacity(0.9)),
             ),
             Variant::Link => (None, t.fg(), None, None),
         };
@@ -314,6 +325,9 @@ impl RenderOnce for Btn {
             .when_some(bg, gpui_kit::Styled::bg)
             .when_some(border, |el, b| el.border_1().border_color(b))
             .children(lead)
+            .when(self.kbd_first, |el| {
+                el.children(self.kbd.clone().map(|k| super::badge::kbd(&t, k)))
+            })
             .when_some(self.label, |el, l| {
                 el.child(
                     div()
@@ -322,12 +336,21 @@ impl RenderOnce for Btn {
                         .child(l),
                 )
             })
-            .when_some(self.kbd, |el, k| el.child(super::badge::kbd(&t, k)))
+            .when(!self.kbd_first, |el| {
+                el.children(self.kbd.map(|k| super::badge::kbd(&t, k)))
+            })
             .when_some(self.trailing, |el, i| {
                 el.child(icon(i, size::ICON_SM, t.fg_subtle()))
             });
         if !disabled {
+            // Keyboard reachable: Tab stops on it, Enter/Space click it, and keyboard focus
+            // draws the 2 px shell ring (A1.2).
             el = el
+                .tab_index(0)
+                .focus_visible(|s| {
+                    s.border(px(crate::design::tokens::focus::WIDTH))
+                        .border_color(t.focus())
+                })
                 .cursor_pointer()
                 .when_some(hover, |el, h| el.hover(move |s| s.bg(h)));
             if let Some(f) = on_click {

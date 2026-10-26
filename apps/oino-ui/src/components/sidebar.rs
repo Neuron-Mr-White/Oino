@@ -23,7 +23,7 @@ use crate::design::{TextRole, radius, size, space};
 use crate::model::palette::{Kind, PaletteAction, PaletteItem, Section};
 use crate::model::sessions::{LiveStatus, SessionEntry, age};
 use crate::model::timeline::file_changes;
-use crate::views::shell::{Route, SidebarView, Workspace, now_ms};
+use crate::views::shell::{Confirm, Route, SideAction, SidebarView, Workspace, now_ms};
 
 /// One virtualised sidebar row.
 #[derive(Clone, Debug)]
@@ -73,6 +73,211 @@ fn nav_item(
 }
 
 impl Workspace {
+    /// Opens `id` (if needed) and applies `action` to its pane.
+    pub(crate) fn side_action(
+        &mut self,
+        id: &str,
+        action: SideAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.pending_side = Some((id.to_owned(), action));
+        self.open_session(id, window, cx);
+        self.run_pending_side(window, cx);
+    }
+
+    /// Applies a pending sidebar action once its pane is open.
+    pub(crate) fn run_pending_side(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((id, action)) = self.pending_side.clone() else {
+            return;
+        };
+        let Some(pane) = self
+            .panes
+            .iter()
+            .find(|p| p.entity.read(cx).model.id == id)
+            .map(|p| p.entity.clone())
+        else {
+            return;
+        };
+        self.pending_side = None;
+        pane.update(cx, |p, cx| match action {
+            SideAction::Rename => p.start_rename(window, cx),
+            SideAction::Fork => p.send(oino_client::PiCommand::Clone.into(), cx),
+        });
+    }
+
+    /// Asks before deleting a session file (app-convention: important actions confirm).
+    pub(crate) fn confirm_delete(
+        &mut self,
+        id: &str,
+        title: &str,
+        path: Option<std::path::PathBuf>,
+    ) {
+        let Some(path) = path else {
+            return;
+        };
+        let id = id.to_owned();
+        self.confirm = Some(Confirm {
+            title: "Delete session?".into(),
+            body: SharedString::from(format!(
+                "\u{201c}{title}\u{201d} and its file {} are deleted. This cannot be undone.",
+                path.display()
+            )),
+            action: "Delete".into(),
+            run: Rc::new(move |ws, window, cx| {
+                // Close a pane that shows it first.
+                if let Some(key) = ws
+                    .panes
+                    .iter()
+                    .find(|p| p.entity.read(cx).model.id == id)
+                    .map(|p| p.key)
+                {
+                    ws.close_pane(key, window, cx);
+                }
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {
+                        ws.sessions.remove(&id);
+                        ws.toast(
+                            crate::components::toast::ToastKind::Info,
+                            None,
+                            "Session deleted",
+                            cx,
+                        );
+                    }
+                    Err(error) => ws.toast(
+                        crate::components::toast::ToastKind::Error,
+                        None,
+                        format!("Deleting the session: {error}"),
+                        cx,
+                    ),
+                }
+            }),
+        });
+    }
+
+    /// The confirmation dialog, when one is pending.
+    pub(crate) fn render_confirm(
+        &self,
+        t: &OinoTheme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let c = self.confirm.clone()?;
+        let e = cx.entity().downgrade();
+        let run = Rc::clone(&c.run);
+        let close: crate::components::dialog::OnClose = {
+            let e = e.clone();
+            Rc::new(move |_, cx: &mut App| {
+                let _ = e.update(cx, |ws, cx| {
+                    ws.confirm = None;
+                    cx.notify();
+                });
+            })
+        };
+        let cancel = Rc::clone(&close);
+        Some(crate::components::dialog::modal_frame(
+            t,
+            "confirm",
+            c.title.clone(),
+            size::DIALOG_SM,
+            div()
+                .text_role(t, TextRole::Base)
+                .text_color(t.fg_subtle())
+                .child(c.body.clone())
+                .into_any_element(),
+            vec![
+                Btn::new("confirm-cancel")
+                    .label("Cancel")
+                    .variant(Variant::Ghost)
+                    .on_click(move |_, w, cx| cancel(w, cx))
+                    .into_any_element(),
+                Btn::new("confirm-ok")
+                    .label(c.action.clone())
+                    .icon(IconName::Trash)
+                    .variant(Variant::Danger)
+                    .on_click(move |_, window, cx| {
+                        let run = Rc::clone(&run);
+                        let _ = e.update(cx, |ws, cx| {
+                            ws.confirm = None;
+                            run(ws, window, cx);
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element(),
+            ],
+            close,
+        ))
+    }
+
+    /// Session-list keys (design.md §4.7): ↑/↓ move, ←/→ collapse/expand a group, Enter
+    /// opens, ⌘Enter opens in a new pane, F2 renames, Delete asks to delete, `/` searches.
+    fn on_sidebar_key(
+        &mut self,
+        event: &gpui_kit::KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rows = self.side_rows();
+        if rows.is_empty() {
+            return;
+        }
+        let n = rows.len();
+        let cur = self.sidebar_cursor.unwrap_or(0).min(n - 1);
+        let primary = crate::components::secondary(&event.keystroke.modifiers);
+        let row = rows.get(cur).cloned();
+        match (event.keystroke.key.as_str(), row) {
+            ("down", _) => self.sidebar_cursor = Some((cur + 1).min(n - 1)),
+            ("up", _) => self.sidebar_cursor = Some(cur.saturating_sub(1)),
+            ("home", _) => self.sidebar_cursor = Some(0),
+            ("end", _) => self.sidebar_cursor = Some(n - 1),
+            ("left", Some(SideRow::Group { cwd, collapsed, .. })) => {
+                if !collapsed {
+                    self.sessions.toggle_group(&cwd);
+                }
+            }
+            ("left", Some(SideRow::Session(_))) => {
+                // Up to the owning group header.
+                if let Some(g) = rows[..cur]
+                    .iter()
+                    .rposition(|r| matches!(r, SideRow::Group { .. }))
+                {
+                    self.sidebar_cursor = Some(g);
+                }
+            }
+            ("right", Some(SideRow::Group { cwd, collapsed, .. })) => {
+                if collapsed {
+                    self.sessions.toggle_group(&cwd);
+                } else {
+                    self.sidebar_cursor = Some((cur + 1).min(n - 1));
+                }
+            }
+            ("enter" | "space", Some(SideRow::Group { cwd, .. })) => {
+                self.sessions.toggle_group(&cwd);
+            }
+            ("enter", Some(SideRow::Session(e))) => {
+                if primary {
+                    self.focused = None;
+                }
+                self.open_session(&e.summary.id, window, cx);
+            }
+            ("f2", Some(SideRow::Session(e))) => {
+                self.side_action(&e.summary.id, SideAction::Rename, window, cx);
+            }
+            ("delete" | "backspace", Some(SideRow::Session(e))) => {
+                self.confirm_delete(&e.summary.id, &e.summary.title, e.summary.path.clone());
+            }
+            ("/", _) => self.open_palette("", window, cx),
+            ("escape", _) => {
+                self.sidebar_cursor = None;
+                if let Some(p) = self.active_pane().cloned() {
+                    crate::views::session_pane::SessionPane::focus(&p, window, cx);
+                }
+            }
+            _ => return,
+        }
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     fn side_rows(&self) -> Vec<SideRow> {
         let mut rows = Vec::new();
         match self.sidebar_view {
@@ -121,6 +326,8 @@ impl Workspace {
         t: &OinoTheme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        // Keyboard cursor ring only while the list has focus (focus-visible).
+        let cursor = self.sidebar_cursor == Some(ix) && self.sidebar_kb;
         match row {
             SideRow::Group {
                 cwd,
@@ -130,17 +337,86 @@ impl Workspace {
             } => {
                 let toggle = cwd.clone();
                 let new_cwd = cwd.clone();
+                let menu_cwd = cwd.clone();
                 let group = SharedString::from(format!("sg{ix}"));
+                let group_menu_open = self.group_menu.as_deref() == Some(cwd.as_str());
+                let e = cx.entity().downgrade();
+                let more = popover(
+                    Btn::icon_only(
+                        ElementId::NamedInteger("group-more".into(), ix as u64),
+                        IconName::Ellipsis,
+                        "Workspace actions",
+                    )
+                    .size(BtnSize::Xs)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.group_menu = Some(menu_cwd.clone());
+                        cx.notify();
+                    })),
+                    group_menu_open,
+                    Placement::BelowEnd,
+                    || {
+                        let (e1, e2, e3) = (e.clone(), e.clone(), e.clone());
+                        let (c1, c2, c3) = (cwd.clone(), cwd.clone(), cwd.clone());
+                        menu(
+                            "group-menu",
+                            t,
+                            size::MENU_MIN,
+                            vec![
+                                MenuEntry::item("Reveal folder", move |_, cx| {
+                                    cx.reveal_path(std::path::Path::new(&c1));
+                                    let _ = e1.update(cx, |ws, cx| {
+                                        ws.group_menu = None;
+                                        cx.notify();
+                                    });
+                                })
+                                .icon(IconName::FolderSearch),
+                                MenuEntry::item("Copy path", move |_, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(c2.clone()));
+                                    let _ = e2.update(cx, |ws, cx| {
+                                        ws.group_menu = None;
+                                        cx.notify();
+                                    });
+                                })
+                                .icon(IconName::Copy),
+                                MenuEntry::Separator,
+                                MenuEntry::item("Remove from sidebar", move |_, cx| {
+                                    let _ = e3.update(cx, |ws, cx| {
+                                        ws.group_menu = None;
+                                        ws.sessions.hide_group(&c3);
+                                        cx.notify();
+                                    });
+                                })
+                                .icon(IconName::X),
+                            ],
+                        )
+                        .into_any_element()
+                    },
+                    {
+                        let e = cx.entity().downgrade();
+                        move |_: &mut Window, cx: &mut App| {
+                            let _ = e.update(cx, |ws, cx| {
+                                ws.group_menu = None;
+                                cx.notify();
+                            });
+                        }
+                    },
+                );
                 div()
                     .id(ElementId::NamedInteger("side-group".into(), ix as u64))
                     .group(group.clone())
                     .flex()
                     .items_center()
                     .gap(px(space::S1_5))
-                    .h(px(size::CONTROL_LG))
+                    .h(px(if self.settings.sidebar_compact {
+                        size::CONTROL
+                    } else {
+                        size::CONTROL_LG
+                    }))
                     .px(px(space::S2))
                     .rounded(px(radius::R_LG))
                     .cursor_pointer()
+                    .when(cursor, |el| el.border_2().border_color(t.focus()))
                     .hover(|s| s.bg(t.hover()))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                         this.sessions.toggle_group(&toggle);
@@ -175,8 +451,11 @@ impl Workspace {
                     })
                     .child(
                         div()
-                            .invisible()
-                            .group_hover(group, gpui_kit::Styled::visible)
+                            .flex()
+                            .when(!group_menu_open, |el| {
+                                el.invisible().group_hover(group, gpui_kit::Styled::visible)
+                            })
+                            .child(more)
                             .child(
                                 Btn::icon_only(
                                     ElementId::NamedInteger("group-new".into(), ix as u64),
@@ -209,7 +488,9 @@ impl Workspace {
                 };
                 let lead: AnyElement = match entry.status {
                     LiveStatus::Running => dot(t, DotKind::Running).into_any_element(),
-                    LiveStatus::Attention => dot(t, DotKind::Waiting).into_any_element(),
+                    LiveStatus::Attention => dot(t, DotKind::Waiting)
+                        .opacity(crate::components::unicrab::pulse(cx))
+                        .into_any_element(),
                     LiveStatus::Unread => dot(t, DotKind::Unread).into_any_element(),
                     LiveStatus::Idle => div().w(px(size::DOT)).into_any_element(),
                 };
@@ -219,7 +500,11 @@ impl Workspace {
                     .flex()
                     .items_center()
                     .gap(px(space::S2))
-                    .h(px(size::CONTROL_LG))
+                    .h(px(if self.settings.sidebar_compact {
+                        size::CONTROL
+                    } else {
+                        size::CONTROL_LG
+                    }))
                     .pl(px(if self.sidebar_view == SidebarView::Group && !pinned {
                         space::S6
                     } else {
@@ -229,6 +514,7 @@ impl Workspace {
                     .rounded(px(radius::R_LG))
                     .cursor_pointer()
                     .when(is_active, |el| el.bg(t.selected()))
+                    .when(cursor, |el| el.border_2().border_color(t.focus()))
                     .hover(|s| s.bg(t.hover()))
                     .on_click(cx.listener({
                         let id = id.clone();
@@ -264,41 +550,99 @@ impl Workspace {
                     menu_open,
                     Placement::BelowStart,
                     || {
-                        let (e1, e2, e3) = (e.clone(), e.clone(), e.clone());
-                        let (i1, i2, i3) = (id.clone(), id.clone(), id.clone());
+                        let path = entry.summary.path.clone();
+                        let title = entry.summary.title.clone();
+                        let act = |label: &'static str,
+                                   glyph: IconName,
+                                   f: Rc<
+                            dyn Fn(&mut Workspace, &str, &mut Window, &mut Context<Workspace>),
+                        >| {
+                            let e = e.clone();
+                            let id = id.clone();
+                            MenuEntry::item(label, move |window, cx| {
+                                let _ = e.update(cx, |ws, cx| {
+                                    ws.sidebar_menu = None;
+                                    f(ws, &id, window, cx);
+                                    cx.notify();
+                                });
+                            })
+                            .icon(glyph)
+                        };
+                        let copy_id = id.clone();
+                        let reveal = path.clone();
+                        let delete_path = path.clone();
                         menu(
                             "session-menu",
                             t,
                             size::MENU_MIN,
                             vec![
-                                MenuEntry::item(
+                                act(
+                                    "Rename",
+                                    IconName::TextCursorInput,
+                                    Rc::new(|ws, id, window, cx| {
+                                        ws.side_action(id, SideAction::Rename, window, cx);
+                                    }),
+                                )
+                                .keys("F2"),
+                                act(
                                     if pinned { "Unpin" } else { "Pin" },
+                                    IconName::Pin,
+                                    Rc::new(|ws, id, _, _| ws.sessions.toggle_pin(id)),
+                                ),
+                                act(
+                                    "Fork",
+                                    IconName::GitFork,
+                                    Rc::new(|ws, id, window, cx| {
+                                        ws.side_action(id, SideAction::Fork, window, cx);
+                                    }),
+                                ),
+                                act(
+                                    "Open in new pane",
+                                    IconName::PanelRight,
+                                    Rc::new(|ws, id, window, cx| {
+                                        ws.focused = None;
+                                        ws.open_session(id, window, cx);
+                                    }),
+                                )
+                                .keys("⌘↵"),
+                                MenuEntry::Separator,
+                                MenuEntry::item("Copy session id", {
+                                    let e = e.clone();
                                     move |_, cx| {
-                                        let _ = e1.update(cx, |ws, cx| {
-                                            ws.sessions.toggle_pin(&i1);
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            copy_id.clone(),
+                                        ));
+                                        let _ = e.update(cx, |ws, cx| {
                                             ws.sidebar_menu = None;
                                             cx.notify();
                                         });
-                                    },
-                                )
-                                .icon(IconName::Pin),
-                                MenuEntry::item("Open in new pane", move |window, cx| {
-                                    let _ = e2.update(cx, |ws, cx| {
-                                        ws.sidebar_menu = None;
-                                        ws.focused = None;
-                                        ws.open_session(&i2, window, cx);
-                                    });
-                                })
-                                .icon(IconName::PanelRight)
-                                .keys("⌘↵"),
-                                MenuEntry::item("Copy session id", move |_, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(i3.clone()));
-                                    let _ = e3.update(cx, |ws, cx| {
-                                        ws.sidebar_menu = None;
-                                        cx.notify();
-                                    });
+                                    }
                                 })
                                 .icon(IconName::Copy),
+                                MenuEntry::item("Reveal file", {
+                                    let e = e.clone();
+                                    move |_, cx| {
+                                        if let Some(p) = &reveal {
+                                            cx.reveal_path(p);
+                                        }
+                                        let _ = e.update(cx, |ws, cx| {
+                                            ws.sidebar_menu = None;
+                                            cx.notify();
+                                        });
+                                    }
+                                })
+                                .icon(IconName::FolderSearch)
+                                .disabled(path.is_none()),
+                                MenuEntry::Separator,
+                                act(
+                                    "Delete…",
+                                    IconName::Trash,
+                                    Rc::new(move |ws, id, _, _| {
+                                        ws.confirm_delete(id, &title, delete_path.clone());
+                                    }),
+                                )
+                                .keys("Del")
+                                .disabled(path.is_none()),
                             ],
                         )
                         .into_any_element()
@@ -322,16 +666,27 @@ impl Workspace {
     #[allow(clippy::too_many_lines, reason = "sidebar layout")]
     pub(crate) fn render_sidebar(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let t = OinoTheme::get(cx);
+        self.sidebar_kb = self.sidebar_focus.is_focused(window);
         let route = self.route;
         let rows = self.side_rows();
         let count = rows.len();
         let has_board = self
             .active_pane()
             .is_some_and(|p| p.read(cx).has_command("unipi:kanboard"));
+        let board_ready = self
+            .active_pane()
+            .and_then(|p| {
+                p.read(cx)
+                    .model
+                    .ui
+                    .panel(crate::model::kanban::BOARD_PANEL)
+                    .and_then(|panel| crate::model::kanban::recognise(&panel.spec))
+            })
+            .map_or(0, |b| crate::model::kanban::ready_count(&b));
         let model_label = self
             .active_pane()
             .map(|p| p.read(cx).model.model_label())
@@ -358,6 +713,21 @@ impl Workspace {
         let view_ix = usize::from(self.sidebar_view == SidebarView::Recent);
         let switch_entity = cx.entity().downgrade();
         let mac = cfg!(target_os = "macos");
+        let list = div()
+            .id("sidebar-list")
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .track_focus(&self.sidebar_focus)
+            .on_key_down(cx.listener(Self::on_sidebar_key))
+            .on_mouse_down(
+                gpui_kit::MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    window.focus(&this.sidebar_focus, cx);
+                }),
+            )
+            .child(list);
         div()
             .flex()
             .flex_col()
@@ -365,43 +735,48 @@ impl Workspace {
             .pr(px(space::S1))
             .gap(px(space::HALF))
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(space::S1))
-                    .h(px(size::HEADER))
-                    .when(mac, |el| el.pl(px(size::TRAFFIC_LIGHTS)))
-                    .child(
-                        Btn::icon_only("sb-toggle", IconName::PanelLeft, "Hide sidebar")
-                            .tooltip("Hide sidebar", Some("⌘B"))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.sidebar_open = false;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Btn::icon_only("sb-back", IconName::ArrowLeft, "Back")
-                            .size(BtnSize::Sm)
-                            .disabled(self.history.1 == 0)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.history_step(-1, window, cx);
-                            })),
-                    )
-                    .child(
-                        Btn::icon_only("sb-forward", IconName::ChevronRight, "Forward")
-                            .size(BtnSize::Sm)
-                            .disabled(self.history.1 + 1 >= self.history.0.len())
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.history_step(1, window, cx)),
-                            ),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .id("sb-crab")
-                            .tooltip(crate::components::tooltip::tip(crab.label(), None))
-                            .child(unicrab(crab, size::CRAB.0, cx)),
-                    ),
+                {
+                    let top = div()
+                        .id("sidebar-top")
+                        .flex()
+                        .items_center()
+                        .gap(px(space::S1))
+                        .h(px(size::HEADER));
+                    if crate::components::window_chrome::client_decorated(window) {
+                        crate::components::window_chrome::drag_region(
+                            top,
+                            Rc::clone(&self.drag_armed),
+                        )
+                    } else {
+                        top
+                    }
+                }
+                .when(mac, |el| el.pl(px(size::TRAFFIC_LIGHTS)))
+                .child(
+                    Btn::icon_only("sb-toggle", IconName::PanelLeft, "Hide sidebar")
+                        .tooltip("Hide sidebar", Some("⌘B"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.sidebar_open = false;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Btn::icon_only("sb-back", IconName::ArrowLeft, "Back")
+                        .size(BtnSize::Sm)
+                        .disabled(self.history.1 == 0)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.history_step(-1, window, cx);
+                        })),
+                )
+                .child(
+                    Btn::icon_only("sb-forward", IconName::ChevronRight, "Forward")
+                        .size(BtnSize::Sm)
+                        .disabled(self.history.1 + 1 >= self.history.0.len())
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.history_step(1, window, cx)),
+                        ),
+                )
+                .child(div().flex_1()),
             )
             .child(
                 nav_item(
@@ -439,6 +814,9 @@ impl Workspace {
                         None,
                         route == Route::Board,
                     )
+                    .when(board_ready > 0, |el| {
+                        el.child(pill(&t, t.accent(), t.fg(), board_ready.to_string()))
+                    })
                     .on_click(
                         cx.listener(|this, _: &ClickEvent, window, cx| this.open_board(window, cx)),
                     ),
@@ -481,6 +859,23 @@ impl Workspace {
                         }),
                     ))
                     .child(div().flex_1())
+                    .child(
+                        Btn::icon_only(
+                            "sb-sort",
+                            IconName::ArrowUpDown,
+                            if self.sessions.sorted_by_name() {
+                                "Sort: name (click for recent)"
+                            } else {
+                                "Sort: recent (click for name)"
+                            },
+                        )
+                        .size(BtnSize::Sm)
+                        .selected(self.sessions.sorted_by_name())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.sessions.toggle_sort();
+                            cx.notify();
+                        })),
+                    )
                     .child(
                         Btn::icon_only("sb-collapse", IconName::Minus, "Collapse all")
                             .size(BtnSize::Sm)
@@ -530,7 +925,15 @@ impl Workspace {
                             .text_color(t.fg_subtlest())
                             .child(SharedString::from(model_label)),
                     )
-                    .child(kbd(&t, "⌘K")),
+                    .child(kbd(&t, "⌘M"))
+                    .child(
+                        // Aggregate Unicrab state glyph (design.md §4.7 footer, unipi §1.5.1).
+                        div()
+                            .id("sb-crab")
+                            .px(px(space::S1))
+                            .tooltip(crate::components::tooltip::tip(crab.label(), None))
+                            .child(unicrab(crab, size::CRAB.0, cx)),
+                    ),
             )
             .into_any_element()
     }

@@ -64,6 +64,8 @@ pub struct SessionList {
     live: HashMap<String, LiveStatus>,
     pinned: HashSet<String>,
     collapsed: HashSet<String>,
+    hidden: HashSet<String>,
+    by_name: bool,
     query: String,
 }
 
@@ -140,6 +142,35 @@ impl SessionList {
         }
     }
 
+    /// Drops a session from the list (deleted).
+    pub fn remove(&mut self, id: &str) {
+        self.all.retain(|s| s.id != id);
+        self.live.remove(id);
+        self.pinned.remove(id);
+    }
+
+    /// Hides a workspace group from the sidebar ("Remove"; its sessions stay on disk and the
+    /// group comes back when a session there is opened again).
+    pub fn hide_group(&mut self, cwd: &str) {
+        self.hidden.insert(cwd.to_owned());
+    }
+
+    /// Shows a hidden group again.
+    pub fn show_group(&mut self, cwd: &str) {
+        self.hidden.remove(cwd);
+    }
+
+    /// Toggles group order: most recent first ↔ by name (the ⇅ button).
+    pub fn toggle_sort(&mut self) {
+        self.by_name = !self.by_name;
+    }
+
+    /// Whether groups are sorted by name.
+    #[must_use]
+    pub fn sorted_by_name(&self) -> bool {
+        self.by_name
+    }
+
     /// Toggles a workspace group open/closed.
     pub fn toggle_group(&mut self, cwd: &str) {
         if !self.collapsed.remove(cwd) {
@@ -207,8 +238,11 @@ impl SessionList {
     #[must_use]
     pub fn groups(&self) -> Vec<WorkspaceGroup> {
         let mut groups: Vec<WorkspaceGroup> = Vec::new();
-        let mut sorted: Vec<&SessionSummary> =
-            self.all.iter().filter(|s| self.matches(s)).collect();
+        let mut sorted: Vec<&SessionSummary> = self
+            .all
+            .iter()
+            .filter(|s| self.matches(s) && !self.hidden.contains(&s.cwd))
+            .collect();
         sorted.sort_by_key(|s| std::cmp::Reverse(s.modified_ms));
         for s in sorted {
             let entry = self.entry(s);
@@ -221,6 +255,9 @@ impl SessionList {
                 }),
             }
         }
+        if self.by_name {
+            groups.sort_by_key(|g| g.label.to_lowercase());
+        }
         groups
     }
 }
@@ -228,6 +265,25 @@ impl SessionList {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remove_hide_and_sort() {
+        let mut list = SessionList::new();
+        list.set_sessions(vec![
+            summary("a", "/w/zeta", "A", 3),
+            summary("b", "/w/alpha", "B", 2),
+            summary("c", "/w/zeta", "C", 1),
+        ]);
+        assert_eq!(list.groups()[0].label, "zeta");
+        list.toggle_sort();
+        assert_eq!(list.groups()[0].label, "alpha");
+        list.hide_group("/w/alpha");
+        assert_eq!(list.groups().len(), 1);
+        list.remove("a");
+        assert_eq!(list.groups()[0].sessions.len(), 1);
+        list.show_group("/w/alpha");
+        assert_eq!(list.groups().len(), 2);
+    }
 
     fn summary(id: &str, cwd: &str, title: &str, modified_ms: i64) -> SessionSummary {
         SessionSummary {

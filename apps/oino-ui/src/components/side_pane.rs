@@ -125,6 +125,7 @@ fn tab_spec(tab: &SideTab, title: &str) -> TabSpec {
         ),
         SideTab::Diff { title, .. } => (IconName::FilePen, split_path(title).0),
         SideTab::Output { .. } => (IconName::SquareTerminal, "Output".to_owned()),
+        SideTab::Browser => (IconName::Globe, title.to_owned()),
     };
     TabSpec {
         key: SharedString::from(format!("{tab:?}").chars().take(48).collect::<String>()),
@@ -142,7 +143,7 @@ fn file_card(t: &OinoTheme, change: &FileChange, key: usize) -> AnyElement {
         .flex()
         .flex_col()
         .w_full()
-        .rounded(px(radius::R_XL))
+        .rounded(px(radius::R_CARD))
         .bg(t.card())
         .border_1()
         .border_color(t.card_border())
@@ -200,6 +201,99 @@ fn file_card(t: &OinoTheme, change: &FileChange, key: usize) -> AnyElement {
         .into_any_element()
 }
 
+#[cfg(feature = "terminal")]
+impl SessionPane {
+    fn spawn_terminal(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<(
+        gpui_kit::Entity<crate::components::terminal::TerminalView>,
+        gpui_kit::Subscription,
+    )> {
+        use crate::components::terminal::{Shell, TerminalEvent, TerminalView};
+        use gpui_kit::AppContext as _;
+        let shell = match Shell::spawn(Path::new(&self.model.cwd)) {
+            Ok(s) => s,
+            Err(error) => {
+                tracing::warn!(%error, "starting a terminal");
+                return None;
+            }
+        };
+        let view = cx.new(|cx| TerminalView::new(shell, cx));
+        let sub = cx.subscribe(&view, |this, view, event: &TerminalEvent, cx| match event {
+            TerminalEvent::OpenUrl(url) => this.open_link(url, cx),
+            TerminalEvent::Exited => {
+                for tab in &mut this.terminals {
+                    tab.views.retain(|v| v != &view);
+                }
+                let gone: Vec<u64> = this
+                    .terminals
+                    .iter()
+                    .filter(|t| t.views.is_empty())
+                    .map(|t| t.id)
+                    .collect();
+                for id in gone {
+                    this.close_terminal(id, cx);
+                }
+                cx.notify();
+            }
+            TerminalEvent::Title(_) => cx.notify(),
+        });
+        Some((view, sub))
+    }
+
+    /// Opens a new Terminal tab in the bottom frame (the `+` button).
+    pub fn new_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((view, sub)) = self.spawn_terminal(cx) else {
+            cx.emit(crate::views::session_pane::PaneEvent::Toast(
+                "Could not start a shell".into(),
+            ));
+            return;
+        };
+        view.update(cx, |v, cx| v.focus(window, cx));
+        let id = self.next_terminal;
+        self.next_terminal += 1;
+        self.terminals
+            .push(crate::views::session_pane::TerminalTab::new(id, view, sub));
+        self.bottom.0.push(BottomTab::Terminal(id));
+        self.bottom.1 = self.bottom.0.len() - 1;
+        cx.emit(crate::views::session_pane::PaneEvent::ShowBottom);
+        cx.notify();
+    }
+
+    /// Splits the active Terminal tab (two shells side by side).
+    pub fn split_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(BottomTab::Terminal(id)) = self.bottom.0.get(self.bottom.1).cloned() else {
+            return;
+        };
+        if self
+            .terminals
+            .iter()
+            .any(|t| t.id == id && t.views.len() >= 2)
+        {
+            return;
+        }
+        let Some((view, sub)) = self.spawn_terminal(cx) else {
+            return;
+        };
+        view.update(cx, |v, cx| v.focus(window, cx));
+        if let Some(tab) = self.terminals.iter_mut().find(|t| t.id == id) {
+            tab.push(view, sub);
+        }
+        cx.notify();
+    }
+
+    /// Closes Terminal tab `id` (its shells shut down).
+    pub fn close_terminal(&mut self, id: u64, cx: &mut Context<Self>) {
+        self.terminals.retain(|t| t.id != id);
+        self.bottom.0.retain(|b| *b != BottomTab::Terminal(id));
+        if self.bottom.1 >= self.bottom.0.len() {
+            self.bottom.1 = self.bottom.0.len().saturating_sub(1);
+        }
+        cx.notify();
+    }
+}
+
 impl SessionPane {
     /// Opens the bottom frame on the Tasks tab.
     pub fn open_bottom_tasks(&mut self, cx: &mut Context<Self>) {
@@ -216,10 +310,140 @@ impl SessionPane {
         cx.notify();
     }
 
+    fn side_tab_bar(&self, t: &OinoTheme, specs: &[TabSpec], cx: &mut Context<Self>) -> AnyElement {
+        let entity = cx.entity().downgrade();
+        let e2 = entity.clone();
+        let on_select: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(move |i, _, cx| {
+            let _ = entity.update(cx, |p, cx| {
+                p.side.active = i;
+                cx.notify();
+            });
+        });
+        let on_close: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(move |i, _, cx| {
+            let _ = e2.update(cx, |p, cx| {
+                match p.side.tabs.get(i).cloned() {
+                    Some(SideTab::Panel(id)) => p.close_panel(&id, cx),
+                    #[cfg(feature = "browser")]
+                    Some(SideTab::Browser) => {
+                        p.browser = None;
+                        p.side.close_at(i);
+                    }
+                    _ => {
+                        p.side.close_at(i);
+                    }
+                }
+                cx.notify();
+            });
+        });
+        let launcher = Btn::icon_only("side-add", IconName::Plus, "Open a tab")
+            .size(BtnSize::Sm)
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.side.tabs.retain(|t| *t != SideTab::Review);
+                this.side.open(SideTab::Review);
+                cx.notify();
+            }))
+            .into_any_element();
+        let mut trailing = vec![launcher];
+        if self.header_state.controls_side {
+            trailing.push(crate::components::window_chrome::window_controls(
+                t,
+                self.header_state.maximized,
+            ));
+        }
+        frame_tab_bar(
+            "side",
+            t,
+            specs,
+            self.side.active,
+            on_select,
+            on_close,
+            trailing,
+        )
+        .into_any_element()
+    }
+
+    fn browser_title(&self, cx: &App) -> String {
+        #[cfg(feature = "browser")]
+        if let Some(b) = &self.browser {
+            return b.read(cx).title();
+        }
+        let _ = cx;
+        "Browser".to_owned()
+    }
+
+    /// The Browser tab body (creates the view and applies a pending URL).
+    fn render_browser(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        #[cfg(feature = "browser")]
+        {
+            let pending = self.browser_pending.take();
+            match (&self.browser, pending) {
+                (Some(b), Some(url)) => b.update(cx, |b, cx| b.load(&url, cx)),
+                (None, url) => {
+                    let url = url.unwrap_or_else(|| "about:blank".to_owned());
+                    let view = gpui_kit::AppContext::new(cx, |cx| {
+                        crate::components::browser::BrowserView::new(&url, window, cx)
+                    });
+                    cx.subscribe(
+                        &view,
+                        |_, _, _: &crate::components::browser::BrowserEvent, cx| {
+                            cx.notify();
+                        },
+                    )
+                    .detach();
+                    self.browser = Some(view);
+                }
+                (Some(_), None) => {}
+            }
+            if let Some(b) = &self.browser {
+                return b.clone().into_any_element();
+            }
+        }
+        let _ = window;
+        let t = OinoTheme::get(cx);
+        empty_state(
+            &t,
+            IconName::Globe,
+            "No embedded browser in this build",
+            None,
+            Vec::new(),
+        )
+        .into_any_element()
+    }
+
     /// The side frame: tab bar + active tab content (launcher grid when empty).
     #[allow(clippy::too_many_lines, reason = "one arm per tab kind")]
     pub fn render_side(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let t = OinoTheme::get(cx);
+        if self.side.current() == Some(&SideTab::Browser) {
+            // The browser fills the pane edge to edge (no padding / scroll wrapper).
+            let specs: Vec<TabSpec> = self
+                .side
+                .tabs
+                .iter()
+                .map(|tab| {
+                    let title = match tab {
+                        SideTab::Browser => self.browser_title(cx),
+                        SideTab::Panel(id) => self
+                            .model
+                            .ui
+                            .panel(id)
+                            .map(|p| p.title.clone())
+                            .unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    tab_spec(tab, &title)
+                })
+                .collect();
+            let bar = self.side_tab_bar(&t, &specs, cx);
+            let body = self.render_browser(window, cx);
+            return div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .child(bar)
+                .child(div().flex_1().min_h_0().child(body))
+                .into_any_element();
+        }
         // Panels closed by their extension drop their tabs.
         let ui = &self.model.ui;
         self.side.tabs.retain(|tab| match tab {
@@ -241,46 +465,14 @@ impl SessionPane {
                         .panel(id)
                         .map(|p| p.title.clone())
                         .unwrap_or_default(),
+                    SideTab::Browser => self.browser_title(cx),
                     _ => String::new(),
                 };
                 tab_spec(tab, &title)
             })
             .collect();
-        let entity = cx.entity().downgrade();
-        let e2 = entity.clone();
-        let on_select: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(move |i, _, cx| {
-            let _ = entity.update(cx, |p, cx| {
-                p.side.active = i;
-                cx.notify();
-            });
-        });
-        let on_close: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(move |i, _, cx| {
-            let _ = e2.update(cx, |p, cx| {
-                if let Some(SideTab::Panel(id)) = p.side.tabs.get(i).cloned() {
-                    p.close_panel(&id, cx);
-                } else {
-                    p.side.close_at(i);
-                }
-                cx.notify();
-            });
-        });
-        let launcher = Btn::icon_only("side-add", IconName::Plus, "Open a tab")
-            .size(BtnSize::Sm)
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.side.tabs.retain(|t| *t != SideTab::Review);
-                this.side.open(SideTab::Review);
-                cx.notify();
-            }))
-            .into_any_element();
-        let bar = frame_tab_bar(
-            "side",
-            &t,
-            &specs,
-            self.side.active,
-            on_select,
-            on_close,
-            vec![launcher],
-        );
+        let bar = self.side_tab_bar(&t, &specs, cx);
+        let mut review: Option<Vec<AnyElement>> = None;
         let body: AnyElement =
             match self.side.current().cloned() {
                 None => self.render_launcher(&t, cx),
@@ -298,22 +490,39 @@ impl SessionPane {
                     } else {
                         let added: usize = changes.iter().map(|c| c.added).sum();
                         let removed: usize = changes.iter().map(|c| c.removed).sum();
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(space::S3))
-                            .child(
+                        let cursor = self.diff_cursor;
+                        // Flat children of the scroll container so n/p can scroll to a card.
+                        review = Some(
+                            std::iter::once(
                                 div()
+                                    .pb(px(space::S3))
                                     .text_role(&t, TextRole::Sm)
                                     .text_color(t.fg_subtle())
                                     .child(format!(
-                                        "{} file{} changed · +{added} −{removed}",
+                                        "{} file{} changed · +{added} −{removed} · n / p to step",
                                         changes.len(),
                                         if changes.len() == 1 { "" } else { "s" }
-                                    )),
+                                    ))
+                                    .into_any_element(),
                             )
-                            .children(changes.iter().enumerate().map(|(i, c)| file_card(&t, c, i)))
-                            .into_any_element()
+                            .chain(changes.iter().enumerate().map(|(i, c)| {
+                                div()
+                                    .pb(px(space::S3))
+                                    .when(cursor == Some(i), |el| {
+                                        el.child(
+                                            div()
+                                                .rounded(px(radius::R_CARD))
+                                                .border_2()
+                                                .border_color(t.focus())
+                                                .child(file_card(&t, c, i)),
+                                        )
+                                    })
+                                    .when(cursor != Some(i), |el| el.child(file_card(&t, c, i)))
+                                    .into_any_element()
+                            }))
+                            .collect(),
+                        );
+                        div().into_any_element()
                     }
                 }
                 Some(SideTab::Diff { title, patch }) => {
@@ -383,6 +592,7 @@ impl SessionPane {
                 Some(SideTab::Tree) => self.render_tree(&t, cx),
                 Some(SideTab::Files) => self.render_files(&t, cx),
                 Some(SideTab::Panel(id)) => self.render_panel_body(&id, true, window, cx),
+                Some(SideTab::Browser) => self.render_browser(window, cx),
             };
         let toolbar = match self.side.current() {
             Some(SideTab::Panel(id)) => self.panel_toolbar(id, &t, cx),
@@ -400,8 +610,18 @@ impl SessionPane {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.side_scroll)
+                    .track_focus(&self.side_focus)
+                    .on_key_down(cx.listener(Self::on_pane_key))
+                    .on_mouse_down(
+                        gpui_kit::MouseButton::Left,
+                        cx.listener(|this, _, window, cx| window.focus(&this.side_focus, cx)),
+                    )
                     .p(px(space::S3))
-                    .child(body),
+                    .map(|el| match review {
+                        Some(children) => el.children(children),
+                        None => el.child(body),
+                    }),
             )
             .into_any_element()
     }
@@ -413,6 +633,9 @@ impl SessionPane {
             (IconName::ListChecks, "Plan".into(), SideTab::Plan),
             (IconName::ListTree, "Tree".into(), SideTab::Tree),
         ];
+        if crate::platform::BrowserSupport::get(cx) {
+            items.push((IconName::Globe, "Browser".into(), SideTab::Browser));
+        }
         for (id, title) in self.side_panels() {
             items.push((IconName::Blocks, title, SideTab::Panel(id)));
         }
@@ -433,7 +656,7 @@ impl SessionPane {
                             .gap(px(space::S2))
                             .w(px(size::SIDEBAR / 2.0))
                             .p(px(space::S3))
-                            .rounded(px(radius::R_XL))
+                            .rounded(px(radius::R_CARD))
                             .border_1()
                             .border_color(t.border())
                             .cursor_pointer()
@@ -716,16 +939,107 @@ impl SessionPane {
         if panel.id == kanban::BOARD_PANEL
             && let Some(board) = kanban::recognise(&panel.spec)
         {
-            return ous::kanban::board(&mut o, &board, false, id, window, cx);
+            let opts = ous::kanban::BoardOptions {
+                inline_detail: true,
+                ..Default::default()
+            };
+            return ous::kanban::board(&mut o, &board, &opts, id, window, cx);
         }
         ous::render(&panel.spec, id, &mut o, window, cx)
     }
 
-    /// The bottom frame: Output (shell commands of this session), Tasks, `bottomPane` panels.
+    fn terminal_title(&self, id: u64) -> String {
+        #[cfg(feature = "terminal")]
+        if let Some(tab) = self.terminals.iter().find(|t| t.id == id) {
+            let n = self.terminals.iter().position(|t| t.id == id).unwrap_or(0) + 1;
+            return format!(
+                "Terminal {n}{}",
+                if tab.views.len() > 1 { " ⫼" } else { "" }
+            );
+        }
+        format!("Terminal {id}")
+    }
+
+    /// Trailing buttons of the bottom tab bar: new terminal, split.
+    fn bottom_actions(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        #[cfg(feature = "terminal")]
+        {
+            let on_terminal = matches!(
+                self.bottom.0.get(self.bottom.1),
+                Some(BottomTab::Terminal(_))
+            );
+            let mut out = vec![
+                Btn::icon_only("term-new", IconName::Plus, "New terminal")
+                    .tooltip("New terminal", Some("⌃⇧`"))
+                    .size(BtnSize::Sm)
+                    .on_click(cx.listener(|this, _, window, cx| this.new_terminal(window, cx)))
+                    .into_any_element(),
+            ];
+            if on_terminal {
+                out.push(
+                    Btn::icon_only("term-split", IconName::Columns2, "Split terminal")
+                        .size(BtnSize::Sm)
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.split_terminal(window, cx)),
+                        )
+                        .into_any_element(),
+                );
+            }
+            out
+        }
+        #[cfg(not(feature = "terminal"))]
+        {
+            let _ = cx;
+            Vec::new()
+        }
+    }
+
+    fn render_terminal_tab(&self, id: u64, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
+        #[cfg(feature = "terminal")]
+        if let Some(tab) = self.terminals.iter().find(|tab| tab.id == id) {
+            let n = tab.views.len();
+            return div()
+                .flex()
+                .flex_row()
+                .flex_1()
+                .min_h_0()
+                .gap(px(space::S1))
+                .px(px(space::S2))
+                .py(px(space::S1))
+                .children(tab.views.iter().enumerate().map(|(i, v)| {
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .when(n > 1 && i > 0, |el| {
+                            el.border_l_1().border_color(t.border()).pl(px(space::S1))
+                        })
+                        .child(v.clone())
+                }))
+                .into_any_element();
+        }
+        let _ = (id, cx);
+        empty_state(
+            t,
+            IconName::SquareTerminal,
+            "Terminal closed",
+            None,
+            Vec::new(),
+        )
+        .into_any_element()
+    }
+
+    /// The bottom frame: Terminal tabs (desktop), Output (shell commands of this session),
+    /// Tasks, `bottomPane` panels.
     pub fn render_bottom(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let t = OinoTheme::get(cx);
         if self.bottom.0.is_empty() {
             self.bottom.0 = vec![BottomTab::Output, BottomTab::Tasks];
+            // The bottom frame opens on a shell (design.md A1.5).
+            #[cfg(feature = "terminal")]
+            if self.terminals.is_empty() {
+                self.new_terminal(window, cx);
+            }
         }
         let specs: Vec<TabSpec> = self
             .bottom
@@ -743,6 +1057,12 @@ impl SessionPane {
                     icon: IconName::Terminal,
                     title: "Tasks".into(),
                     closable: false,
+                },
+                BottomTab::Terminal(id) => TabSpec {
+                    key: SharedString::from(format!("term-{id}")),
+                    icon: IconName::SquareTerminal,
+                    title: SharedString::from(self.terminal_title(*id)),
+                    closable: true,
                 },
                 BottomTab::Panel(id) => TabSpec {
                     key: SharedString::from(id.clone()),
@@ -773,15 +1093,28 @@ impl SessionPane {
             }),
             Rc::new(move |i, _, cx| {
                 let _ = e2.update(cx, |p, cx| {
-                    if let Some(BottomTab::Panel(id)) = p.bottom.0.get(i).cloned() {
-                        p.close_panel(&id, cx);
+                    match p.bottom.0.get(i).cloned() {
+                        Some(BottomTab::Panel(id)) => p.close_panel(&id, cx),
+                        #[cfg(feature = "terminal")]
+                        Some(BottomTab::Terminal(id)) => p.close_terminal(id, cx),
+                        _ => {}
                     }
-                    p.bottom.1 = 0;
+                    p.bottom.1 = p.bottom.1.min(p.bottom.0.len().saturating_sub(1));
+                    cx.notify();
                 });
             }),
-            Vec::new(),
+            self.bottom_actions(cx),
         );
         let body = match self.bottom.0.get(self.bottom.1).cloned() {
+            Some(BottomTab::Terminal(id)) => {
+                return div()
+                    .flex()
+                    .flex_col()
+                    .size_full()
+                    .child(bar)
+                    .child(self.render_terminal_tab(id, &t, cx))
+                    .into_any_element();
+            }
             Some(BottomTab::Output) | None => {
                 let rows = self.model.transcript.rows();
                 let mut lines: Vec<String> = Vec::new();

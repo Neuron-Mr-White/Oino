@@ -894,6 +894,21 @@ pub(crate) struct DemoHost {
     default_cwd: std::path::PathBuf,
     next: AtomicU64,
     settings: Mutex<AppSettings>,
+    disabled: Mutex<Vec<String>>,
+}
+
+fn demo_name(id: &str) -> String {
+    match id {
+        "oino.router" => "Oino Router".into(),
+        "unipi.core" => "Core".into(),
+        "unipi.workflow" => "Workflow".into(),
+        "unipi.footer" => "Footer".into(),
+        "unipi.info-screen" => "Info screen".into(),
+        "unipi.kanboard" => "Kanboard".into(),
+        "unipi.memory" => "Memory".into(),
+        "unipi.mcp" => "MCP".into(),
+        other => other.into(),
+    }
 }
 
 impl DemoHost {
@@ -911,6 +926,7 @@ impl DemoHost {
             default_cwd,
             next: AtomicU64::new(1),
             settings: Mutex::new(settings),
+            disabled: Mutex::new(Vec::new()),
         }
     }
 }
@@ -1051,12 +1067,20 @@ impl SessionHost for DemoHost {
             ),
         ]
         .into_iter()
-        .map(|(id, kind, error)| ExtensionInfo {
-            id: id.to_owned(),
-            version: "1.0.0-alpha.1".to_owned(),
-            kind: kind.to_owned(),
-            bundled: true,
-            error: error.map(str::to_owned),
+        .map(|(id, kind, error)| {
+            let mut info =
+                ExtensionInfo::basic(id, "1.0.0-alpha.1", kind, true, error.map(str::to_owned));
+            info.name = demo_name(id);
+            info.description = format!("Bundled {kind}");
+            info.permissions = match id {
+                "unipi.workflow" => vec!["session control".into(), "ui".into()],
+                "unipi.memory" => vec!["fs (agent dir)".into(), "ui".into()],
+                "unipi.mcp" => vec!["process".into(), "network".into()],
+                "oino.router" => vec!["credentials".into(), "network".into()],
+                _ => vec!["ui".into()],
+            };
+            info.enabled = !lock(&self.disabled).contains(&id.to_owned());
+            info
         })
         .collect();
         Box::pin(async move { list })
@@ -1068,6 +1092,19 @@ impl SessionHost for DemoHost {
 
     fn save_app_settings(&self, settings: &AppSettings) {
         *lock(&self.settings) = settings.clone();
+    }
+
+    fn set_extension_enabled(&self, id: &str, enabled: bool) -> Result<(), HostError> {
+        let mut disabled = lock(&self.disabled);
+        disabled.retain(|d| d != id);
+        if !enabled {
+            disabled.push(id.to_owned());
+        }
+        Ok(())
+    }
+
+    fn extensions_dir(&self) -> Option<std::path::PathBuf> {
+        Some(self.agent_dir.join("extensions"))
     }
 }
 

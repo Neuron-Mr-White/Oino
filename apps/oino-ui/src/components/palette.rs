@@ -67,7 +67,7 @@ fn icon_of(stem: &str) -> IconName {
         "moon" => IconName::Moon,
         "circle-arrow-down" => IconName::CircleArrowDown,
         "file" | "file-text" => IconName::FileText,
-        "dot" => IconName::MessageSquareDashed,
+        "dot" => IconName::CircleDot,
         "search" => IconName::Search,
         "box" => IconName::Box,
         "brain" => IconName::Brain,
@@ -166,7 +166,7 @@ impl PaletteView {
                 } % Scope::ALL.len();
                 self.set_scope(Scope::ALL[next], cx);
             }
-            k if m.secondary() && matches!(k, "1" | "2" | "3" | "4") => {
+            k if crate::components::secondary(&m) && matches!(k, "1" | "2" | "3" | "4") => {
                 let i = k.parse::<usize>().unwrap_or(1) - 1;
                 self.set_scope(Scope::ALL[i], cx);
             }
@@ -228,6 +228,7 @@ impl Render for PaletteView {
                                 .into_any_element(),
                             Row::More(_, n) => div()
                                 .id(ix)
+                                .w_full()
                                 .flex()
                                 .items_center()
                                 .h(px(size::CONTROL_LG))
@@ -264,6 +265,7 @@ impl Render for PaletteView {
                                 );
                                 div()
                                     .id(ix)
+                                    .w_full()
                                     .flex()
                                     .items_center()
                                     .gap(px(space::S2))

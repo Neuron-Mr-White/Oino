@@ -16,9 +16,15 @@ repository = "https://github.com/Neuron-Mr-White/Oino"
 
 [workspace.dependencies]
 # GPUI pins (exact; bump together with Cargo.lock). `cargo tree -d -i gpui-pre` must be empty.
-gpui = { package = "gpui-pre", version = "=0.3.9" }
-gpui-kit = { version = "=0.8.0", default-features = false, features = ["component", "assets", "syntect"] }
-gpui_platform = { package = "gpui-pre-platform", version = "=0.3.9" }
+gpui = { package = "gpui-pre", version = "=0.3.10" }
+gpui-kit = { version = "=0.8.1", default-features = false, features = ["component", "assets", "syntect"] }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.10" }
+# Embedded browser (design.md A1.4): gpui-kit's Wry-based webview, pinned with gpui-kit.
+gpui-webview = { version = "=0.8.1", features = ["inspector"] }
+wry = { package = "lb-wry", version = "0.53.3" }
+# Interactive terminal (design.md A1.5): Zed-style emulation + platform PTY.
+alacritty_terminal = "0.26"
+notify-rust = "4.18"
 
 # Root workspace crates.
 oino-agent = { path = "../crates/oino-agent" }
@@ -26,6 +32,7 @@ oino-ai = { path = "../crates/oino-ai" }
 oino-bundle = { path = "../crates/oino-bundle" }
 oino-client = { path = "../crates/oino-client" }
 oino-core = { path = "../crates/oino-core" }
+oino-extension-api = { path = "../crates/oino-extension-api" }
 oino-models = { path = "../crates/oino-models" }
 oino-session = { path = "../crates/oino-session" }
 oino-settings = { path = "../crates/oino-settings" }
@@ -33,7 +40,7 @@ oino-wasm-host = { path = "../crates/oino-wasm-host" }
 oino-ui = { path = "oino-ui" }
 oino-view = { path = "../crates/oino-view" }
 
-# Mobile platform (gpui-app §4): vendored longbridge/gpui-mobile on gpui-pre =0.3.9, every
+# Mobile platform (gpui-app §4): vendored longbridge/gpui-mobile on gpui-pre =0.3.10, every
 # optional package off except the ones Oino Mobile uses.
 gpui-mobile = { package = "gpui-pre-mobile", path = "vendor/gpui-mobile", default-features = false, features = ["clipboard", "notifications", "file_selector", "share", "path_provider", "shared_preferences", "deeplink"] }
 android-activity = { version = "0.6", features = ["native-activity"] }

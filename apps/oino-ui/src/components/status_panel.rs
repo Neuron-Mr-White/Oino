@@ -36,6 +36,11 @@ fn section(t: &OinoTheme, title: &str, state: String) -> Div {
 }
 
 impl SessionPane {
+    /// Whether the status shows as the mini capsule strip (above the timeline, not floating).
+    pub(crate) fn status_is_mini(&self) -> bool {
+        !self.status.is_empty() && !self.status_expanded_now()
+    }
+
     /// Whether the panel renders expanded now.
     pub(crate) fn status_expanded_now(&self) -> bool {
         if let Some(e) = self.status_expanded {
@@ -69,11 +74,10 @@ impl SessionPane {
         if !self.status_expanded_now() {
             let (progress, running, changed) = s.mini();
             return Some(
+                // Not floating: a right-aligned strip above the timeline, so the capsule never
+                // covers rows (design.md §3.2; review P1-7).
                 div()
                     .id("status-mini")
-                    .absolute()
-                    .top(px(space::S3))
-                    .right(px(space::S4))
                     .flex()
                     .items_center()
                     .gap(px(space::S3))
@@ -104,7 +108,7 @@ impl SessionPane {
                                 .flex()
                                 .items_center()
                                 .gap(px(space::S1))
-                                .child(icon(IconName::Play, size::ICON_SM, t.warning()))
+                                .child(icon(IconName::Play, size::ICON_SM, t.working()))
                                 .child(running.to_string()),
                         )
                     })
@@ -119,7 +123,19 @@ impl SessionPane {
                         )
                     })
                     .into_any_element(),
-            );
+            )
+            .map(|capsule| {
+                div()
+                    .flex()
+                    .justify_end()
+                    .flex_shrink_0()
+                    .w_full()
+                    .px(px(space::S4))
+                    .pt(px(space::S2))
+                    .pb(px(space::S1))
+                    .child(capsule)
+                    .into_any_element()
+            });
         }
         let frame = Ticker::peek(cx);
         let (done, total) = s.progress();
@@ -265,7 +281,7 @@ impl SessionPane {
                                             this.open_bottom_tasks(cx);
                                         }
                                     }))
-                                    .child(spinner(frame, size::ICON_SM, t.warning()))
+                                    .child(spinner(frame, size::ICON_SM, t.working()))
                                     .child(icon(glyph, size::ICON_SM, t.fg_subtle()))
                                     .child(
                                         div()

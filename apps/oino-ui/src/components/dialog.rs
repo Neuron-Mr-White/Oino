@@ -61,7 +61,9 @@ pub fn modal_with_toolbar(
                 cx.stop_propagation();
             }
         })
-        .child(
+        .child(crate::design::motion::enter(
+            t,
+            ElementId::Name(format!("{id}-enter").into()),
             div()
                 .id(ElementId::Name(id.into()))
                 .flex()
@@ -126,6 +128,6 @@ pub fn modal_with_toolbar(
                             .children(actions),
                     )
                 }),
-        )
+        ))
         .into_any_element()
 }

@@ -108,8 +108,8 @@ pub enum Capsule {
 pub fn capsule(kind: Capsule, cx: &mut App) -> Div {
     let t = OinoTheme::get(cx);
     let (bg, fg, label) = match kind {
-        Capsule::Running => (t.surface(), t.fg_subtle(), "Running"),
-        Capsule::Waiting => (t.waiting_surface(), t.waiting_fg(), "Waiting for you"),
+        Capsule::Running => (t.progress_surface(), t.progress_surface_fg(), "Working"),
+        Capsule::Waiting => (t.waiting_surface(), t.waiting_fg(), "Needs you"),
         Capsule::Error => (t.danger_surface(), t.danger_surface_fg(), "Error"),
         Capsule::Compacting => (t.progress_surface(), t.progress_surface_fg(), "Compacting"),
         Capsule::Retrying => (t.progress_surface(), t.progress_surface_fg(), "Retrying"),
@@ -118,9 +118,8 @@ pub fn capsule(kind: Capsule, cx: &mut App) -> Div {
         Capsule::Running | Capsule::Compacting | Capsule::Retrying => {
             spinner(Ticker::frame(cx), size::ICON_SM, fg).into_any_element()
         }
-        Capsule::Waiting => {
-            icon(IconName::MessageCircleQuestionMark, size::ICON_SM, fg).into_any_element()
-        }
+        // unipi needs-you: crab eyes `!`, pulsing (A1.2, unipi §1.3).
+        Capsule::Waiting => crate::components::unicrab::needs_you_eyes(size::ICON_SM, fg, cx),
         Capsule::Error => icon(IconName::CircleAlert, size::ICON_SM, fg).into_any_element(),
     };
     div()
@@ -141,9 +140,9 @@ pub fn capsule(kind: Capsule, cx: &mut App) -> Div {
 /// Dot state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DotKind {
-    /// Running (`warning`).
+    /// Working (`claw`).
     Running,
-    /// Waiting for the user (`brand`).
+    /// Needs you (`shell`, pulsing).
     Waiting,
     /// Unread finish (`success`).
     Unread,
@@ -155,7 +154,7 @@ pub enum DotKind {
 #[must_use]
 pub fn dot(t: &OinoTheme, kind: DotKind) -> Div {
     let c = match kind {
-        DotKind::Running => t.warning(),
+        DotKind::Running => t.working(),
         DotKind::Waiting => t.brand(),
         DotKind::Unread => t.success(),
         DotKind::Error => t.danger(),
@@ -167,13 +166,15 @@ pub fn dot(t: &OinoTheme, kind: DotKind) -> Div {
         .bg(c)
 }
 
-/// A section label (`Sm` medium `fg_subtle`, design.md §4.29 / palette groups).
+/// A section label: uppercase muted 12/500 (unipi §1.6 `.section-label`, A1.2). Callers
+/// write sentence case; the label uppercases it.
 pub fn section_label(t: &OinoTheme, text: impl Into<SharedString>) -> Div {
+    let text: SharedString = text.into();
     div()
         .text_color(t.fg_subtle())
         .text_role(t, TextRole::Sm)
         .weight_medium()
-        .child(text.into())
+        .child(SharedString::from(text.to_uppercase()))
 }
 
 /// A muted metadata text (`Sm` `fg_subtle`).

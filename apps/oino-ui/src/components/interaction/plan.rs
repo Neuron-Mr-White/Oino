@@ -139,7 +139,7 @@ impl InteractionView {
                                 };
                                 Btn::new(ElementId::Name(format!("plan-{}", a.action_id).into()))
                                     .label(SharedString::from(a.label.clone()))
-                                    .kbd((i + 1).to_string())
+                                    .kbd_lead((i + 1).to_string())
                                     .variant(variant)
                                     .on_click(
                                         cx.listener(move |this, _, _, cx| this.plan_action(i, cx)),

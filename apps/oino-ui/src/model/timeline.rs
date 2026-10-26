@@ -434,7 +434,7 @@ pub fn plan_steps(markdown: &str) -> Vec<(String, bool)> {
 }
 
 fn clean(text: &str) -> String {
-    text.replace("**", "").replace('`', "").trim().to_owned()
+    text.replace("**", "").trim().to_owned()
 }
 
 #[cfg(test)]
@@ -623,7 +623,7 @@ mod tests {
         let steps = plan_steps("Plan:\n1. **Locate** loop\n2. Patch `,`\n  3. nested");
         assert_eq!(
             steps,
-            vec![("Locate loop".into(), false), ("Patch ,".into(), false)]
+            vec![("Locate loop".into(), false), ("Patch `,`".into(), false)]
         );
         let checks = plan_steps("- [x] done\n- [ ] todo\n1. ignored");
         assert_eq!(checks, vec![("done".into(), true), ("todo".into(), false)]);

@@ -199,7 +199,7 @@ impl SessionPane {
                 .gap(px(space::S1))
                 .h(px(size::INPUT))
                 .px(px(space::S2))
-                .rounded(px(radius::R_XL))
+                .rounded(px(radius::R_DIALOG))
                 .bg(t.popover())
                 .border_1()
                 .border_color(t.popover_border())

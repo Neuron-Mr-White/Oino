@@ -72,7 +72,17 @@ impl Focusable for InteractionView {
 
 impl InteractionView {
     /// The view for `dialog` (`count` pending in total); focuses its first field.
-    pub fn new(dialog: Dialog, count: usize, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    ///
+    /// `typing`: the composer has focus. Approval and plan-review cards then leave focus in
+    /// the composer, so a keystroke meant for the draft never resolves the card (design.md
+    /// §4.12); ↑ in an empty composer or Shift+Tab moves to the card.
+    pub fn new(
+        dialog: Dialog,
+        count: usize,
+        typing: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let kind = interaction::kind(&dialog);
         let plan = interaction::plan_review(&dialog);
         let field = match &dialog.kind {
@@ -143,6 +153,11 @@ impl InteractionView {
                 s.update(cx, |s, cx| s.focus(window, cx));
             }
             Field::Area(s) => s.update(cx, |s, cx| s.focus(window, cx)),
+            _ if typing
+                && matches!(
+                    kind,
+                    InteractionKind::Approval | InteractionKind::PlanReview
+                ) => {}
             _ => window.focus(&focus, cx),
         }
         Self {
@@ -235,7 +250,7 @@ impl InteractionView {
             .flex()
             .flex_col()
             .w_full()
-            .rounded(px(radius::R_XL))
+            .rounded(px(radius::R_CARD))
             .bg(t.card())
             .border_1()
             .border_color(t.card_border())
@@ -301,7 +316,30 @@ impl InteractionView {
             )
     }
 
+    /// Moves keyboard focus into the card (from the composer).
+    pub fn focus_card(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
+
+    /// Whether a resolving key arrives too soon after the card appeared (a keystroke typed
+    /// for something else must not approve; 400 ms arming delay).
+    pub(crate) fn arming(&self) -> bool {
+        self.opened.elapsed() < std::time::Duration::from_millis(400)
+    }
+
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let key = event.keystroke.key.as_str();
+        if self.arming()
+            && matches!(
+                self.kind,
+                InteractionKind::Approval | InteractionKind::PlanReview
+            )
+            && (key == "enter" || key == "space" || digit(event).is_some())
+        {
+            cx.stop_propagation();
+            return;
+        }
         let handled = match self.kind {
             InteractionKind::Approval => self.approval_key(event, window, cx),
             InteractionKind::Question => self.question_key(event, window, cx),
@@ -336,7 +374,7 @@ impl InteractionView {
 /// Number key `1`–`9` as an index.
 pub(crate) fn digit(event: &KeyDownEvent) -> Option<usize> {
     let k = event.keystroke.key.as_str();
-    if event.keystroke.modifiers.secondary() || event.keystroke.modifiers.alt {
+    if crate::components::secondary(&event.keystroke.modifiers) || event.keystroke.modifiers.alt {
         return None;
     }
     k.parse::<usize>()
@@ -347,7 +385,7 @@ pub(crate) fn digit(event: &KeyDownEvent) -> Option<usize> {
 
 impl Render for InteractionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let body = self.body(window, cx);
+        let body = Ticker::scoped(cx.entity_id(), || self.body(window, cx));
         div()
             .w_full()
             .track_focus(&self.focus)

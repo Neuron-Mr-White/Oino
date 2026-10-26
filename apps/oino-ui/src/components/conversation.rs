@@ -16,7 +16,7 @@ use oino_ai::JsonValue;
 use crate::components::button::{Btn, BtnSize};
 use crate::components::dialog::modal_with_toolbar;
 use crate::components::ous::{self, Ous};
-use crate::components::unicrab::{oino_mark, unicrab};
+use crate::components::unicrab::unicrab;
 use crate::design::brand::CrabState;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
@@ -88,7 +88,7 @@ impl SessionPane {
         let t = OinoTheme::get(cx);
         let headers: Vec<_> = self.model.ui.headers().cloned().collect();
         let hero: AnyElement = if headers.is_empty() {
-            oino_mark(&t, size::CRAB.1, 0.4)
+            unicrab(CrabState::Idle, size::CRAB.2, cx)
         } else {
             let mut o = Ous {
                 t,
@@ -135,7 +135,29 @@ impl SessionPane {
             .overflow_y_scroll()
             .px(px(space::S4))
             .child(div().flex_1().min_h(px(space::S12)))
-            .child(hero)
+            .child(
+                // Ember glow behind the welcome header (unipi §1.2 `glow`, A1.2).
+                div()
+                    .relative()
+                    .flex()
+                    .justify_center()
+                    .w_full()
+                    .child(
+                        div()
+                            .absolute()
+                            .top(px(space::S8))
+                            .size(px(size::CRAB.2))
+                            .rounded(px(radius::R_FULL))
+                            .shadow(vec![gpui_kit::BoxShadow {
+                                color: t.glow(),
+                                offset: gpui_kit::point(px(space::S0), px(space::S0)),
+                                blur_radius: px(size::CRAB.2),
+                                spread_radius: px(size::CRAB.1),
+                                inset: false,
+                            }]),
+                    )
+                    .child(hero),
+            )
             .child(
                 div()
                     .pt(px(space::S8))
@@ -229,7 +251,7 @@ impl SessionPane {
                             .gap(px(space::S2))
                             .w(px(size::SUGGESTION))
                             .p(px(space::S4))
-                            .rounded(px(radius::R_XL))
+                            .rounded(px(radius::R_CARD))
                             .bg(t.card())
                             .border_1()
                             .border_color(t.card_border())
@@ -375,9 +397,23 @@ impl SessionPane {
 
 impl Render for SessionPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Spinners in this pane tick only this pane (not every split pane).
+        crate::design::ticker::Ticker::scoped(cx.entity_id(), || self.render_inner(window, cx))
+    }
+}
+
+impl SessionPane {
+    fn render_inner(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         self.flush_composer(window, cx);
         self.sync_interaction(window, cx);
         let t = OinoTheme::get(cx);
+        let kb = self.focus.is_focused(window);
+        if kb != self.timeline_kb {
+            self.timeline_kb = kb;
+            if let Some(c) = self.cursor.filter(|c| *c < self.model.transcript.len()) {
+                self.list.remeasure_items(c..c + 1);
+            }
+        }
         let state = self.header_state;
         let header = self.render_header(state, &t, cx);
         if self.model.transcript.is_empty() {
@@ -387,6 +423,7 @@ impl Render for SessionPane {
                 .flex_col()
                 .size_full()
                 .track_focus(&self.focus)
+                .on_key_down(cx.listener(Self::on_pane_key))
                 .child(header)
                 .child(div().flex_1().min_h_0().child(welcome))
                 .into_any_element();
@@ -412,7 +449,8 @@ impl Render for SessionPane {
             .collect();
         let timeline = list(self.list.clone(), cx.processor(SessionPane::render_row)).size_full();
         let rail = self.render_rail(&t, cx);
-        let status = self.render_status_panel(&t, cx);
+        let mut status = self.render_status_panel(&t, cx);
+        let mini_status = self.status_is_mini();
         let find = self.render_find(&t, cx);
         let pill = self.jump_pill(&t, cx);
         let dock = self.render_dock(window, cx);
@@ -425,6 +463,7 @@ impl Render for SessionPane {
             .flex_col()
             .size_full()
             .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_pane_key))
             .child(header)
             .when(!header_widgets.is_empty(), |el| {
                 el.child(
@@ -446,6 +485,7 @@ impl Render for SessionPane {
                         ),
                 )
             })
+            .when(mini_status, |el| el.children(status.take()))
             .child(
                 div()
                     .relative()

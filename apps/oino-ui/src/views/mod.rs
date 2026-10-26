@@ -20,6 +20,7 @@
 
 pub mod board;
 pub mod extensions_page;
+pub mod mascot;
 pub mod onboarding;
 pub mod session_pane;
 pub mod settings_page;
@@ -73,27 +74,52 @@ gpui_kit::actions!(
     ]
 );
 
-/// Registers key bindings (design.md §4 Keys tables). `secondary` is Cmd on Apple platforms
-/// and Ctrl elsewhere (never both).
+/// `primary!("k")` → `"cmd-k"` on Apple platforms, `"ctrl-k"` elsewhere.
+#[cfg(target_os = "macos")]
+macro_rules! primary {
+    ($k:literal) => {
+        concat!("cmd-", $k)
+    };
+}
+/// `primary!("k")` → `"cmd-k"` on Apple platforms, `"ctrl-k"` elsewhere.
+#[cfg(not(target_os = "macos"))]
+macro_rules! primary {
+    ($k:literal) => {
+        concat!("ctrl-", $k)
+    };
+}
+
+/// The platform's primary modifier in keystroke syntax: `cmd` on Apple platforms, `ctrl`
+/// elsewhere (never both).
+#[must_use]
+pub fn primary_mod() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "cmd"
+    } else {
+        "ctrl"
+    }
+}
+
+/// Registers key bindings (design.md §4 Keys tables) with the platform's primary modifier.
 pub fn init(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("secondary-n", NewSession, None),
-        KeyBinding::new("secondary-o", OpenFolder, None),
-        KeyBinding::new("secondary-b", ToggleSidebar, None),
-        KeyBinding::new("secondary-j", ToggleSidePane, None),
-        KeyBinding::new("secondary-`", ToggleBottom, None),
-        KeyBinding::new("secondary-.", Abort, None),
-        KeyBinding::new("secondary-k", CommandPalette, None),
-        KeyBinding::new("secondary-shift-p", CommandPalette, None),
-        KeyBinding::new("secondary-m", PickModel, None),
-        KeyBinding::new("secondary-shift-m", PickThinking, None),
-        KeyBinding::new("secondary-,", OpenSettings, None),
-        KeyBinding::new("secondary-\\", SplitPane, None),
-        KeyBinding::new("secondary-shift-t", TreeView, None),
-        KeyBinding::new("secondary-f", FindInConversation, None),
-        KeyBinding::new("secondary-l", FocusComposer, None),
-        KeyBinding::new("secondary-shift-s", ToggleStatusPanel, None),
+        KeyBinding::new(primary!("n"), NewSession, None),
+        KeyBinding::new(primary!("o"), OpenFolder, None),
+        KeyBinding::new(primary!("b"), ToggleSidebar, None),
+        KeyBinding::new(primary!("j"), ToggleSidePane, None),
+        KeyBinding::new(primary!("`"), ToggleBottom, None),
+        KeyBinding::new(primary!("."), Abort, None),
+        KeyBinding::new(primary!("k"), CommandPalette, None),
+        KeyBinding::new(primary!("shift-p"), CommandPalette, None),
+        KeyBinding::new(primary!("m"), PickModel, None),
+        KeyBinding::new(primary!("shift-m"), PickThinking, None),
+        KeyBinding::new(primary!(","), OpenSettings, None),
+        KeyBinding::new(primary!("\\"), SplitPane, None),
+        KeyBinding::new(primary!("shift-t"), TreeView, None),
+        KeyBinding::new(primary!("f"), FindInConversation, None),
+        KeyBinding::new(primary!("l"), FocusComposer, None),
+        KeyBinding::new(primary!("shift-s"), ToggleStatusPanel, None),
         KeyBinding::new("ctrl-alt-shift-f", ToggleFrameOverlay, None),
-        KeyBinding::new("secondary-q", Quit, None),
+        KeyBinding::new(primary!("q"), Quit, None),
     ]);
 }

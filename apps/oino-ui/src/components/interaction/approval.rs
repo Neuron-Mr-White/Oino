@@ -49,7 +49,7 @@ impl InteractionView {
             self.cancel(cx);
             return true;
         }
-        if key == "enter" && event.keystroke.modifiers.secondary() {
+        if key == "enter" && crate::components::secondary(&event.keystroke.modifiers) {
             // ⌘Enter with feedback = reject with feedback.
             if let DialogKind::Approval { options, .. } = &self.dialog.kind
                 && let Some(i) = options.iter().position(|o| !o.kind.is_allow())
@@ -136,7 +136,7 @@ impl InteractionView {
                 };
                 Btn::new(ElementId::Name(format!("ap-{}", o.option_id).into()))
                     .label(SharedString::from(o.label.clone()))
-                    .kbd((i + 1).to_string())
+                    .kbd_lead((i + 1).to_string())
                     .variant(variant)
                     .size(BtnSize::Default)
                     .selected(i == highlighted && variant != Variant::Primary)
@@ -163,7 +163,7 @@ impl InteractionView {
                                 .gap(px(space::S2))
                                 .px(px(space::S3))
                                 .py(px(space::S2))
-                                .rounded(px(radius::R_LG))
+                                .rounded(px(radius::R_INPUT))
                                 .bg(t.warning_surface())
                                 .text_color(t.warning_surface_fg())
                                 .text_role(&t, TextRole::Sm)

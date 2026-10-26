@@ -23,6 +23,8 @@ oino-ai.workspace = true
 oino-bundle.workspace = true
 oino-client.workspace = true
 oino-core.workspace = true
+oino-extension-api.workspace = true
+oino-settings.workspace = true
 oino-session.workspace = true
 oino-ui = { workspace = true, features = ["mobile"] }
 oino-wasm-host.workspace = true

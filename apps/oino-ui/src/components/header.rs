@@ -38,10 +38,18 @@ pub struct HeaderState {
     pub primary: bool,
     /// One of several split panes (shows a close button).
     pub closable: bool,
+    /// Client-side chrome: this header carries the window controls (right-most frame).
+    pub controls: bool,
+    /// Client-side chrome: the side frame's tab bar carries the window controls.
+    pub controls_side: bool,
+    /// The window is maximized (restore icon).
+    pub maximized: bool,
+    /// Client-side chrome: headers are window drag regions.
+    pub drag: bool,
 }
 
 impl SessionPane {
-    fn start_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn start_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let title = self.model.title();
         let state =
             cx.new(|cx| InputState::new(window, cx).default_value(SharedString::from(title)));
@@ -181,7 +189,8 @@ impl SessionPane {
                 .child(SharedString::from(title))
                 .into_any_element(),
         };
-        div()
+        let bar = div()
+            .id("pane-header")
             .flex()
             .flex_row()
             .items_center()
@@ -190,56 +199,67 @@ impl SessionPane {
             .px(px(space::S3))
             .gap(px(space::S1))
             .border_b_1()
-            .border_color(t.border())
-            .when(state.sidebar_collapsed && state.primary, |el| {
-                el.child(
-                    Btn::icon_only("hdr-sidebar", IconName::PanelLeft, "Show sidebar")
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ToggleSidebar))),
-                )
-            })
-            .child(title_el)
-            .when(!compact, |el| {
-                el.child(
-                    Btn::new("hdr-project")
-                        .label(SharedString::from(project))
-                        .icon(IconName::Folder)
-                        .size(BtnSize::Sm)
-                        .tooltip(SharedString::from(self.model.cwd.clone()), None),
-                )
-            })
-            .when_some(branch.filter(|_| !compact), |el, b| {
-                el.child(
-                    Btn::new("hdr-branch")
-                        .label(SharedString::from(b))
-                        .icon(IconName::GitBranch)
-                        .size(BtnSize::Sm),
-                )
-            })
-            .child(more)
-            .child(div().flex_1())
-            .when_some(run, |el, k| el.child(capsule(k, cx)))
-            .when(self.model.ui.needs_attention(), |el| {
-                el.child(unicrab(CrabState::NeedsYou, size::CRAB.0, cx))
-            })
-            .when(state.primary, |el| {
-                el.child(
-                    Btn::icon_only("hdr-bottom", IconName::PanelBottom, "Bottom frame")
-                        .selected(state.bottom_open)
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ToggleBottom))),
-                )
-                .child(
-                    Btn::icon_only("hdr-side", IconName::PanelRight, "Side pane")
-                        .selected(state.side_open)
-                        .tooltip("Side pane", Some("⌘J"))
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ToggleSide))),
-                )
-            })
-            .when(state.closable, |el| {
-                el.child(
-                    Btn::icon_only("hdr-close-pane", IconName::X, "Close pane")
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ClosePane))),
-                )
-            })
-            .into_any_element()
+            .border_color(t.border());
+        let bar = if state.drag {
+            crate::components::window_chrome::drag_region(bar, std::rc::Rc::clone(&self.drag_armed))
+        } else {
+            bar
+        };
+        bar.when(state.sidebar_collapsed && state.primary, |el| {
+            el.child(
+                Btn::icon_only("hdr-sidebar", IconName::PanelLeft, "Show sidebar")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ToggleSidebar))),
+            )
+        })
+        .child(title_el)
+        .when(!compact, |el| {
+            el.child(
+                Btn::new("hdr-project")
+                    .label(SharedString::from(project))
+                    .icon(IconName::Folder)
+                    .size(BtnSize::Sm)
+                    .tooltip(SharedString::from(self.model.cwd.clone()), None),
+            )
+        })
+        .when_some(branch.filter(|_| !compact), |el, b| {
+            el.child(
+                Btn::new("hdr-branch")
+                    .label(SharedString::from(b))
+                    .icon(IconName::GitBranch)
+                    .size(BtnSize::Sm),
+            )
+        })
+        .child(more)
+        .child(div().flex_1())
+        .when_some(run, |el, k| el.child(capsule(k, cx)))
+        .when(self.model.ui.needs_attention(), |el| {
+            el.child(unicrab(CrabState::NeedsYou, size::CRAB.0, cx))
+        })
+        .when(state.primary, |el| {
+            el.child(
+                Btn::icon_only("hdr-bottom", IconName::PanelBottom, "Bottom frame")
+                    .selected(state.bottom_open)
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ToggleBottom))),
+            )
+            .child(
+                Btn::icon_only("hdr-side", IconName::PanelRight, "Side pane")
+                    .selected(state.side_open)
+                    .tooltip("Side pane", Some("⌘J"))
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ToggleSide))),
+            )
+        })
+        .when(state.closable, |el| {
+            el.child(
+                Btn::icon_only("hdr-close-pane", IconName::X, "Close pane")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(PaneEvent::ClosePane))),
+            )
+        })
+        .when(state.controls, |el| {
+            el.child(crate::components::window_chrome::window_controls(
+                t,
+                state.maximized,
+            ))
+        })
+        .into_any_element()
     }
 }

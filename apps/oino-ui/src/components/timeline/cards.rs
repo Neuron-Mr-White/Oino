@@ -31,7 +31,7 @@ pub(crate) fn error_banner(
         .items_start()
         .gap(px(space::S3))
         .p(px(space::S3))
-        .rounded(px(radius::R_XL))
+        .rounded(px(radius::R_CARD))
         .bg(t.danger_surface())
         .text_color(t.danger_surface_fg())
         .child(
@@ -113,7 +113,7 @@ impl SessionPane {
             .flex()
             .flex_row()
             .w_full()
-            .rounded(px(radius::R_XL))
+            .rounded(px(radius::R_CARD))
             .bg(t.card())
             .border_1()
             .border_color(t.card_border())
@@ -167,7 +167,7 @@ impl SessionPane {
             .w_full()
             .gap(px(space::S2))
             .p(px(space::S3))
-            .rounded(px(radius::R_XL))
+            .rounded(px(radius::R_CARD))
             .bg(t.card())
             .border_1()
             .border_color(t.card_border())
@@ -305,18 +305,7 @@ impl SessionPane {
                     .size(BtnSize::Sm)
                     .on_click(cx.listener(|this, _, _, cx| this.open_side(SideTab::Review, cx))),
             )
-            .child(
-                Btn::new(row_id("turn-undo", ix))
-                    .label("Undo")
-                    .icon(IconName::RotateCcw)
-                    .variant(Variant::Ghost)
-                    .size(BtnSize::Sm)
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.emit(PaneEvent::Toast(
-                            "Undo needs core file checkpoints (requested)".into(),
-                        ));
-                    })),
-            )
+            // Undo is offered only once core file checkpoints exist (P1-6); no dead button.
             .into_any_element()
     }
 }

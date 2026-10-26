@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use gpui_kit::Focusable as _;
+
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -71,6 +73,54 @@ pub enum SettingsEvent {
     Command(String),
     /// Show a toast.
     Toast(String),
+    /// Open the Extensions page (D12).
+    OpenExtensions,
+}
+
+/// A `−  n  +` stepper for small integer ranges (font sizes).
+fn stepper(
+    id: &'static str,
+    t: &OinoTheme,
+    value: u8,
+    (lo, hi): (u8, u8),
+    on_change: Rc<dyn Fn(u8, &mut App)>,
+) -> AnyElement {
+    let (dec, inc) = (Rc::clone(&on_change), on_change);
+    div()
+        .flex()
+        .items_center()
+        .gap(px(space::S1))
+        .child(
+            Btn::icon_only(
+                ElementId::Name(format!("{id}-dec").into()),
+                IconName::Minus,
+                "Smaller",
+            )
+            .size(BtnSize::Sm)
+            .variant(Variant::Outline)
+            .disabled(value <= lo)
+            .on_click(move |_, _, cx| dec(value.saturating_sub(1).max(lo), cx)),
+        )
+        .child(
+            div()
+                .w(px(size::CONTROL))
+                .flex()
+                .justify_center()
+                .mono_text(t, TextRole::Base)
+                .child(SharedString::from(value.to_string())),
+        )
+        .child(
+            Btn::icon_only(
+                ElementId::Name(format!("{id}-inc").into()),
+                IconName::Plus,
+                "Larger",
+            )
+            .size(BtnSize::Sm)
+            .variant(Variant::Outline)
+            .disabled(value >= hi)
+            .on_click(move |_, _, cx| inc(value.saturating_add(1).min(hi), cx)),
+        )
+        .into_any_element()
 }
 
 /// The settings page.
@@ -89,10 +139,19 @@ pub struct SettingsView {
     providers: Vec<AuthProviderInfo>,
     inputs: HashMap<String, (Entity<InputState>, Subscription)>,
     search: Entity<InputState>,
+    /// Provider whose "Log out" waits for confirmation (app-convention: important actions).
+    confirm_logout: Option<String>,
+    focus: gpui_kit::FocusHandle,
     _subscription: Subscription,
 }
 
 impl EventEmitter<SettingsEvent> for SettingsView {}
+
+impl gpui_kit::Focusable for SettingsView {
+    fn focus_handle(&self, _: &App) -> gpui_kit::FocusHandle {
+        self.focus.clone()
+    }
+}
 
 impl SettingsView {
     /// The page, opened on `section`.
@@ -129,6 +188,8 @@ impl SettingsView {
             providers: Vec::new(),
             inputs: HashMap::new(),
             search,
+            confirm_logout: None,
+            focus: cx.focus_handle(),
             _subscription: sub,
         };
         view.load_schema(cx);
@@ -207,6 +268,58 @@ impl SettingsView {
         }
         self.section = section;
         cx.notify();
+    }
+
+    /// Sections in nav order (core pages, then extension namespaces).
+    fn sections(&self) -> Vec<SettingsSection> {
+        let mut out = vec![
+            SettingsSection::General,
+            SettingsSection::Appearance,
+            SettingsSection::Models,
+            SettingsSection::Sessions,
+            SettingsSection::Permissions,
+            SettingsSection::Shortcuts,
+        ];
+        out.extend(
+            self.namespaces
+                .iter()
+                .map(|n| SettingsSection::Extension(n.namespace.clone())),
+        );
+        out.push(SettingsSection::Remote);
+        out.push(SettingsSection::About);
+        out
+    }
+
+    /// Settings keys (design.md §4 D8): ⌘F search, ↑/↓ previous / next page, Esc back.
+    fn on_key(&mut self, e: &gpui_kit::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let k = &e.keystroke;
+        if crate::components::secondary(&k.modifiers) && k.key == "f" {
+            self.search.update(cx, |s, cx| s.focus(window, cx));
+            cx.stop_propagation();
+            return;
+        }
+        if self.search.read(cx).focus_handle(cx).is_focused(window)
+            || self
+                .inputs
+                .values()
+                .any(|(i, _)| i.read(cx).focus_handle(cx).is_focused(window))
+        {
+            return;
+        }
+        let all = self.sections();
+        let i = all.iter().position(|s| *s == self.section).unwrap_or(0);
+        let to = match k.key.as_str() {
+            "down" | "j" => (i + 1).min(all.len() - 1),
+            "up" | "k" => i.saturating_sub(1),
+            "escape" => {
+                cx.emit(SettingsEvent::Back);
+                cx.stop_propagation();
+                return;
+            }
+            _ => return,
+        };
+        self.set_section(all[to].clone(), cx);
+        cx.stop_propagation();
     }
 
     fn change(&mut self, f: impl FnOnce(&mut AppSettings), cx: &mut Context<Self>) {
@@ -349,6 +462,30 @@ impl SettingsView {
             .collect();
         rows.push(
             div()
+                .id("set-extensions")
+                .flex()
+                .items_center()
+                .gap(px(space::S2))
+                .h(px(size::CONTROL_LG))
+                .px(px(space::S2))
+                .rounded(px(radius::R_LG))
+                .cursor_pointer()
+                .text_role(t, TextRole::Base)
+                .text_color(t.fg_subtle())
+                .hover(|s| s.bg(t.hover()))
+                .on_click(
+                    cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(SettingsEvent::OpenExtensions)),
+                )
+                .child(div().flex_1().child("Extensions"))
+                .child(crate::design::icons::icon(
+                    IconName::ChevronRight,
+                    size::ICON_SM,
+                    t.fg_subtlest(),
+                ))
+                .into_any_element(),
+        );
+        rows.push(
+            div()
                 .pt(px(space::S4))
                 .pb(px(space::S1))
                 .px(px(space::S2))
@@ -447,16 +584,6 @@ impl SettingsView {
             ThemePref::Light => 1,
             ThemePref::Dark => 2,
         };
-        let sizes = ["12", "13", "14", "15", "16", "18"];
-        let code_sizes = ["11", "12", "13", "14", "16"];
-        let ui_ix = sizes
-            .iter()
-            .position(|v| v.parse::<u8>().ok() == Some(s.ui_font_size))
-            .unwrap_or(2);
-        let code_ix = code_sizes
-            .iter()
-            .position(|v| v.parse::<u8>().ok() == Some(s.code_font_size))
-            .unwrap_or(2);
         let rows = vec![
             row(
                 t,
@@ -477,28 +604,38 @@ impl SettingsView {
             row(
                 t,
                 "Interface size",
-                Some("UI text size in px.".into()),
+                Some("UI text size in px (12–18).".into()),
                 s.ui_font_size != 14,
-                segmented(
-                    "set-ui-size",
-                    t,
-                    &sizes,
-                    ui_ix,
-                    pick(|s, i| s.ui_font_size = [12, 13, 14, 15, 16, 18][i]),
-                )
-                .into_any_element(),
+                stepper("set-ui-size", t, s.ui_font_size, (12, 18), {
+                    let e = e.clone();
+                    Rc::new(move |v, cx: &mut App| {
+                        let _ = e.update(cx, |view, cx| view.change(|s| s.ui_font_size = v, cx));
+                    })
+                }),
             ),
             row(
                 t,
                 "Code font size",
-                Some("Code, diffs and logs.".into()),
+                Some("Code, diffs, logs and the terminal (10–20).".into()),
                 s.code_font_size != 13,
+                stepper("set-code-size", t, s.code_font_size, (10, 20), {
+                    let e = e.clone();
+                    Rc::new(move |v, cx: &mut App| {
+                        let _ = e.update(cx, |view, cx| view.change(|s| s.code_font_size = v, cx));
+                    })
+                }),
+            ),
+            row(
+                t,
+                "Sidebar density",
+                None,
+                s.sidebar_compact,
                 segmented(
-                    "set-code-size",
+                    "set-sidebar-density",
                     t,
-                    &code_sizes,
-                    code_ix,
-                    pick(|s, i| s.code_font_size = [11, 12, 13, 14, 16][i]),
+                    &["Comfortable", "Compact"],
+                    usize::from(s.sidebar_compact),
+                    pick(|s, i| s.sidebar_compact = i == 1),
                 )
                 .into_any_element(),
             ),
@@ -596,11 +733,57 @@ impl SettingsView {
                 .into_any_element(),
             ),
         ];
+        let toggle = |f: fn(&mut AppSettings, bool)| {
+            let e = e.clone();
+            move |on: bool, _: &mut Window, cx: &mut App| {
+                let _ = e.update(cx, |v, cx| v.change(|s| f(s, on), cx));
+            }
+        };
+        let mut unicrab_rows = vec![
+            row(
+                t,
+                "Mascot window",
+                Some("A floating Unicrab above other windows: it shows the overall state and pops a bubble when a session needs you or finishes.".into()),
+                s.mascot_window,
+                switch("set-mascot", t, s.mascot_window, toggle(|s, on| s.mascot_window = on))
+                    .into_any_element(),
+            ),
+            row(
+                t,
+                "Crab size",
+                None,
+                s.mascot_size != 96,
+                segmented(
+                    "set-mascot-size",
+                    t,
+                    &["Small", "Medium", "Large"],
+                    match s.mascot_size {
+                        0..=80 => 0,
+                        81..=110 => 1,
+                        _ => 2,
+                    },
+                    pick(|s, i| s.mascot_size = [72, 96, 128][i]),
+                )
+                .into_any_element(),
+            ),
+        ];
+        if cfg!(target_os = "linux") {
+            unicrab_rows.push(row(
+                t,
+                "Native Wayland",
+                Some("Run on Wayland instead of XWayland. Disables the embedded browser (WebKitGTK embeds into X11 windows only). Takes effect after a restart.".into()),
+                s.native_wayland,
+                switch("set-wayland", t, s.native_wayland, toggle(|s, on| s.native_wayland = on))
+                    .into_any_element(),
+            ));
+        }
         div()
             .flex()
             .flex_col()
             .child(page_title(t, "Appearance"))
             .child(group(t, rows))
+            .child(section_title(t, "Unicrab and window"))
+            .child(group(t, unicrab_rows))
             .into_any_element()
     }
 
@@ -637,15 +820,47 @@ impl SettingsView {
                         )
                     })
                     .when(p.stored.is_some(), |el| {
-                        el.child(
-                            Btn::new(ElementId::NamedInteger("logout".into(), i as u64))
-                                .label("Log out")
-                                .variant(Variant::Ghost)
-                                .size(BtnSize::Sm)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.auth(&id2, "logout", cx);
-                                })),
-                        )
+                        if self.confirm_logout.as_deref() == Some(id2.as_str()) {
+                            let id3 = id2.clone();
+                            el.child(
+                                div()
+                                    .text_role(t, TextRole::Sm)
+                                    .text_color(t.fg_subtle())
+                                    .child("Sign out?"),
+                            )
+                            .child(
+                                Btn::new(ElementId::NamedInteger("logout-no".into(), i as u64))
+                                    .label("Cancel")
+                                    .variant(Variant::Ghost)
+                                    .size(BtnSize::Sm)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm_logout = None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Btn::new(ElementId::NamedInteger("logout-yes".into(), i as u64))
+                                    .label("Log out")
+                                    .icon(IconName::LogOut)
+                                    .variant(Variant::Danger)
+                                    .size(BtnSize::Sm)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm_logout = None;
+                                        this.auth(&id3, "logout", cx);
+                                    })),
+                            )
+                        } else {
+                            el.child(
+                                Btn::new(ElementId::NamedInteger("logout".into(), i as u64))
+                                    .label("Log out")
+                                    .variant(Variant::Ghost)
+                                    .size(BtnSize::Sm)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm_logout = Some(id2.clone());
+                                        cx.notify();
+                                    })),
+                            )
+                        }
                     })
                     .into_any_element();
                 row(
@@ -1047,21 +1262,29 @@ impl Render for SettingsView {
                 ("Licenses", "Lucide (ISC), Inter (OFL 1.1), JetBrains Mono (OFL 1.1), gpui-kit (Apache-2.0)".into()),
             ]),
         };
-        div().flex().flex_row().size_full().child(nav).child(
-            div()
-                .id("settings-content")
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .overflow_y_scroll()
-                .px(px(space::S8))
-                .py(px(space::S8))
-                .child(
-                    div()
-                        .max_w(px(size::SETTINGS_CONTENT))
-                        .mx_auto()
-                        .child(body),
-                ),
-        )
+        div()
+            .id("settings-page")
+            .flex()
+            .flex_row()
+            .size_full()
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key))
+            .child(nav)
+            .child(
+                div()
+                    .id("settings-content")
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .overflow_y_scroll()
+                    .px(px(space::S8))
+                    .py(px(space::S8))
+                    .child(
+                        div()
+                            .max_w(px(size::SETTINGS_CONTENT))
+                            .mx_auto()
+                            .child(body),
+                    ),
+            )
     }
 }

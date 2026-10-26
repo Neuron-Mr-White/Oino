@@ -398,12 +398,13 @@ impl SessionPane {
             } else {
                 IconName::ArrowUp
             })
-            .variant(if (empty && !stop) || blocked {
+            .variant(if (empty || blocked) && !stop {
                 Variant::Secondary
             } else {
                 Variant::Primary
             })
-            .disabled(blocked)
+            // Send waits for the pending card; Stop always stays available (§4.12).
+            .disabled(blocked && !stop)
             .tooltip(
                 if stop {
                     "Stop"
@@ -424,7 +425,7 @@ impl SessionPane {
         let send = div()
             .child(send)
             .size(px(size::CONTROL))
-            .rounded(px(radius::R_LG));
+            .rounded(px(radius::R_BUTTON));
         div()
             .flex()
             .flex_row()

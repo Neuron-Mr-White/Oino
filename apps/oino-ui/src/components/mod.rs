@@ -14,6 +14,8 @@
 )]
 
 pub mod badge;
+#[cfg(feature = "browser")]
+pub mod browser;
 pub mod button;
 pub mod composer;
 pub mod controls;
@@ -23,6 +25,7 @@ pub mod dock;
 pub mod empty;
 pub mod header;
 pub mod interaction;
+pub mod keys;
 pub mod log_view;
 pub mod menu;
 pub mod meta_row;
@@ -35,10 +38,13 @@ pub mod side_pane;
 pub mod sidebar;
 pub mod status_panel;
 pub mod tabs;
+#[cfg(feature = "terminal")]
+pub mod terminal;
 pub mod timeline;
 pub mod toast;
 pub mod tooltip;
 pub mod unicrab;
+pub mod window_chrome;
 
 use gpui_kit::Pixels;
 
@@ -52,4 +58,14 @@ pub fn ous_cols(width: Pixels) -> u32 {
     )]
     let cols = (f32::from(width) / 8.0).max(0.0) as u32;
     cols
+}
+
+/// The platform's primary modifier (⌘ on macOS, Ctrl elsewhere) is held.
+#[must_use]
+pub fn secondary(m: &gpui_kit::Modifiers) -> bool {
+    if cfg!(target_os = "macos") {
+        m.platform
+    } else {
+        m.control
+    }
 }

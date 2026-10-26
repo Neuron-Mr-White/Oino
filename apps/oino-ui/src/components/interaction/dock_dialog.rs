@@ -94,7 +94,7 @@ impl InteractionView {
             }
             "enter"
                 if matches!(self.field, Field::Area(_))
-                    && !event.keystroke.modifiers.secondary() =>
+                    && !crate::components::secondary(&event.keystroke.modifiers) =>
             {
                 false
             }
@@ -164,7 +164,7 @@ impl InteractionView {
                 .gap(px(space::S3))
                 .min_h(px(size::OPTION_ROW))
                 .px(px(space::S3))
-                .rounded(px(radius::R_LG))
+                .rounded(px(radius::R_INPUT))
                 .cursor_pointer()
                 .when(i == highlighted, |el| el.bg(t.selected()))
                 .hover(|s| s.bg(t.hover()))
@@ -260,7 +260,7 @@ impl InteractionView {
                     .gap(px(space::S1))
                     .child(
                         div()
-                            .rounded(px(radius::R_LG))
+                            .rounded(px(radius::R_INPUT))
                             .border_1()
                             .border_color(t.input_border())
                             .p(px(space::S2))
@@ -272,8 +272,9 @@ impl InteractionView {
                             .text_role(&t, TextRole::Sm)
                             .text_color(t.fg_subtle())
                             .child(format!(
-                                "{} · ⌘Enter to submit",
-                                language.unwrap_or_else(|| "text".into())
+                                "{} · {} to submit",
+                                language.unwrap_or_else(|| "text".into()),
+                                crate::components::badge::platform_keys("⌘Enter")
                             )),
                     )
                     .into_any_element(),

@@ -32,7 +32,7 @@ fn strip(t: &OinoTheme) -> gpui_kit::Div {
         .py(px(space::S1_5))
         .max_h(px(size::CONTROL_LG * 3.0))
         .overflow_hidden()
-        .rounded(px(radius::R_LG))
+        .rounded(px(radius::R_INPUT))
         .bg(t.surface())
         .text_role(t, TextRole::Sm)
         .text_color(t.fg_subtle())

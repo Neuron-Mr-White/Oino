@@ -121,7 +121,51 @@ fn window_size() -> (f32, f32) {
         .unwrap_or(DEFAULT_SIZE)
 }
 
+/// The GPUI platform and whether the embedded browser can run on it (design.md A1.4).
+///
+/// Linux: `WebKitGTK` embeds only into X11 windows, so Oino runs on X11 / `XWayland` unless the
+/// user chose "Native Wayland" (or no X server is reachable).
+fn platform(settings: &oino_ui::host::AppSettings) -> (gpui_kit::Application, bool) {
+    #[cfg(target_os = "linux")]
+    {
+        let has_x = std::env::var_os("DISPLAY").is_some_and(|d| !d.is_empty());
+        if !settings.native_wayland && has_x {
+            return (
+                gpui_kit::platform::linux(gpui_kit::WindowingModes::X11),
+                true,
+            );
+        }
+        (gpui_kit::application(), false)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = settings;
+        (gpui_kit::application(), true)
+    }
+}
+
+/// Posts a native notification off the UI thread (`D-Bus` / `NSUserNotification` / `WinRT`).
+fn os_notify(title: String, body: String) {
+    let spawned = std::thread::Builder::new()
+        .name("oino-notify".into())
+        .spawn(move || {
+            let result = notify_rust::Notification::new()
+                .appname("Oino")
+                .summary(&title)
+                .body(&body)
+                .icon("dev.oino.desktop")
+                .show();
+            if let Err(error) = result {
+                tracing::warn!(%error, "posting an OS notification");
+            }
+        });
+    if let Err(error) = spawned {
+        tracing::warn!(%error, "starting the notification thread");
+    }
+}
+
 fn main() -> anyhow::Result<()> {
+    let process_start = std::time::Instant::now();
     let args = parse_args()?;
     let agent_dir = oino_settings::paths::agent_dir().context("locating the agent dir")?;
     init_logging(&agent_dir);
@@ -140,12 +184,16 @@ fn main() -> anyhow::Result<()> {
         Arc::new(embedded::EmbeddedHost::new(agent_dir, cwd))
     };
     let handle = runtime.handle().clone();
-    gpui_kit::application()
-        .with_assets(oino_ui::design::icons::OinoAssets)
+    let (app, browser) = platform(&host.app_settings());
+    app.with_assets(oino_ui::design::icons::OinoAssets)
         .run(move |cx: &mut App| {
             gpui_kit::init(cx);
             oino_ui::design::theme::register_fonts(cx);
             Tokio::init(cx, handle);
+            cx.default_global::<oino_ui::design::perf::FrameProbe>()
+                .process_start = Some(process_start);
+            oino_ui::platform::OsNotifier::install(cx, Arc::new(os_notify));
+            cx.set_global(oino_ui::platform::BrowserSupport(browser));
             views::init(cx);
             cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
             let (w, h) = window_size();
@@ -162,6 +210,16 @@ fn main() -> anyhow::Result<()> {
                         .then(|| gpui_kit::point(px(TRAFFIC_LIGHTS.0), px(TRAFFIC_LIGHTS.1))),
                 }),
                 app_id: Some("dev.oino.desktop".into()),
+                // Linux / Windows draw their own chrome (sidebar top row + headers drag, window
+                // controls in the right-most header); macOS keeps the traffic lights.
+                window_decorations: (!cfg!(target_os = "macos"))
+                    .then_some(gpui_kit::WindowDecorations::Client),
+                window_background: if cfg!(target_os = "linux") {
+                    gpui_kit::WindowBackgroundAppearance::Transparent
+                } else {
+                    gpui_kit::WindowBackgroundAppearance::Opaque
+                },
+                app_owns_titlebar_drag: true,
                 ..WindowOptions::default()
             };
             let host = Arc::clone(&host);
