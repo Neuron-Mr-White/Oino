@@ -1,0 +1,16 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.fusion",
+  "name": "Fusion",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Pair a strong lead model with a cheaper persistent sidekick; Devin-style model picker.",
+  "license": "MIT",
+  "permissions": {
+    "agents": { "spawn": true, "maxDepth": 1 },
+    "sessionControl": true,
+    "models": { "complete": true },
+    "fs": { "project": "write" },
+    "services": { "call": ["unipi.subagents/subagents.register-external"] }
+  }
+}

@@ -1905,7 +1905,7 @@ impl Extension for Subagents {
 }
 
 // Native builds (unit tests) skip the component exports.
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "component"))]
 oino_extension::export_extension!(Subagents);
 
 #[cfg(test)]
