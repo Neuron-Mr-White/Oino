@@ -1,0 +1,56 @@
+[package]
+name = "oino"
+version = "1.0.0-alpha.0"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "The Oino command-line binary: pi-compatible CLI, print, JSON and RPC modes"
+
+[[bin]]
+name = "oino"
+path = "src/main.rs"
+
+[features]
+## Scripted `builtin:faux` provider and `builtin:ui-probe` extension (tests only).
+faux = []
+
+[dependencies]
+base64.workspace = true
+futures.workspace = true
+indexmap.workspace = true
+oino-agent = { path = "../oino-agent" }
+oino-ai = { path = "../oino-ai" }
+oino-client = { path = "../oino-client" }
+oino-core = { path = "../oino-core" }
+oino-models = { path = "../oino-models" }
+oino-rpc = { path = "../oino-rpc" }
+oino-session = { path = "../oino-session" }
+oino-settings = { path = "../oino-settings" }
+oino-tools = { path = "../oino-tools" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio = { workspace = true, features = ["io-std", "io-util", "macros", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+oino = { path = ".", features = ["faux"] }
+tempfile.workspace = true
+
+# Mirrors quality.md §2 until integration switches the root workspace lints (then `workspace = true`).
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"

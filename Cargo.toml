@@ -19,6 +19,9 @@ members = [
   "crates/oino-extension-api",
   "crates/oino-bundle",
   "xtask",
+  "crates/oino-client",
+  "crates/oino-rpc",
+  "crates/oino",
 ]
 resolver = "2"
 
