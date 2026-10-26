@@ -43,6 +43,7 @@ use crate::ui::{UiBridge, UiOutput, UiSink};
 
 pub use bash::BashResult;
 pub use host::SlashCommandInfo;
+pub(crate) use model::branch_refs as model_branch_refs;
 pub use model::{CycleDirection, CycleModelResult};
 pub use prompt::{InputSource, PromptDisposition, PromptOptions, StreamingBehavior};
 pub use stats::{ContextUsage, SessionStats, TokenTotals};
@@ -152,7 +153,8 @@ pub(crate) struct Cancels {
     pub(crate) auto_compaction: Option<CancellationToken>,
     pub(crate) branch_summary: Option<CancellationToken>,
     pub(crate) retry: Option<CancellationToken>,
-    pub(crate) bash: Vec<CancellationToken>,
+    pub(crate) bash: Vec<(u64, CancellationToken)>,
+    pub(crate) next_bash: u64,
 }
 
 /// Inputs of [`AgentSession::new`].
@@ -407,6 +409,41 @@ impl AgentSession {
             .extend(&paths);
         let active = self.active_tool_names();
         self.rebuild_system_prompt(&active);
+    }
+
+    /// pi `reload`: `session_shutdown{reason:"reload"}`, settings and resources reload, tool
+    /// registry rebuild, then `session_start{reason:"reload"}` and `resources_discover`.
+    ///
+    /// # Errors
+    ///
+    /// Never fails today; kept fallible for the package reload path.
+    pub async fn reload(&self) -> Result<(), SessionOpError> {
+        let runner = self.runner();
+        if runner.has_handlers("session_shutdown") {
+            runner
+                .emit(serde_json::json!({"type": "session_shutdown", "reason": "reload"}))
+                .await;
+        }
+        let snapshot = {
+            let mut settings = lock(&self.inner.settings);
+            settings.reload();
+            settings.snapshot()
+        };
+        self.inner
+            .agent
+            .set_steering_mode(map_queue_mode(snapshot.steering_mode()));
+        self.inner
+            .agent
+            .set_follow_up_mode(map_queue_mode(snapshot.follow_up_mode()));
+        let trusted = lock(&self.inner.settings).is_project_trusted();
+        self.inner
+            .resources
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .reload(&snapshot, trusted);
+        self.refresh_tool_registry(None, true);
+        self.bind_extensions("reload", None).await;
+        Ok(())
     }
 
     pub(crate) fn from_inner(inner: Arc<Inner>) -> Self {
@@ -774,7 +811,7 @@ impl AgentSession {
 
     /// Cancels running `!` commands.
     pub fn abort_bash(&self) {
-        for token in &lock(&self.inner.cancels).bash {
+        for (_, token) in &lock(&self.inner.cancels).bash {
             token.cancel();
         }
     }

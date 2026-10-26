@@ -364,7 +364,7 @@ async fn thinking_levels_and_models() {
         .into_iter()
         .filter(|e| matches!(e.kind, EntryKind::ThinkingLevelChange { .. }))
         .count();
-    assert_eq!(changes, 1);
+    assert_eq!(changes, 2, "initial entry plus one change");
     let mut other = FauxProvider::model();
     other.provider = "nokey".into();
     let error = session.set_model(other, false).await.unwrap_err();

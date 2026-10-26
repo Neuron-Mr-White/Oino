@@ -165,6 +165,10 @@ impl FauxProvider {
                     events.push(ProviderEvent::ThinkingStart {
                         content_index: index,
                     });
+                    events.push(ProviderEvent::ThinkingDelta {
+                        content_index: index,
+                        delta: thinking.thinking.clone(),
+                    });
                     events.push(ProviderEvent::ThinkingEnd {
                         content_index: index,
                         content: thinking.thinking.clone(),
@@ -175,6 +179,10 @@ impl FauxProvider {
                         content_index: index,
                         id: Some(call.id.clone()),
                         tool_name: Some(call.name.clone()),
+                    });
+                    events.push(ProviderEvent::ToolcallDelta {
+                        content_index: index,
+                        delta: serde_json::to_string(&call.arguments).unwrap_or_default(),
                     });
                     events.push(ProviderEvent::ToolcallEnd {
                         content_index: index,
@@ -485,7 +493,12 @@ impl TestSession {
         }
         models.set_runtime_api_key("faux", "test-key");
         let set = Arc::new(ExtensionSet::new(loaded));
-        let manager = SessionManager::in_memory(&self.cwd, CreateOptions::default(), Vec::new());
+        let mut manager =
+            SessionManager::in_memory(&self.cwd, CreateOptions::default(), Vec::new());
+        // New sessions record the initial selection (pi `createAgentSession`).
+        let model = FauxProvider::model();
+        let _ = manager.append_model_change(&model.provider, &model.id);
+        let _ = manager.append_thinking_level_change("off");
         let settings = Arc::new(Mutex::new(SettingsManager::in_memory(self.settings)));
         let resources = Arc::new(RwLock::new(ResourceLoader::new(ResourceLoaderOptions {
             cwd: self.cwd.clone(),

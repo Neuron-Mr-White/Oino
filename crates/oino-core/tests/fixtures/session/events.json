@@ -1,0 +1,3582 @@
+[
+  {
+    "name": "text",
+    "events": [
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-ZiwKFg\n</cwd>"
+          },
+          "timestamp": 1792991343065
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-ZiwKFg\n</cwd>"
+          },
+          "timestamp": 1792991343065
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343065
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343065
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343051
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_start",
+          "contentIndex": 0,
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343051
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "hello"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343051
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "hello",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343051
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "hello"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343051
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "hello",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343051
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "hello"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343051
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "hello"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343051,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "hello"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343051,
+          "thinkingLevel": "off"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "system",
+            "content": "",
+            "sections": {
+              "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+              "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+              "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+              "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+              "cwd": "<cwd>\n/tmp/oino-oracle-ZiwKFg\n</cwd>"
+            },
+            "timestamp": 1792991343065
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hi"
+              }
+            ],
+            "timestamp": 1792991343065
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792991343051,
+            "thinkingLevel": "off"
+          }
+        ],
+        "willRetry": false
+      },
+      {
+        "type": "agent_settled",
+        "aborted": false
+      }
+    ],
+    "entries": [
+      {
+        "type": "model_change",
+        "id": "fe639dc9",
+        "parentId": null,
+        "timestamp": "2026-10-26T05:09:03.063Z",
+        "provider": "faux",
+        "modelId": "faux-1"
+      },
+      {
+        "type": "thinking_level_change",
+        "id": "f3b887c0",
+        "parentId": "fe639dc9",
+        "timestamp": "2026-10-26T05:09:03.063Z",
+        "thinkingLevel": "off"
+      },
+      {
+        "type": "message",
+        "id": "0b2c353f",
+        "parentId": "f3b887c0",
+        "timestamp": "2026-10-26T05:09:03.066Z",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-ZiwKFg\n</cwd>"
+          },
+          "timestamp": 1792991343065
+        }
+      },
+      {
+        "type": "message",
+        "id": "a0fd98a2",
+        "parentId": "0b2c353f",
+        "timestamp": "2026-10-26T05:09:03.066Z",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343065
+        }
+      },
+      {
+        "type": "message",
+        "id": "e2b9a93b",
+        "parentId": "a0fd98a2",
+        "timestamp": "2026-10-26T05:09:03.068Z",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "hello"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343051,
+          "thinkingLevel": "off"
+        }
+      }
+    ]
+  },
+  {
+    "name": "two-prompts",
+    "events": [
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-jXs88P\n</cwd>"
+          },
+          "timestamp": 1792991343076
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-jXs88P\n</cwd>"
+          },
+          "timestamp": 1792991343076
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "one"
+            }
+          ],
+          "timestamp": 1792991343076
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "one"
+            }
+          ],
+          "timestamp": 1792991343076
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_start",
+          "contentIndex": 0,
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "first"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "first"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "first",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "first"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "first"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "first",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "first"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "first"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "first"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343068,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "first"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343068,
+          "thinkingLevel": "off"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "system",
+            "content": "",
+            "sections": {
+              "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+              "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+              "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+              "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+              "cwd": "<cwd>\n/tmp/oino-oracle-jXs88P\n</cwd>"
+            },
+            "timestamp": 1792991343076
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "one"
+              }
+            ],
+            "timestamp": 1792991343076
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "first"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792991343068,
+            "thinkingLevel": "off"
+          }
+        ],
+        "willRetry": false
+      },
+      {
+        "type": "agent_settled",
+        "aborted": false
+      },
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "two"
+            }
+          ],
+          "timestamp": 1792991343077
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "two"
+            }
+          ],
+          "timestamp": 1792991343077
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "thinking_start",
+          "contentIndex": 0,
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "hmm"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 7,
+              "output": 3,
+              "cacheRead": 471,
+              "cacheWrite": 7,
+              "totalTokens": 488,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "thinking_delta",
+          "contentIndex": 0,
+          "delta": "hmm",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "hmm"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 7,
+              "output": 3,
+              "cacheRead": 471,
+              "cacheWrite": 7,
+              "totalTokens": 488,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "thinking_end",
+          "contentIndex": 0,
+          "content": "hmm",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "hmm"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 7,
+              "output": 3,
+              "cacheRead": 471,
+              "cacheWrite": 7,
+              "totalTokens": 488,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_start",
+          "contentIndex": 1,
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "hmm"
+              },
+              {
+                "type": "text",
+                "text": "second"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 7,
+              "output": 3,
+              "cacheRead": 471,
+              "cacheWrite": 7,
+              "totalTokens": 488,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            },
+            {
+              "type": "text",
+              "text": "second"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 1,
+          "delta": "second",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "hmm"
+              },
+              {
+                "type": "text",
+                "text": "second"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 7,
+              "output": 3,
+              "cacheRead": 471,
+              "cacheWrite": 7,
+              "totalTokens": 488,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            },
+            {
+              "type": "text",
+              "text": "second"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 1,
+          "content": "second",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "hmm"
+              },
+              {
+                "type": "text",
+                "text": "second"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 7,
+              "output": 3,
+              "cacheRead": 471,
+              "cacheWrite": 7,
+              "totalTokens": 488,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343068
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            },
+            {
+              "type": "text",
+              "text": "second"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343068
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            },
+            {
+              "type": "text",
+              "text": "second"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343068,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            },
+            {
+              "type": "text",
+              "text": "second"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343068,
+          "thinkingLevel": "off"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "two"
+              }
+            ],
+            "timestamp": 1792991343077
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "hmm"
+              },
+              {
+                "type": "text",
+                "text": "second"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 7,
+              "output": 3,
+              "cacheRead": 471,
+              "cacheWrite": 7,
+              "totalTokens": 488,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792991343068,
+            "thinkingLevel": "off"
+          }
+        ],
+        "willRetry": false
+      },
+      {
+        "type": "agent_settled",
+        "aborted": false
+      }
+    ],
+    "entries": [
+      {
+        "type": "model_change",
+        "id": "b7a4bc28",
+        "parentId": null,
+        "timestamp": "2026-10-26T05:09:03.076Z",
+        "provider": "faux",
+        "modelId": "faux-1"
+      },
+      {
+        "type": "thinking_level_change",
+        "id": "3f552e30",
+        "parentId": "b7a4bc28",
+        "timestamp": "2026-10-26T05:09:03.076Z",
+        "thinkingLevel": "off"
+      },
+      {
+        "type": "message",
+        "id": "b59b15ca",
+        "parentId": "3f552e30",
+        "timestamp": "2026-10-26T05:09:03.076Z",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-jXs88P\n</cwd>"
+          },
+          "timestamp": 1792991343076
+        }
+      },
+      {
+        "type": "message",
+        "id": "f8a3846d",
+        "parentId": "b59b15ca",
+        "timestamp": "2026-10-26T05:09:03.076Z",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "one"
+            }
+          ],
+          "timestamp": 1792991343076
+        }
+      },
+      {
+        "type": "message",
+        "id": "37c7bb05",
+        "parentId": "f8a3846d",
+        "timestamp": "2026-10-26T05:09:03.076Z",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "first"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343068,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "message",
+        "id": "ea2245a2",
+        "parentId": "37c7bb05",
+        "timestamp": "2026-10-26T05:09:03.077Z",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "two"
+            }
+          ],
+          "timestamp": 1792991343077
+        }
+      },
+      {
+        "type": "message",
+        "id": "77b8474a",
+        "parentId": "ea2245a2",
+        "timestamp": "2026-10-26T05:09:03.077Z",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "hmm"
+            },
+            {
+              "type": "text",
+              "text": "second"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 7,
+            "output": 3,
+            "cacheRead": 471,
+            "cacheWrite": 7,
+            "totalTokens": 488,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343068,
+          "thinkingLevel": "off"
+        }
+      }
+    ]
+  },
+  {
+    "name": "error-no-retry",
+    "events": [
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-XrncVv\n</cwd>"
+          },
+          "timestamp": 1792991343085
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-XrncVv\n</cwd>"
+          },
+          "timestamp": 1792991343085
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343085
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343085
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "errorMessage": "bad request",
+          "timestamp": 1792991343077
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "bad request",
+          "timestamp": 1792991343077,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "bad request",
+          "timestamp": 1792991343077,
+          "thinkingLevel": "off"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "system",
+            "content": "",
+            "sections": {
+              "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+              "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+              "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+              "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+              "cwd": "<cwd>\n/tmp/oino-oracle-XrncVv\n</cwd>"
+            },
+            "timestamp": 1792991343085
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hi"
+              }
+            ],
+            "timestamp": 1792991343085
+          },
+          {
+            "role": "assistant",
+            "content": [],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 942,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "error",
+            "errorMessage": "bad request",
+            "timestamp": 1792991343077,
+            "thinkingLevel": "off"
+          }
+        ],
+        "willRetry": false
+      },
+      {
+        "type": "agent_settled",
+        "aborted": false
+      }
+    ],
+    "entries": [
+      {
+        "type": "model_change",
+        "id": "ebe76b05",
+        "parentId": null,
+        "timestamp": "2026-10-26T05:09:03.085Z",
+        "provider": "faux",
+        "modelId": "faux-1"
+      },
+      {
+        "type": "thinking_level_change",
+        "id": "5622cd98",
+        "parentId": "ebe76b05",
+        "timestamp": "2026-10-26T05:09:03.085Z",
+        "thinkingLevel": "off"
+      },
+      {
+        "type": "message",
+        "id": "8f36eab3",
+        "parentId": "5622cd98",
+        "timestamp": "2026-10-26T05:09:03.085Z",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-XrncVv\n</cwd>"
+          },
+          "timestamp": 1792991343085
+        }
+      },
+      {
+        "type": "message",
+        "id": "2f4049f5",
+        "parentId": "8f36eab3",
+        "timestamp": "2026-10-26T05:09:03.085Z",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343085
+        }
+      },
+      {
+        "type": "message",
+        "id": "f3183066",
+        "parentId": "2f4049f5",
+        "timestamp": "2026-10-26T05:09:03.085Z",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "bad request",
+          "timestamp": 1792991343077,
+          "thinkingLevel": "off"
+        }
+      }
+    ]
+  },
+  {
+    "name": "retry",
+    "events": [
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-ZDU0PH\n</cwd>"
+          },
+          "timestamp": 1792991343094
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-ZDU0PH\n</cwd>"
+          },
+          "timestamp": 1792991343094
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343094
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343094
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "errorMessage": "529 overloaded",
+          "timestamp": 1792991343086
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "529 overloaded",
+          "timestamp": 1792991343086,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "529 overloaded",
+          "timestamp": 1792991343086,
+          "thinkingLevel": "off"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "system",
+            "content": "",
+            "sections": {
+              "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+              "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+              "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+              "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+              "cwd": "<cwd>\n/tmp/oino-oracle-ZDU0PH\n</cwd>"
+            },
+            "timestamp": 1792991343094
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hi"
+              }
+            ],
+            "timestamp": 1792991343094
+          },
+          {
+            "role": "assistant",
+            "content": [],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 942,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "error",
+            "errorMessage": "529 overloaded",
+            "timestamp": 1792991343086,
+            "thinkingLevel": "off"
+          }
+        ],
+        "willRetry": true
+      },
+      {
+        "type": "auto_retry_start",
+        "attempt": 1,
+        "maxAttempts": 3,
+        "delayMs": 1,
+        "errorMessage": "529 overloaded"
+      },
+      {
+        "type": "entry_appended",
+        "entry": {
+          "type": "context_edit",
+          "id": "99ca2dca",
+          "parentId": "7871819b",
+          "timestamp": "2026-10-26T05:09:03.095Z",
+          "targetId": "7871819b",
+          "replacement": null
+        }
+      },
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 0,
+            "totalTokens": 472,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343087
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_start",
+          "contentIndex": 0,
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "ok"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 0,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 0,
+              "totalTokens": 472,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343087
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 0,
+            "totalTokens": 472,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343087
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "ok",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "ok"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 0,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 0,
+              "totalTokens": 472,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343087
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 0,
+            "totalTokens": 472,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343087
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "ok",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "ok"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 0,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 0,
+              "totalTokens": 472,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343087
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 0,
+            "totalTokens": 472,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343087
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 0,
+            "totalTokens": 472,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343087,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "auto_retry_end",
+        "success": true,
+        "attempt": 1
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 0,
+            "totalTokens": 472,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343087,
+          "thinkingLevel": "off"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "ok"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 0,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 0,
+              "totalTokens": 472,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792991343087,
+            "thinkingLevel": "off"
+          }
+        ],
+        "willRetry": false
+      },
+      {
+        "type": "agent_settled",
+        "aborted": false
+      }
+    ],
+    "entries": [
+      {
+        "type": "model_change",
+        "id": "a51051c8",
+        "parentId": null,
+        "timestamp": "2026-10-26T05:09:03.094Z",
+        "provider": "faux",
+        "modelId": "faux-1"
+      },
+      {
+        "type": "thinking_level_change",
+        "id": "ef916523",
+        "parentId": "a51051c8",
+        "timestamp": "2026-10-26T05:09:03.094Z",
+        "thinkingLevel": "off"
+      },
+      {
+        "type": "message",
+        "id": "58699f68",
+        "parentId": "ef916523",
+        "timestamp": "2026-10-26T05:09:03.094Z",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-ZDU0PH\n</cwd>"
+          },
+          "timestamp": 1792991343094
+        }
+      },
+      {
+        "type": "message",
+        "id": "a411ddb1",
+        "parentId": "58699f68",
+        "timestamp": "2026-10-26T05:09:03.094Z",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ],
+          "timestamp": 1792991343094
+        }
+      },
+      {
+        "type": "message",
+        "id": "7871819b",
+        "parentId": "a411ddb1",
+        "timestamp": "2026-10-26T05:09:03.095Z",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 942,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "529 overloaded",
+          "timestamp": 1792991343086,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "context_edit",
+        "id": "99ca2dca",
+        "parentId": "7871819b",
+        "timestamp": "2026-10-26T05:09:03.095Z",
+        "targetId": "7871819b",
+        "replacement": null
+      },
+      {
+        "type": "message",
+        "id": "ebf9d616",
+        "parentId": "99ca2dca",
+        "timestamp": "2026-10-26T05:09:03.097Z",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "ok"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 0,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 0,
+            "totalTokens": 472,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343087,
+          "thinkingLevel": "off"
+        }
+      }
+    ]
+  },
+  {
+    "name": "unknown-tool",
+    "events": [
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-AYpOlA\n</cwd>"
+          },
+          "timestamp": 1792991343102
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-AYpOlA\n</cwd>"
+          },
+          "timestamp": 1792991343102
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "go"
+            }
+          ],
+          "timestamp": 1792991343101
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "go"
+            }
+          ],
+          "timestamp": 1792991343101
+        }
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "toolcall_start",
+          "contentIndex": 0,
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "toolCall",
+                "id": "t1",
+                "name": "nope",
+                "arguments": {}
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343097
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "t1",
+              "name": "nope",
+              "arguments": {}
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "toolcall_delta",
+          "contentIndex": 0,
+          "delta": "{}",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "toolCall",
+                "id": "t1",
+                "name": "nope",
+                "arguments": {}
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343097
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "t1",
+              "name": "nope",
+              "arguments": {}
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "toolcall_end",
+          "contentIndex": 0,
+          "toolCall": {
+            "type": "toolCall",
+            "id": "t1",
+            "name": "nope",
+            "arguments": {}
+          },
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "toolCall",
+                "id": "t1",
+                "name": "nope",
+                "arguments": {}
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343097
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "t1",
+              "name": "nope",
+              "arguments": {}
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "t1",
+              "name": "nope",
+              "arguments": {}
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1792991343097,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "tool_execution_start",
+        "toolCallId": "t1",
+        "toolName": "nope",
+        "args": {}
+      },
+      {
+        "type": "tool_execution_end",
+        "toolCallId": "t1",
+        "toolName": "nope",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "Tool nope not found"
+            }
+          ],
+          "details": {}
+        },
+        "isError": true
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "toolResult",
+          "toolCallId": "t1",
+          "toolName": "nope",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tool nope not found"
+            }
+          ],
+          "details": {},
+          "isError": true,
+          "timestamp": 1792991343102
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "toolResult",
+          "toolCallId": "t1",
+          "toolName": "nope",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tool nope not found"
+            }
+          ],
+          "details": {},
+          "isError": true,
+          "timestamp": 1792991343102
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "t1",
+              "name": "nope",
+              "arguments": {}
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1792991343097,
+          "thinkingLevel": "off"
+        },
+        "toolResults": [
+          {
+            "role": "toolResult",
+            "toolCallId": "t1",
+            "toolName": "nope",
+            "content": [
+              {
+                "type": "text",
+                "text": "Tool nope not found"
+              }
+            ],
+            "details": {},
+            "isError": true,
+            "timestamp": 1792991343102
+          }
+        ]
+      },
+      {
+        "type": "turn_start"
+      },
+      {
+        "type": "message_start",
+        "message": {
+          "role": "assistant",
+          "content": [],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 14,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 14,
+            "totalTokens": 500,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_start",
+          "contentIndex": 0,
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "done"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 14,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 14,
+              "totalTokens": 500,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343097
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 14,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 14,
+            "totalTokens": 500,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "done",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "done"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 14,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 14,
+              "totalTokens": 500,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343097
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 14,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 14,
+            "totalTokens": 500,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_end",
+          "contentIndex": 0,
+          "content": "done",
+          "partial": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "done"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 14,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 14,
+              "totalTokens": 500,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "pending",
+            "timestamp": 1792991343097
+          }
+        },
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 14,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 14,
+            "totalTokens": 500,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "pending",
+          "timestamp": 1792991343097
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 14,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 14,
+            "totalTokens": 500,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343097,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "turn_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 14,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 14,
+            "totalTokens": 500,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343097,
+          "thinkingLevel": "off"
+        },
+        "toolResults": []
+      },
+      {
+        "type": "agent_end",
+        "messages": [
+          {
+            "role": "system",
+            "content": "",
+            "sections": {
+              "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+              "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+              "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+              "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+              "cwd": "<cwd>\n/tmp/oino-oracle-AYpOlA\n</cwd>"
+            },
+            "timestamp": 1792991343102
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "go"
+              }
+            ],
+            "timestamp": 1792991343101
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "toolCall",
+                "id": "t1",
+                "name": "nope",
+                "arguments": {}
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 471,
+              "output": 2,
+              "cacheRead": 0,
+              "cacheWrite": 471,
+              "totalTokens": 944,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "toolUse",
+            "timestamp": 1792991343097,
+            "thinkingLevel": "off"
+          },
+          {
+            "role": "toolResult",
+            "toolCallId": "t1",
+            "toolName": "nope",
+            "content": [
+              {
+                "type": "text",
+                "text": "Tool nope not found"
+              }
+            ],
+            "details": {},
+            "isError": true,
+            "timestamp": 1792991343102
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "done"
+              }
+            ],
+            "api": "faux",
+            "provider": "faux",
+            "model": "faux-1",
+            "usage": {
+              "input": 14,
+              "output": 1,
+              "cacheRead": 471,
+              "cacheWrite": 14,
+              "totalTokens": 500,
+              "cost": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "total": 0
+              }
+            },
+            "stopReason": "stop",
+            "timestamp": 1792991343097,
+            "thinkingLevel": "off"
+          }
+        ],
+        "willRetry": false
+      },
+      {
+        "type": "agent_settled",
+        "aborted": false
+      }
+    ],
+    "entries": [
+      {
+        "type": "model_change",
+        "id": "6ff1de47",
+        "parentId": null,
+        "timestamp": "2026-10-26T05:09:03.101Z",
+        "provider": "faux",
+        "modelId": "faux-1"
+      },
+      {
+        "type": "thinking_level_change",
+        "id": "ba62628e",
+        "parentId": "6ff1de47",
+        "timestamp": "2026-10-26T05:09:03.101Z",
+        "thinkingLevel": "off"
+      },
+      {
+        "type": "message",
+        "id": "1d4e4a9f",
+        "parentId": "ba62628e",
+        "timestamp": "2026-10-26T05:09:03.102Z",
+        "message": {
+          "role": "system",
+          "content": "",
+          "sections": {
+            "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+            "tools": "<tools>\n(none)\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+            "rules": "<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+            "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /home/oi/.local/share/mise/installs/node/24.16.0/lib/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+            "cwd": "<cwd>\n/tmp/oino-oracle-AYpOlA\n</cwd>"
+          },
+          "timestamp": 1792991343102
+        }
+      },
+      {
+        "type": "message",
+        "id": "782c37b5",
+        "parentId": "1d4e4a9f",
+        "timestamp": "2026-10-26T05:09:03.102Z",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "go"
+            }
+          ],
+          "timestamp": 1792991343101
+        }
+      },
+      {
+        "type": "message",
+        "id": "b2c171b8",
+        "parentId": "782c37b5",
+        "timestamp": "2026-10-26T05:09:03.102Z",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "toolCall",
+              "id": "t1",
+              "name": "nope",
+              "arguments": {}
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 471,
+            "output": 2,
+            "cacheRead": 0,
+            "cacheWrite": 471,
+            "totalTokens": 944,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "toolUse",
+          "timestamp": 1792991343097,
+          "thinkingLevel": "off"
+        }
+      },
+      {
+        "type": "message",
+        "id": "ee6554d6",
+        "parentId": "b2c171b8",
+        "timestamp": "2026-10-26T05:09:03.102Z",
+        "message": {
+          "role": "toolResult",
+          "toolCallId": "t1",
+          "toolName": "nope",
+          "content": [
+            {
+              "type": "text",
+              "text": "Tool nope not found"
+            }
+          ],
+          "details": {},
+          "isError": true,
+          "timestamp": 1792991343102
+        }
+      },
+      {
+        "type": "message",
+        "id": "5a4c61b9",
+        "parentId": "ee6554d6",
+        "timestamp": "2026-10-26T05:09:03.103Z",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ],
+          "api": "faux",
+          "provider": "faux",
+          "model": "faux-1",
+          "usage": {
+            "input": 14,
+            "output": 1,
+            "cacheRead": 471,
+            "cacheWrite": 14,
+            "totalTokens": 500,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1792991343097,
+          "thinkingLevel": "off"
+        }
+      }
+    ]
+  }
+]
