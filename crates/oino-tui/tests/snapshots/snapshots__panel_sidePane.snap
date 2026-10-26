@@ -1,0 +1,26 @@
+---
+source: crates/oino-tui/tests/snapshots.rs
+expression: "h.frame(70, 22)"
+---
+
+ oino v1.0.0-test
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · …
+ Press ctrl+o to show full startup help.
+       ╭──────────────────────────────────────────────────────╮
+ Oino c│ Dashboard                                            │ how t…
+       │ › Alpha [new]                                        │
+       │   Beta  second                                       │
+       │ load ▁▅▃█▆                                           │
+       │ r refresh                                            │
+       │ r Refresh · esc close                                │
+       ╰──────────────────────────────────────────────────────╯
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────
+
+──────────────────────────────────────────────────────────────────────
+/work/project (main)
+↑1.2k ↓345 $0.012 0.8%/200k (auto)              (faux) faux-1 • medium

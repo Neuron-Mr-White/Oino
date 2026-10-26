@@ -1,0 +1,61 @@
+[package]
+name = "oino-tui"
+version = "1.0.0-alpha.0"
+edition = "2024"
+rust-version = "1.99"
+license.workspace = true
+repository.workspace = true
+description = "Oino interactive terminal client (pi interactive mode) over oino-client"
+
+[features]
+default = ["local-host"]
+## `LocalHost`: session listing, settings, keybindings and clipboard from the local agent dir
+## (stopgap until the matching `_oino/*` backend commands exist).
+local-host = ["dep:oino-resources", "dep:oino-settings"]
+
+[dependencies]
+base64.workspace = true
+crossterm = { workspace = true, features = ["bracketed-paste", "event-stream"] }
+futures.workspace = true
+indexmap.workspace = true
+oino-agent = { path = "../oino-agent" }
+oino-ai = { path = "../oino-ai" }
+oino-client = { path = "../oino-client", default-features = false }
+oino-core = { path = "../oino-core" }
+oino-resources = { path = "../oino-resources", optional = true }
+oino-session = { path = "../oino-session" }
+oino-settings = { path = "../oino-settings", optional = true }
+oino-view = { path = "../oino-view" }
+pulldown-cmark = { workspace = true, default-features = false }
+ratatui.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+syntect = { version = "5", default-features = false, features = ["default-syntaxes", "regex-fancy", "parsing"] }
+thiserror = "2"
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+unicode-width.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+# Mirrors quality.md §2 until integration switches the root workspace lints (then `workspace = true`).
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"

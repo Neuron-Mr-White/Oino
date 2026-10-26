@@ -1,0 +1,11 @@
+---
+source: crates/oino-tui/tests/snapshots.rs
+expression: "h.frame(70, 22)"
+---
+──────────────────────────────────────────────────────────────────────
+ Dashboard
+ › Alpha [new]
+   Beta  second
+ load ▁▅▃█▆
+ r refresh
+ r Refresh · esc close

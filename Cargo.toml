@@ -23,6 +23,8 @@ members = [
   "crates/oino-rpc",
   "crates/oino",
   "crates/oino-acp",
+  "crates/oino-view",
+  "crates/oino-tui",
 ]
 resolver = "2"
 
@@ -74,6 +76,7 @@ similar = "2"
 tokio-util = "0.7"
 tracing = "0.1"
 unicode-normalization = "0.1"
+insta = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

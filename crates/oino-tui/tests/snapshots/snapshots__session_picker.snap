@@ -1,0 +1,24 @@
+---
+source: crates/oino-tui/tests/snapshots.rs
+expression: "h.frame(80, 20)"
+---
+
+ oino v1.0.0-test
+ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help.
+
+ Oino can explain its own features and look up its docs. Ask it how to use or e…
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ Resume Session (Current Folder)
+ Search: ▏
+› first message of /s/a.jsonl                                               4 2h
+  └─ refactor                                                               4 1h
+  first message of /s/c.jsonl                                               4 1d
+ enter resume · tab scope · ctrl+p path · ctrl+s sort · ctrl+n named · ctrl+r r…
+/work/project (main)
+↑1.2k ↓345 $0.012 0.8%/200k (auto)                        (faux) faux-1 • medium
