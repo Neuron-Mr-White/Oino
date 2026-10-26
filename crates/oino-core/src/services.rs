@@ -79,6 +79,15 @@ pub struct ResourceFlags {
     pub append_system_prompt: Option<Vec<String>>,
     /// `-ne`: disable `kind: "extension"` discovery (providers stay).
     pub no_extensions: bool,
+    /// `--offline` / `OINO_OFFLINE`: no startup network operations (dynamic model lists).
+    pub offline: bool,
+}
+
+/// `OINO_OFFLINE` is `1`, `true` or `yes`.
+#[must_use]
+pub fn offline_env() -> bool {
+    std::env::var("OINO_OFFLINE")
+        .is_ok_and(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
 /// Inputs of [`Services::create`].
@@ -338,7 +347,9 @@ impl Services {
         .await;
         let extensions = Arc::new(ExtensionSet::new(loaded));
         let _ = host.extensions.set(Arc::clone(&extensions));
-        refresh_dynamic_models(&extensions, &models).await;
+        if !(options.flags.offline || offline_env()) {
+            refresh_dynamic_models(&extensions, &models).await;
+        }
         Ok(Arc::new(Self {
             cwd: options.cwd,
             agent_dir: options.agent_dir,
@@ -440,7 +451,14 @@ async fn init_extensions(
 }
 
 /// Fetches `list-models` for providers registered with dynamic models.
+/// Upper bound for one provider's `list-models` call at startup.
+const LIST_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Fetches the model lists of `models: "dynamic"` providers concurrently. Providers that need
+/// an API key and have none configured are skipped (their models would be unavailable anyway);
+/// keyless providers (local servers) are probed with a short timeout.
 async fn refresh_dynamic_models(extensions: &ExtensionSet, models: &ModelRegistry) {
+    let mut calls = Vec::new();
     for provider_id in models.registered_providers() {
         let Some(registration) = models.registration(&provider_id) else {
             continue;
@@ -448,27 +466,41 @@ async fn refresh_dynamic_models(extensions: &ExtensionSet, models: &ModelRegistr
         if !matches!(registration.models, oino_models::ProviderModels::Dynamic) {
             continue;
         }
-        let Some(component) = extensions.extensions().iter().find(|e| {
-            e.instance.provider().is_some() && e.state().apis.contains(&registration.api)
-        }) else {
+        let Some(component) = extensions
+            .extensions()
+            .iter()
+            .find(|e| e.instance.provider().is_some() && e.state().apis.contains(&registration.api))
+            .cloned()
+        else {
             continue;
         };
-        let Some(provider) = component.instance.provider() else {
+        let key = models.get_api_key(&provider_id).await;
+        let needs_key = !registration.auth_env.is_empty() || registration.oauth;
+        if needs_key && key.is_none() && !models.has_configured_auth(&provider_id) {
             continue;
-        };
-        let credential = models
-            .get_api_key(&provider_id)
-            .await
-            .map(|key| json!({"type": "api_key", "key": key}));
-        match provider.list_models(&provider_id, credential).await {
-            Ok(list) => {
+        }
+        let credential = key.map(|key| json!({"type": "api_key", "key": key}));
+        calls.push(async move {
+            let provider = component.instance.provider()?;
+            let result = tokio::time::timeout(
+                LIST_MODELS_TIMEOUT,
+                provider.list_models(&provider_id, credential),
+            )
+            .await;
+            Some((provider_id, result))
+        });
+    }
+    for (provider_id, result) in futures::future::join_all(calls).await.into_iter().flatten() {
+        match result {
+            Ok(Ok(list)) => {
                 if let Err(error) = models.set_provider_models(&provider_id, &list) {
                     tracing::warn!(provider = %provider_id, "storing models failed: {error}");
                 }
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 tracing::warn!(provider = %provider_id, "list-models failed: {}", error.message);
             }
+            Err(_) => tracing::warn!(provider = %provider_id, "list-models timed out"),
         }
     }
 }

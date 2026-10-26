@@ -23,7 +23,9 @@ use oino_core::extensions::api as ca;
 use oino_core::extensions::host::{self as ch, HostApi, HostOp};
 use oino_core::services::ExtensionLoader;
 use oino_extension_api::manifest::ExtensionKind;
-use oino_extension_api::ops::{ControlOp, ControlReply, SessionQuery, SessionWrite};
+use oino_extension_api::ops::{
+    ControlOp, ControlReply, DeviceOp, PanelOp, SessionQuery, SessionWrite,
+};
 use oino_extension_api::registry as ar;
 use oino_extension_api::{
     BoxFut, CallContext, CallKind, CancellationToken, EventKind, ExtensionId, ExtensionInstance,
@@ -190,6 +192,8 @@ struct ProgressRoutes(Mutex<HashMap<String, UpdateSink>>);
 pub struct CoreHost {
     api: Arc<dyn HostApi>,
     progress: Arc<ProgressRoutes>,
+    /// Counter for generated panel ids.
+    panels: std::sync::atomic::AtomicU64,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -205,6 +209,7 @@ impl CoreHost {
         Self {
             api,
             progress: Arc::default(),
+            panels: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -256,6 +261,106 @@ fn split_method(req: &RawJson) -> Result<(String, JsonObject), HostError> {
 
 fn json_reply(v: JsonValue) -> ControlReply {
     ControlReply::Json(RawJson::from(v))
+}
+
+/// Converts a core reply into the WIT reply shape of one `control.*` function.
+type ReplyShape = fn(JsonValue) -> ControlReply;
+
+/// Maps a `control.*` call to a core [`HostOp`] and the shape of its reply.
+fn control_op(op: ControlOp, cx: &CallContext) -> Result<(HostOp, ReplyShape), HostError> {
+    let name = op.name();
+    Ok(match op {
+        ControlOp::Model => (HostOp::GetModel, |v| {
+            ControlReply::MaybeJson((!v.is_null()).then(|| RawJson::from(v)))
+        }),
+        ControlOp::SetModel { provider, id } => (HostOp::SetModel { provider, id }, |v| {
+            ControlReply::Bool(v.as_bool().unwrap_or(false))
+        }),
+        ControlOp::ThinkingLevel => (HostOp::GetThinkingLevel, |v| {
+            ControlReply::String(v.as_str().unwrap_or("off").to_owned())
+        }),
+        ControlOp::SetThinkingLevel(level) => {
+            let level = level
+                .parse()
+                .map_err(|_| HostError::InvalidArgument(format!("thinking level `{level}`")))?;
+            (HostOp::SetThinkingLevel(level), |v| {
+                ControlReply::String(v.as_str().unwrap_or_default().to_owned())
+            })
+        }
+        ControlOp::IsIdle => (HostOp::IsIdle, |v| {
+            ControlReply::Bool(v.as_bool().unwrap_or(true))
+        }),
+        ControlOp::HasPendingMessages => (HostOp::HasPendingMessages, |v| {
+            ControlReply::Bool(v.as_bool().unwrap_or(false))
+        }),
+        ControlOp::Abort => (HostOp::Abort, |_| ControlReply::Unit),
+        ControlOp::ContextUsage => (HostOp::GetContextUsage, json_reply),
+        ControlOp::SystemPrompt => (HostOp::GetSystemPrompt, |v| {
+            ControlReply::String(v.as_str().unwrap_or_default().to_owned())
+        }),
+        ControlOp::Compact {
+            custom_instructions,
+        } => (
+            HostOp::Compact {
+                custom_instructions,
+            },
+            json_reply,
+        ),
+        ControlOp::WaitForIdle => (HostOp::WaitForIdle, |_| ControlReply::Unit),
+        ControlOp::NavigateTree { target_id, options } => {
+            let o = options.to_value();
+            let s = |k: &str| o.get(k).and_then(Value::as_str).map(ToOwned::to_owned);
+            let b = |k: &str| o.get(k).and_then(Value::as_bool).unwrap_or(false);
+            (
+                HostOp::NavigateTree {
+                    target_id,
+                    summarize: b("summarize"),
+                    custom_instructions: s("customInstructions"),
+                    replace_instructions: b("replaceInstructions"),
+                    label: s("label"),
+                },
+                json_reply,
+            )
+        }
+        ControlOp::ActiveTools => (HostOp::GetActiveTools, |v| {
+            ControlReply::Strings(serde_json::from_value(v).unwrap_or_default())
+        }),
+        ControlOp::SetActiveTools(names) => (HostOp::SetActiveTools(names), |_| ControlReply::Unit),
+        ControlOp::AllTools => (HostOp::GetAllTools, json_reply),
+        ControlOp::GetSettings => (HostOp::GetSettings, json_reply),
+        ControlOp::ModelsList => (HostOp::GetAvailableModels, json_reply),
+        ControlOp::ScopedModels => (HostOp::GetScopedModels, json_reply),
+        ControlOp::SessionStats => (HostOp::GetSessionStats, json_reply),
+        ControlOp::RoutedModel => (HostOp::GetRoutedModel, |v| {
+            ControlReply::MaybeJson((!v.is_null()).then(|| RawJson::from(v)))
+        }),
+        ControlOp::IsProjectTrusted => (HostOp::IsProjectTrusted, |v| {
+            ControlReply::Bool(v.as_bool().unwrap_or(false))
+        }),
+        ControlOp::CommandsList => (HostOp::GetCommands, json_reply),
+        ControlOp::CommandInvoke { name, args } => (HostOp::InvokeCommand { name, args }, |v| {
+            ControlReply::MaybeJson((!v.is_null()).then(|| RawJson::from(v)))
+        }),
+        ControlOp::ExecuteTool { name, args, .. } => {
+            let parent = cx.tool_call_id.clone().ok_or_else(|| {
+                HostError::InvalidArgument("execute-tool needs a tool call".into())
+            })?;
+            let Value::Object(args) = args.to_value() else {
+                return Err(HostError::InvalidArgument(
+                    "tool arguments must be an object".into(),
+                ));
+            };
+            (
+                HostOp::ExecuteTool {
+                    parent_tool_call_id: parent,
+                    name,
+                    args,
+                },
+                json_reply,
+            )
+        }
+        _ => return Err(HostError::unsupported(&format!("control.{name}"))),
+    })
 }
 
 impl HostServices for CoreHost {
@@ -402,93 +507,7 @@ impl HostServices for CoreHost {
     ) -> BoxFut<'_, Result<ControlReply, HostError>> {
         let (ext, cx) = (ext.clone(), cx.clone());
         Box::pin(async move {
-            let name = op.name();
-            let (core_op, shape): (HostOp, fn(JsonValue) -> ControlReply) = match op {
-                ControlOp::Model => (HostOp::GetModel, |v| {
-                    ControlReply::MaybeJson((!v.is_null()).then(|| RawJson::from(v)))
-                }),
-                ControlOp::SetModel { provider, id } => (HostOp::SetModel { provider, id }, |v| {
-                    ControlReply::Bool(v.as_bool().unwrap_or(false))
-                }),
-                ControlOp::ThinkingLevel => (HostOp::GetThinkingLevel, |v| {
-                    ControlReply::String(v.as_str().unwrap_or("off").to_owned())
-                }),
-                ControlOp::SetThinkingLevel(level) => {
-                    let level = level.parse().map_err(|_| {
-                        HostError::InvalidArgument(format!("thinking level `{level}`"))
-                    })?;
-                    (HostOp::SetThinkingLevel(level), |v| {
-                        ControlReply::String(v.as_str().unwrap_or_default().to_owned())
-                    })
-                }
-                ControlOp::IsIdle => (HostOp::IsIdle, |v| {
-                    ControlReply::Bool(v.as_bool().unwrap_or(true))
-                }),
-                ControlOp::HasPendingMessages => (HostOp::HasPendingMessages, |v| {
-                    ControlReply::Bool(v.as_bool().unwrap_or(false))
-                }),
-                ControlOp::Abort => (HostOp::Abort, |_| ControlReply::Unit),
-                ControlOp::ContextUsage => (HostOp::GetContextUsage, json_reply),
-                ControlOp::SystemPrompt => (HostOp::GetSystemPrompt, |v| {
-                    ControlReply::String(v.as_str().unwrap_or_default().to_owned())
-                }),
-                ControlOp::Compact {
-                    custom_instructions,
-                } => (
-                    HostOp::Compact {
-                        custom_instructions,
-                    },
-                    json_reply,
-                ),
-                ControlOp::WaitForIdle => (HostOp::WaitForIdle, |_| ControlReply::Unit),
-                ControlOp::NavigateTree { target_id, options } => {
-                    let o = options.to_value();
-                    let s = |k: &str| o.get(k).and_then(Value::as_str).map(ToOwned::to_owned);
-                    let b = |k: &str| o.get(k).and_then(Value::as_bool).unwrap_or(false);
-                    (
-                        HostOp::NavigateTree {
-                            target_id,
-                            summarize: b("summarize"),
-                            custom_instructions: s("customInstructions"),
-                            replace_instructions: b("replaceInstructions"),
-                            label: s("label"),
-                        },
-                        json_reply,
-                    )
-                }
-                ControlOp::ActiveTools => (HostOp::GetActiveTools, |v| {
-                    ControlReply::Strings(serde_json::from_value(v).unwrap_or_default())
-                }),
-                ControlOp::SetActiveTools(names) => {
-                    (HostOp::SetActiveTools(names), |_| ControlReply::Unit)
-                }
-                ControlOp::AllTools => (HostOp::GetAllTools, json_reply),
-                ControlOp::CommandsList => (HostOp::GetCommands, json_reply),
-                ControlOp::CommandInvoke { name, args } => {
-                    (HostOp::InvokeCommand { name, args }, |v| {
-                        ControlReply::MaybeJson((!v.is_null()).then(|| RawJson::from(v)))
-                    })
-                }
-                ControlOp::ExecuteTool { name, args, .. } => {
-                    let parent = cx.tool_call_id.clone().ok_or_else(|| {
-                        HostError::InvalidArgument("execute-tool needs a tool call".into())
-                    })?;
-                    let Value::Object(args) = args.to_value() else {
-                        return Err(HostError::InvalidArgument(
-                            "tool arguments must be an object".into(),
-                        ));
-                    };
-                    (
-                        HostOp::ExecuteTool {
-                            parent_tool_call_id: parent,
-                            name,
-                            args,
-                        },
-                        json_reply,
-                    )
-                }
-                _ => return Err(HostError::unsupported(&format!("control.{name}"))),
-            };
+            let (core_op, shape) = control_op(op, &cx)?;
             self.call(&ext, &cx, core_op).await.map(shape)
         })
     }
@@ -528,6 +547,136 @@ impl HostServices for CoreHost {
         let (method, params) = split_method(&req)?;
         self.call_sync(ext, cx, HostOp::UiFire { method, params })
             .map(|_| ())
+    }
+
+    /// `models.complete` and `models.summarize-default` run in the calling session
+    /// (credentials, virtual-model routing); the other model operations are unsupported.
+    fn models(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: oino_extension_api::ops::ModelsOp,
+    ) -> BoxFut<'_, Result<oino_extension_api::ops::ModelsReply, HostError>> {
+        use oino_extension_api::ops::{ModelsOp, ModelsReply};
+        let (ext, cx) = (ext.clone(), cx.clone());
+        Box::pin(async move {
+            let op = match op {
+                ModelsOp::Complete { request, cancel } => {
+                    let request = request.to_value();
+                    HostOp::ModelComplete {
+                        model: request
+                            .get("model")
+                            .and_then(Value::as_str)
+                            .map(ToOwned::to_owned),
+                        context: request.get("context").cloned().unwrap_or(Value::Null),
+                        options: request.get("options").cloned().unwrap_or(Value::Null),
+                        cancel,
+                    }
+                }
+                ModelsOp::SummarizeDefault {
+                    messages,
+                    custom_instructions,
+                } => HostOp::SummarizeDefault {
+                    messages: messages.to_value(),
+                    custom_instructions,
+                },
+                _ => return Err(HostError::unsupported("this models operation")),
+            };
+            self.call(&ext, &cx, op)
+                .await
+                .map(|v| ModelsReply::Json(RawJson::from(v)))
+        })
+    }
+
+    /// Panels are retained fire-and-forget requests (`openPanel` / `updatePanel` /
+    /// `closePanel`, ui-protocol §5); the panel id defaults to `<ext>/panel-<n>`.
+    fn ui_panel(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: PanelOp,
+    ) -> Result<Option<String>, HostError> {
+        let object = |raw: &RawJson, what: &str| match raw.to_value() {
+            Value::Object(obj) => Ok(obj),
+            _ => Err(HostError::InvalidArgument(format!(
+                "{what} must be a JSON object"
+            ))),
+        };
+        let (method, params, id) = match op {
+            PanelOp::Open(spec) => {
+                let mut params = object(&spec, "panel")?;
+                let id = match params.get("panelId").and_then(Value::as_str) {
+                    Some(id) if !id.is_empty() => id.to_owned(),
+                    _ => {
+                        let n = self
+                            .panels
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        format!("{ext}/panel-{n}")
+                    }
+                };
+                params.insert("panelId".into(), json!(id));
+                ("openPanel", params, Some(id))
+            }
+            PanelOp::Update { panel_id, spec } => {
+                let mut params = object(&spec, "panel update")?;
+                params.insert("panelId".into(), json!(panel_id));
+                ("updatePanel", params, None)
+            }
+            PanelOp::Close(panel_id) => {
+                let mut params = JsonObject::new();
+                params.insert("panelId".into(), json!(panel_id));
+                ("closePanel", params, None)
+            }
+        };
+        self.call_sync(
+            ext,
+            cx,
+            HostOp::UiFire {
+                method: method.to_owned(),
+                params,
+            },
+        )?;
+        Ok(id)
+    }
+
+    /// Fire-and-forget device requests (`osNotify`, `openUrl`, `clipboardWrite`) go to the
+    /// frontend; clipboard reads and external editing need a round trip (unsupported).
+    fn ui_device(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: DeviceOp,
+    ) -> BoxFut<'_, Result<Option<RawJson>, HostError>> {
+        let request = match op {
+            DeviceOp::OsNotify {
+                title,
+                body,
+                urgency,
+                action_url,
+            } => Ok((
+                "osNotify",
+                json!({"title": title, "body": body, "urgency": urgency, "actionUrl": action_url}),
+            )),
+            DeviceOp::OpenUrl(url) => Ok(("openUrl", json!({"url": url}))),
+            DeviceOp::ClipboardWriteText(text) => Ok(("clipboardWrite", json!({"text": text}))),
+            DeviceOp::ClipboardReadImage => Err(HostError::unsupported("ui.clipboard-read-image")),
+            DeviceOp::EditExternally { .. } => Err(HostError::unsupported("ui.edit-externally")),
+        };
+        let result = request.and_then(|(method, params)| {
+            let Value::Object(params) = params else {
+                return Ok(None);
+            };
+            self.call_sync(
+                ext,
+                cx,
+                HostOp::UiFire {
+                    method: method.to_owned(),
+                    params,
+                },
+            )
+            .map(|_| None)
+        });
+        Box::pin(async move { result })
     }
 }
 

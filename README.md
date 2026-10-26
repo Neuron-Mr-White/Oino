@@ -2,185 +2,116 @@
 
 # Oino
 
-### A fast Rust terminal agent with extension-first model routing and a calm keyboard-driven TUI.
+### A Rust coding agent: pi 1.4.0 core, WASM extensions, terminal + desktop + ACP clients.
 
-[Install](#install) · [Uninstall](#uninstall) · [Quick Start](#quick-start) · [Docs](#documentation) · [Glossary](#glossary)
+[Install](#install) · [Quick start](#quick-start) · [What's inside](#whats-inside) · [Docs](#documentation) · [Development](#development)
+
+**Status: 1.0.0-alpha.1** — see [docs/dev/v1/STATUS.md](docs/dev/v1/STATUS.md) for parity and known issues.
 
 </div>
 
 ---
 
-## Index
+Oino is another [pi](https://github.com/earendil-works/pi) core written in Rust. `oino-core`
+behaves like `@earendil-works/pi-coding-agent` 1.4.0: the same agent loop, sessions (pi
+session format v3), tools (`read`, `write`, `edit`, `bash`, plus `grep`, `find`, `ls`),
+skills, prompt templates, `AGENTS.md` / `SYSTEM.md`, compaction, branch summaries, settings,
+print / JSON / RPC modes and the same command line. Everything else is a client or an
+extension:
 
-- [Install](#install)
-- [Uninstall](#uninstall)
-- [Quick Start](#quick-start)
-- [What Oino Does](#what-oino-does)
-- [Everyday Commands](#everyday-commands)
-- [Documentation](#documentation)
-- [Glossary](#glossary)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
+- **Providers are WASM components** (Anthropic Messages, OpenAI Responses, OpenAI-compatible
+  chat completions, the Oino Router). No provider code lives in core.
+- **All of unipi 3.0.0** (workflow/permissions, plan mode, memory, compactor, subagents,
+  background tasks, long-horizon goals, kanboard, MCP, web search, notifications, …) is ported
+  to Rust WASM components and **bundled into the binary**. Installing `oino` is enough.
+- **Clients**: the terminal UI (`oino`), [ACP](docs/acp.md) for editors such as Zed
+  (`oino --mode acp`), [RPC](docs/rpc.md) on stdio, and the GPUI **Oino Desktop** app.
 
 ## Install
 
-Pure Oino install (core binary only, no optional extension packages):
+macOS / Linux:
 
 ```bash
-sh -c 'u=https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u"; elif command -v wget >/dev/null 2>&1; then wget -qO- "$u"; else echo "Install curl or wget, or run from a source checkout: OINO_EXTENSIONS=none sh scripts/install.sh" >&2; exit 1; fi' | OINO_EXTENSIONS=none sh
+curl -fsSL https://raw.githubusercontent.com/Neuron-Mr-White/Oino/v1-alpha/scripts/install.sh | sh
 ```
 
-Interactive install (choose built-in and additional extensions):
-
-```bash
-sh -c 'u=https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install-interactive.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u"; elif command -v wget >/dev/null 2>&1; then wget -qO- "$u"; else echo "Install curl or wget, or run from a source checkout: sh scripts/install-interactive.sh" >&2; exit 1; fi' | sh
-```
-
-Default macOS/Linux/Unix install (core plus all built-in extensions):
-
-```bash
-sh -c 'u=https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u"; elif command -v wget >/dev/null 2>&1; then wget -qO- "$u"; else echo "Install curl or wget, or run from a source checkout: sh scripts/install.sh" >&2; exit 1; fi' | sh
-```
-
-Windows PowerShell:
+Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/Neuron-Mr-White/Oino/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/Neuron-Mr-White/Oino/v1-alpha/scripts/install.ps1 | iex
 ```
 
-From a source checkout:
+From a source checkout (needs Rust; `rust-toolchain.toml` pins 1.99.0 + `wasm32-wasip2`):
 
 ```bash
-sh scripts/install.sh              # macOS/Linux/Unix, core plus all built-ins
-OINO_EXTENSIONS=none sh scripts/install.sh  # pure Oino core only
-sh scripts/install-interactive.sh  # choose built-in/additional extensions
-.\scripts\install.ps1             # Windows PowerShell
+sh scripts/install.sh          # macOS / Linux
+.\scripts\install.ps1          # Windows
 ```
 
-The Unix installer prefers a tagged release binary, verifies checksums when available, and falls back to `cargo build --release` from source for unsupported devices. It places the binary in `~/.local/bin` (`$HOME\.local\bin` on Windows). Set `OINO_PREFIX` to install somewhere else, `OINO_REF=vX.Y.Z` to pin a tag, and `OINO_EXTENSIONS=none|all|router,vcc` to control built-in extension installation.
+The installers put `oino` and `oino-kanboard` into `~/.local/bin` (override with
+`OINO_PREFIX`). They prefer a tagged release binary and fall back to building from source
+(`cargo xtask wasm` + `cargo build --release -p oino -p oino-kanboard`). Details:
+[docs/install.md](docs/install.md). Oino Desktop: [docs/desktop.md](docs/desktop.md).
 
-## Uninstall
+Uninstall: delete `~/.local/bin/oino` and `~/.local/bin/oino-kanboard`; `~/.oino` holds your
+settings, credentials and sessions.
 
-Remove only the binary:
+## Quick start
 
 ```bash
-rm -f ~/.local/bin/oino                         # macOS/Linux/Unix
-Remove-Item "$HOME\.local\bin\oino.exe"        # Windows PowerShell
+export ANTHROPIC_API_KEY=sk-ant-...     # or OPENAI_API_KEY, OPENROUTER_API_KEY, … (docs/providers.md)
+oino                                    # interactive terminal UI
+oino -p "Summarize this repository"     # print mode
+oino --mode json "List the crates"      # JSON event stream
+oino --mode acp                         # Agent Client Protocol on stdio (Zed, …)
 ```
 
-Optional cleanup:
+Inside the TUI: `/model` picks a model, `/settings` opens settings, `/unipi:info` shows the
+bundled extensions, `/hotkeys` lists key bindings, `ctrl+d` exits.
 
-```bash
-rm -rf ~/.oino/extension-packages               # remove installed extension packages
-rm -rf ~/.oino                                  # remove all Oino settings, sessions, caches, and extensions
-```
+## What's inside
 
-Use the full `~/.oino` removal only when you are sure you no longer need saved sessions or local settings.
-
-## Quick Start
-
-```bash
-oino
-```
-
-Recommended first-run flow inside Oino:
-
-```text
-/router setup
-/router dashboard
-/router fetch-models
-/model
-```
-
-The local OmniRoute dashboard password is:
-
-```text
-oino
-```
-
-## What Oino Does
-
-| Feature | Use it for |
-| --- | --- |
-| Terminal chat | Work with models from a keyboard-first TUI. |
-| OmniRoute-first auth | Configure provider keys in the local OmniRoute dashboard. |
-| Built-in coding tools | Let the agent read, run shell commands, edit, and write files. |
-| Sessions | Resume previous work with `/sessions`. |
-| Prompts and skills | Reuse workflows with `/prompt:` and `/skill:`. |
-| Extensions | Add commands, tools, themes, providers, and UI surfaces. |
-| Themes/keymaps | Customize the look and controls from `/settings`. |
-
-## Everyday Commands
-
-```text
-/help        show keyboard and command help
-/model       choose a model
-/settings    open settings
-/theme       choose a theme
-/auth        show auth/readiness status
-/account     show provider/runtime status
-/usage       show usage totals
-/extensions  manage extensions
-/update check            check latest tagged Oino release
-/update                  update core binary; restart Oino to use it
-/update extensions       hot-update installed extension packages
-/reload      rescan resources, extensions, themes, and cached model lists
-```
+| Part | Where | Docs |
+|---|---|---|
+| Core runtime (pi 1.4.0 parity) | `crates/oino-core`, `oino-agent`, `oino-session`, `oino-tools`, … | [sessions](docs/sessions.md), [settings](docs/settings.md) |
+| `oino` CLI: TUI, print, JSON, RPC, ACP | `crates/oino`, `oino-tui`, `oino-rpc`, `oino-acp` | [tui](docs/tui.md), [rpc](docs/rpc.md), [acp](docs/acp.md) |
+| WASM extension host + WIT `oino:extension@1.0.0` | `wit/`, `crates/oino-wasm-host` | [extensions](docs/extensions.md), [extension API](docs/extension-api.md) |
+| Provider components | `extensions/providers/*` | [providers](docs/providers.md), [models](docs/models.md) |
+| unipi 3.0.0 ports | `extensions/unipi/*` | [unipi](docs/unipi.md) |
+| Oino Desktop (GPUI) | `apps/` | [desktop](docs/desktop.md) |
 
 ## Documentation
 
-User guides:
+- [Install and update](docs/install.md)
+- [Providers and credentials](docs/providers.md) · [Models and `models.json`](docs/models.md)
+- [Terminal UI](docs/tui.md) · [Key bindings](docs/keybindings.md) · [Themes](docs/themes.md)
+- [Settings](docs/settings.md) · [Environment variables](docs/environment-variables.md)
+- [Sessions](docs/sessions.md) · [Skills](docs/skills.md) · [Prompt templates](docs/prompt-templates.md)
+- [Extensions](docs/extensions.md) · [Extension API and WIT](docs/extension-api.md) · [Packages](docs/packages.md)
+- [Bundled unipi extensions](docs/unipi.md)
+- [RPC mode](docs/rpc.md) · [ACP mode](docs/acp.md) · [Embedding (SDK)](docs/sdk.md)
+- [Oino Desktop](docs/desktop.md)
 
-- [Auth and models](docs/auth.md)
-- [Commands](docs/command.md)
-- [Extensions](docs/extension.md)
-- [Built-in extensions](docs/built-in-extensions.md)
-- [Keymap](docs/keymap.md)
-- [Configuration](docs/configurations.md)
-- [Install and updates](docs/update.md)
-
-Developer guides:
-
-- [Architecture](docs/architecture.md)
-- [Extension development](docs/dev/extension-dev.md)
-- [TUI development](docs/dev/tui.md)
-- [Theme development](docs/dev/theme.md)
-
-## Glossary
-
-| Term | Meaning |
-| --- | --- |
-| Oino | The terminal agent app and Rust workspace. |
-| TUI | Terminal user interface: the transcript, composer, overlays, settings, and key handling. |
-| OmniRoute | The recommended local model router and provider-key dashboard. |
-| Model | A selectable `provider:model-id`, such as a `router:...` entry. |
-| Extension | An installable package that can add commands, tools, themes, providers, settings pages, or resources. |
-| Built-in extension | An optional extension shipped in this repository and enabled by the installer. |
-| Prompt | A reusable text template included with `/prompt:<name>`. |
-| Skill | A reusable workflow folder included with `/skill:<name>`. |
-| Session | Saved conversation state under `~/.oino/sessions/`. |
-| Model catalog | Cached model list under `~/.oino/model-catalogs/`. Oino does not display model-list price estimates for OmniRoute because OpenRouter catalog prices do not necessarily reflect final OmniRoute route billing. |
+Developer specifications live in [docs/dev/v1/](docs/dev/v1/README.md) (charter, specs,
+deviations, [status](docs/dev/v1/STATUS.md)).
 
 ## Development
 
+Three cargo workspaces: the root (`crates/*`, `xtask`), `extensions/` (`wasm32-wasip2`
+components) and `apps/` (GPUI).
+
 ```bash
-cargo fmt --all
-cargo check --workspace
+cargo xtask wasm                      # build every component into extensions/dist (bundled by oino-bundle)
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
 cargo test --workspace
+(cd extensions && cargo clippy --target wasm32-wasip2 --workspace --all-targets -- -D warnings && cargo test --workspace)
+(cd apps && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace)
+sh scripts/install-smoke.sh           # install into a temp prefix and run one faux prompt
 ```
 
-Useful source-checkout commands:
+Quality gates and test layers: [docs/dev/v1/quality.md](docs/dev/v1/quality.md).
 
-```bash
-cargo run -p oino-app --bin oino
-bash scripts/install-all-builtins.sh
-scripts/install-smoke.sh
-cargo run -p oino-extension-sdk --bin oino-extension-devkit -- validate-package examples/extensions/rust-wasm-fixture
-```
+## License
 
-## Troubleshooting
-
-- `oino: command not found`: add the install directory, usually `~/.local/bin`, to `PATH`.
-- No models: run `/router setup`, add provider keys in the dashboard, then run `/router fetch-models`.
-- Dashboard password does not work: run `/router reset-password` and `/router restart`, then use `oino`.
-- Terminal state looks broken after a crash: run `reset` in your shell.
+MIT OR Apache-2.0.

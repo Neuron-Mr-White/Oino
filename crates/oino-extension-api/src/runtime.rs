@@ -221,7 +221,7 @@ macro_rules! unsupported {
 
 /// Implemented by `oino-core`: one method per WIT import that needs the runtime (grouped by
 /// interface). Every method has a default that reports the capability as unsupported, so
-/// hosts can grow coverage additively; [`crate::testing::RecordingHostServices`] records all.
+/// hosts can grow coverage additively; `testing::RecordingHostServices` (feature `testing`) records all.
 #[allow(unused_variables, reason = "default bodies ignore their arguments")]
 pub trait HostServices: Send + Sync {
     // ── registry ──

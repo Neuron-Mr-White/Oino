@@ -1,36 +1,11 @@
 [workspace]
-exclude = ["legacy"]
-members = [
-  "crates/oino-types",
-  "crates/oino-agent-loop",
-  "crates/oino-ai",
-  "crates/oino-session",
-  "crates/oino-resource",
-  "crates/oino-env",
-  "crates/oino-auth",
-  "crates/oino-provider-catalog",
-  "crates/oino-wasm-host",
-  "crates/oino-agent",
-  "crates/oino-tools",
-  "crates/oino-settings",
-  "crates/oino-resources",
-  "crates/oino-models",
-  "crates/oino-core",
-  "crates/oino-extension-api",
-  "crates/oino-bundle",
-  "xtask",
-  "crates/oino-client",
-  "crates/oino-rpc",
-  "crates/oino",
-  "crates/oino-acp",
-  "crates/oino-view",
-  "crates/oino-tui",
-  "crates/oino-kanboard",
-]
-resolver = "2"
+members = ["crates/*", "xtask"]
+resolver = "3"
 
 [workspace.package]
-edition = "2021"
+version = "1.0.0-alpha.1"
+edition = "2024"
+rust-version = "1.99"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Neuron-Mr-White/Oino"
 
@@ -79,9 +54,20 @@ tracing = "0.1"
 unicode-normalization = "0.1"
 insta = "1"
 
+# quality.md §2. Crates currently carry an identical local `[lints]` table.
 [workspace.lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
 
 [workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"

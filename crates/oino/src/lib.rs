@@ -1,8 +1,9 @@
 //! `oino`: the headless Oino binary over `oino-core` (pi `main.ts`, modes.md §1–§3).
 //!
-//! pi 1.4.0 command line (same flags and semantics), print mode, JSON event stream mode and
-//! RPC mode on stdio. Interactive (TUI), ACP, `serve` and the package subcommands belong to
-//! other work items and report that they are unavailable.
+//! pi 1.4.0 command line (same flags and semantics): interactive mode (the `oino-tui`
+//! client), print mode, JSON event stream mode, RPC mode and ACP mode on stdio. Every mode
+//! loads the bundled provider and unipi components ([`loader`]). `serve` and the package
+//! subcommands are not available yet.
 //!
 //! # API map
 //!
@@ -13,9 +14,11 @@
 //! | [`cli::files`] | `file-processor.ts`, `initial-message.ts` | `@file` arguments, first message |
 //! | [`cli::list_models`] | `list-models.ts` | `--list-models` table |
 //! | [`startup`] | `main.ts` `createRuntime` | services, session selection, model/tool options |
-//! | [`loader`] | resource loader `-e` | `builtin:` components |
+//! | [`loader`] | resource loader `-e` | bundled, installed and `-e` packages, `builtin:` components |
 //! | [`modes::print`] | `print-mode.ts` | text and JSON output |
 //! | [`modes::rpc`] | `rpc-mode.ts` | RPC server on stdio |
+//! | [`modes::interactive`] | `interactive-mode.ts` | the TUI over an in-process backend |
+//! | [`modes::acp`] | — | ACP agent on stdio (`oino-acp`) |
 //! | `faux` (feature) | — | scripted provider + UI probe for tests |
 
 #![forbid(unsafe_code)]
@@ -211,7 +214,6 @@ fn preflight(args: &cli::args::Args, mode: AppMode) -> Result<(), Vec<String>> {
         return Ok(());
     }
     let unavailable = match mode {
-        AppMode::Acp => Some("ACP mode (--mode acp)"),
         AppMode::Interactive if args.remote.is_some() => Some("Remote interactive mode"),
         _ => None,
     };
@@ -223,8 +225,12 @@ fn preflight(args: &cli::args::Args, mode: AppMode) -> Result<(), Vec<String>> {
     }
 }
 
-/// Starts the runtime and runs `--help`, `--list-models`, RPC or print/JSON mode.
+/// Starts the runtime and runs `--help`, `--list-models`, ACP, RPC, interactive or print/JSON
+/// mode.
 async fn run_mode(mut args: cli::args::Args, mode: AppMode, env: &Environment) -> i32 {
+    if mode == AppMode::Acp && !args.help && args.list_models.is_none() {
+        return modes::acp::run(&args, env).await;
+    }
     let started = match startup::start(&args, mode, env).await {
         Ok(started) => started,
         Err(StartupError(lines)) => return fail(&lines),
@@ -234,8 +240,9 @@ async fn run_mode(mut args: cli::args::Args, mode: AppMode, env: &Environment) -
         return 0;
     }
     if let Some(list) = &args.list_models {
-        let no_models =
-            oino_models::auth::guidance::no_models_available_message(&env.agent_dir.join("docs"));
+        let no_models = oino_models::auth::guidance::no_models_available_message(
+            &startup::docs_root(&env.agent_dir).join("docs"),
+        );
         let search = match list {
             ListModels::All => None,
             ListModels::Search(search) => Some(search.as_str()),

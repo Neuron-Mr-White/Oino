@@ -8,9 +8,10 @@
 //!
 //! | Item | Use |
 //! |---|---|
-//! | [`BUNDLED`] | every bundled extension (selected by features `providers`, `unipi`, `fixtures`) |
+//! | [`BUNDLED`] | every bundled extension in load order: providers, unipi `LOAD_ORDER`, others (features `providers`, `unipi`, `fixtures`) |
 //! | [`BundledExtension::component`] | decompressed component bytes |
 //! | [`BundledExtension::extract`] | resources on disk (atomic directory rename) |
+//! | [`DOCS`] / [`BundledDocs::extract`] | `README.md` + `docs/*.md`, the system prompt docs root |
 
 #![forbid(unsafe_code)]
 
@@ -78,39 +79,88 @@ impl BundledExtension {
     ///
     /// File I/O.
     pub fn extract(&self, agent_dir: &Path) -> Result<PathBuf, BundleError> {
-        let dir = self.extract_dir(agent_dir);
-        if dir.join("extension.json").is_file() {
-            return Ok(dir);
+        let manifest = [("extension.json", self.manifest.as_bytes())];
+        extract_files(
+            &self.extract_dir(agent_dir),
+            "extension.json",
+            manifest
+                .iter()
+                .copied()
+                .chain(self.resources.iter().copied()),
+        )
+    }
+}
+
+/// The user documentation bundled into the binary (`README.md`, `docs/*.md`): the docs root
+/// that the system prompt points at (runtime §9.4).
+#[derive(Debug)]
+pub struct BundledDocs {
+    /// Version of `oino-bundle` (the Oino release).
+    pub version: &'static str,
+    /// First 8 hex chars of the sha256 over every file.
+    pub hash8: &'static str,
+    /// `(relative path, bytes)`.
+    pub files: &'static [(&'static str, &'static [u8])],
+}
+
+/// The bundled documentation.
+pub static DOCS: BundledDocs = include!(concat!(env!("OUT_DIR"), "/docs.rs"));
+
+impl BundledDocs {
+    /// Extracts the docs once to `agent_dir/bundled/oino.docs@<version>-<hash8>` and returns
+    /// that directory (`{docs_root}` of the system prompt).
+    ///
+    /// # Errors
+    ///
+    /// File I/O.
+    pub fn extract(&self, agent_dir: &Path) -> Result<PathBuf, BundleError> {
+        let dir = agent_dir
+            .join("bundled")
+            .join(format!("oino.docs@{}-{}", self.version, self.hash8));
+        extract_files(&dir, "README.md", self.files.iter().copied())
+    }
+}
+
+/// Writes `files` into a temp directory next to `dir`, then renames it into place; a no-op
+/// when `dir/marker` exists.
+fn extract_files<'a>(
+    dir: &Path,
+    marker: &str,
+    files: impl Iterator<Item = (&'a str, &'a [u8])>,
+) -> Result<PathBuf, BundleError> {
+    if dir.join(marker).is_file() {
+        return Ok(dir.to_path_buf());
+    }
+    let io = |context: String| move |source| BundleError::Io { context, source };
+    let parent = dir
+        .parent()
+        .map_or_else(|| dir.to_path_buf(), Path::to_path_buf);
+    std::fs::create_dir_all(&parent).map_err(io(format!("create {}", parent.display())))?;
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let tmp = parent.join(format!(".{name}.{}.tmp", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).map_err(io(format!("create {}", tmp.display())))?;
+    for (rel, bytes) in files {
+        let path = tmp.join(rel);
+        if let Some(p) = path.parent() {
+            std::fs::create_dir_all(p).map_err(io(format!("create {}", p.display())))?;
         }
-        let io = |context: String| move |source| BundleError::Io { context, source };
-        let parent = dir
-            .parent()
-            .map_or_else(|| agent_dir.to_path_buf(), Path::to_path_buf);
-        std::fs::create_dir_all(&parent).map_err(io(format!("create {}", parent.display())))?;
-        let tmp = parent.join(format!(".{}.{}.tmp", self.id, std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).map_err(io(format!("create {}", tmp.display())))?;
-        std::fs::write(tmp.join("extension.json"), self.manifest)
-            .map_err(io("write manifest".into()))?;
-        for (rel, bytes) in self.resources {
-            let path = tmp.join(rel);
-            if let Some(p) = path.parent() {
-                std::fs::create_dir_all(p).map_err(io(format!("create {}", p.display())))?;
-            }
-            std::fs::write(&path, bytes).map_err(io(format!("write {rel}")))?;
+        std::fs::write(&path, bytes).map_err(io(format!("write {rel}")))?;
+    }
+    match std::fs::rename(&tmp, dir) {
+        Ok(()) => Ok(dir.to_path_buf()),
+        // Another process won the race.
+        Err(_) if dir.join(marker).is_file() => {
+            let _ = std::fs::remove_dir_all(&tmp);
+            Ok(dir.to_path_buf())
         }
-        match std::fs::rename(&tmp, &dir) {
-            Ok(()) => Ok(dir),
-            // Another process won the race.
-            Err(_) if dir.join("extension.json").is_file() => {
-                let _ = std::fs::remove_dir_all(&tmp);
-                Ok(dir)
-            }
-            Err(source) => Err(BundleError::Io {
-                context: format!("rename to {}", dir.display()),
-                source,
-            }),
-        }
+        Err(source) => Err(BundleError::Io {
+            context: format!("rename to {}", dir.display()),
+            source,
+        }),
     }
 }
 
@@ -164,5 +214,15 @@ mod tests {
             root
         );
         assert_eq!(b.component().unwrap_or_default(), b"\0asm");
+    }
+
+    #[test]
+    fn docs_extract() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| unreachable!("{e}"));
+        let root = DOCS
+            .extract(dir.path())
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert!(root.join("README.md").is_file());
+        assert!(DOCS.files.iter().any(|(rel, _)| rel.starts_with("docs/")));
     }
 }

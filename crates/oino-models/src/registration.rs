@@ -10,7 +10,9 @@ use crate::models_json::{SamplingByLevel, sampling_by_level};
 
 /// How a registration sends the API key (`authHeader`).
 ///
-/// pi uses a boolean; extension-api §4.4 uses `"bearer"`. Both spellings are accepted.
+/// pi uses a boolean; extension-api §4.4 uses `"bearer"`. Both spellings are accepted. Any
+/// other header name (e.g. Anthropic's `"x-api-key"`) is informational: the provider
+/// component places the key itself, so it maps to [`AuthHeaderMode::None`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AuthHeaderMode {
     /// The provider component places the key itself.
@@ -39,14 +41,8 @@ impl<'de> Deserialize<'de> for AuthHeaderMode {
         }
         match Raw::deserialize(deserializer)? {
             Raw::Flag(true) => Ok(Self::Bearer),
-            Raw::Flag(false) => Ok(Self::None),
             Raw::Name(name) if name.eq_ignore_ascii_case("bearer") => Ok(Self::Bearer),
-            Raw::Name(name) if name.eq_ignore_ascii_case("none") || name.is_empty() => {
-                Ok(Self::None)
-            }
-            Raw::Name(name) => Err(serde::de::Error::custom(format!(
-                "unknown authHeader \"{name}\""
-            ))),
+            Raw::Flag(false) | Raw::Name(_) => Ok(Self::None),
         }
     }
 }
@@ -305,6 +301,13 @@ mod tests {
         assert_eq!(registration.models, ProviderModels::Dynamic);
         assert_eq!(registration.auth_header, AuthHeaderMode::Bearer);
         assert!(registration.has_api_key_auth());
+
+        let registration: ProviderRegistration = serde_json::from_value(json!({
+            "id": "anthropic", "api": "anthropic-messages", "authHeader": "x-api-key",
+            "models": "dynamic"
+        }))
+        .unwrap();
+        assert_eq!(registration.auth_header, AuthHeaderMode::None);
 
         let registration: ProviderRegistration = serde_json::from_value(json!({
             "id": "x", "api": "a", "oauth": true, "authHeader": true,

@@ -63,6 +63,7 @@ impl Sandbox {
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("HOME", self.home())
             .env("OINO_AGENT_DIR", self.agent())
+            .env("OINO_BUNDLED", "0")
             .env("OINO_FAUX_API_KEY", "faux-key")
             .env("OINO_FAUX_RESPONSES", responses.to_string())
             .args(["-e", "builtin:faux", "-nc", "-ns", "-np"])

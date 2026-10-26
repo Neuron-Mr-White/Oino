@@ -1,178 +1,101 @@
-# Oino Windows/PowerShell installer.
-# Environment variables:
-#   OINO_REPO      git URL to clone when not in a checkout
-#   OINO_REF       git ref to checkout after clone
-#   OINO_PREFIX    install prefix; default: $HOME\.local
-#   OINO_DIR       source checkout dir; default: $HOME\.cache\oino\source
-#   OINO_DRY_RUN   set to 1 to print actions without running build/install
+# Oino installer for Windows (PowerShell 5.1+ / 7+).
+#
+# Installs oino.exe and oino-kanboard.exe into $env:OINO_PREFIX\bin (default
+# $HOME\.local\bin). Every provider and unipi extension is bundled inside oino.exe.
+#
+# 1. Prefer a tagged release (release-manifest.json, sha256-verified).
+# 2. Fall back to a source build: `cargo xtask wasm`, then
+#    `cargo build --release -p oino -p oino-kanboard`.
+#
+# Environment: OINO_PREFIX, OINO_REF, OINO_FROM_SOURCE=1, OINO_DIR, OINO_DRY_RUN=1.
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-function Say([string]$Message) {
-    Write-Host $Message
-}
-
-function Have([string]$Name) {
-    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
-}
-
 $DryRun = $env:OINO_DRY_RUN -eq "1"
-
-function ConvertTo-PlainHashtable($Value) {
-    if ($null -eq $Value) { return $null }
-    if ($Value -is [System.Collections.IDictionary]) {
-        $Hash = @{}
-        foreach ($Key in $Value.Keys) { $Hash[$Key] = ConvertTo-PlainHashtable $Value[$Key] }
-        return $Hash
-    }
-    if ($Value -is [pscustomobject]) {
-        $Hash = @{}
-        foreach ($Property in $Value.PSObject.Properties) {
-            $Hash[$Property.Name] = ConvertTo-PlainHashtable $Property.Value
-        }
-        return $Hash
-    }
-    if (($Value -is [System.Collections.IEnumerable]) -and ($Value -isnot [string])) {
-        return @($Value | ForEach-Object { ConvertTo-PlainHashtable $_ })
-    }
-    return $Value
-}
-
-function Run([Parameter(ValueFromRemainingArguments = $true)][string[]]$Command) {
-    if ($Command.Count -eq 0) { return }
-    Say "+ $($Command -join ' ')"
-    if (-not $DryRun) {
-        $exe = $Command[0]
-        $args = @()
-        if ($Command.Count -gt 1) {
-            $args = $Command[1..($Command.Count - 1)]
-        }
-        $commandInfo = Get-Command $exe -ErrorAction Stop
-        & $exe @args
-        if (-not $?) {
-            throw "command failed: $($Command -join ' ')"
-        }
-        if (($commandInfo.CommandType -eq "Application" -or $commandInfo.CommandType -eq "ExternalScript") -and $LASTEXITCODE -ne 0) {
-            throw "command failed with exit code ${LASTEXITCODE}: $($Command -join ' ')"
-        }
-    }
-}
-
-function EnsureDir([string]$Path) {
-    Say "+ mkdir -Force $Path"
-    if (-not $DryRun) {
-        New-Item -ItemType Directory -Force -Path $Path | Out-Null
-    }
-}
-
-function RemovePath([string]$Path) {
-    Say "+ remove-item -recurse -force $Path"
-    if (-not $DryRun) {
-        Remove-Item -Recurse -Force $Path
-    }
-}
-
-function CopyPath([string]$Source, [string]$Destination) {
-    Say "+ copy-item -recurse -force $Source $Destination"
-    if (-not $DryRun) {
-        Copy-Item -Recurse -Force $Source $Destination
-    }
-}
-
-$Repo = if ($env:OINO_REPO) { $env:OINO_REPO } else { "https://github.com/Neuron-Mr-White/Oino.git" }
 $Prefix = if ($env:OINO_PREFIX) { $env:OINO_PREFIX } else { Join-Path $HOME ".local" }
 $BinDir = Join-Path $Prefix "bin"
+$RepoSlug = if ($env:OINO_REPO_SLUG) { $env:OINO_REPO_SLUG } else { "Neuron-Mr-White/Oino" }
+$Repo = "https://github.com/$RepoSlug.git"
 $SrcDir = if ($env:OINO_DIR) { $env:OINO_DIR } else { Join-Path $HOME ".cache\oino\source" }
+$Binaries = @("oino", "oino-kanboard")
+$Target = "x86_64-pc-windows-msvc"
 
-if ((Test-Path "Cargo.toml") -and (Select-String -Path "Cargo.toml" -Pattern "oino-app" -Quiet)) {
-    $Src = (Get-Location).Path
-} else {
-    $Src = $SrcDir
-    if (-not (Test-Path (Join-Path $Src ".git"))) {
-        if (-not (Have "git")) {
-            throw "git is required to clone Oino. Install git, or run this script from an Oino source checkout."
-        }
-        $Parent = Split-Path -Parent $Src
-        if ($Parent) { EnsureDir $Parent }
-        Run git clone $Repo $Src
-    }
-    if ($env:OINO_REF) {
-        Run git -C $Src fetch --all --tags
-        Run git -C $Src checkout $env:OINO_REF
-    }
-}
-
-if (-not (Have "cargo")) {
-    if (Have "rustup") {
-        Say "rustup exists; using it"
-    } else {
-        if (Have "winget") {
-            Say "Installing Rust with winget..."
-            Run winget install --id Rustlang.Rustup -e --accept-package-agreements --accept-source-agreements
-        } elseif (Have "curl") {
-            Say "Installing Rust with rustup-init..."
-            $RustupInit = Join-Path $env:TEMP "rustup-init.exe"
-            Run curl.exe -fsSL https://win.rustup.rs/x86_64 -o $RustupInit
-            Run $RustupInit -y --profile minimal
-        } else {
-            throw "cargo is missing and neither winget nor curl is available. Install Rust from https://rustup.rs/ and rerun."
-        }
-    }
-    $CargoEnv = Join-Path $HOME ".cargo\env.ps1"
-    if ((-not $DryRun) -and (Test-Path $CargoEnv)) { . $CargoEnv }
-}
-
-Run "cargo" "build" "--manifest-path" (Join-Path $Src "Cargo.toml") "-p" "oino-app" "--bin" "oino" "--release"
-EnsureDir $BinDir
-
-$BuiltExe = Join-Path $Src "target\release\oino.exe"
-$InstalledExe = Join-Path $BinDir "oino.exe"
-CopyPath $BuiltExe $InstalledExe
-
-$PackagesDir = Join-Path $Src "extensions\built-in"
-if (Test-Path $PackagesDir) {
-    $OinoHome = if ($env:OINO_HOME) { $env:OINO_HOME } else { $HOME }
-    $TargetDir = Join-Path $OinoHome ".oino\extension-packages"
-    $SettingsPath = Join-Path $OinoHome ".oino\settings.json"
-    $PackageIds = @(
-        "oino.router",
-        "oino.footer_status",
-        "oino.ralph_loop",
-        "oino.mode_sandbox",
-        "oino.notify",
-        "oino.craft_skill",
-        "oino.vcc",
-        "oino.ask_user"
-    )
-    EnsureDir $TargetDir
-    foreach ($PackageId in $PackageIds) {
-        $PackageFile = Get-ChildItem -Path $PackagesDir -Filter "oino.package.json" -Recurse |
-            Where-Object { ((Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $PackageId) } |
-            Select-Object -First 1
-        if (-not $PackageFile) { throw "missing built-in package $PackageId" }
-        $Destination = Join-Path $TargetDir $PackageId
-        if (Test-Path $Destination) { RemovePath $Destination }
-        CopyPath $PackageFile.DirectoryName $Destination
-        $SourceRecord = @{ source = "builtin:$($PackageFile.Directory.Name)" } | ConvertTo-Json
-        if (-not $DryRun) { $SourceRecord | Out-File -Encoding utf8 (Join-Path $Destination ".oino-install-source.json") }
-    }
-    if ((-not $DryRun) -and (Test-Path $SettingsPath)) {
-        $Settings = ConvertTo-PlainHashtable (Get-Content $SettingsPath -Raw | ConvertFrom-Json)
-    } else {
-        $Settings = @{}
-    }
-    if (-not $Settings.ContainsKey("extensions")) { $Settings["extensions"] = @{} }
-    if (-not $Settings["extensions"].ContainsKey("packages")) { $Settings["extensions"]["packages"] = @{} }
-    foreach ($PackageId in $PackageIds) { $Settings["extensions"]["packages"][$PackageId] = "enabled" }
+function Say([string]$Message) { Write-Host $Message }
+function Have([string]$Name) { return [bool](Get-Command $Name -ErrorAction SilentlyContinue) }
+function Run([string]$Exe, [string[]]$Arguments) {
+    Say "+ $Exe $($Arguments -join ' ')"
     if (-not $DryRun) {
-        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $SettingsPath) | Out-Null
-        $Settings | ConvertTo-Json -Depth 20 | Out-File -Encoding utf8 $SettingsPath
+        & $Exe @Arguments
+        if ($LASTEXITCODE -ne 0) { throw "command failed ($LASTEXITCODE): $Exe $($Arguments -join ' ')" }
     }
 }
 
-if (($env:PATH -split [IO.Path]::PathSeparator) -notcontains $BinDir) {
-    Say "Add this to PATH if needed: $BinDir"
+function Install-Release {
+    if ($DryRun -or $env:OINO_FROM_SOURCE -eq "1") { return $false }
+    $ManifestUrl = if ($env:OINO_REF) {
+        "https://github.com/$RepoSlug/releases/download/$($env:OINO_REF)/release-manifest.json"
+    } else {
+        "https://github.com/$RepoSlug/releases/latest/download/release-manifest.json"
+    }
+    try {
+        Say "Checking Oino release manifest: $ManifestUrl"
+        $Manifest = Invoke-RestMethod -Uri $ManifestUrl
+    } catch {
+        return $false
+    }
+    $Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("oino-install-" + [guid]::NewGuid())
+    New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
+    foreach ($Name in $Binaries) {
+        $Artifact = $Manifest.artifacts | Where-Object { $_.target -eq $Target -and $_.name -eq $Name } | Select-Object -First 1
+        if (-not $Artifact) { return $false }
+        $Out = Join-Path $Tmp "$Name.exe"
+        Invoke-WebRequest -Uri $Artifact.url -OutFile $Out
+        $Hash = (Get-FileHash -Algorithm SHA256 $Out).Hash.ToLower()
+        if ($Artifact.sha256 -and $Hash -ne $Artifact.sha256.ToLower()) { throw "sha256 mismatch for $Name" }
+    }
+    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+    foreach ($Name in $Binaries) { Copy-Item (Join-Path $Tmp "$Name.exe") (Join-Path $BinDir "$Name.exe") -Force }
+    Remove-Item -Recurse -Force $Tmp
+    return $true
 }
-Say "Oino installed: $InstalledExe"
-Say "Start with: oino"
+
+function Install-Source {
+    if ((Test-Path "Cargo.toml") -and (Test-Path "crates\oino-bundle")) {
+        $Src = (Get-Location).Path
+    } else {
+        $Src = $SrcDir
+        if (-not (Test-Path (Join-Path $Src ".git"))) {
+            if (-not (Have "git")) { throw "git is required for the source build" }
+            Run "git" @("clone", $Repo, $Src)
+        }
+        Run "git" @("-C", $Src, "fetch", "--all", "--tags")
+        $Ref = if ($env:OINO_REF) { $env:OINO_REF } else { "v1-alpha" }
+        Run "git" @("-C", $Src, "checkout", $Ref)
+    }
+    if (-not (Have "cargo")) { throw "cargo is missing. Install Rust from https://rustup.rs/ and rerun." }
+    Push-Location $Src
+    try {
+        Run "cargo" @("xtask", "wasm")
+        Run "cargo" @("build", "--release", "-p", "oino", "-p", "oino-kanboard")
+    } finally {
+        Pop-Location
+    }
+    if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $BinDir | Out-Null }
+    foreach ($Name in $Binaries) {
+        $From = Join-Path $Src "target\release\$Name.exe"
+        Say "+ copy $From $BinDir"
+        if (-not $DryRun) { Copy-Item $From (Join-Path $BinDir "$Name.exe") -Force }
+    }
+}
+
+if (Install-Release) {
+    Say "Installed release binaries into $BinDir"
+} else {
+    Say "No release binary for $Target (or download failed); building from source."
+    Install-Source
+}
+if (-not (($env:PATH -split ';') -contains $BinDir)) {
+    Say "Add $BinDir to PATH (System Properties > Environment Variables)."
+}
+Say "Done. Run: oino"

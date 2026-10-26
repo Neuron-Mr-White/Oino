@@ -92,6 +92,7 @@ async fn over_rpc(sandbox: &Sandbox) -> Arc<dyn SessionBackend> {
             ),
             ("OINO_FAUX_API_KEY".into(), "faux-key".into()),
             ("OINO_FAUX_RESPONSES".into(), SCRIPT.into()),
+            ("OINO_BUNDLED".into(), "0".into()),
         ],
     });
     let backend = RpcBackend::connect(

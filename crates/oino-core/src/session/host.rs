@@ -263,6 +263,53 @@ impl AgentSession {
                 Ok(JsonValue::Null)
             }
             HostOp::GetSystemPrompt => Ok(json!(self.system_prompt())),
+            HostOp::GetSettings => {
+                Ok(JsonValue::Object(self.with_settings(|settings| {
+                    settings.settings().merged().clone()
+                })))
+            }
+            HostOp::GetAvailableModels => to_json(self.inner.models.available()),
+            HostOp::GetScopedModels => to_json(self.scoped_models()),
+            HostOp::GetRoutedModel => to_json(self.routed_model()),
+            HostOp::GetSessionStats => to_json(self.session_stats()),
+            HostOp::ModelComplete {
+                model,
+                context,
+                options,
+                cancel,
+            } => {
+                self.model_complete(model.as_deref(), context, options, cancel)
+                    .await
+            }
+            HostOp::SummarizeDefault {
+                messages,
+                custom_instructions,
+            } => {
+                let messages: Vec<oino_ai::AgentMessage> = serde_json::from_value(messages)
+                    .map_err(|e| HostError::Invalid(format!("messages: {e}")))?;
+                let model = self
+                    .model()
+                    .ok_or_else(|| HostError::Failed("No model selected".into()))?;
+                let summarizer = self
+                    .summarizer(
+                        &model,
+                        tokio_util::sync::CancellationToken::new(),
+                        crate::events::SummarizationSource::BranchSummary,
+                    )
+                    .await
+                    .map_err(HostError::Failed)?;
+                let output = crate::compaction::summarize_default(
+                    &messages,
+                    custom_instructions.as_deref(),
+                    &summarizer,
+                )
+                .await
+                .map_err(failed)?;
+                to_json(output)
+            }
+            HostOp::IsProjectTrusted => Ok(json!(
+                self.with_settings(|settings| settings.is_project_trusted())
+            )),
             HostOp::WaitForIdle => {
                 if !command_context {
                     return Err(HostError::CommandContextRequired);
@@ -342,6 +389,45 @@ impl AgentSession {
             self.inner.hub.publish(OinoEvent::CommandsChanged);
         }
         result
+    }
+
+    /// `models.complete`: resolves the model (`provider/id`, default the session model) and
+    /// its credentials, then runs one request without retry events or prompt-cache writes.
+    async fn model_complete(
+        &self,
+        model: Option<&str>,
+        context: JsonValue,
+        options: JsonValue,
+        cancel: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<JsonValue, HostError> {
+        let model = match model {
+            Some(spec) => spec
+                .split_once('/')
+                .and_then(|(provider, id)| self.inner.models.find(provider, id))
+                .ok_or_else(|| HostError::Invalid(format!("Unknown model {spec}")))?,
+            None => self
+                .model()
+                .ok_or_else(|| HostError::Failed("No model selected".into()))?,
+        };
+        let context: oino_ai::Context = serde_json::from_value(context)
+            .map_err(|e| HostError::Invalid(format!("context: {e}")))?;
+        let options: oino_ai::StreamOptions = if options.is_null() {
+            oino_ai::StreamOptions::default()
+        } else {
+            serde_json::from_value(options)
+                .map_err(|e| HostError::Invalid(format!("options: {e}")))?
+        };
+        let mut summarizer = self
+            .summarizer(
+                &model,
+                cancel.unwrap_or_default(),
+                crate::events::SummarizationSource::BranchSummary,
+            )
+            .await
+            .map_err(HostError::Failed)?;
+        summarizer.observer = None;
+        summarizer.thinking_level = None;
+        to_json(summarizer.complete(context, options).await)
     }
 
     async fn ui_dialog(

@@ -12,7 +12,7 @@ android {
         minSdk = 26 // Vulkan 1.0 is mandatory from API 26.
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0.0-alpha.0"
+        versionName = "1.0.0-alpha.1"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }

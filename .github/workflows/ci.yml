@@ -1,147 +1,186 @@
 name: ci
 
+# quality.md §6. The toolchain (1.99.0 + wasm32-wasip2) comes from rust-toolchain.toml.
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches: [main, v1-alpha]
     tags: ['v*']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTDOCFLAGS: -D warnings
 
 jobs:
-  docs-and-install:
-    name: docs and installer
+  fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check docs and installer syntax
-        run: scripts/docs-check.sh
-      - name: Dry-run installer
-        run: OINO_DRY_RUN=1 sh scripts/install.sh
-      - name: Smoke-test local installer
-        run: scripts/install-smoke.sh
+      - run: rustup show active-toolchain
+      - run: cargo fmt --all --check
+      - run: cargo fmt --all --check
+        working-directory: extensions
+      - run: cargo fmt --all --check
+        working-directory: apps
+
+  wasm:
+    name: extension components
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nextensions -> target"
+      - name: Build components (extensions/dist)
+        run: cargo xtask wasm
+      - name: Checksums match the committed checksums.json
+        run: git diff --exit-code extensions/dist/checksums.json
+      - name: Clippy (wasm32-wasip2)
+        working-directory: extensions
+        run: cargo clippy --target wasm32-wasip2 --workspace --all-targets -- -D warnings -W clippy::pedantic
+      - name: Native extension tests
+        working-directory: extensions
+        run: cargo test --workspace -j 4
+      - name: WASM host harnesses
+        env:
+          JOBS: '2'
+        run: |
+          for h in extensions/unipi/*/harness/run.sh; do
+            echo "::group::$h"; sh "$h"; echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+
+  root:
+    name: core workspace
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - run: cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
+      - run: cargo test --workspace -j 4
+      - run: cargo doc --workspace --no-deps
+      - run: cargo install wasm-tools --locked && cargo xtask wit
+      - name: Install smoke
+        run: sh scripts/install-smoke.sh
+
+  apps:
+    name: desktop app
+    needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps -> target
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - name: Linux GPUI dependencies
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libfontconfig-dev libssl-dev
+      - working-directory: apps
+        run: cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
+      - working-directory: apps
+        run: cargo test --workspace -j 2
+
+  docs-and-installers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/docs-check.sh
+      - run: OINO_DRY_RUN=1 sh scripts/install.sh
 
   windows-installer:
-    name: windows installer dry-run
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse PowerShell installer
+      - name: Parse and dry-run install.ps1
         shell: pwsh
         run: |
           $errors = $null
           $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw scripts/install.ps1), [ref]$errors)
           if ($errors) { $errors | Format-List; exit 1 }
-      - name: Dry-run PowerShell installer
-        shell: pwsh
-        run: |
           $env:OINO_DRY_RUN = '1'
           ./scripts/install.ps1
 
-  rust:
-    name: rust checks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Check
-        run: cargo check --workspace
-      - name: Test
-        run: cargo test --workspace
-
   release-binaries:
-    name: release binary (${{ matrix.target }})
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: [wasm, root]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bin: oino
-          - os: macos-14
-            target: aarch64-apple-darwin
-            bin: oino
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin: oino.exe
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, ext: '' }
+          - { os: macos-14, target: aarch64-apple-darwin, ext: '' }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: '.exe' }
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build release binary
-        run: cargo build --release -p oino-app --bin oino
-      - name: Stage release binary
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: extensions/dist
+      - run: cargo build --release -p oino -p oino-kanboard
+      - name: Stage
         shell: bash
         run: |
-          mkdir -p dist
-          suffix=""
-          if [ "${{ matrix.bin }}" = "oino.exe" ]; then suffix=".exe"; fi
-          cp "target/release/${{ matrix.bin }}" "dist/oino-${{ matrix.target }}${suffix}"
+          mkdir -p out
+          for b in oino oino-kanboard; do
+            cp "target/release/$b${{ matrix.ext }}" "out/$b-${{ matrix.target }}${{ matrix.ext }}"
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: oino-${{ matrix.target }}
-          path: dist/*
+          name: bin-${{ matrix.target }}
+          path: out/*
 
   release-assets:
-    name: release manifest and assets
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-binaries
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          pattern: bin-*
+          path: out
           merge-multiple: true
-      - name: Bundle extension packages
-        run: |
-          tar -czf dist/oino-extension-bundles.tar.gz extensions/built-in extensions/additional
-      - name: Generate checksums and release manifest
+      - name: Checksums and release manifest
         env:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
-          cd dist
-          sha256sum oino-* > checksums.txt
+          cd out
+          sha256sum oino* > checksums.txt
           python3 - <<'PY'
           import hashlib, json, os
           from pathlib import Path
-          tag = os.environ['TAG']
-          repo = os.environ['REPO']
+          tag, repo = os.environ['TAG'], os.environ['REPO']
           base = f"https://github.com/{repo}/releases/download/{tag}"
           artifacts = []
-          for path in sorted(Path('.').glob('oino-*')):
-              if path.name == 'oino-extension-bundles.tar.gz':
+          for p in sorted(Path('.').glob('oino*')):
+              if p.name == 'checksums.txt':
                   continue
-              target = path.name.removeprefix('oino-').removesuffix('.exe')
-              artifacts.append({
-                  'target': target,
-                  'kind': 'binary',
-                  'url': f"{base}/{path.name}",
-                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-                  'size': path.stat().st_size,
-              })
-          bundle = Path('oino-extension-bundles.tar.gz')
-          manifest = {
-              'tag': tag,
-              'version': tag.removeprefix('v'),
-              'artifacts': artifacts,
-              'source': {'url': f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz"},
-              'extensions': {
-                  'url': f"{base}/{bundle.name}",
-                  'sha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
-                  'built_in_root': 'extensions/built-in',
-                  'additional_root': 'extensions/additional',
-              },
-          }
-          Path('release-manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
+              stem = p.name.removesuffix('.exe')
+              name = 'oino-kanboard' if stem.startswith('oino-kanboard-') else 'oino'
+              artifacts.append({'name': name, 'target': stem.removeprefix(name + '-'),
+                                'url': f"{base}/{p.name}", 'size': p.stat().st_size,
+                                'sha256': hashlib.sha256(p.read_bytes()).hexdigest()})
+          Path('release-manifest.json').write_text(json.dumps(
+              {'tag': tag, 'version': tag.removeprefix('v'), 'artifacts': artifacts}, indent=2) + '\n')
           PY
       - uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            dist/oino-*
-            dist/checksums.txt
-            dist/release-manifest.json
+            out/oino*
+            out/checksums.txt
+            out/release-manifest.json

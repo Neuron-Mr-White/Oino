@@ -33,6 +33,51 @@ fn selected(id: &str, kind: &str) -> bool {
     }
 }
 
+/// unipi load order (`unipi_kit::suite::LOAD_ORDER`, extensions workspace); keep in sync.
+const UNIPI_LOAD_ORDER: &[&str] = &[
+    "core",
+    "workflow",
+    "long-horizon",
+    "memory",
+    "dream",
+    "utility",
+    "skill-registry",
+    "info-screen",
+    "subagents",
+    "background-tasks",
+    "btw",
+    "web-api",
+    "ask-user",
+    "mcp",
+    "notify",
+    "kanboard",
+    "command-enchantment",
+    "compactor",
+    "footer",
+    "updater",
+    "input-shortcuts",
+    "fusion",
+    "watchdog",
+    "app-bridge",
+];
+
+/// Bundle position: providers, then unipi in load order, then everything else (by id).
+fn load_rank(id: &str, kind: &str) -> (u8, usize) {
+    if kind == "provider" {
+        return (0, 0);
+    }
+    match id.strip_prefix("unipi.") {
+        Some(name) => (
+            1,
+            UNIPI_LOAD_ORDER
+                .iter()
+                .position(|n| *n == name)
+                .unwrap_or(UNIPI_LOAD_ORDER.len()),
+        ),
+        None => (2, 0),
+    }
+}
+
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
     let dist = std::env::var_os("OINO_BUNDLE_DIST")
@@ -51,14 +96,23 @@ fn main() {
         })
         .unwrap_or_default();
     ids.sort();
-    for pkg in ids {
-        println!("cargo:rerun-if-changed={}", pkg.display());
-        let Ok(manifest_text) = std::fs::read_to_string(pkg.join("extension.json")) else {
-            continue;
-        };
-        let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&manifest_text) else {
-            continue;
-        };
+    let mut packages: Vec<(PathBuf, serde_json::Value)> = ids
+        .into_iter()
+        .filter_map(|pkg| {
+            println!("cargo:rerun-if-changed={}", pkg.display());
+            let text = std::fs::read_to_string(pkg.join("extension.json")).ok()?;
+            let manifest = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+            Some((pkg, manifest))
+        })
+        .collect();
+    // Stable sort keeps the directory order inside a rank.
+    packages.sort_by_key(|(_, m)| {
+        load_rank(
+            m["id"].as_str().unwrap_or_default(),
+            m["kind"].as_str().unwrap_or("extension"),
+        )
+    });
+    for (pkg, manifest) in packages {
         let id = manifest["id"].as_str().unwrap_or_default().to_owned();
         let version = manifest["version"].as_str().unwrap_or_default().to_owned();
         let kind = manifest["kind"].as_str().unwrap_or("extension");
@@ -108,6 +162,50 @@ fn main() {
         );
     }
     let _ = std::fs::write(out_dir.join("bundled.rs"), code);
+    write_docs(&manifest_dir.join("../.."), &out_dir);
+}
+
+/// `docs.rs`: `README.md` and `docs/**/*.md` except `docs/dev/` (developer specs).
+fn write_docs(repo: &Path, out_dir: &Path) {
+    let mut rel_files = vec![PathBuf::from("README.md")];
+    let mut docs = Vec::new();
+    files(&repo.join("docs"), repo, &mut docs);
+    rel_files.extend(
+        docs.into_iter()
+            .filter(|p| !p.starts_with("docs/dev") && p.extension().is_some_and(|e| e == "md")),
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        repo.join("README.md").display()
+    );
+    println!("cargo:rerun-if-changed={}", repo.join("docs").display());
+    let mut hasher = sha2::Sha256::new();
+    let mut entries = String::new();
+    for rel in &rel_files {
+        let path = repo.join(rel);
+        println!("cargo:rerun-if-changed={}", path.display());
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let rel_s = rel.to_string_lossy().replace('\\', "/");
+        hasher.update(rel_s.as_bytes());
+        hasher.update(&bytes);
+        let _ = writeln!(
+            entries,
+            "        ({rel_s:?}, include_bytes!({:?})),",
+            path.display().to_string()
+        );
+    }
+    let hash = hasher.finalize();
+    let mut hash8 = String::new();
+    for b in &hash[..4] {
+        let _ = write!(hash8, "{b:02x}");
+    }
+    let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    let code = format!(
+        "BundledDocs {{\n    version: {version:?},\n    hash8: {hash8:?},\n    files: &[\n{entries}    ],\n}}"
+    );
+    let _ = std::fs::write(out_dir.join("docs.rs"), code);
 }
 
 use sha2::Digest as _;

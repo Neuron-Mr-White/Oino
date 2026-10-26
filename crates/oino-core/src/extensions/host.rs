@@ -186,6 +186,36 @@ pub enum HostOp {
     },
     /// pi `ctx.getSystemPrompt`.
     GetSystemPrompt,
+    /// pi `getSettings()`: the merged settings object.
+    GetSettings,
+    /// Models with configured credentials (`control.models-list`).
+    GetAvailableModels,
+    /// The `--models` / `enabledModels` scope (`control.scoped-models`).
+    GetScopedModels,
+    /// The model a virtual selection currently routes to (`control.routed-model`).
+    GetRoutedModel,
+    /// pi `SessionStats` (`control.session-stats`).
+    GetSessionStats,
+    /// Project trust decision (`control.is-project-trusted`).
+    IsProjectTrusted,
+    /// `models.complete`: one non-session completion → `AssistantMessage`.
+    ModelComplete {
+        /// `provider/id` (default: the session model).
+        model: Option<String>,
+        /// `Context` JSON (`{messages}`).
+        context: JsonValue,
+        /// `StreamOptions` JSON.
+        options: JsonValue,
+        /// Caller cancellation.
+        cancel: Option<CancellationToken>,
+    },
+    /// `models.summarize-default`: core's compaction summariser → `{summary, usage}`.
+    SummarizeDefault {
+        /// `Vec<AgentMessage>` JSON.
+        messages: JsonValue,
+        /// Extra focus.
+        custom_instructions: Option<String>,
+    },
     /// pi command `ctx.waitForIdle` (command context only).
     WaitForIdle,
     /// pi command `ctx.navigateTree` (command context only).

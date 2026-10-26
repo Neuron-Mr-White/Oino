@@ -212,7 +212,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "fixture-async-probe"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-extension",
  "schemars",
@@ -221,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "fixture-echo"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-extension",
  "schemars",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "fixture-provider-faux"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-extension",
  "schemars",
@@ -239,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "fixture-ui-probe"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-extension",
  "schemars",
@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "indexmap",
  "serde",
@@ -531,7 +531,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
  "oino-ai",
@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-macros"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "oino-provider-kit"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-ai",
  "oino-extension",
@@ -677,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "provider-anthropic"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "base64",
  "oino-extension",
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "provider-openai-compat"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-extension",
  "oino-provider-kit",
@@ -697,7 +697,7 @@ dependencies = [
 
 [[package]]
 name = "provider-openai-responses"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-extension",
  "oino-provider-kit",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "provider-router"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "oino-extension",
  "oino-provider-kit",

@@ -95,14 +95,12 @@ packages! {
     INPUT_SHORTCUTS = "unipi.input-shortcuts", "input-shortcuts", "@pi-unipi/input-shortcuts", ["input-shortcuts"], B1;
     FUSION = "unipi.fusion", "fusion", "@pi-unipi/fusion", ["fusion"], B2;
     WATCHDOG = "unipi.watchdog", "watchdog", "@pi-unipi/watchdog", ["watchdog"], B2;
+    APP_BRIDGE = "unipi.app-bridge", "app-bridge", "@pi-unipi/app-bridge", ["app-bridge"], B1;
 }
 
-/// unipi packages that are deliberately not ported (D22, unipi-port §1).
+/// unipi packages that are deliberately not ported (D22, unipi-port §1). `app-bridge` was
+/// ported after all as the GPUI control centre (deviations/unipi-integrations.md #1).
 pub const NOT_PORTED: &[(&str, &str)] = &[
-    (
-        "@pi-unipi/app-bridge",
-        "replaced by `oino serve` multi-client and the mobile app",
-    ),
     ("@pi-unipi/unipi", "replaced by bundling and LOAD_ORDER"),
     (
         "@pi-unipi/kanboard-bin",
@@ -169,6 +167,7 @@ mod tests {
                 "input-shortcuts",
                 "fusion",
                 "watchdog",
+                "app-bridge",
             ]
         );
         assert!(
@@ -228,7 +227,8 @@ mod tests {
         assert_eq!(load_index("unipi.core"), Some(0));
         assert_eq!(load_index("unipi.watchdog"), Some(22));
         assert!(is_unipi("unipi.btw"));
-        assert!(!is_unipi("unipi.app-bridge"));
+        assert!(is_unipi("unipi.app-bridge"));
+        assert!(!is_unipi("unipi.cron"));
         assert_eq!(by_id("unipi.fusion").map(|p| p.batch), Some(Batch::B2));
     }
 }

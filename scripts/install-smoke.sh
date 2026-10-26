@@ -1,42 +1,30 @@
 #!/usr/bin/env sh
+# End-to-end smoke test of scripts/install.sh from this source checkout: builds and installs
+# into a temporary prefix, then runs one print-mode prompt against the bundled extensions with
+# the faux provider fixture (no network, no API key).
 set -eu
 
-# End-to-end smoke test for the Unix installer using this source checkout.
-# It builds Oino, installs into temporary OINO_PREFIX/OINO_HOME, verifies the
-# binary starts, and verifies built-in extension packages were enabled.
-
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-TMP=${TMPDIR:-/tmp}/oino-install-smoke-$$
+TMP=$(mktemp -d "${TMPDIR:-$ROOT/target}/oino-install-smoke.XXXXXX")
 PREFIX="$TMP/prefix"
-HOME_DIR="$TMP/home"
-LOG="$TMP/install.log"
+AGENT="$TMP/agent"
+trap 'rm -rf "$TMP"' EXIT INT TERM
 
-cleanup() {
-  rm -rf "$TMP"
-}
-trap cleanup EXIT INT TERM
-
-mkdir -p "$TMP"
 cd "$ROOT"
-
-OINO_FROM_SOURCE=1 OINO_PREFIX="$PREFIX" OINO_HOME="$HOME_DIR" sh scripts/install.sh >"$LOG" 2>&1
+OINO_FROM_SOURCE=1 OINO_PREFIX="$PREFIX" sh scripts/install.sh >"$TMP/install.log" 2>&1 || {
+  cat "$TMP/install.log" >&2
+  exit 1
+}
 
 test -x "$PREFIX/bin/oino"
-"$PREFIX/bin/oino" --help >/dev/null
+test -x "$PREFIX/bin/oino-kanboard"
+"$PREFIX/bin/oino" --version
+"$PREFIX/bin/oino-kanboard" --help >/dev/null
 
-test -f "$HOME_DIR/.oino/settings.json"
-for package_id in \
-  oino.router \
-  oino.footer_status \
-  oino.ralph_loop \
-  oino.mode_sandbox \
-  oino.notify \
-  oino.craft_skill \
-  oino.vcc \
-  oino.ask_user
-  do
-    test -f "$HOME_DIR/.oino/extension-packages/$package_id/oino.package.json"
-    grep -q "\"$package_id\"" "$HOME_DIR/.oino/settings.json"
-  done
-
+mkdir -p "$AGENT" "$TMP/work"
+printf '{"faux":{"type":"api_key","key":"smoke"}}' >"$AGENT/auth.json"
+reply=$(cd "$TMP/work" && OINO_AGENT_DIR="$AGENT" "$PREFIX/bin/oino" \
+  -e "$ROOT/extensions/dist/oino.fixture.provider-faux" --model faux/faux-1 -p "hello")
+test "$reply" = "Hello from faux."
+ls "$AGENT/bundled" | grep -q '^unipi.core@'
 printf 'install smoke passed: %s\n' "$PREFIX/bin/oino"

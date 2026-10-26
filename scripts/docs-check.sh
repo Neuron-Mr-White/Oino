@@ -1,38 +1,30 @@
 #!/usr/bin/env sh
 set -eu
 
-expected='docs/architecture.md
-docs/auth.md
-docs/built-in-extensions.md
-docs/command.md
-docs/configurations.md
-docs/dev/extension-dev.md
-docs/dev/theme.md
-docs/dev/tui.md
-docs/extension.md
-docs/keymap.md
-docs/update.md'
-
-actual=$(find docs -type f -name '*.md' | sort)
-if [ "$actual" != "$expected" ]; then
-  printf 'unexpected docs set\nexpected:\n%s\nactual:\n%s\n' "$expected" "$actual" >&2
+# Docs named by the system prompt docs section (runtime §9.4) plus the other user guides.
+required='acp.md desktop.md environment-variables.md extension-api.md extensions.md install.md
+keybindings.md models.md packages.md prompt-templates.md providers.md rpc.md sdk.md sessions.md
+settings.md skills.md themes.md tui.md unipi.md'
+for doc in $required; do
+  test -f "docs/$doc" || { printf 'missing docs/%s\n' "$doc" >&2; exit 1; }
+done
+extra=$(find docs -maxdepth 1 -type f -name '*.md' | sed 's#docs/##' | sort | while read -r f; do
+  case " $(echo $required) " in *" $f "*) ;; *) printf '%s ' "$f" ;; esac
+done)
+if [ -n "$extra" ]; then
+  printf 'unexpected user docs (add them to scripts/docs-check.sh): %s\n' "$extra" >&2
   exit 1
 fi
 
-term_provider_ui="$(printf 'deep\\163eek[[:space:]]+tui')"
-term_legacy_catalog="j""code"
-term_codex="codex""-like"
-term_claude_code="claude[[:space:]]+code"
-term_agents_file="AGENTS""\\.md"
-term_claude_file="CLAUDE""\\.md"
-stale_pattern="$term_provider_ui|$term_legacy_catalog|$term_codex|$term_claude_code|$term_agents_file|$term_claude_file"
-if grep -RniE "$stale_pattern" README.md docs .github AGENT.md 2>/dev/null; then
-  printf 'stale external/reference wording found in public docs/workflows\n' >&2
+# Pre-v1 product surface that must not come back into user docs.
+stale_pattern='oino-app|extension-packages|/router setup|OmniRoute|install-all-builtins|extensions/built-in'
+if grep -RniE "$stale_pattern" README.md docs/*.md .github 2>/dev/null; then
+  printf 'stale pre-v1 wording found in public docs/workflows\n' >&2
   exit 1
 fi
 
 if ! grep -q 'scripts/install.sh' README.md || ! grep -q 'scripts/install.ps1' README.md; then
-  printf 'README must mention scripts/install.sh and scripts/install.ps1 for local install testing\n' >&2
+  printf 'README must mention scripts/install.sh and scripts/install.ps1\n' >&2
   exit 1
 fi
 
@@ -41,7 +33,7 @@ import pathlib
 import re
 import sys
 
-files = [pathlib.Path("README.md"), *sorted(pathlib.Path("docs").rglob("*.md"))]
+files = [pathlib.Path("README.md"), *sorted(pathlib.Path("docs").glob("*.md")), pathlib.Path("docs/dev/v1/STATUS.md")]
 link_re = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 errors = []
 for path in files:
@@ -67,10 +59,8 @@ if yaml is not None:
 PY
 
 sh -n scripts/install.sh
-sh -n scripts/install-interactive.sh
 sh -n scripts/install-smoke.sh
 sh -n scripts/docs-check.sh
-bash -n scripts/install-all-builtins.sh
 if command -v pwsh >/dev/null 2>&1; then
   pwsh -NoProfile -Command '$errors = $null; $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw scripts/install.ps1), [ref]$errors); if ($errors) { $errors | Format-List; exit 1 }'
 elif command -v powershell >/dev/null 2>&1; then

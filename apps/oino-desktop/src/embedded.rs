@@ -160,7 +160,9 @@ impl Inner {
         let services = Services::create(ServicesOptions {
             cwd: cwd.to_path_buf(),
             agent_dir: self.agent_dir.clone(),
-            docs_root: self.agent_dir.clone(),
+            docs_root: oino_bundle::DOCS
+                .extract(&self.agent_dir)
+                .unwrap_or_else(|_| self.agent_dir.clone()),
             mode: ExtensionMode::Rpc,
             has_ui: true,
             flags: ResourceFlags::default(),

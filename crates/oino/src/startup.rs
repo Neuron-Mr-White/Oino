@@ -15,7 +15,7 @@ use oino_session::SessionManager;
 
 use crate::cli::args::{Args, Diagnostic, normalize_session_name};
 use crate::cli::help::ExtensionFlag;
-use crate::loader::{CliLoader, EXTENSION_LOAD_FAILURE_HINT};
+use crate::loader::{CliLoader, EXTENSION_LOAD_FAILURE_HINT, LoaderContext};
 
 fn settings_snapshot(services: &Services) -> oino_settings::Settings {
     services
@@ -330,7 +330,33 @@ fn choose_model(
     choice
 }
 
-fn tool_selection(args: &Args) -> ToolSelection {
+/// The bundled docs directory (`{docs_root}` of the system prompt); the agent dir when the
+/// docs cannot be extracted.
+pub(crate) fn docs_root(agent_dir: &Path) -> PathBuf {
+    oino_bundle::DOCS
+        .extract(agent_dir)
+        .unwrap_or_else(|_| agent_dir.to_path_buf())
+}
+
+/// pi resource flags from the command line.
+pub(crate) fn resource_flags(args: &Args, cwd: &Path) -> ResourceFlags {
+    ResourceFlags {
+        no_skills: args.no_skills,
+        no_prompt_templates: args.no_prompt_templates,
+        no_themes: args.no_themes,
+        no_context_files: args.no_context_files,
+        skill_paths: resolve_cli_paths(cwd, args.skills.as_ref()),
+        prompt_template_paths: resolve_cli_paths(cwd, args.prompt_templates.as_ref()),
+        theme_paths: resolve_cli_paths(cwd, args.themes.as_ref()),
+        system_prompt: args.system_prompt.clone(),
+        append_system_prompt: args.append_system_prompt.clone(),
+        no_extensions: args.no_extensions,
+        offline: args.offline,
+    }
+}
+
+/// Tool selection from `--tools`, `--no-tools`, `--no-builtin-tools`.
+pub(crate) fn tool_selection(args: &Args) -> ToolSelection {
     match &args.tools {
         Some(tools) => ToolSelection::List(tools.clone()),
         None if args.no_tools => ToolSelection::None,
@@ -413,34 +439,31 @@ pub struct Environment {
 )]
 pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Started, StartupError> {
     let metadata_only = args.help || args.list_models.is_some();
-    let loader = CliLoader::new(args.extensions.clone().unwrap_or_default());
+    let loader = Arc::new(CliLoader::new(
+        args.extensions.clone().unwrap_or_default(),
+        &LoaderContext {
+            agent_dir: env.agent_dir.clone(),
+            cwd: env.cwd.clone(),
+            no_extensions: args.no_extensions,
+        },
+    ));
     let mut diagnostics: Vec<Diagnostic> = loader.diagnostics().to_vec();
     let services = Services::create(ServicesOptions {
         cwd: env.cwd.clone(),
         agent_dir: env.agent_dir.clone(),
-        docs_root: env.agent_dir.clone(),
+        docs_root: docs_root(&env.agent_dir),
         mode: mode.extension_mode(),
         has_ui: matches!(mode, AppMode::Rpc | AppMode::Interactive),
-        flags: ResourceFlags {
-            no_skills: args.no_skills,
-            no_prompt_templates: args.no_prompt_templates,
-            no_themes: args.no_themes,
-            no_context_files: args.no_context_files,
-            skill_paths: resolve_cli_paths(&env.cwd, args.skills.as_ref()),
-            prompt_template_paths: resolve_cli_paths(&env.cwd, args.prompt_templates.as_ref()),
-            theme_paths: resolve_cli_paths(&env.cwd, args.themes.as_ref()),
-            system_prompt: args.system_prompt.clone(),
-            append_system_prompt: args.append_system_prompt.clone(),
-            no_extensions: args.no_extensions,
-        },
+        flags: resource_flags(args, &env.cwd),
         extension_flag_values: args.unknown_flags.clone(),
-        loader: Arc::new(loader),
+        loader: Arc::clone(&loader) as Arc<dyn oino_core::services::ExtensionLoader>,
         approve: args.project_trust_override,
         models: None,
         settings: None,
     })
     .await
     .map_err(|e| StartupError::one(format!("Error: {e}")))?;
+    diagnostics.extend(loader.load_errors());
     diagnostics.extend(
         services
             .diagnostics
@@ -524,7 +547,7 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         let message = runtime.model_fallback_message().map_or_else(
             || {
                 oino_models::auth::guidance::no_models_available_message(
-                    &env.agent_dir.join("docs"),
+                    &services.docs_root.join("docs"),
                 )
             },
             str::to_owned,

@@ -1,72 +1,43 @@
-# Oino Agent Conventions
+# Oino agent conventions
 
-From today onwards, keep all conventions we know so far in this file so future agents can discover and follow them.
+Read these first:
 
-## Project workflow
+- `docs/dev/v1/CHARTER.md` — vision, settled decisions, quality gates, working rules.
+- `docs/dev/v1/README.md` — spec index, decision register, ownership map.
+- `docs/dev/v1/quality.md` — gates, test layers, golden tests against pi 1.4.0.
+- `docs/dev/v1/STATUS.md` — what is done, partial or missing, and next steps.
 
-- Before making decisions, search project memory for relevant Oino context.
-- Prefer small, focused changes; avoid unrelated refactors.
-- For code changes, run:
-  - `cargo fmt --all`
-  - `cargo clippy --workspace --all-targets -- -D warnings`
-  - `cargo test --workspace`
-  - Guest extension crates with host-target-testable pure logic:
-    `cargo test --manifest-path extensions/Cargo.toml -p <crate> --lib --target x86_64-unknown-linux-gnu` (e.g. ext-ralph, ext-vcc).
-- Record completed implementation notes under `.unipi/docs/quick-work/` or `.unipi/docs/fix/` as appropriate, then commit with a descriptive message.
+## Workflow
 
-## Search, fuzzy matching, and pickers
+- Search project memory before deciding anything that past work may have settled.
+- Work on branch `v1-alpha`; stage explicit paths (`git add <paths>`), never `git add -A`;
+  prefix commits with the work id (`[core-runtime] …`).
+- Spec changes go to `docs/dev/v1/deviations/<work-id>.md`, not into the frozen specs.
 
-- All interactive fuzzy/search/autocomplete features in Oino should use the high-level `nucleo` crate.
-- Do **not** build new fuzzy matchers by hand and do **not** use low-level `nucleo-matcher` directly for fzf-like UI features.
-- Do not rescore large candidate sets inside Ratatui render paths. Cache filtered indices/views in state and refresh them only when the query or candidate list changes.
-- Current fuzzy/search users include `/sessions`, model selection search, slash-command suggestions, and `@` file suggestions.
-- For future search features, first look for and reuse `crates/oino-tui/src/fuzzy.rs`.
+## Gates (run for the workspaces you touch)
 
-## Ratatui / TUI work
+```sh
+cargo xtask wasm                       # components into extensions/dist (bundled by oino-bundle)
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
+cargo test --workspace
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+(cd extensions && cargo fmt --all --check && cargo clippy --target wasm32-wasip2 --workspace --all-targets -- -D warnings && cargo test --workspace)
+(cd apps && cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace)
+```
 
-- For any Ratatui, crossterm, terminal UI, chat transcript, table/grid, modal, autocomplete, search bar, markdown viewer, or streaming UI task, first read `.pi/skills/ratatui/SKILL.md` and the referenced subskill files that match the task.
-- Keep the TUI as a deterministic state machine with side-effect-light renderers:
-  `terminal/input/async source -> Event -> Command/Action -> State update -> render(State, Frame)`.
-- Avoid blocking work in render; use state, cached views, channels, or actions for expensive work.
-- Keep focus/mode explicit. Key hints should reflect the active focus/mode.
-- Render text width-aware and preserve tiny-terminal fallbacks.
+## Machine notes
 
-## Oino resource layer direction
+- `/tmp` hits its quota on the dev machine: export `TMPDIR=$PWD/target/tmp` for builds and
+  tests; tests create temp dirs under `CARGO_TARGET_TMPDIR` / `target/tmp`.
+- Memory is tight: use `-j 2`–`-j 4` for cargo, `-j 1`/`-j 2` in `apps/`.
+- Tests that spawn `oino` set `OINO_BUNDLED=0` so the bundled unipi components do not change
+  their output.
 
-- Oino should load Oino-owned paths by default instead of silently copying unrelated tool conventions.
-- Future migration/import commands can copy outside conventions into Oino paths, but default loading should stay deterministic and explicit.
-- Global resources should live under `~/.oino/`:
-  - `SYSTEM.md` — global system prompt, created/populated on launch.
-  - `settings.json` — existing global user settings.
-  - `skills/<name>/SKILL.md` — global skills.
-- Project resources should live under `<project>/.oino/`:
-  - `AGENT.md` — project instructions, created/populated on launch.
-  - `prompts/*.md` — prompt templates.
-  - `skills/<name>/SKILL.md` — project skills.
-- Resource/config files and directories should be visible and populated even in blank/default state; do not add new hidden files or folders without documenting them first.
-- Prompt templates are one-shot reusable user prompts; skills are on-demand capability folders with `SKILL.md` plus optional scripts/references/assets.
-- Resource command UI should label categories explicitly: `[SYS]` for system commands, `[PROMPT]` for prompt templates, and `[SKILL]` for skills.
-- Prompt and skill inclusion is explicit: users include resources with `/prompt:<name>` and `/skill:<name>` tokens, and may repeat tokens to combine multiple resources. Do not reintroduce implicit prompt commands such as `/review` or automatic model skill loading by default.
-- Bare `/` command suggestions should only trigger at the start of the composer and should list system commands; resource suggestions trigger anywhere only for `/prompt:`, `/skill:`, `/P:`, or `/S:` tokens.
-- `/prompts` and `/skills` should open searchable browsers; `/P:<query>` and `/S:<query>` should scope slash suggestions to prompts or skills and complete to `/prompt:<name>` or `/skill:<name>`.
+## Code
 
-## Oino session behavior
-
-- Local sessions live under `~/.oino/sessions/<uuid>.jsonl`.
-- Session files are append-only JSONL: header first, then message/model/thinking/compaction/etc. entries.
-- `/new` must be a no-op in a blank/no-input session; after the current session has content, it switches to a fresh lazy session, clears transient TUI state, and should not persist an empty session file until real content is saved.
-- `/sessions` must let users browse saved sessions and press Enter to continue one.
-- Running `/sessions` from a blank startup state must not create a new empty session file.
-
-## TUI interaction expectations
-
-- Composer remains editable while the model streams.
-- Enter during streaming sends steering input.
-- `Ctrl-O s` opens settings; `Ctrl-O q` opens the send panel.
-- Esc should dismiss transient UI or stop a running response; it should not quit the app.
-- Quit requires two Ctrl-C presses.
-- Long rows in pickers/browsers should truncate with ellipsis instead of clipping.
-
-## Revival specs
-
-- Oino's pi-parity revival plan lives in `docs/dev/revival/` (start with `README.md`, then the numbered phase files). Follow the spec files when implementing parity work; keep transcripts, hooks, and provider semantics aligned with upstream pi as described there.
+- Follow `/home/oi/.agents/skills/rust-best-practices/SKILL.md`: typed errors (`thiserror`),
+  no `unwrap`/`expect`/`panic!` outside tests, rustdoc on public items, crate docs with an API
+  map, `#[allow(..., reason = "…")]` only with a reason.
+- Interactive fuzzy matching uses `nucleo` (see `crates/oino-view/src/fuzzy.rs`).
+- Keep the TUI a deterministic state machine; no blocking work in render.

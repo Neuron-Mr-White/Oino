@@ -2269,23 +2269,27 @@ dependencies = [
 
 [[package]]
 name = "oino"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "base64 0.22.1",
  "futures",
  "indexmap 2.14.0",
  "nix",
  "oino",
+ "oino-acp",
  "oino-agent",
  "oino-ai",
+ "oino-bundle",
  "oino-client",
  "oino-core",
+ "oino-extension-api",
  "oino-models",
  "oino-rpc",
  "oino-session",
  "oino-settings",
  "oino-tools",
  "oino-tui",
+ "oino-wasm-host",
  "serde",
  "serde_json",
  "tempfile",
@@ -2295,7 +2299,7 @@ dependencies = [
 
 [[package]]
 name = "oino-acp"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "agent-client-protocol",
  "futures",
@@ -2319,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "oino-agent"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
@@ -2333,23 +2337,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "oino-agent-loop"
-version = "0.1.3"
-dependencies = [
- "async-trait",
- "futures",
- "oino-types",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "oino-ai"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "indexmap 2.14.0",
  "proptest",
@@ -2359,20 +2348,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "oino-auth"
-version = "0.1.3"
-dependencies = [
- "dirs",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "oino-bundle"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "serde_json",
  "sha2",
@@ -2383,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "oino-client"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
  "oino-agent",
@@ -2398,7 +2375,7 @@ dependencies = [
 
 [[package]]
 name = "oino-core"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
@@ -2422,19 +2399,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "oino-env"
-version = "0.1.3"
-dependencies = [
- "async-trait",
- "serde",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "oino-extension-api"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
  "oino-ai",
@@ -2450,7 +2416,7 @@ dependencies = [
 
 [[package]]
 name = "oino-kanboard"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2472,7 +2438,7 @@ dependencies = [
 
 [[package]]
 name = "oino-models"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
  "globset",
@@ -2487,22 +2453,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "oino-provider-catalog"
-version = "0.1.3"
-
-[[package]]
-name = "oino-resource"
-version = "0.1.3"
-dependencies = [
- "dirs",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "oino-resources"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "globset",
  "ignore",
@@ -2519,7 +2471,7 @@ dependencies = [
 
 [[package]]
 name = "oino-rpc"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "futures",
  "oino-agent",
@@ -2535,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "oino-session"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "indexmap 2.14.0",
  "oino-ai",
@@ -2549,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "oino-settings"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "dirs",
  "indexmap 2.14.0",
@@ -2563,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tools"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -2589,7 +2541,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tui"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "base64 0.22.1",
  "crossterm",
@@ -2616,19 +2568,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "oino-types"
-version = "0.1.3"
-dependencies = [
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "uuid",
-]
-
-[[package]]
 name = "oino-view"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "indexmap 2.14.0",
  "oino-agent",
@@ -2642,7 +2583,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.0-alpha.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3374,19 +3315,6 @@ dependencies = [
 
 [[package]]
 name = "schemars"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
-dependencies = [
- "dyn-clone",
- "schemars_derive",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "schemars"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cd191f9397d57d581cddd31014772520aa448f65ef991055d7f61582c65165f"
@@ -3407,18 +3335,6 @@ dependencies = [
  "ref-cast",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "schemars_derive"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_derive_internals",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -3461,17 +3377,6 @@ name = "serde_derive"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "serde_derive_internals"
-version = "0.29.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
