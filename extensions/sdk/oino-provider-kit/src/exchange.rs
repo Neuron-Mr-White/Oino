@@ -10,6 +10,7 @@ use crate::errors::{
     SdkError, anthropic_status_error, connection_error_message, format_provider_error,
     openai_status_error,
 };
+use crate::eventstream::EventStreamDecoder;
 use crate::sse::{SseDecoder, SseEvent};
 
 /// What a parser did with one SSE event.
@@ -60,6 +61,60 @@ pub trait StreamParser {
 
     /// pi catch-block cleanup before the error event (finalise scratch state).
     fn cleanup(&mut self, _out: &mut Emitter) {}
+
+    /// The wire emits `start` itself (Bedrock: on `messageStart`) instead of on a 2xx status.
+    fn emits_start(&self) -> bool {
+        false
+    }
+
+    /// Response headers of the streaming response (request ids for diagnostics).
+    fn response_headers(&mut self, _headers: &[(String, String)]) {}
+
+    /// Diagnostics pi appends to a failed message (Bedrock `bedrock_response_failure`).
+    fn failure_diagnostics(&mut self, _error: &StreamFailure<'_>, _out: &mut Emitter) {}
+}
+
+/// What failed, for [`StreamParser::failure_diagnostics`].
+#[derive(Clone, Copy, Debug)]
+pub enum StreamFailure<'a> {
+    /// Non-2xx response.
+    Status {
+        /// HTTP status.
+        status: u16,
+        /// Response headers.
+        headers: &'a [(String, String)],
+        /// Response body.
+        body: &'a str,
+    },
+    /// A failure inside the stream.
+    Stream(&'a StreamError),
+    /// Transport failure or local error.
+    Other,
+}
+
+/// Response body framing.
+#[derive(Debug)]
+pub enum Framing {
+    /// Server-sent events.
+    Sse(SseDecoder),
+    /// AWS event stream (Bedrock).
+    EventStream(EventStreamDecoder),
+}
+
+impl Framing {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<SseEvent> {
+        match self {
+            Self::Sse(d) => d.feed(bytes),
+            Self::EventStream(d) => d.feed(bytes),
+        }
+    }
+
+    fn finish(&mut self) -> Vec<SseEvent> {
+        match self {
+            Self::Sse(d) => d.finish(),
+            Self::EventStream(d) => d.finish(),
+        }
+    }
 }
 
 /// How errors are rendered for a wire.
@@ -75,6 +130,20 @@ pub enum ErrorStyle {
         /// `OpenAI` for provider `openai`, else the provider id.
         prefix: String,
     },
+    /// `OpenAI` SDK errors with a fixed `formatProviderError` prefix (Azure `OpenAI`).
+    Prefixed {
+        /// Prefix, e.g. `Azure OpenAI API error`.
+        prefix: String,
+    },
+    /// `@google/genai` `ApiError`: the message is the JSON error body.
+    Google,
+    /// pi Codex `parseErrorResponse` (plain `Error`, `ChatGPT` usage-limit text).
+    Codex {
+        /// Wall clock for `resets_at` (ms).
+        now: i64,
+    },
+    /// AWS SDK service exceptions with pi's Bedrock prefixes.
+    Bedrock,
 }
 
 const CHATGPT_USAGE_URL: &str = "https://chatgpt.com/settings/usage";
@@ -84,9 +153,25 @@ impl ErrorStyle {
     /// SDK error for a non-2xx response.
     #[must_use]
     pub fn status_error(&self, status: u16, body: &str) -> SdkError {
+        self.status_error_with(status, &[], body)
+    }
+
+    /// [`Self::status_error`] with the response headers (Bedrock reads `x-amzn-errortype`).
+    #[must_use]
+    pub fn status_error_with(
+        &self,
+        status: u16,
+        headers: &[(String, String)],
+        body: &str,
+    ) -> SdkError {
         match self {
             Self::Anthropic => anthropic_status_error(status, body),
-            Self::Completions | Self::Responses { .. } => openai_status_error(status, body),
+            Self::Completions | Self::Responses { .. } | Self::Prefixed { .. } => {
+                openai_status_error(status, body)
+            }
+            Self::Google => crate::google::status_error(status, headers, body),
+            Self::Codex { now } => crate::codex::status_error(status, body, *now),
+            Self::Bedrock => crate::bedrock::status_error(status, headers, body),
         }
     }
 
@@ -94,7 +179,10 @@ impl ErrorStyle {
     #[must_use]
     pub fn render(&self, error: &SdkError) -> String {
         match self {
-            Self::Anthropic => error.message.clone(),
+            Self::Anthropic | Self::Google | Self::Codex { .. } | Self::Bedrock => {
+                error.message.clone()
+            }
+            Self::Prefixed { prefix } => format_provider_error(error, Some(prefix)),
             Self::Completions => {
                 let mut text = format_provider_error(error, None);
                 let raw = error
@@ -138,7 +226,7 @@ impl ErrorStyle {
 pub struct Exchange {
     out: Emitter,
     parser: Box<dyn StreamParser>,
-    decoder: SseDecoder,
+    decoder: Framing,
     style: ErrorStyle,
     raw: Vec<Value>,
     finished: bool,
@@ -151,11 +239,18 @@ impl Exchange {
         Self {
             out,
             parser,
-            decoder: SseDecoder::new(),
+            decoder: Framing::Sse(SseDecoder::new()),
             style,
             raw: Vec::new(),
             finished: false,
         }
+    }
+
+    /// Uses `framing` for the response body instead of SSE.
+    #[must_use]
+    pub fn with_framing(mut self, framing: Framing) -> Self {
+        self.decoder = framing;
+        self
     }
 
     /// Error style of the wire.
@@ -182,10 +277,27 @@ impl Exchange {
 
     /// The request failed before streaming: non-2xx status with `body`.
     pub fn http_error(&mut self, status: u16, body: &[u8]) -> Vec<ProviderEvent> {
-        let error = self
-            .style
-            .status_error(status, &String::from_utf8_lossy(body));
+        self.http_error_with(status, &[], body)
+    }
+
+    /// [`Self::http_error`] with the response headers.
+    pub fn http_error_with(
+        &mut self,
+        status: u16,
+        headers: &[(String, String)],
+        body: &[u8],
+    ) -> Vec<ProviderEvent> {
+        let body = String::from_utf8_lossy(body);
+        let error = self.style.status_error_with(status, headers, &body);
         let text = self.style.render(&error);
+        self.parser.failure_diagnostics(
+            &StreamFailure::Status {
+                status,
+                headers,
+                body: &body,
+            },
+            &mut self.out,
+        );
         self.fail(text, false)
     }
 
@@ -209,10 +321,18 @@ impl Exchange {
         self.out.drain()
     }
 
-    /// Response headers arrived with a 2xx status: emits `start`.
+    /// Response headers arrived with a 2xx status: emits `start` (unless the wire emits it).
     pub fn start(&mut self) -> Vec<ProviderEvent> {
-        self.out.start();
+        if !self.parser.emits_start() {
+            self.out.start();
+        }
         self.out.drain()
+    }
+
+    /// [`Self::start`] with the response headers.
+    pub fn start_with(&mut self, headers: &[(String, String)]) -> Vec<ProviderEvent> {
+        self.parser.response_headers(headers);
+        self.start()
     }
 
     /// Feeds response body bytes.
@@ -283,6 +403,8 @@ impl Exchange {
             StreamError::Message(message) => self.style.render_message(message),
             StreamError::Sdk(error) => self.style.render(error),
         };
+        self.parser
+            .failure_diagnostics(&StreamFailure::Stream(error), &mut self.out);
         let mut out = self.out.drain();
         out.extend(self.fail(text, false));
         out

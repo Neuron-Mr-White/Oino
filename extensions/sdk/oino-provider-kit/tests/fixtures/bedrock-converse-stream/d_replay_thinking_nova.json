@@ -1,0 +1,207 @@
+{
+ "name": "d_replay_thinking_nova",
+ "model": {
+  "id": "amazon.nova-2-lite-v1:0",
+  "name": "Nova 2 Lite",
+  "api": "bedrock-converse-stream",
+  "provider": "amazon-bedrock",
+  "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.33,
+   "output": 2.75,
+   "cacheRead": 0.0825,
+   "cacheWrite": 0.33
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 65535,
+  "inputLimits": {
+   "images": {
+    "maxPerMessage": 20,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   },
+   {
+    "role": "assistant",
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "model": "amazon.nova-2-lite-v1:0",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "t1",
+      "thinkingSignature": "sig0"
+     },
+     {
+      "type": "text",
+      "text": "a1"
+     }
+    ],
+    "stopReason": "stop",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "timestamp": 2
+   },
+   {
+    "role": "user",
+    "content": "",
+    "timestamp": 4
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "bedrock-token",
+ "status": 200,
+ "sseBase64": "AAAAgAAAAFJRoV8jCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicm9sZSI6ImFzc2lzdGFudCIsInAiOiJhYmMifY646bgAAACVAAAAV4nLs14LOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiSGVsIn19ZBOndgAAAJQAAABXtKua7gs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiJsbyJ9fQ6+kE8AAAB9AAAAVuZoD9YLOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjB9sy5NNAAAAHoAAABRyixGZQs6ZXZlbnQtdHlwZQcAC21lc3NhZ2VTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsic3RvcFJlYXNvbiI6ImVuZF90dXJuIn1fvwn8AAAAtwAAAE5WoWf6CzpldmVudC10eXBlBwAIbWV0YWRhdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJ1c2FnZSI6eyJpbnB1dFRva2VucyI6MTIsIm91dHB1dFRva2VucyI6NSwidG90YWxUb2tlbnMiOjE3fSwibWV0cmljcyI6eyJsYXRlbmN5TXMiOjEwfX1H7I91",
+ "request": {
+  "url": "https://bedrock-runtime.us-east-1.amazonaws.com/model/amazon.nova-2-lite-v1%3A0/converse-stream",
+  "headers": {
+   "content-type": "application/json",
+   "content-length": "266",
+   "x-amz-user-agent": "aws-sdk-js/3.1126.0 pi/1.4.0",
+   "user-agent": "aws-sdk-js/3.1126.0 ua/2.1 os/linux#7.0.0-38-generic lang/js md/nodejs#24.22.1 api/bedrock-runtime#3.1126.0 m/N,E pi/1.4.0",
+   ":authority": "bedrock-runtime.us-east-1.amazonaws.com",
+   "amz-sdk-invocation-id": "b07edb4b-2c2d-4ba0-944d-fd2ff58289d6",
+   "amz-sdk-request": "attempt=1; max=3",
+   "authorization": "Bearer bedrock-token"
+  },
+  "body": {
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": "q"
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "reasoningContent": {
+        "reasoningText": {
+         "text": "t1"
+        }
+       }
+      },
+      {
+       "text": "a1"
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": "<empty>"
+      }
+     ]
+    }
+   ],
+   "system": [
+    {
+     "text": "Sys"
+    }
+   ],
+   "inferenceConfig": {
+    "maxTokens": 65535
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "Hel"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "lo"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "Hello"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Hello"
+     }
+    ],
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "model": "amazon.nova-2-lite-v1:0",
+    "usage": {
+     "input": 12,
+     "output": 5,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 17,
+     "cost": {
+      "input": 0.00000396,
+      "output": 0.000013749999999999999,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.000017709999999999998
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "rawStopReason": "end_turn",
+    "durationMs": 1
+   }
+  }
+ ]
+}

@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 oino-extension = { workspace = true, features = ["provider"] }
 oino-provider-kit = { workspace = true, features = ["guest"] }
+base64.workspace = true
 serde_json.workspace = true
 
 [lints]

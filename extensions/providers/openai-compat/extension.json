@@ -4,7 +4,7 @@
   "name": "OpenAI-compatible providers",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "OpenAI chat-completions wire for OpenRouter, Groq, DeepSeek, Together, Fireworks, Cerebras, Ollama, LM Studio and other OpenAI-compatible providers (pi-ai 1.4.0 port).",
+  "description": "OpenAI chat-completions wire for OpenRouter, Groq, DeepSeek, Together, Fireworks, Cerebras, GitHub Copilot (device-code OAuth), Cloudflare AI Gateway / Workers AI, Azure chat models, Ollama, LM Studio and other OpenAI-compatible providers (pi-ai 1.4.0 port).",
   "license": "MIT",
   "provides": {
     "apis": [
@@ -41,7 +41,10 @@
       "mistral",
       "deepinfra",
       "chutes",
-      "perplexity"
+      "perplexity",
+      "github-copilot",
+      "cloudflare-ai-gateway",
+      "cloudflare-workers-ai"
     ]
   },
   "permissions": {
@@ -75,12 +78,28 @@
         "api.mistral.ai",
         "api.deepinfra.com",
         "llm.chutes.ai",
-        "api.perplexity.ai"
+        "api.perplexity.ai",
+        "github.com",
+        "api.github.com",
+        "api.individual.githubcopilot.com",
+        "api.business.githubcopilot.com",
+        "api.enterprise.githubcopilot.com",
+        "gateway.ai.cloudflare.com",
+        "api.cloudflare.com",
+        "*.openai.azure.com",
+        "*.cognitiveservices.azure.com",
+        "*.ai.azure.com"
       ]
     },
     "env": [
       "OINO_CACHE_RETENTION",
-      "PI_CACHE_RETENTION"
+      "PI_CACHE_RETENTION",
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_GATEWAY_ID",
+      "AZURE_OPENAI_BASE_URL",
+      "AZURE_OPENAI_RESOURCE_NAME",
+      "AZURE_OPENAI_API_VERSION",
+      "AZURE_OPENAI_DEPLOYMENT_NAME_MAP"
     ]
   }
 }

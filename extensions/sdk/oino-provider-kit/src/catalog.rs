@@ -29,6 +29,9 @@ pub struct CatalogProvider {
     /// Local server: no credential needed.
     #[serde(default)]
     pub local: bool,
+    /// The component implements `oauth-login` / `oauth-refresh` for this provider.
+    #[serde(default)]
+    pub oauth: bool,
     /// Static pi `Model` objects, or `"dynamic"` (listed from `GET {baseUrl}/models`).
     pub models: Value,
 }
@@ -65,7 +68,7 @@ impl CatalogProvider {
             "baseUrl": self.base_url,
             "authEnv": self.auth_env,
             "authHeader": if self.local { "none" } else { auth_header },
-            "oauth": self.id == "anthropic",
+            "oauth": self.oauth || self.id == "anthropic",
             "headers": {},
             "compat": {},
             "models": "dynamic",

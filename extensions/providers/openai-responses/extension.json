@@ -4,7 +4,7 @@
   "name": "OpenAI Responses",
   "version": "1.0.0",
   "kind": "provider",
-  "description": "OpenAI Responses wire for OpenAI, xAI and Meta (pi-ai 1.4.0 port).",
+  "description": "OpenAI Responses wire for OpenAI (API key or Sign in with ChatGPT), xAI and Meta, and for openai-responses models of GitHub Copilot and Cloudflare AI Gateway (pi-ai 1.4.0 port).",
   "license": "MIT",
   "provides": {
     "apis": [
@@ -22,12 +22,22 @@
         "*",
         "api.meta.ai",
         "api.openai.com",
-        "api.x.ai"
-      ]
+        "api.x.ai",
+        "auth.openai.com",
+        "api.individual.githubcopilot.com",
+        "api.business.githubcopilot.com",
+        "api.enterprise.githubcopilot.com",
+        "gateway.ai.cloudflare.com",
+        "api.cloudflare.com"
+      ],
+      "listenLoopback": true
     },
     "env": [
       "OINO_CACHE_RETENTION",
-      "PI_CACHE_RETENTION"
-    ]
+      "PI_CACHE_RETENTION",
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_GATEWAY_ID"
+    ],
+    "openUrl": true
   }
 }

@@ -1,0 +1,107 @@
+{
+ "name": "h_bad_token",
+ "model": {
+  "id": "gpt-5.6-luna",
+  "name": "GPT-5.6 Luna",
+  "api": "openai-codex-responses",
+  "provider": "openai-codex",
+  "baseUrl": "https://chatgpt.com/backend-api",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.2,
+   "output": 1.2,
+   "cacheRead": 0.02,
+   "cacheWrite": 0.25,
+   "tiers": [
+    {
+     "inputTokensAbove": 272000,
+     "input": 0.4,
+     "output": 1.8,
+     "cacheRead": 0.04,
+     "cacheWrite": 0.5
+    }
+   ]
+  },
+  "contextWindow": 272000,
+  "maxTokens": 128000,
+  "thinkingLevelMap": {
+   "xhigh": "xhigh",
+   "max": "max",
+   "minimal": "low"
+  },
+  "compat": {
+   "supportsOpenAIGrammarTools": true,
+   "supportsAdditionalTools": true,
+   "supportsToolSearch": true,
+   "supportsMidConvoSystemMessages": true
+  },
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "transport": "sse"
+ },
+ "apiKey": "not-a-jwt",
+ "status": 200,
+ "sse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\",\"output\":[]}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_o1\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[],\"phase\":\"final_answer\"}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"output_index\":0,\"item_id\":\"msg_o1\",\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"msg_o1\",\"content_index\":0,\"delta\":\"He\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"msg_o1\",\"content_index\":0,\"delta\":\"llo\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_o1\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello\",\"annotations\":[]}],\"phase\":\"final_answer\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":12,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":5,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":17}}}\n\n",
+ "request": {},
+ "events": [
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [],
+    "api": "openai-codex-responses",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "errorMessage": "Failed to extract accountId from token",
+    "durationMs": 0
+   }
+  }
+ ]
+}

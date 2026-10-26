@@ -52,13 +52,20 @@
         "api.mistral.ai",
         "api.deepinfra.com",
         "llm.chutes.ai",
-        "api.perplexity.ai"
+        "api.perplexity.ai",
+        "api.individual.githubcopilot.com",
+        "api.business.githubcopilot.com",
+        "api.enterprise.githubcopilot.com",
+        "gateway.ai.cloudflare.com",
+        "api.cloudflare.com"
       ],
       "listenLoopback": true
     },
     "env": [
       "OINO_CACHE_RETENTION",
-      "PI_CACHE_RETENTION"
+      "PI_CACHE_RETENTION",
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_GATEWAY_ID"
     ],
     "openUrl": true
   }

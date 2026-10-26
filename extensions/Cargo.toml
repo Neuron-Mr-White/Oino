@@ -11,6 +11,7 @@ repository = "https://github.com/Neuron-Mr-White/Oino"
 
 [workspace.dependencies]
 base64 = "0.22"
+hmac = "0.12"
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 oino-ai = { path = "../crates/oino-ai" }
 oino-extension = { path = "sdk/oino-extension" }

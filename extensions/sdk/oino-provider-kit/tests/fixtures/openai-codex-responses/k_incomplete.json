@@ -1,0 +1,180 @@
+{
+ "name": "k_incomplete",
+ "model": {
+  "id": "gpt-5.6-luna",
+  "name": "GPT-5.6 Luna",
+  "api": "openai-codex-responses",
+  "provider": "openai-codex",
+  "baseUrl": "https://chatgpt.com/backend-api",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 0.2,
+   "output": 1.2,
+   "cacheRead": 0.02,
+   "cacheWrite": 0.25,
+   "tiers": [
+    {
+     "inputTokensAbove": 272000,
+     "input": 0.4,
+     "output": 1.8,
+     "cacheRead": 0.04,
+     "cacheWrite": 0.5
+    }
+   ]
+  },
+  "contextWindow": 272000,
+  "maxTokens": 128000,
+  "thinkingLevelMap": {
+   "xhigh": "xhigh",
+   "max": "max",
+   "minimal": "low"
+  },
+  "compat": {
+   "supportsOpenAIGrammarTools": true,
+   "supportsAdditionalTools": true,
+   "supportsToolSearch": true,
+   "supportsMidConvoSystemMessages": true
+  },
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "transport": "sse"
+ },
+ "apiKey": "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xMjMifSwiZXhwIjoyMDAwMDAwMDAwfQ.sig",
+ "status": 200,
+ "sse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_8\",\"status\":\"in_progress\",\"output\":[]}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"m8\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"output_index\":0,\"item_id\":\"m8\",\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"m8\",\"content_index\":0,\"delta\":\"tr\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"m8\",\"content_index\":0,\"delta\":\"unc\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"m8\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"trunc\",\"annotations\":[]}]}}\n\nevent: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_8\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"output\":[],\"usage\":{\"input_tokens\":5,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":16,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":21}}}\n\n",
+ "request": {
+  "url": "https://chatgpt.com/backend-api/codex/responses",
+  "headers": {
+   "accept": "text/event-stream",
+   "authorization": "Bearer eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdC0xMjMifSwiZXhwIjoyMDAwMDAwMDAwfQ.sig",
+   "chatgpt-account-id": "acct-123",
+   "content-encoding": "zstd",
+   "content-type": "application/json",
+   "openai-beta": "responses=experimental",
+   "originator": "pi",
+   "session-id": "sess-1234",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-client-request-id": "sess-1234"
+  },
+  "body": {
+   "model": "gpt-5.6-luna",
+   "store": false,
+   "stream": true,
+   "instructions": "Sys",
+   "input": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "hi"
+      }
+     ]
+    }
+   ],
+   "text": {
+    "verbosity": "low"
+   },
+   "include": [
+    "reasoning.encrypted_content"
+   ],
+   "prompt_cache_key": "sess-1234",
+   "tool_choice": "auto",
+   "parallel_tool_calls": true,
+   "reasoning": {
+    "effort": "none"
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "tr"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "unc"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "trunc"
+  },
+  {
+   "type": "done",
+   "reason": "length",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "trunc",
+      "textSignature": "{\"v\":1,\"id\":\"m8\"}"
+     }
+    ],
+    "api": "openai-codex-responses",
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "usage": {
+     "input": 5,
+     "output": 16,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 21,
+     "cost": {
+      "input": 0.0000010000000000000002,
+      "output": 0.0000192,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.0000202
+     }
+    },
+    "stopReason": "length",
+    "timestamp": 0,
+    "responseId": "resp_8",
+    "rawStopReason": "incomplete.max_output_tokens",
+    "durationMs": 0
+   }
+  }
+ ]
+}

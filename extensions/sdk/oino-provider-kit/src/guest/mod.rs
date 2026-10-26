@@ -1,5 +1,8 @@
 //! Component-side driver (feature `guest`): runs an exchange over the host's `http` import,
 //! with `provider-host` hooks, provider-level retries and cancellation, and lists models.
+//! [`oauth`] holds the login-flow plumbing (loopback callbacks, device-code polling).
+
+pub mod oauth;
 
 use std::time::Duration;
 
@@ -13,7 +16,35 @@ use crate::catalog::{Catalog, CatalogProvider, personalize_open_router};
 use crate::emit::Emitter;
 use crate::request::{Headers, ProviderRequest};
 use crate::retry::{is_retryable, retry_delay_ms};
-use crate::{PrepareOptions, Wire, anthropic, finalize, prepare};
+use crate::{PrepareOptions, Wire, anthropic, finalize, prepare, sigv4};
+
+/// Provider environment the components read when the host grants it (`permissions.env`) and
+/// the request's `options.env` does not set it (pi `getProviderEnvValue`).
+pub const PROVIDER_ENV: &[&str] = &[
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_GATEWAY_ID",
+    "AZURE_OPENAI_BASE_URL",
+    "AZURE_OPENAI_RESOURCE_NAME",
+    "AZURE_OPENAI_API_VERSION",
+    "AZURE_OPENAI_DEPLOYMENT_NAME_MAP",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "AWS_PROFILE",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "AWS_BEDROCK_SKIP_AUTH",
+    "AWS_BEDROCK_FORCE_CACHE",
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "GOOGLE_CLOUD_PROJECT",
+    "GCLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_CLOUD_API_KEY",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+];
 
 /// Default request timeout (the provider SDKs use 600 s).
 const DEFAULT_TIMEOUT_MS: u64 = 600_000;
@@ -34,14 +65,53 @@ fn env_long_retention() -> bool {
         .any(|name| host::env(name).ok().flatten().as_deref() == Some("long"))
 }
 
+/// Parses a stream request and merges the granted host environment into `env`.
+///
+/// # Errors
+/// Invalid request JSON.
+pub fn parse(request: &Value) -> Result<ProviderRequest> {
+    let mut request = ProviderRequest::parse(request).map_err(Error::msg)?;
+    request.env_long_retention = env_long_retention();
+    for name in PROVIDER_ENV {
+        if request.env.contains_key(*name) {
+            continue;
+        }
+        if let Some(value) = host::env(name).ok().flatten().filter(|v| !v.is_empty()) {
+            request.env.insert((*name).to_owned(), value);
+        }
+    }
+    Ok(request)
+}
+
 /// `provider.stream`: parses the request and spawns the producer. Every failure after parsing
 /// is reported as an `error` event (pi semantics).
 ///
 /// # Errors
 /// Invalid request JSON or a model whose API this component does not implement.
 pub fn stream(request: &Value, options: StreamOptions) -> Result<ProviderStream> {
-    let mut request = ProviderRequest::parse(request).map_err(Error::msg)?;
-    request.env_long_retention = env_long_retention();
+    stream_request(parse(request)?, options)
+}
+
+/// A stream that fails before any request (pi setup errors): a lone `error` event.
+#[must_use]
+pub fn fail_stream(request: &ProviderRequest, message: String) -> ProviderStream {
+    let mut out = Emitter::new(&request.model, timers::now_ms());
+    out.fail(message, false);
+    let events = out.drain();
+    ProviderStream::spawn(move |sink| async move {
+        let mut sink = Sink {
+            inner: sink,
+            open: true,
+        };
+        sink.send(events).await;
+    })
+}
+
+/// [`stream`] for an already parsed (and possibly component-adjusted) request.
+///
+/// # Errors
+/// A model whose API this component does not implement.
+pub fn stream_request(request: ProviderRequest, options: StreamOptions) -> Result<ProviderStream> {
     let wire = options
         .wire
         .or_else(|| Wire::from_api(&request.model.api))
@@ -115,6 +185,15 @@ async fn run(wire: Wire, request: ProviderRequest, options: StreamOptions, sink:
         let mut headers = Headers::from(headers);
         let body = finalize(wire, payload, &mut headers);
         let body = serde_json::to_vec(&body).unwrap_or_default();
+        if let Some(signing) = &prepared.http.signing {
+            sigv4::sign(
+                &prepared.http.url,
+                &mut headers,
+                &body,
+                signing,
+                &sigv4::amz_date(timers::now_ms()),
+            );
+        }
         let timeout = prepared.http.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
         let mut retries = 0u32;
         let response: Response = loop {
@@ -198,13 +277,14 @@ async fn run(wire: Wire, request: ProviderRequest, options: StreamOptions, sink:
                             }
                         }
                     }
-                    sink.send(prepared.exchange.http_error(status, &bytes))
+                    sink.send(prepared.exchange.http_error_with(status, &head, &bytes))
                         .await;
                     return;
                 }
             }
         };
-        sink.send(prepared.exchange.start()).await;
+        sink.send(prepared.exchange.start_with(&response.head.headers))
+            .await;
         let mut body = response.body();
         while sink.open && !prepared.exchange.is_finished() {
             let (status, chunk) = body.read(Vec::with_capacity(READ_CHUNK)).await;
@@ -282,7 +362,10 @@ pub async fn list_models(
     if provider.is_dynamic() {
         return dynamic_models(provider, key.as_deref()).await;
     }
-    let models = provider.static_models();
+    let mut models = provider.static_models();
+    if provider.id == crate::providers::GITHUB_COPILOT {
+        models = filter_copilot_models(models, credential);
+    }
     if provider.id == "openrouter"
         && let Some(key) = key
     {
@@ -297,6 +380,25 @@ pub async fn list_models(
         };
     }
     Ok(Value::Array(models))
+}
+
+/// pi `filterModels` for GitHub Copilot: an OAuth credential's `availableModelIds` (when it is
+/// a list of strings) restricts the catalog.
+#[must_use]
+pub fn filter_copilot_models(models: Vec<Value>, credential: Option<&Value>) -> Vec<Value> {
+    let Some(credential) = credential.filter(|c| c["type"] == "oauth") else {
+        return models;
+    };
+    let Some(ids) = credential["availableModelIds"].as_array() else {
+        return models;
+    };
+    let Some(ids) = ids.iter().map(Value::as_str).collect::<Option<Vec<&str>>>() else {
+        return models;
+    };
+    models
+        .into_iter()
+        .filter(|m| m["id"].as_str().is_some_and(|id| ids.contains(&id)))
+        .collect()
 }
 
 async fn dynamic_models(provider: &CatalogProvider, key: Option<&str>) -> Result<Value> {

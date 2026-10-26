@@ -1,0 +1,49 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.google",
+  "name": "Google Gemini and Vertex AI",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "Google Generative AI (Gemini API key) and Google Vertex AI (API key or Application Default Credentials) wires (pi-ai 1.4.0 port).",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "google-generative-ai",
+      "google-vertex"
+    ],
+    "providers": [
+      "google",
+      "google-vertex"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "generativelanguage.googleapis.com",
+        "aiplatform.googleapis.com",
+        "*.aiplatform.googleapis.com",
+        "oauth2.googleapis.com"
+      ]
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION",
+      "GOOGLE_CLOUD_PROJECT",
+      "GCLOUD_PROJECT",
+      "GOOGLE_CLOUD_LOCATION",
+      "GOOGLE_CLOUD_API_KEY",
+      "GOOGLE_APPLICATION_CREDENTIALS",
+      "HOME"
+    ],
+    "fs": {
+      "paths": [
+        {
+          "path": "~/.config/gcloud",
+          "access": "read",
+          "alias": "gcloud"
+        }
+      ]
+    }
+  }
+}

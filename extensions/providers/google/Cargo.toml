@@ -1,0 +1,21 @@
+[package]
+name = "provider-google"
+version = "1.0.0-alpha.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Oino provider component: google"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oino-extension = { workspace = true, features = ["provider"] }
+oino-provider-kit = { workspace = true, features = ["guest"] }
+base64.workspace = true
+serde_json.workspace = true
+rsa = { version = "0.9", features = ["sha2"] }
+
+[lints]
+workspace = true

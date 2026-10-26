@@ -12,10 +12,13 @@ description = "Pure wire logic of the Oino provider components (pi-ai 1.4.0 port
 guest = ["dep:oino-extension"]
 
 [dependencies]
+base64.workspace = true
+hmac.workspace = true
 oino-ai.workspace = true
 oino-extension = { workspace = true, features = ["provider"], optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["float_roundtrip"] }
+sha2.workspace = true
 
 [lints]
 workspace = true

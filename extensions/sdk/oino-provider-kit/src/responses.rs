@@ -24,6 +24,7 @@ use crate::errors::openai_stream_error;
 use crate::exchange::{ErrorStyle, Exchange, Step, StreamError, StreamParser, has_tool_call};
 use crate::json::{parse_streaming_object, parse_tool_call_arguments};
 use crate::options::{clamp_max_tokens_to_context, resolve_sampling_params};
+use crate::providers;
 use crate::request::{Headers, HttpRequest, ProviderRequest, USER_AGENT, join_url};
 use crate::sse::SseEvent;
 use crate::util::{
@@ -31,7 +32,36 @@ use crate::util::{
     mapped_or_level, short_hash,
 };
 
-const TOOL_CALL_PROVIDERS: [&str; 3] = ["openai", "openai-codex", "opencode"];
+const TOOL_CALL_PROVIDERS: &[&str] = &["openai", "openai-codex", "opencode"];
+const AZURE_TOOL_CALL_PROVIDERS: &[&str] = &["openai", "openai-codex", "opencode", "azure"];
+
+/// The pi APIs built on the shared Responses code (`openai-responses-shared.js`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Flavor {
+    /// `openai-responses`.
+    OpenAi,
+    /// `azure-openai-responses`.
+    Azure,
+    /// `openai-codex-responses`.
+    Codex,
+}
+
+impl Flavor {
+    const fn tool_call_providers(self) -> &'static [&'static str] {
+        match self {
+            Self::OpenAi | Self::Codex => TOOL_CALL_PROVIDERS,
+            Self::Azure => AZURE_TOOL_CALL_PROVIDERS,
+        }
+    }
+
+    const fn pending_message(self) -> &'static str {
+        match self {
+            Self::OpenAi => "OpenAI Responses stream ended without a stop reason",
+            Self::Azure => "Azure OpenAI Responses stream ended without a stop reason",
+            Self::Codex => "Codex stream ended without a stop reason",
+        }
+    }
+}
 const MIN_OUTPUT_TOKENS: u64 = 16;
 const CONFIGURATION_UPDATE_REQUEST_EFFORT: &str = "medium";
 
@@ -97,7 +127,7 @@ pub fn compat(model: &Model) -> ResponsesCompat {
 }
 
 /// pi `getResponsesToolSupport`.
-fn tool_support(compat: &ResponsesCompat) -> ToolChangeSupport {
+pub(crate) fn tool_support(compat: &ResponsesCompat) -> ToolChangeSupport {
     if compat.supports_mid_convo_system_messages && compat.supports_additional_tools {
         ToolChangeSupport::Changes
     } else if compat.supports_tool_search {
@@ -114,15 +144,20 @@ fn is_chatgpt_sign_in(model: &Model, api_key: Option<&str>) -> bool {
         && api_key.is_some_and(|k| !k.starts_with("sk-"))
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct ToolOptions {
-    supports_strict_mode: bool,
-    supports_grammar: bool,
-    tool_search_result: bool,
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ToolOptions {
+    pub(crate) supports_strict_mode: bool,
+    pub(crate) supports_grammar: bool,
+    pub(crate) tool_search_result: bool,
+    /// pi `toolOptions.strict` default: `Some(false)` (unset) or `None` (Codex passes `null`).
+    pub(crate) default_strict: Option<bool>,
 }
 
 /// pi `convertResponsesTools`.
-fn convert_tools(tools: &[ToolDecl], options: ToolOptions) -> Result<Vec<Value>, String> {
+pub(crate) fn convert_tools(
+    tools: &[ToolDecl],
+    options: ToolOptions,
+) -> Result<Vec<Value>, String> {
     tools
         .iter()
         .map(|tool| {
@@ -139,12 +174,15 @@ fn convert_tools(tools: &[ToolDecl], options: ToolOptions) -> Result<Vec<Value>,
                 return Ok(out);
             }
             let strict = resolve_json_schema_strict(tool, options.supports_strict_mode, None)?
-                .unwrap_or(false);
+                .or(options.default_strict);
             let mut out = JsonObject::new();
             out.insert("type".into(), json!("function"));
             out.insert("name".into(), json!(tool.name));
             out.insert("description".into(), json!(tool.description));
-            out.insert("parameters".into(), json_schema_tool_parameters(tool, strict)?);
+            out.insert(
+                "parameters".into(),
+                json_schema_tool_parameters(tool, strict == Some(true))?,
+            );
             if options.tool_search_result {
                 out.insert("defer_loading".into(), json!(true));
             }
@@ -168,8 +206,13 @@ fn normalize_id_part(part: &str) -> String {
     sanitized.trim_end_matches('_').to_owned()
 }
 
-fn normalize_tool_call_id(model: &Model, id: &str, source: &AssistantMessage) -> String {
-    if !TOOL_CALL_PROVIDERS.contains(&model.provider.as_str()) || !id.contains('|') {
+fn normalize_tool_call_id(
+    model: &Model,
+    providers: &[&str],
+    id: &str,
+    source: &AssistantMessage,
+) -> String {
+    if !providers.contains(&model.provider.as_str()) || !id.contains('|') {
         return normalize_id_part(id);
     }
     let mut parts = id.split('|');
@@ -256,10 +299,15 @@ fn incremental_tools_notice(unavailable: &BTreeSet<String>, order: &[String]) ->
     }
 }
 
-struct MessageOptions<'a> {
-    grammar: &'a BTreeMap<String, String>,
-    compat: &'a ResponsesCompat,
-    configuration_update_effort: Option<String>,
+pub(crate) struct MessageOptions<'a> {
+    pub(crate) grammar: &'a BTreeMap<String, String>,
+    pub(crate) compat: &'a ResponsesCompat,
+    pub(crate) configuration_update_effort: Option<String>,
+    pub(crate) flavor: Flavor,
+    /// pi `includeSystemPrompt` (Codex sends the leading prompt as `instructions`).
+    pub(crate) include_system_prompt: bool,
+    /// pi `toolOptions.strict`.
+    pub(crate) default_strict: Option<bool>,
 }
 
 /// pi `convertResponsesMessages`.
@@ -267,7 +315,7 @@ struct MessageOptions<'a> {
     clippy::too_many_lines,
     reason = "1:1 port of pi convertResponsesMessages"
 )]
-fn convert_messages(
+pub(crate) fn convert_messages(
     model: &Model,
     transcript: &Context,
     options: &MessageOptions<'_>,
@@ -283,7 +331,7 @@ fn convert_messages(
         normalized.messages.clone(),
         model,
         Some(&|id: &str, _: &Model, source: &AssistantMessage| {
-            normalize_tool_call_id(model, id, source)
+            normalize_tool_call_id(model, options.flavor.tool_call_providers(), id, source)
         }),
         now,
     );
@@ -293,6 +341,7 @@ fn convert_messages(
         supports_strict_mode: compat.supports_strict_mode,
         supports_grammar: compat.supports_openai_grammar_tools,
         tool_search_result: false,
+        default_strict: options.default_strict,
     };
     let instruction_role = if model.reasoning
         && model
@@ -351,6 +400,9 @@ fn convert_messages(
                             ToolChangeSupport::None => {}
                         }
                     }
+                }
+                if leading && !options.include_system_prompt {
+                    continue;
                 }
                 let mut parts = vec![if leading {
                     system_message_text(system)
@@ -574,6 +626,9 @@ fn build_params(
             grammar,
             compat,
             configuration_update_effort: configuration_update_effort.map(str::to_owned),
+            flavor: Flavor::OpenAi,
+            include_system_prompt: true,
+            default_strict: Some(false),
         },
         now,
     )?;
@@ -633,6 +688,7 @@ fn build_params(
                     supports_strict_mode: compat.supports_strict_mode,
                     supports_grammar: compat.supports_openai_grammar_tools,
                     tool_search_result: false,
+                    default_strict: Some(false),
                 },
             )?),
         );
@@ -749,6 +805,9 @@ pub fn prepare(request: &ProviderRequest, now: i64) -> Result<Prepared, String> 
     for (name, value) in model.headers.iter().flatten() {
         headers.set(name, value);
     }
+    for (name, value) in providers::copilot_dynamic_headers(request, &request.context.messages) {
+        headers.set(&name, value);
+    }
     if let Some(session) = request
         .options
         .session_id
@@ -774,20 +833,19 @@ pub fn prepare(request: &ProviderRequest, now: i64) -> Result<Prepared, String> 
     } else {
         model.provider.clone()
     };
-    let parser = Parser {
-        model: model.clone(),
+    let parser = Parser::new(
+        model,
         grammar,
-        service_tier: request.extra.service_tier.clone(),
-        slots: BTreeMap::new(),
-        reasoning_by_id: BTreeMap::new(),
-        saw_terminal: false,
-    };
+        request.extra.service_tier.clone(),
+        Flavor::OpenAi,
+    );
     Ok(Prepared {
         http: HttpRequest {
             url: join_url(&model.base_url, "/responses"),
             headers,
             payload: params,
             timeout_ms: request.options.timeout_ms,
+            signing: None,
         },
         exchange: Exchange::new(out, Box::new(parser), ErrorStyle::Responses { prefix }),
     })
@@ -807,13 +865,14 @@ struct Slot {
     custom: Option<(String, GrammarBuffer)>,
 }
 
-struct Parser {
+pub(crate) struct Parser {
     model: Model,
     grammar: BTreeMap<String, String>,
     service_tier: Option<String>,
     slots: BTreeMap<i64, Slot>,
     reasoning_by_id: BTreeMap<String, usize>,
     saw_terminal: bool,
+    flavor: Flavor,
 }
 
 /// Unfinished tool calls (scratch still present) by content index.
@@ -849,10 +908,11 @@ fn map_status(
     })
 }
 
-fn service_tier_multiplier(model: &Model, tier: Option<&str>) -> f64 {
-    match tier {
-        Some("flex") => 0.5,
-        Some("priority" | "fast") => {
+fn service_tier_multiplier(model: &Model, tier: Option<&str>, flavor: Flavor) -> f64 {
+    match (tier, flavor) {
+        (_, Flavor::Azure) => 1.0,
+        (Some("flex"), _) => 0.5,
+        (Some("priority"), _) | (Some("fast"), Flavor::OpenAi) => {
             if model.id == "gpt-5.5" {
                 2.5
             } else {
@@ -864,6 +924,24 @@ fn service_tier_multiplier(model: &Model, tier: Option<&str>) -> f64 {
 }
 
 impl Parser {
+    /// Parser for `flavor` (`service_tier` = the requested tier).
+    pub(crate) fn new(
+        model: &Model,
+        grammar: BTreeMap<String, String>,
+        service_tier: Option<String>,
+        flavor: Flavor,
+    ) -> Self {
+        Self {
+            model: model.clone(),
+            grammar,
+            service_tier,
+            slots: BTreeMap::new(),
+            reasoning_by_id: BTreeMap::new(),
+            saw_terminal: false,
+            flavor,
+        }
+    }
+
     fn create_slot(&mut self, output_index: i64, item: &Value, out: &mut Emitter) {
         let (kind, block, custom, partial) = match item["type"].as_str() {
             Some("reasoning") => (
@@ -1249,11 +1327,17 @@ impl Parser {
             u.total_tokens = usage["total_tokens"].as_u64().unwrap_or(0);
         }
         calculate_cost(&self.model, &mut out.message.usage);
-        let tier = response["service_tier"]
-            .as_str()
-            .map(str::to_owned)
-            .or_else(|| self.service_tier.clone());
-        let multiplier = service_tier_multiplier(&self.model, tier.as_deref());
+        let response_tier = response["service_tier"].as_str();
+        let tier = match (self.flavor, response_tier, self.service_tier.as_deref()) {
+            // pi `resolveCodexServiceTier`.
+            (Flavor::Codex, Some("default"), Some(requested @ ("flex" | "priority"))) => {
+                Some(requested.to_owned())
+            }
+            _ => response_tier
+                .map(str::to_owned)
+                .or_else(|| self.service_tier.clone()),
+        };
+        let multiplier = service_tier_multiplier(&self.model, tier.as_deref(), self.flavor);
         #[allow(
             clippy::float_cmp,
             reason = "pi compares the multiplier with 1 exactly"
@@ -1285,6 +1369,9 @@ impl Parser {
 
 impl StreamParser for Parser {
     fn event(&mut self, sse: &SseEvent, out: &mut Emitter) -> Result<Step, StreamError> {
+        if self.flavor == Flavor::Codex {
+            return self.codex_event(sse, out);
+        }
         if sse.data == "[DONE]" {
             return Ok(Step::End);
         }
@@ -1299,6 +1386,76 @@ impl StreamParser for Parser {
         {
             return Err(StreamError::Sdk(openai_stream_error(&event)));
         }
+        self.process(event, out)
+    }
+
+    fn finish(&mut self, out: &mut Emitter) -> Result<(), StreamError> {
+        self.finish_stream(out)
+    }
+}
+
+impl Parser {
+    /// pi `mapCodexEvents` over pi Codex `parseSSE` (data lines only), then the shared handler.
+    fn codex_event(&mut self, sse: &SseEvent, out: &mut Emitter) -> Result<Step, StreamError> {
+        let data = sse.data.trim();
+        if data.is_empty() || data == "[DONE]" {
+            return Ok(Step::Skip);
+        }
+        let event: Value = serde_json::from_str(data)
+            .map_err(|e| StreamError::from(format!("Invalid Codex SSE JSON: {e}")))?;
+        let Some(kind) = event["type"].as_str() else {
+            return Ok(Step::Skip);
+        };
+        match kind {
+            "error" => {
+                let nested = &event["error"];
+                let code = event["code"].as_str().or_else(|| nested["code"].as_str());
+                let message = event["message"]
+                    .as_str()
+                    .or_else(|| nested["message"].as_str());
+                let text = message
+                    .filter(|m| !m.is_empty())
+                    .or(code.filter(|c| !c.is_empty()))
+                    .map_or_else(|| event.to_string(), str::to_owned);
+                Err(format!("Codex error: {text}").into())
+            }
+            "response.failed" => {
+                let message = event["response"]["error"]["message"]
+                    .as_str()
+                    .filter(|m| !m.is_empty())
+                    .unwrap_or("Codex response failed");
+                Err(message.to_owned().into())
+            }
+            "response.done" | "response.completed" | "response.incomplete" => {
+                let response = &event["response"];
+                if let Some(end_turn) = response["end_turn"].as_bool() {
+                    out.message.end_turn = Some(end_turn);
+                }
+                let mut normalized = event.clone();
+                normalized["type"] = json!("response.completed");
+                if response.is_object() {
+                    let status = response["status"].as_str().filter(|s| {
+                        matches!(
+                            *s,
+                            "completed"
+                                | "incomplete"
+                                | "failed"
+                                | "cancelled"
+                                | "queued"
+                                | "in_progress"
+                        )
+                    });
+                    normalized["response"]["status"] = status.map_or(Value::Null, |s| json!(s));
+                }
+                self.process(normalized, out)?;
+                Ok(Step::End)
+            }
+            _ => self.process(event, out),
+        }
+    }
+
+    /// pi `processResponsesStream` for one event.
+    fn process(&mut self, event: Value, out: &mut Emitter) -> Result<Step, StreamError> {
         match event["type"].as_str().unwrap_or_default() {
             "response.created" => {
                 out.message.response_id = event["response"]["id"].as_str().map(str::to_owned);
@@ -1374,7 +1531,7 @@ impl StreamParser for Parser {
         Ok(Step::Event(event))
     }
 
-    fn finish(&mut self, out: &mut Emitter) -> Result<(), StreamError> {
+    fn finish_stream(&mut self, out: &mut Emitter) -> Result<(), StreamError> {
         if !self.saw_terminal {
             return Err("OpenAI Responses stream ended before a terminal response event".into());
         }
@@ -1393,9 +1550,7 @@ impl StreamParser for Parser {
             }
         }
         match out.message.stop_reason {
-            StopReason::Pending => {
-                Err("OpenAI Responses stream ended without a stop reason".into())
-            }
+            StopReason::Pending => Err(self.flavor.pending_message().into()),
             StopReason::Aborted | StopReason::Error => Err(out
                 .message
                 .error_message

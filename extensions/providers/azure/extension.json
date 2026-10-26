@@ -1,0 +1,35 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.azure",
+  "name": "Azure OpenAI",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "Azure OpenAI Responses wire (pi-ai 1.4.0 port): resource / base URL / deployment configuration from AZURE_OPENAI_* or request options.",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "azure-openai-responses"
+    ],
+    "providers": [
+      "azure"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "*.openai.azure.com",
+        "*.cognitiveservices.azure.com",
+        "*.ai.azure.com"
+      ]
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION",
+      "AZURE_OPENAI_BASE_URL",
+      "AZURE_OPENAI_RESOURCE_NAME",
+      "AZURE_OPENAI_API_VERSION",
+      "AZURE_OPENAI_DEPLOYMENT_NAME_MAP"
+    ]
+  }
+}

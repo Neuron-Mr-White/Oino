@@ -19,6 +19,7 @@ use crate::emit::Emitter;
 use crate::exchange::{ErrorStyle, Exchange, Step, StreamError, StreamParser};
 use crate::json::{parse_json_with_repair, parse_streaming_object, parse_tool_call_arguments};
 use crate::options::{adjust_max_tokens_for_thinking, clamp_max_tokens_to_context};
+use crate::providers;
 use crate::request::{Headers, HttpRequest, ProviderRequest, USER_AGENT, join_url};
 use crate::sse::SseEvent;
 use crate::util::{calculate_cost, compat_bool, compat_value, mapped_level};
@@ -911,7 +912,8 @@ pub fn prepare(
     };
     let options = simple_options(request);
     let api_key = request.api_key.clone().unwrap_or_default();
-    let is_oauth = !api_key.is_empty() && is_oauth_token(&api_key);
+    let is_copilot = model.provider == providers::GITHUB_COPILOT;
+    let is_oauth = !is_copilot && !api_key.is_empty() && is_oauth_token(&api_key);
     let built = build_params(
         request,
         &context,
@@ -924,7 +926,13 @@ pub fn prepare(
     headers.set("accept", "application/json");
     headers.set("anthropic-version", "2023-06-01");
     headers.set("content-type", "application/json");
-    if is_oauth {
+    if is_copilot {
+        if !api_key.is_empty() {
+            headers.set("authorization", format!("Bearer {api_key}"));
+        }
+        headers.set("user-agent", USER_AGENT);
+        headers.set("anthropic-dangerous-direct-browser-access", "true");
+    } else if is_oauth {
         headers.set("authorization", format!("Bearer {api_key}"));
         headers.set("anthropic-dangerous-direct-browser-access", "true");
         headers.set("user-agent", format!("claude-cli/{CLAUDE_CODE_VERSION}"));
@@ -951,6 +959,9 @@ pub fn prepare(
     for (name, value) in model.headers.iter().flatten() {
         headers.set(name, value);
     }
+    for (name, value) in providers::copilot_dynamic_headers(request, &context.messages) {
+        headers.set(&name, value);
+    }
     for (name, value) in request.header_overrides() {
         headers.apply(&name, value.as_deref());
     }
@@ -974,6 +985,7 @@ pub fn prepare(
             headers,
             payload: built.params,
             timeout_ms: request.options.timeout_ms,
+            signing: None,
         },
         has_preferred_strict_tools: built.has_preferred_strict_tools,
         exchange: Exchange::new(out, Box::new(parser), ErrorStyle::Anthropic),

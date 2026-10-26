@@ -1,0 +1,32 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.openai-codex",
+  "name": "OpenAI Codex (ChatGPT sign-in)",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "OpenAI Codex Responses wire over a ChatGPT Plus/Pro subscription with pi's browser and device-code OAuth (pi-ai 1.4.0 port; SSE transport).",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "openai-codex-responses"
+    ],
+    "providers": [
+      "openai-codex"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "chatgpt.com",
+        "auth.openai.com"
+      ],
+      "listenLoopback": true
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION"
+    ],
+    "openUrl": true
+  }
+}

@@ -1,0 +1,296 @@
+{
+ "name": "f_error_tool_image",
+ "model": {
+  "id": "global.anthropic.claude-sonnet-4-6",
+  "name": "Claude Sonnet 4.6 (Global)",
+  "api": "bedrock-converse-stream",
+  "provider": "amazon-bedrock",
+  "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 3,
+   "output": 15,
+   "cacheRead": 0.3,
+   "cacheWrite": 3.75
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 128000,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "thinkingLevelMap": {
+   "max": "max"
+  },
+  "inputLimits": {
+   "images": {
+    "maxPerMessage": 20,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "toolsAdded": [
+     {
+      "name": "read",
+      "description": "Read a file",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "path"
+       ]
+      }
+     }
+    ],
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "read it",
+    "timestamp": 1
+   },
+   {
+    "role": "assistant",
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "model": "global.anthropic.claude-sonnet-4-6",
+    "content": [
+     {
+      "type": "toolCall",
+      "id": "toolu_err",
+      "name": "read",
+      "arguments": {
+       "path": "a.png"
+      }
+     }
+    ],
+    "stopReason": "toolUse",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "timestamp": 2
+   },
+   {
+    "role": "toolResult",
+    "toolCallId": "toolu_err",
+    "toolName": "read",
+    "content": [
+     {
+      "type": "text",
+      "text": "failed"
+     },
+     {
+      "type": "image",
+      "data": "iVBORw0KGgo=",
+      "mimeType": "image/png"
+     }
+    ],
+    "isError": true,
+    "timestamp": 3
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "bedrock-token",
+ "status": 200,
+ "sseBase64": "AAAAgAAAAFJRoV8jCzpldmVudC10eXBlBwAMbWVzc2FnZVN0YXJ0DTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsicm9sZSI6ImFzc2lzdGFudCIsInAiOiJhYmMifY646bgAAACVAAAAV4nLs14LOmV2ZW50LXR5cGUHABFjb250ZW50QmxvY2tEZWx0YQ06Y29udGVudC10eXBlBwAQYXBwbGljYXRpb24vanNvbg06bWVzc2FnZS10eXBlBwAFZXZlbnR7ImNvbnRlbnRCbG9ja0luZGV4IjowLCJkZWx0YSI6eyJ0ZXh0IjoiSGVsIn19ZBOndgAAAJQAAABXtKua7gs6ZXZlbnQtdHlwZQcAEWNvbnRlbnRCbG9ja0RlbHRhDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjAsImRlbHRhIjp7InRleHQiOiJsbyJ9fQ6+kE8AAAB9AAAAVuZoD9YLOmV2ZW50LXR5cGUHABBjb250ZW50QmxvY2tTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsiY29udGVudEJsb2NrSW5kZXgiOjB9sy5NNAAAAHoAAABRyixGZQs6ZXZlbnQtdHlwZQcAC21lc3NhZ2VTdG9wDTpjb250ZW50LXR5cGUHABBhcHBsaWNhdGlvbi9qc29uDTptZXNzYWdlLXR5cGUHAAVldmVudHsic3RvcFJlYXNvbiI6ImVuZF90dXJuIn1fvwn8AAAAtwAAAE5WoWf6CzpldmVudC10eXBlBwAIbWV0YWRhdGENOmNvbnRlbnQtdHlwZQcAEGFwcGxpY2F0aW9uL2pzb24NOm1lc3NhZ2UtdHlwZQcABWV2ZW50eyJ1c2FnZSI6eyJpbnB1dFRva2VucyI6MTIsIm91dHB1dFRva2VucyI6NSwidG90YWxUb2tlbnMiOjE3fSwibWV0cmljcyI6eyJsYXRlbmN5TXMiOjEwfX1H7I91",
+ "request": {
+  "url": "https://bedrock-runtime.us-east-1.amazonaws.com/model/global.anthropic.claude-sonnet-4-6/converse-stream",
+  "headers": {
+   "content-type": "application/json",
+   "content-length": "786",
+   "x-amz-user-agent": "aws-sdk-js/3.1126.0 pi/1.4.0",
+   "user-agent": "aws-sdk-js/3.1126.0 ua/2.1 os/linux#7.0.0-38-generic lang/js md/nodejs#24.22.1 api/bedrock-runtime#3.1126.0 m/N,E pi/1.4.0",
+   ":authority": "bedrock-runtime.us-east-1.amazonaws.com",
+   "amz-sdk-invocation-id": "00b4ad40-0609-428c-bc18-45985e74a032",
+   "amz-sdk-request": "attempt=1; max=3",
+   "authorization": "Bearer bedrock-token"
+  },
+  "body": {
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "text": "read it"
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "toolUse": {
+        "toolUseId": "toolu_err",
+        "name": "read",
+        "input": {
+         "path": "a.png"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "toolResult": {
+        "toolUseId": "toolu_err",
+        "content": [
+         {
+          "text": "failed"
+         },
+         {
+          "text": "(image attached after the tool results)"
+         }
+        ],
+        "status": "error"
+       }
+      },
+      {
+       "text": "Images from the error result of tool call toolu_err (read):"
+      },
+      {
+       "image": {
+        "format": "png",
+        "source": {
+         "bytes": "iVBORw0KGgo="
+        }
+       }
+      },
+      {
+       "cachePoint": {
+        "type": "default"
+       }
+      }
+     ]
+    }
+   ],
+   "system": [
+    {
+     "text": "Sys"
+    },
+    {
+     "cachePoint": {
+      "type": "default"
+     }
+    }
+   ],
+   "inferenceConfig": {
+    "maxTokens": 128000
+   },
+   "toolConfig": {
+    "tools": [
+     {
+      "toolSpec": {
+       "name": "read",
+       "inputSchema": {
+        "json": {
+         "type": "object",
+         "properties": {
+          "path": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "path"
+         ]
+        }
+       },
+       "description": "Read a file"
+      }
+     }
+    ]
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "Hel"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "lo"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "Hello"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Hello"
+     }
+    ],
+    "api": "bedrock-converse-stream",
+    "provider": "amazon-bedrock",
+    "model": "global.anthropic.claude-sonnet-4-6",
+    "usage": {
+     "input": 12,
+     "output": 5,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 17,
+     "cost": {
+      "input": 0.000036,
+      "output": 0.00007500000000000001,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.00011100000000000001
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "rawStopReason": "end_turn",
+    "durationMs": 1
+   }
+  }
+ ]
+}

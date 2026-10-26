@@ -14,14 +14,32 @@ const OINO = process.env.OINO_REPO ?? ".";
 const all = await import(join(PI, "providers/all.js"));
 const envKeys = await import(join(PI, "env-api-keys.js"));
 
-const APIS = new Set(["openai-completions", "openai-responses", "anthropic-messages"]);
-// Per-account URL templates (azure, cloudflare-*) and providers with their own auth flows
-// (github-copilot, openai-codex) are not bundled.
-const EXCLUDED = new Set(["azure", "cloudflare-ai-gateway", "cloudflare-workers-ai", "github-copilot", "openai-codex"]);
-const OWNER = { anthropic: "anthropic", minimax: "anthropic", "minimax-cn": "anthropic", openai: "openai-responses", xai: "openai-responses", meta: "openai-responses" };
-const PRIMARY = { anthropic: "anthropic-messages", "openai-responses": "openai-responses", "openai-compat": "openai-completions" };
+const APIS = new Set([
+  "openai-completions", "openai-responses", "anthropic-messages",
+  // providers-more
+  "azure-openai-responses", "openai-codex-responses", "bedrock-converse-stream", "google-generative-ai", "google-vertex",
+]);
+const EXCLUDED = new Set([]);
+const OWNER = {
+  anthropic: "anthropic", minimax: "anthropic", "minimax-cn": "anthropic",
+  openai: "openai-responses", xai: "openai-responses", meta: "openai-responses",
+  azure: "azure", "openai-codex": "openai-codex", "amazon-bedrock": "bedrock", google: "google", "google-vertex": "google",
+};
+const PRIMARY = {
+  anthropic: "anthropic-messages", "openai-responses": "openai-responses", "openai-compat": "openai-completions",
+  azure: "azure-openai-responses", "openai-codex": "openai-codex-responses", bedrock: "bedrock-converse-stream", google: "google-generative-ai",
+};
+// Providers whose component implements `oauth-login` (pi `auth.oauth`); Anthropic is implied.
+const OAUTH = new Set(["github-copilot", "openai-codex", "openai"]);
+// Credential markers for providers pi resolves from ambient credentials (pi `resolve`): core only
+// knows API-key env vars, so the variables whose presence means "configured" are listed and the
+// component ignores a marker value passed as the key.
+const AUTH_ENV = {
+  "amazon-bedrock": ["AWS_BEARER_TOKEN_BEDROCK", "AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_WEB_IDENTITY_TOKEN_FILE"],
+  "google-vertex": ["GOOGLE_CLOUD_API_KEY", "GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT"],
+};
 
-const out = { anthropic: [], "openai-responses": [], "openai-compat": [] };
+const out = { anthropic: [], "openai-responses": [], "openai-compat": [], azure: [], "openai-codex": [], bedrock: [], google: [] };
 for (const p of all.builtinProviders()) {
   if (EXCLUDED.has(p.id)) continue;
   const models = all.getBuiltinModels(p.id).filter((m) => (m.type ?? "chat") === "chat" && APIS.has(m.api));
@@ -33,7 +51,8 @@ for (const p of all.builtinProviders()) {
     name: p.name,
     api: models.some((m) => m.api === PRIMARY[owner]) ? PRIMARY[owner] : models[0].api,
     baseUrl: p.baseUrl ?? models[0].baseUrl,
-    authEnv: envKeys.findEnvKeys(p.id, probe) ?? [],
+    authEnv: AUTH_ENV[p.id] ?? envKeys.findEnvKeys(p.id, probe) ?? [],
+    ...(OAUTH.has(p.id) ? { oauth: true } : {}),
     models,
   });
 }

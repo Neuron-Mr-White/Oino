@@ -1,0 +1,126 @@
+{
+ "name": "h_error_400",
+ "model": {
+  "id": "gpt-4.1",
+  "name": "GPT-4.1",
+  "api": "azure-openai-responses",
+  "provider": "azure",
+  "baseUrl": "",
+  "reasoning": false,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 8,
+   "cacheRead": 0.5,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1047576,
+  "maxTokens": 32768,
+  "inputLimits": {
+   "images": {
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "env": {
+   "AZURE_OPENAI_RESOURCE_NAME": "my-resource"
+  }
+ },
+ "apiKey": "azure-key",
+ "status": 400,
+ "sse": "{\"error\":{\"message\":\"bad request\",\"type\":\"invalid_request_error\",\"code\":null}}",
+ "request": {
+  "url": "https://my-resource.openai.azure.com/openai/v1/responses?api-version=v1",
+  "headers": {
+   "accept": "application/json",
+   "api-key": "azure-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.22.1; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.22.1"
+  },
+  "body": {
+   "model": "gpt-4.1",
+   "input": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "hi"
+      }
+     ]
+    }
+   ],
+   "stream": true,
+   "prompt_cache_key": "sess-1234",
+   "store": false,
+   "max_output_tokens": 32768
+  }
+ },
+ "events": [
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [],
+    "api": "azure-openai-responses",
+    "provider": "azure",
+    "model": "gpt-4.1",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "errorMessage": "Azure OpenAI API error (400): {\"message\":\"bad request\",\"type\":\"invalid_request_error\",\"code\":null}",
+    "durationMs": 1
+   }
+  }
+ ]
+}

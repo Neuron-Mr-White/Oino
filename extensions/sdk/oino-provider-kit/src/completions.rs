@@ -27,6 +27,7 @@ use crate::options::{
     clamp_max_tokens_to_context, clamp_thinking_budget_to_answer_room, resolve_sampling_params,
     thinking_budget_for_level,
 };
+use crate::providers;
 use crate::request::{Headers, HttpRequest, ProviderRequest, USER_AGENT, join_url};
 use crate::sse::SseEvent;
 use crate::util::{
@@ -1086,6 +1087,9 @@ pub fn prepare(
     for (name, value) in model.headers.iter().flatten() {
         headers.set(name, value);
     }
+    for (name, value) in providers::copilot_dynamic_headers(request, &request.context.messages) {
+        headers.set(&name, value);
+    }
     let session = request
         .options
         .session_id
@@ -1123,6 +1127,7 @@ pub fn prepare(
             headers,
             payload: params,
             timeout_ms: request.options.timeout_ms,
+            signing: None,
         },
         exchange: Exchange::new(
             Emitter::new(model, now),

@@ -1,11 +1,13 @@
 //! `oino.openai-responses`: `OpenAI` (and the other `openai-responses` providers of the bundled
 //! pi-ai 1.4.0 catalog: xAI, Meta) over the Responses API. Wire logic:
-//! `oino_provider_kit::responses`.
+//! `oino_provider_kit::responses`. Sign in with `ChatGPT` for `openai` lives in [`chatgpt`].
 
 #![allow(
     clippy::unused_async_trait_impl,
     reason = "SDK `Extension::init` is async even when registration is synchronous"
 )]
+
+mod chatgpt;
 
 use std::sync::OnceLock;
 
@@ -42,6 +44,32 @@ impl Provider for OpenAiResponses {
     ) -> LocalBoxFuture<'static, Result<Value>> {
         Box::pin(async move {
             guest::list_models(self.catalog(), &provider_id, credential.as_ref()).await
+        })
+    }
+
+    fn oauth_login(&'static self, provider_id: String) -> LocalBoxFuture<'static, Result<Value>> {
+        Box::pin(async move {
+            if provider_id != "openai" {
+                return Err(Error::msg(format!(
+                    "OAuth is not supported for {provider_id}"
+                )));
+            }
+            chatgpt::login().await
+        })
+    }
+
+    fn oauth_refresh(
+        &'static self,
+        provider_id: String,
+        credential: Value,
+    ) -> LocalBoxFuture<'static, Result<Value>> {
+        Box::pin(async move {
+            if provider_id != "openai" {
+                return Err(Error::msg(format!(
+                    "OAuth is not supported for {provider_id}"
+                )));
+            }
+            chatgpt::refresh(&credential).await
         })
     }
 }
