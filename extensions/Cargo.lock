@@ -211,6 +211,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
+name = "fixture-agent-probe"
+version = "1.0.0-alpha.1"
+dependencies = [
+ "oino-extension",
+]
+
+[[package]]
 name = "fixture-async-probe"
 version = "1.0.0-alpha.1"
 dependencies = [

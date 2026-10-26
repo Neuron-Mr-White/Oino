@@ -265,6 +265,21 @@ pub struct Registration {
     /// APIs this provider component implements (`provides.apis`).
     #[serde(default)]
     pub apis: Vec<String>,
+    /// Turn arbiter roles (runtime §7.6).
+    #[serde(default)]
+    pub arbiter: ArbiterRoles,
+}
+
+/// Turn arbiter roles of an extension (runtime §7.6, D9).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArbiterRoles {
+    /// Implements `propose-nudge` / `nudge-delivered`.
+    #[serde(default)]
+    pub nudge_provider: bool,
+    /// Implements `wait-reason`.
+    #[serde(default)]
+    pub wait_source: bool,
 }
 
 /// Argument completion item.
@@ -377,6 +392,25 @@ pub trait ExtensionInstance: Send + Sync {
         _cx: CallContext,
     ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
         Box::pin(async { Err(ExtensionCallError::new("route-model is not implemented")) })
+    }
+
+    /// Arbiter `propose-nudge`: `{id?, priority, customType, content, display, details?}`.
+    fn propose_nudge(&self, _cx: CallContext) -> BoxFuture<'_, Option<JsonValue>> {
+        Box::pin(async { None })
+    }
+
+    /// Arbiter `nudge-delivered` for the winning proposal.
+    fn nudge_delivered(&self, _id: &str, _cx: CallContext) {}
+
+    /// Arbiter `wait-reason`: why the session should wait instead of settling.
+    fn wait_reason(&self, _cx: CallContext) -> BoxFuture<'_, Option<String>> {
+        Box::pin(async { None })
+    }
+
+    /// Manifest deadline for handlers of `kind` (`limits.hookTimeoutMs`,
+    /// `toolCallHookTimeoutMs`); the runner never goes below its own default.
+    fn hook_deadline(&self, _kind: &str) -> Option<std::time::Duration> {
+        None
     }
 
     /// The provider implementation, for provider components.

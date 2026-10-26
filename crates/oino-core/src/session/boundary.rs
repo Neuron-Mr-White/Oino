@@ -7,7 +7,11 @@ use oino_session::{
 };
 use serde_json::json;
 
-use super::{ActivityOutcome, AgentSession, lock};
+use std::sync::{Arc, Weak};
+use std::time::Duration;
+
+use super::{ActivityOutcome, AgentSession, Inner, lock};
+use crate::events::{OinoEvent, RunState};
 
 /// Which boundary is being built.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -260,11 +264,15 @@ impl AgentSession {
         result.continue_run
     }
 
-    /// pi `_runBeforeSettleBoundary`; returns whether the run continues.
+    /// pi `_runBeforeSettleBoundary`; returns whether the run continues. When the handlers
+    /// leave the run settling, the turn arbiter (runtime §7.6) may still continue it.
     pub(crate) async fn run_before_settle_boundary(&self) -> bool {
         let runner = self.runner();
         if !runner.has_handlers("agent_before_settle") {
-            return self.inner.agent.has_queued_messages();
+            if self.inner.agent.has_queued_messages() {
+                return true;
+            }
+            return self.run_arbiter().await;
         }
         let outcome = {
             let mut book = lock(&self.inner.book);
@@ -298,6 +306,140 @@ impl AgentSession {
             }
             return false;
         }
-        should_continue
+        if should_continue {
+            return true;
+        }
+        self.run_arbiter().await
+    }
+
+    /// Turn arbiter (runtime §7.6, D9): when the run would settle normally with nothing
+    /// pending, wait sources may hold the session in `waiting`, else the highest-priority
+    /// nudge is appended as a `custom_message` and the run continues. Disabled in children.
+    async fn run_arbiter(&self) -> bool {
+        if self.is_child() || self.abort_requested() {
+            return false;
+        }
+        let (outcome, pending_custom) = {
+            let book = lock(&self.inner.book);
+            (book.last_outcome, !book.pending_custom.is_empty())
+        };
+        if outcome != ActivityOutcome::Completed
+            || pending_custom
+            || self.inner.agent.has_queued_messages()
+            || self.pending_message_count() > 0
+        {
+            return false;
+        }
+        let runner = self.runner();
+        let reasons = runner.arbiter_wait_reasons().await;
+        if !reasons.is_empty() {
+            self.set_waiting(reasons);
+            return false;
+        }
+        let Some(nudge) = runner.arbiter_nudge().await else {
+            return false;
+        };
+        if self.abort_requested() {
+            return false;
+        }
+        let mut draft = json!({
+            "type": "custom_message",
+            "customType": nudge["customType"],
+            "content": nudge.get("content").cloned().unwrap_or_else(|| json!("")),
+            "display": nudge.get("display").and_then(JsonValue::as_bool).unwrap_or(true),
+        });
+        if let Some(details) = nudge.get("details").filter(|d| !d.is_null()) {
+            draft["details"] = details.clone();
+        }
+        self.commit_boundary_drafts(&[draft]);
+        if !self.can_continue(Boundary::BeforeSettle) {
+            self.report_invalid_continuation(Boundary::BeforeSettle);
+            return false;
+        }
+        true
+    }
+
+    /// Wait reasons reported at the last settle (empty when not waiting).
+    #[must_use]
+    pub fn waiting_on(&self) -> Vec<String> {
+        lock(&self.inner.arbiter).waiting_on.clone()
+    }
+
+    fn set_waiting(&self, reasons: Vec<String>) {
+        let start_poll = {
+            let mut state = lock(&self.inner.arbiter);
+            state.waiting_on.clone_from(&reasons);
+            !std::mem::replace(&mut state.polling, true)
+        };
+        self.inner.hub.publish(OinoEvent::RunState {
+            state: RunState::Waiting,
+            waiting_on: Some(reasons),
+        });
+        if start_poll {
+            let inner = Arc::downgrade(&self.inner);
+            tokio::spawn(poll_wait_sources(inner));
+        }
+    }
+
+    /// Leaves `waiting` (a run started or the wait sources went quiet).
+    pub(crate) fn clear_waiting(&self, next: RunState) {
+        let was_waiting = {
+            let mut state = lock(&self.inner.arbiter);
+            !std::mem::take(&mut state.waiting_on).is_empty()
+        };
+        if was_waiting {
+            self.inner.hub.publish(OinoEvent::RunState {
+                state: next,
+                waiting_on: None,
+            });
+        }
+    }
+}
+
+/// Arbiter bookkeeping of a session.
+#[derive(Debug, Default)]
+pub(crate) struct ArbiterState {
+    pub(crate) waiting_on: Vec<String>,
+    polling: bool,
+}
+
+/// How often wait sources are re-asked while the session waits.
+const WAIT_POLL: Duration = Duration::from_secs(2);
+
+/// Re-asks the wait sources while the session is idle and waiting; leaves `waiting` when
+/// they report nothing.
+async fn poll_wait_sources(inner: Weak<Inner>) {
+    loop {
+        tokio::time::sleep(WAIT_POLL).await;
+        let Some(session) = inner.upgrade().map(AgentSession::from_inner) else {
+            return;
+        };
+        if session.waiting_on().is_empty() || !session.is_idle() {
+            break;
+        }
+        let reasons = session.runner().arbiter_wait_reasons().await;
+        if reasons.is_empty() {
+            session.clear_waiting(RunState::Idle);
+            break;
+        }
+        let changed = {
+            let mut state = lock(&session.inner.arbiter);
+            if state.waiting_on.is_empty() {
+                false
+            } else {
+                let changed = state.waiting_on != reasons;
+                state.waiting_on.clone_from(&reasons);
+                changed
+            }
+        };
+        if changed {
+            session.inner.hub.publish(OinoEvent::RunState {
+                state: RunState::Waiting,
+                waiting_on: Some(reasons),
+            });
+        }
+    }
+    if let Some(inner) = inner.upgrade() {
+        lock(&inner.arbiter).polling = false;
     }
 }

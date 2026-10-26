@@ -349,10 +349,16 @@ impl AgentSession {
                 if !is_dialog(&method) {
                     return Err(HostError::Invalid(format!("{method} is not a dialog")));
                 }
+                if let Some(link) = &self.inner.agents.link {
+                    return Ok(child_dialog(link, extension, &method, params, cancel).await);
+                }
                 Ok(self.ui_dialog(extension, &method, params, cancel).await)
             }
             HostOp::UiFire { method, params } => {
-                self.inner.ui.fire(Some(extension), &method, params);
+                match &self.inner.agents.link {
+                    None => self.inner.ui.fire(Some(extension), &method, params),
+                    Some(link) => child_fire(link, extension, &method, params),
+                }
                 Ok(JsonValue::Null)
             }
             HostOp::ExecuteTool {
@@ -381,6 +387,71 @@ impl AgentSession {
             HostOp::InvokeCommand { name, args } => {
                 self.invoke_command(&name, &args, command_context).await
             }
+            HostOp::SetArbiterRoles(roles) => {
+                let loaded = loaded
+                    .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                loaded.update(|state| state.arbiter = roles);
+                Ok(JsonValue::Null)
+            }
+            HostOp::ListAgents => Ok(self.agents_list()),
+            HostOp::GetRunState => {
+                let mut value = json!({"state": self.run_state()});
+                let waiting = self.waiting_on();
+                if !waiting.is_empty() {
+                    value["waitingOn"] = json!(waiting);
+                }
+                Ok(value)
+            }
+            HostOp::Shutdown => {
+                if let Some(runtime) = self.runtime_core() {
+                    runtime.request_shutdown();
+                }
+                Ok(JsonValue::Null)
+            }
+            HostOp::GetSystemPromptOptions => {
+                if !command_context {
+                    return Err(HostError::CommandContextRequired);
+                }
+                to_json(self.system_prompt_options())
+            }
+            HostOp::NewSession { parent_session } => {
+                let runtime = self.replacement_runtime(command_context)?;
+                let replaced = runtime.new_session(parent_session).await.map_err(failed)?;
+                Ok(json!({"cancelled": replaced.cancelled}))
+            }
+            HostOp::Fork { entry_id, at } => {
+                let runtime = self.replacement_runtime(command_context)?;
+                let position = if at {
+                    crate::runtime::ForkPosition::At
+                } else {
+                    crate::runtime::ForkPosition::Before
+                };
+                let replaced = runtime
+                    .fork_with_reason(
+                        &EntryId::new(entry_id),
+                        position,
+                        crate::events::ReplaceReason::Fork,
+                    )
+                    .await
+                    .map_err(failed)?;
+                let mut value = json!({"cancelled": replaced.cancelled});
+                if let Some(text) = replaced.selected_text {
+                    value["selectedText"] = json!(text);
+                }
+                Ok(value)
+            }
+            HostOp::SwitchSession(path) => {
+                let runtime = self.replacement_runtime(command_context)?;
+                let replaced = runtime.switch_session(path, None).await.map_err(failed)?;
+                Ok(json!({"cancelled": replaced.cancelled}))
+            }
+            HostOp::Reload => {
+                if !command_context {
+                    return Err(HostError::CommandContextRequired);
+                }
+                self.reload().await.map_err(failed)?;
+                Ok(JsonValue::Null)
+            }
         };
         if registry_changed {
             self.refresh_tool_registry(None, false);
@@ -389,6 +460,19 @@ impl AgentSession {
             self.inner.hub.publish(OinoEvent::CommandsChanged);
         }
         result
+    }
+
+    /// The runtime for session-replacing operations (command contexts of root sessions).
+    fn replacement_runtime(
+        &self,
+        command_context: bool,
+    ) -> Result<std::sync::Arc<crate::runtime::RuntimeCore>, HostError> {
+        if !command_context {
+            return Err(HostError::CommandContextRequired);
+        }
+        self.runtime_core().ok_or_else(|| {
+            HostError::Failed("Session replacement is not available in this session".into())
+        })
     }
 
     /// `models.complete`: resolves the model (`provider/id`, default the session model) and
@@ -585,4 +669,63 @@ pub struct SlashCommandInfo {
     pub source: String,
     /// Provenance.
     pub source_info: JsonValue,
+}
+
+/// Dialog of a nested agent, routed by its [`UiPolicy`](crate::agents::UiPolicy).
+async fn child_dialog(
+    link: &crate::agents::ChildLink,
+    extension: &str,
+    method: &str,
+    mut params: oino_ai::JsonObject,
+    cancel: Option<tokio_util::sync::CancellationToken>,
+) -> JsonValue {
+    use crate::agents::UiPolicy;
+    match &link.ui {
+        UiPolicy::Forward => {
+            let Some(parent) = link.parent.upgrade().map(AgentSession::from_inner) else {
+                return json!({"cancelled": true});
+            };
+            if let Some(title) = params.get("title").and_then(JsonValue::as_str) {
+                let title = format!("[{}] {title}", link.label);
+                params.insert("title".into(), json!(title));
+            }
+            parent.ui_dialog(extension, method, params, cancel).await
+        }
+        UiPolicy::AutoDeny { note } if method == "approval" => {
+            let options = params
+                .get("options")
+                .and_then(JsonValue::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let kind = |o: &JsonValue| o.get("kind").and_then(JsonValue::as_str).map(str::to_owned);
+            let reject = options
+                .iter()
+                .find(|o| kind(o).as_deref() == Some("reject_once"))
+                .or_else(|| {
+                    options
+                        .iter()
+                        .find(|o| kind(o).is_some_and(|k| k.starts_with("reject")))
+                });
+            match reject.and_then(|o| o.get("optionId")).cloned() {
+                Some(id) => json!({"value": {"optionId": id, "feedback": note}}),
+                None => json!({"cancelled": true}),
+            }
+        }
+        UiPolicy::AutoDeny { .. } | UiPolicy::None => json!({"cancelled": true}),
+    }
+}
+
+/// Fire-and-forget request of a nested agent: forwarded notifications only.
+fn child_fire(
+    link: &crate::agents::ChildLink,
+    extension: &str,
+    method: &str,
+    params: oino_ai::JsonObject,
+) {
+    if !matches!(link.ui, crate::agents::UiPolicy::Forward) || method != "notify" {
+        return;
+    }
+    if let Some(parent) = link.parent.upgrade() {
+        parent.ui.fire(Some(extension), method, params);
+    }
 }

@@ -188,6 +188,9 @@ impl HostRouter {
             HostOp::RegisterCommand(spec) => loaded
                 .ok_or_else(need_loaded)?
                 .update(|s| s.commands.push(spec)),
+            HostOp::SetArbiterRoles(roles) => loaded
+                .ok_or_else(need_loaded)?
+                .update(|s| s.arbiter = roles),
             HostOp::RegisterProvider(config) => {
                 let registration: ProviderRegistration = serde_json::from_value(config)
                     .map_err(|e| HostError::Invalid(e.to_string()))?;
@@ -214,6 +217,22 @@ impl HostApi for HostRouter {
                 Some(session) => session.host_call(extension, cx, op).await,
                 None => self.without_session(extension, op),
             }
+        })
+    }
+
+    fn spawn_agent<'a>(
+        &'a self,
+        extension: &'a str,
+        cx: &'a CallContext,
+        spec: JsonValue,
+    ) -> BoxFuture<'a, Result<Arc<crate::agents::ChildAgent>, HostError>> {
+        Box::pin(async move {
+            let session = self.session(&cx.session_id).ok_or_else(|| {
+                HostError::StaleContext(crate::extensions::runner::STALE_CONTEXT_MESSAGE.into())
+            })?;
+            let spec: crate::agents::AgentSpec = serde_json::from_value(spec)
+                .map_err(|e| HostError::Invalid(format!("AgentSpec: {e}")))?;
+            session.spawn_agent(extension, spec).await
         })
     }
 }

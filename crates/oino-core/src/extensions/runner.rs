@@ -14,8 +14,8 @@ use oino_ai::{AgentMessage, ImageContent, JsonObject, JsonValue};
 use serde_json::json;
 
 use super::api::{
-    CallContext, CommandSpec, ExtensionCallError, ExtensionInstance, FlagSpec, Registration,
-    ShortcutSpec, ToolSpec,
+    ArbiterRoles, CallContext, CommandSpec, ExtensionCallError, ExtensionInstance, FlagSpec,
+    Registration, ShortcutSpec, ToolSpec,
 };
 use crate::events::ExtensionErrorEvent;
 
@@ -25,6 +25,10 @@ pub const HOOK_DEADLINE: Duration = Duration::from_secs(5);
 pub const TOOL_CALL_DEADLINE: Duration = Duration::from_secs(30);
 /// `session_before_*` deadline.
 pub const SESSION_BEFORE_DEADLINE: Duration = Duration::from_secs(60);
+/// Upper bound of a manifest-raised handler deadline (runtime §7.2).
+pub const MAX_MANIFEST_DEADLINE: Duration = Duration::from_secs(300);
+/// Deadline of one `wait-reason` / `propose-nudge` call (runtime §7.6).
+pub const ARBITER_DEADLINE: Duration = Duration::from_secs(2);
 
 /// Deadline for one handler of `kind`.
 #[must_use]
@@ -65,6 +69,8 @@ pub struct ExtensionState {
     pub renderers: Vec<JsonValue>,
     /// Implemented provider APIs.
     pub apis: Vec<String>,
+    /// Turn arbiter roles.
+    pub arbiter: ArbiterRoles,
 }
 
 impl From<Registration> for ExtensionState {
@@ -89,6 +95,7 @@ impl From<Registration> for ExtensionState {
             events: registration.events.into_iter().collect(),
             renderers: registration.renderers,
             apis: registration.apis,
+            arbiter: registration.arbiter,
         }
     }
 }
@@ -343,7 +350,10 @@ impl ExtensionRunner {
         kind: &str,
         payload: JsonValue,
     ) -> Result<Option<JsonValue>, ExtensionCallError> {
-        let deadline = deadline_for(kind);
+        let deadline = extension.instance.hook_deadline(kind).map_or_else(
+            || deadline_for(kind),
+            |d| d.min(MAX_MANIFEST_DEADLINE).max(deadline_for(kind)),
+        );
         let call = extension.instance.on_event(kind, payload, self.cx.clone());
         match tokio::time::timeout(deadline, call).await {
             Ok(result) => result,
@@ -819,6 +829,74 @@ impl ExtensionRunner {
             }
         }
         action
+    }
+
+    /// Arbiter wait sources (runtime §7.6): asks every `wait-source` concurrently (2 s each)
+    /// and returns the reasons in load order.
+    pub async fn arbiter_wait_reasons(&self) -> Vec<String> {
+        let sources: Vec<Arc<LoadedExtension>> = self
+            .active()
+            .filter(|e| e.state().arbiter.wait_source)
+            .cloned()
+            .collect();
+        let calls = sources.iter().map(|extension| {
+            let cx = self.cx.clone();
+            async move {
+                tokio::time::timeout(ARBITER_DEADLINE, extension.instance.wait_reason(cx))
+                    .await
+                    .ok()
+                    .flatten()
+            }
+        });
+        futures::future::join_all(calls)
+            .await
+            .into_iter()
+            .flatten()
+            .filter(|reason| !reason.trim().is_empty())
+            .collect()
+    }
+
+    /// Arbiter nudge (runtime §7.6): asks every `nudge-provider` concurrently (2 s each),
+    /// picks the highest `priority` (ties: earliest loaded), tells the winner
+    /// `nudge-delivered(id)` and returns its proposal.
+    pub async fn arbiter_nudge(&self) -> Option<JsonValue> {
+        let providers: Vec<Arc<LoadedExtension>> = self
+            .active()
+            .filter(|e| e.state().arbiter.nudge_provider)
+            .cloned()
+            .collect();
+        let calls = providers.iter().map(|extension| {
+            let cx = self.cx.clone();
+            async move {
+                tokio::time::timeout(ARBITER_DEADLINE, extension.instance.propose_nudge(cx))
+                    .await
+                    .ok()
+                    .flatten()
+                    .filter(|proposal| proposal.get("customType").is_some_and(JsonValue::is_string))
+            }
+        });
+        let proposals = futures::future::join_all(calls).await;
+        let priority = |p: &JsonValue| p.get("priority").and_then(JsonValue::as_f64).unwrap_or(0.0);
+        let mut winner: Option<(usize, JsonValue)> = None;
+        for (index, proposal) in proposals.into_iter().enumerate() {
+            let Some(proposal) = proposal else { continue };
+            if winner
+                .as_ref()
+                .is_none_or(|(_, best)| priority(&proposal) > priority(best))
+            {
+                winner = Some((index, proposal));
+            }
+        }
+        let (index, proposal) = winner?;
+        let id = proposal
+            .get("id")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        providers[index]
+            .instance
+            .nudge_delivered(&id, self.cx.clone());
+        Some(proposal)
     }
 
     /// Registered tools across extensions; the first registration per name wins.

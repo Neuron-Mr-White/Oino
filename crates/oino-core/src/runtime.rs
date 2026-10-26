@@ -3,7 +3,7 @@
 //! one client event stream across replacements.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use futures::StreamExt;
 use oino_ai::{Model, ThinkingLevel};
@@ -124,13 +124,21 @@ struct Current {
     forward: JoinHandle<()>,
 }
 
-/// Owns the current session (pi `AgentSessionRuntime`).
+/// Owns the current session (pi `AgentSessionRuntime`). Extension command contexts reach it
+/// through a weak link for `newSession` / `fork` / `switchSession` / `shutdown`.
 pub struct AgentSessionRuntime {
+    core: Arc<RuntimeCore>,
+}
+
+/// Shared state of an [`AgentSessionRuntime`].
+pub(crate) struct RuntimeCore {
     services: Arc<Services>,
     hub: EventHub,
     current: Mutex<Current>,
     options: SessionOptions,
-    model_fallback_message: Option<String>,
+    model_fallback_message: std::sync::OnceLock<String>,
+    shutdown: tokio::sync::watch::Sender<bool>,
+    me: Weak<RuntimeCore>,
 }
 
 impl std::fmt::Debug for AgentSessionRuntime {
@@ -263,6 +271,7 @@ async fn install(
     services: &Arc<Services>,
     options: &SessionOptions,
     hub: &EventHub,
+    runtime: Option<&Weak<RuntimeCore>>,
     mut manager: SessionManager,
     reason: &str,
     previous: Option<PathBuf>,
@@ -325,12 +334,16 @@ async fn install(
         thinking_level: thinking,
         scoped_models: options.scoped_models.clone(),
         flag_values: services.flag_values.clone(),
-        is_child: false,
+        child: None,
     });
     if matches!(options.tools, ToolSelection::Default) {
         session.restore_tools_from_transcript(&[]);
     }
     services.host.attach(&session);
+    session.link_router(&services.host);
+    if let Some(runtime) = runtime {
+        session.link_runtime(runtime.clone());
+    }
     let mut stream = session.subscribe();
     let hub = hub.clone();
     let forward = tokio::spawn(async move {
@@ -393,15 +406,22 @@ impl AgentSessionRuntime {
         .map_err(session_error)?;
         let hub = EventHub::new();
         let (current, fallback) =
-            install(&services, &options, &hub, manager, "startup", None).await?;
-        let runtime = Self {
-            services,
-            hub,
+            install(&services, &options, &hub, None, manager, "startup", None).await?;
+        let core = Arc::new_cyclic(|me: &Weak<RuntimeCore>| RuntimeCore {
+            services: Arc::clone(&services),
+            hub: hub.clone(),
             current: Mutex::new(current),
             options,
-            model_fallback_message: fallback,
-        };
-        if let Some(name) = runtime.options.name.clone() {
+            model_fallback_message: std::sync::OnceLock::new(),
+            shutdown: tokio::sync::watch::channel(false).0,
+            me: me.clone(),
+        });
+        if let Some(fallback) = fallback {
+            let _ = core.model_fallback_message.set(fallback);
+        }
+        core.session().link_runtime(core.me.clone());
+        let runtime = Self { core };
+        if let Some(name) = runtime.core.options.name.clone() {
             runtime
                 .session()
                 .set_session_name(Some(name))
@@ -414,25 +434,114 @@ impl AgentSessionRuntime {
     /// pi `modelFallbackMessage`.
     #[must_use]
     pub fn model_fallback_message(&self) -> Option<&str> {
-        self.model_fallback_message.as_deref()
+        self.core.model_fallback_message.get().map(String::as_str)
     }
 
     /// The services.
     #[must_use]
     pub fn services(&self) -> &Arc<Services> {
-        &self.services
+        &self.core.services
     }
 
     /// The current session.
     #[must_use]
     pub fn session(&self) -> AgentSession {
-        lock(&self.current).session.clone()
+        self.core.session()
     }
 
     /// Client events across session replacements.
     #[must_use]
     pub fn subscribe(&self) -> EventStream {
-        self.hub.subscribe()
+        self.core.hub.subscribe()
+    }
+
+    /// Becomes `true` when an extension called `ctx.shutdown()` (pi `shutdownHandler`);
+    /// frontends exit once the session is idle.
+    #[must_use]
+    pub fn shutdown_requested(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.core.shutdown.subscribe()
+    }
+
+    /// pi `newSession`.
+    ///
+    /// # Errors
+    ///
+    /// Session file failures.
+    pub async fn new_session(&self, parent: Option<PathBuf>) -> Result<Replaced, SessionOpError> {
+        self.core.new_session(parent).await
+    }
+
+    /// pi `switchSession`.
+    ///
+    /// # Errors
+    ///
+    /// The file cannot be opened.
+    pub async fn switch_session(
+        &self,
+        path: PathBuf,
+        cwd_override: Option<PathBuf>,
+    ) -> Result<Replaced, SessionOpError> {
+        self.core.switch_session(path, cwd_override).await
+    }
+
+    /// pi `fork`.
+    ///
+    /// # Errors
+    ///
+    /// `Invalid entry ID for forking` and session file failures.
+    pub async fn fork(
+        &self,
+        entry: &EntryId,
+        position: ForkPosition,
+    ) -> Result<Replaced, SessionOpError> {
+        self.core
+            .fork_with_reason(entry, position, ReplaceReason::Fork)
+            .await
+    }
+
+    /// Clones the session at its leaf (fork `At` the leaf).
+    ///
+    /// # Errors
+    ///
+    /// As [`AgentSessionRuntime::fork`]; `Nothing to clone` for an empty session.
+    pub async fn clone_session(&self) -> Result<Replaced, SessionOpError> {
+        let leaf = self
+            .session()
+            .with_manager(|m| oino_session::ReadonlySession::leaf_id(m).cloned())
+            .ok_or_else(|| SessionOpError::Failed("Nothing to clone".into()))?;
+        self.core
+            .fork_with_reason(&leaf, ForkPosition::At, ReplaceReason::Clone)
+            .await
+    }
+
+    /// pi `importFromJsonl`: copies the file into the sessions dir and switches to it.
+    ///
+    /// # Errors
+    ///
+    /// Missing file or copy failure.
+    pub async fn import_jsonl(
+        &self,
+        path: PathBuf,
+        cwd_override: Option<PathBuf>,
+    ) -> Result<Replaced, SessionOpError> {
+        self.core.import_jsonl(path, cwd_override).await
+    }
+
+    /// Shuts the current session down (`session_shutdown{reason:"quit"}`).
+    pub async fn dispose(&self) {
+        self.core.teardown("quit", None).await;
+        self.core.hub.close();
+    }
+}
+
+impl RuntimeCore {
+    pub(crate) fn session(&self) -> AgentSession {
+        lock(&self.current).session.clone()
+    }
+
+    /// `ctx.shutdown()`.
+    pub(crate) fn request_shutdown(&self) {
+        self.shutdown.send_replace(true);
     }
 
     async fn before_switch(&self, reason: &str, target: Option<&Path>) -> bool {
@@ -475,6 +584,7 @@ impl AgentSessionRuntime {
             &self.services,
             &self.options,
             &self.hub,
+            Some(&self.me),
             manager,
             reason,
             previous,
@@ -505,7 +615,10 @@ impl AgentSessionRuntime {
     /// # Errors
     ///
     /// Session file failures.
-    pub async fn new_session(&self, parent: Option<PathBuf>) -> Result<Replaced, SessionOpError> {
+    pub(crate) async fn new_session(
+        &self,
+        parent: Option<PathBuf>,
+    ) -> Result<Replaced, SessionOpError> {
         if self.before_switch("new", None).await {
             return Ok(Replaced {
                 cancelled: true,
@@ -535,7 +648,7 @@ impl AgentSessionRuntime {
     /// # Errors
     ///
     /// The file cannot be opened.
-    pub async fn switch_session(
+    pub(crate) async fn switch_session(
         &self,
         path: PathBuf,
         cwd_override: Option<PathBuf>,
@@ -557,21 +670,7 @@ impl AgentSessionRuntime {
         Ok(Replaced::default())
     }
 
-    /// pi `fork`.
-    ///
-    /// # Errors
-    ///
-    /// `Invalid entry ID for forking` and session file failures.
-    pub async fn fork(
-        &self,
-        entry: &EntryId,
-        position: ForkPosition,
-    ) -> Result<Replaced, SessionOpError> {
-        self.fork_with_reason(entry, position, ReplaceReason::Fork)
-            .await
-    }
-
-    async fn fork_with_reason(
+    pub(crate) async fn fork_with_reason(
         &self,
         entry: &EntryId,
         position: ForkPosition,
@@ -633,26 +732,12 @@ impl AgentSessionRuntime {
         })
     }
 
-    /// Clones the session at its leaf (fork `At` the leaf).
-    ///
-    /// # Errors
-    ///
-    /// As [`AgentSessionRuntime::fork`]; `Nothing to clone` for an empty session.
-    pub async fn clone_session(&self) -> Result<Replaced, SessionOpError> {
-        let leaf = self
-            .session()
-            .with_manager(|m| oino_session::ReadonlySession::leaf_id(m).cloned())
-            .ok_or_else(|| SessionOpError::Failed("Nothing to clone".into()))?;
-        self.fork_with_reason(&leaf, ForkPosition::At, ReplaceReason::Clone)
-            .await
-    }
-
     /// pi `importFromJsonl`: copies the file into the sessions dir and switches to it.
     ///
     /// # Errors
     ///
     /// Missing file or copy failure.
-    pub async fn import_jsonl(
+    pub(crate) async fn import_jsonl(
         &self,
         path: PathBuf,
         cwd_override: Option<PathBuf>,
@@ -677,11 +762,5 @@ impl AgentSessionRuntime {
             self.replaced(ReplaceReason::Import);
         }
         Ok(result)
-    }
-
-    /// Shuts the current session down (`session_shutdown{reason:"quit"}`).
-    pub async fn dispose(&self) {
-        self.teardown("quit", None).await;
-        self.hub.close();
     }
 }

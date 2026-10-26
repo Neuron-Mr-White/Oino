@@ -19,6 +19,7 @@ use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use oino_agent::{AgentToolResult, ToolInvocation as CoreInvocation, UpdateSink};
 use oino_ai::{JsonObject, JsonValue, Model, ProviderEvent};
+use oino_core::agents::ChildAgent;
 use oino_core::extensions::api as ca;
 use oino_core::extensions::host::{self as ch, HostApi, HostOp};
 use oino_core::services::ExtensionLoader;
@@ -28,9 +29,9 @@ use oino_extension_api::ops::{
 };
 use oino_extension_api::registry as ar;
 use oino_extension_api::{
-    BoxFut, CallContext, CallKind, CancellationToken, EventKind, ExtensionId, ExtensionInstance,
-    ExtensionRuntime, HostError, HostServices, InitInput, LoadedPackage, Mode, RawJson,
-    ToolInvocation,
+    AgentHandle, BoxFut, CallContext, CallKind, CancellationToken, EventKind, ExtensionId,
+    ExtensionInstance, ExtensionRuntime, HostError, HostServices, InitInput, LoadedPackage, Mode,
+    RawJson, ToolInvocation,
 };
 use serde_json::{Value, json};
 
@@ -267,6 +268,7 @@ fn json_reply(v: JsonValue) -> ControlReply {
 type ReplyShape = fn(JsonValue) -> ControlReply;
 
 /// Maps a `control.*` call to a core [`HostOp`] and the shape of its reply.
+#[allow(clippy::too_many_lines, reason = "one arm per control function")]
 fn control_op(op: ControlOp, cx: &CallContext) -> Result<(HostOp, ReplyShape), HostError> {
     let name = op.name();
     Ok(match op {
@@ -359,8 +361,31 @@ fn control_op(op: ControlOp, cx: &CallContext) -> Result<(HostOp, ReplyShape), H
                 json_reply,
             )
         }
+        ControlOp::RunState => (HostOp::GetRunState, json_reply),
+        ControlOp::Shutdown => (HostOp::Shutdown, |_| ControlReply::Unit),
+        ControlOp::SystemPromptOptions => (HostOp::GetSystemPromptOptions, json_reply),
+        ControlOp::NewSession { parent_session } => (
+            HostOp::NewSession {
+                parent_session: parent_session.map(PathBuf::from),
+            },
+            cancelled_reply,
+        ),
+        ControlOp::Fork { entry_id, at } => (HostOp::Fork { entry_id, at }, json_reply),
+        ControlOp::SwitchSession { path } => {
+            (HostOp::SwitchSession(PathBuf::from(path)), cancelled_reply)
+        }
+        ControlOp::Reload => (HostOp::Reload, |_| ControlReply::Unit),
         _ => return Err(HostError::unsupported(&format!("control.{name}"))),
     })
+}
+
+/// `{cancelled}` → the WIT `bool` of `new-session` / `switch-session`.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "matches the ReplyShape signature"
+)]
+fn cancelled_reply(v: JsonValue) -> ControlReply {
+    ControlReply::Bool(v.get("cancelled").and_then(Value::as_bool).unwrap_or(false))
 }
 
 impl HostServices for CoreHost {
@@ -415,6 +440,9 @@ impl HostServices for CoreHost {
             ext,
             HostOp::RegisterRenderer(serde_json::to_value(spec).unwrap_or_default()),
         );
+    }
+    fn set_arbiter_roles(&self, ext: &ExtensionId, roles: ar::ArbiterRoles) {
+        let _ = self.registry(ext, HostOp::SetArbiterRoles(arbiter_roles(roles)));
     }
     fn register_provider(&self, ext: &ExtensionId, cfg: RawJson) -> Result<(), HostError> {
         self.registry(ext, HostOp::RegisterProvider(cfg.to_value()))
@@ -547,6 +575,30 @@ impl HostServices for CoreHost {
         let (method, params) = split_method(&req)?;
         self.call_sync(ext, cx, HostOp::UiFire { method, params })
             .map(|_| ())
+    }
+
+    /// Nested agents run as child sessions of the calling session (runtime §12).
+    fn agent_spawn(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        spec: RawJson,
+    ) -> BoxFut<'_, Result<Arc<dyn AgentHandle>, HostError>> {
+        let (ext, cx) = (ext.clone(), core_cx(cx));
+        Box::pin(async move {
+            let child = self
+                .api
+                .spawn_agent(ext.as_str(), &cx, spec.to_value())
+                .await
+                .map_err(host_error)?;
+            Ok(Arc::new(CoreAgent(child)) as Arc<dyn AgentHandle>)
+        })
+    }
+
+    fn agents_list(&self, cx: &CallContext) -> RawJson {
+        let ext = ExtensionId::new("oino.host").ok();
+        ext.and_then(|ext| self.call_sync(&ext, cx, HostOp::ListAgents).ok())
+            .map_or_else(|| RawJson::from(json!([])), RawJson::from)
     }
 
     /// `models.complete` and `models.summarize-default` run in the calling session
@@ -688,6 +740,81 @@ fn delivery(d: oino_extension_api::ops::Delivery) -> ch::Delivery {
     }
 }
 
+fn arbiter_roles(roles: ar::ArbiterRoles) -> ca::ArbiterRoles {
+    ca::ArbiterRoles {
+        nudge_provider: roles.nudge_provider,
+        wait_source: roles.wait_source,
+    }
+}
+
+// ── agents ───────────────────────────────────────────────────────────────
+
+/// `agents.agent` over a core [`ChildAgent`]; dropping the last handle closes the agent.
+struct CoreAgent(Arc<ChildAgent>);
+
+impl Drop for CoreAgent {
+    fn drop(&mut self) {
+        if self.0.is_closed() {
+            return;
+        }
+        let child = Arc::clone(&self.0);
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move { child.close(std::time::Duration::ZERO).await });
+        }
+    }
+}
+
+impl AgentHandle for CoreAgent {
+    fn id(&self) -> String {
+        self.0.id().to_owned()
+    }
+    fn session_file(&self) -> Option<String> {
+        self.0.session_file().map(|p| p.display().to_string())
+    }
+    fn prompt(
+        &self,
+        text: String,
+        delivery: Option<String>,
+    ) -> BoxFut<'_, Result<String, HostError>> {
+        Box::pin(async move {
+            self.0
+                .prompt(text, delivery.as_deref())
+                .await
+                .map_err(host_error)
+        })
+    }
+    fn steer(&self, text: String) -> BoxFut<'_, Result<(), HostError>> {
+        Box::pin(async move { self.0.steer(text).await.map_err(host_error) })
+    }
+    fn follow_up(&self, text: String) -> BoxFut<'_, Result<(), HostError>> {
+        Box::pin(async move { self.0.follow_up(text).await.map_err(host_error) })
+    }
+    fn abort(&self) {
+        self.0.abort();
+    }
+    fn set_thinking(&self, level: &str) -> Result<String, HostError> {
+        self.0.set_thinking(level).map_err(host_error)
+    }
+    fn last_assistant_text(&self) -> Option<String> {
+        self.0.last_assistant_text()
+    }
+    fn wait_idle(&self) -> BoxFut<'_, Result<(), HostError>> {
+        Box::pin(async move {
+            self.0.wait_idle().await;
+            Ok(())
+        })
+    }
+    fn usage(&self) -> RawJson {
+        RawJson::from(self.0.usage())
+    }
+    fn events(&self) -> BoxStream<'static, String> {
+        Box::pin(self.0.events().map(|event| event.to_string()))
+    }
+    fn close(&self, grace: std::time::Duration) -> BoxFut<'_, ()> {
+        Box::pin(self.0.close(grace))
+    }
+}
+
 // ── core ExtensionInstance over an api instance ──────────────────────────
 
 /// `oino_core` instance wrapper around a loaded component.
@@ -762,6 +889,7 @@ impl ca::ExtensionInstance for CoreInstance {
                     .filter_map(|r| serde_json::to_value(r).ok())
                     .collect(),
                 apis: self.inner.manifest().provides.apis.clone(),
+                arbiter: arbiter_roles(reg.arbiter),
             })
         })
     }
@@ -901,6 +1029,33 @@ impl ca::ExtensionInstance for CoreInstance {
                 .map(|v| v.to_value())
                 .map_err(|e| call_error(&e))
         })
+    }
+
+    fn propose_nudge(&self, cx: ca::CallContext) -> BoxFuture<'_, Option<JsonValue>> {
+        Box::pin(async move {
+            self.inner
+                .propose_nudge(api_cx(&cx))
+                .await
+                .map(|v| v.to_value())
+        })
+    }
+
+    fn nudge_delivered(&self, id: &str, cx: ca::CallContext) {
+        self.inner.nudge_delivered(id, api_cx(&cx));
+    }
+
+    fn wait_reason(&self, cx: ca::CallContext) -> BoxFuture<'_, Option<String>> {
+        Box::pin(async move { self.inner.wait_reason(api_cx(&cx)).await })
+    }
+
+    fn hook_deadline(&self, kind: &str) -> Option<std::time::Duration> {
+        let limits = &self.inner.manifest().limits;
+        let ms = if kind == "tool_call" {
+            limits.tool_call_hook_timeout_ms
+        } else {
+            limits.hook_timeout_ms
+        };
+        Some(std::time::Duration::from_millis(ms))
     }
 
     fn provider(&self) -> Option<&dyn ca::ProviderInstance> {

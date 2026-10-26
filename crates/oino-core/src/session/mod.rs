@@ -200,8 +200,8 @@ pub struct SessionConfig {
     pub scoped_models: Vec<oino_models::resolver::ScopedModel>,
     /// CLI flag values for extension flags.
     pub flag_values: indexmap::IndexMap<String, oino_ai::JsonValue>,
-    /// Nested (child) session.
-    pub is_child: bool,
+    /// Nested-agent inputs of a child session (`None` for root sessions).
+    pub child: Option<crate::agents::ChildConfig>,
 }
 
 pub(crate) struct Inner {
@@ -225,6 +225,9 @@ pub(crate) struct Inner {
     pub(crate) docs_root: PathBuf,
     pub(crate) mode: ExtensionMode,
     pub(crate) subscription: Mutex<Option<Subscription>>,
+    pub(crate) agents: crate::agents::AgentsState,
+    pub(crate) arbiter: Mutex<boundary::ArbiterState>,
+    pub(crate) runtime: std::sync::OnceLock<std::sync::Weak<crate::runtime::RuntimeCore>>,
 }
 
 /// One live session. Cheap to clone.
@@ -276,8 +279,8 @@ impl AgentSession {
             mode: config.mode,
             has_ui,
             cwd: config.cwd.clone(),
-            is_child: config.is_child,
-            child_role: None,
+            is_child: config.child.is_some(),
+            child_role: config.child.as_ref().and_then(|c| c.link.role.clone()),
             call_kind: CallKind::Event,
         };
         let runner = ExtensionRunner::new(
@@ -310,6 +313,13 @@ impl AgentSession {
         options.convert_to_llm = convert_with_block_images(Arc::clone(&config.settings));
         let agent = Agent::new(options);
         let (idle, _) = watch::channel(true);
+        let agents = match config.child {
+            Some(child) => crate::agents::AgentsState::child(child),
+            None => crate::agents::AgentsState::root(
+                Arc::clone(&config.extensions),
+                Arc::clone(&config.stream),
+            ),
+        };
         let tool_state = tools::ToolState::new(
             config.builtin_tools,
             config.custom_tools,
@@ -337,6 +347,9 @@ impl AgentSession {
             docs_root: config.docs_root,
             mode: config.mode,
             subscription: Mutex::new(None),
+            agents,
+            arbiter: Mutex::new(boundary::ArbiterState::default()),
+            runtime: std::sync::OnceLock::new(),
         });
         let _ = session_stream.inner.set(Arc::downgrade(&inner));
         let session = Self { inner };
@@ -447,6 +460,20 @@ impl AgentSession {
         self.refresh_tool_registry(None, true);
         self.bind_extensions("reload", None).await;
         Ok(())
+    }
+
+    /// Routes host calls of nested agents through `router` (set once by the runtime).
+    pub(crate) fn link_router(&self, router: &Arc<crate::services::HostRouter>) {
+        let _ = self.inner.agents.router.set(Arc::downgrade(router));
+    }
+
+    /// Lets command contexts replace the session through its runtime (set once).
+    pub(crate) fn link_runtime(&self, runtime: std::sync::Weak<crate::runtime::RuntimeCore>) {
+        let _ = self.inner.runtime.set(runtime);
+    }
+
+    pub(crate) fn runtime_core(&self) -> Option<Arc<crate::runtime::RuntimeCore>> {
+        self.inner.runtime.get().and_then(std::sync::Weak::upgrade)
     }
 
     pub(crate) fn from_inner(inner: Arc<Inner>) -> Self {
@@ -738,6 +765,8 @@ impl AgentSession {
             RunState::Retrying
         } else if self.is_streaming() {
             RunState::Running
+        } else if !lock(&self.inner.arbiter).waiting_on.is_empty() {
+            RunState::Waiting
         } else {
             RunState::Idle
         }
@@ -820,11 +849,9 @@ impl AgentSession {
     }
 
     /// Disposes the session: aborts everything and invalidates extension contexts.
-    #[allow(
-        clippy::unused_async,
-        reason = "async per the runtime.md AgentSession contract"
-    )]
     pub async fn dispose(&self) {
+        // Boxed: closing a child disposes its session, which closes its own children.
+        Box::pin(self.close_children()).await;
         self.abort_retry();
         self.abort_compaction();
         self.abort_branch_summary();

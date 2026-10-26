@@ -6,7 +6,8 @@ use oino_ai::{JsonValue, ThinkingLevel, UserContentField};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use super::api::{CallContext, CommandSpec, FlagSpec, ShortcutSpec, ToolSpec};
+use super::api::{ArbiterRoles, CallContext, CommandSpec, FlagSpec, ShortcutSpec, ToolSpec};
+use crate::agents::ChildAgent;
 
 /// Delivery of extension messages (pi `deliverAs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -263,6 +264,32 @@ pub enum HostOp {
         /// Arguments.
         args: String,
     },
+    /// Declare turn arbiter roles (`registry.set-arbiter-roles`).
+    SetArbiterRoles(ArbiterRoles),
+    /// Nested agents of the calling session (`agents.list`).
+    ListAgents,
+    /// `control.run-state`: `{state, waitingOn?}`.
+    GetRunState,
+    /// `control.shutdown` (pi `ctx.shutdown()`): asks the frontend to exit when idle.
+    Shutdown,
+    /// `control.system-prompt-options` (command context only).
+    GetSystemPromptOptions,
+    /// `control.new-session` (command context only) → `{cancelled}`.
+    NewSession {
+        /// `parentSession` of the new header.
+        parent_session: Option<std::path::PathBuf>,
+    },
+    /// `control.fork` (command context only) → `{cancelled, selectedText?}`.
+    Fork {
+        /// Entry to fork from.
+        entry_id: String,
+        /// Fork at the entry (`true`) or before it.
+        at: bool,
+    },
+    /// `control.switch-session` (command context only) → `{cancelled}`.
+    SwitchSession(std::path::PathBuf),
+    /// `control.reload` (command context only).
+    Reload,
 }
 
 /// Failure of a host operation.
@@ -295,4 +322,19 @@ pub trait HostApi: Send + Sync {
         cx: &'a CallContext,
         op: HostOp,
     ) -> BoxFuture<'a, Result<JsonValue, HostError>>;
+
+    /// `agents.spawn`: creates a nested `AgentSession` under the session of `cx`
+    /// (runtime §12). `spec` is the `AgentSpec` JSON.
+    fn spawn_agent<'a>(
+        &'a self,
+        _extension: &'a str,
+        _cx: &'a CallContext,
+        _spec: JsonValue,
+    ) -> BoxFuture<'a, Result<std::sync::Arc<ChildAgent>, HostError>> {
+        Box::pin(async {
+            Err(HostError::Failed(
+                "agents is not supported by this host".into(),
+            ))
+        })
+    }
 }

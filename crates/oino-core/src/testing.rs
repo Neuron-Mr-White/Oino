@@ -320,6 +320,11 @@ pub type ToolHandler =
 pub type CommandHandler =
     Arc<dyn Fn(&str, &str) -> Result<Option<JsonValue>, String> + Send + Sync>;
 
+/// Arbiter `propose-nudge` body of a [`FakeExtension`].
+pub type NudgeHandler = Arc<dyn Fn(&CallContext) -> Option<JsonValue> + Send + Sync>;
+/// Arbiter `wait-reason` body of a [`FakeExtension`].
+pub type WaitHandler = Arc<dyn Fn(&CallContext) -> Option<String> + Send + Sync>;
+
 /// Closure-driven extension for runner and session tests.
 pub struct FakeExtension {
     id: String,
@@ -327,7 +332,11 @@ pub struct FakeExtension {
     on_event: EventHandler,
     on_tool: ToolHandler,
     on_command: CommandHandler,
+    on_nudge: Option<NudgeHandler>,
+    on_wait: Option<WaitHandler>,
     events: Mutex<Vec<(String, JsonValue)>>,
+    contexts: Mutex<Vec<(String, CallContext)>>,
+    delivered: Mutex<Vec<String>>,
 }
 
 impl std::fmt::Debug for FakeExtension {
@@ -348,8 +357,46 @@ impl FakeExtension {
             on_event: Arc::new(|_, _| Ok(None)),
             on_tool: Arc::new(|_, _| Ok(AgentToolResult::text("ok"))),
             on_command: Arc::new(|_, _| Ok(None)),
+            on_nudge: None,
+            on_wait: None,
             events: Mutex::new(Vec::new()),
+            contexts: Mutex::new(Vec::new()),
+            delivered: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Makes the extension an arbiter nudge provider.
+    #[must_use]
+    pub fn on_nudge(
+        mut self,
+        handler: impl Fn(&CallContext) -> Option<JsonValue> + Send + Sync + 'static,
+    ) -> Self {
+        self.registration.arbiter.nudge_provider = true;
+        self.on_nudge = Some(Arc::new(handler));
+        self
+    }
+
+    /// Makes the extension an arbiter wait source.
+    #[must_use]
+    pub fn on_wait(
+        mut self,
+        handler: impl Fn(&CallContext) -> Option<String> + Send + Sync + 'static,
+    ) -> Self {
+        self.registration.arbiter.wait_source = true;
+        self.on_wait = Some(Arc::new(handler));
+        self
+    }
+
+    /// Call contexts of the events received `(kind, cx)`.
+    #[must_use]
+    pub fn received_contexts(&self) -> Vec<(String, CallContext)> {
+        lock(&self.contexts).clone()
+    }
+
+    /// Ids passed to `nudge-delivered`.
+    #[must_use]
+    pub fn delivered(&self) -> Vec<String> {
+        lock(&self.delivered).clone()
     }
 
     /// Sets the event handler.
@@ -403,9 +450,10 @@ impl ExtensionInstance for FakeExtension {
         &self,
         kind: &str,
         payload: JsonValue,
-        _cx: CallContext,
+        cx: CallContext,
     ) -> BoxFuture<'_, Result<Option<JsonValue>, ExtensionCallError>> {
         lock(&self.events).push((kind.to_owned(), payload.clone()));
+        lock(&self.contexts).push((kind.to_owned(), cx));
         let result = (self.on_event)(kind, payload).map_err(ExtensionCallError::new);
         Box::pin(async move { result })
     }
@@ -431,6 +479,20 @@ impl ExtensionInstance for FakeExtension {
     ) -> BoxFuture<'_, Result<Option<JsonValue>, ExtensionCallError>> {
         let result = (self.on_command)(name, args).map_err(ExtensionCallError::new);
         Box::pin(async move { result })
+    }
+
+    fn propose_nudge(&self, cx: CallContext) -> BoxFuture<'_, Option<JsonValue>> {
+        let proposal = self.on_nudge.as_ref().and_then(|f| f(&cx));
+        Box::pin(async move { proposal })
+    }
+
+    fn nudge_delivered(&self, id: &str, _cx: CallContext) {
+        lock(&self.delivered).push(id.to_owned());
+    }
+
+    fn wait_reason(&self, cx: CallContext) -> BoxFuture<'_, Option<String>> {
+        let reason = self.on_wait.as_ref().and_then(|f| f(&cx));
+        Box::pin(async move { reason })
     }
 }
 
@@ -531,7 +593,7 @@ impl TestSession {
             thinking_level: ThinkingLevel::Off,
             scoped_models: Vec::new(),
             flag_values: IndexMap::new(),
-            is_child: false,
+            child: None,
         });
         session.bind_extensions("startup", None).await;
         session

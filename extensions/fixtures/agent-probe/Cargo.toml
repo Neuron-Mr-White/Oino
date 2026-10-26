@@ -1,0 +1,17 @@
+[package]
+name = "fixture-agent-probe"
+version = "1.0.0-alpha.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Oino test fixture: agent-probe (nested agents, turn arbiter, control)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oino-extension = { workspace = true }
+
+[lints]
+workspace = true

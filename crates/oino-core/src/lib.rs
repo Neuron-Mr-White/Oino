@@ -12,7 +12,8 @@
 //! | [`services`] | `agent-session-services.ts` | [`services::Services`] per cwd, [`services::ExtensionLoader`], [`services::HostRouter`] |
 //! | [`runtime`] | `agent-session-runtime.ts`, `sdk.ts` | [`runtime::AgentSessionRuntime`]: create, new/switch/fork/clone/import |
 //! | [`session`] | `agent-session.ts` | [`session::AgentSession`]: prompts, queues, models, tools, compaction, retry, bash, tree, stats, export |
-//! | [`extensions`] | `extensions/runner.ts` | instance contract, host operations, registries, pi-composition dispatch |
+//! | [`extensions`] | `extensions/runner.ts` | instance contract, host operations, registries, pi-composition dispatch, turn arbiter |
+//! | [`agents`] | — (D8) | nested `AgentSession`s behind `agents.spawn`: [`agents::ChildAgent`], [`agents::AgentSpec`] |
 //! | [`provider`] | `model-runtime.streamSimple` | [`provider::ProviderStream`]: requests to provider components |
 //! | [`compaction`] | `compaction/*` | cut points, summaries, branch summaries, overflow/retry classification |
 //! | [`events`] | `AgentSessionEvent` + RPC events | [`events::ClientEvent`] and friends (move to `oino-protocol`) |
@@ -33,6 +34,7 @@
     )
 )]
 
+pub mod agents;
 pub mod builtin;
 pub mod compaction;
 pub mod events;

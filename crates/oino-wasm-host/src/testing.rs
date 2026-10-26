@@ -43,7 +43,12 @@ pub fn build_fixtures() -> Result<(), String> {
             // Provider components build separately so feature unification does not give every
             // fixture the `provider-extension` world.
             let groups: [&[&str]; 2] = [
-                &["fixture-echo", "fixture-ui-probe", "fixture-async-probe"],
+                &[
+                    "fixture-echo",
+                    "fixture-ui-probe",
+                    "fixture-async-probe",
+                    "fixture-agent-probe",
+                ],
                 &["fixture-provider-faux"],
             ];
             for group in groups {

@@ -364,7 +364,7 @@ impl AgentSession {
             .resources
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let options = BuildSystemPromptOptions {
+        let mut options = BuildSystemPromptOptions {
             custom_prompt: resources.system_prompt().map(str::to_owned),
             force_system_prompt: None,
             selected_tools: valid,
@@ -379,6 +379,22 @@ impl AgentSession {
             skills: resources.skills().to_vec(),
         };
         drop(resources);
+        if let Some(link) = &self.inner.agents.link {
+            match &link.prompt {
+                crate::agents::SystemPromptSpec::Default => {}
+                crate::agents::SystemPromptSpec::Replace(prompt) => {
+                    options.custom_prompt = Some(prompt.clone());
+                }
+                crate::agents::SystemPromptSpec::Append(extra) => {
+                    if options.append_system_prompt.is_empty() {
+                        options.append_system_prompt.clone_from(extra);
+                    } else {
+                        options.append_system_prompt =
+                            format!("{}\n\n{extra}", options.append_system_prompt);
+                    }
+                }
+            }
+        }
         lock(&self.inner.tools).base_options = options;
     }
 

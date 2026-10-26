@@ -544,6 +544,7 @@ impl AgentSession {
             book.run_active = true;
             book.abort_requested = false;
         }
+        self.clear_waiting(crate::events::RunState::Running);
         self.mark_busy();
         let messages = match self.prepare_run(trigger).await {
             Ok(messages) => messages,
