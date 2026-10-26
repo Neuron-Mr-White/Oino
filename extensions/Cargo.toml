@@ -21,6 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 syn = { version = "2", features = ["full"] }
 thiserror = "2"
+unipi-kit = { path = "sdk/unipi-kit" }
 wit-bindgen = { version = "=0.62.0", features = ["async", "async-spawn", "futures-stream"] }
 
 [workspace.lints.rust]

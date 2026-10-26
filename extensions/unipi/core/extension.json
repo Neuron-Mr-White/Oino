@@ -1,0 +1,12 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.core",
+  "name": "unipi core",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Unicrab hints, the start screen and the work tray; owns the hints and decision-model settings.",
+  "license": "MIT",
+  "permissions": {
+    "services": { "call": ["*/work-tray.tab", "*/work-tray.action"] }
+  }
+}

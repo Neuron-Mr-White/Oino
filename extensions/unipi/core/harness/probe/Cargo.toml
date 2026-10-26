@@ -1,0 +1,23 @@
+[package]
+name = "unipi-core-tray-probe"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Test-only work-tray producer for the unipi.core harness tests"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oino-extension = { path = "../../../../sdk/oino-extension" }
+serde_json = { version = "1", features = ["preserve_order"] }
+unipi-kit = { path = "../../../../sdk/unipi-kit" }
+
+# Standalone: built for wasm32-wasip2 by the harness, outside the extensions workspace.
+[workspace]
+
+[profile.release]
+opt-level = "s"
+strip = true

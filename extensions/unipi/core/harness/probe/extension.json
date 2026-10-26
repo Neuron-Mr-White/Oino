@@ -1,0 +1,10 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.test.tray-probe",
+  "name": "Tray probe",
+  "version": "0.0.0",
+  "kind": "extension",
+  "description": "Serves one work-tray tab and records tray actions (unipi.core harness tests).",
+  "license": "MIT",
+  "permissions": {}
+}
