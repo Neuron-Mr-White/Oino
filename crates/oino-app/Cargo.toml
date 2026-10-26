@@ -26,7 +26,7 @@ oino-harness = { path = "../oino-harness" }
 oino-provider-catalog = { path = "../oino-provider-catalog" }
 oino-resource = { path = "../oino-resource" }
 oino-session = { package = "oino-session-legacy", path = "../../legacy/crates/oino-session" }
-oino-tools = { path = "../oino-tools" }
+oino-tools = { package = "oino-tools-legacy", path = "../../legacy/crates/oino-tools" }
 oino-tui = { path = "../oino-tui", default-features = false }
 oino-wasm-host = { path = "../oino-wasm-host" }
 oino-types = { path = "../oino-types" }

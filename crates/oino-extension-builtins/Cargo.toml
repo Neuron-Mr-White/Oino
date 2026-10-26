@@ -14,7 +14,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 oino-env = { path = "../oino-env" }
-oino-tools = { path = "../oino-tools" }
+oino-tools = { package = "oino-tools-legacy", path = "../../legacy/crates/oino-tools" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

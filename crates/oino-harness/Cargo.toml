@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 async-trait.workspace = true
-oino-agent = { path = "../oino-agent" }
+oino-agent = { package = "oino-agent-legacy", path = "../../legacy/crates/oino-agent" }
 oino-agent-loop = { path = "../oino-agent-loop" }
 oino-env = { path = "../oino-env" }
 oino-session = { package = "oino-session-legacy", path = "../../legacy/crates/oino-session" }
