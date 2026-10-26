@@ -1146,7 +1146,16 @@ impl Render for MobileShell {
             .pb(px(bottom))
             .pl(px(insets.left))
             .pr(px(insets.right))
-            .child(body)
-            .children(sheet)
+            // Sheets are absolutely positioned, which ignores the root's padding: keep them
+            // inside a box that already excludes the safe areas and the keyboard.
+            .child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(body)
+                    .children(sheet),
+            )
     }
 }
