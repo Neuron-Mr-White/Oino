@@ -43,6 +43,8 @@ pub struct TuiOptions {
     pub version: String,
     /// Prompts submitted once the session is loaded (CLI positional messages).
     pub initial_messages: Vec<String>,
+    /// Images attached to the first initial message (`@file` images).
+    pub initial_images: Vec<ImageContent>,
     /// Startup warnings to show in the transcript.
     pub notices: Vec<String>,
     /// Theme name override (`--theme`).
@@ -810,8 +812,9 @@ impl App {
                         };
                         self.notice(NoticeLevel::Info, format!("Session compacted {times}"));
                     }
+                    let mut images = std::mem::take(&mut self.options.initial_images);
                     for message in std::mem::take(&mut self.options.initial_messages) {
-                        self.submit_text(&message, vec![], false);
+                        self.submit_text(&message, std::mem::take(&mut images), false);
                     }
                 }
             }

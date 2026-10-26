@@ -25,13 +25,11 @@ is silent.
 
 ## Requests for other work
 
-- **modes** (`crates/oino`): replace the interactive "not available" preflight with
-  ```rust
-  let backend: Arc<dyn SessionBackend> = Arc::new(InProcessBackend::new(runtime));
-  let host = Arc::new(oino_tui::host::LocalHost::new(&env.cwd, &env.agent_dir, Some(sessions_root), trusted));
-  oino_tui::run(backend, host, oino_tui::TuiOptions { version: VERSION.into(), initial_messages, notices, theme: args.theme.clone() }).await
-  ```
-  with the UI bridge created `has_ui = true` (`ctx.mode = tui`), and `--remote` over `oino_rpc::RpcBackend`.
+- **modes** (`crates/oino`): interactive mode is wired by tui-client in `crates/oino/src/modes/interactive.rs`
+  (cross-owner edit, commit `[tui-client]`): `InProcessBackend` + `LocalHost`, `has_ui = true` for
+  interactive, `Started` carries `sessions_root`/`project_trusted`, `@file` images go to
+  `TuiOptions::initial_images`; pty test `crates/oino/tests/interactive.rs`. Still open for modes:
+  `--remote` (needs a network `oino_rpc::Transport` and `oino serve`); the preflight still rejects it.
 - **modes** (`oino-client` / RPC): implement `_oino/list_sessions`, `_oino/get_settings`/`_oino/set_setting`,
   `_oino/get_keybindings`, `_oino/get_completions`, `_oino/render`, `_oino/ui_action`,
   `_oino/invoke_shortcut`, `_oino/editor_event`, `_oino/get_settings_schema` and the extension

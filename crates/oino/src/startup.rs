@@ -83,6 +83,10 @@ pub struct Started {
     pub diagnostics: Vec<Diagnostic>,
     /// Extension flags (for `--help`).
     pub extension_flags: Vec<ExtensionFlag>,
+    /// Sessions directory (interactive session picker).
+    pub sessions_root: PathBuf,
+    /// Project trust decision (interactive settings writes).
+    pub project_trusted: bool,
 }
 
 impl std::fmt::Debug for Started {
@@ -416,7 +420,7 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         agent_dir: env.agent_dir.clone(),
         docs_root: env.agent_dir.clone(),
         mode: mode.extension_mode(),
-        has_ui: mode == AppMode::Rpc,
+        has_ui: matches!(mode, AppMode::Rpc | AppMode::Interactive),
         flags: ResourceFlags {
             no_skills: args.no_skills,
             no_prompt_templates: args.no_prompt_templates,
@@ -445,6 +449,7 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
     );
     let (extension_flags, boolean_flags) = check_extension_flags(args, &services, &mut diagnostics);
     let root = services.sessions_root(args.session_dir.as_deref().map(Path::new));
+    let project_trusted = services.project_trusted;
     let source = session_source(args, metadata_only, &env.cwd, &root)?;
     let has_existing = has_existing_session(&source, &env.cwd, &root);
     let choice = choose_model(args, &services, has_existing, &mut diagnostics);
@@ -497,6 +502,8 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
             runtime: Arc::new(runtime),
             diagnostics,
             extension_flags,
+            sessions_root: root,
+            project_trusted,
         });
     }
     if diagnostics
@@ -531,5 +538,7 @@ pub async fn start(args: &Args, mode: AppMode, env: &Environment) -> Result<Star
         runtime: Arc::new(runtime),
         diagnostics,
         extension_flags,
+        sessions_root: root,
+        project_trusted,
     })
 }

@@ -213,7 +213,6 @@ fn preflight(args: &cli::args::Args, mode: AppMode) -> Result<(), Vec<String>> {
     let unavailable = match mode {
         AppMode::Acp => Some("ACP mode (--mode acp)"),
         AppMode::Interactive if args.remote.is_some() => Some("Remote interactive mode"),
-        AppMode::Interactive => Some("Interactive mode"),
         _ => None,
     };
     match unavailable {
@@ -264,6 +263,19 @@ async fn run_mode(mut args: cli::args::Args, mode: AppMode, env: &Environment) -
         }
     };
     let initial = build_initial_message(&mut args.messages, files, stdin);
+    if mode == AppMode::Interactive {
+        let notices = report_lines(&started.diagnostics);
+        let mut initial_messages: Vec<String> = initial.text.into_iter().collect();
+        initial_messages.append(&mut args.messages);
+        let options = oino_tui::TuiOptions {
+            version: VERSION.to_owned(),
+            initial_messages,
+            initial_images: initial.images,
+            notices,
+            theme: None,
+        };
+        return modes::interactive::run(started, env, options).await;
+    }
     let output = if mode == AppMode::Json {
         PrintOutput::Json
     } else {

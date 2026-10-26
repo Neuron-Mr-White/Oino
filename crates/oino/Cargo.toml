@@ -26,6 +26,7 @@ oino-core = { path = "../oino-core" }
 oino-models = { path = "../oino-models" }
 oino-rpc = { path = "../oino-rpc" }
 oino-session = { path = "../oino-session" }
+oino-tui = { path = "../oino-tui" }
 oino-settings = { path = "../oino-settings" }
 oino-tools = { path = "../oino-tools" }
 serde.workspace = true
@@ -36,6 +37,9 @@ tokio-util.workspace = true
 [dev-dependencies]
 oino = { path = ".", features = ["faux"] }
 tempfile.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+nix = { workspace = true, features = ["term", "fs"] }
 
 # Mirrors quality.md §2 until integration switches the root workspace lints (then `workspace = true`).
 [lints.rust]
