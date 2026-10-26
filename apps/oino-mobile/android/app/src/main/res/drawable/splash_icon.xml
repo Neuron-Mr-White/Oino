@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash icon (API 31+ windowSplashScreenAnimatedIcon, and the pre-31 layer-list): the
+     Oino launcher icon inset to the splash safe zone. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher"
+    android:inset="30dp" />

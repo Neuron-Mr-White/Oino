@@ -1495,7 +1495,11 @@ impl SessionPane {
                     v_flex()
                         .id("panel")
                         .when(fullscreen, gpui_kit::Styled::size_full)
-                        .when(!fullscreen, |el| el.w(px(760.)).max_h(px(640.)))
+                        .when(!fullscreen, |el| {
+                            el.w(px(760.))
+                                .max_w(gpui_kit::relative(0.96))
+                                .max_h(px(640.))
+                        })
                         .rounded_lg()
                         .border_1()
                         .border_color(theme.border)

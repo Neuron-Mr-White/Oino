@@ -1,0 +1,8 @@
+/dist/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/src/main/jniLibs/
+/android/local.properties
+/ios/build/
+/ios/OinoMobile.xcodeproj/

@@ -4,7 +4,7 @@
 # isolated. Path dependencies point into `../crates`.
 [workspace]
 resolver = "3"
-members = ["oino-ui", "oino-desktop"]
+members = ["oino-ui", "oino-desktop", "oino-mobile"]
 exclude = ["vendor", "target"]
 
 [workspace.package]
@@ -31,6 +31,13 @@ oino-session = { path = "../crates/oino-session" }
 oino-settings = { path = "../crates/oino-settings" }
 oino-wasm-host = { path = "../crates/oino-wasm-host" }
 oino-ui = { path = "oino-ui" }
+
+# Mobile platform (gpui-app §4): vendored longbridge/gpui-mobile on gpui-pre =0.3.9, every
+# optional package off except the ones Oino Mobile uses.
+gpui-mobile = { package = "gpui-pre-mobile", path = "vendor/gpui-mobile", default-features = false, features = ["clipboard", "notifications", "file_selector", "share", "path_provider", "shared_preferences", "deeplink"] }
+android-activity = { version = "0.6", features = ["native-activity"] }
+android_logger = "0.15"
+log = "0.4"
 
 anyhow = "1"
 futures = "0.3"

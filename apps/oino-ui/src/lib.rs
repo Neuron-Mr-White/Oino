@@ -30,6 +30,7 @@
 //! | [`host`] | [`host::SessionHost`] contract implemented by the app shell |
 //! | `rt` (feature `views`) | tokio ↔ GPUI bridge (`Tokio::spawn` → `gpui::Task`) |
 //! | `views` (feature `views`) | GPUI views |
+//! | `mobile` (feature `mobile`) | phone shell: stacked screens, bottom sheets, safe areas |
 
 #![forbid(unsafe_code)]
 #![cfg_attr(
@@ -45,6 +46,8 @@
 )]
 
 pub mod host;
+#[cfg(feature = "mobile")]
+pub mod mobile;
 pub mod model;
 #[cfg(feature = "views")]
 pub mod rt;

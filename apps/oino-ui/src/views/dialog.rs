@@ -566,6 +566,8 @@ impl Render for DialogView {
                 v_flex()
                     .id("dialog")
                     .w(width)
+                    // Narrow windows (phones): never wider than the window.
+                    .max_w(gpui_kit::relative(0.94))
                     .max_h(px(720.))
                     .overflow_y_scroll()
                     .p_4()

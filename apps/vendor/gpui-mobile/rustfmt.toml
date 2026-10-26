@@ -1,0 +1,2 @@
+# Vendored upstream source: keep it byte-identical to upstream (cargo fmt --all walks path deps).
+disable_all_formatting = true
