@@ -1,0 +1,2816 @@
+[
+ {
+  "name": "read-basic",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "hello\nworld\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": "hello\nworld\n",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-offset",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "l2\nl3\nl4\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": "l2\nl3\nl4\n",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-offset-limit",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "l2\n\n[3 more lines in file. Use offset=3 to continue.]"
+    }
+   ],
+   "details": null,
+   "structuredContent": "l2\n\n[3 more lines in file. Use offset=3 to continue.]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-limit-more",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\nb\n\n[1 more lines in file. Use offset=3 to continue.]"
+    }
+   ],
+   "details": null,
+   "structuredContent": "a\nb\n\n[1 more lines in file. Use offset=3 to continue.]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-limit-zero",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "\n\n[3 more lines in file. Use offset=1 to continue.]"
+    }
+   ],
+   "details": null,
+   "structuredContent": "\n\n[3 more lines in file. Use offset=1 to continue.]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-limit-exact",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\nb\nc"
+    }
+   ],
+   "details": null,
+   "structuredContent": "a\nb\nc",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-offset-zero",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\nb"
+    }
+   ],
+   "details": null,
+   "structuredContent": "a\nb",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-offset-beyond",
+  "materialized": {},
+  "result": {
+   "error": "Offset 10 is beyond end of file (3 lines total)"
+  },
+  "files": {}
+ },
+ {
+  "name": "read-offset-fraction",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "b\n\n[1.5 more lines in file. Use offset=3.5 to continue.]"
+    }
+   ],
+   "details": null,
+   "structuredContent": "b\n\n[1.5 more lines in file. Use offset=3.5 to continue.]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-lines-truncated",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": {
+      "$long": 18954,
+      "head": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nl",
+      "tail": "ine 1987\nline 1988\nline 1989\nline 1990\nline 1991\nline 1992\nline 1993\nline 1994\nline 1995\nline 1996\nline 1997\nline 1998\nline 1999\nline 2000\n\n[Showing lines 1-2000 of 3001. Use offset=2001 to continue.]",
+      "fnv": "bf86ef2b686ad87c"
+     }
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": {
+      "$long": 18892,
+      "head": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nl",
+      "tail": "\nline 1981\nline 1982\nline 1983\nline 1984\nline 1985\nline 1986\nline 1987\nline 1988\nline 1989\nline 1990\nline 1991\nline 1992\nline 1993\nline 1994\nline 1995\nline 1996\nline 1997\nline 1998\nline 1999\nline 2000",
+      "fnv": "71536d7408b69b17"
+     },
+     "truncated": true,
+     "truncatedBy": "lines",
+     "totalLines": 3000,
+     "totalBytes": 28893,
+     "outputLines": 2000,
+     "outputBytes": 18892,
+     "lastLinePartial": false,
+     "firstLineExceedsLimit": false,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    }
+   },
+   "structuredContent": {
+    "$long": 18954,
+    "head": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nl",
+    "tail": "ine 1987\nline 1988\nline 1989\nline 1990\nline 1991\nline 1992\nline 1993\nline 1994\nline 1995\nline 1996\nline 1997\nline 1998\nline 1999\nline 2000\n\n[Showing lines 1-2000 of 3001. Use offset=2001 to continue.]",
+    "fnv": "bf86ef2b686ad87c"
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-lines-truncated-offset",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": {
+      "$long": 15010,
+      "head": "line 1500\nline 1501\nline 1502\nline 1503\nline 1504\nline 1505\nline 1506\nline 1507\nline 1508\nline 1509\nline 1510\nline 1511\nline 1512\nline 1513\nline 1514\nline 1515\nline 1516\nline 1517\nline 1518\nline 1519\n",
+      "tail": "line 2981\nline 2982\nline 2983\nline 2984\nline 2985\nline 2986\nline 2987\nline 2988\nline 2989\nline 2990\nline 2991\nline 2992\nline 2993\nline 2994\nline 2995\nline 2996\nline 2997\nline 2998\nline 2999\nline 3000\n",
+      "fnv": "0040ca65aeaae1e8"
+     }
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "$long": 15010,
+    "head": "line 1500\nline 1501\nline 1502\nline 1503\nline 1504\nline 1505\nline 1506\nline 1507\nline 1508\nline 1509\nline 1510\nline 1511\nline 1512\nline 1513\nline 1514\nline 1515\nline 1516\nline 1517\nline 1518\nline 1519\n",
+    "tail": "line 2981\nline 2982\nline 2983\nline 2984\nline 2985\nline 2986\nline 2987\nline 2988\nline 2989\nline 2990\nline 2991\nline 2992\nline 2993\nline 2994\nline 2995\nline 2996\nline 2997\nline 2998\nline 2999\nline 3000\n",
+    "fnv": "0040ca65aeaae1e8"
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-bytes-truncated",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": {
+      "$long": 51180,
+      "head": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001\n000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "tail": "000000000000000000000505\n0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000506\n\n[Showing lines 1-506 of 1001 (50.0KB limit). Use offset=507 to continue.]",
+      "fnv": "c76b0d71e734228c"
+     }
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": {
+      "$long": 51105,
+      "head": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001\n000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "tail": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000505\n0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000506",
+      "fnv": "606c34256bf32d11"
+     },
+     "truncated": true,
+     "truncatedBy": "bytes",
+     "totalLines": 1000,
+     "totalBytes": 101000,
+     "outputLines": 506,
+     "outputBytes": 51105,
+     "lastLinePartial": false,
+     "firstLineExceedsLimit": false,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    }
+   },
+   "structuredContent": {
+    "$long": 51180,
+    "head": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001\n000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "tail": "000000000000000000000505\n0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000506\n\n[Showing lines 1-506 of 1001 (50.0KB limit). Use offset=507 to continue.]",
+    "fnv": "c76b0d71e734228c"
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-first-line-too-long",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "[Line 1 is 58.6KB, exceeds 50.0KB limit. Use bash: sed -n '1p' long.txt | head -c 51200]"
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": "",
+     "truncated": true,
+     "truncatedBy": "bytes",
+     "totalLines": 1,
+     "totalBytes": 60000,
+     "outputLines": 0,
+     "outputBytes": 0,
+     "lastLinePartial": false,
+     "firstLineExceedsLimit": true,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    }
+   },
+   "structuredContent": "[Line 1 is 58.6KB, exceeds 50.0KB limit. Use bash: sed -n '1p' long.txt | head -c 51200]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-offset-line-too-long",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "[Line 2 is 68.4KB, exceeds 50.0KB limit. Use bash: sed -n '2p' long.txt | head -c 51200]"
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": "",
+     "truncated": true,
+     "truncatedBy": "bytes",
+     "totalLines": 2,
+     "totalBytes": 70002,
+     "outputLines": 0,
+     "outputBytes": 0,
+     "lastLinePartial": false,
+     "firstLineExceedsLimit": true,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    }
+   },
+   "structuredContent": "[Line 2 is 68.4KB, exceeds 50.0KB limit. Use bash: sed -n '2p' long.txt | head -c 51200]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-missing",
+  "materialized": {},
+  "result": {
+   "error": "ENOENT: no such file or directory, access '$CWD/missing.txt'"
+  },
+  "files": {}
+ },
+ {
+  "name": "read-directory",
+  "materialized": {},
+  "result": {
+   "error": "EISDIR: illegal operation on a directory, read"
+  },
+  "files": {}
+ },
+ {
+  "name": "read-empty",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": ""
+    }
+   ],
+   "details": null,
+   "structuredContent": "",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-at-prefix",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "x"
+    }
+   ],
+   "details": null,
+   "structuredContent": "x",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-crlf",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\r\nb\r\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": "a\r\nb\r\n",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-invalid-utf8",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "hi �fo��\nbar"
+    }
+   ],
+   "details": null,
+   "structuredContent": "hi �fo��\nbar",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-bom",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "﻿hello"
+    }
+   ],
+   "details": null,
+   "structuredContent": "﻿hello",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-curly-quote",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "curly"
+    }
+   ],
+   "details": null,
+   "structuredContent": "curly",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-screenshot-ampm",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "ampm"
+    }
+   ],
+   "details": null,
+   "structuredContent": "ampm",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-nfd",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "nfd"
+    }
+   ],
+   "details": null,
+   "structuredContent": "nfd",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-unicode-space",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "space"
+    }
+   ],
+   "details": null,
+   "structuredContent": "space",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-absolute",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "absolute"
+    }
+   ],
+   "details": null,
+   "structuredContent": "absolute",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-dotdot",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "top"
+    }
+   ],
+   "details": null,
+   "structuredContent": "top",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-small",
+  "materialized": {
+   "img.png": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAGCAYAAAD+Bd/7AAAAfUlEQVR4Ae3AA6AkWZbG8f937o3IzKdyS2Oubdu2bdu2bdu2bWmMnpZKr54yMyLu+Xa3anqmhztr1a8CniFmiBlihpghZogZorItQIAAAQIECBCVbQECBAgQIECAqGwLECBAgAABAkRlW4AAAQIECBAgKtsCBAgQIECAAPGPGeIBucsl9+sAAAAASUVORK5CYII="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]"
+    },
+    {
+     "type": "image",
+     "data": "$SOURCE",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$SOURCE",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 8,
+     "height": 6
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-large",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Image: original 3000x1000, displayed at 2000x667. Multiply coordinates by 1.50 to map to original image.]"
+    },
+    {
+     "type": "image",
+     "data": "$ENCODED",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$ENCODED",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]\n[Image: original 3000x1000, displayed at 2000x667. Multiply coordinates by 1.50 to map to original image.]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 2000,
+     "height": 667
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-large-noresize",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]"
+    },
+    {
+     "type": "image",
+     "data": "$SOURCE",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$SOURCE",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 2400,
+     "height": 100
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-model-limits",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Image: original 400x200, displayed at 100x50. Multiply coordinates by 4.00 to map to original image.]"
+    },
+    {
+     "type": "image",
+     "data": "$ENCODED",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$ENCODED",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]\n[Image: original 400x200, displayed at 100x50. Multiply coordinates by 4.00 to map to original image.]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 100,
+     "height": 50
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-fallback-resize",
+  "materialized": {
+   "img.png": "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAs9ElEQVR4Ae3AA6AkWZbG8f937o3IzKdyS2Oubdu2bdu2bdu2bWmMnpZKr54yMyLu+Xa3anqmhztr1a8CniFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZYoaYIWaIGWKGmCFmiBmisi1AgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgABR2RYgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQICobAsQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIEBUtgUIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECAq2wIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBCVbQECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBIjKtgABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAkRlW4AAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAaKyLUCAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAFHZFiBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgKhsCxAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQFS2BQgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQICrbAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIEJVtAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIEiMq2AAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECRGVbgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABorItQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAUdkWIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAqGwLECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAVLYFCBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgKtsCBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQlW0BAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgSIyrYAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQJEZVuAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAGisi1AgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgABR2RYgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQICobAsQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIEBUtgUIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECAq2wIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBCVbQECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBIjKtgABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAkRlW4AAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAaKyLUCAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAFHZFiBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgKhsCxAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQFS2BQgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQICrbAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIEJVtAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIEiMq2AAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECRGVbgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABorItQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAUdkWIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAqGwLECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAVLYFCBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgKtsCBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQlW0BAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgSIyrYAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQJEZVuAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAGisi1AgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgABR2RYgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQICobAsQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIEBUtgUIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECAq2wIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBCVbQECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBIjKtgABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAkRlW4AAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAaKyLUCAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAFHZFiBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgKhsCxAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQFS2BQgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQICrbAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIEJVtAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIEiMq2AAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECRGVbgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABorItQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAUdkWIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAqGwLECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAVLYFCBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgKtsCBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQlW0BAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgSIyrYAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQJEZVuAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAGisi1AgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgABR2RYgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQICobAsQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIEBUtgUIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECAq2wIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBCVbQECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBIjKtgABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAkRlW4AAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAaKyLUCAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAFHZFiBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgKhsCxAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQFS2BQgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQICrbAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIEJVtAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIEiMq2AAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECRGVbgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABorItQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAUdkWIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAqGwLECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAVLYFCBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgKtsCBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQlW0BAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgSIyrYAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQJEZVuAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAGisi1AgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgABR2RYgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQIAAAQIECBAgQICobAsQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIED8I3vfMVu1l4eqAAAAAElFTkSuQmCC"
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Image: original 100x100, displayed at 50x50. Multiply coordinates by 2.00 to map to original image.]"
+    },
+    {
+     "type": "image",
+     "data": "$ENCODED",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$ENCODED",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]\n[Image: original 100x100, displayed at 50x50. Multiply coordinates by 2.00 to map to original image.]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 50,
+     "height": 50
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-too-big-bytes",
+  "materialized": {
+   "img.png": "iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAACJElEQVR4Ae3AA6AkWZbG8f937o3IzKdyS2Oubdu2bdu2bdu2bWmMnpZKr54yMyLu+Xa3anqmhztr1a8CniFmiBlihpghZogZYoaYIWaIGWKGmCFmiBlihpghZogZorItQIAAAQIECBAgQIAAAQIECBAgQIAAUdkWIECAAAECBAgQIECAAAECBAgQIECAqGwLECBAgAABAgQIECBAgAABAgQIECBAVLYFCBAgQIAAAQIECBAgQIAAAQIECBAgKtsCBAgQIECAAAECBAgQIECAAAECBAgQlW0BAgQIECBAgAABAgQIECBAgAABAgSIyrYAAQIECBAgQIAAAQIECBAgQIAAAQJEZVuAAAECBAgQIECAAAECBAgQIECAAAGisi1AgAABAgQIECBAgAABAgQIECBAgABR2RYgQIAAAQIECBAgQIAAAQIECBAgQICobAsQIECAAAECBAgQIECAAAECBAgQIEBUtgUIECBAgAABAgQIECBAgAABAgQIECAq2wIECBAgQIAAAQIECBAgQIAAAQIECBCVbQECBAgQIECAAAECBAgQIECAAAECBIjKtgABAgQIECBAgAABAgQIECBAgAABAkRlW4AAAQIECBAgQIAAAQIECBAgQIAAAaKyLUCAAAECBAgQIECAAAECBAgQIECAAFHZFiBAgAABAgQIECBAgAABAgQIECBAgKhsCxAgQIAAAQIECBAgQIAAAQIECBAgQPwjhVAEWxhKLVcAAAAASUVORK5CYII="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Image omitted: could not be resized below the inline image size limit.]"
+    }
+   ],
+   "details": null,
+   "structuredContent": "Read image file [image/png]\n[Image omitted: could not be resized below the inline image size limit.]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-non-vision",
+  "materialized": {
+   "img.png": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAT0lEQVR4AQFEALv/AAAAAP8HAAH/DgAC/xUAA/8AAA0B/wcNAv8ODQP/FQ0E/wAAGgL/BxoD/w4aBP8VGgX/AAAnA/8HJwT/DicF/xUnBv844hIBy/LBcgAAAABJRU5ErkJggg=="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Current model does not support images. The image will be omitted from this request.]"
+    },
+    {
+     "type": "image",
+     "data": "$SOURCE",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$SOURCE",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]\n[Current model does not support images. The image will be omitted from this request.]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 4,
+     "height": 4
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-vision",
+  "materialized": {
+   "img.png": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAT0lEQVR4AQFEALv/AAAAAP8HAAH/DgAC/xUAA/8AAA0B/wcNAv8ODQP/FQ0E/wAAGgL/BxoD/w4aBP8VGgX/AAAnA/8HJwT/DicF/xUnBv844hIBy/LBcgAAAABJRU5ErkJggg=="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]"
+    },
+    {
+     "type": "image",
+     "data": "$SOURCE",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$SOURCE",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 4,
+     "height": 4
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-png-wrong-extension",
+  "materialized": {
+   "img.txt": "iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAYAAABWKLW/AAAAMklEQVR4AQEnANj/AAAAAP8HAAH/DgAC/wAADQH/Bw0C/w4NA/8AABoC/wcaA/8OGgT/rCYJvigA+UUAAAAASUVORK5CYII="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]"
+    },
+    {
+     "type": "image",
+     "data": "$SOURCE",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$SOURCE",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 3,
+     "height": 3
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-jpeg",
+  "materialized": {
+   "img.jpg": "/9j/4AAQSkZJRgABAgAAAQABAAD/wAARCAAIABADAREAAhEBAxEB/9sAQwAGBAUGBQQGBgUGBwcGCAoQCgoJCQoUDg8MEBcUGBgXFBYWGh0lHxobIxwWFiAsICMmJykqKRkfLTAtKDAlKCko/9sAQwEHBwcKCAoTCgoTKBoWGigoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDwK10Pp8tebLFHNhsd5mxa6H0+WsJYo9/DY7zP/9k="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/jpeg]"
+    },
+    {
+     "type": "image",
+     "data": "$SOURCE",
+     "mimeType": "image/jpeg"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$SOURCE",
+    "mimeType": "image/jpeg",
+    "note": "Read image file [image/jpeg]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 16,
+     "height": 8
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-gif",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/gif]"
+    },
+    {
+     "type": "image",
+     "data": "$SOURCE",
+     "mimeType": "image/gif"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$SOURCE",
+    "mimeType": "image/gif",
+    "note": "Read image file [image/gif]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 1,
+     "height": 1
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-bmp",
+  "materialized": {
+   "img.bmp": "Qk1GAAAAAAAAADYAAAAoAAAAAgAAAAIAAAABABgAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAQ0AAg0HAAAAAAABAAcAAA=="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Image converted from image/bmp to image/png.]"
+    },
+    {
+     "type": "image",
+     "data": "$ENCODED",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$ENCODED",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]\n[Image converted from image/bmp to image/png.]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 2,
+     "height": 2
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-bmp-noresize",
+  "materialized": {
+   "img.bmp": "Qk1GAAAAAAAAADYAAAAoAAAAAgAAAAIAAAABABgAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAQ0AAg0HAAAAAAABAAcAAA=="
+  },
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Image converted from image/bmp to image/png.]"
+    },
+    {
+     "type": "image",
+     "data": "$ENCODED",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "type": "image",
+    "data": "$ENCODED",
+    "mimeType": "image/png",
+    "note": "Read image file [image/png]\n[Image converted from image/bmp to image/png.]"
+   },
+   "isError": false,
+   "imageDims": [
+    {
+     "width": 2,
+     "height": 2
+    }
+   ]
+  },
+  "files": {}
+ },
+ {
+  "name": "read-broken-png",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]\n[Image omitted: could not be resized below the inline image size limit.]"
+    }
+   ],
+   "details": null,
+   "structuredContent": "Read image file [image/png]\n[Image omitted: could not be resized below the inline image size limit.]",
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "read-aborted",
+  "materialized": {},
+  "result": {
+   "error": "Operation aborted"
+  },
+  "files": {}
+ },
+ {
+  "name": "write-new",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully wrote to new.txt"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "new.txt": "aGVsbG8="
+  }
+ },
+ {
+  "name": "write-nested",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully wrote to a/b/c.txt"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "a/b/c.txt": "ZGVlcAo="
+  }
+ },
+ {
+  "name": "write-overwrite",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully wrote to o.txt"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "o.txt": "bmV3"
+  }
+ },
+ {
+  "name": "write-parent-is-file",
+  "materialized": {},
+  "result": {
+   "error": "EEXIST: file already exists, mkdir '$CWD/f'"
+  },
+  "files": {}
+ },
+ {
+  "name": "write-to-directory",
+  "materialized": {},
+  "result": {
+   "error": "EISDIR: illegal operation on a directory, open '$CWD/d'"
+  },
+  "files": {}
+ },
+ {
+  "name": "write-aborted",
+  "materialized": {},
+  "result": {
+   "error": "Operation aborted"
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-single",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": " 1 one\n-2 two\n+2 TWO\n 3 three",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n",
+    "firstChangedLine": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "b25lClRXTwp0aHJlZQo="
+  }
+ },
+ {
+  "name": "edit-multi",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 2 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "  1 a\n- 2 b\n+ 2 B\n  3 c\n  4 d\n  5 e\n  6 f\n    ...\n  8 h\n  9 i\n 10 j\n 11 k\n-12 l\n+12 L\n 13 m",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,6 +1,6 @@\n a\n-b\n+B\n c\n d\n e\n f\n@@ -8,6 +8,6 @@\n h\n i\n j\n k\n-l\n+L\n m\n",
+    "firstChangedLine": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "YQpCCmMKZAplCmYKZwpoCmkKagprCkwKbQo="
+  }
+ },
+ {
+  "name": "edit-context-gap",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 2 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "  1 row 1\n  2 row 2\n- 3 row 3\n+ 3 row three\n  4 row 4\n  5 row 5\n  6 row 6\n  7 row 7\n    ...\n 26 row 26\n 27 row 27\n 28 row 28\n 29 row 29\n-30 row 30\n+30 row thirty\n+31 row thirty-b\n 31 row 31\n 32 row 32\n 33 row 33\n 34 row 34\n    ...",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,7 +1,7 @@\n row 1\n row 2\n-row 3\n+row three\n row 4\n row 5\n row 6\n row 7\n@@ -26,9 +26,10 @@\n row 26\n row 27\n row 28\n row 29\n-row 30\n+row thirty\n+row thirty-b\n row 31\n row 32\n row 33\n row 34\n",
+    "firstChangedLine": 3
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "cm93IDEKcm93IDIKcm93IHRocmVlCnJvdyA0CnJvdyA1CnJvdyA2CnJvdyA3CnJvdyA4CnJvdyA5CnJvdyAxMApyb3cgMTEKcm93IDEyCnJvdyAxMwpyb3cgMTQKcm93IDE1CnJvdyAxNgpyb3cgMTcKcm93IDE4CnJvdyAxOQpyb3cgMjAKcm93IDIxCnJvdyAyMgpyb3cgMjMKcm93IDI0CnJvdyAyNQpyb3cgMjYKcm93IDI3CnJvdyAyOApyb3cgMjkKcm93IHRoaXJ0eQpyb3cgdGhpcnR5LWIKcm93IDMxCnJvdyAzMgpyb3cgMzMKcm93IDM0CnJvdyAzNQpyb3cgMzYKcm93IDM3CnJvdyAzOApyb3cgMzkKcm93IDQwCg=="
+  }
+ },
+ {
+  "name": "edit-close-changes",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 2 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "  1 r1\n  2 r2\n  3 r3\n  4 r4\n- 5 r5\n  6 r6\n  7 r7\n  8 r8\n- 9 r9\n+ 8 R9\n 10 r10\n 11 r11\n 12 r12\n 13 r13\n    ...",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,13 +1,12 @@\n r1\n r2\n r3\n r4\n-r5\n r6\n r7\n r8\n-r9\n+R9\n r10\n r11\n r12\n r13\n",
+    "firstChangedLine": 5
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "cjEKcjIKcjMKcjQKcjYKcjcKcjgKUjkKcjEwCnIxMQpyMTIKcjEzCnIxNApyMTUKcjE2CnIxNwpyMTgKcjE5CnIyMAo="
+  }
+ },
+ {
+  "name": "edit-no-trailing-newline",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": " 1 a\n-2 b\n+2 c",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+c\n\\ No newline at end of file\n",
+    "firstChangedLine": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "YQpj"
+  }
+ },
+ {
+  "name": "edit-append-line",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": " 1 a\n 2 b\n+3 c",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,2 +1,3 @@\n a\n b\n+c\n",
+    "firstChangedLine": 3
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "YQpiCmMK"
+  }
+ },
+ {
+  "name": "edit-delete-all",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 only",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,1 +0,0 @@\n-only\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": ""
+  }
+ },
+ {
+  "name": "edit-wide-numbers",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "     ...\n  96 n96\n  97 n97\n  98 n98\n  99 n99\n-100 n100\n+100 hundred\n 101 n101\n 102 n102\n 103 n103\n 104 n104\n     ...",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -96,9 +96,9 @@\n n96\n n97\n n98\n n99\n-n100\n+hundred\n n101\n n102\n n103\n n104\n",
+    "firstChangedLine": 100
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "bjEKbjIKbjMKbjQKbjUKbjYKbjcKbjgKbjkKbjEwCm4xMQpuMTIKbjEzCm4xNApuMTUKbjE2Cm4xNwpuMTgKbjE5Cm4yMApuMjEKbjIyCm4yMwpuMjQKbjI1Cm4yNgpuMjcKbjI4Cm4yOQpuMzAKbjMxCm4zMgpuMzMKbjM0Cm4zNQpuMzYKbjM3Cm4zOApuMzkKbjQwCm40MQpuNDIKbjQzCm40NApuNDUKbjQ2Cm40NwpuNDgKbjQ5Cm41MApuNTEKbjUyCm41MwpuNTQKbjU1Cm41NgpuNTcKbjU4Cm41OQpuNjAKbjYxCm42MgpuNjMKbjY0Cm42NQpuNjYKbjY3Cm42OApuNjkKbjcwCm43MQpuNzIKbjczCm43NApuNzUKbjc2Cm43NwpuNzgKbjc5Cm44MApuODEKbjgyCm44MwpuODQKbjg1Cm44NgpuODcKbjg4Cm44OQpuOTAKbjkxCm45MgpuOTMKbjk0Cm45NQpuOTYKbjk3Cm45OApuOTkKaHVuZHJlZApuMTAxCm4xMDIKbjEwMwpuMTA0Cm4xMDUKbjEwNgpuMTA3Cm4xMDgKbjEwOQpuMTEwCm4xMTEKbjExMgpuMTEzCm4xMTQKbjExNQpuMTE2Cm4xMTcKbjExOApuMTE5Cm4xMjAK"
+  }
+ },
+ {
+  "name": "edit-not-found",
+  "materialized": {},
+  "result": {
+   "error": "Could not find the exact text in e.txt. The old text must match exactly including all whitespace and newlines."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-not-found-multi",
+  "materialized": {},
+  "result": {
+   "error": "Could not find edits[1] in e.txt. The oldText must match exactly including all whitespace and newlines."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-duplicate",
+  "materialized": {},
+  "result": {
+   "error": "Found 2 occurrences of the text in e.txt. The text must be unique. Please provide more context to make it unique."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-duplicate-multi",
+  "materialized": {},
+  "result": {
+   "error": "Found 2 occurrences of edits[1] in e.txt. Each oldText must be unique. Please provide more context to make it unique."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-empty-old",
+  "materialized": {},
+  "result": {
+   "error": "oldText must not be empty in e.txt."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-empty-old-multi",
+  "materialized": {},
+  "result": {
+   "error": "edits[1].oldText must not be empty in e.txt."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-overlap",
+  "materialized": {},
+  "result": {
+   "error": "edits[0] and edits[1] overlap in e.txt. Merge them into one edit or target disjoint regions."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-no-change",
+  "materialized": {},
+  "result": {
+   "error": "No changes made to e.txt. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-no-change-multi",
+  "materialized": {},
+  "result": {
+   "error": "No changes made to e.txt. The replacements produced identical content."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-crlf",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": " 1 one\n-2 two\n-3 three\n+2 2\n+3 3",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,3 +1,3 @@\n one\n-two\n-three\n+2\n+3\n",
+    "firstChangedLine": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "b25lDQoyDQozDQo="
+  }
+ },
+ {
+  "name": "edit-crlf-oldtext",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 one\n-2 two\n+1 1\n+2 2",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,2 +1,2 @@\n-one\n-two\n+1\n+2\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "MQ0KMg0K"
+  }
+ },
+ {
+  "name": "edit-bom",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 alpha\n+1 ALPHA\n 2 beta",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,2 +1,2 @@\n-alpha\n+ALPHA\n beta\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "77u/QUxQSEEKYmV0YQo="
+  }
+ },
+ {
+  "name": "edit-fuzzy-trailing-ws",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": " 1 keep   \n-2 foo  \n-3 bar\n+2 FOO\n+3 BAR\n 4 end  ",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,4 +1,4 @@\n keep   \n-foo  \n-bar\n+FOO\n+BAR\n end  \n",
+    "firstChangedLine": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "a2VlcCAgIApGT08KQkFSCmVuZCAgCg=="
+  }
+ },
+ {
+  "name": "edit-fuzzy-quotes",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 say “hello” and ‘bye’\n+1 said hi\n 2 other “line”  ",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,2 +1,2 @@\n-say “hello” and ‘bye’\n+said hi\n other “line”  \n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "c2FpZCBoaQpvdGhlciDigJxsaW5l4oCdICAK"
+  }
+ },
+ {
+  "name": "edit-fuzzy-dash-nbsp",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 a — b c\n+1 abc\n 2 untouched —",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,2 +1,2 @@\n-a — b c\n+abc\n untouched —\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "YWJjCnVudG91Y2hlZMKg4oCUCg=="
+  }
+ },
+ {
+  "name": "edit-fuzzy-nfkc",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 ＡＢＣ x\n+1 abc x",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,1 +1,1 @@\n-ＡＢＣ x\n+abc x\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "YWJjIHgK"
+  }
+ },
+ {
+  "name": "edit-fuzzy-duplicate",
+  "materialized": {},
+  "result": {
+   "error": "Found 2 occurrences of the text in e.txt. The text must be unique. Please provide more context to make it unique."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-missing-file",
+  "materialized": {},
+  "result": {
+   "error": "Could not edit file: nope.txt. Error code: ENOENT."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-directory",
+  "materialized": {},
+  "result": {
+   "error": "EISDIR: illegal operation on a directory, read"
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-empty-edits",
+  "materialized": {},
+  "result": {
+   "error": "Edit tool input is invalid. edits must contain at least one replacement."
+  },
+  "files": {}
+ },
+ {
+  "name": "edit-json-string-edits",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 a\n+1 b",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "Ygo="
+  }
+ },
+ {
+  "name": "edit-json-string-single",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 a\n+1 c",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,1 +1,1 @@\n-a\n+c\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "Ywo="
+  }
+ },
+ {
+  "name": "edit-single-object",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 1 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 a\n+1 d",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,1 +1,1 @@\n-a\n+d\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "ZAo="
+  }
+ },
+ {
+  "name": "edit-legacy-fields",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "Successfully replaced 2 block(s) in e.txt."
+    }
+   ],
+   "details": {
+    "diff": "-1 a\n-2 b\n+1 A\n+2 B",
+    "patch": "--- e.txt\n+++ e.txt\n@@ -1,2 +1,2 @@\n-a\n-b\n+A\n+B\n",
+    "firstChangedLine": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {
+   "e.txt": "QQpCCg=="
+  }
+ },
+ {
+  "name": "edit-aborted",
+  "materialized": {},
+  "result": {
+   "error": "Operation aborted"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-echo",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "hello\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "hello\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-no-output",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "(no output)"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-exit-code",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "out\n\n\nCommand exited with code 3"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "out\n",
+    "truncated": false,
+    "exit_code": 3,
+    "wall_time_seconds": 0
+   },
+   "isError": true
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-exit-no-output",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "(no output)\n\nCommand exited with code 1"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "",
+    "truncated": false,
+    "exit_code": 1,
+    "wall_time_seconds": 0
+   },
+   "isError": true
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-stderr",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\nb\nc\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "a\nb\nc\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-signal",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "before\n\n\nCommand exited with code 137"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "before\n",
+    "truncated": false,
+    "exit_code": 137,
+    "wall_time_seconds": 0
+   },
+   "isError": true
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-cwd",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "sub\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "sub\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-missing-cwd",
+  "materialized": {},
+  "result": {
+   "error": "Working directory does not exist: $CWD/does-not-exist\nCannot execute bash commands."
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-timeout",
+  "materialized": {},
+  "result": {
+   "error": "start\n\n\nCommand timed out after 0.5 seconds"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-timeout-quiet",
+  "materialized": {},
+  "result": {
+   "error": "Command timed out after 0.3 seconds"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-timeout-invalid",
+  "materialized": {},
+  "result": {
+   "error": "Invalid timeout: must be a finite number of seconds"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-timeout-negative",
+  "materialized": {},
+  "result": {
+   "error": "Invalid timeout: must be a finite number of seconds"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-timeout-max",
+  "materialized": {},
+  "result": {
+   "error": "Invalid timeout: maximum is 2147483.647 seconds"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-lines-truncated",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": {
+      "$long": 10056,
+      "head": "1001\n1002\n1003\n1004\n1005\n1006\n1007\n1008\n1009\n1010\n1011\n1012\n1013\n1014\n1015\n1016\n1017\n1018\n1019\n1020\n1021\n1022\n1023\n1024\n1025\n1026\n1027\n1028\n1029\n1030\n1031\n1032\n1033\n1034\n1035\n1036\n1037\n1038\n1039\n1040\n",
+      "tail": "972\n2973\n2974\n2975\n2976\n2977\n2978\n2979\n2980\n2981\n2982\n2983\n2984\n2985\n2986\n2987\n2988\n2989\n2990\n2991\n2992\n2993\n2994\n2995\n2996\n2997\n2998\n2999\n3000\n\n[Showing lines 1001-3000 of 3000. Full output: $TMPLOG]",
+      "fnv": "01c5b32af2614e04"
+     }
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": {
+      "$long": 9999,
+      "head": "1001\n1002\n1003\n1004\n1005\n1006\n1007\n1008\n1009\n1010\n1011\n1012\n1013\n1014\n1015\n1016\n1017\n1018\n1019\n1020\n1021\n1022\n1023\n1024\n1025\n1026\n1027\n1028\n1029\n1030\n1031\n1032\n1033\n1034\n1035\n1036\n1037\n1038\n1039\n1040\n",
+      "tail": "\n2961\n2962\n2963\n2964\n2965\n2966\n2967\n2968\n2969\n2970\n2971\n2972\n2973\n2974\n2975\n2976\n2977\n2978\n2979\n2980\n2981\n2982\n2983\n2984\n2985\n2986\n2987\n2988\n2989\n2990\n2991\n2992\n2993\n2994\n2995\n2996\n2997\n2998\n2999\n3000",
+      "fnv": "4f7099479a3d36b7"
+     },
+     "truncated": true,
+     "truncatedBy": "lines",
+     "totalLines": 3000,
+     "totalBytes": 13893,
+     "outputLines": 2000,
+     "outputBytes": 9999,
+     "lastLinePartial": false,
+     "firstLineExceedsLimit": false,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    },
+    "fullOutputPath": "$TMPLOG"
+   },
+   "structuredContent": {
+    "output": {
+     "$long": 13893,
+     "head": "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31\n32\n33\n34\n35\n36\n37\n38\n39\n40\n41\n42\n43\n44\n45\n46\n47\n48\n49\n50\n51\n52\n53\n54\n55\n56\n57\n58\n59\n60\n61\n62\n63\n64\n65\n66\n67\n68\n69\n70",
+     "tail": "2961\n2962\n2963\n2964\n2965\n2966\n2967\n2968\n2969\n2970\n2971\n2972\n2973\n2974\n2975\n2976\n2977\n2978\n2979\n2980\n2981\n2982\n2983\n2984\n2985\n2986\n2987\n2988\n2989\n2990\n2991\n2992\n2993\n2994\n2995\n2996\n2997\n2998\n2999\n3000\n",
+     "fnv": "37dc70a3f66812e0"
+    },
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-bytes-truncated",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": {
+      "$long": 51176,
+      "head": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000495\n000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000049",
+      "tail": "0000000000000000000000000999\n0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000\n\n[Showing lines 495-1000 of 1000 (50.0KB limit). Full output: $TMPLOG]",
+      "fnv": "b39b22e26f5be0bd"
+     }
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": {
+      "$long": 51105,
+      "head": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000495\n000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000049",
+      "tail": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999\n0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000",
+      "fnv": "92e24e3d540480d0"
+     },
+     "truncated": true,
+     "truncatedBy": "bytes",
+     "totalLines": 1000,
+     "totalBytes": 101000,
+     "outputLines": 506,
+     "outputBytes": 51105,
+     "lastLinePartial": false,
+     "firstLineExceedsLimit": false,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    },
+    "fullOutputPath": "$TMPLOG"
+   },
+   "structuredContent": {
+    "output": {
+     "$long": 101000,
+     "head": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001\n000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+     "tail": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000999\n0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000\n",
+     "fnv": "8419ec28a79bd2e6"
+    },
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-long-line",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": {
+      "$long": 51272,
+      "head": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\n[Showing last 50.0KB of line 1 (line is 58.6KB). Full output: $TMPLOG]",
+      "fnv": "59ee4f58e06d19a4"
+     }
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": {
+      "$long": 51200,
+      "head": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "fnv": "0d60ad330583c325"
+     },
+     "truncated": true,
+     "truncatedBy": "bytes",
+     "totalLines": 1,
+     "totalBytes": 60000,
+     "outputLines": 1,
+     "outputBytes": 51200,
+     "lastLinePartial": true,
+     "firstLineExceedsLimit": false,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    },
+    "fullOutputPath": "$TMPLOG"
+   },
+   "structuredContent": {
+    "output": {
+     "$long": 60000,
+     "head": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "tail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "fnv": "2c952c2aa1442aa5"
+    },
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-structured-big",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": {
+      "$long": 20062,
+      "head": "abcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\n",
+      "tail": "cdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\n\n[Showing lines 148001-150000 of 150000. Full output: $TMPLOG]",
+      "fnv": "bf59f5069059ddd6"
+     }
+    }
+   ],
+   "details": {
+    "truncation": {
+     "content": {
+      "$long": 19999,
+      "head": "abcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\n",
+      "tail": "\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi",
+      "fnv": "48339567029e1dad"
+     },
+     "truncated": true,
+     "truncatedBy": "lines",
+     "totalLines": 150000,
+     "totalBytes": 1500000,
+     "outputLines": 2000,
+     "outputBytes": 19999,
+     "lastLinePartial": false,
+     "firstLineExceedsLimit": false,
+     "maxLines": 2000,
+     "maxBytes": 51200
+    },
+    "fullOutputPath": "$TMPLOG"
+   },
+   "structuredContent": {
+    "output": {
+     "$long": 1048610,
+     "head": "abcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\n",
+     "tail": "abcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\nabcdefghi\n",
+     "fnv": "c84f8400ecd24c06"
+    },
+    "truncated": true,
+    "full_output_path": "$TMPLOG",
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-invalid-utf8",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a�b\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "a�b\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-ansi-kept",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "\u001b[31mred\u001b[0m\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "\u001b[31mred\u001b[0m\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-crlf",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\r\nb\r\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "a\r\nb\r\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-env",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "sess-1|/s/file.jsonl|prov|mod-1|high\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "sess-1|/s/file.jsonl|prov|mod-1|high\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-env-no-ctx",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "[]\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "[]\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-prefix",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "hi\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "hi\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-custom-shell-missing",
+  "materialized": {},
+  "result": {
+   "error": "Custom shell path not found: /nonexistent/shell"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-custom-shell",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "sh\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "sh\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-aborted-before",
+  "materialized": {},
+  "result": {
+   "error": "Command aborted"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-aborted-during",
+  "materialized": {},
+  "result": {
+   "error": "started\n\n\nCommand aborted"
+  },
+  "files": {}
+ },
+ {
+  "name": "bash-background-child",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "done\n"
+    }
+   ],
+   "details": null,
+   "structuredContent": {
+    "output": "done\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   },
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-basic",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "sub/b.txt:2: foo\na.txt:1: foo\na.txt:3: foo bar"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-ignore-case",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:1: Foo\na.txt:2: foo\na.txt:3: FOO"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-literal",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:1: a.b"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-regex",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:1: a.b\na.txt:2: axb"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-invalid-regex",
+  "materialized": {},
+  "result": {
+   "error": "rg: regex parse error:\n    (?:()\n    ^\nerror: unclosed group"
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-glob",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.ts:1: hit\nsrc/c.ts:1: hit"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-glob-path",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "src/d.js:1: hit\nsrc/c.ts:1: hit"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-context",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt-2- 2\na.txt-3- 3\na.txt:4: match\na.txt-5- 5\na.txt-6- 6"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-context-edges",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:1: match\na.txt-2- 2\na.txt-2- 2\na.txt:3: match\na.txt-4- "
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-limit",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:1: x1\na.txt:2: x2\n\n[2 matches limit reached. Use limit=4 for more, or refine pattern]"
+    }
+   ],
+   "details": {
+    "matchLimitReached": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-limit-exact",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:1: x1\n\n[1 matches limit reached. Use limit=2 for more, or refine pattern]"
+    }
+   ],
+   "details": {
+    "matchLimitReached": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-long-line",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:1: needle zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz... [truncated]\n\n[Some lines truncated to 500 chars. Use read tool to see full lines]"
+    }
+   ],
+   "details": {
+    "linesTruncated": true
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-no-match",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "No matches found"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-missing-path",
+  "materialized": {},
+  "result": {
+   "error": "Path not found: $CWD/nope"
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-file-path",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "one.txt:2: world"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-hidden",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": ".hidden:1: secret\nvisible:1: secret"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-gitignore",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "kept.txt:1: word"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-ignore-file",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "b.txt:1: word"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-binary",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "t.txt:1: word"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-crlf",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt:2: two"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-crlf-context",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt-1- one\na.txt:2: two\na.txt-3- three"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "grep-aborted",
+  "materialized": {},
+  "result": {
+   "error": "Operation aborted"
+  },
+  "files": {}
+ },
+ {
+  "name": "find-basename",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a.txt\nsub/c.txt"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-smart-case",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "A.TXT\nb.txt"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-case-sensitive",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "A.TXT"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-doublestar",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a/b/z.json\na/y.json\nx.json"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-full-path",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "src/a.spec.ts\nsrc/deep/b.spec.ts"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-directories",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "pkg/\npkg2/"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-hidden",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": ".env\nvisible.env"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-gitignore",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "b.log"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-limit",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "1.txt\n3.txt\n\n[2 results limit reached. Use limit=4 for more, or refine pattern]"
+    }
+   ],
+   "details": {
+    "resultLimitReached": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-limit-exact",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "1.txt\n\n[1 results limit reached. Use limit=2 for more, or refine pattern]"
+    }
+   ],
+   "details": {
+    "resultLimitReached": 1
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-none",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "No files found matching pattern"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "find-missing-path",
+  "materialized": {},
+  "result": {
+   "error": "[fd error]: Search path '$CWD/nope' is not a directory.\n[fd error]: No valid search paths given."
+  },
+  "files": {}
+ },
+ {
+  "name": "find-file-path",
+  "materialized": {},
+  "result": {
+   "error": "[fd error]: Search path '$CWD/f.txt' is not a directory.\n[fd error]: No valid search paths given."
+  },
+  "files": {}
+ },
+ {
+  "name": "find-bad-glob",
+  "materialized": {},
+  "result": {
+   "error": "[fd error]: error parsing glob '[': unclosed character class; missing ']'"
+  },
+  "files": {}
+ },
+ {
+  "name": "find-aborted",
+  "materialized": {},
+  "result": {
+   "error": "Operation aborted"
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-basic",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "_u\n.hidden\n10\n2\nA.txt\nb.txt\ndir/"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-path",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "one\ntwo/"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-limit",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\nb\n\n[2 entries limit reached. Use limit=4 for more]"
+    }
+   ],
+   "details": {
+    "entryLimitReached": 2
+   },
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-limit-exact",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "a\nb"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-empty",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "(empty directory)"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-missing",
+  "materialized": {},
+  "result": {
+   "error": "Path not found: $CWD/nope"
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-not-dir",
+  "materialized": {},
+  "result": {
+   "error": "Not a directory: $CWD/f"
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-broken-symlink",
+  "materialized": {},
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "link\nreal"
+    }
+   ],
+   "details": null,
+   "structuredContent": null,
+   "isError": false
+  },
+  "files": {}
+ },
+ {
+  "name": "ls-aborted",
+  "materialized": {},
+  "result": {
+   "error": "Operation aborted"
+  },
+  "files": {}
+ }
+]
