@@ -9,6 +9,8 @@
     "oino.azure/extension.json": "sha256:589e2dbca66a62a3e7549f8f1aac895c251c97e9298f9e543c9a8624b26dfd87",
     "oino.bedrock/component.wasm": "sha256:d5bf1ef504dec0f90a2f389a7b82d8411089bc3507e976a809f857eba80d0141",
     "oino.bedrock/extension.json": "sha256:f793184004b4955b61ad6cfa2fcdfb3aa37aa5de0133e960e1bd361dd69bc4ea",
+    "oino.fixture.agent-probe/component.wasm": "sha256:9b3bd83835e6ce454bfa106f5bb55efeeb0eef2f384513c7f8b89ccaab3e2fb8",
+    "oino.fixture.agent-probe/extension.json": "sha256:58c92507853574aac74be864ea5011dcf01c74322c4fe047e14a1ed746cd08f6",
     "oino.fixture.async-probe/component.wasm": "sha256:4a06aa23885d1391e8e31c25083c5abe36b53cff4190ea1647918e25683144da",
     "oino.fixture.async-probe/extension.json": "sha256:ddc7434737bb48f673f31be20c337c6af35a4a7041835b3feb3ba70c9eeff72d",
     "oino.fixture.echo/component.wasm": "sha256:4b1ca62d22d925381b77c7fd3230c5a71b81cc6b53d34ad2bc2bc2a1a03e14bd",
