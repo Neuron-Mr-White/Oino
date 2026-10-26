@@ -62,6 +62,31 @@ impl AgentSession {
             self.dequeue_delivered(&user_text(message));
         }
 
+        let nested = match event {
+            AgentEvent::MessageStart {
+                message: AgentMessage::ToolResult(result),
+            } => self
+                .attach_nested_record(result, false)
+                .map(|m| AgentEvent::MessageStart {
+                    message: AgentMessage::ToolResult(m),
+                }),
+            AgentEvent::MessageEnd {
+                message: AgentMessage::ToolResult(result),
+            } => self.attach_nested_record(result, true).map(|m| {
+                self.inner
+                    .agent
+                    .replace_last_message(AgentMessage::ToolResult(m.clone()));
+                AgentEvent::MessageEnd {
+                    message: AgentMessage::ToolResult(m),
+                }
+            }),
+            AgentEvent::AgentEnd { .. } => {
+                self.clear_nested();
+                None
+            }
+            _ => None,
+        };
+        let event = nested.as_ref().unwrap_or(event);
         let replacement = self.emit_extension_event(event).await;
         if let Some(message) = &replacement {
             self.inner.agent.replace_last_message(message.clone());

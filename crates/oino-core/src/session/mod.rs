@@ -12,6 +12,7 @@ mod hooks;
 mod host;
 mod listener;
 mod model;
+mod nested;
 mod prompt;
 mod retry;
 mod stats;
@@ -216,6 +217,7 @@ pub(crate) struct Inner {
     pub(crate) book: Mutex<RunBook>,
     pub(crate) cancels: Mutex<Cancels>,
     pub(crate) tools: Mutex<tools::ToolState>,
+    pub(crate) nested: Mutex<nested::NestedState>,
     pub(crate) scoped_models: Mutex<Vec<oino_models::resolver::ScopedModel>>,
     pub(crate) idle: watch::Sender<bool>,
     pub(crate) cwd: PathBuf,
@@ -327,6 +329,7 @@ impl AgentSession {
             book: Mutex::new(RunBook::default()),
             cancels: Mutex::new(Cancels::default()),
             tools: Mutex::new(tool_state),
+            nested: Mutex::new(nested::NestedState::default()),
             scoped_models: Mutex::new(config.scoped_models),
             idle,
             cwd: config.cwd,

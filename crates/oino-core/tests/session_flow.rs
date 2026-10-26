@@ -417,3 +417,114 @@ async fn manual_compaction_and_tree_navigation() {
     assert_eq!(navigated.editor_text.as_deref(), Some("question 1"));
     assert!(!navigated.cancelled);
 }
+
+struct Outer {
+    meta: oino_agent::ToolDefinitionMeta,
+    session: Arc<std::sync::OnceLock<AgentSession>>,
+}
+
+impl oino_agent::AgentTool for Outer {
+    fn meta(&self) -> &oino_agent::ToolDefinitionMeta {
+        &self.meta
+    }
+
+    fn execute(
+        &self,
+        call: oino_agent::ToolInvocation,
+        _updates: oino_agent::UpdateSink,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> futures::future::BoxFuture<'static, Result<AgentToolResult, oino_agent::ToolError>> {
+        let session = self.session.get().cloned().unwrap();
+        Box::pin(async move {
+            let inner = session
+                .execute_nested_tool(&call.tool_call_id, "inner", args(json!({"x": 1})), cancel)
+                .await;
+            Ok(AgentToolResult::text(format!(
+                "outer saw {}",
+                serde_json::to_string(&inner.result.content).unwrap()
+            )))
+        })
+    }
+}
+
+#[tokio::test]
+async fn nested_tool_calls_are_recorded() {
+    let provider = FauxProvider::new(vec![
+        FauxResponse::ToolCalls(vec![("c1".into(), "outer".into(), args(json!({})))]),
+        FauxResponse::Text("done".into()),
+    ]);
+    let handle = Arc::new(std::sync::OnceLock::new());
+    let schema = json!({"type": "object"});
+    let outer = Arc::new(Outer {
+        meta: oino_agent::ToolDefinitionMeta::new("outer", "outer", "calls inner", schema.clone()),
+        session: Arc::clone(&handle),
+    });
+    let inner_extension = FakeExtension::new(
+        "ext",
+        Registration {
+            tools: vec![ToolSpec {
+                name: "inner".into(),
+                label: "inner".into(),
+                description: "inner".into(),
+                parameters: schema,
+                prompt_snippet: None,
+                prompt_guidelines: Vec::new(),
+                exposure: oino_core::extensions::api::ToolExposure::Direct,
+                default_active: None,
+                execution_mode: None,
+                namespace: None,
+                annotations: None,
+                reaches_tools: None,
+                output_schema: None,
+                prepare_arguments: false,
+            }],
+            ..Registration::default()
+        },
+    )
+    .on_tool(|_, args| Ok(AgentToolResult::text(format!("inner got {}", args["x"]))));
+    let session = TestSession {
+        extensions: vec![Arc::new(inner_extension)],
+        tools: vec![oino_core::session::ToolEntry::builtin(
+            outer,
+            None,
+            Vec::new(),
+        )],
+        ..TestSession::default()
+    }
+    .build(provider)
+    .await;
+    handle.set(session.clone()).ok();
+    let events = session.subscribe();
+    run(&session, "go").await;
+    let result = session
+        .messages()
+        .into_iter()
+        .find_map(|m| match m {
+            AgentMessage::ToolResult(r) => Some(r),
+            _ => None,
+        })
+        .unwrap();
+    let nested = result.nested_calls.unwrap();
+    assert_eq!(nested.calls.len(), 1);
+    assert_eq!(nested.calls[0].id, "c1/1");
+    assert!(nested.complete);
+    let parents: Vec<_> = events
+        .drain_now()
+        .into_iter()
+        .filter_map(|e| match e {
+            ClientEvent::Session(AgentSessionEvent::ToolExecutionEnd {
+                tool_call_id,
+                parent_tool_call_id,
+                ..
+            }) => Some((tool_call_id, parent_tool_call_id)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        parents,
+        vec![
+            ("c1/1".to_owned(), Some("c1".to_owned())),
+            ("c1".to_owned(), None)
+        ]
+    );
+}

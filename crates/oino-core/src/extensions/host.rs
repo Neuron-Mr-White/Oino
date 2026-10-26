@@ -217,6 +217,15 @@ pub enum HostOp {
         /// Fields.
         params: oino_ai::JsonObject,
     },
+    /// pi 1.4 `ctx.executeTool`: runs a callable tool nested under `parent_tool_call_id`.
+    ExecuteTool {
+        /// Running tool call that makes the call.
+        parent_tool_call_id: String,
+        /// Tool name.
+        name: String,
+        /// Arguments.
+        args: oino_ai::JsonObject,
+    },
     /// Invoke another extension's command (`command-invoke`).
     InvokeCommand {
         /// Invocation name.

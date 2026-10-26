@@ -308,6 +308,29 @@ impl AgentSession {
                 self.inner.ui.fire(Some(extension), &method, params);
                 Ok(JsonValue::Null)
             }
+            HostOp::ExecuteTool {
+                parent_tool_call_id,
+                name,
+                args,
+            } => {
+                let outcome = self
+                    .execute_nested_tool(
+                        &parent_tool_call_id,
+                        &name,
+                        args,
+                        tokio_util::sync::CancellationToken::new(),
+                    )
+                    .await;
+                let mut value = json!({
+                    "toolCall": {"type": "toolCall", "id": outcome.tool_call.id, "name": outcome.tool_call.name, "arguments": outcome.tool_call.arguments},
+                    "result": outcome.result,
+                    "isError": outcome.is_error,
+                });
+                if let Some(duration) = outcome.duration_ms {
+                    value["durationMs"] = json!(duration);
+                }
+                Ok(value)
+            }
             HostOp::InvokeCommand { name, args } => {
                 self.invoke_command(&name, &args, command_context).await
             }
