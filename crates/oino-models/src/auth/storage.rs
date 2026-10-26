@@ -615,6 +615,28 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_writers_do_not_lose_updates() {
+        let dir = temp_dir();
+        let path = dir.path().join("auth.json");
+        let handles: Vec<_> = (0..8)
+            .map(|i| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    let storage = AuthStorage::open(&path);
+                    storage
+                        .set(&format!("p{i}"), &AuthCredential::api_key(format!("k{i}")))
+                        .unwrap();
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        let storage = AuthStorage::open(&path);
+        assert_eq!(storage.list().unwrap().len(), 8);
+    }
+
+    #[test]
     fn runtime_keys_overlay() {
         let storage =
             AuthStorage::in_memory([("a".to_owned(), AuthCredential::api_key("stored"))].into());
