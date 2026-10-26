@@ -2,7 +2,8 @@
 
 Owner: `unipi-core` (work id `unipi-utility`). Format per `docs/dev/v1/README.md` §5:
 section, change, reason, impact. Scope: `extensions/unipi/utility` (`unipi.utility`,
-unipi-port §3.2, audit-unipi §2.5). To be linked from `docs/dev/v1/deviations/` (request U8).
+unipi-port §3.2, audit-unipi §2.5). Rows #1–#12 are folded into the appendix of `docs/dev/v1/unipi-port.md` (1.0.0-alpha.2, U8
+done); open requests are tracked in `docs/dev/v1/deviations/unipi-core.md`.
 
 ## Contract differences
 
@@ -31,5 +32,5 @@ unipi-port §3.2, audit-unipi §2.5). To be linked from `docs/dev/v1/deviations/
 | U4 | frontends + host | Attachments: either `insertEditorToken` with a frontend-side file read, or a host read capability for a user-pasted path (scoped, not `~/.oino`), so drops from arbitrary folders attach. Frontends must emit `oino_editor` `changed`/`tokenBackspace` (TUI/desktop do not yet) and support `editor-set`. |
 | U5 | core-runtime | A `move` host op: re-key `trust.json` and move `<sessionsRoot>/--old--` → `--new--` for the configured agent/session dir (`control.move-project-state{oldRoot,newRoot,dryRun}` → log lines). |
 | U6 | core-runtime | Host-side stale-file GC for `~/.oino/tmp/**` and per-extension `tool-results` (D10), or a service the utility's `/unipi:cleanup` can call. |
-| U7 | core-runtime | `models.credential-for` in the core bridge (image keys from logins); consumed with an env fallback. |
-| U8 | docs owner | Link this file as `docs/dev/v1/deviations/unipi-utility.md` and flip STATUS `utility` to 🟡 (host gaps U1–U7; frontends must call `render`, send editor intents and support `editor-set`). |
+| U7 | core-runtime | **Done (frontend-cmds #9):** `models.credential-for` in the core bridge (image keys from logins); consumed with an env fallback. |
+| U8 | docs owner | **Done (integration-2):** folded into unipi-port; STATUS `utility` row. |

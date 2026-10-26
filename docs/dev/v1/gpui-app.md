@@ -88,6 +88,9 @@ background pre-compilation of components into `~/.oino/cache/wasmtime/`, show on
 
 ## 5. UX specification (ZCode-inspired, Oino-specific)
 
+> **Superseded** by [design.md](design.md) (ZCode + unipi design parity, Amendment A1); see the
+> appendix (G1). Kept for history.
+
 ### 5.1 Shell (desktop)
 
 ```text
@@ -197,3 +200,23 @@ gpui-desktop.
   4 concurrent streaming sessions at ≥ 100 fps on the Linux dev machine.
 - Mobile on a physical Android and iOS device: pair with desktop serve, attach to a live
   session, answer a dialog first (desktop dialog dismisses), send a prompt, see streaming.
+
+---
+
+## Appendix: settled deviations (folded at 1.0.0-alpha.2)
+
+Sources: `deviations/gpui-desktop.md`, `deviations/gpui-mobile.md`, the design-desktop / design-mobile status files.
+
+| # | Section | Change | Reason |
+|---|---|---|---|
+| G1 | §5 | The desktop and mobile UX is specified by [design.md](design.md) (ZCode + unipi parity, Amendment A1: unipi warm OLED palette, embedded browser, PTY terminal, mascot window); §5 here is superseded. Parity state lives in `apps/oino-desktop/DESIGN-STATUS.md`, `apps/oino-mobile/DESIGN-STATUS.md` and [design/review-desktop.md](design/review-desktop.md) (Resolution section). | design-spec / design-desktop / design-mobile. |
+| G2 | §2 | No `oino-protocol` / `oino-view` dependency: wire types come from `oino-core` (`events`, `ui`) and `oino-client`; `oino_ui::model` holds GUI view models (rows with versions + `RowChange`, UI state, dialogs, OUS, palette, sessions). | `oino-protocol` was not created; `oino-view` is TUI-shaped. |
+| G3 | §3.1 | No `SessionHub`: `oino_ui::host::SessionHost` is implemented by `EmbeddedHost` (one `Services` + `WasmRuntime` per cwd, one `InProcessBackend` per session) and `DemoHost` (`--demo`); the mobile app compiles both by source (`#[path]`). No embedded `oino serve`. Panel actions, shortcuts, completions, editor intents, the settings hub and sign-in use `oino_client::FrontendApi`. | No hub in `oino-client`. |
+| G4 | §5.1 | The shell is hand-built from gpui-kit primitives; the conversation is a GPUI `list` (variable-height virtualisation), the palette a `uniform_list`; panes are cached views driven by a scoped, idle-stopping ticker. | Density and re-render control across gpui-pre bumps. |
+| G5 | D17 | gpui-kit `=0.8.1` / gpui-pre `=0.3.10` (needed by gpui-webview 0.8.1); key bindings use `cmd-` on macOS and `ctrl-` elsewhere (0.3.10 dropped `secondary-`). The embedded browser runs Linux on X11/XWayland unless "Native Wayland" is set. | Toolkit versions. |
+| G6 | §2, §4 (D16) | **Mobile embeds core**: `oino-mobile` links `oino-core`, `oino-wasm-host` (Cranelift), `oino-client` and `oino-bundle` and runs every bundled component on the phone. Hosts list and pairing (`oino://` links, `mobile.json`) exist, but connecting needs `oino serve` + an RPC transport. | Verified on Android 15 (arm64). |
+| G7 | §4 | iOS cannot JIT: components need wasmtime Pulley, which `oino-wasm-host` does not select yet, so iOS device builds load no providers. Simulator builds run on host `mac` via `apps/oino-mobile/scripts/ios-remote.sh --simulator`. | Platform limit. |
+| G8 | §2 | `gpui-mobile` is vendored from longbridge/gpui-mobile `c24a130` with the patches in `apps/vendor/gpui-mobile/VENDOR.md` (rlib only, no offscreen, iOS asset hook and feature gates, Android insets, `platform_info` for gpui-pre 0.3.10, keyboard on tap). | One gpui-pre version. |
+| G9 | §4 | iOS host is a full-screen GPUI window (`main.m` + `CADisplayLink`); Android host is `GpuiActivity` (NativeActivity, `targetSdk 36`, edge-to-edge insets). Phone layout on every size (no tablet layout); Android exits the process when the activity ends. | One layout for both platforms; gpui-pre executor assertions. |
+| G10 | §6 | Release packages are built by `cargo xtask remote-build <host\|local>` (STATUS §5); the entry points for development builds are `apps/oino-desktop/scripts/build.sh` and `apps/oino-mobile/scripts/build.sh` (no `cargo xtask desktop`/`mobile`). | Build hosts and SSH-detached runs. |
+| G11 | — | Demo backends: desktop `--demo` with `OINO_DESKTOP_*` scene variables (screenshots, perf), mobile marker file `<agent>/mobile-demo`. | Reproducible screenshots without a provider. |

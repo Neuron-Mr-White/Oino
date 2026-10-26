@@ -1,25 +1,23 @@
 # Deviations: integration
 
-Owner: `integration` (P4/P5 of the v1.alpha plan). Format per README §5.
+Owner: `integration` (P4/P5 of the v1.alpha plan; `integration-2` for the follow-up round).
+Rows #1–#4 and #6–#8 of 1.0.0-alpha.1 are folded into
+[extension-api.md](../extension-api.md#appendix-settled-deviations-folded-at-100-alpha2), #5 into
+[runtime.md](../runtime.md#appendix-settled-deviations-folded-at-100-alpha2), #10–#11 and the
+alpha.2 changes into [architecture.md](../architecture.md#appendix-settled-deviations-folded-at-100-alpha2);
+#9 (ACP `--model`) was resolved by frontend-cmds #12, #12 (version alpha.1) is superseded by N4.
 
-## Changes made while integrating
+## 1.0.0-alpha.2 (integration-2)
 
-| # | Section | Change | Reason | Impact |
-|---|---|---|---|---|
-| 1 | D14, extension-api §8 | The `oino` binary loads the bundle through `crates/oino/src/loader.rs`: bundled packages (providers first, then unipi `LOAD_ORDER`, then others), then `~/.oino/extensions`, trust-gated `.oino/extensions`, then `-e <package dir>`; a later package with an existing id replaces it **in place** (keeps load order). `OINO_BUNDLED=0` drops the bundled set (used by the `crates/oino` tests). | modes request "compose `CliLoader` with `CoreLoader`"; tests must not change output when unipi is bundled. | Print/JSON/RPC/TUI/ACP load the same set. Resolves modes deviations #13 (ACP, interactive) and #14 (`-e` packages). |
-| 2 | extension-api §8 | `oino-bundle` sorts `BUNDLED` by load rank (build-time copy of `unipi_kit::suite::LOAD_ORDER` + `app-bridge`) and also embeds `README.md` + `docs/*.md` as `DOCS`, extracted to `~/.oino/bundled/oino.docs@<version>-<hash8>/` = `{docs_root}` of the system prompt (runtime §9.4). | The bundle was alphabetical (`unipi.core` must load first); the docs root pointed at the agent dir. | The CLI, ACP and Desktop pass the extracted docs dir as `docs_root`. |
-| 3 | unipi-port §1 | `unipi_kit::suite` lists `unipi.app-bridge` (last in `LOAD_ORDER`, namespace `app-bridge`); removed from `NOT_PORTED` (unipi-integrations R9). | app-bridge was ported. | Info screen / suite lookups know the package. |
-| 4 | extension-api §4.4 | `AuthHeaderMode` accepts any header name (e.g. `"x-api-key"`) as informational (`None`: the component places the key). | Bundled anthropic / openai-compat failed `init` with `unknown authHeader "x-api-key"` (gpui-desktop R2). | Both components load. |
-| 5 | runtime §4 | `Services::create` refreshes `models: "dynamic"` providers **concurrently** with a 5 s timeout per provider, skips providers that need a key and have none, and skips the refresh entirely with `--offline` / `OINO_OFFLINE` (`ResourceFlags::offline`). | Startup with the bundle took 3–4 s of serial network round trips. | Startup ≈ 0.3–1 s with warm compile cache. `--offline` is now honoured (modes deviation #17 partly). |
-| 6 | extension-api §3 `control` | Core serves `get-settings`, `models-list`, `scoped-models`, `routed-model`, `session-stats`, `is-project-trusted` (new `HostOp`s). | Unipi components call them; the bridge returned `unsupported`. | Still unsupported: `run-state`, `shutdown`, `system-prompt-options`, `new-session`, `fork`, `switch-session`, `reload`, `running-bash`, `bash-detach`. |
-| 7 | extension-api §3 `ui` | The core bridge serves panels (`panel-open/update/close` → retained `openPanel`/`updatePanel`/`closePanel`, generated id `<ext>/panel-<n>` when the spec has no `panelId`) and device fire-and-forget requests (`os-notify`, `open-url`, `clipboard-write-text`). | `/unipi:info`, btw, kanboard board, work tray, MCP/updater panels failed with `ui panels is not supported`. | `editor-*`, `clipboard-read-image`, `edit-externally` were added by frontend-cmds (#10). |
-| 8 | extension-api §3 `models` | Core serves `models.complete` (model `provider/id` or the session model, credentials and virtual routing as for summaries, no retry events, no cache writes) and `models.summarize-default` (core's compaction summariser on the session model). | jev decisions, compactor `llm`, notify recap, web summaries, long-horizon judges. | `models.stream` and `credential-for` were added by frontend-cmds (#9); `classify`, `generate-image` remain unsupported; usage is not recorded as `ext:<id>` entries. |
-| 9 | modes §6 | `oino --mode acp` is wired (`crates/oino/src/modes/acp.rs`, snippet from deviations/acp.md) with the full extension set; `--model` is not applied to ACP sessions (settings default; clients pick via `session/set_config_option`). | Resolving `--model` needs a model registry before the first session's services exist. | Resolved by frontend-cmds #12 (`SessionDefaults::model_resolver`). |
-| 10 | architecture §8, D1 | `legacy/` and the pre-v1 crates still in the root workspace (`oino-types`, `oino-agent-loop`, `oino-auth`, `oino-env`, `oino-provider-catalog`, `oino-resource`) and `extensions/built-in/` are deleted; root members are `crates/*` + `xtask` (edition 2024, resolver 3); `rust-toolchain.toml` added. | Nothing depended on them. | — |
-| 11 | quality §6 | CI (`.github/workflows/ci.yml`) runs on `v1-alpha`: fmt (3 workspaces), `cargo xtask wasm` + checksum diff, wasm32 clippy, native extension tests, every `extensions/unipi/*/harness/run.sh`, root clippy/test/doc/wit, install smoke, apps clippy/test, release builds of `oino` + `oino-kanboard`. Remote builds on `coffee`/`desmondgiam` are not in CI. | — | — |
-| 12 | release | Versions bumped to `1.0.0-alpha.1` (root crates, extension SDK/providers/fixtures, apps, Android/iOS app version); unipi components keep `3.0.0`, provider manifests `1.0.0`. | — | — |
+| # | Change | Reason |
+|---|---|---|
+| I2-1 | Settled rows of every `deviations/*.md` (and `extensions/unipi/utility/DEVIATIONS.md`) moved into an appendix of the spec they amend; the deviation files keep only open items (README §5 rule 5). `gpui-app.md` §5 points to `design.md`. | P5 fold. |
+| I2-2 | Version `1.0.0-alpha.2` everywhere (architecture appendix N4); every component rebuilt with rustc 1.99.0 and `extensions/dist/checksums.json` regenerated (also picks up the settings store in the components core-settings did not rebuild). | Release bump. |
+| I2-3 | Root crates switched to `[lints] workspace = true`, root `thiserror = "2"` (N3; closes core-types-session W2 and kanboard RK4). | quality §2. |
+| I2-4 | User docs (`docs/*.md`) updated for package manager, `oino update`, `/login`, providers-more, desktop features, `unipi.utility`, TUI regular mode, ACP `--model`. | Docs matched alpha.1. |
 
-## Open requests (not resolved here)
+## Open
 
-See [STATUS.md](../STATUS.md) §4 for the consolidated list (settings write path, nested agents,
-turn arbiter, `_oino/*` frontend commands, `oino serve`, `unipi.utility`).
+- `cargo xtask layering`, `cargo deny`, golden e2e suite `tests/e2e/` + `PARITY.md`, criterion
+  benches (quality §§1, 5, 7).
+- Release: alpha.2 artifacts, signing, tag (STATUS §7–§8).

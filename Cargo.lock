@@ -2269,7 +2269,7 @@ dependencies = [
 
 [[package]]
 name = "oino"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -2302,7 +2302,7 @@ dependencies = [
 
 [[package]]
 name = "oino-acp"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "agent-client-protocol",
  "futures",
@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "oino-agent"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
@@ -2341,7 +2341,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "indexmap 2.14.0",
  "proptest",
@@ -2352,7 +2352,7 @@ dependencies = [
 
 [[package]]
 name = "oino-bundle"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "serde_json",
  "sha2",
@@ -2363,7 +2363,7 @@ dependencies = [
 
 [[package]]
 name = "oino-client"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "futures",
  "oino-agent",
@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "oino-core"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "futures",
  "ignore",
@@ -2405,7 +2405,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-api"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "futures",
  "oino-ai",
@@ -2421,7 +2421,7 @@ dependencies = [
 
 [[package]]
 name = "oino-kanboard"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2443,7 +2443,7 @@ dependencies = [
 
 [[package]]
 name = "oino-models"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "futures",
  "globset",
@@ -2459,7 +2459,7 @@ dependencies = [
 
 [[package]]
 name = "oino-resources"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "globset",
  "ignore",
@@ -2476,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "oino-rpc"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "futures",
  "oino-agent",
@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "oino-session"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "indexmap 2.14.0",
  "oino-ai",
@@ -2506,7 +2506,7 @@ dependencies = [
 
 [[package]]
 name = "oino-settings"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "dirs",
  "indexmap 2.14.0",
@@ -2520,7 +2520,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tools"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -2546,7 +2546,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tui"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "base64 0.22.1",
  "crossterm",
@@ -2574,7 +2574,7 @@ dependencies = [
 
 [[package]]
 name = "oino-view"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "indexmap 2.14.0",
  "oino-agent",
@@ -2588,7 +2588,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 dependencies = [
  "base64 0.22.1",
  "bytes",

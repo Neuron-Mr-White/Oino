@@ -1,46 +1,12 @@
 # Deviations: unipi-context
 
-Owner: `unipi-context`. Format per README §5: section, change, reason, impact.
+Settled rows #1–#23 are folded into [unipi-port.md](../unipi-port.md#appendix-settled-deviations-folded-at-100-alpha2) (1.0.0-alpha.2).
 
-Scope: `extensions/unipi/{workflow,skill-registry,dream,compactor,memory}` (`unipi.workflow`,
-`unipi.skill-registry`, `unipi.dream`, `unipi.compactor`, `unipi.memory`) and the wasm-host
-harness `extensions/unipi/workflow/harness` (all five components). The batch membership
-follows unipi-port §1 (workflow, not utility; utility is owned by unipi-core).
-
-## Contract differences
-
-| # | Section | Change | Reason | Impact |
-|---|---|---|---|---|
-| 1 | unipi-port §3.19, audit §2.1 (settings) | `permission.mode` (project file) and saved rules written by the gate (`Always allow`, Alt+M, `/unipi:permission <mode>`) go to `extensionSettings.permission` of the settings file of their scope through `registry.set-extension-setting`, like unipi. Rules are read per file and concatenated (global ++ project) instead of the merged value (arrays replace). The old stores `/ext-workspace/<wsid>/permission.json` / `/ext-global/permission.json` are imported once at `session_start` and removed; they stay the fallback layer when a write is refused (untrusted project); a hub edit of `mode` clears a fallback project mode. | Arrays do not merge across layers. | — |
-| 2 | audit §2.1 (approval prompt) | The prompt is the `approval` dialog: `allow_once` / `allow_always` / `deny` (reject_once) / `deny_note` (reject_once + `feedback`); a `deny_note` answer without feedback asks with `input` as unipi did. Labels and title text are unipi's. | ui-protocol §4.3. | — |
-| 3 | audit §2.1 (plan review) | The review overlay is a `custom` dialog: markdown plan (side by side `split` when both `## Summary` and `## Implementation` exist), three buttons `approve` / `keep` / `discard`; a frontend that cannot host it degrades to the unipi `select`. Scroll/focus keys are frontend-owned. | OUS replaces the TUI component. | — |
-| 4 | audit §2.1 (kanboard CLI) | The board-CLI allowance also accepts `oino-kanboard` (`--actor agent`). | unipi-port §3.16 renames the binary. | — |
-| 5 | audit §2.1 (`UNIPI_DEBUG_PERMISSION`) | Debug logging is the setting `permission.debug` → `logs/permission.log` (same for `memory.debug` → `logs/memory.log`, `compactor.debug` → `logs/compactor-debug.json`). | unipi-port §2.3. | — |
-| 6 | audit §2.6 (vault) | The vault is `~/.oino/skill-vault` (manifest `fs.paths` alias `skill-vault`, read). `UNIPI_SKILL_VAULT` is not read. The per-skill states written by the skill editor go to `extensionSettings.skills.states` of the global or project file, the editor's proxy toggle to the global `proxy`. The old stores (`/ext-global/states.json`, `/ext-workspace/<wsid>/states.json`, `/ext-global/proxy.json`) are imported once and removed; they remain the fallback layer (merged per option) when a write is refused. | D10/D11. | — |
-| 7 | audit §2.6 (skill grid) | The grid is an overlay panel (`unipi.skill-registry/editor`): per row `E`/`M` toggles showing effective values (inherited ones carry `dim`), an `inherit` button (unipi `d`), filter input, scope select (`g`), proxy toggle (`p`), Save/Cancel. | Panels exchange actions, not keystrokes. | — |
-| 8 | audit §2.6 (skill conditions) | Conditions come from the `skill-condition.check{skill}` fan-out; a provider may add `reason` to `{hidden: true}` for the `/skill:name` refusal (`SkillConditionReply` has no `reason` field yet). Bundled-skill detection also matches `~/.oino/bundled/unipi.*`. | unipi-port §2.1. | Kit request R3. |
-| 9 | audit §2.6 (legacy migrations) | `utility.skills` → `skills.exposure` is applied on read (no rewrite); the pi `settings.json` `unipi.skills.discovery` import is dropped. | No settings write path; pi settings are not Oino's. | — |
-| 10 | audit §2.4, D8 (dream runner) | A dream is a nested agent (`extensions: {only: [unipi.memory]}`, built-in tools + memory tools, `persistence: File` under the run's staging dir `/ext-global/runs/<wsid>/staging-<ms>/sessions`, `cwd` = staging, `ui: none`), aborted at `maxRuntimeMin` (exit 124 as unipi's `timeout`). Status `running` = the agent lives in this process; a run left unfinished by a previous process is resumed once (seeded with its own session file) on the next start, else marked failed. `run.json` keeps unipi's fields (`pid: -1`) plus `resumes`, `error`. The schedule lock stores `run` instead of a live pid. Git staging (`git init/add/commit`) is dropped. `PI_DREAM_BIN` / `PI_DREAM_STAGING` are dropped. | D8; no child `oino` process. | The `craft-skill` skill is bundled as a resource; its `check` is also ported to Rust for approval. |
-| 11 | audit §2.4 (digests) | Session digests read `/agent/sessions/--<cwd>--/*.jsonl` (permission `fs.agentDir: read`); `sessions.readAll` is declared for parity but not needed. | Direct file reads keep digests identical to unipi's. | — |
-| 12 | audit §2.4 (tray) | The Dream tab is OUS (list → `dream:open`, detail with `dream:pick`, `approve`/`reject` arm-then-confirm, `report`, `stop`, `run`, `dismiss`, `back`; digit actions `1`–`9`). A 2 s timer emits `unipi:work-tray:changed` while a run is alive. Times are UTC (no local zone, unipi-core R3). | Work-tray contract (unipi-core deviation 3). | — |
-| 13 | audit §2.18 (llm method) | `llm` summaries use `models.summarize-default(messagesToSummarize + turnPrefixMessages, instructions)`; the boundary (percent / compact-then) llm draft passes the previous summary as an instruction ("Update this previous summary …") because `summarize-default` has no previous-summary parameter. Failure falls back to core's own summarizer (no result). | Host API shape. | Request R1. |
-| 14 | audit §2.18 (regexes, word segmentation) | unipi's JS regexes run through `fancy-regex` (lookaround/backrefs); `Intl.Segmenter` word counting is approximated by alphanumeric/apostrophe runs; lengths count chars, not UTF-16 units. | No ICU in guests. | Truncation points can differ for CJK text. |
-| 15 | audit §2.18 (tool_result diff clamp) | The edit/write diff width clamp is not ported. | Frontends render diffs natively (ui-protocol §6.4) and know their width. | — |
-| 16 | audit §2.18 (`session_recall` scope) | `scope: all` searches every session entry (all branches) instead of the active branch only. | Matches the tool description; Oino exposes `session.entries()`. | — |
-| 17 | audit §2.18 (autocomplete) | `/unipi:compact-then` is offered through `complete-input` (one group from `unipi.compactor`). | ui-protocol §7.3. | — |
-| 18 | audit §2.18 (doctor) | The doctor reads `control.get-settings().compaction.enabled`; the legacy `~/.unipi/db/compactor` check is dropped (Oino never had it). | — | — |
-| 19 | audit §2.18 (settings) | `cooldownMs` / `repeatMinGrowthTokens` are fixed (60 s / 4 000) as in unipi 3.0.0 code; legacy keys (`overrideDefaultCompaction`, `autoCompaction.*`, `jev`, boolean `sections`) are translated on read. | unipi source wins over the audit list. | — |
-| 20 | audit §2.3 (paths, binaries) | Memory files live in `/ext-global/memory/<project>/<type>/<id>.md`; MemPalace is driven by program name (`mempalace`, `mempalace-mcp`, `uv`, process allowlist; `MALLOC_ARENA_MAX=2`), the palace is `~/.mempalace/palace` (alias `mempalace`), the daemon endpoint is read from `~/.mempalace/daemon/<sha256(palace)[:24]>/` (no realpath canonicalisation, `MEMPALACE_DAEMON_STATE_ROOT` unsupported), daemon HTTP needs `network.hosts` `127.0.0.1`/`localhost` (added to the manifest). Version detection uses `uv tool list` / `mempalace --version` instead of the venv python. | No venv paths or arbitrary binaries from guests. | — |
-| 21 | audit §2.3 (v2→v3 conversion) | `/unipi:memory migrate` imports `~/.unipi/memory` (alias `legacy-memory`, read-only; both v2 flat and v3 typed layouts) into Oino's memory root, keeps existing Oino memories, files them into the palace (journal on failure) and records `/ext-global/memory/.import.json`. unipi's in-place conversion, palace drawer cleanup and backups are not needed (the source is never written). | unipi-port §2.3. | — |
-| 22 | audit §2.3 (side save) | The save pass is a nested agent (`seed: branchCopy`, `persistence: Memory`, `ui: none`, tools = memory tools only, `memory_delete` denied, `childRole: memory-save`), aborted after 8 tool calls. unipi re-exposed every active tool as a stub for prefix-cache parity; the tool policy here lists only the memory tools. | `AgentSpec` tool policy. | Lower cache reuse for the save pass. |
-| 23 | audit §2.3 (cards, renderers) | Memory cards, reminder badges and the session/save cards are OUS `card`s (rail `harness`/`success`/`warning`/`error`); search hits use `meter` nodes. | ui-protocol §6. | — |
-
-## Requests for other work
+## Open
 
 | # | To | Request |
 |---|---|---|
-| R1 | core-runtime / wit-v1 | `models.summarize-default` with an optional previous summary (pi `generateSummaryWithUsage(previousSummary)`) and split-turn prefix handling, so the llm method matches pi's `compact()` exactly. |
-| R2 | core-runtime / wit-v1 | **Done (core-settings)** for permission mode/rules and skill states. Legacy key translation (`utility.skills` → `skills.exposure`, compactor legacy keys) still happens on read; rewriting them is optional. |
-| R3 | unipi-core | `SkillConditionReply { hidden, reason? }` in `unipi-kit::services` (the registry already reads `reason`). |
-| R4 | integration | Run `extensions/unipi/workflow/harness/run.sh` in CI (needs `-j 1` on small machines; `EXT_WORKSPACE` overrides the workspace used to build the components); bundle order per `unipi_kit::suite::LOAD_ORDER`; regenerate `extensions/dist/checksums.json`. |
-| R5 | wit-v1 | `agents` AgentSpec: document `extensions: {only: [...]}`, `seed: "branchCopy"`, `ui: "none"` JSON spellings used here (taken from runtime §12 camelCase). |
+| R1 | core-runtime / wit-v1 | `models.summarize-default` with a previous summary and split-turn prefix (compactor `llm`). |
+| R2 | — | Optional: rewrite legacy keys (`utility.skills` → `skills.exposure`, compactor keys) instead of translating on read. |
+| R3 | unipi-core | `SkillConditionReply { hidden, reason? }` in `unipi-kit::services`. |
+| — | tests | MemPalace against a real install. |

@@ -50,8 +50,10 @@ Environment variables (first match wins):
 The full list is in each component's `catalog.json` (`extensions/providers/*/catalog.json`,
 generated from pi-ai 1.4.0's model data).
 
-`/login` and `/logout` in the TUI only explain this file in this alpha; the Anthropic OAuth
-flow exists in the component but is not wired to a frontend yet.
+`/login [provider]` and `/logout [provider]` (TUI, desktop Settings → Models & Providers, RPC
+`_oino/login`) run the provider's OAuth flow and store the credential in `auth.json`:
+Anthropic (Claude Pro/Max), GitHub Copilot, OpenAI Codex and OpenAI (Sign in with ChatGPT).
+The flows are tested against recorded fixtures; live accounts have not been tried in this alpha.
 
 ## Models
 
@@ -64,6 +66,7 @@ Custom providers and model overrides go into `models.json` ([models.md](models.m
 
 ## Not available yet
 
-GitHub Copilot, ChatGPT (Codex) sign-in, Azure OpenAI, Cloudflare, Amazon Bedrock, Google
-Gemini/Vertex native APIs and WebSocket transports are not ported
-([providers deviations](dev/v1/deviations/providers-v1.md)).
+WebSocket transports and Anthropic workload-identity federation are not ported; Bedrock
+reads env keys, bearer tokens and static `~/.aws` profiles only; Vertex reads
+`authorized_user` / `service_account` ADC files. Details: `extensions/providers/README.md` and
+[providers deviations](dev/v1/deviations/providers-v1.md).

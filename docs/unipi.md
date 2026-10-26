@@ -30,11 +30,12 @@ Rust WASM components and bundled into `oino` and Oino Desktop. They load in unip
 | `unipi.fusion` | persistent "sidekick" second model (`/unipi:model`, `/unipi:fusion-stats`) |
 | `unipi.watchdog` | stuck-run detection, opt-in session caps (cost, time, tool errors) |
 | `unipi.app-bridge` | control-centre side pane for the desktop / mobile apps (`/unipi:app`) |
+| `unipi.utility` | `/unipi:settings`, auto-rename, `/unipi:answer`, attachments, image tools, render styles, `/unipi:move`, `/unipi:doctor` |
 
-Not ported: `unipi.utility` (render styles, auto-rename, `/unipi:answer`, `/unipi:move`,
-image tools — planned), `/unipi:cron`, browser skills, app push encryption and Herdr
-integration (dropped, see [dev/v1/unipi-port.md](dev/v1/unipi-port.md)). Per-component
-differences from unipi are listed in `docs/dev/v1/deviations/unipi-*.md`.
+Not ported (dropped): `/unipi:cron`, browser skills, app push encryption and Herdr
+integration (see [dev/v1/unipi-port.md](dev/v1/unipi-port.md)). Per-component differences
+from unipi are in the appendix of [dev/v1/unipi-port.md](dev/v1/unipi-port.md); open items in
+`docs/dev/v1/deviations/unipi-*.md`.
 
 ## Commands
 

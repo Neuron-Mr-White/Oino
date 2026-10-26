@@ -186,7 +186,7 @@ fn unreachable_model() -> Model {
 fn splash(cwd: &str) -> JsonValue {
     let body = |wide: bool| {
         json!({"t": "card", "rail": "warning", "effect": "shimmer", "body": {"t": "stack", "direction": "vertical", "gap": 1, "children": [
-            {"t": "text", "value": [{"text": "Oino ", "bold": true}, {"text": "1.0.0-alpha.1", "tone": "warning", "code": true}, {"text": " · 23 extensions", "dim": true}]},
+            {"t": "text", "value": [{"text": "Oino ", "bold": true}, {"text": "1.0.0-alpha.2", "tone": "warning", "code": true}, {"text": " · 23 extensions", "dim": true}]},
             {"t": "text", "value": [{"text": "Good afternoon", "bold": true}, {"text": " — I'm ", "tone": "muted"}, {"text": "Unicrab", "bold": true, "tone": "warning"}, {"text": ".", "tone": "muted"}]},
             {"t": "text", "value": [{"text": "● ", "tone": "success"}, {"text": if wide { "ready in 412ms · 23 modules · 64 tools" } else { "ready · 64 tools" }, "tone": "muted"}]},
             {"t": "text", "value": [{"text": "● ", "tone": "info"}, {"text": "new session in ", "tone": "muted"}, {"text": cwd, "bold": true}, {"text": " on v1-alpha", "dim": true}]},
@@ -1069,7 +1069,7 @@ impl SessionHost for DemoHost {
         .into_iter()
         .map(|(id, kind, error)| {
             let mut info =
-                ExtensionInfo::basic(id, "1.0.0-alpha.1", kind, true, error.map(str::to_owned));
+                ExtensionInfo::basic(id, "1.0.0-alpha.2", kind, true, error.map(str::to_owned));
             info.name = demo_name(id);
             info.description = format!("Bundled {kind}");
             info.permissions = match id {

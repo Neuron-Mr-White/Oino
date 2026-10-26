@@ -1,124 +1,164 @@
-# Oino v1.0.0-alpha.1 — status
+# Oino v1.0.0-alpha.2 — status
 
-Date: 2026-10-26 · branch `v1-alpha` · work id `integration`.
-Parity targets: `@earendil-works/pi-coding-agent` **1.4.0** and unipi **3.0.0**.
-Legend: ✅ done · 🟡 partial · ❌ missing. Details per item live in
-[deviations/](deviations/) (one file per work item, plus [integration.md](deviations/integration.md)).
+Date: 2026-10-27 · branch `v1-alpha` · work id `integration-2` (follow-up round: core-agents,
+core-settings, frontend-cmds, providers-more, unipi-utility, design-spec / design-desktop(-fix) /
+design-mobile, release-builds).
+Parity targets: `@earendil-works/pi-coding-agent` **1.4.0**, unipi **3.0.0**, ZCode design
+([design.md](design.md)).
+Legend: ✅ done · 🟡 partial · ❌ missing · ⛔ diverges by design. Settled deviations are folded
+into the appendix of each spec; open items per work item stay in [deviations/](deviations/).
 
 ## 1. Gates (this commit)
 
-| Workspace | fmt | clippy `-D warnings -W clippy::pedantic` | tests | other |
+All run locally with `TMPDIR=$PWD/target/tmp`; components rebuilt with rustc 1.99.0.
+
+| Workspace | fmt | clippy `-D warnings` (pedantic) | tests | other |
 |---|---|---|---|---|
-| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ (`cargo test --workspace`, incl. bundled e2e `crates/oino/tests/bundled.rs`) | ✅ rustdoc `-D warnings`; `#![forbid(unsafe_code)]` everywhere except `oino-wasm-host` (`deny` + one `allow` on the `bindgen!` module, wit-v1 #12) |
-| `extensions/` (wasm32-wasip2) | ✅ | ✅ (wasm32 target) | ✅ native tests; ✅ the six `harness/run.sh` wasm-host suites (run by their owners; CI runs them) | ✅ `cargo xtask wasm` + `cargo xtask checksums` (31 components) |
-| `apps/` (GPUI) | ✅ | ✅ | ✅ | — |
+| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ 699 passed (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components) | ✅ rustdoc `-D warnings`; ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh`; all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
+| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ 664 native (4 ignored); ✅ 7 wasm-host harness suites (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (37 components: 8 providers, 24 unipi, 5 fixtures) + `cargo xtask checksums` |
+| `apps/` (GPUI) | ✅ | ✅ | ✅ 83 | — |
 
-End-to-end smoke (release `oino`, temp agent dir):
+`cargo xtask layering` and `cargo deny` (quality §1, §6) do not exist yet.
 
-- faux provider package (`-e extensions/dist/oino.fixture.provider-faux`) with the full bundle:
-  print ✅, JSON ✅ (unipi tools and sections in the system prompt), RPC ✅ (`prompt`,
-  `get_commands` lists 43 unipi commands), ACP ✅ (`initialize`, `session/new`, `session/prompt`
-  streamed, `end_turn`), TUI ✅ (pty: typed prompt, reply, unipi memory reminder, clean exit).
-- real provider: Oino Router key from `~/.oino/auth.json` (stored as provider `oino`):
-  `oino/deepseek/deepseek-flash` (chat completions) ✅ incl. a `bash` tool call;
-  `oino/agy/claude-sonnet-5-5-low` (Anthropic Messages via the router) ✅.
-- panels through the core bridge: RPC client with `_oino/hello` → `/unipi:info` emits
-  `openPanel` / `updatePanel` ✅. `models.complete` / `summarize-default` compile and are
-  wired but were not exercised end to end (no test drives jev/recap yet).
-- `scripts/install-smoke.sh` (source build into a temp prefix + faux prompt) ✅.
-- Oino Desktop: `apps` tests incl. `embedded_session_streams_through_an_installed_provider`
-  ✅ (bundle order fix and docs root apply to the desktop too).
+## 2. End-to-end smoke (release `oino` 1.0.0-alpha.2, temp agent dir, bundle of 33 packages)
 
-## 2. Parity matrix — pi 1.4.0
-
-| Area | Status | Notes |
+| Area | Result | How |
 |---|---|---|
-| Agent loop (`pi-agent-core`) | ✅ | golden vs pi; TypeBox `format` keyword not validated (core-runtime #4) |
-| `AgentSession` (prompt, steer, follow-up, abort, queue modes, retry, overflow recovery) | ✅ | prompt returns at run start (core-runtime #5) |
-| Session format v3, `SessionManager`, tree, labels, context edits, legacy migration | ✅ | golden suites `session-context`, `legacy-migration` |
+| print | ✅ `Hello from faux.` (3.9 s cold, compile cache empty) | `-e extensions/dist/oino.fixture.provider-faux --model faux/faux-1 -p hi` |
+| JSON | ✅ header + full event stream; unipi tools (`run_subagent`, `memory_*`, `web_search`, `image_*`, `plan_submit`, …) in the request | `--mode json` |
+| RPC | ✅ 17/17 checks | `_oino/hello`, `prompt`, `get_commands` (51 `unipi:*`), `get_messages` |
+| panel button action | ✅ | `/unipi:info` → `openPanel unipi.info-screen/dashboard`; `_oino/ui_action{actionId: refresh}` → `updatePanel`; `close` → `closePanel` |
+| settings write | ✅ | `_oino/get_settings_schema` (25 namespaces), `_oino/set_extension_setting footer.enabled=false` lands in `~/.oino/settings.json` as `extensionSettings.footer.enabled`, read back, `unset` |
+| btw | ✅ | `/unipi:btw …` answers in the panel; session message count unchanged |
+| long-horizon continuation | ✅ | `/unipi:goal-start {objective}` + prompt → `unipi:lh-continue` nudge delivered by the turn arbiter |
+| kanboard nudge | ✅ | `oino-kanboard` on `PATH`: `/unipi:kanboard onboard`, `-add`, task to `todo`, `/unipi:kanboard-autowork start` → two `unipi:kanboard-next` nudges, then "autowork stalled — no progress after 2 offers" (faux never calls tools) |
+| ACP | ✅ | `initialize` (agentInfo 1.0.0-alpha.2), `session/new`, `session/prompt` → `agent_message_chunk` "Hello from faux.", `end_turn`, `usage_update`, `available_commands_update` |
+| TUI | ✅ | pty: typed prompt, reply, unipi chrome, `/quit` exit 0 — alternate screen and `--tui-mode regular` |
+| real provider | ✅ | Oino Router key from `~/.oino/auth.json` (`router` → provider `oino`): `oino/deepseek/deepseek-flash` print with a `bash` call |
+| subagents (real) | ✅ | `run_subagent` foreground → child answered `391`; `child:Subagent …` usage entry |
+| fusion (real) | ✅ | preset `lead = sidekick = oino/deepseek/deepseek-flash`; `sidekick` tool → persistent child answered `PINEAPPLE`; `child:Sidekick` usage; auto-rename child (`child:session name`) ran too |
+| install | ✅ | `scripts/install-smoke.sh` (source install into a temp prefix + faux prompt) |
+
+Subagents, btw, fusion, memory side-save, dream and long-horizon also have e2e tests with the
+native faux provider (`crates/oino-wasm-host/tests/unipi_agents.rs`), settings with the real
+components (`unipi_settings.rs`); both ran in the gates.
+
+## 3. Parity matrix — pi 1.4.0
+
+| Area | Status | Notes / next step |
+|---|---|---|
+| Agent loop (`pi-agent-core`) | ✅ | golden vs pi; TypeBox `format` not validated |
+| `AgentSession` (prompt, steer, follow-up, abort, queue modes, retry, overflow recovery) | ✅ | `prompt` returns at run start (runtime appendix #5) |
+| Session v3, `SessionManager`, tree, labels, context edits, legacy migration | ✅ | goldens `session-context`, `legacy-migration` |
 | Compaction, branch summaries, split turns, file tracking | ✅ | golden `compaction` |
-| Built-in tools `read write edit bash grep find ls` (+`powershell`) | ✅ | Windows paths untested; image re-encoding differs from Photon |
-| Resources: AGENTS.md/CLAUDE.md, SYSTEM.md, APPEND_SYSTEM.md, skills, prompt templates, themes discovery, trust | ✅ | custom theme files are discovered but not rendered |
-| System prompt (sections, docs section, D13 substitutions) | ✅ | docs root = bundled `oino.docs` |
-| Settings manager (layers, migrations, locking) | ✅ | |
-| Extension settings registry (schema, layered values, scoped writes, secret fields, change events) | ✅ | `oino_core::extensions::settings::ExtensionSettings` (`AgentSessionRuntime::extension_settings`); secrets in `secrets.json` at `<owner>/<namespace>/<key>`; no `oino:settings:<ns>` bus topic (core-runtime #22); `_oino/{get_settings_schema,get_extension_settings,set_extension_setting,unset_extension_setting}` ✅, TUI hub ✅ (frontend-cmds T3), desktop hub ❌ |
-| Models: registry, `models.json`, auth.json, resolver, scopes, virtual models | ✅ | dynamic catalogs refreshed at startup (integration #5) |
-| Providers (pi-ai wires) | 🟡 | Anthropic Messages, OpenAI Responses, chat completions, Oino Router ✅; Copilot, Codex sign-in, Azure, Bedrock, Gemini/Vertex native, Cloudflare, WebSockets ❌ (providers-v1) |
-| OAuth `/login` `/logout` | ✅ | `_oino/{auth_providers,login,logout,set_api_key}` run the provider component's `oauth-login` (dialogs through the extension UI protocol) and store `auth.json`; tokens refresh through `oauth-refresh`; TUI `/login [provider]`, `/logout [provider]`; only the faux OAuth provider is tested end to end (frontend-cmds #7, #8) |
-| CLI flags and help | ✅ | ACP applies `--model`/`--provider`/`--models` (frontend-cmds #12) |
-| Print / JSON modes | ✅ | golden `print`, `json-mode` |
-| RPC mode (pi commands, extension UI sub-protocol) | ✅ | golden `rpc`; `ctx.shutdown()` reaches core (`AgentSessionRuntime::shutdown_requested`) but no mode exits on it yet (modes #11) |
-| Interactive TUI | 🟡 | full chrome, dialogs, panels, pickers, extension settings hub, backend completions (extension arguments, `complete-input`), editor events, panel actions, shortcuts, `/login`, regular (inline) mode ✅; inline images ❌ (frontend-cmds T1–T7) |
-| Frontend commands (`_oino/*` completions, ui_action, editor_event, shortcuts, settings, service_call, login) | ✅ | in-process and RPC, typed `oino_client::FrontendApi`; RPC goldens `crates/oino/tests/frontend.rs`, contract test in `contract.rs` (deviations/frontend-cmds.md) |
-| Package manager (`oino install/remove/update/list/config`), `oino update` | ✅ | dir / archive / https archive / `git+https` sources, checksums, `.source.json`, `--project`, `--yes`; self-update from `release-manifest.json` (frontend-cmds #13–#15); `oino auth` ❌ |
-| `/share`, `/bug`, pi telemetry, pi-mcp, codemode | ❌ | out of scope (charter) |
-| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI dialogs/fire/panels, `ui.editor-*`, `clipboard-read-image`, `edit-externally`, settings read + write (`registry.{register-settings,extension-settings,set-extension-setting}`), models.complete/stream/credential-for, nested agents (`agents.*`), turn arbiter, `control.{run-state,shutdown,system-prompt-options,new-session,fork,switch-session,reload}` ✅; provider hooks, `models.{classify,generate-image}`, `control.{bash-detach,running-bash}` ❌ |
-| ACP (Zed etc.) | ✅ | protocol v1 incl. permissions, elicitation, client fs/terminal; Zed interop not yet tried by hand |
-| `oino serve`, `--remote`, multi-client | ❌ | specified (modes §5) |
+| Built-in tools `read write edit bash grep find ls` (+`powershell`) | ✅ | Windows paths untested; image bytes differ from Photon |
+| Bash detach / background adoption (`control.bash-detach`, `running-bash`) | ❌ | next: wire the session's `BashDetachRegistry` to the task service |
+| Resources: AGENTS.md / SYSTEM.md / APPEND_SYSTEM.md, skills, prompt templates, trust | ✅ | |
+| Themes | 🟡 | custom theme files discovered, only built-in themes rendered |
+| System prompt (sections, docs section, D13) | ✅ | docs root = bundled `oino.docs` |
+| Settings manager + extension settings registry | ✅ | schema, layers, scoped writes, secret fields, change events; `oino:settings:<ns>` bus topic ❌ |
+| Models: registry, `models.json`, `auth.json`, scopes, virtual models | ✅ | dynamic catalogs refreshed at startup |
+| Providers (pi-ai wires) | ✅ | 8 components: chat completions (+Copilot, Cloudflare), Responses (+ChatGPT sign-in), Anthropic, Codex, Azure, Google (Gemini, Vertex), Bedrock, Oino Router; 165 pi oracle fixtures |
+| Provider transports / auth edge cases | 🟡 | WebSockets ❌, Anthropic federation ❌, Bedrock SSO/IMDS ❌ (`extensions/providers/README.md` M1–M10) |
+| OAuth `/login` `/logout` | 🟡 | flows for Anthropic, Copilot, Codex, ChatGPT implemented and fixture-tested; never run against live accounts |
+| CLI flags and help | ✅ | |
+| Print / JSON modes | ✅ | goldens `print`, `json-mode` |
+| RPC mode + extension UI sub-protocol | ✅ | golden `rpc`; no mode exits on `ctx.shutdown()` yet (🟡) |
+| `_oino/*` frontend commands | ✅ | completions, ui_action, editor_event, shortcuts, settings, service_call, auth — in-process and RPC (`FrontendApi`) |
+| Interactive TUI | 🟡 | full chrome, dialogs, panels with buttons, settings hub, completions, editor intents, `/login`, regular mode ✅; inline images ❌; core settings still via `LocalHost` |
+| Package manager + `oino update` | ✅ | dir / archive / https / `git+https`; self-update from `release-manifest.json`; `oino auth`, `ext`, `sessions`, `mcp` ❌ |
+| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI, settings r/w, `models.complete/stream/credential-for`, nested agents, turn arbiter, `control.*` ✅; provider hooks routing, `models.classify/generate-image`, bash detach, `set-ui-policy` ❌ |
+| ACP (Zed etc.) | ✅ | protocol v1, permissions, elicitation, client fs/terminal, `--model`; refusals, `mcpServers` forwarding ❌; Zed not tried by hand |
+| `oino serve`, `--remote`, multi-client | ❌ | specified (modes §5); blocks mobile/desktop remote attach |
+| `/share`, `/bug`, pi telemetry, pi-mcp, codemode | ⛔ | out of scope (charter; MCP is `unipi.mcp`) |
 
-## 3. Parity matrix — unipi 3.0.0
+## 4. Parity matrix — unipi 3.0.0
 
-All 23 ported components are bundled (load order = `unipi_kit::suite::LOAD_ORDER`). "Host" =
-works only once the listed host capability exists.
+All 23 packages plus `unipi.app-bridge` are ported and bundled (load order
+`unipi_kit::suite::LOAD_ORDER`). Not ported by decision (D22): `/unipi:cron`, browser
+skills/state, app push encryption, Herdr, the unipi desktop app.
 
-| Package | Status | Missing / reason |
+| Package | Status | Missing / next step |
 |---|---|---|
-| core (hints, header, work tray) | ✅ | local-time hints need `host-info` UTC offset (unipi-core R3) |
-| workflow (permissions, plan mode) | ✅ | gate, rules, plan mode ✅; `auto` mode's jev judge has `models.complete`; project mode and saved rules are written to the settings files (state files imported once) |
-| long-horizon | ✅ | goal/ralph/swarm/graph state machines ✅; goal kickoff + continuation through the turn arbiter verified e2e (faux); graph runs use the subagents spawn path (not e2e-tested) |
-| memory | 🟡 | markdown memories, tools, recall reminder, side-save pass (nested agent, memory tools only; e2e) ✅; MemPalace untested against a real install |
-| dream | ✅ | digests, tray, proposals, dream runs (nested agent, `only: [unipi.memory]`, file persistence in the staging dir; e2e) ✅ |
-| utility | ❌ | not ported (render styles, auto-rename, `/unipi:answer`, `/unipi:move`, image tools) |
-| skill-registry | ✅ | jev judging via `models.complete`; skill states and the proxy toggle are written to the settings files (state files imported once) |
-| info-screen | ✅ | panels now served by the core bridge |
-| subagents | ✅ | `run_subagent` foreground/background, completion notification, `read_subagent` verified e2e; UI policy fixed at spawn (unipi-agents R2) |
-| background-tasks | ✅ | notification `deliverAs: followUp` (unipi-agents R1) open |
-| btw | ✅ | branch-copy aside, never reaches the session (e2e) |
-| web-api | ✅ | TLS fingerprinting not implemented (`impersonated: false`) |
-| ask-user | ✅ | |
-| mcp | 🟡 | stdio + HTTP ✅; pi `mcp.json` not readable by the guest (R1); ACP `mcpServers` not forwarded (R3) |
-| notify | ✅ | setup wizards and `/unipi:notify-event` write the global settings file, tokens go to secret fields (the old overlay is imported once) |
-| kanboard | 🟡 | CLI/daemon + panel ✅; core now calls its nudge provider (arbiter); monitor nudges not e2e-tested against a live `oino-kanboard` board; installers ship `oino-kanboard` |
-| command-enchantment | ✅ | `complete-input` groups merged by `_oino/get_completions` (TUI ✅, desktop ❌) |
-| compactor | ✅ | `llm` method's previous-summary handling (unipi-context R1) open |
-| footer | ✅ | `/unipi:footer on\|off` writes `footer.enabled` (old override imported once) |
+| core (hints, header, work tray) | ✅ | late-night hints need a `host-info` UTC offset (R3) |
+| utility | 🟡 | settings, auto-rename (verified live), `/unipi:answer`, attachments, image tools, `/unipi:move`, doctor ✅; render styles for built-in tools need core `tools.override` / `render` for built-ins (U1–U2); trust.json move (U5) |
+| workflow (permissions, plan mode) | ✅ | mode and rules in the settings files |
+| long-horizon | ✅ | goal continuation through the arbiter verified (e2e + smoke); graph runs not e2e-tested |
+| memory | 🟡 | markdown memories, tools, recall, side-save ✅; MemPalace untested against a real install |
+| dream | ✅ | nested-agent dream runs with resume (e2e) |
+| skill-registry | ✅ | |
+| info-screen | ✅ | dashboard panel + actions verified in the smoke |
+| subagents | ✅ | foreground/background/read verified (e2e + live); UI policy fixed at spawn (R2) |
+| background-tasks | 🟡 | tasks, tray, notifications ✅; adopting a running bash call ❌ (bash detach); notification `deliverAs: followUp` (R1) |
+| btw | ✅ | verified in the smoke |
+| web-api | ✅ | no TLS fingerprinting (`impersonated: false`) |
+| ask-user | ✅ | forms unavailable over ACP |
+| mcp | 🟡 | stdio + HTTP ✅; pi `mcp.json` not readable (R1); ACP `mcpServers` not forwarded (R3) |
+| notify | ✅ | wizards and secrets in settings |
+| kanboard | ✅ | CLI/daemon, panel, desktop native board, monitor nudges through the arbiter (smoke); TUI renders the board panel generically |
+| command-enchantment | ✅ | TUI and desktop merge `complete-input` |
+| compactor | ✅ | `llm` method lacks pi's previous-summary parameter (R1) |
+| footer | ✅ | |
 | updater | ✅ | never installs (by design) |
-| input-shortcuts | 🟡 | TUI sends `editor_event` ✅; desktop does not |
-| fusion | ✅ | persistent sidekick child (file under `/ext-session/<sid>/sidekick`), handoff via `sidekick` verified e2e |
-| watchdog | 🟡 | stuck detection + session caps ✅; process stats Linux-only |
-| app-bridge | ✅ | control-centre panel; `_oino/service_call` exists, GPUI native widgets do not use it yet (R7) |
+| input-shortcuts | ✅ | TUI and desktop send editor intents; no composer-history push (Q2) |
+| fusion | ✅ | sidekick handoff verified (e2e + live); startup model not persisted to core settings (R4) |
+| watchdog | 🟡 | stuck detection + session caps ✅; kill action needs bash detach; process stats Linux-only |
+| app-bridge | ✅ | control-centre panel; `_oino/service_call` exists, no native GPUI consumer yet |
 
-Not ported by decision (D22): `/unipi:cron`, browser skills/state, app push encryption,
-Herdr, the unipi desktop app.
+## 5. Parity matrix — ZCode design (design.md §8, desktop + mobile)
 
-## 4. Known issues
+Source of truth: `apps/oino-desktop/DESIGN-STATUS.md` (54-row checklist, perf numbers),
+`apps/oino-mobile/DESIGN-STATUS.md`, [design/review-desktop.md](design/review-desktop.md)
+(review FAIL → Resolution: all P0 fixed except perf, P1 fixed except keyboard leftovers and shots).
+Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mobile).
 
-1. Nested agents: `UiPolicy` is fixed at spawn (no `set-ui-policy`, unipi-agents R2); child
-   depth is not visible on `call-context` (R3); `oino_agent` events are delivered only to the
-   spawning extension (deviations/core-runtime #15–#20).
-2. Turn arbiter: frontends get `run_state{waiting}` but `ctx.shutdown()` is not acted on by any
-   mode yet; `control.bash-detach` / `running-bash` remain unsupported (watchdog kill,
-   background-tasks adopt).
-3. The desktop app does not render the extension settings hub yet (the `_oino/*` settings
-   commands and the TUI hub exist). Only the rebuilt dists (core, workflow, skill-registry,
-   notify, footer, kanboard, utility) carry the new `unipi_kit` settings store; other
-   components pick it up on rebuild.
-4. The desktop app does not use the `_oino/*` frontend commands yet (`oino_client::FrontendApi`):
-   its panel buttons, shortcuts, completions and `/login` do nothing (TUI and RPC ✅).
-5. OAuth sign-in is verified only with the faux provider; the real Anthropic / Copilot /
-   Codex / ChatGPT flows were not run against live accounts.
-6. The first start after an update compiles ~24 MB of WASM (≈ 7 s on 32 cores, longer on
-   laptops); later starts use `~/.oino/cache/wasmtime` (≈ 0.3–1 s).
-7. `models.classify` and `models.generate-image` are unsupported in the core bridge; TUI inline
-   images are placeholders.
+| Group (design.md §8 rows) | Desktop | Mobile | Gaps |
+|---|---|---|---|
+| Theme, type, spacing, icons (1–5) | ✅ | ✅ | unipi warm OLED dark + derived light (A1) |
+| Motion (6) | 🟡 | 🟡 | exit animations, run-label shimmer |
+| Frames, sidebar, header, welcome (7–13) | ✅ | ✅ (M1/M2 app bars, sections, swipe rows) | tablet layout on mobile ❌ |
+| Timeline, tool rows, diffs, bash, thinking (14–22, 26) | ✅ | ✅ (touch rows) | "Thought for Ns" timing |
+| Subagent rows (23) | 🟡 | 🟡 | live child timeline needs `_oino/agents` |
+| Turn undo / rewind (24–25) | 🟡 | 🟡 | core file checkpoints (buttons hidden) |
+| Composer, model menu, context ring, mentions, history (27–30, 32, 34) | ✅ | ✅ | model-menu submenus / pinned group |
+| Attachments (31) | 🟡 | 🟡 | pasted images not converted |
+| Queue (33) | 🟡 | 🟡 | single-item remove / send-now / reorder need core commands |
+| Permission, guard, elicitation, plan, waiting badge (35–39) | ✅ | ✅ (docked + sheet promotion) | — |
+| Status panel (40) | 🟡 | 🟡 | sticky-topic feed `_oino/topics`; StatusPanel keys |
+| Side pane, browser, PTY terminal (41–43) | ✅ | ✅ browser (Custom Tabs / SFSafariViewController); terminal ❌ on mobile | — |
+| Command center, modifiers, settings + hub, toasts, split panes, board (44–49) | ✅ | ✅ (search, stacked settings + hub, lane pager) | palette history chips |
+| Performance (52) | 🟡 | 🟡 | desktop 4-pane run p99 9.3–14.9 ms vs 10 ms; mobile 120 Hz not measured |
+| i18n, window chrome (53–54) | ✅ | ✅ (safe areas, system bars) | Windows / macOS rendering not checked on the build hosts |
+| Remote attach (mobile M10, D16) | — | 🟡 | hosts list + pairing stored; needs `oino serve` |
+| unipi surfaces (design.md §7) | ✅ | ✅ | all render through OUS / docked cards / native board; `_oino/*` wired |
+
+
+## 6. Known issues
+
+1. **Bash detach** is not wired (`control.bash-detach`, `running-bash`, `tasks.adopt-bash`):
+   watchdog cannot kill a stuck bash call, background-tasks cannot adopt one.
+2. **Shutdown**: `ctx.shutdown()` sets `AgentSessionRuntime::shutdown_requested()`, but no
+   mode exits on it yet.
+3. **Nested agents**: `UiPolicy` is fixed at spawn (no `set-ui-policy`), child depth is not on
+   `call-context`, `oino_agent` events reach only the spawning extension.
+4. **Remote**: `oino serve` / `--remote` do not exist, so mobile remote attach and a remote TUI
+   are unavailable (mobile embeds the core instead).
+5. **OAuth** sign-in is verified only with the faux provider and recorded fixtures.
+6. **First start** after an update compiles ~24 MB of WASM (≈ 4 s on 32 cores, longer on
+   laptops); later starts use `~/.oino/cache/wasmtime`.
+7. `models.classify` / `generate-image` unsupported; TUI inline images are placeholders.
 8. `/tmp` quota on the dev machine: run builds/tests with `TMPDIR=$PWD/target/tmp`.
-9. Mobile is an early preview (embedded core on Android; iOS host not built remotely).
-10. macOS: `oino` does not raise its open-file limit. Under the 256-descriptor soft limit
-    that SSH and `nohup` shells use, every bundled component fails to init with `Too many
-    open files (os error 24)` ("No models available"). With `ulimit -n 4096` the run passes
-    (§5).
+9. **iOS devices** cannot JIT: components need wasmtime Pulley (not wired); iOS is simulator-only.
+10. **macOS EMFILE**: `oino` does not raise its open-file limit; under the 256-descriptor soft
+    limit of SSH / `nohup` shells every bundled component fails to init (`os error 24`). Works
+    with `ulimit -n 4096` (§7).
+11. **Desktop perf**: four streaming panes do not reliably meet the 10 ms p99 budget.
+12. **Release artifacts** in §7 are 1.0.0-alpha.1 (`52d3120`); alpha.2 has not been rebuilt on the
+    build hosts. Nothing is signed, tagged or published.
+13. `unipi.memory` reads the legacy `~/.unipi/memory` (read-only alias) and suggests
+    `/unipi:memory migrate` on every start when it exists.
 
-## 5. Release builds (2026-10-27, `v1-alpha` @ 52d3120, not tagged or published)
+## 7. Release builds (1.0.0-alpha.1 artifacts, 2026-10-27, `v1-alpha` @ 52d3120, not tagged or published)
 
 The builds are run with `cargo xtask remote-build <host|local> [--jobs n] [--timeout-mins n] [-- <build-host.sh args>]`
 (`xtask/src/remote.rs`). The tool works in three steps:
@@ -196,29 +236,26 @@ Problems found:
 6. **Windows screenshots.** The screenshot needs an unlocked console session on coffee. A
    rendering check needs either an unlocked session or an in-app self-capture hook.
 
-## 6. Next steps
+## 8. Next steps
 
-1. **core-runtime**: bash detach (`control.bash-detach`, `running-bash`, `tasks.adopt-bash`:
-   keep the `BashDetachRegistry` of the session's built-in tools and hand the process to the
-   task service); `agents.agent.set-ui-policy` (R2). **modes**: exit on
-   `AgentSessionRuntime::shutdown_requested()` once idle (print/RPC/TUI/ACP).
-2. **gpui-desktop**: render the extension settings hub over `FrontendApi::settings_schema` /
-   `extension_settings` / `set_extension_setting` (model: `oino_view::settings_hub`; the TUI hub
-   is done). **tui-client**: core settings through `_oino/set_setting` instead of `LocalHost`'s
-   own `SettingsManager` (its writes are not seen by the running session until restart).
-3. **modes**: `oino serve` + `--remote` (the `_oino/*` frontend commands, package manager,
-   `oino update` and ACP `--model` are done; a remote TUI still needs `_oino/list_sessions`,
-   `_oino/get_keybindings`, `_oino/render` and core settings over RPC). **gpui-desktop**: wire
-   `oino_client::FrontendApi` (deviations/frontend-cmds.md requests).
-4. **unipi-core**: port `unipi.utility`.
-5. **providers-v1**: Copilot / Codex OAuth, Azure, Bedrock, Gemini; drive Anthropic OAuth
-   from `/login`.
-6. **Release**: release builds are done (§5), using `cargo xtask remote-build`. What remains:
-   raise `RLIMIT_NOFILE` at `oino` startup on macOS (§5 problem 1); run the iOS build
-   (`apps/oino-mobile/scripts/ios-remote.sh`); sign and notarize the macOS build and sign
-   the Windows build; then tag `v1.0.0-alpha.1` so CI assembles the GitHub release
-   (`release-manifest.json` with `oino` and `oino-kanboard` per target). Nothing has been
-   tagged or published yet.
-7. **integration (P5 remainder)**: fold the deviation files into the specs; golden e2e
-   suite under `tests/e2e/` with `PARITY.md` (quality §7); `cargo xtask layering`, `deny`,
-   `desktop`/`mobile` delegating subcommands; criterion benches (quality §5).
+1. **core-runtime**: bash detach → task service (unblocks watchdog kill, background-tasks
+   adopt); `agents.agent.set-ui-policy` + depth on `call-context`; `tools.override` render-only
+   registration and guest `render` for built-in tools (utility render styles);
+   `summarize-default` with a previous summary; file checkpoints (desktop undo / rewind);
+   single-item queue commands; `disabledExtensions` in the core loader.
+2. **modes**: exit on `shutdown_requested()` once idle (print / RPC / TUI / ACP); `oino serve` +
+   `--remote` (TCP+TLS, pairing) with `_oino/list_sessions`, `_oino/get_keybindings`,
+   `_oino/render`, `_oino/topics`, `_oino/agents`; TUI core settings through `_oino/set_setting`.
+3. **release**: raise `RLIMIT_NOFILE` at `oino` startup (macOS); rebuild alpha.2 with
+   `cargo xtask remote-build {local,coffee,mac}`; iOS simulator build; signing / notarisation;
+   tag so CI assembles the GitHub release.
+4. **wit-v1 / host**: wasmtime Pulley for iOS; `mcp.json` in the agent preopen; TLS
+   fingerprinting; process stats on macOS / Windows; `host-info` UTC offset; task notification
+   `deliverAs: followUp`.
+5. **gpui**: desktop perf (cheaper per-pane layout), remaining review P2 items, StatusPanel /
+   Queue keys; mobile tablet layout and perf measurement; move `EmbeddedHost` into a shared crate.
+6. **acp**: publish `mcpServers` on `oino:acp:mcp-servers`; refusal stop reason; tool kinds;
+   try Zed by hand.
+7. **integration**: `cargo xtask layering`, `cargo deny`; golden e2e suite under `tests/e2e/`
+   with `PARITY.md` (quality §7); criterion benches (quality §5); `oino-protocol` contract crate
+   (architecture appendix N1); live OAuth checks.

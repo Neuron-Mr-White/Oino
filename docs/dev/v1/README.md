@@ -136,3 +136,7 @@ integration: wraps all (P1 skeleton, P4 bundle/e2e, P5 cleanup)
 3. Commit prefix = work id (`[core-runtime] …`). Stage explicit paths.
 4. Each item's final report lists: crates/dirs touched, gates run (quality §1), open
    deviations, requests for other work.
+5. **Fold (1.0.0-alpha.2, integration-2).** Settled deviation rows now live in an appendix
+   "Settled deviations" at the end of the spec they amend (architecture, session-v3, runtime,
+   extension-api, ui-protocol, modes, unipi-port, gpui-app). Each `deviations/<work-id>.md`
+   keeps only open items and requests; new deviations still go there first.

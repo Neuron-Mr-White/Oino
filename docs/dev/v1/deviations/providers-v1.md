@@ -1,28 +1,14 @@
 # Deviations: providers-v1
 
-Owner: `providers-v1`. Format per README §5: section, change, reason, impact.
+Settled rows #1–#14 are folded into
+[extension-api.md](../extension-api.md#appendix-settled-deviations-folded-at-100-alpha2) (1.0.0-alpha.2).
+providers-more differences (M1–M10) stay in `extensions/providers/README.md`.
 
-## Contract differences
+## Open
 
-| # | Section | Change | Reason | Impact |
-|---|---|---|---|---|
-| 1 | extension-api §12 rule 1 | The wire logic is a fresh port of **pi-ai 1.4.0** (`api/anthropic-messages.js`, `api/openai-completions.js`, `api/openai-responses*.js`, `api/simple-options.js`, `api/constrained-sampling.js`, `utils/json-parse.js`, `utils/error-body.js`, `utils/provider-retry.js`, `models.js` cost) rather than of `legacy/extensions/crates/oino-provider-kit`. | The legacy kit was built on `oino-types` and pi 0.87.1 and had no pi-faithful chat-completions port; pi-ai 1.4.0 is the parity target and its dist is installed locally. `oino-ai` already ports `transcript` and `transform-messages`. | None for consumers; legacy kit can be deleted with `legacy/`. |
-| 2 | extension-api §12 table | Provider sets differ from the table: `oino.openai-compat` registers every pi-ai 1.4.0 chat-completions provider except per-account templates (`azure`, `cloudflare-*`) and providers with their own auth flows (`github-copilot`, `openai-codex`), plus `ollama`, `lmstudio`, `mistral`, `deepinfra`, `chutes`, `perplexity` with `models: "dynamic"` (listed from `GET {baseUrl}/models`). `oino.openai-responses` registers `openai`, `xai`, `meta` (pi serves xAI and Meta over Responses). `oino.anthropic` registers `anthropic`, `minimax`, `minimax-cn`. OmniRoute is reached through `oino.router`. | Follows pi-ai 1.4.0's catalog and apis (`scripts/pi-oracle/providers-v1/catalog.mjs`). | Core must dispatch by **model** `api`, not by provider: e.g. OpenRouter's Claude models (`anthropic-messages`) are listed by `oino.openai-compat` and streamed by `oino.anthropic`. |
-| 3 | extension-api §12 rule 4 | `list-models` returns each provider's pi `Model` objects **with their own `api`** (mixed for OpenRouter, Fireworks, OpenCode, Vercel AI Gateway), not always the component's api. OpenRouter is personalised with `GET /models/user` when a key is given (pi `personalizeOpenRouterCatalog`); other static catalogs are returned unchanged. | pi parity. | Model registry must accept mixed apis from one provider. |
-| 4 | extension-api §4.4 | Registrations always use `models: "dynamic"`; catalogs ship inside the component (`include_str!`) and come back from `list-models`. Registrations add `"authHeader": "none"` for local servers and `"x-api-key"` for Anthropic-wire providers. `oauth: true` only for `anthropic`. | A static array would put ~1 000 models into the registration JSON. | Core calls `list-models` per provider. |
-| 5 | runtime provider contract | Errors that pi raises **before** the stream starts (HTTP status errors, connection errors, missing credentials) are delivered as a lone `error` event without `start`, exactly like pi; `stream()` itself only fails for an invalid request or an unimplemented api. | pi parity (oracle fixtures `h_error_*`). | Core's `PartialAssembler` already accepts this. |
-| 6 | runtime provider contract | Missing credentials: `No API key for provider: <id>` as in pi, except for catalog providers marked `local` (Ollama, LM Studio), which send no `Authorization` header (pi requires a dummy key). | Local servers need no key. | — |
-| 7 | pi `formatUserAgent` | Requests send `user-agent: oino/<version>` (D13 product substitution) instead of `pi/<version> (<os>; node/…; <arch>)`; the SDK `x-stainless-*` telemetry headers are not sent. Claude OAuth keeps `claude-cli/2.1.280`. Golden tests compare all other headers exactly. | Branding; no Node runtime. | — |
-| 8 | pi `utils/json-parse.js` | Malformed tool-argument error texts carry `serde_json`'s message (`EOF while parsing …`) instead of V8's (`Unexpected end of JSON input`); the `Received arguments:` suffix is identical. | Different JSON parser. | Only visible in `argumentsError`. |
-| 9 | pi SDK transport | Connection failures map to the SDK texts `Connection error.` / `Request timed out.`; the host's detail is logged (`log` warn). `retry-after` HTTP dates are not parsed (numeric seconds and `retry-after-ms` are). | No `fetch` cause chain in WASM. | — |
-| 10 | extension-api §12 rule 3 | `provider-host.stream-event` receives the parsed provider event JSON (pi `onProviderStreamEvent` payload). `before-request` receives pi's `onPayload` params — for Anthropic including `betas`, which the component then moves into the `anthropic-beta` header like the SDK. | pi parity. | — |
-| 11 | runtime §11.4 / pi `retryProviderRequest` | Provider-level retries (`maxRetries`, default 0; `maxRetryDelayMs`, default 60 s) run inside the component with `timers.sleep`; jitter comes from the wall clock. The Anthropic strict-tool fallback (400 with grammar/strict limits) retries once without preferred strict tools and records `anthropic_strict_tools_fallback`. | pi parity. | — |
-| 12 | Oino Router | `oino.router` lists `GET https://router.oino.dev/v1/models` (key from the `credential` argument), maps `capabilities.effort_tiers` to `thinkingLevelMap`, enriches Claude models from the bundled pi Anthropic catalog and stores the wire in `compat.oinoWire` (`anthropic` \| `openai`). The base URL is fixed to the default for listing (WIT `list-models` has no base URL); streaming honours `model.baseUrl`. | Router models need per-model wire selection. | A models.json `baseUrl` override for `oino` applies to streaming only. |
-| 13 | extension-api §7.3 | Manifests request `network.hosts: ["*", <catalog hosts…>]` (the wildcard is honoured for bundled packages only), `env: [OINO_CACHE_RETENTION, PI_CACHE_RETENTION]`, and for `oino.anthropic` `network.listenLoopback` + `openUrl` (OAuth callback). | Bundled providers must reach user `baseUrl` overrides and other providers' hosts (e.g. `oino.anthropic` serving OpenRouter Claude models). | — |
-| 14 | extension-api §12 rule 6 | Payload/SSE goldens are generated from the installed pi-ai 1.4.0 dist by `scripts/pi-oracle/providers-v1/payload.mjs` (59 fixtures: 21 Anthropic, 18 Responses, 20 completions) and replayed by `oino-provider-kit`'s native test `tests/pi_fixtures.rs` on the kit (pure wire logic). The built components were verified end to end with `scripts/pi-oracle/providers-v1/host-e2e.rs` (wasm host + loopback server replaying 8 fixtures across the three wires; request bodies and event sequences equal pi) but that test is not committed under `crates/`. | The component harness lives in `crates/oino-wasm-host` (wit-v1). | Request for wit-v1: adopt `host-e2e.rs` as `crates/oino-wasm-host/tests/providers.rs`. |
-
-## Not done
-
-- GitHub Copilot, OpenAI Codex (ChatGPT sign-in OAuth), Azure, Cloudflare, Bedrock, Google and Mistral-native apis (outside the four components).
-- OpenAI/Anthropic `ws`/`websocket` transports (`StreamOptions.transport` is ignored; SSE only).
+- OpenAI / Anthropic WebSocket transports (`StreamOptions.transport` is ignored; SSE only).
 - Anthropic workload-identity federation (`ANTHROPIC_FEDERATION_*`).
+- OAuth flows (Anthropic, Copilot, Codex, ChatGPT) are tested with oracle fixtures and the faux
+  provider only, not against live accounts.
+- Commit the host e2e scripts (`scripts/pi-oracle/providers-{v1,more}/host-e2e.rs`) as
+  `crates/oino-wasm-host/tests/providers.rs`.

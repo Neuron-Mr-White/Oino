@@ -41,8 +41,6 @@ loads the same extensions as the terminal UI (bundled providers + unipi, install
 
 ## Known gaps
 
-- `--model` / `--provider` are not applied to ACP sessions; the session uses the settings
-  default (`defaultProvider`/`defaultModel`) — pick the model with the client's model selector.
 - MCP servers passed in `session/new` are not forwarded to `unipi.mcp` yet.
 - The `refusal` stop reason is never returned; extension tools report kind `other`.
 - Full list: [dev/v1/deviations/acp.md](dev/v1/deviations/acp.md).

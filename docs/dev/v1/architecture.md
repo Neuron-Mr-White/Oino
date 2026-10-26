@@ -242,3 +242,19 @@ root) and `~/.agents/skills` are discovered like pi.
 3. Add `legacy/README.md`: "frozen, not built, deleted in P5; read with your editor or
    `git show`". Add `legacy/` to `exclude` of every workspace.
 4. Remove committed `.wasm` binaries from the tree except under `legacy/`.
+
+---
+
+## Appendix: settled deviations (folded at 1.0.0-alpha.2)
+
+Sources: `deviations/integration.md` #10–#11, `deviations/modes.md` #5, integration-2.
+
+| # | Section | Change | Reason | Impact |
+|---|---|---|---|---|
+| 10 | architecture §8, D1 | `legacy/` and the pre-v1 crates still in the root workspace (`oino-types`, `oino-agent-loop`, `oino-auth`, `oino-env`, `oino-provider-catalog`, `oino-resource`) and `extensions/built-in/` are deleted; root members are `crates/*` + `xtask` (edition 2024, resolver 3); `rust-toolchain.toml` added. | Nothing depended on them. | — |
+| 11 | quality §6 | CI (`.github/workflows/ci.yml`) runs on `v1-alpha`: fmt (3 workspaces), `cargo xtask wasm` + checksum diff, wasm32 clippy, native extension tests, every `extensions/unipi/*/harness/run.sh`, root clippy/test/doc/wit, install smoke, apps clippy/test, release builds of `oino` + `oino-kanboard`. Remote builds on `coffee`/`desmondgiam` are not in CI. | — | — |
+| M5 | architecture §2 | `RpcBackend` (and its `EventDecoder`) live in `oino-rpc`, not `oino-client` behind feature `rpc`. | `oino-rpc` depends on `oino-client` (trait); the reverse optional edge would be a dependency cycle, which cargo rejects even for optional deps. | Frontends depend on `oino-rpc` for remote sessions. |
+| N1 | §2 | `oino-protocol` was not created; wire types live in `oino-core` (`events`, `ui`, `extensions::{api, host}`) and `oino-client::protocol` (RPC records). `oino-view` / `oino-tui` / `apps` import them from there. | Contract crates landed in another order (core-runtime #11, modes #4, tui-client #1). | Moving them into a contract crate is a mechanical follow-up. |
+| N2 | §3 | `cargo xtask layering` was not implemented; the dependency direction is not checked automatically. | Time. | Open (STATUS §6). |
+| N3 | quality §2 | Root crates use `[lints] workspace = true` (1.0.0-alpha.2); `oino-wasm-host` keeps a local table (`unsafe_code = "deny"`, wit-v1 #12) and `xtask` allows printing. Root `thiserror` is `2`. | Charter gates. | — |
+| N4 | release | Versions are `1.0.0-alpha.2` (root crates, extension SDK / providers / fixtures, apps, Android `versionCode 2`, iOS build 2); unipi components keep `3.0.0`, provider manifests `1.0.0`. | Follow-up round. | — |

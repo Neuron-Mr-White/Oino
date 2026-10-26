@@ -6,7 +6,7 @@
 
 [Install](#install) · [Quick start](#quick-start) · [What's inside](#whats-inside) · [Docs](#documentation) · [Development](#development)
 
-**Status: 1.0.0-alpha.1** — see [docs/dev/v1/STATUS.md](docs/dev/v1/STATUS.md) for parity and known issues.
+**Status: 1.0.0-alpha.2** — see [docs/dev/v1/STATUS.md](docs/dev/v1/STATUS.md) for parity and known issues.
 
 </div>
 

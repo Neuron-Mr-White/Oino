@@ -1253,7 +1253,7 @@ impl Render for SettingsView {
                     self.simple_page(&t, "Permissions", vec![("Workflow", "unipi.workflow is not loaded".into())])
                 }
             }
-            SettingsSection::Remote => self.simple_page(&t, "Remote access", vec![("Serve", "Not available in v1.0.0-alpha.1 (`oino serve` pending)".into())]),
+            SettingsSection::Remote => self.simple_page(&t, "Remote access", vec![("Serve", "Not available in v1.0.0-alpha.2 (`oino serve` pending)".into())]),
             SettingsSection::About => self.simple_page(&t, "About & updates", vec![
                 ("Version", format!("Oino Desktop {}", self.info.version)),
                 ("Backend", self.info.backend.clone()),

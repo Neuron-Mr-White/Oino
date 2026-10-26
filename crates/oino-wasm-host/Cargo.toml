@@ -1,6 +1,6 @@
 [package]
 name = "oino-wasm-host"
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.2"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true

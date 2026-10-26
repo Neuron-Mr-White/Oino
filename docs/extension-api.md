@@ -32,8 +32,6 @@ used by the unipi ports (settings schema, bus topics, work tray, jev decisions).
 
 ## Known gaps (alpha)
 
-- Extensions cannot write settings yet (no `set-extension-setting`); unipi ports keep such
-  state in their state directory.
-- Several `control` functions are not served by the core bridge yet: `run-state`, `shutdown`,
-  `system-prompt-options`, `new-session`, `fork`, `switch-session`, `reload`,
-  `running-bash`, `bash-detach`. They return `unsupported`.
+- `control.running-bash` and `control.bash-detach` are not served yet (`unsupported`);
+  `control.shutdown` is recorded but no mode exits on it yet.
+- `models.classify` and `models.generate-image` are unsupported.

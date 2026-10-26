@@ -1,16 +1,16 @@
 # Deviations: gpui-desktop
 
-| § (gpui-app.md unless noted) | Change | Reason | Impact |
-|---|---|---|---|
-| §2 | No `oino-protocol` / `oino-view` path deps; wire types come from `oino-core` (`events`, `ui`) and `oino-client`. `apps/oino-ui::model` holds GUI-shaped view models (transcript rows with versions + `RowChange`, UI state, dialogs, OUS, palette, sessions). | `oino-protocol` does not exist; `oino-view` is shaped for the TUI. | Switch imports when `oino-protocol` lands; consider moving `model::*` into `oino-view`. |
-| §3.1 | No `SessionHub`: `oino_ui::host::SessionHost` (list/open sessions, extensions, prefs) implemented by `oino-desktop` (`EmbeddedHost`: one `Services` + `WasmRuntime` per cwd, `InProcessBackend` per session) and `DemoHost`. No embedded `oino serve`. | `oino-client` has no hub yet. | Replace with `SessionHubBackend` when modes ships it; mobile reuses `SessionHost`. |
-| §3.1 | Frame pacing: pump drains the event channel, coalesces (`model::coalesce`), reduces once, then sleeps 8 ms; list updates via `ListState::splice`/`remeasure_items` only for changed rows. | As specced, without a frame-time overlay. | 150 ms / 120 fps targets not measured yet. |
-| §3.2 | Sessions stay alive in hidden panes (no 30 s keep-warm/ref-count, no split layout). | Scope. | Add `PaneLayout` later. |
-| §3.3 | No onboarding screen; Settings → Models offers `/login`. Bundled components are `oino_bundle::BUNDLED` + `~/.oino/extensions` + trust-gated `.oino/extensions`. | Scope. | — |
-| §5.1 | Shell is hand-built from gpui-kit primitives (`Button`, `Input`, `Textarea`, `Switch`, `Checkbox`, `TextView`, `Spinner`, notifications) rather than `Sidebar`/`Dock`/`TabPanel`/`diff` components. Conversation uses GPUI `list` (variable-height virtualisation, `FollowMode::Tail`); palette uses `uniform_list`. | Tighter control of density and re-render; fewer API surfaces to track across gpui-pre bumps. | — |
-| §5.2 | Done: stable row ids, tail-only streaming with incremental markdown (`TextViewState::push_str`), tool rows (preview from streaming `toolCall` args, inline diff 40 lines + "Open diff", bash tail 5 lines + "Open output"), collapsed thinking, provenance cards, summary cards, query rail. Not done: OUS custom renderers (`render` command), subagent child tabs. | No `render` command in `oino-client`. | needs modes. |
-| §5.3 | Done: model + discrete thinking control, `/` completion from `get_commands`, history, Enter/steer, Ctrl+Enter follow-up, `!`/`!!`, queue panel (clear). Not done: `@file`/`get_completions`, attachments/images, drafts persisted across restarts, editing queued items. | No `get_completions` command. | needs modes. |
-| §5.4 | All dialog kinds render (select/confirm/input/editor/multiSelect/form/approval/custom). Panels: overlay/fullscreen modal, sidePane tab, editorReplace/bottomPane replace the composer. Interactive OUS actions and `$close` are **logged only**. `osNotify` → toast. `clipboardReadImage`/`editExternally` answer cancelled. | No `extension_ui_action` / `invoke_shortcut` command in `oino-client`; no OS notification crate chosen. | needs modes; extension shortcuts are listed in the palette but cannot run. |
-| §5.6 | Settings: General (theme, thinking, tool expansion, density), Models (available models, `/login`), Extensions (loaded/failed list), Keybindings (static), About. Not done: extension settings hub (§6.6 schema commands), keybinding overrides, remote access, enable/disable/install. Desktop prefs live in `~/.oino/desktop.json`. | Commands missing in `oino-client`. | — |
-| §5.5 | Tree view / fork (`Ctrl+Shift+T`) and split (`Ctrl+\`) not implemented. | Scope. | — |
-| §6 | `scripts/build.sh` packages tar.gz itself and AppImage/deb/dmg/NSIS through cargo-packager when installed; Windows runs the same script under Git Bash. Not run on `coffee`/`desmondgiam` yet (no remote builds by instruction). | — | integration: wire `cargo xtask desktop`. |
+Settled rows are folded into [gpui-app.md](../gpui-app.md#appendix-settled-deviations-folded-at-100-alpha2)
+(G1–G5, G10, G11; 1.0.0-alpha.2). The UX spec is [design.md](../design.md); the parity checklist and
+perf numbers are in `apps/oino-desktop/DESIGN-STATUS.md`, the review and its resolution in
+[design/review-desktop.md](../design/review-desktop.md).
+
+## Open
+
+| Item | Notes |
+|---|---|
+| Perf | 4-pane whole-run p99 9.3–14.9 ms vs the 10 ms budget (design.md §2.11). |
+| Keyboard | StatusPanel and Queue key tables, DiffViewer `u`, tooltips on keyboard focus. |
+| Review P2 | "Thought for Ns", model-menu submenus / pinned group, secret reveal toggle, info overlay vertical tabs, DiffViewer line numbers / per-file actions / split view, compact-now confirmation, updater-driven update badge, skeleton loaders, exit animations, run-label shimmer. |
+| Core requests | File checkpoints (Undo / rewind), single-item queue commands, `disabledExtensions` in the core loader, `_oino/topics`, `_oino/agents`. |
+| Platforms | Windows rendering not checked (locked console); macOS rendering not checked over SSH; no signing / notarisation. |

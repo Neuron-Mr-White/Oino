@@ -321,3 +321,24 @@ degrades per frontend:
   modulo whitespace; degradation functions unit-tested.
 - `ui-probe` fixture passes against TUI (headless test backend), GPUI (view tests) and RPC.
 - First-answer-wins tested with two in-process frontends attached to one session.
+
+---
+
+## Appendix: settled deviations (folded at 1.0.0-alpha.2)
+
+Collected from the deviation files of the producers (unipi-*) and consumers (modes, acp, frontend-cmds).
+
+Oino additions that bundled components emit and the TUI / desktop / mobile frontends consume.
+Frontends that do not know a field ignore it; unknown OUS nodes render their `fallback` (§6.1).
+
+| # | Where | Addition | Source |
+|---|---|---|---|
+| U1 | §6.1 OUS | `responsive {variants: [{minWidth, node}], fallback}`: the first variant whose `minWidth` ≤ available width renders; none ⇒ `fallback`. | unipi-core #4, R4 |
+| U2 | §7.3 completions | `CompletionGroup.from` (character offset the accepted item replaces), `replaces: "commands"` (contributor supersedes the frontend's slash group), `prefix`; items carry `tag`, `tone` (`c1…c12`), `sortTier`. | frontend-cmds #2, unipi-ux #1 |
+| U3 | §7.2 editor intents | `cleared` may carry `reason: "interrupt" \| "submit" \| "edit"`; consumable intents (`emptyArrowDown`, `tokenBackspace`) wait for the first `{consume: true}`; `ui.editor-text` returns the text of the last `editor_event`. | unipi-ux #3, frontend-cmds #5, #10 |
+| U4 | §4.3 dialogs | `form` hints `escape`, `digitAdvance`, `helpLine`, `clarify`; answers `attachments` / `files`. `custom` dialogs: `keys: [{key, actionId, label}]`, `closeOnUnknownKey`. `editor`: `cursorLine`. New dialogs `clipboardReadImage`, `editExternally{text, extensionHint?}`. | unipi-ux #4, #5; unipi-utility #5; frontend-cmds #10 |
+| U5 | §6.3 frame / footer | `setFrame` segments: `id`, `priority`, `bold`, `style: "badge"`, `effect: "rainbow"`, `spans` + `fallback`; request-level `effect`, `iconStyle`, `colorMode`; `setFooter{key, spec, segments, separator, minRows}`. | unipi-ux #6 |
+| U6 | §6 OUS | `barChart.columns`, `list.columns: "auto"`, span `strike`, `card.effect`, `meter.effect` / `durationMs`, `code{language: "mermaid"}` (frontends may render diagrams), header `effect` hints (`shimmer`, `drain`). | unipi-ux #8, #11; unipi-agents #20 |
+| U7 | §5 fire-and-forget | `setPlan {entries: [{content, priority, status}]}` (ACP `plan` update; other frontends may show it in the status panel). | acp #10 |
+| U8 | §6.1 panels | Panel ids default to `<ext>/panel-<n>`; `ui_action` routes to the panel owner as `oino_ui_action` in a command context and returns once dispatched. | integration #7, frontend-cmds #4 |
+| U9 | §10 | Clients without `_oino/hello`: Oino-only dialogs resolve cancelled, Oino fire-and-forget methods are dropped, `extensionId` / `sessionId` / `extension_error.stack` are stripped (no degradation renderers). | modes #10 |
