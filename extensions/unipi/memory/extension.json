@@ -1,0 +1,23 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.memory",
+  "name": "Memory",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "MemPalace-backed cross-session memory: markdown memory files, semantic search over every palace drawer, a recall reminder and an end-of-task save pass.",
+  "license": "MIT",
+  "resources": { "skills": ["skills"] },
+  "permissions": {
+    "process": { "spawn": true, "allow": ["mempalace", "mempalace-mcp", "uv"], "detached": true },
+    "fs": {
+      "paths": [
+        { "path": "~/.mempalace", "access": "write", "alias": "mempalace" },
+        { "path": "~/.config/mempalace", "access": "write", "alias": "mempalace-config" },
+        { "path": "~/.unipi/memory", "access": "read", "alias": "legacy-memory" }
+      ]
+    },
+    "agents": { "spawn": true, "maxDepth": 2 },
+    "sessionControl": true,
+    "network": { "hosts": ["pypi.org", "files.pythonhosted.org", "127.0.0.1", "localhost"] }
+  }
+}

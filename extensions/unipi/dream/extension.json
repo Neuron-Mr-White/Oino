@@ -1,0 +1,16 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.dream",
+  "name": "Dream",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Background reflection over past sessions: finds repeated struggles, writes memory lessons, and proposes skills or checks for approval.",
+  "license": "MIT",
+  "resources": { "skills": ["skills"] },
+  "permissions": {
+    "sessions": { "readAll": true },
+    "agents": { "spawn": true, "maxDepth": 2 },
+    "fs": { "agentDir": "read", "project": "write" },
+    "services": { "call": ["unipi.core/core.open-tray"] }
+  }
+}

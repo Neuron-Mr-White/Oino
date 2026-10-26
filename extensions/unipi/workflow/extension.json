@@ -1,0 +1,17 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.workflow",
+  "name": "Workflow",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Permission modes (ask · auto · full) gating every tool call, and a read-only plan mode with a review screen.",
+  "license": "MIT",
+  "permissions": {
+    "fs": { "project": "write" },
+    "sessionControl": true,
+    "network": { "hosts": ["openrouter.ai", "api.typesafe.ai"] },
+    "env": ["TMPDIR", "TYPESAFE_API_KEY", "OPENROUTER_API_KEY"],
+    "secrets": true,
+    "credentials": ["openrouter"]
+  }
+}
