@@ -260,7 +260,7 @@ async fn child_sessions_persist_under_the_parent_and_resume() {
         .await
         .unwrap();
     let file = child.session_file().unwrap();
-    assert!(file.starts_with(parent_dir.join("children")), "{file:?}");
+    assert_eq!(file.parent().unwrap(), parent_dir.join("children"));
     child.prompt("task one".into(), None).await.unwrap();
     child.wait_idle().await;
     child.close(Duration::ZERO).await;

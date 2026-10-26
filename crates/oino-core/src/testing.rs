@@ -58,11 +58,15 @@ pub enum FauxResponse {
     },
 }
 
+/// Picks a response for a request before the queue is consulted (`None` = use the queue).
+pub type FauxRouter = Arc<dyn Fn(&JsonValue) -> Option<FauxResponse> + Send + Sync>;
+
 /// Scripted provider component (`provides.apis = ["faux"]`).
 #[derive(Default)]
 pub struct FauxProvider {
     responses: Mutex<VecDeque<FauxResponse>>,
     requests: Mutex<Vec<JsonValue>>,
+    router: Mutex<Option<FauxRouter>>,
 }
 
 impl std::fmt::Debug for FauxProvider {
@@ -78,7 +82,17 @@ impl FauxProvider {
         Arc::new(Self {
             responses: Mutex::new(responses.into()),
             requests: Mutex::new(Vec::new()),
+            router: Mutex::new(None),
         })
+    }
+
+    /// Answers requests `router` recognises (e.g. nested agents by their system prompt)
+    /// without consuming the queue.
+    pub fn route(
+        &self,
+        router: impl Fn(&JsonValue) -> Option<FauxResponse> + Send + Sync + 'static,
+    ) {
+        *lock(&self.router) = Some(Arc::new(router));
     }
 
     /// Queues more responses.
@@ -230,10 +244,13 @@ impl ProviderInstance for FauxProvider {
         '_,
         Result<BoxStream<'static, Result<ProviderEvent, ExtensionCallError>>, ExtensionCallError>,
     > {
+        let routed = lock(&self.router).clone().and_then(|route| route(&request));
         lock(&self.requests).push(request);
-        let response = lock(&self.responses)
-            .pop_front()
-            .unwrap_or_else(|| FauxResponse::Text("(no more responses)".into()));
+        let response = routed.unwrap_or_else(|| {
+            lock(&self.responses)
+                .pop_front()
+                .unwrap_or_else(|| FauxResponse::Text("(no more responses)".into()))
+        });
         let events = Self::events(response);
         Box::pin(async move {
             Ok(Box::pin(stream::iter(events.into_iter().map(Ok))) as BoxStream<'static, _>)

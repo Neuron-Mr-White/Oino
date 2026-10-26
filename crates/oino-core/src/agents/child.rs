@@ -272,14 +272,6 @@ fn max_concurrent(session: &AgentSession) -> usize {
         .clamp(1, HARD_MAX_CONCURRENT)
 }
 
-fn context_messages(session: &AgentSession) -> Vec<AgentMessage> {
-    session
-        .with_manager(|m| m.build_session_context().messages)
-        .into_iter()
-        .filter(|m| !matches!(m, AgentMessage::System(_)))
-        .collect()
-}
-
 impl AgentSession {
     fn resolve_child_model(&self, spec: &AgentSpec) -> Result<Model, HostError> {
         match &spec.model {
@@ -308,22 +300,20 @@ impl AgentSession {
                     .map(|d| d.join("children"))
             }),
         };
-        let seed_messages = |manager: &mut SessionManager, messages: Vec<AgentMessage>| {
-            for message in messages {
-                manager.append_message(message).map_err(failed)?;
+        if let Seed::SessionFile(path) = &spec.seed {
+            if let Some(dir) = dir {
+                return SessionManager::open(path, &dir, Some(cwd)).map_err(failed);
             }
-            Ok::<(), HostError>(())
-        };
-        let manager = match (&spec.seed, dir) {
-            (Seed::SessionFile(path), Some(dir)) => {
-                SessionManager::open(path, &dir, Some(cwd)).map_err(failed)?
-            }
-            (Seed::SessionFile(path), None) => {
-                let root = path.parent().unwrap_or(cwd);
-                let source = SessionManager::open(path, root, Some(cwd)).map_err(failed)?;
-                SessionManager::in_memory(cwd, options, source.entries().to_vec())
-            }
-            (Seed::BranchCopy, None) => {
+            let root = path.parent().unwrap_or(cwd);
+            let source = SessionManager::open(path, root, Some(cwd)).map_err(failed)?;
+            return Ok(SessionManager::in_memory(
+                cwd,
+                options,
+                source.entries().to_vec(),
+            ));
+        }
+        let mut manager = match &spec.seed {
+            Seed::BranchCopy => {
                 let branch = self.with_manager(|m| {
                     m.branch(None)
                         .into_iter()
@@ -333,19 +323,27 @@ impl AgentSession {
                 });
                 SessionManager::in_memory(cwd, options, branch)
             }
-            (seed, dir) => {
-                let mut manager = match dir {
-                    Some(dir) => SessionManager::create(cwd, &dir, options).map_err(failed)?,
-                    None => SessionManager::in_memory(cwd, options, Vec::new()),
-                };
-                match seed {
-                    Seed::BranchCopy => seed_messages(&mut manager, context_messages(self))?,
-                    Seed::Messages(messages) => seed_messages(&mut manager, messages.clone())?,
-                    Seed::None | Seed::SessionFile(_) => {}
-                }
-                manager
-            }
+            _ => SessionManager::in_memory(cwd, options, Vec::new()),
         };
+        if let Seed::Messages(messages) = &spec.seed {
+            for message in messages {
+                manager.append_message(message.clone()).map_err(failed)?;
+            }
+        }
+        let Some(dir) = dir else {
+            return Ok(manager);
+        };
+        // pi `--session-dir` semantics: the file lives directly in the child sessions dir.
+        let path = dir.join(oino_session::manager::session_file_name(manager.header()));
+        let mut text = serde_json::to_string(manager.header()).map_err(failed)?;
+        text.push('\n');
+        for entry in manager.entries() {
+            text.push_str(&serde_json::to_string(entry).map_err(failed)?);
+            text.push('\n');
+        }
+        std::fs::create_dir_all(&dir).map_err(failed)?;
+        std::fs::write(&path, text).map_err(failed)?;
+        let manager = SessionManager::open(&path, &dir, Some(cwd)).map_err(failed)?;
         Ok(manager)
     }
 
