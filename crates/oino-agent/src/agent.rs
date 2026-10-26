@@ -397,6 +397,13 @@ impl Agent {
         lock(&self.inner.state).messages.push(message);
     }
 
+    /// Replaces the last transcript message (pi in-place `message_end` replacement).
+    pub fn replace_last_message(&self, message: AgentMessage) {
+        if let Some(last) = lock(&self.inner.state).messages.last_mut() {
+            *last = message;
+        }
+    }
+
     /// Replaces the executable tools.
     pub fn set_tools(&self, tools: Vec<Arc<dyn AgentTool>>) {
         lock(&self.inner.state).tools = tools;

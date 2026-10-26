@@ -131,6 +131,9 @@ pub struct BeforeToolCallResult {
     /// Mark the blocked result as terminating.
     #[serde(default)]
     pub terminate: bool,
+    /// Replacement arguments for the call (Oino: pi handlers mutate `args` in place).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<JsonObject>,
 }
 
 /// pi `beforeToolCall`.

@@ -726,7 +726,7 @@ async fn prepare_tool_call(
     if call.arguments_error.is_none() {
         prepared_call.arguments = tool.prepare_arguments(call.arguments.clone());
     }
-    let args = match validate_tool_arguments(&tool.meta().parameters, &prepared_call) {
+    let mut args = match validate_tool_arguments(&tool.meta().parameters, &prepared_call) {
         Ok(args) => args,
         Err(message) => {
             return Preparation::Immediate {
@@ -754,6 +754,12 @@ async fn prepare_tool_call(
                 result: AgentToolResult::error("Operation aborted"),
             };
         }
+        let decision = decision.map(|mut decision| {
+            if let Some(input) = decision.input.take() {
+                args = input;
+            }
+            decision
+        });
         if let Some(decision) = decision.filter(|d| d.block) {
             let mut result = AgentToolResult::error(
                 decision

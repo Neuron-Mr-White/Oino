@@ -197,6 +197,7 @@ impl BeforeToolCall for Hooks {
                 block: true,
                 reason: Some(reason),
                 terminate: false,
+                input: None,
             }))
         })
     }

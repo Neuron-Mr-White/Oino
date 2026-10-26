@@ -14,3 +14,12 @@
 )]
 
 pub mod compaction;
+pub mod events;
+pub mod export;
+pub mod extensions;
+pub mod hub;
+pub mod provider;
+pub mod session;
+#[cfg(feature = "testing")]
+pub mod testing;
+pub mod ui;
