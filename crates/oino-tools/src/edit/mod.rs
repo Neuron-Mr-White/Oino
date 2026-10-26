@@ -234,6 +234,35 @@ mod tests {
         );
     }
 
+    /// jsdiff / `generateDiffString` / `normalizeForFuzzyMatch` parity on 154 random edits.
+    #[test]
+    fn diffs_and_fuzzy_match_pi() {
+        let fixture: JsonValue =
+            serde_json::from_str(include_str!("../../tests/fixtures/units.json")).unwrap();
+        for case in fixture["diffs"].as_array().unwrap() {
+            let (old, new) = (case["old"].as_str().unwrap(), case["new"].as_str().unwrap());
+            let display = diff::display_diff(old, new);
+            assert_eq!(display.diff, case["display"]["diff"], "{case}");
+            assert_eq!(
+                display.first_changed_line.map(|line| json!(line)),
+                case["display"].get("firstChangedLine").cloned(),
+                "{case}"
+            );
+            assert_eq!(
+                diff::unified_patch("f.txt", old, new),
+                case["patch"],
+                "{case}"
+            );
+        }
+        for case in fixture["fuzzy"].as_array().unwrap() {
+            assert_eq!(
+                apply::normalize_for_fuzzy_match(case["text"].as_str().unwrap()),
+                case["normalized"],
+                "{case}"
+            );
+        }
+    }
+
     #[test]
     fn prepare_wraps_single_object() {
         let prepared = prepare_edit_arguments(object(&json!({

@@ -1,0 +1,3922 @@
+{
+ "formatSize": [
+  {
+   "bytes": 0,
+   "text": "0B"
+  },
+  {
+   "bytes": 1,
+   "text": "1B"
+  },
+  {
+   "bytes": 1023,
+   "text": "1023B"
+  },
+  {
+   "bytes": 1024,
+   "text": "1.0KB"
+  },
+  {
+   "bytes": 1280,
+   "text": "1.3KB"
+  },
+  {
+   "bytes": 1536,
+   "text": "1.5KB"
+  },
+  {
+   "bytes": 10239,
+   "text": "10.0KB"
+  },
+  {
+   "bytes": 51200,
+   "text": "50.0KB"
+  },
+  {
+   "bytes": 52224,
+   "text": "51.0KB"
+  },
+  {
+   "bytes": 1048575,
+   "text": "1024.0KB"
+  },
+  {
+   "bytes": 1048576,
+   "text": "1.0MB"
+  },
+  {
+   "bytes": 1572864,
+   "text": "1.5MB"
+  },
+  {
+   "bytes": 5242881,
+   "text": "5.0MB"
+  }
+ ],
+ "truncation": [
+  {
+   "text": "",
+   "options": {},
+   "head": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 0,
+    "totalBytes": 0,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "a",
+   "options": {},
+   "head": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "a",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "a",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "a",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "a",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 1,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "a\n",
+   "options": {},
+   "head": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a\n",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a\n",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "a\n",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "a\n",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "a\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 2,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "a\n",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "a",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "a",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 1,
+    "totalBytes": 2,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "a\nb",
+   "options": {},
+   "head": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a\nb",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a\nb",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "a\nb",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "a\nb",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "a\nb",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 2,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "a\nb",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "a",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "b",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 2,
+    "totalBytes": 3,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "a\nb\n",
+   "options": {},
+   "head": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a\nb\n",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "a\nb\n",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "a\nb\n",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "a\nb\n",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "a\nb\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 2,
+    "outputBytes": 4,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "a\nb\n",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "a",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "b",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 2,
+    "totalBytes": 4,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "\n\n\n",
+   "options": {},
+   "head": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "\n\n\n",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "\n\n\n",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "\n\n\n",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "\n\n\n",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "\n\n\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 3,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "\n\n\n",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 1,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 3,
+    "totalBytes": 3,
+    "outputLines": 1,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "options": {},
+   "head": {
+    "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 100,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 100,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 100,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 100,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "xxxxxxxxxxxxxxxxxxxx",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 20,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 50,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "xxxxxxx",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 7,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "x",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 1,
+    "totalBytes": 100,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "éééééééééééééééééééééééééééééé\nz",
+   "options": {},
+   "head": {
+    "content": "éééééééééééééééééééééééééééééé\nz",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 2,
+    "outputBytes": 62,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "éééééééééééééééééééééééééééééé\nz",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 2,
+    "outputBytes": 62,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "éééééééééééééééééééééééééééééé\nz",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "éééééééééééééééééééééééééééééé\nz",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 2,
+    "outputBytes": 62,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "éééééééééééééééééééééééééééééé\nz",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 2,
+    "outputBytes": 62,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "éééééééééééééééééééééééééééééé\nz",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "z",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "éééééééééééééééééééééééééééééé\nz",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "z",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "éééééééééééééééééééééééééééééé\nz",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "z",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "éééééééééééééééééééééééééééééé\nz",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "z",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 2,
+    "totalBytes": 62,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+   "options": {},
+   "head": {
+    "content": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 30,
+    "outputBytes": 229,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 30,
+    "outputBytes": 229,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "line 0\nline 1\nline 2\nline 3\nline 4",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 5,
+    "outputBytes": 34,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "line 25\nline 26\nline 27\nline 28\nline 29",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 5,
+    "outputBytes": 39,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "line 0\nline 1\nline 2",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 3,
+    "outputBytes": 20,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "line 28\nline 29",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 2,
+    "outputBytes": 15,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "line 0\nline 1\nline 2",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 3,
+    "outputBytes": 20,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "line 27\nline 28\nline 29",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 3,
+    "outputBytes": 23,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "line 0",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 1,
+    "outputBytes": 6,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "line 29",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 1,
+    "outputBytes": 7,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "9",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 229,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+   "options": {},
+   "head": {
+    "content": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 30,
+    "outputBytes": 230,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 30,
+    "outputBytes": 230,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "line 0\nline 1\nline 2\nline 3\nline 4",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 5,
+    "outputBytes": 34,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "line 25\nline 26\nline 27\nline 28\nline 29",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 5,
+    "outputBytes": 39,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "line 0\nline 1\nline 2",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 3,
+    "outputBytes": 20,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "line 28\nline 29",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 2,
+    "outputBytes": 15,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "line 0\nline 1\nline 2",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 3,
+    "outputBytes": 20,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "line 27\nline 28\nline 29",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 3,
+    "outputBytes": 23,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "line 0",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 1,
+    "outputBytes": 6,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "line 29",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 1,
+    "outputBytes": 7,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\n",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "9",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 30,
+    "totalBytes": 230,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+   "options": {},
+   "head": {
+    "content": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 3,
+    "outputBytes": 90,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 3,
+    "outputBytes": 90,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 3,
+    "outputBytes": 90,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 3,
+    "outputBytes": 90,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "short",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 1,
+    "outputBytes": 5,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "end",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 1,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "short",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 1,
+    "outputBytes": 5,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "end",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 1,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "short",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 1,
+    "outputBytes": 5,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "end",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 1,
+    "outputBytes": 3,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "short\nyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\nend",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "d",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 3,
+    "totalBytes": 90,
+    "outputLines": 1,
+    "outputBytes": 1,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  },
+  {
+   "text": "😀😀😀\nab😀",
+   "options": {},
+   "head": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "😀😀😀\nab😀",
+   "options": {
+    "maxLines": 5
+   },
+   "head": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   },
+   "tail": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 5,
+    "maxBytes": 51200
+   }
+  },
+  {
+   "text": "😀😀😀\nab😀",
+   "options": {
+    "maxBytes": 20
+   },
+   "head": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   },
+   "tail": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 20
+   }
+  },
+  {
+   "text": "😀😀😀\nab😀",
+   "options": {
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "head": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   },
+   "tail": {
+    "content": "😀😀😀\nab😀",
+    "truncated": false,
+    "truncatedBy": null,
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 2,
+    "outputBytes": 19,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 3,
+    "maxBytes": 50
+   }
+  },
+  {
+   "text": "😀😀😀\nab😀",
+   "options": {
+    "maxBytes": 7
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 2000,
+    "maxBytes": 7
+   },
+   "tail": {
+    "content": "ab😀",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 1,
+    "outputBytes": 6,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": false,
+    "maxLines": 2000,
+    "maxBytes": 7
+   }
+  },
+  {
+   "text": "😀😀😀\nab😀",
+   "options": {
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "head": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "bytes",
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 0,
+    "outputBytes": 0,
+    "lastLinePartial": false,
+    "firstLineExceedsLimit": true,
+    "maxLines": 1,
+    "maxBytes": 1
+   },
+   "tail": {
+    "content": "",
+    "truncated": true,
+    "truncatedBy": "lines",
+    "totalLines": 2,
+    "totalBytes": 19,
+    "outputLines": 1,
+    "outputBytes": 0,
+    "lastLinePartial": true,
+    "firstLineExceedsLimit": false,
+    "maxLines": 1,
+    "maxBytes": 1
+   }
+  }
+ ],
+ "lines": [
+  {
+   "line": "",
+   "result": {
+    "text": "",
+    "wasTruncated": false
+   }
+  },
+  {
+   "line": "abc",
+   "result": {
+    "text": "abc",
+    "wasTruncated": false
+   }
+  },
+  {
+   "line": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "result": {
+    "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "wasTruncated": false
+   }
+  },
+  {
+   "line": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "result": {
+    "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... [truncated]",
+    "wasTruncated": true
+   }
+  },
+  {
+   "line": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+   "result": {
+    "text": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé... [truncated]",
+    "wasTruncated": true
+   }
+  },
+  {
+   "line": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "result": {
+    "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀... [truncated]",
+    "wasTruncated": true
+   }
+  }
+ ],
+ "resolve": [
+  {
+   "input": "a.txt",
+   "cwd": "/work/project",
+   "resolved": "/work/project/a.txt",
+   "expanded": "a.txt"
+  },
+  {
+   "input": "./a/../b",
+   "cwd": "/work/project",
+   "resolved": "/work/project/b",
+   "expanded": "./a/../b"
+  },
+  {
+   "input": "/abs//x/",
+   "cwd": "/work/project",
+   "resolved": "/abs/x",
+   "expanded": "/abs//x/"
+  },
+  {
+   "input": "@rel",
+   "cwd": "/work/project",
+   "resolved": "/work/project/rel",
+   "expanded": "rel"
+  },
+  {
+   "input": "@/abs",
+   "cwd": "/work/project",
+   "resolved": "/abs",
+   "expanded": "/abs"
+  },
+  {
+   "input": "a b",
+   "cwd": "/work/project",
+   "resolved": "/work/project/a b",
+   "expanded": "a b"
+  },
+  {
+   "input": "a b",
+   "cwd": "/work/project",
+   "resolved": "/work/project/a b",
+   "expanded": "a b"
+  },
+  {
+   "input": "~",
+   "cwd": "/work/project",
+   "resolved": "$HOME",
+   "expanded": "$HOME"
+  },
+  {
+   "input": "~/notes.md",
+   "cwd": "/work/project",
+   "resolved": "$HOME/notes.md",
+   "expanded": "$HOME/notes.md"
+  },
+  {
+   "input": "file:///tmp/a%20b",
+   "cwd": "/work/project",
+   "resolved": "/tmp/a b",
+   "expanded": "/tmp/a b"
+  },
+  {
+   "input": "../..",
+   "cwd": "/work/project",
+   "resolved": "/",
+   "expanded": "../.."
+  },
+  {
+   "input": "../../../../..",
+   "cwd": "/work/project",
+   "resolved": "/",
+   "expanded": "../../../../.."
+  },
+  {
+   "input": "",
+   "cwd": "/work/project",
+   "resolved": "/work/project",
+   "expanded": ""
+  },
+  {
+   "input": ".",
+   "cwd": "/work/project",
+   "resolved": "/work/project",
+   "expanded": "."
+  },
+  {
+   "input": "dir/",
+   "cwd": "/work/project",
+   "resolved": "/work/project/dir",
+   "expanded": "dir/"
+  },
+  {
+   "input": "x/./y/../z",
+   "cwd": "/work/project",
+   "resolved": "/work/project/x/z",
+   "expanded": "x/./y/../z"
+  }
+ ],
+ "fuzzy": [
+  {
+   "text": "plain",
+   "normalized": "plain"
+  },
+  {
+   "text": "trail   \nx\t\n",
+   "normalized": "trail\nx\n"
+  },
+  {
+   "text": "“q” ‘s’",
+   "normalized": "\"q\" 's'"
+  },
+  {
+   "text": "a—b–c−d",
+   "normalized": "a-b-c-d"
+  },
+  {
+   "text": "nb sp　x",
+   "normalized": "nb sp x"
+  },
+  {
+   "text": "Ａｂ①",
+   "normalized": "Ab1"
+  },
+  {
+   "text": "ﬁne",
+   "normalized": "fine"
+  }
+ ],
+ "diffs": [
+  {
+   "old": "delta\neps\n\nbeta\ndelta\nbeta\n\nzeta\ndelta\nbeta\nzeta\neps\ngamma\nbeta\ndelta\n\n\nalpha\n",
+   "new": "delta\n\nnew0\nalpha\ndelta\neps\nzeta\ndelta\nnew0\nzeta\n\ngamma\nbeta\nbeta\n\nalpha",
+   "display": {
+    "diff": "  1 delta\n- 2 eps\n  3 \n- 4 beta\n+ 3 new0\n+ 4 alpha\n  5 delta\n- 6 beta\n- 7 \n+ 6 eps\n  8 zeta\n  9 delta\n-10 beta\n+ 9 new0\n 11 zeta\n-12 eps\n+11 \n 13 gamma\n 14 beta\n-15 delta\n+14 beta\n 16 \n-17 \n-18 alpha\n+16 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,18 +1,16 @@\n delta\n-eps\n \n-beta\n+new0\n+alpha\n delta\n-beta\n-\n+eps\n zeta\n delta\n-beta\n+new0\n zeta\n-eps\n+\n gamma\n beta\n-delta\n+beta\n \n-\n-alpha\n+alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\nalpha\nalpha\nalpha\ngamma\ndelta\n\nzeta\nalpha\neps\nzeta\nbeta\n",
+   "new": "zeta\nalpha\nalpha\ngamma\ndelta\n\nzeta\nalpha\neps\nzeta\nbeta",
+   "display": {
+    "diff": "  1 zeta\n  2 alpha\n  3 alpha\n- 4 alpha\n  5 gamma\n  6 delta\n  7 \n  8 zeta\n  9 alpha\n 10 eps\n 11 zeta\n-12 beta\n+11 beta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,12 +1,11 @@\n zeta\n alpha\n alpha\n-alpha\n gamma\n delta\n \n zeta\n alpha\n eps\n zeta\n-beta\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\nzeta\nalpha\ndelta\neps\nalpha\nzeta\nbeta\n",
+   "new": "eps\nzeta\nalpha\n\neps\nalpha\nzeta\n",
+   "display": {
+    "diff": " 1 eps\n 2 zeta\n 3 alpha\n-4 delta\n+4 \n 5 eps\n 6 alpha\n 7 zeta\n-8 beta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,8 +1,7 @@\n eps\n zeta\n alpha\n-delta\n+\n eps\n alpha\n zeta\n-beta\n"
+  },
+  {
+   "old": "\ndelta\nbeta\nalpha\n\n\n",
+   "new": "beta\nzeta\nalpha\ndelta\n",
+   "display": {
+    "diff": "-1 \n-2 delta\n 3 beta\n+2 zeta\n 4 alpha\n-5 \n-6 \n+4 delta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,4 @@\n-\n-delta\n beta\n+zeta\n alpha\n-\n-\n+delta\n"
+  },
+  {
+   "old": "gamma\nzeta\ngamma\ndelta\n\ndelta\n\nbeta\ngamma\ngamma\ngamma",
+   "new": "gamma\n\ndelta\nnew4\n\ndelta\n\nbeta\nzeta\ngamma\ngamma",
+   "display": {
+    "diff": "  1 gamma\n- 2 zeta\n- 3 gamma\n+ 2 \n  4 delta\n+ 4 new4\n  5 \n  6 delta\n  7 \n  8 beta\n+ 9 zeta\n  9 gamma\n-10 gamma\n 11 gamma",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,11 +1,11 @@\n gamma\n-zeta\n-gamma\n+\n delta\n+new4\n \n delta\n \n beta\n+zeta\n gamma\n-gamma\n gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\ndelta\nzeta\ndelta\nzeta\neps",
+   "new": "gamma\nnew5\ndelta\ndelta\nzeta\neps\n",
+   "display": {
+    "diff": " 1 gamma\n+2 new5\n 2 delta\n-3 zeta\n 4 delta\n 5 zeta\n-6 eps\n+6 eps",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,6 @@\n gamma\n+new5\n delta\n-zeta\n delta\n zeta\n-eps\n\\ No newline at end of file\n+eps\n"
+  },
+  {
+   "old": "zeta\n\ngamma\nzeta\n\ngamma\neps\nbeta\ngamma\nalpha\nalpha\n\neps",
+   "new": "zeta\n\nalpha\nnew6\ndelta\ngamma\neps\nbeta\ngamma\nalpha\nalpha\neps",
+   "display": {
+    "diff": "  1 zeta\n  2 \n+ 3 alpha\n+ 4 new6\n+ 5 delta\n  3 gamma\n- 4 zeta\n- 5 \n- 6 gamma\n  7 eps\n  8 beta\n  9 gamma\n 10 alpha\n 11 alpha\n-12 \n 13 eps",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,13 +1,12 @@\n zeta\n \n+alpha\n+new6\n+delta\n gamma\n-zeta\n-\n-gamma\n eps\n beta\n gamma\n alpha\n alpha\n-\n eps\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\nalpha\nalpha\nbeta\nzeta\nalpha\nzeta\ndelta\ndelta\nalpha\neps\nalpha\ngamma\nbeta\n\ndelta\nalpha\nzeta\neps",
+   "new": "delta\nalpha\nalpha\n\ndelta\nalpha\neps\nzeta\ndelta\nbeta\n\ndelta\nalpha\nzeta\neps",
+   "display": {
+    "diff": "  1 delta\n  2 alpha\n  3 alpha\n- 4 beta\n- 5 zeta\n- 6 alpha\n- 7 zeta\n+ 4 \n  8 delta\n- 9 delta\n 10 alpha\n 11 eps\n-12 alpha\n-13 gamma\n+ 8 zeta\n+ 9 delta\n 14 beta\n 15 \n 16 delta\n 17 alpha\n    ...",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,13 @@\n delta\n alpha\n alpha\n-beta\n-zeta\n-alpha\n-zeta\n+\n delta\n-delta\n alpha\n eps\n-alpha\n-gamma\n+zeta\n+delta\n beta\n \n delta\n alpha\n"
+  },
+  {
+   "old": "\n\nzeta\ngamma\nzeta\ngamma\nzeta\ngamma\ngamma\n",
+   "new": "\n\nzeta\nzeta\n\ngamma\neps\ngamma",
+   "display": {
+    "diff": "  1 \n  2 \n  3 zeta\n- 4 gamma\n  5 zeta\n+ 5 \n  6 gamma\n- 7 zeta\n- 8 gamma\n- 9 gamma\n+ 7 eps\n+ 8 gamma",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,8 @@\n \n \n zeta\n-gamma\n zeta\n+\n gamma\n-zeta\n-gamma\n-gamma\n+eps\n+gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\ndelta\n\neps\ndelta\nalpha\nbeta\nalpha\nalpha\ngamma\neps\neps\n\nalpha\nalpha\nbeta\n\nbeta\neps\n",
+   "new": "gamma\ndelta\nnew9\n\neps\neps\nalpha\nalpha\nalpha\neps\nzeta\nalpha\nalpha\nnew9\nbeta\n\nbeta\n",
+   "display": {
+    "diff": "  1 gamma\n  2 delta\n+ 3 new9\n  3 \n  4 eps\n- 5 delta\n+ 6 eps\n  6 alpha\n- 7 beta\n  8 alpha\n  9 alpha\n-10 gamma\n 11 eps\n-12 eps\n-13 \n+11 zeta\n 14 alpha\n 15 alpha\n+14 new9\n 16 beta\n 17 \n 18 beta\n-19 eps",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,17 @@\n gamma\n delta\n+new9\n \n eps\n-delta\n+eps\n alpha\n-beta\n alpha\n alpha\n-gamma\n eps\n-eps\n-\n+zeta\n alpha\n alpha\n+new9\n beta\n \n beta\n-eps\n"
+  },
+  {
+   "old": "eps\ndelta\nzeta\nbeta\nbeta\ndelta\n\nbeta\neps\nbeta\nalpha\n\n\ndelta\nbeta\nzeta\ndelta\neps\nalpha\nzeta\n\nbeta\nalpha\ngamma\n\neps\n",
+   "new": "zeta\n\neps\nnew10\nbeta\ndelta\n\nbeta\neps\nbeta\nalpha\n\ndelta\nnew10\ndelta\nbeta\nzeta\nnew10\ndelta\nnew10\neps\nalpha\n\nbeta\nalpha\ngamma\nnew10\n\nnew10\neps",
+   "display": {
+    "diff": "- 1 eps\n- 2 delta\n  3 zeta\n+ 2 \n+ 3 eps\n+ 4 new10\n  4 beta\n- 5 beta\n  6 delta\n  7 \n  8 beta\n  9 eps\n 10 beta\n 11 alpha\n 12 \n-13 \n 14 delta\n+14 new10\n+15 delta\n 15 beta\n 16 zeta\n+18 new10\n 17 delta\n+20 new10\n 18 eps\n 19 alpha\n-20 zeta\n 21 \n 22 beta\n 23 alpha\n 24 gamma\n+27 new10\n 25 \n-26 eps\n+29 new10\n+30 eps",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,26 +1,30 @@\n-eps\n-delta\n zeta\n+\n+eps\n+new10\n beta\n-beta\n delta\n \n beta\n eps\n beta\n alpha\n \n-\n delta\n+new10\n+delta\n beta\n zeta\n+new10\n delta\n+new10\n eps\n alpha\n-zeta\n \n beta\n alpha\n gamma\n+new10\n \n-eps\n+new10\n+eps\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "beta\n\nzeta\ndelta\nalpha\ndelta\ndelta\ndelta\ndelta\neps\nalpha\neps\n\nzeta\neps\ndelta\nalpha\nzeta\nalpha\ndelta\ndelta\n\ndelta\n\neps\n\nzeta",
+   "new": "beta\n\nzeta\nalpha\nnew11\ndelta\ndelta\ndelta\ndelta\neps\ngamma\n\neps\ndelta\nalpha\nnew11\nzeta\n\ndelta\ndelta\n\ndelta\n\nnew11\neps\n\nzeta\n",
+   "display": {
+    "diff": "  1 beta\n  2 \n  3 zeta\n- 4 delta\n  5 alpha\n+ 5 new11\n  6 delta\n  7 delta\n  8 delta\n  9 delta\n 10 eps\n-11 alpha\n-12 eps\n+11 gamma\n 13 \n-14 zeta\n 15 eps\n 16 delta\n 17 alpha\n+16 new11\n 18 zeta\n-19 alpha\n+18 \n 20 delta\n 21 delta\n 22 \n 23 delta\n 24 \n+24 new11\n 25 eps\n 26 \n-27 zeta\n+27 zeta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,27 +1,27 @@\n beta\n \n zeta\n-delta\n alpha\n+new11\n delta\n delta\n delta\n delta\n eps\n-alpha\n-eps\n+gamma\n \n-zeta\n eps\n delta\n alpha\n+new11\n zeta\n-alpha\n+\n delta\n delta\n \n delta\n \n+new11\n eps\n \n-zeta\n\\ No newline at end of file\n+zeta\n"
+  },
+  {
+   "old": "beta\n\n\ndelta\ndelta\n\nzeta\neps\nalpha\nalpha\nalpha\nzeta\nalpha\nalpha\ndelta\nalpha\neps\n\nalpha\ngamma\neps\ngamma\nbeta\neps\n\nalpha\n\n\neps",
+   "new": "beta\n\n\ndelta\nzeta\nzeta\neps\nalpha\nalpha\nalpha\nzeta\ngamma\nalpha\nalpha\neps\n\nalpha\ngamma\ngamma\ngamma\nbeta\neps\n\nalpha\n\n\neps",
+   "display": {
+    "diff": "  1 beta\n  2 \n  3 \n  4 delta\n- 5 delta\n- 6 \n  7 zeta\n+ 6 zeta\n  8 eps\n  9 alpha\n 10 alpha\n 11 alpha\n 12 zeta\n+12 gamma\n 13 alpha\n 14 alpha\n-15 delta\n-16 alpha\n 17 eps\n 18 \n 19 alpha\n 20 gamma\n-21 eps\n 22 gamma\n+20 gamma\n 23 beta\n 24 eps\n 25 \n 26 alpha\n    ...",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,26 +1,24 @@\n beta\n \n \n delta\n-delta\n-\n zeta\n+zeta\n eps\n alpha\n alpha\n alpha\n zeta\n+gamma\n alpha\n alpha\n-delta\n-alpha\n eps\n \n alpha\n gamma\n-eps\n gamma\n+gamma\n beta\n eps\n \n alpha\n"
+  },
+  {
+   "old": "gamma\nbeta\nalpha\n\ngamma\ngamma\nalpha\nalpha\n\nbeta\nalpha\ndelta\n\nalpha\n\nbeta\nbeta\n",
+   "new": "gamma\nbeta\nalpha\nnew13\ngamma\ngamma\ngamma\nalpha\nalpha\n\nzeta\nalpha\n\nalpha\n\nbeta\nbeta\nnew13\nzeta",
+   "display": {
+    "diff": "  1 gamma\n  2 beta\n  3 alpha\n- 4 \n+ 4 new13\n  5 gamma\n  6 gamma\n+ 7 gamma\n  7 alpha\n  8 alpha\n  9 \n-10 beta\n+11 zeta\n 11 alpha\n-12 delta\n 13 \n 14 alpha\n 15 \n 16 beta\n 17 beta\n+18 new13\n+19 zeta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,19 @@\n gamma\n beta\n alpha\n-\n+new13\n gamma\n gamma\n+gamma\n alpha\n alpha\n \n-beta\n+zeta\n alpha\n-delta\n \n alpha\n \n beta\n beta\n+new13\n+zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\ngamma\ngamma\n\nzeta\nzeta\nbeta\n\ndelta\ndelta\neps\n\ngamma",
+   "new": "gamma\ngamma\nnew14\nalpha\n\nzeta\nzeta\nbeta\n\n\neps\ngamma\nnew14",
+   "display": {
+    "diff": "  1 gamma\n  2 gamma\n- 3 gamma\n+ 3 new14\n+ 4 alpha\n  4 \n  5 zeta\n  6 zeta\n  7 beta\n  8 \n- 9 delta\n-10 delta\n-11 eps\n 12 \n-13 gamma\n+11 eps\n+12 gamma\n+13 new14",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,13 +1,13 @@\n gamma\n gamma\n-gamma\n+new14\n+alpha\n \n zeta\n zeta\n beta\n \n-delta\n-delta\n-eps\n \n-gamma\n\\ No newline at end of file\n+eps\n+gamma\n+new14\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "",
+   "new": "\n",
+   "display": {
+    "diff": "+1 ",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -0,0 +1,1 @@\n+\n"
+  },
+  {
+   "old": "delta\ngamma\nalpha\ngamma\nalpha\ngamma\ndelta\ngamma\nalpha\nzeta\neps\nbeta\nalpha\nbeta\n\neps\nzeta\neps\nzeta\nbeta\n\ndelta\neps\nbeta\nalpha\neps\nzeta\nzeta\nbeta\n",
+   "new": "alpha\ngamma\nnew16\nalpha\ngamma\nnew16\ndelta\ngamma\nzeta\neps\nalpha\nnew16\nbeta\n\neps\nzeta\nzeta\nbeta\n\nnew16\ndelta\neps\nbeta\nalpha\neps\n\nzeta\nbeta",
+   "display": {
+    "diff": "- 1 delta\n- 2 gamma\n  3 alpha\n  4 gamma\n+ 3 new16\n  5 alpha\n  6 gamma\n+ 6 new16\n  7 delta\n  8 gamma\n- 9 alpha\n 10 zeta\n 11 eps\n-12 beta\n 13 alpha\n+12 new16\n 14 beta\n 15 \n 16 eps\n 17 zeta\n-18 eps\n 19 zeta\n 20 beta\n 21 \n+20 new16\n 22 delta\n 23 eps\n 24 beta\n 25 alpha\n 26 eps\n+26 \n 27 zeta\n-28 zeta\n-29 beta\n+28 beta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,29 +1,28 @@\n-delta\n-gamma\n alpha\n gamma\n+new16\n alpha\n gamma\n+new16\n delta\n gamma\n-alpha\n zeta\n eps\n-beta\n alpha\n+new16\n beta\n \n eps\n zeta\n-eps\n zeta\n beta\n \n+new16\n delta\n eps\n beta\n alpha\n eps\n+\n zeta\n-zeta\n-beta\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "\n",
+   "new": "\n\n",
+   "display": {
+    "diff": " 1 \n+2 ",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,1 +1,2 @@\n \n+\n"
+  },
+  {
+   "old": "\ngamma\nbeta\nzeta\nzeta\ndelta\nzeta\nzeta\nalpha\ndelta\nzeta\nbeta\ndelta",
+   "new": "\ngamma\nbeta\nnew18\nzeta\nzeta\ngamma\nalpha\nbeta\nnew18\nalpha\nnew18\ndelta\nzeta\nbeta\ndelta",
+   "display": {
+    "diff": "  1 \n  2 gamma\n  3 beta\n+ 4 new18\n  4 zeta\n  5 zeta\n- 6 delta\n- 7 zeta\n- 8 zeta\n+ 7 gamma\n  9 alpha\n+ 9 beta\n+10 new18\n+11 alpha\n+12 new18\n 10 delta\n 11 zeta\n 12 beta\n 13 delta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,13 +1,16 @@\n \n gamma\n beta\n+new18\n zeta\n zeta\n-delta\n-zeta\n-zeta\n+gamma\n alpha\n+beta\n+new18\n+alpha\n+new18\n delta\n zeta\n beta\n delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\ngamma\n\nzeta\ngamma\ngamma\ngamma\ngamma\n\ngamma\nbeta\n\neps\ndelta\nzeta\nzeta\nzeta\n\ndelta",
+   "new": "delta\nalpha\ngamma\nbeta\ngamma\ngamma\n\ngamma\nalpha\n\neps\ndelta\nzeta\nzeta\nzeta\n\ndelta\nnew19",
+   "display": {
+    "diff": "  1 delta\n+ 2 alpha\n  2 gamma\n- 3 \n- 4 zeta\n+ 4 beta\n  5 gamma\n  6 gamma\n- 7 gamma\n- 8 gamma\n  9 \n 10 gamma\n-11 beta\n+ 9 alpha\n 12 \n 13 eps\n 14 delta\n 15 zeta\n 16 zeta\n 17 zeta\n 18 \n-19 delta\n+17 delta\n+18 new19",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,18 @@\n delta\n+alpha\n gamma\n-\n-zeta\n+beta\n gamma\n gamma\n-gamma\n-gamma\n \n gamma\n-beta\n+alpha\n \n eps\n delta\n zeta\n zeta\n zeta\n \n-delta\n\\ No newline at end of file\n+delta\n+new19\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "beta\nalpha\neps\ngamma\ndelta\nzeta\ngamma\ngamma\ndelta\nalpha\ngamma\nzeta\nzeta\ndelta\ndelta\nbeta\nalpha\nzeta\ngamma\ngamma\nzeta\n\nbeta\ngamma\nbeta\n",
+   "new": "zeta\nalpha\neps\ngamma\ndelta\nzeta\ngamma\n\ndelta\nalpha\ngamma\nnew20\nzeta\nalpha\ndelta\n\nalpha\nzeta\ngamma\nzeta\nnew20\nbeta\nbeta\n\nbeta",
+   "display": {
+    "diff": "- 1 beta\n+ 1 zeta\n  2 alpha\n  3 eps\n  4 gamma\n  5 delta\n  6 zeta\n  7 gamma\n- 8 gamma\n+ 8 \n  9 delta\n 10 alpha\n 11 gamma\n+12 new20\n 12 zeta\n-13 zeta\n+14 alpha\n 14 delta\n-15 delta\n-16 beta\n+16 \n 17 alpha\n 18 zeta\n 19 gamma\n-20 gamma\n 21 zeta\n-22 \n+21 new20\n 23 beta\n-24 gamma\n 25 beta\n+24 \n+25 beta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,25 +1,25 @@\n-beta\n+zeta\n alpha\n eps\n gamma\n delta\n zeta\n gamma\n-gamma\n+\n delta\n alpha\n gamma\n+new20\n zeta\n-zeta\n+alpha\n delta\n-delta\n-beta\n+\n alpha\n zeta\n gamma\n-gamma\n zeta\n-\n+new20\n beta\n-gamma\n beta\n+\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "\neps\ngamma\nbeta\nalpha\ndelta\n\nbeta\nzeta\nzeta\neps\nzeta\nbeta\neps\nalpha\ngamma\ndelta\n\nzeta\neps\neps\neps\nzeta\neps\nzeta\n\nzeta",
+   "new": "\ngamma\nbeta\nalpha\ndelta\nzeta\nzeta\neps\ngamma\nbeta\neps\nalpha\ngamma\ngamma\n\nzeta\neps\neps\nbeta\nzeta\neps\nnew21\n",
+   "display": {
+    "diff": "  1 \n- 2 eps\n  3 gamma\n  4 beta\n  5 alpha\n  6 delta\n- 7 \n- 8 beta\n  9 zeta\n 10 zeta\n 11 eps\n-12 zeta\n+ 9 gamma\n 13 beta\n 14 eps\n 15 alpha\n 16 gamma\n-17 delta\n+14 gamma\n 18 \n 19 zeta\n 20 eps\n 21 eps\n-22 eps\n+19 beta\n 23 zeta\n 24 eps\n-25 zeta\n-26 \n-27 zeta\n+22 new21",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,27 +1,22 @@\n \n-eps\n gamma\n beta\n alpha\n delta\n-\n-beta\n zeta\n zeta\n eps\n-zeta\n+gamma\n beta\n eps\n alpha\n gamma\n-delta\n+gamma\n \n zeta\n eps\n eps\n-eps\n+beta\n zeta\n eps\n-zeta\n-\n-zeta\n\\ No newline at end of file\n+new21\n"
+  },
+  {
+   "old": "alpha\nalpha\nbeta\nbeta\nzeta\nzeta",
+   "new": "alpha\nalpha\nbeta\nbeta\nzeta",
+   "display": {
+    "diff": " 1 alpha\n 2 alpha\n 3 beta\n 4 beta\n-5 zeta\n 6 zeta",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,5 @@\n alpha\n alpha\n beta\n beta\n-zeta\n zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\nbeta\ndelta\nzeta\ngamma\nbeta\nbeta\ndelta\ngamma\ngamma\ndelta\ndelta\nalpha\ndelta\neps\nalpha\nalpha\nbeta\nbeta",
+   "new": "alpha\nbeta\ndelta\nzeta\ngamma\nbeta\nbeta\ndelta\ngamma\ngamma\ndelta\ngamma\neps\nnew23\neps\nalpha\nbeta\neps\n",
+   "display": {
+    "diff": "    ...\n  8 delta\n  9 gamma\n 10 gamma\n 11 delta\n-12 delta\n-13 alpha\n-14 delta\n+12 gamma\n 15 eps\n+14 new23\n+15 eps\n 16 alpha\n-17 alpha\n 18 beta\n-19 beta\n+18 eps",
+    "firstChangedLine": 12
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -8,12 +8,11 @@\n delta\n gamma\n gamma\n delta\n-delta\n-alpha\n-delta\n+gamma\n eps\n+new23\n+eps\n alpha\n-alpha\n beta\n-beta\n\\ No newline at end of file\n+eps\n"
+  },
+  {
+   "old": "\ndelta\neps\n\ngamma\nbeta\n\nzeta\nzeta\neps\neps\n\nbeta\nbeta\nalpha\nzeta\n\ndelta\ndelta\ngamma\n\nzeta\ngamma\n",
+   "new": "\ndelta\n\nalpha\nnew24\nbeta\n\nzeta\nnew24\nzeta\neps\neps\n\nbeta\nalpha\nzeta\n\ndelta\nbeta\nnew24\n\nnew24\n",
+   "display": {
+    "diff": "  1 \n  2 delta\n- 3 eps\n  4 \n- 5 gamma\n+ 4 alpha\n+ 5 new24\n  6 beta\n  7 \n  8 zeta\n+ 9 new24\n  9 zeta\n 10 eps\n 11 eps\n 12 \n 13 beta\n-14 beta\n 15 alpha\n 16 zeta\n 17 \n 18 delta\n-19 delta\n-20 gamma\n+19 beta\n+20 new24\n 21 \n-22 zeta\n-23 gamma\n+22 new24",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,23 +1,22 @@\n \n delta\n-eps\n \n-gamma\n+alpha\n+new24\n beta\n \n zeta\n+new24\n zeta\n eps\n eps\n \n beta\n-beta\n alpha\n zeta\n \n delta\n-delta\n-gamma\n+beta\n+new24\n \n-zeta\n-gamma\n+new24\n"
+  },
+  {
+   "old": "alpha\neps\nzeta\ndelta\ndelta\ngamma\nalpha\nzeta\n\nalpha\nbeta\nalpha\nalpha",
+   "new": "eps\neps\nzeta\ndelta\ngamma\nnew25\nzeta\n\nalpha\nalpha\nzeta\n",
+   "display": {
+    "diff": "- 1 alpha\n  2 eps\n+ 2 eps\n  3 zeta\n  4 delta\n- 5 delta\n  6 gamma\n- 7 alpha\n+ 6 new25\n  8 zeta\n  9 \n 10 alpha\n-11 beta\n 12 alpha\n-13 alpha\n+11 zeta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,13 +1,11 @@\n-alpha\n eps\n+eps\n zeta\n delta\n-delta\n gamma\n-alpha\n+new25\n zeta\n \n alpha\n-beta\n alpha\n-alpha\n\\ No newline at end of file\n+zeta\n"
+  },
+  {
+   "old": "\nbeta\nbeta\n\nzeta\ngamma\nzeta\nbeta",
+   "new": "\nbeta\nbeta\n\nzeta\nnew26\nalpha\nzeta\nnew26\nbeta\n",
+   "display": {
+    "diff": "    ...\n  2 beta\n  3 beta\n  4 \n  5 zeta\n- 6 gamma\n+ 6 new26\n+ 7 alpha\n  7 zeta\n- 8 beta\n+ 9 new26\n+10 beta",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,7 +2,9 @@\n beta\n beta\n \n zeta\n-gamma\n+new26\n+alpha\n zeta\n-beta\n\\ No newline at end of file\n+new26\n+beta\n"
+  },
+  {
+   "old": "eps\nzeta\nbeta\neps\ndelta\ndelta\nzeta\neps\ndelta\nbeta\ndelta\nbeta\nzeta\nzeta\ndelta\nzeta\nbeta\nbeta\neps",
+   "new": "eps\nnew27\ndelta\nbeta\neps\ndelta\nbeta\neps\ndelta\nnew27\nzeta\ndelta\nbeta\nzeta\nzeta\nnew27\nalpha\nzeta\nbeta\nbeta\neps",
+   "display": {
+    "diff": "  1 eps\n- 2 zeta\n+ 2 new27\n+ 3 delta\n  3 beta\n  4 eps\n  5 delta\n+ 7 beta\n+ 8 eps\n  6 delta\n+10 new27\n  7 zeta\n- 8 eps\n  9 delta\n 10 beta\n-11 delta\n-12 beta\n 13 zeta\n 14 zeta\n-15 delta\n+16 new27\n+17 alpha\n 16 zeta\n 17 beta\n 18 beta\n 19 eps",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,21 @@\n eps\n-zeta\n+new27\n+delta\n beta\n eps\n delta\n+beta\n+eps\n delta\n+new27\n zeta\n-eps\n delta\n beta\n-delta\n-beta\n zeta\n zeta\n-delta\n+new27\n+alpha\n zeta\n beta\n beta\n eps\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\neps\nbeta\ngamma\ngamma\nbeta\nbeta\nzeta\nalpha\ngamma\nalpha\nbeta\nbeta\nbeta\nzeta\nbeta\ngamma\neps\nbeta\nzeta\ndelta\n\nalpha\nzeta",
+   "new": "zeta\neps\nbeta\nbeta\ngamma\nalpha\ngamma\nalpha\nbeta\nbeta\nbeta\ngamma\nnew29\neps\nbeta\nzeta\nalpha\nalpha\nzeta\nnew29",
+   "display": {
+    "diff": "  1 zeta\n  2 eps\n  3 beta\n- 4 gamma\n- 5 gamma\n  6 beta\n- 7 beta\n- 8 zeta\n+ 5 gamma\n  9 alpha\n 10 gamma\n 11 alpha\n 12 beta\n 13 beta\n 14 beta\n-15 zeta\n-16 beta\n 17 gamma\n+13 new29\n 18 eps\n 19 beta\n 20 zeta\n-21 delta\n-22 \n 23 alpha\n-24 zeta\n+18 alpha\n+19 zeta\n+20 new29",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,24 +1,20 @@\n zeta\n eps\n beta\n-gamma\n-gamma\n beta\n-beta\n-zeta\n+gamma\n alpha\n gamma\n alpha\n beta\n beta\n beta\n-zeta\n-beta\n gamma\n+new29\n eps\n beta\n zeta\n-delta\n-\n alpha\n-zeta\n\\ No newline at end of file\n+alpha\n+zeta\n+new29\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\nzeta\ngamma\nbeta\n\ngamma\n",
+   "new": "alpha\nzeta\nbeta\neps\ngamma",
+   "display": {
+    "diff": " 1 alpha\n 2 zeta\n-3 gamma\n 4 beta\n-5 \n-6 gamma\n+4 eps\n+5 gamma",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,5 @@\n alpha\n zeta\n-gamma\n beta\n-\n-gamma\n+eps\n+gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\nbeta\neps\nzeta\ndelta\ndelta\ngamma\nalpha\neps\nzeta\nalpha\neps\n\ndelta\n\nalpha\n\ngamma\n\nbeta\nalpha\nalpha\ndelta\nbeta\ngamma\neps\nalpha\n\nalpha\n",
+   "new": "beta\nnew31\neps\nbeta\ndelta\ndelta\ngamma\nalpha\nnew31\neps\nalpha\nalpha\n\ndelta\nalpha\ngamma\n\nbeta\neps\ndelta\nbeta\ngamma\neps\nzeta\n",
+   "display": {
+    "diff": "- 1 eps\n  2 beta\n+ 2 new31\n  3 eps\n- 4 zeta\n+ 4 beta\n  5 delta\n  6 delta\n  7 gamma\n  8 alpha\n+ 9 new31\n  9 eps\n-10 zeta\n 11 alpha\n-12 eps\n+12 alpha\n 13 \n 14 delta\n-15 \n 16 alpha\n-17 \n 18 gamma\n 19 \n 20 beta\n-21 alpha\n-22 alpha\n+19 eps\n 23 delta\n 24 beta\n 25 gamma\n 26 eps\n-27 alpha\n-28 \n-29 alpha\n+24 zeta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,29 +1,24 @@\n-eps\n beta\n+new31\n eps\n-zeta\n+beta\n delta\n delta\n gamma\n alpha\n+new31\n eps\n-zeta\n alpha\n-eps\n+alpha\n \n delta\n-\n alpha\n-\n gamma\n \n beta\n-alpha\n-alpha\n+eps\n delta\n beta\n gamma\n eps\n-alpha\n-\n-alpha\n+zeta\n"
+  },
+  {
+   "old": "\nalpha\nbeta\ndelta\nalpha\nalpha\nbeta\neps\nbeta\n",
+   "new": "eps\nalpha\nnew32\nbeta\ndelta\nalpha\nbeta\nnew32\neps\nbeta\n",
+   "display": {
+    "diff": "- 1 \n+ 1 eps\n  2 alpha\n+ 3 new32\n  3 beta\n  4 delta\n  5 alpha\n- 6 alpha\n  7 beta\n+ 8 new32\n  8 eps\n  9 beta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,10 @@\n-\n+eps\n alpha\n+new32\n beta\n delta\n alpha\n-alpha\n beta\n+new32\n eps\n beta\n"
+  },
+  {
+   "old": "eps\ndelta\nzeta\n\neps\ndelta\nzeta\n\nbeta\nzeta\nzeta\nalpha\n",
+   "new": "eps\ndelta\nzeta\n\neps\neps\neps\n\nbeta\ngamma\nzeta\nalpha\n",
+   "display": {
+    "diff": "    ...\n  2 delta\n  3 zeta\n  4 \n  5 eps\n- 6 delta\n- 7 zeta\n+ 6 eps\n+ 7 eps\n  8 \n  9 beta\n+10 gamma\n 10 zeta\n-11 zeta\n 12 alpha",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,11 +2,11 @@\n delta\n zeta\n \n eps\n-delta\n-zeta\n+eps\n+eps\n \n beta\n+gamma\n zeta\n-zeta\n alpha\n"
+  },
+  {
+   "old": "zeta\ndelta\n\neps\n\n\ndelta\ngamma\nbeta\nzeta\nalpha\ngamma\neps\nalpha\neps\n\ngamma",
+   "new": "zeta\ndelta\n\neps\nnew34\n\n\nnew34\ndelta\nbeta\nzeta\neps\nalpha\neps\n\neps\nnew34",
+   "display": {
+    "diff": "  1 zeta\n  2 delta\n  3 \n  4 eps\n+ 5 new34\n  5 \n  6 \n+ 8 new34\n  7 delta\n- 8 gamma\n  9 beta\n 10 zeta\n-11 alpha\n-12 gamma\n 13 eps\n 14 alpha\n 15 eps\n 16 \n-17 gamma\n+16 eps\n+17 new34",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,17 @@\n zeta\n delta\n \n eps\n+new34\n \n \n+new34\n delta\n-gamma\n beta\n zeta\n-alpha\n-gamma\n eps\n alpha\n eps\n \n-gamma\n\\ No newline at end of file\n+eps\n+new34\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\nbeta\ngamma\nbeta\neps\neps\n\n\ndelta",
+   "new": "delta\nbeta\nnew35\nalpha\nbeta\neps\neps\n\n\ndelta\n",
+   "display": {
+    "diff": "  1 delta\n  2 beta\n- 3 gamma\n+ 3 new35\n+ 4 alpha\n  4 beta\n  5 eps\n  6 eps\n  7 \n  8 \n- 9 delta\n+10 delta",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,10 @@\n delta\n beta\n-gamma\n+new35\n+alpha\n beta\n eps\n eps\n \n \n-delta\n\\ No newline at end of file\n+delta\n"
+  },
+  {
+   "old": "gamma\ndelta\n\ndelta\nbeta\n\ngamma\ndelta\nalpha\nalpha\nbeta\ndelta\nalpha\nzeta",
+   "new": "gamma\ndelta\nnew36\n\neps\n\ngamma\nalpha\ngamma\nalpha\ngamma\n",
+   "display": {
+    "diff": "  1 gamma\n  2 delta\n+ 3 new36\n  3 \n- 4 delta\n- 5 beta\n+ 5 eps\n  6 \n  7 gamma\n- 8 delta\n  9 alpha\n+ 9 gamma\n 10 alpha\n-11 beta\n-12 delta\n-13 alpha\n-14 zeta\n+11 gamma",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,14 +1,11 @@\n gamma\n delta\n+new36\n \n-delta\n-beta\n+eps\n \n gamma\n-delta\n alpha\n+gamma\n alpha\n-beta\n-delta\n-alpha\n-zeta\n\\ No newline at end of file\n+gamma\n"
+  },
+  {
+   "old": "beta\nbeta\neps\ngamma\nzeta",
+   "new": "delta\nbeta\neps\nzeta",
+   "display": {
+    "diff": "+1 delta\n 1 beta\n-2 beta\n 3 eps\n-4 gamma\n 5 zeta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,4 @@\n+delta\n beta\n-beta\n eps\n-gamma\n zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\nbeta\nzeta\ngamma\nbeta\nbeta\nalpha\nzeta\ndelta\nalpha\n\ndelta\nbeta\neps\n\nbeta\neps\nzeta\ndelta\ndelta\ndelta\nbeta\nbeta\ndelta\nalpha\n\ndelta\n",
+   "new": "beta\ngamma\nalpha\nbeta\nnew38\nalpha\nzeta\n\nalpha\nnew38\ngamma\ndelta\nnew38\nbeta\n\nbeta\nnew38\neps\nzeta\ndelta\ndelta\ndelta\nbeta\nbeta\ndelta\nalpha\n\n",
+   "display": {
+    "diff": "- 1 zeta\n  2 beta\n- 3 zeta\n  4 gamma\n+ 3 alpha\n  5 beta\n- 6 beta\n+ 5 new38\n  7 alpha\n  8 zeta\n- 9 delta\n-10 alpha\n 11 \n+ 9 alpha\n+10 new38\n+11 gamma\n 12 delta\n+13 new38\n 13 beta\n-14 eps\n 15 \n 16 beta\n+17 new38\n 17 eps\n 18 zeta\n 19 delta\n 20 delta\n    ...\n 23 beta\n 24 delta\n 25 alpha\n 26 \n-27 delta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,20 +1,21 @@\n-zeta\n beta\n-zeta\n gamma\n+alpha\n beta\n-beta\n+new38\n alpha\n zeta\n-delta\n-alpha\n \n+alpha\n+new38\n+gamma\n delta\n+new38\n beta\n-eps\n \n beta\n+new38\n eps\n zeta\n delta\n delta\n@@ -23,5 +24,4 @@\n beta\n delta\n alpha\n \n-delta\n"
+  },
+  {
+   "old": "zeta\ndelta\nzeta\ngamma",
+   "new": "eps\nnew39\ndelta\nzeta\n",
+   "display": {
+    "diff": "-1 zeta\n+1 eps\n+2 new39\n 2 delta\n 3 zeta\n-4 gamma",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,4 +1,4 @@\n-zeta\n+eps\n+new39\n delta\n zeta\n-gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\neps\ndelta\n\nzeta\ngamma\neps",
+   "new": "eps\nnew40\ndelta\neps\nzeta\ngamma\neps",
+   "display": {
+    "diff": "-1 alpha\n 2 eps\n+2 new40\n 3 delta\n-4 \n+4 eps\n 5 zeta\n 6 gamma\n 7 eps",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,7 +1,7 @@\n-alpha\n eps\n+new40\n delta\n-\n+eps\n zeta\n gamma\n eps\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\ngamma\nalpha\n\nzeta",
+   "new": "eps\nalpha\n\nzeta\n",
+   "display": {
+    "diff": "-1 delta\n-2 gamma\n+1 eps\n 3 alpha\n 4 \n-5 zeta\n+4 zeta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,4 @@\n-delta\n-gamma\n+eps\n alpha\n \n-zeta\n\\ No newline at end of file\n+zeta\n"
+  },
+  {
+   "old": "beta\n\nalpha\nzeta\ndelta\ndelta\ngamma\n\ndelta",
+   "new": "beta\n\nalpha\nnew42\nzeta\ndelta\ndelta\ngamma\n\nnew42\n\n",
+   "display": {
+    "diff": "  1 beta\n  2 \n  3 alpha\n+ 4 new42\n  4 zeta\n  5 delta\n  6 delta\n  7 gamma\n  8 \n- 9 delta\n+10 new42\n+11 ",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,11 @@\n beta\n \n alpha\n+new42\n zeta\n delta\n delta\n gamma\n \n-delta\n\\ No newline at end of file\n+new42\n+\n"
+  },
+  {
+   "old": "delta\nbeta\ndelta\nbeta\nzeta\nalpha\n\n\n\nzeta\ndelta\ngamma\nbeta\nalpha\ndelta\nbeta\nalpha\neps\n\ngamma\ndelta\nbeta\nalpha\n\nalpha\n",
+   "new": "alpha\nbeta\nbeta\nzeta\nnew43\n\n\n\nalpha\ngamma\nnew43\n\nalpha\ndelta\nalpha\nnew43\neps\n\ngamma\ndelta\ngamma\n\nalpha\n",
+   "display": {
+    "diff": "- 1 delta\n+ 1 alpha\n  2 beta\n- 3 delta\n  4 beta\n  5 zeta\n- 6 alpha\n+ 5 new43\n  7 \n  8 \n  9 \n-10 zeta\n-11 delta\n+ 9 alpha\n 12 gamma\n-13 beta\n+11 new43\n+12 \n 14 alpha\n 15 delta\n-16 beta\n 17 alpha\n+16 new43\n 18 eps\n 19 \n 20 gamma\n 21 delta\n-22 beta\n-23 alpha\n+21 gamma\n 24 \n 25 alpha",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,25 +1,23 @@\n-delta\n+alpha\n beta\n-delta\n beta\n zeta\n-alpha\n+new43\n \n \n \n-zeta\n-delta\n+alpha\n gamma\n-beta\n+new43\n+\n alpha\n delta\n-beta\n alpha\n+new43\n eps\n \n gamma\n delta\n-beta\n-alpha\n+gamma\n \n alpha\n"
+  },
+  {
+   "old": "zeta\ndelta\neps\neps\nzeta\ndelta\n\nbeta\n",
+   "new": "beta\ndelta\neps\neps\nnew44\nzeta\ndelta\n\nbeta\n",
+   "display": {
+    "diff": "- 1 zeta\n+ 1 beta\n  2 delta\n  3 eps\n  4 eps\n+ 5 new44\n  5 zeta\n  6 delta\n  7 \n  8 beta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,8 +1,9 @@\n-zeta\n+beta\n delta\n eps\n eps\n+new44\n zeta\n delta\n \n beta\n"
+  },
+  {
+   "old": "zeta\nalpha\ndelta\nbeta\neps\neps\ngamma\neps\ngamma\n\ngamma\n\nzeta\neps\n\n\n\nbeta\n\n\nzeta\nalpha\ngamma\n",
+   "new": "zeta\nalpha\ndelta\nnew45\nbeta\neps\ngamma\neps\ngamma\nnew45\n\ngamma\n\neps\n\n\n\nbeta\nnew45\n\nzeta\nnew45\nalpha\ngamma\n",
+   "display": {
+    "diff": "  1 zeta\n  2 alpha\n  3 delta\n+ 4 new45\n  4 beta\n  5 eps\n- 6 eps\n  7 gamma\n  8 eps\n  9 gamma\n+10 new45\n 10 \n 11 gamma\n 12 \n-13 zeta\n 14 eps\n 15 \n 16 \n 17 \n 18 beta\n+19 new45\n 19 \n-20 \n 21 zeta\n+22 new45\n 22 alpha\n 23 gamma",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,23 +1,24 @@\n zeta\n alpha\n delta\n+new45\n beta\n eps\n-eps\n gamma\n eps\n gamma\n+new45\n \n gamma\n \n-zeta\n eps\n \n \n \n beta\n+new45\n \n-\n zeta\n+new45\n alpha\n gamma\n"
+  },
+  {
+   "old": "beta\neps\ndelta\nalpha\nzeta\ngamma\nalpha\ngamma\nalpha",
+   "new": "beta\ndelta\nzeta\ngamma\nnew46\neps\nalpha",
+   "display": {
+    "diff": " 1 beta\n-2 eps\n 3 delta\n-4 alpha\n 5 zeta\n 6 gamma\n-7 alpha\n-8 gamma\n+5 new46\n+6 eps\n 9 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,7 @@\n beta\n-eps\n delta\n-alpha\n zeta\n gamma\n-alpha\n-gamma\n+new46\n+eps\n alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\ngamma\n\ngamma\nzeta\n\nzeta\n\nzeta\nalpha\nalpha\n\nzeta\nalpha\n\nbeta\nzeta",
+   "new": "eps\n\n\nzeta\n\nzeta\nzeta\nalpha\nzeta\ndelta\nnew47\n\nbeta",
+   "display": {
+    "diff": "  1 eps\n- 2 gamma\n  3 \n- 4 gamma\n- 5 zeta\n  6 \n  7 zeta\n  8 \n  9 zeta\n-10 alpha\n-11 alpha\n-12 \n 13 zeta\n 14 alpha\n+ 9 zeta\n+10 delta\n+11 new47\n 15 \n-16 beta\n-17 zeta\n+13 beta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,13 @@\n eps\n-gamma\n \n-gamma\n-zeta\n \n zeta\n \n zeta\n-alpha\n-alpha\n-\n zeta\n alpha\n+zeta\n+delta\n+new47\n \n-beta\n-zeta\n\\ No newline at end of file\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\nalpha\nzeta\n\ngamma\ngamma\n",
+   "new": "alpha\nalpha\nzeta\ngamma\ngamma\n",
+   "display": {
+    "diff": " 1 alpha\n 2 alpha\n 3 zeta\n-4 \n 5 gamma\n 6 gamma",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,5 @@\n alpha\n alpha\n zeta\n-\n gamma\n gamma\n"
+  },
+  {
+   "old": "gamma\nzeta\nalpha\neps\nbeta\ndelta\nbeta\nbeta",
+   "new": "gamma\nzeta\nalpha\nnew49\neps\nbeta\ndelta\nbeta\nbeta\n",
+   "display": {
+    "diff": "  1 gamma\n  2 zeta\n  3 alpha\n+ 4 new49\n  4 eps\n  5 beta\n  6 delta\n  7 beta\n- 8 beta\n+ 9 beta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,8 +1,9 @@\n gamma\n zeta\n alpha\n+new49\n eps\n beta\n delta\n beta\n-beta\n\\ No newline at end of file\n+beta\n"
+  },
+  {
+   "old": "zeta\neps\nbeta\n\nzeta\ngamma\ndelta\ndelta\ndelta\n",
+   "new": "zeta\neps\nnew50\n\nzeta\nbeta\ndelta\ndelta\n",
+   "display": {
+    "diff": "  1 zeta\n  2 eps\n- 3 beta\n+ 3 new50\n  4 \n  5 zeta\n- 6 gamma\n+ 6 beta\n  7 delta\n  8 delta\n- 9 delta",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,8 @@\n zeta\n eps\n-beta\n+new50\n \n zeta\n-gamma\n+beta\n delta\n delta\n-delta\n"
+  },
+  {
+   "old": "gamma\n\nalpha\n\ngamma\ndelta\nalpha\ndelta\nbeta\nzeta\ndelta\nalpha\neps\ngamma\ndelta\neps\nalpha\ngamma\n\nalpha\nzeta",
+   "new": "gamma\nzeta\ngamma\nnew51\n\ngamma\ndelta\nalpha\ndelta\nbeta\ndelta\nalpha\nalpha\neps\ngamma\ngamma\ndelta\nzeta\nalpha\n\nalpha\n",
+   "display": {
+    "diff": "  1 gamma\n+ 2 zeta\n+ 3 gamma\n+ 4 new51\n  2 \n- 3 alpha\n- 4 \n  5 gamma\n  6 delta\n  7 alpha\n  8 delta\n  9 beta\n-10 zeta\n 11 delta\n 12 alpha\n+13 alpha\n 13 eps\n 14 gamma\n+16 gamma\n 15 delta\n-16 eps\n+18 zeta\n 17 alpha\n-18 gamma\n 19 \n 20 alpha\n-21 zeta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,21 +1,21 @@\n gamma\n+zeta\n+gamma\n+new51\n \n-alpha\n-\n gamma\n delta\n alpha\n delta\n beta\n-zeta\n delta\n alpha\n+alpha\n eps\n gamma\n+gamma\n delta\n-eps\n+zeta\n alpha\n-gamma\n \n alpha\n-zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\ndelta\neps\ngamma\nzeta\ngamma\ndelta\nzeta\n\ngamma\neps",
+   "new": "alpha\ndelta\nbeta\ngamma\ngamma\ndelta\nzeta\n\ngamma\neps",
+   "display": {
+    "diff": "  1 alpha\n  2 delta\n- 3 eps\n+ 3 beta\n  4 gamma\n- 5 zeta\n  6 gamma\n  7 delta\n  8 zeta\n  9 \n    ...",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,8 @@\n alpha\n delta\n-eps\n+beta\n gamma\n-zeta\n gamma\n delta\n zeta\n \n"
+  },
+  {
+   "old": "eps\neps\n\nalpha\nbeta\n\ngamma\n",
+   "new": "eps\neps\n\nalpha\neps\nnew54\ngamma",
+   "display": {
+    "diff": " 1 eps\n 2 eps\n 3 \n 4 alpha\n-5 beta\n-6 \n-7 gamma\n+5 eps\n+6 new54\n+7 gamma",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,7 +1,7 @@\n eps\n eps\n \n alpha\n-beta\n-\n-gamma\n+eps\n+new54\n+gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\ndelta\nzeta\nalpha\nbeta\nbeta\nbeta\n\nzeta\neps\ndelta\neps\nalpha\nalpha\ngamma\nbeta\nzeta\neps\nalpha\ndelta\ndelta\nbeta\nbeta\nbeta\n",
+   "new": "alpha\ndelta\n\nbeta\nbeta\nnew55\n\nzeta\neps\ngamma\nnew55\neps\nalpha\nalpha\ngamma\nbeta\neps\n\ndelta\ngamma\nzeta\nzeta\n",
+   "display": {
+    "diff": "  1 alpha\n  2 delta\n- 3 zeta\n- 4 alpha\n+ 3 \n  5 beta\n  6 beta\n- 7 beta\n+ 6 new55\n  8 \n  9 zeta\n 10 eps\n-11 delta\n+10 gamma\n+11 new55\n 12 eps\n 13 alpha\n 14 alpha\n 15 gamma\n 16 beta\n-17 zeta\n 18 eps\n-19 alpha\n+18 \n 20 delta\n-21 delta\n-22 beta\n-23 beta\n-24 beta\n+20 gamma\n+21 zeta\n+22 zeta",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,24 +1,22 @@\n alpha\n delta\n-zeta\n-alpha\n+\n beta\n beta\n-beta\n+new55\n \n zeta\n eps\n-delta\n+gamma\n+new55\n eps\n alpha\n alpha\n gamma\n beta\n-zeta\n eps\n-alpha\n+\n delta\n-delta\n-beta\n-beta\n-beta\n+gamma\n+zeta\n+zeta\n"
+  },
+  {
+   "old": "alpha\nalpha\nalpha\nzeta\nalpha\n",
+   "new": "alpha\nalpha\nalpha\nzeta\nalpha",
+   "display": {
+    "diff": " 1 alpha\n 2 alpha\n 3 alpha\n 4 zeta\n-5 alpha\n+5 alpha",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,5 @@\n alpha\n alpha\n alpha\n zeta\n-alpha\n+alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "\nalpha",
+   "new": "\nalpha\n",
+   "display": {
+    "diff": " 1 \n-2 alpha\n+2 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,2 +1,2 @@\n \n-alpha\n\\ No newline at end of file\n+alpha\n"
+  },
+  {
+   "old": "alpha\n\nalpha\nalpha\nalpha\neps\ngamma\nalpha\nzeta\neps\n\n\neps\nbeta\nalpha\nbeta\n\neps\nzeta\nzeta\ngamma\nbeta\n\ndelta\neps\ndelta\neps\nzeta\nalpha",
+   "new": "\n\nalpha\nalpha\ngamma\ngamma\nalpha\nzeta\neps\n\n\nbeta\nalpha\nbeta\n\neps\nzeta\nzeta\ngamma\nbeta\n\ndelta\nnew58\neps\neps\nzeta\neps\n",
+   "display": {
+    "diff": "- 1 alpha\n  2 \n+ 2 \n  3 alpha\n  4 alpha\n- 5 alpha\n- 6 eps\n  7 gamma\n+ 6 gamma\n  8 alpha\n  9 zeta\n 10 eps\n 11 \n 12 \n-13 eps\n 14 beta\n 15 alpha\n 16 beta\n 17 \n    ...\n 21 gamma\n 22 beta\n 23 \n 24 delta\n+23 new58\n 25 eps\n-26 delta\n 27 eps\n 28 zeta\n-29 alpha\n+27 eps",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,15 @@\n-alpha\n \n+\n alpha\n alpha\n-alpha\n-eps\n gamma\n+gamma\n alpha\n zeta\n eps\n \n \n-eps\n beta\n alpha\n beta\n \n@@ -21,9 +19,9 @@\n gamma\n beta\n \n delta\n+new58\n eps\n-delta\n eps\n zeta\n-alpha\n\\ No newline at end of file\n+eps\n"
+  },
+  {
+   "old": "eps\ngamma\n\nbeta\nzeta\nzeta\ndelta\n",
+   "new": "eps\ndelta\n\nnew59\nzeta\nzeta\neps\n",
+   "display": {
+    "diff": " 1 eps\n-2 gamma\n+2 delta\n 3 \n-4 beta\n+4 new59\n 5 zeta\n 6 zeta\n-7 delta\n+7 eps",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,7 +1,7 @@\n eps\n-gamma\n+delta\n \n-beta\n+new59\n zeta\n zeta\n-delta\n+eps\n"
+  },
+  {
+   "old": "zeta\nalpha\neps\ngamma\nbeta\ndelta\n\n\neps\nalpha\nzeta\ngamma\nalpha\nbeta\n",
+   "new": "zeta\nalpha\neps\ngamma\nbeta\ndelta\n\nalpha\nzeta\ngamma\nnew60\nalpha\nnew60\nbeta",
+   "display": {
+    "diff": "    ...\n  4 gamma\n  5 beta\n  6 delta\n  7 \n- 8 \n- 9 eps\n 10 alpha\n 11 zeta\n 12 gamma\n+11 new60\n 13 alpha\n-14 beta\n+13 new60\n+14 beta",
+    "firstChangedLine": 8
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -4,11 +4,11 @@\n gamma\n beta\n delta\n \n-\n-eps\n alpha\n zeta\n gamma\n+new60\n alpha\n-beta\n+new60\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\n\ngamma\ngamma\nzeta\neps\neps\neps\neps\n\ndelta\nbeta\neps\neps\ndelta",
+   "new": "eps\n\ngamma\ngamma\nzeta\neps\neps\neps\ndelta\nbeta\neps\ndelta",
+   "display": {
+    "diff": "    ...\n  5 zeta\n  6 eps\n  7 eps\n  8 eps\n- 9 eps\n-10 \n 11 delta\n 12 beta\n 13 eps\n-14 eps\n 15 delta",
+    "firstChangedLine": 9
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -5,11 +5,8 @@\n zeta\n eps\n eps\n eps\n-eps\n-\n delta\n beta\n eps\n-eps\n delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "\nzeta\n\nbeta\n\ngamma\ngamma\ndelta\ndelta\neps\nzeta\nalpha\ngamma\ngamma\neps\neps\nalpha\n\ndelta\n\ndelta\nzeta\nbeta\nzeta\nbeta\n\ndelta\ndelta",
+   "new": "\nzeta\ngamma\n\ngamma\nalpha\nnew62\ndelta\ndelta\neps\nzeta\nalpha\ngamma\ngamma\neps\neps\nalpha\nnew62\n\ndelta\nnew62\n\nzeta\nbeta\nnew62\nzeta\nbeta\n\ndelta",
+   "display": {
+    "diff": "  1 \n  2 zeta\n+ 3 gamma\n  3 \n- 4 beta\n- 5 \n  6 gamma\n- 7 gamma\n+ 6 alpha\n+ 7 new62\n  8 delta\n  9 delta\n 10 eps\n 11 zeta\n    ...\n 14 gamma\n 15 eps\n 16 eps\n 17 alpha\n+18 new62\n 18 \n 19 delta\n+21 new62\n 20 \n-21 delta\n 22 zeta\n 23 beta\n+25 new62\n 24 zeta\n 25 beta\n 26 \n-27 delta\n 28 delta",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,11 +1,11 @@\n \n zeta\n+gamma\n \n-beta\n-\n gamma\n-gamma\n+alpha\n+new62\n delta\n delta\n eps\n zeta\n@@ -14,15 +14,16 @@\n gamma\n eps\n eps\n alpha\n+new62\n \n delta\n+new62\n \n-delta\n zeta\n beta\n+new62\n zeta\n beta\n \n-delta\n delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\nbeta\nbeta\n\ndelta\nzeta\ngamma\nbeta\neps\nzeta\nalpha\nbeta\ndelta\neps\ndelta\ndelta\ngamma\n",
+   "new": "gamma\nbeta\nbeta\n\ndelta\nzeta\neps\nbeta\neps\nzeta\nalpha\nbeta\ndelta\neps\ndelta\ndelta\ngamma\n",
+   "display": {
+    "diff": "    ...\n  3 beta\n  4 \n  5 delta\n  6 zeta\n- 7 gamma\n+ 7 eps\n  8 beta\n  9 eps\n 10 zeta\n 11 alpha\n    ...",
+    "firstChangedLine": 7
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -3,9 +3,9 @@\n beta\n \n delta\n zeta\n-gamma\n+eps\n beta\n eps\n zeta\n alpha\n"
+  },
+  {
+   "old": "beta\nzeta\nzeta\neps\nzeta\ngamma\ngamma\ngamma\nalpha\neps\ngamma\neps\nalpha\nbeta\ndelta\ngamma\n\nzeta\n\ndelta\n\ngamma\nzeta\nbeta\ndelta\nalpha\n",
+   "new": "zeta\nzeta\neps\ngamma\ngamma\nalpha\neps\ngamma\neps\nnew64\nalpha\nbeta\ndelta\ngamma\n\nzeta\n\nbeta\ndelta\nalpha",
+   "display": {
+    "diff": "- 1 beta\n  2 zeta\n  3 zeta\n  4 eps\n- 5 zeta\n  6 gamma\n  7 gamma\n- 8 gamma\n  9 alpha\n 10 eps\n 11 gamma\n 12 eps\n+10 new64\n 13 alpha\n 14 beta\n 15 delta\n 16 gamma\n 17 \n 18 zeta\n 19 \n-20 delta\n-21 \n-22 gamma\n-23 zeta\n 24 beta\n 25 delta\n-26 alpha\n+20 alpha",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,26 +1,20 @@\n-beta\n zeta\n zeta\n eps\n-zeta\n gamma\n gamma\n-gamma\n alpha\n eps\n gamma\n eps\n+new64\n alpha\n beta\n delta\n gamma\n \n zeta\n \n-delta\n-\n-gamma\n-zeta\n beta\n delta\n-alpha\n+alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\ndelta\n\ndelta\n\nalpha\n",
+   "new": "alpha\ndelta\n\n\nalpha\n",
+   "display": {
+    "diff": " 1 alpha\n 2 delta\n 3 \n-4 delta\n 5 \n 6 alpha",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,5 @@\n alpha\n delta\n \n-delta\n \n alpha\n"
+  },
+  {
+   "old": "beta\n\neps\n\ngamma\n\n\ngamma\n",
+   "new": "beta\n\neps\nnew66\n\n\nalpha",
+   "display": {
+    "diff": " 1 beta\n 2 \n 3 eps\n+4 new66\n 4 \n-5 gamma\n 6 \n-7 \n-8 gamma\n+7 alpha",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,8 +1,7 @@\n beta\n \n eps\n+new66\n \n-gamma\n \n-\n-gamma\n+alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\nzeta\nbeta\nalpha\nbeta\nbeta\ngamma\ndelta\nzeta\n\ngamma\nalpha\nzeta\ndelta\nalpha\nzeta\ngamma\nalpha\n\neps\n\nzeta\neps\n\n\ngamma\nalpha\neps\n",
+   "new": "delta\nbeta\n\nbeta\nbeta\ngamma\ndelta\nzeta\n\ngamma\nnew67\nalpha\nzeta\ndelta\nalpha\nnew67\nzeta\nzeta\nalpha\n\neps\nzeta\neps\n\ngamma\nalpha\ngamma",
+   "display": {
+    "diff": "  1 delta\n- 2 zeta\n  3 beta\n- 4 alpha\n+ 3 \n  5 beta\n  6 beta\n  7 gamma\n  8 delta\n  9 zeta\n 10 \n 11 gamma\n+11 new67\n 12 alpha\n 13 zeta\n 14 delta\n 15 alpha\n+16 new67\n 16 zeta\n-17 gamma\n+18 zeta\n 18 alpha\n 19 \n 20 eps\n-21 \n 22 zeta\n 23 eps\n 24 \n-25 \n 26 gamma\n 27 alpha\n-28 eps\n+27 gamma",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,28 +1,27 @@\n delta\n-zeta\n beta\n-alpha\n+\n beta\n beta\n gamma\n delta\n zeta\n \n gamma\n+new67\n alpha\n zeta\n delta\n alpha\n+new67\n zeta\n-gamma\n+zeta\n alpha\n \n eps\n-\n zeta\n eps\n \n-\n gamma\n alpha\n-eps\n+gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\ngamma\ngamma\nalpha\n\ndelta\n\ndelta\ndelta\nbeta\nzeta\nbeta\nbeta\ngamma\nzeta\n",
+   "new": "delta\ngamma\ngamma\nalpha\n\n\n\ndelta\nbeta\nbeta\nbeta\nnew68\ngamma\nzeta\n",
+   "display": {
+    "diff": "    ...\n  2 gamma\n  3 gamma\n  4 alpha\n  5 \n- 6 delta\n  7 \n+ 7 \n  8 delta\n- 9 delta\n 10 beta\n-11 zeta\n 12 beta\n 13 beta\n+12 new68\n 14 gamma\n 15 zeta",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,14 +2,13 @@\n gamma\n gamma\n alpha\n \n-delta\n \n+\n delta\n-delta\n beta\n-zeta\n beta\n beta\n+new68\n gamma\n zeta\n"
+  },
+  {
+   "old": "",
+   "new": "\n",
+   "display": {
+    "diff": "+1 ",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -0,0 +1,1 @@\n+\n"
+  },
+  {
+   "old": "zeta\ngamma\neps\nzeta\n\nbeta\nzeta\n\nbeta\neps\ngamma\neps\nalpha\ngamma\neps\nalpha\ngamma\nbeta\neps\nbeta\ndelta\nalpha\neps\nzeta\nzeta\nbeta\neps\n",
+   "new": "zeta\ngamma\nalpha\nzeta\n\nbeta\nzeta\n\neps\ngamma\nalpha\ngamma\neps\n\nbeta\neps\nbeta\ndelta\nalpha\nbeta\nzeta\nalpha\nbeta\neps\n",
+   "display": {
+    "diff": "  1 zeta\n  2 gamma\n- 3 eps\n+ 3 alpha\n  4 zeta\n  5 \n  6 beta\n  7 zeta\n  8 \n- 9 beta\n 10 eps\n 11 gamma\n-12 eps\n 13 alpha\n 14 gamma\n 15 eps\n-16 alpha\n-17 gamma\n+14 \n 18 beta\n 19 eps\n 20 beta\n 21 delta\n 22 alpha\n-23 eps\n+20 beta\n 24 zeta\n-25 zeta\n+22 alpha\n 26 beta\n 27 eps",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,27 +1,24 @@\n zeta\n gamma\n-eps\n+alpha\n zeta\n \n beta\n zeta\n \n-beta\n eps\n gamma\n-eps\n alpha\n gamma\n eps\n-alpha\n-gamma\n+\n beta\n eps\n beta\n delta\n alpha\n-eps\n+beta\n zeta\n-zeta\n+alpha\n beta\n eps\n"
+  },
+  {
+   "old": "eps\nalpha\ndelta\nzeta\nbeta\ndelta\nbeta\n\ndelta\nbeta\ndelta\nbeta\nbeta\nzeta\n\nalpha",
+   "new": "eps\nalpha\ndelta\nzeta\ndelta\nbeta\ndelta\nbeta\nzeta\nzeta\nalpha\nnew71\nalpha\n",
+   "display": {
+    "diff": "  1 eps\n  2 alpha\n  3 delta\n  4 zeta\n- 5 beta\n  6 delta\n  7 beta\n- 8 \n  9 delta\n 10 beta\n-11 delta\n-12 beta\n-13 beta\n 14 zeta\n-15 \n-16 alpha\n+10 zeta\n+11 alpha\n+12 new71\n+13 alpha",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,16 +1,13 @@\n eps\n alpha\n delta\n zeta\n-beta\n delta\n beta\n-\n delta\n beta\n-delta\n-beta\n-beta\n zeta\n-\n-alpha\n\\ No newline at end of file\n+zeta\n+alpha\n+new71\n+alpha\n"
+  },
+  {
+   "old": "zeta\nalpha\ngamma\ndelta\ndelta\ngamma\ndelta\nzeta\ndelta\neps\nalpha\ngamma\ngamma\nalpha\nalpha\ndelta\nalpha\nbeta\nbeta\n\nzeta\nzeta\n",
+   "new": "zeta\nalpha\ngamma\ndelta\ndelta\nzeta\ndelta\neps\nalpha\ngamma\nnew72\nalpha\nalpha\ngamma\nalpha\nbeta\nbeta\n\nalpha",
+   "display": {
+    "diff": "    ...\n  2 alpha\n  3 gamma\n  4 delta\n  5 delta\n- 6 gamma\n- 7 delta\n  8 zeta\n  9 delta\n 10 eps\n 11 alpha\n 12 gamma\n-13 gamma\n+11 new72\n 14 alpha\n 15 alpha\n-16 delta\n+14 gamma\n 17 alpha\n 18 beta\n 19 beta\n 20 \n-21 zeta\n-22 zeta\n+19 alpha",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,21 +2,18 @@\n alpha\n gamma\n delta\n delta\n-gamma\n-delta\n zeta\n delta\n eps\n alpha\n gamma\n-gamma\n+new72\n alpha\n alpha\n-delta\n+gamma\n alpha\n beta\n beta\n \n-zeta\n-zeta\n+alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\n\nzeta\n\ndelta\ndelta\nzeta\nbeta\ndelta\ndelta",
+   "new": "zeta\n\nzeta\n\ngamma\nbeta\ndelta\ndelta",
+   "display": {
+    "diff": "  1 zeta\n  2 \n  3 zeta\n  4 \n- 5 delta\n- 6 delta\n- 7 zeta\n+ 5 gamma\n  8 beta\n  9 delta\n 10 delta",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,10 +1,8 @@\n zeta\n \n zeta\n \n-delta\n-delta\n-zeta\n+gamma\n beta\n delta\n delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\nzeta\nalpha\ngamma\nbeta\n\ngamma\neps\ngamma\nbeta\ngamma",
+   "new": "zeta\nzeta\nalpha\nalpha\n\ngamma\nnew74\neps\ngamma\nbeta\n",
+   "display": {
+    "diff": "  1 zeta\n  2 zeta\n  3 alpha\n- 4 gamma\n- 5 beta\n+ 4 alpha\n  6 \n  7 gamma\n+ 7 new74\n  8 eps\n  9 gamma\n 10 beta\n-11 gamma",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,11 +1,10 @@\n zeta\n zeta\n alpha\n-gamma\n-beta\n+alpha\n \n gamma\n+new74\n eps\n gamma\n beta\n-gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "beta",
+   "new": "",
+   "display": {
+    "diff": "-1 beta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,1 +0,0 @@\n-beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "beta\ndelta\nzeta\n\nzeta\nbeta\ngamma\ngamma\nalpha\n\n\ngamma\nalpha\nalpha\neps\ngamma\ndelta\ngamma\nalpha\nbeta\ndelta\ngamma\neps\nzeta",
+   "new": "beta\ngamma\neps\n\nzeta\nbeta\ngamma\nalpha\nbeta\n\ngamma\nalpha\nalpha\ngamma\nnew76\ndelta\nbeta\neps\nbeta\ngamma\neps\nnew76",
+   "display": {
+    "diff": "  1 beta\n- 2 delta\n- 3 zeta\n+ 2 gamma\n+ 3 eps\n  4 \n  5 zeta\n  6 beta\n  7 gamma\n- 8 gamma\n  9 alpha\n+ 9 beta\n 10 \n-11 \n 12 gamma\n 13 alpha\n 14 alpha\n-15 eps\n 16 gamma\n+15 new76\n 17 delta\n-18 gamma\n-19 alpha\n 20 beta\n-21 delta\n+18 eps\n+19 beta\n 22 gamma\n 23 eps\n-24 zeta\n+22 new76",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,24 +1,22 @@\n beta\n-delta\n-zeta\n+gamma\n+eps\n \n zeta\n beta\n gamma\n-gamma\n alpha\n+beta\n \n-\n gamma\n alpha\n alpha\n-eps\n gamma\n+new76\n delta\n-gamma\n-alpha\n beta\n-delta\n+eps\n+beta\n gamma\n eps\n-zeta\n\\ No newline at end of file\n+new76\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\n\nbeta\nzeta\neps\nbeta",
+   "new": "gamma\n\nbeta\nzeta\neps\nnew77\nbeta",
+   "display": {
+    "diff": "   ...\n 2 \n 3 beta\n 4 zeta\n 5 eps\n+6 new77\n 6 beta",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,5 +2,6 @@\n \n beta\n zeta\n eps\n+new77\n beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\neps\n\ndelta\nzeta\ndelta\n\nalpha\nzeta\nbeta\ndelta\nzeta\neps\ndelta\nzeta\neps\nbeta\nbeta\nbeta\ndelta\ndelta\ndelta\neps\n\ndelta\neps\neps",
+   "new": "gamma\n\nzeta\ndelta\n\nalpha\nzeta\nbeta\ndelta\nzeta\neps\ndelta\nbeta\neps\nbeta\nbeta\nbeta\ndelta\ndelta\nnew78\neps\n\ndelta\nzeta\neps\nnew78\n",
+   "display": {
+    "diff": "  1 gamma\n- 2 eps\n  3 \n- 4 delta\n  5 zeta\n  6 delta\n  7 \n  8 alpha\n    ...\n 11 delta\n 12 zeta\n 13 eps\n 14 delta\n-15 zeta\n+13 beta\n 16 eps\n 17 beta\n 18 beta\n 19 beta\n 20 delta\n 21 delta\n-22 delta\n+20 new78\n 23 eps\n 24 \n 25 delta\n+24 zeta\n 26 eps\n-27 eps\n+26 new78",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,8 +1,6 @@\n gamma\n-eps\n \n-delta\n zeta\n delta\n \n alpha\n@@ -11,17 +9,18 @@\n delta\n zeta\n eps\n delta\n-zeta\n+beta\n eps\n beta\n beta\n beta\n delta\n delta\n-delta\n+new78\n eps\n \n delta\n+zeta\n eps\n-eps\n\\ No newline at end of file\n+new78\n"
+  },
+  {
+   "old": "beta\nzeta\nbeta\nbeta\neps\ndelta\ndelta\nalpha\n\ndelta\nalpha\nzeta\nzeta\nzeta\nalpha\neps\nzeta\nbeta\nzeta",
+   "new": "beta\nzeta\nalpha\nbeta\neps\ndelta\ndelta\ndelta\n\ndelta\nalpha\nzeta\nzeta\n\nalpha\neps\nzeta\nbeta",
+   "display": {
+    "diff": "  1 beta\n  2 zeta\n+ 3 alpha\n  3 beta\n- 4 beta\n  5 eps\n  6 delta\n  7 delta\n- 8 alpha\n+ 8 delta\n  9 \n 10 delta\n 11 alpha\n 12 zeta\n 13 zeta\n-14 zeta\n+14 \n 15 alpha\n 16 eps\n 17 zeta\n-18 beta\n-19 zeta\n+18 beta",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,18 @@\n beta\n zeta\n+alpha\n beta\n-beta\n eps\n delta\n delta\n-alpha\n+delta\n \n delta\n alpha\n zeta\n zeta\n-zeta\n+\n alpha\n eps\n zeta\n-beta\n-zeta\n\\ No newline at end of file\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\n\ndelta\ndelta\nalpha\nzeta",
+   "new": "gamma\n\nbeta\ndelta\nalpha\nzeta\n",
+   "display": {
+    "diff": " 1 gamma\n 2 \n+3 beta\n 3 delta\n-4 delta\n 5 alpha\n-6 zeta\n+6 zeta",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,6 @@\n gamma\n \n+beta\n delta\n-delta\n alpha\n-zeta\n\\ No newline at end of file\n+zeta\n"
+  },
+  {
+   "old": "gamma\ngamma\ngamma\ngamma\nbeta\n\ndelta\ngamma\neps\n",
+   "new": "gamma\nnew81\ngamma\ngamma\nnew81\nbeta\n\nnew81\ndelta\ngamma\neps\nnew81",
+   "display": {
+    "diff": "  1 gamma\n+ 2 new81\n  2 gamma\n  3 gamma\n- 4 gamma\n+ 5 new81\n  5 beta\n  6 \n+ 8 new81\n  7 delta\n  8 gamma\n  9 eps\n+12 new81",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,12 @@\n gamma\n+new81\n gamma\n gamma\n-gamma\n+new81\n beta\n \n+new81\n delta\n gamma\n eps\n+new81\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\ngamma\n\nalpha\ndelta\nbeta\nzeta\ndelta\ndelta\ngamma\ngamma\ndelta\nalpha\ngamma\ngamma\nalpha\n\neps\ndelta\nzeta\ndelta\ngamma\ndelta\nbeta\nbeta",
+   "new": "zeta\ndelta\nbeta\nalpha\ndelta\ngamma\ngamma\n\nbeta\nalpha\ngamma\ngamma\nalpha\neps\ndelta\nzeta\ndelta\ngamma\ndelta\nbeta\nalpha\nnew82\n",
+   "display": {
+    "diff": "- 1 alpha\n- 2 gamma\n- 3 \n- 4 alpha\n+ 1 zeta\n  5 delta\n  6 beta\n- 7 zeta\n+ 4 alpha\n  8 delta\n- 9 delta\n 10 gamma\n 11 gamma\n-12 delta\n+ 8 \n+ 9 beta\n 13 alpha\n 14 gamma\n 15 gamma\n 16 alpha\n-17 \n 18 eps\n 19 delta\n 20 zeta\n 21 delta\n 22 gamma\n 23 delta\n 24 beta\n-25 beta\n+21 alpha\n+22 new82",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,25 +1,22 @@\n-alpha\n-gamma\n-\n-alpha\n+zeta\n delta\n beta\n-zeta\n+alpha\n delta\n-delta\n gamma\n gamma\n-delta\n+\n+beta\n alpha\n gamma\n gamma\n alpha\n-\n eps\n delta\n zeta\n delta\n gamma\n delta\n beta\n-beta\n\\ No newline at end of file\n+alpha\n+new82\n"
+  },
+  {
+   "old": "",
+   "new": "\n",
+   "display": {
+    "diff": "+1 ",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -0,0 +1,1 @@\n+\n"
+  },
+  {
+   "old": "\nbeta\nalpha\nbeta\ngamma\neps\nzeta\nzeta\n\ngamma\neps\ngamma\n\ndelta\ndelta\n\ngamma\nbeta\n\n\n\n\ngamma\nalpha\nalpha",
+   "new": "\nbeta\nalpha\nbeta\ngamma\nzeta\nzeta\nzeta\nzeta\neps\ngamma\nbeta\n\ngamma\nbeta\n\ngamma\n\n\nbeta\nalpha\n",
+   "display": {
+    "diff": "    ...\n  2 beta\n  3 alpha\n  4 beta\n  5 gamma\n- 6 eps\n  7 zeta\n  8 zeta\n- 9 \n-10 gamma\n+ 8 zeta\n+ 9 zeta\n 11 eps\n 12 gamma\n+12 beta\n 13 \n-14 delta\n-15 delta\n-16 \n 17 gamma\n 18 beta\n 19 \n+17 gamma\n 20 \n 21 \n-22 \n-23 gamma\n+20 beta\n 24 alpha\n-25 alpha",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,24 +2,20 @@\n beta\n alpha\n beta\n gamma\n-eps\n zeta\n zeta\n-\n-gamma\n+zeta\n+zeta\n eps\n gamma\n+beta\n \n-delta\n-delta\n-\n gamma\n beta\n \n+gamma\n \n \n-\n-gamma\n+beta\n alpha\n-alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\nbeta\ngamma\nalpha",
+   "new": "beta\ngamma\nalpha\n",
+   "display": {
+    "diff": "-1 eps\n 2 beta\n 3 gamma\n-4 alpha\n+3 alpha",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,4 +1,3 @@\n-eps\n beta\n gamma\n-alpha\n\\ No newline at end of file\n+alpha\n"
+  },
+  {
+   "old": "eps\n\n\nzeta\ngamma\nbeta\nzeta\n\ndelta\n\ndelta\nalpha\nzeta\n\nzeta\n\neps\nzeta\nalpha\nbeta\nzeta\ngamma\n",
+   "new": "eps\n\n\nzeta\ngamma\nbeta\nzeta\n\nbeta\ndelta\nalpha\ndelta\n\nzeta\n\ngamma\nzeta\neps\nbeta\nzeta\ngamma\n",
+   "display": {
+    "diff": "    ...\n  5 gamma\n  6 beta\n  7 zeta\n  8 \n+ 9 beta\n  9 delta\n-10 \n-11 delta\n 12 alpha\n-13 zeta\n+12 delta\n 14 \n 15 zeta\n 16 \n-17 eps\n+16 gamma\n 18 zeta\n-19 alpha\n+18 eps\n 20 beta\n 21 zeta\n 22 gamma",
+    "firstChangedLine": 9
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -5,18 +5,17 @@\n gamma\n beta\n zeta\n \n+beta\n delta\n-\n-delta\n alpha\n-zeta\n+delta\n \n zeta\n \n-eps\n+gamma\n zeta\n-alpha\n+eps\n beta\n zeta\n gamma\n"
+  },
+  {
+   "old": "delta\neps\n",
+   "new": "delta\nnew87\neps",
+   "display": {
+    "diff": " 1 delta\n-2 eps\n+2 new87\n+3 eps",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,2 +1,3 @@\n delta\n-eps\n+new87\n+eps\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\nalpha\nalpha\ndelta\neps\ngamma",
+   "new": "zeta\nalpha\nalpha\neps\ngamma\n",
+   "display": {
+    "diff": " 1 zeta\n 2 alpha\n 3 alpha\n-4 delta\n 5 eps\n-6 gamma\n+5 gamma",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,6 +1,5 @@\n zeta\n alpha\n alpha\n-delta\n eps\n-gamma\n\\ No newline at end of file\n+gamma\n"
+  },
+  {
+   "old": "delta\ngamma\nbeta\ndelta\ndelta\nalpha\nzeta\nalpha\n\ndelta\nzeta\nalpha\nzeta\nalpha\neps\ngamma\ndelta\nbeta\nalpha\neps\neps\nzeta\ndelta\nalpha\n",
+   "new": "delta\nnew89\nbeta\nzeta\nzeta\nalpha\n\ndelta\nzeta\n\nzeta\nalpha\nalpha\ngamma\nnew89\ndelta\nnew89\ngamma\nalpha\neps\neps\nzeta\ndelta\ngamma\n\n",
+   "display": {
+    "diff": "  1 delta\n- 2 gamma\n+ 2 new89\n  3 beta\n- 4 delta\n- 5 delta\n- 6 alpha\n  7 zeta\n+ 5 zeta\n  8 alpha\n  9 \n 10 delta\n 11 zeta\n-12 alpha\n+10 \n 13 zeta\n 14 alpha\n-15 eps\n+13 alpha\n 16 gamma\n+15 new89\n 17 delta\n-18 beta\n+17 new89\n+18 gamma\n 19 alpha\n 20 eps\n 21 eps\n 22 zeta\n 23 delta\n-24 alpha\n+24 gamma\n+25 ",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,24 +1,25 @@\n delta\n-gamma\n+new89\n beta\n-delta\n-delta\n-alpha\n zeta\n+zeta\n alpha\n \n delta\n zeta\n-alpha\n+\n zeta\n alpha\n-eps\n+alpha\n gamma\n+new89\n delta\n-beta\n+new89\n+gamma\n alpha\n eps\n eps\n zeta\n delta\n-alpha\n+gamma\n+\n"
+  },
+  {
+   "old": "zeta\ndelta\nzeta\neps\neps\nalpha\nalpha\nbeta\n\nzeta\nbeta",
+   "new": "delta\nzeta\neps\neps\nalpha\neps\nnew90\n\nzeta\nbeta\n",
+   "display": {
+    "diff": "- 1 zeta\n  2 delta\n  3 zeta\n  4 eps\n  5 eps\n  6 alpha\n- 7 alpha\n- 8 beta\n+ 6 eps\n+ 7 new90\n  9 \n 10 zeta\n-11 beta\n+10 beta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,11 +1,10 @@\n-zeta\n delta\n zeta\n eps\n eps\n alpha\n-alpha\n-beta\n+eps\n+new90\n \n zeta\n-beta\n\\ No newline at end of file\n+beta\n"
+  },
+  {
+   "old": "beta\nzeta\nalpha\nalpha\nzeta\nbeta\nbeta",
+   "new": "eps\nzeta\nalpha\nalpha\nzeta\nbeta\ndelta\n",
+   "display": {
+    "diff": "-1 beta\n+1 eps\n 2 zeta\n 3 alpha\n 4 alpha\n 5 zeta\n 6 beta\n-7 beta\n+7 delta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,7 +1,7 @@\n-beta\n+eps\n zeta\n alpha\n alpha\n zeta\n beta\n-beta\n\\ No newline at end of file\n+delta\n"
+  },
+  {
+   "old": "alpha\ndelta\neps\n\ndelta\n\ndelta\nbeta\ndelta",
+   "new": "alpha\nbeta\n\ndelta\n\ndelta\ngamma\n",
+   "display": {
+    "diff": " 1 alpha\n-2 delta\n-3 eps\n+2 beta\n 4 \n 5 delta\n 6 \n 7 delta\n-8 beta\n-9 delta\n+7 gamma",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,7 @@\n alpha\n-delta\n-eps\n+beta\n \n delta\n \n delta\n-beta\n-delta\n\\ No newline at end of file\n+gamma\n"
+  },
+  {
+   "old": "eps\nzeta\neps\n\ngamma\nalpha\ngamma\nbeta\ndelta\nbeta\neps\nzeta\nalpha\n",
+   "new": "eps\ndelta\nzeta\n\nnew93\nzeta\nalpha\n\ndelta\nnew93\nzeta\nbeta\neps\nzeta\nalpha",
+   "display": {
+    "diff": "  1 eps\n+ 2 delta\n  2 zeta\n- 3 eps\n  4 \n- 5 gamma\n+ 5 new93\n+ 6 zeta\n  6 alpha\n- 7 gamma\n- 8 beta\n+ 8 \n  9 delta\n+10 new93\n+11 zeta\n 10 beta\n 11 eps\n 12 zeta\n-13 alpha\n+15 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,13 +1,15 @@\n eps\n+delta\n zeta\n-eps\n \n-gamma\n+new93\n+zeta\n alpha\n-gamma\n-beta\n+\n delta\n+new93\n+zeta\n beta\n eps\n zeta\n-alpha\n+alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\ndelta\nalpha\ndelta\ndelta\ndelta\ngamma\neps\n",
+   "new": "gamma\ndelta\nalpha\ndelta\ndelta\ndelta\nnew94\ngamma\n",
+   "display": {
+    "diff": "   ...\n 3 alpha\n 4 delta\n 5 delta\n 6 delta\n+7 new94\n 7 gamma\n-8 eps",
+    "firstChangedLine": 7
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -3,6 +3,6 @@\n alpha\n delta\n delta\n delta\n+new94\n gamma\n-eps\n"
+  },
+  {
+   "old": "gamma\neps\n\nbeta\neps\nbeta\ndelta\n\ngamma\nbeta\n\nbeta\nalpha\ndelta\ngamma\ngamma\nzeta\nbeta\n",
+   "new": "gamma\n\nbeta\ndelta\nbeta\ndelta\nnew95\n\ngamma\nnew95\n\nbeta\nalpha\ndelta\nnew95\ngamma\nalpha\nzeta\nbeta\nnew95",
+   "display": {
+    "diff": "  1 gamma\n- 2 eps\n  3 \n  4 beta\n- 5 eps\n+ 4 delta\n  6 beta\n  7 delta\n+ 7 new95\n  8 \n  9 gamma\n-10 beta\n+10 new95\n 11 \n 12 beta\n 13 alpha\n 14 delta\n+15 new95\n 15 gamma\n-16 gamma\n+17 alpha\n 17 zeta\n 18 beta\n+20 new95",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,18 +1,20 @@\n gamma\n-eps\n \n beta\n-eps\n+delta\n beta\n delta\n+new95\n \n gamma\n-beta\n+new95\n \n beta\n alpha\n delta\n+new95\n gamma\n-gamma\n+alpha\n zeta\n beta\n+new95\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\nalpha\nbeta\ngamma\nzeta\nalpha\neps\ndelta",
+   "new": "zeta\nalpha\nbeta\nnew96\ngamma\nzeta\n",
+   "display": {
+    "diff": " 1 zeta\n 2 alpha\n 3 beta\n+4 new96\n 4 gamma\n 5 zeta\n-6 alpha\n-7 eps\n-8 delta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,8 +1,6 @@\n zeta\n alpha\n beta\n+new96\n gamma\n zeta\n-alpha\n-eps\n-delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\n\ndelta\neps\ngamma\neps\nzeta\ndelta\ndelta\nzeta\nzeta\nalpha\ngamma\nalpha\neps\nbeta\neps\nzeta\ndelta\ndelta\ndelta\n",
+   "new": "zeta\neps\neps\nzeta\ndelta\ndelta\nzeta\nalpha\ngamma\nalpha\nbeta\neps\nnew97\nzeta\ndelta\ndelta\ndelta\n",
+   "display": {
+    "diff": "+ 1 zeta\n  1 eps\n- 2 \n- 3 delta\n  4 eps\n- 5 gamma\n- 6 eps\n  7 zeta\n  8 delta\n  9 delta\n 10 zeta\n-11 zeta\n 12 alpha\n 13 gamma\n 14 alpha\n-15 eps\n 16 beta\n 17 eps\n+13 new97\n 18 zeta\n 19 delta\n 20 delta\n 21 delta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,21 +1,17 @@\n+zeta\n eps\n-\n-delta\n eps\n-gamma\n-eps\n zeta\n delta\n delta\n zeta\n-zeta\n alpha\n gamma\n alpha\n-eps\n beta\n eps\n+new97\n zeta\n delta\n delta\n delta\n"
+  },
+  {
+   "old": "zeta\nzeta\nzeta\ngamma\ndelta\nbeta\nbeta\nalpha\ndelta\nbeta\ndelta\ndelta\ndelta\n\n\nzeta\nzeta\nzeta\nbeta\nbeta\neps\ngamma\n\ngamma\nzeta",
+   "new": "eps\nzeta\nzeta\nnew98\neps\nnew98\ndelta\nbeta\nbeta\nalpha\nbeta\nnew98\nbeta\nbeta\ndelta\nnew98\n\n\nzeta\nzeta\nzeta\nalpha\neps\ngamma\n\ngamma",
+   "display": {
+    "diff": "+ 1 eps\n  1 zeta\n  2 zeta\n- 3 zeta\n- 4 gamma\n+ 4 new98\n+ 5 eps\n+ 6 new98\n  5 delta\n  6 beta\n  7 beta\n  8 alpha\n- 9 delta\n 10 beta\n+12 new98\n+13 beta\n+14 beta\n 11 delta\n-12 delta\n-13 delta\n+16 new98\n 14 \n 15 \n 16 zeta\n 17 zeta\n 18 zeta\n-19 beta\n-20 beta\n+22 alpha\n 21 eps\n 22 gamma\n 23 \n-24 gamma\n-25 zeta\n+26 gamma",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,25 +1,26 @@\n+eps\n zeta\n zeta\n-zeta\n-gamma\n+new98\n+eps\n+new98\n delta\n beta\n beta\n alpha\n-delta\n beta\n+new98\n+beta\n+beta\n delta\n-delta\n-delta\n+new98\n \n \n zeta\n zeta\n zeta\n-beta\n-beta\n+alpha\n eps\n gamma\n \n-gamma\n-zeta\n\\ No newline at end of file\n+gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "\neps\ndelta\ngamma\neps\n",
+   "new": "\neps\ngamma\neps\n",
+   "display": {
+    "diff": " 1 \n 2 eps\n-3 delta\n 4 gamma\n 5 eps",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,4 @@\n \n eps\n-delta\n gamma\n eps\n"
+  },
+  {
+   "old": "alpha\n\ngamma\ngamma\nalpha\nzeta\nzeta\neps\ndelta\neps\nbeta\n\nzeta\n\nbeta\n\ngamma\nalpha\ngamma\nalpha",
+   "new": "\ngamma\nnew101\nzeta\neps\ndelta\nzeta\nzeta\n\nzeta\nnew101\n\n\ngamma\nalpha\ngamma\nalpha",
+   "display": {
+    "diff": "- 1 alpha\n  2 \n  3 gamma\n- 4 gamma\n- 5 alpha\n+ 3 new101\n  6 zeta\n- 7 zeta\n  8 eps\n  9 delta\n-10 eps\n-11 beta\n+ 7 zeta\n+ 8 zeta\n 12 \n 13 zeta\n+11 new101\n 14 \n-15 beta\n 16 \n 17 gamma\n 18 alpha\n 19 gamma\n    ...",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,16 @@\n-alpha\n \n gamma\n-gamma\n-alpha\n+new101\n zeta\n-zeta\n eps\n delta\n-eps\n-beta\n+zeta\n+zeta\n \n zeta\n+new101\n \n-beta\n \n gamma\n alpha\n gamma\n"
+  },
+  {
+   "old": "",
+   "new": "\n",
+   "display": {
+    "diff": "+1 ",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -0,0 +1,1 @@\n+\n"
+  },
+  {
+   "old": "eps\ndelta\neps\nalpha\nalpha",
+   "new": "eps\nalpha\n",
+   "display": {
+    "diff": " 1 eps\n-2 delta\n-3 eps\n 4 alpha\n-5 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,2 @@\n eps\n-delta\n-eps\n alpha\n-alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha",
+   "new": "alpha\n",
+   "display": {
+    "diff": "-1 alpha\n+1 alpha",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,1 +1,1 @@\n-alpha\n\\ No newline at end of file\n+alpha\n"
+  },
+  {
+   "old": "zeta\ngamma\nzeta\n\neps\nzeta\n",
+   "new": "zeta\ngamma\nzeta\n\neps\n\nnew105\n",
+   "display": {
+    "diff": "   ...\n 2 gamma\n 3 zeta\n 4 \n 5 eps\n-6 zeta\n+6 \n+7 new105",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,5 +2,6 @@\n gamma\n zeta\n \n eps\n-zeta\n+\n+new105\n"
+  },
+  {
+   "old": "beta\ndelta\nbeta\nalpha\nbeta\n\n",
+   "new": "beta\ndelta\nbeta\nalpha\nbeta\nbeta",
+   "display": {
+    "diff": "   ...\n 2 delta\n 3 beta\n 4 alpha\n 5 beta\n-6 \n+6 beta",
+    "firstChangedLine": 6
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -2,5 +2,5 @@\n delta\n beta\n alpha\n beta\n-\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\nzeta\nalpha\ndelta\nbeta\nzeta\nzeta\ngamma\nbeta\nzeta\ngamma\nalpha\nzeta\nalpha\n",
+   "new": "eps\nzeta\nnew107\nalpha\ndelta\nbeta\n\nzeta\neps\nbeta\nzeta\ngamma\nalpha\nzeta\nalpha\n",
+   "display": {
+    "diff": "  1 eps\n  2 zeta\n+ 3 new107\n  3 alpha\n  4 delta\n  5 beta\n+ 7 \n  6 zeta\n- 7 zeta\n- 8 gamma\n+ 9 eps\n  9 beta\n 10 zeta\n 11 gamma\n 12 alpha\n    ...",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,12 +1,13 @@\n eps\n zeta\n+new107\n alpha\n delta\n beta\n+\n zeta\n-zeta\n-gamma\n+eps\n beta\n zeta\n gamma\n alpha\n"
+  },
+  {
+   "old": "gamma\nzeta\n\ngamma\nbeta\ndelta\neps\nbeta\ngamma\neps\nalpha\ngamma\ndelta\nbeta\ngamma\ndelta\ndelta",
+   "new": "zeta\n\ngamma\nbeta\ndelta\neps\nbeta\ngamma\neps\nalpha\ngamma\ndelta\ngamma\ngamma\ndelta\ndelta",
+   "display": {
+    "diff": "- 1 gamma\n  2 zeta\n  3 \n  4 gamma\n  5 beta\n    ...\n 10 eps\n 11 alpha\n 12 gamma\n 13 delta\n-14 beta\n 15 gamma\n+14 gamma\n 16 delta\n 17 delta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,4 @@\n-gamma\n zeta\n \n gamma\n beta\n@@ -10,8 +9,8 @@\n eps\n alpha\n gamma\n delta\n-beta\n gamma\n+gamma\n delta\n delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\ndelta\nalpha\nbeta\nalpha",
+   "new": "zeta\ngamma\nalpha\nbeta",
+   "display": {
+    "diff": " 1 zeta\n-2 delta\n+2 gamma\n 3 alpha\n-4 beta\n-5 alpha\n+4 beta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,4 @@\n zeta\n-delta\n+gamma\n alpha\n-beta\n-alpha\n\\ No newline at end of file\n+beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\neps\nzeta\nzeta\ndelta\neps\neps\nzeta\neps\n\nzeta\nbeta\n\nzeta\n\nbeta\nzeta\nbeta\nalpha\n",
+   "new": "eps\n\nzeta\neps\neps\nzeta\neps\n\nzeta\nnew111\nbeta\neps\nnew111\nzeta\n\nbeta\nzeta\nbeta\nnew111\nalpha\n",
+   "display": {
+    "diff": "  1 eps\n- 2 eps\n+ 2 \n  3 zeta\n- 4 zeta\n- 5 delta\n  6 eps\n  7 eps\n  8 zeta\n  9 eps\n 10 \n 11 zeta\n+10 new111\n 12 beta\n-13 \n+12 eps\n+13 new111\n 14 zeta\n 15 \n 16 beta\n 17 zeta\n 18 beta\n+19 new111\n 19 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,20 @@\n eps\n-eps\n+\n zeta\n-zeta\n-delta\n eps\n eps\n zeta\n eps\n \n zeta\n+new111\n beta\n-\n+eps\n+new111\n zeta\n \n beta\n zeta\n beta\n+new111\n alpha\n"
+  },
+  {
+   "old": "beta\ndelta\n",
+   "new": "beta\nnew112\ndelta",
+   "display": {
+    "diff": " 1 beta\n-2 delta\n+2 new112\n+3 delta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,2 +1,3 @@\n beta\n-delta\n+new112\n+delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\nbeta\ndelta\ngamma",
+   "new": "alpha\ndelta\ngamma\n",
+   "display": {
+    "diff": " 1 alpha\n-2 beta\n 3 delta\n-4 gamma\n+3 gamma",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,4 +1,3 @@\n alpha\n-beta\n delta\n-gamma\n\\ No newline at end of file\n+gamma\n"
+  },
+  {
+   "old": "delta\nzeta\nzeta\nzeta\nalpha\nzeta\neps\nalpha\neps\ngamma\neps\nalpha\ndelta\neps\nbeta\nbeta\n\ndelta\nzeta\n",
+   "new": "delta\nzeta\nzeta\nbeta\nnew114\nalpha\nzeta\neps\nalpha\neps\nnew114\ngamma\nalpha\ndelta\nalpha\nzeta\nnew114\nzeta\nnew114\n\n",
+   "display": {
+    "diff": "  1 delta\n  2 zeta\n  3 zeta\n- 4 zeta\n+ 4 beta\n+ 5 new114\n  5 alpha\n  6 zeta\n  7 eps\n  8 alpha\n  9 eps\n+11 new114\n 10 gamma\n-11 eps\n 12 alpha\n 13 delta\n-14 eps\n-15 beta\n-16 beta\n-17 \n-18 delta\n+15 alpha\n 19 zeta\n+17 new114\n+18 zeta\n+19 new114\n+20 ",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,20 @@\n delta\n zeta\n zeta\n-zeta\n+beta\n+new114\n alpha\n zeta\n eps\n alpha\n eps\n+new114\n gamma\n-eps\n alpha\n delta\n-eps\n-beta\n-beta\n-\n-delta\n+alpha\n zeta\n+new114\n+zeta\n+new114\n+\n"
+  },
+  {
+   "old": "gamma\ndelta\ngamma\nbeta\neps\n\ndelta\n\nbeta\nzeta\nalpha\neps\nalpha\ngamma\nzeta\neps\n\nalpha\nzeta\ngamma\nalpha\n\neps\nbeta\nzeta\n",
+   "new": "gamma\nalpha\ngamma\nnew115\nbeta\neps\n\ndelta\nzeta\nnew115\ndelta\nzeta\nalpha\neps\nalpha\ngamma\nalpha\neps\n\nalpha\nnew115\nzeta\ndelta\nalpha\neps\nbeta\nzeta\n",
+   "display": {
+    "diff": "  1 gamma\n- 2 delta\n+ 2 alpha\n  3 gamma\n+ 4 new115\n  4 beta\n  5 eps\n  6 \n  7 delta\n- 8 \n- 9 beta\n 10 zeta\n+10 new115\n+11 delta\n+12 zeta\n 11 alpha\n 12 eps\n 13 alpha\n 14 gamma\n-15 zeta\n+17 alpha\n 16 eps\n 17 \n 18 alpha\n+21 new115\n 19 zeta\n-20 gamma\n+23 delta\n 21 alpha\n-22 \n 23 eps\n 24 beta\n 25 zeta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,25 +1,27 @@\n gamma\n-delta\n+alpha\n gamma\n+new115\n beta\n eps\n \n delta\n-\n-beta\n zeta\n+new115\n+delta\n+zeta\n alpha\n eps\n alpha\n gamma\n-zeta\n+alpha\n eps\n \n alpha\n+new115\n zeta\n-gamma\n+delta\n alpha\n-\n eps\n beta\n zeta\n"
+  },
+  {
+   "old": "zeta\n\n\ndelta\nbeta\nalpha\nzeta\n\neps\nzeta\ngamma\nbeta\n\nbeta\ndelta\neps\nbeta\ndelta\ngamma\n",
+   "new": "zeta\n\n\nalpha\nbeta\nzeta\n\neps\nzeta\nnew116\ngamma\nbeta\n\nnew116\nbeta\ndelta\neps\nbeta\ndelta\ngamma\n",
+   "display": {
+    "diff": "  1 zeta\n  2 \n  3 \n- 4 delta\n- 5 beta\n  6 alpha\n+ 5 beta\n  7 zeta\n  8 \n  9 eps\n 10 zeta\n+10 new116\n 11 gamma\n 12 beta\n 13 \n+14 new116\n 14 beta\n 15 delta\n 16 eps\n 17 beta\n    ...",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,18 @@\n zeta\n \n \n-delta\n-beta\n alpha\n+beta\n zeta\n \n eps\n zeta\n+new116\n gamma\n beta\n \n+new116\n beta\n delta\n eps\n beta\n"
+  },
+  {
+   "old": "zeta\nalpha\ndelta\nzeta\neps\n\neps\ngamma\nalpha\n\n\neps\nzeta\nzeta\ngamma\ndelta\nalpha\nbeta\ngamma\n\ndelta\nzeta",
+   "new": "zeta\nalpha\ndelta\neps\n\neps\nnew117\ngamma\nalpha\n\n\nnew117\nalpha\neps\ngamma\ngamma\ndelta\n\nbeta\ngamma\ndelta\nzeta",
+   "display": {
+    "diff": "  1 zeta\n  2 alpha\n  3 delta\n- 4 zeta\n  5 eps\n  6 \n  7 eps\n+ 7 new117\n  8 gamma\n  9 alpha\n 10 \n 11 \n+12 new117\n+13 alpha\n 12 eps\n-13 zeta\n-14 zeta\n 15 gamma\n+16 gamma\n 16 delta\n-17 alpha\n+18 \n 18 beta\n 19 gamma\n-20 \n 21 delta\n 22 zeta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,22 +1,22 @@\n zeta\n alpha\n delta\n-zeta\n eps\n \n eps\n+new117\n gamma\n alpha\n \n \n+new117\n+alpha\n eps\n-zeta\n-zeta\n gamma\n+gamma\n delta\n-alpha\n+\n beta\n gamma\n-\n delta\n zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\nzeta\ndelta\neps\nalpha\ndelta\nzeta\n\neps\n\ngamma\neps\n\nbeta\n",
+   "new": "delta\nnew118\nzeta\nalpha\nnew118\neps\nalpha\ndelta\nzeta\n\nnew118\neps\n\ngamma\nnew118\neps\n",
+   "display": {
+    "diff": "  1 delta\n+ 2 new118\n  2 zeta\n- 3 delta\n+ 4 alpha\n+ 5 new118\n  4 eps\n  5 alpha\n  6 delta\n  7 zeta\n  8 \n+11 new118\n  9 eps\n 10 \n 11 gamma\n+15 new118\n 12 eps\n-13 \n-14 beta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,14 +1,16 @@\n delta\n+new118\n zeta\n-delta\n+alpha\n+new118\n eps\n alpha\n delta\n zeta\n \n+new118\n eps\n \n gamma\n+new118\n eps\n-\n-beta\n"
+  },
+  {
+   "old": "\nzeta\ngamma\nbeta\nzeta\nbeta\nzeta\neps\nalpha\ndelta\ndelta\n\nzeta\n\nbeta\nzeta\nbeta\n\nbeta\nbeta\ndelta\n\ngamma\nzeta\neps\ngamma\ndelta\nalpha\neps\n",
+   "new": "zeta\ndelta\nbeta\nbeta\nnew119\nzeta\neps\ndelta\ndelta\n\nbeta\nbeta\nbeta\n\nbeta\nbeta\nzeta\n\ngamma\nzeta\neps\ngamma\neps\n",
+   "display": {
+    "diff": "- 1 \n  2 zeta\n- 3 gamma\n+ 2 delta\n  4 beta\n- 5 zeta\n  6 beta\n+ 5 new119\n  7 zeta\n  8 eps\n- 9 alpha\n 10 delta\n 11 delta\n 12 \n-13 zeta\n-14 \n 15 beta\n-16 zeta\n 17 beta\n+13 beta\n 18 \n 19 beta\n 20 beta\n-21 delta\n+17 zeta\n 22 \n 23 gamma\n 24 zeta\n 25 eps\n 26 gamma\n-27 delta\n-28 alpha\n 29 eps",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,29 +1,23 @@\n-\n zeta\n-gamma\n+delta\n beta\n-zeta\n beta\n+new119\n zeta\n eps\n-alpha\n delta\n delta\n \n-zeta\n-\n beta\n-zeta\n beta\n+beta\n \n beta\n beta\n-delta\n+zeta\n \n gamma\n zeta\n eps\n gamma\n-delta\n-alpha\n eps\n"
+  },
+  {
+   "old": "beta\ngamma\ndelta\neps\n\n\n\nbeta\nbeta\ndelta\ndelta\nalpha\n\ndelta\ndelta\ndelta\ndelta\ndelta\nzeta\nalpha\n",
+   "new": "alpha\ndelta\neps\n\nnew120\n\nnew120\ngamma\nalpha\nnew120\ndelta\ngamma\n\ndelta\ndelta\ndelta\ndelta\ndelta\nzeta\nnew120\nalpha\n",
+   "display": {
+    "diff": "- 1 beta\n- 2 gamma\n+ 1 alpha\n  3 delta\n  4 eps\n  5 \n+ 5 new120\n  6 \n- 7 \n- 8 beta\n- 9 beta\n-10 delta\n-11 delta\n+ 7 new120\n+ 8 gamma\n 12 alpha\n+10 new120\n+11 delta\n+12 gamma\n 13 \n 14 delta\n 15 delta\n 16 delta\n 17 delta\n 18 delta\n 19 zeta\n+20 new120\n 20 alpha",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,20 +1,21 @@\n-beta\n-gamma\n+alpha\n delta\n eps\n \n+new120\n \n-\n-beta\n-beta\n-delta\n-delta\n+new120\n+gamma\n alpha\n+new120\n+delta\n+gamma\n \n delta\n delta\n delta\n delta\n delta\n zeta\n+new120\n alpha\n"
+  },
+  {
+   "old": "gamma\n\nalpha\neps\nalpha\n\nalpha\nbeta\neps\neps\nzeta\nzeta\neps\ngamma\neps\nzeta\ngamma\ngamma\ngamma\ngamma\ndelta\nalpha\ngamma\nbeta\nbeta\ndelta\n",
+   "new": "\nalpha\neps\nalpha\n\nbeta\neps\neps\nzeta\nnew121\neps\ngamma\neps\nzeta\ngamma\ngamma\nnew121\ngamma\ngamma\ndelta\nalpha\ndelta\ndelta",
+   "display": {
+    "diff": "- 1 gamma\n  2 \n  3 alpha\n  4 eps\n  5 alpha\n  6 \n- 7 alpha\n  8 beta\n  9 eps\n 10 eps\n 11 zeta\n-12 zeta\n+10 new121\n 13 eps\n 14 gamma\n 15 eps\n 16 zeta\n 17 gamma\n 18 gamma\n+17 new121\n 19 gamma\n 20 gamma\n 21 delta\n 22 alpha\n-23 gamma\n-24 beta\n-25 beta\n 26 delta\n+23 delta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,26 +1,23 @@\n-gamma\n \n alpha\n eps\n alpha\n \n-alpha\n beta\n eps\n eps\n zeta\n-zeta\n+new121\n eps\n gamma\n eps\n zeta\n gamma\n gamma\n+new121\n gamma\n gamma\n delta\n alpha\n-gamma\n-beta\n-beta\n delta\n+delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\nbeta\nzeta\nzeta\nalpha\nzeta\ndelta\nbeta\nalpha\neps\nbeta\nbeta\ndelta\nzeta",
+   "new": "beta\nzeta\nzeta\nalpha\nzeta\nbeta\n\neps\nbeta\nbeta\nbeta\nzeta\nnew122",
+   "display": {
+    "diff": "- 1 gamma\n  2 beta\n  3 zeta\n  4 zeta\n  5 alpha\n  6 zeta\n- 7 delta\n  8 beta\n- 9 alpha\n+ 7 \n 10 eps\n 11 beta\n 12 beta\n-13 delta\n-14 zeta\n+11 beta\n+12 zeta\n+13 new122",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,14 +1,13 @@\n-gamma\n beta\n zeta\n zeta\n alpha\n zeta\n-delta\n beta\n-alpha\n+\n eps\n beta\n beta\n-delta\n-zeta\n\\ No newline at end of file\n+beta\n+zeta\n+new122\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\neps\neps\ngamma\n\ndelta\neps\neps\ngamma\nzeta\nbeta\n\ngamma\ngamma\nbeta\ndelta\n\ngamma\neps\nzeta\nalpha\n\nzeta\ngamma\n\nalpha\nbeta",
+   "new": "eps\neps\n\ndelta\nalpha\ndelta\ngamma\nzeta\nbeta\nnew123\n\ngamma\nbeta\nzeta\n\ngamma\neps\nzeta\nalpha\n\nzeta\nnew123\n\nalpha\neps",
+   "display": {
+    "diff": "  1 eps\n  2 eps\n- 3 eps\n- 4 gamma\n  5 \n  6 delta\n- 7 eps\n- 8 eps\n+ 5 alpha\n+ 6 delta\n  9 gamma\n 10 zeta\n 11 beta\n+10 new123\n 12 \n 13 gamma\n-14 gamma\n 15 beta\n-16 delta\n+14 zeta\n 17 \n 18 gamma\n 19 eps\n 20 zeta\n 21 alpha\n 22 \n 23 zeta\n-24 gamma\n+22 new123\n 25 \n 26 alpha\n-27 beta\n+25 eps",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,27 +1,25 @@\n eps\n eps\n-eps\n-gamma\n \n delta\n-eps\n-eps\n+alpha\n+delta\n gamma\n zeta\n beta\n+new123\n \n gamma\n-gamma\n beta\n-delta\n+zeta\n \n gamma\n eps\n zeta\n alpha\n \n zeta\n-gamma\n+new123\n \n alpha\n-beta\n\\ No newline at end of file\n+eps\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "beta\nalpha\nbeta\nzeta\ndelta\nzeta\nalpha\n",
+   "new": "beta\nalpha\n\n\n",
+   "display": {
+    "diff": " 1 beta\n 2 alpha\n-3 beta\n-4 zeta\n-5 delta\n-6 zeta\n-7 alpha\n+3 \n+4 ",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,7 +1,4 @@\n beta\n alpha\n-beta\n-zeta\n-delta\n-zeta\n-alpha\n+\n+\n"
+  },
+  {
+   "old": "gamma\ngamma\neps\nbeta\nbeta\ndelta\ngamma\n\ngamma\neps\nalpha\ndelta\nalpha\nalpha\n\nalpha\ngamma\ndelta\nbeta\ngamma\nzeta\nzeta",
+   "new": "zeta\nnew125\ngamma\neps\nbeta\nbeta\ndelta\ndelta\n\nnew125\ngamma\nalpha\nnew125\ndelta\nalpha\nalpha\n\nalpha\nnew125\ngamma\ndelta\nbeta\ngamma\n",
+   "display": {
+    "diff": "+ 1 zeta\n+ 2 new125\n  1 gamma\n- 2 gamma\n  3 eps\n  4 beta\n  5 beta\n  6 delta\n- 7 gamma\n+ 8 delta\n  8 \n+10 new125\n  9 gamma\n-10 eps\n 11 alpha\n+13 new125\n 12 delta\n 13 alpha\n 14 alpha\n 15 \n 16 alpha\n+19 new125\n 17 gamma\n 18 delta\n 19 beta\n 20 gamma\n-21 zeta\n-22 zeta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,22 +1,23 @@\n+zeta\n+new125\n gamma\n-gamma\n eps\n beta\n beta\n delta\n-gamma\n+delta\n \n+new125\n gamma\n-eps\n alpha\n+new125\n delta\n alpha\n alpha\n \n alpha\n+new125\n gamma\n delta\n beta\n gamma\n-zeta\n-zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\ndelta\nzeta\nbeta\nzeta\ndelta\ndelta\neps\nalpha\nalpha\nzeta",
+   "new": "delta\nzeta\nbeta\ndelta\ndelta\neps\nalpha\nzeta",
+   "display": {
+    "diff": "  1 delta\n- 2 delta\n  3 zeta\n  4 beta\n- 5 zeta\n  6 delta\n  7 delta\n  8 eps\n  9 alpha\n-10 alpha\n 11 zeta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,11 +1,8 @@\n delta\n-delta\n zeta\n beta\n-zeta\n delta\n delta\n eps\n alpha\n-alpha\n zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "\n\n\nalpha\nzeta\nbeta\nbeta\nalpha\nalpha\n\n\neps\nbeta\neps\ndelta\ndelta\n\neps\ngamma\neps\n",
+   "new": "\n\n\nzeta\nbeta\nalpha\nalpha\n\nnew127\ngamma\nbeta\nbeta\ndelta\nbeta\ngamma\nnew127\neps\n",
+   "display": {
+    "diff": "  1 \n  2 \n  3 \n- 4 alpha\n  5 zeta\n  6 beta\n- 7 beta\n  8 alpha\n  9 alpha\n 10 \n-11 \n-12 eps\n+ 9 new127\n+10 gamma\n 13 beta\n-14 eps\n+12 beta\n 15 delta\n-16 delta\n-17 \n-18 eps\n+14 beta\n 19 gamma\n+16 new127\n 20 eps",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,20 +1,17 @@\n \n \n \n-alpha\n zeta\n beta\n-beta\n alpha\n alpha\n \n-\n-eps\n+new127\n+gamma\n beta\n-eps\n+beta\n delta\n-delta\n-\n-eps\n+beta\n gamma\n+new127\n eps\n"
+  },
+  {
+   "old": "zeta\neps\n\neps\n\nalpha\ndelta\nalpha\n\nalpha\n\n",
+   "new": "zeta\nnew128\neps\n\neps\n\nalpha\nnew128\ndelta\nalpha\n\nalpha\n\n",
+   "display": {
+    "diff": "  1 zeta\n+ 2 new128\n  2 eps\n  3 \n  4 eps\n  5 \n  6 alpha\n+ 8 new128\n  7 delta\n  8 alpha\n  9 \n 10 alpha\n    ...",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,10 +1,12 @@\n zeta\n+new128\n eps\n \n eps\n \n alpha\n+new128\n delta\n alpha\n \n alpha\n"
+  },
+  {
+   "old": "zeta\ngamma\neps\ngamma\n\ndelta\ndelta\nzeta\nalpha\neps\nbeta\nalpha\nalpha\ngamma\neps\ndelta\nbeta\ngamma",
+   "new": "zeta\ngamma\nalpha\ngamma\n\ndelta\nalpha\nzeta\nalpha\nalpha\ngamma\ndelta\n\nbeta\ngamma\n",
+   "display": {
+    "diff": "  1 zeta\n  2 gamma\n- 3 eps\n+ 3 alpha\n  4 gamma\n  5 \n  6 delta\n- 7 delta\n+ 7 alpha\n  8 zeta\n  9 alpha\n-10 eps\n-11 beta\n 12 alpha\n-13 alpha\n 14 gamma\n-15 eps\n 16 delta\n+13 \n 17 beta\n-18 gamma\n+15 gamma",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,18 +1,15 @@\n zeta\n gamma\n-eps\n+alpha\n gamma\n \n delta\n-delta\n+alpha\n zeta\n alpha\n-eps\n-beta\n alpha\n-alpha\n gamma\n-eps\n delta\n+\n beta\n-gamma\n\\ No newline at end of file\n+gamma\n"
+  },
+  {
+   "old": "beta\nalpha\ngamma\nbeta\ndelta\ngamma\n\nalpha\ndelta\ngamma\neps\nalpha\nzeta\n",
+   "new": "beta\nalpha\ngamma\nbeta\ndelta\ngamma\n\nalpha\ndelta\ngamma\neps\nalpha\nnew130\nzeta\n",
+   "display": {
+    "diff": "    ...\n  9 delta\n 10 gamma\n 11 eps\n 12 alpha\n+13 new130\n 13 zeta",
+    "firstChangedLine": 13
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -9,5 +9,6 @@\n delta\n gamma\n eps\n alpha\n+new130\n zeta\n"
+  },
+  {
+   "old": "\nalpha\ndelta\nbeta\nalpha\ngamma\nzeta\n\nbeta\n\n\nalpha\n\nzeta\nalpha\nalpha\ndelta\nzeta\ngamma\nbeta\ndelta\ngamma",
+   "new": "\nalpha\nnew131\ndelta\nbeta\nalpha\nzeta\nnew131\n\nbeta\n\nnew131\nalpha\n\nzeta\nalpha\nalpha\ndelta\nnew131\nzeta\ngamma\nbeta\n\ngamma\nnew131\n",
+   "display": {
+    "diff": "  1 \n  2 alpha\n+ 3 new131\n  3 delta\n  4 beta\n  5 alpha\n- 6 gamma\n  7 zeta\n+ 8 new131\n  8 \n  9 beta\n 10 \n-11 \n+12 new131\n 12 alpha\n 13 \n 14 zeta\n 15 alpha\n 16 alpha\n 17 delta\n+19 new131\n 18 zeta\n 19 gamma\n 20 beta\n-21 delta\n-22 gamma\n+23 \n+24 gamma\n+25 new131",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,22 +1,25 @@\n \n alpha\n+new131\n delta\n beta\n alpha\n-gamma\n zeta\n+new131\n \n beta\n \n-\n+new131\n alpha\n \n zeta\n alpha\n alpha\n delta\n+new131\n zeta\n gamma\n beta\n-delta\n-gamma\n\\ No newline at end of file\n+\n+gamma\n+new131\n"
+  },
+  {
+   "old": "gamma\neps\nzeta\nalpha\ngamma\n",
+   "new": "gamma\neps\nzeta\nalpha\nalpha\n",
+   "display": {
+    "diff": " 1 gamma\n 2 eps\n 3 zeta\n 4 alpha\n-5 gamma\n+5 alpha",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,5 +1,5 @@\n gamma\n eps\n zeta\n alpha\n-gamma\n+alpha\n"
+  },
+  {
+   "old": "\nbeta\nalpha\n\nbeta\ndelta\n\nbeta\nzeta\nalpha\ngamma\ngamma\n\ngamma\neps\neps\nbeta",
+   "new": "\nbeta\nalpha\neps\nbeta\nnew134\n\nbeta\nnew134\nzeta\nalpha\ngamma\ngamma\n\ngamma\neps\nbeta",
+   "display": {
+    "diff": "  1 \n  2 beta\n  3 alpha\n- 4 \n+ 4 eps\n  5 beta\n- 6 delta\n+ 6 new134\n  7 \n  8 beta\n+ 9 new134\n  9 zeta\n 10 alpha\n 11 gamma\n 12 gamma\n 13 \n 14 gamma\n 15 eps\n-16 eps\n 17 beta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,17 @@\n \n beta\n alpha\n-\n+eps\n beta\n-delta\n+new134\n \n beta\n+new134\n zeta\n alpha\n gamma\n gamma\n \n gamma\n eps\n-eps\n beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "gamma\nzeta\nbeta\nbeta\nbeta\nalpha\nalpha\nzeta\n\nzeta\neps\neps\nzeta\nzeta\neps\n\n",
+   "new": "gamma\ndelta\nbeta\nbeta\nalpha\nalpha\ndelta\n\nalpha\neps\nzeta\nzeta\neps\n",
+   "display": {
+    "diff": "  1 gamma\n- 2 zeta\n+ 2 delta\n  3 beta\n  4 beta\n- 5 beta\n  6 alpha\n  7 alpha\n- 8 zeta\n+ 7 delta\n  9 \n-10 zeta\n+ 9 alpha\n 11 eps\n-12 eps\n 13 zeta\n 14 zeta\n 15 eps\n-16 ",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,16 +1,13 @@\n gamma\n-zeta\n+delta\n beta\n beta\n-beta\n alpha\n alpha\n-zeta\n+delta\n \n-zeta\n+alpha\n eps\n-eps\n zeta\n zeta\n eps\n-\n"
+  },
+  {
+   "old": "delta\ndelta\nalpha\ngamma\nzeta\ngamma\nalpha\n\nbeta\neps\nalpha\nbeta\neps\nzeta\nbeta\ndelta\ndelta\neps\nalpha\nzeta\nzeta\nbeta\n\neps\nzeta\ngamma\neps\nalpha\nalpha\n",
+   "new": "delta\ndelta\nnew136\nalpha\ngamma\nnew136\nalpha\nbeta\neps\ndelta\nbeta\neps\nzeta\nbeta\ngamma\n\nalpha\nnew136\nzeta\nzeta\nbeta\n\neps\nzeta\nnew136\ngamma\neps\nalpha\nalpha\nnew136\n",
+   "display": {
+    "diff": "  1 delta\n  2 delta\n+ 3 new136\n  3 alpha\n  4 gamma\n- 5 zeta\n- 6 gamma\n+ 6 new136\n  7 alpha\n- 8 \n  9 beta\n 10 eps\n-11 alpha\n+10 delta\n 12 beta\n 13 eps\n 14 zeta\n 15 beta\n-16 delta\n-17 delta\n-18 eps\n+15 gamma\n+16 \n 19 alpha\n+18 new136\n 20 zeta\n 21 zeta\n 22 beta\n 23 \n 24 eps\n 25 zeta\n+25 new136\n 26 gamma\n 27 eps\n 28 alpha\n 29 alpha\n+30 new136",
+    "firstChangedLine": 3
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,29 +1,30 @@\n delta\n delta\n+new136\n alpha\n gamma\n-zeta\n-gamma\n+new136\n alpha\n-\n beta\n eps\n-alpha\n+delta\n beta\n eps\n zeta\n beta\n-delta\n-delta\n-eps\n+gamma\n+\n alpha\n+new136\n zeta\n zeta\n beta\n \n eps\n zeta\n+new136\n gamma\n eps\n alpha\n alpha\n+new136\n"
+  },
+  {
+   "old": "\ndelta\ngamma\nbeta\n\ngamma\nzeta\nalpha\ngamma\ngamma\nbeta\nzeta\ndelta\nbeta\nbeta\ngamma\nbeta\n\n",
+   "new": "\ndelta\ngamma\nnew137\nbeta\nnew137\n\ngamma\nzeta\ndelta\n\nbeta\ndelta\nbeta\ngamma\nnew137\n\n",
+   "display": {
+    "diff": "  1 \n  2 delta\n  3 gamma\n+ 4 new137\n  4 beta\n+ 6 new137\n  5 \n  6 gamma\n  7 zeta\n- 8 alpha\n- 9 gamma\n-10 gamma\n+10 delta\n+11 \n 11 beta\n-12 zeta\n 13 delta\n 14 beta\n-15 beta\n 16 gamma\n-17 beta\n+16 new137\n 18 ",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,18 +1,17 @@\n \n delta\n gamma\n+new137\n beta\n+new137\n \n gamma\n zeta\n-alpha\n-gamma\n-gamma\n+delta\n+\n beta\n-zeta\n delta\n beta\n-beta\n gamma\n-beta\n+new137\n \n"
+  },
+  {
+   "old": "zeta\ngamma\nbeta\nbeta\nbeta\nbeta\nalpha\n\nalpha",
+   "new": "zeta\nnew138\ngamma\nbeta\nbeta\nbeta\neps\n\nalpha",
+   "display": {
+    "diff": " 1 zeta\n+2 new138\n 2 gamma\n 3 beta\n 4 beta\n 5 beta\n-6 beta\n-7 alpha\n+7 eps\n 8 \n 9 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,9 +1,9 @@\n zeta\n+new138\n gamma\n beta\n beta\n beta\n-beta\n-alpha\n+eps\n \n alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "beta\neps\nbeta\nalpha\ngamma\n\nalpha\nzeta\nbeta\ndelta\n\ndelta\nzeta\nalpha\ngamma\nbeta\n\ndelta\n\nzeta\neps\n\n\nzeta\ngamma",
+   "new": "beta\nnew139\nalpha\n\nalpha\nzeta\nbeta\nnew139\ndelta\n\ndelta\nalpha\ngamma\nbeta\n\ndelta\n\nzeta\neps\n\n\nzeta\ngamma",
+   "display": {
+    "diff": "  1 beta\n- 2 eps\n- 3 beta\n+ 2 new139\n  4 alpha\n- 5 gamma\n  6 \n  7 alpha\n  8 zeta\n  9 beta\n+ 8 new139\n 10 delta\n 11 \n 12 delta\n-13 zeta\n 14 alpha\n 15 gamma\n 16 beta\n 17 \n    ...",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,17 +1,15 @@\n beta\n-eps\n-beta\n+new139\n alpha\n-gamma\n \n alpha\n zeta\n beta\n+new139\n delta\n \n delta\n-zeta\n alpha\n gamma\n beta\n \n"
+  },
+  {
+   "old": "zeta\nzeta\n\neps\ndelta\neps\ngamma\nalpha\nalpha\ngamma\neps\nbeta\nalpha\n",
+   "new": "zeta\nnew140\nzeta\n\neps\ndelta\neps\ngamma\nalpha\nalpha\nzeta\neps\nbeta\nalpha\n",
+   "display": {
+    "diff": "  1 zeta\n+ 2 new140\n  2 zeta\n  3 \n  4 eps\n  5 delta\n  6 eps\n  7 gamma\n  8 alpha\n  9 alpha\n-10 gamma\n+11 zeta\n 11 eps\n 12 beta\n 13 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,13 +1,14 @@\n zeta\n+new140\n zeta\n \n eps\n delta\n eps\n gamma\n alpha\n alpha\n-gamma\n+zeta\n eps\n beta\n alpha\n"
+  },
+  {
+   "old": "eps\nbeta\neps\neps\n\ndelta\nzeta\ngamma\nzeta\nzeta\ndelta\n",
+   "new": "eps\nbeta\neps\n\nbeta\nzeta\ngamma\nzeta\n",
+   "display": {
+    "diff": "  1 eps\n  2 beta\n  3 eps\n- 4 eps\n  5 \n- 6 delta\n+ 5 beta\n  7 zeta\n  8 gamma\n  9 zeta\n-10 zeta\n-11 delta",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,11 +1,8 @@\n eps\n beta\n eps\n-eps\n \n-delta\n+beta\n zeta\n gamma\n zeta\n-zeta\n-delta\n"
+  },
+  {
+   "old": "beta\ndelta\ngamma\ndelta\ndelta\nzeta\nbeta\ngamma\nalpha\neps\ndelta\n\nzeta\nzeta\ngamma\nbeta\nalpha\nzeta\nbeta\nbeta\nalpha\ngamma\ndelta\nbeta\nzeta\neps\n",
+   "new": "beta\ndelta\ngamma\ngamma\ndelta\nzeta\nbeta\ngamma\nzeta\neps\ndelta\n\nzeta\nzeta\ngamma\nbeta\nalpha\ngamma\nnew142\nbeta\nbeta\nalpha\n\nbeta\nbeta\nzeta\neps\n",
+   "display": {
+    "diff": "  1 beta\n  2 delta\n  3 gamma\n+ 4 gamma\n  4 delta\n- 5 delta\n  6 zeta\n  7 beta\n  8 gamma\n- 9 alpha\n+ 9 zeta\n 10 eps\n 11 delta\n 12 \n 13 zeta\n 14 zeta\n 15 gamma\n 16 beta\n 17 alpha\n-18 zeta\n+18 gamma\n+19 new142\n 19 beta\n 20 beta\n 21 alpha\n-22 gamma\n-23 delta\n+23 \n 24 beta\n+25 beta\n 25 zeta\n 26 eps",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,26 +1,27 @@\n beta\n delta\n gamma\n+gamma\n delta\n-delta\n zeta\n beta\n gamma\n-alpha\n+zeta\n eps\n delta\n \n zeta\n zeta\n gamma\n beta\n alpha\n-zeta\n+gamma\n+new142\n beta\n beta\n alpha\n-gamma\n-delta\n+\n beta\n+beta\n zeta\n eps\n"
+  },
+  {
+   "old": "beta\n\ngamma\nbeta\nalpha\nzeta\neps\ngamma\ndelta\ndelta\ndelta\n\nalpha\ndelta\n\ndelta\nalpha\n\n\nzeta\nalpha\nalpha\n",
+   "new": "beta\nbeta\nbeta\nalpha\nzeta\neps\nzeta\ndelta\nnew143\ndelta\nbeta\n\nnew143\nalpha\nalpha\n\nnew143\ngamma\nalpha\nnew143\n\nnew143\n\nnew143\nzeta\nnew143\nalpha\nalpha\nnew143\n",
+   "display": {
+    "diff": "  1 beta\n- 2 \n- 3 gamma\n  4 beta\n+ 3 beta\n  5 alpha\n  6 zeta\n  7 eps\n- 8 gamma\n+ 7 zeta\n  9 delta\n+ 9 new143\n 10 delta\n-11 delta\n+11 beta\n 12 \n+13 new143\n 13 alpha\n-14 delta\n+15 alpha\n 15 \n-16 delta\n+17 new143\n+18 gamma\n 17 alpha\n+20 new143\n 18 \n+22 new143\n 19 \n+24 new143\n 20 zeta\n+26 new143\n 21 alpha\n 22 alpha\n+29 new143",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,22 +1,29 @@\n beta\n-\n-gamma\n beta\n+beta\n alpha\n zeta\n eps\n-gamma\n+zeta\n delta\n+new143\n delta\n-delta\n+beta\n \n+new143\n alpha\n-delta\n+alpha\n \n-delta\n+new143\n+gamma\n alpha\n+new143\n \n+new143\n \n+new143\n zeta\n+new143\n alpha\n alpha\n+new143\n"
+  },
+  {
+   "old": "zeta\n\n\nbeta\n\ngamma\n\n\n\ndelta\nzeta\nalpha\n\n",
+   "new": "zeta\nalpha\n\n\n\n\neps\nzeta\n\n",
+   "display": {
+    "diff": "  1 zeta\n+ 2 alpha\n  2 \n  3 \n- 4 beta\n  5 \n- 6 gamma\n  7 \n- 8 \n- 9 \n-10 delta\n+ 7 eps\n 11 zeta\n-12 alpha\n 13 ",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,13 +1,9 @@\n zeta\n+alpha\n \n \n-beta\n \n-gamma\n \n-\n-\n-delta\n+eps\n zeta\n-alpha\n \n"
+  },
+  {
+   "old": "\ndelta\ndelta\n\nalpha\nalpha\nalpha\n\n\nalpha\neps\ngamma\nzeta\neps\nalpha\n\n",
+   "new": "\nnew145\n\nbeta\nalpha\nalpha\n\nbeta\nalpha\neps\nnew145\ngamma\nzeta\neps\nalpha",
+   "display": {
+    "diff": "  1 \n- 2 delta\n- 3 delta\n+ 2 new145\n  4 \n+ 4 beta\n  5 alpha\n  6 alpha\n- 7 alpha\n  8 \n- 9 \n+ 8 beta\n 10 alpha\n 11 eps\n+11 new145\n 12 gamma\n 13 zeta\n 14 eps\n-15 alpha\n-16 \n+15 alpha",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,16 +1,15 @@\n \n-delta\n-delta\n+new145\n \n+beta\n alpha\n alpha\n-alpha\n \n-\n+beta\n alpha\n eps\n+new145\n gamma\n zeta\n eps\n-alpha\n-\n+alpha\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "zeta\nzeta\ngamma\nzeta\neps\ndelta\nbeta\n",
+   "new": "beta\ngamma\nnew146\ndelta\nbeta\n",
+   "display": {
+    "diff": "-1 zeta\n-2 zeta\n+1 beta\n 3 gamma\n-4 zeta\n-5 eps\n+3 new146\n 6 delta\n 7 beta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,7 +1,5 @@\n-zeta\n-zeta\n+beta\n gamma\n-zeta\n-eps\n+new146\n delta\n beta\n"
+  },
+  {
+   "old": "gamma\ndelta\n\ngamma\nalpha\n\ngamma\nzeta\ndelta\ngamma\n",
+   "new": "gamma\nnew147\ndelta\nnew147\n\nalpha\neps\ngamma\ngamma\ndelta\ngamma\n",
+   "display": {
+    "diff": "  1 gamma\n+ 2 new147\n  2 delta\n+ 4 new147\n  3 \n- 4 gamma\n  5 alpha\n- 6 \n+ 7 eps\n  7 gamma\n- 8 zeta\n+ 9 gamma\n  9 delta\n 10 gamma",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,10 +1,11 @@\n gamma\n+new147\n delta\n+new147\n \n-gamma\n alpha\n-\n+eps\n gamma\n-zeta\n+gamma\n delta\n gamma\n"
+  },
+  {
+   "old": "gamma\nalpha\ngamma\ngamma\n\nzeta\neps\nbeta\nbeta\ngamma\nzeta\nalpha\n\nalpha\neps\ndelta\nzeta\nbeta\neps\nalpha\n\nzeta\n",
+   "new": "gamma\nalpha\ngamma\ngamma\nnew148\n\n\ngamma\nzeta\nalpha\ndelta\nalpha\neps\nnew148\nzeta\nbeta\neps\nalpha\ngamma",
+   "display": {
+    "diff": "  1 gamma\n  2 alpha\n  3 gamma\n  4 gamma\n+ 5 new148\n  5 \n- 6 zeta\n- 7 eps\n- 8 beta\n- 9 beta\n+ 7 \n 10 gamma\n 11 zeta\n 12 alpha\n-13 \n+11 delta\n 14 alpha\n 15 eps\n-16 delta\n+14 new148\n 17 zeta\n 18 beta\n 19 eps\n 20 alpha\n-21 \n-22 zeta\n+19 gamma",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,22 +1,19 @@\n gamma\n alpha\n gamma\n gamma\n+new148\n \n-zeta\n-eps\n-beta\n-beta\n+\n gamma\n zeta\n alpha\n-\n+delta\n alpha\n eps\n-delta\n+new148\n zeta\n beta\n eps\n alpha\n-\n-zeta\n+gamma\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "alpha\nbeta\ngamma\neps\nbeta\n\nzeta\n\neps\ngamma\nbeta\nbeta\nalpha\ngamma\nbeta\ndelta\ngamma\neps",
+   "new": "alpha\ngamma\neps\ndelta\nzeta\n\neps\ngamma\nbeta\nbeta\ngamma\ndelta\ngamma\neps",
+   "display": {
+    "diff": "  1 alpha\n- 2 beta\n  3 gamma\n  4 eps\n- 5 beta\n- 6 \n+ 4 delta\n  7 zeta\n  8 \n  9 eps\n 10 gamma\n 11 beta\n 12 beta\n-13 alpha\n 14 gamma\n-15 beta\n 16 delta\n 17 gamma\n 18 eps",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,18 +1,14 @@\n alpha\n-beta\n gamma\n eps\n-beta\n-\n+delta\n zeta\n \n eps\n gamma\n beta\n beta\n-alpha\n gamma\n-beta\n delta\n gamma\n eps\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\nalpha\n",
+   "new": "\nnew150\nalpha\n",
+   "display": {
+    "diff": "-1 eps\n+1 \n+2 new150\n 2 alpha",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,2 +1,3 @@\n-eps\n+\n+new150\n alpha\n"
+  },
+  {
+   "old": "eps\ngamma\ndelta",
+   "new": "beta\nnew151\ngamma\ndelta\n",
+   "display": {
+    "diff": "-1 eps\n+1 beta\n+2 new151\n 2 gamma\n-3 delta\n+4 delta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,3 +1,4 @@\n-eps\n+beta\n+new151\n gamma\n-delta\n\\ No newline at end of file\n+delta\n"
+  },
+  {
+   "old": "alpha\ndelta\nbeta\n\n\nzeta\nalpha\nzeta\neps\ngamma\nzeta\nalpha\ndelta\nzeta\ngamma\nalpha\neps\nalpha\neps\nbeta\ndelta\ndelta\nbeta\neps\nbeta\nzeta",
+   "new": "alpha\ndelta\nbeta\n\n\nzeta\nalpha\nzeta\neps\nzeta\nzeta\nalpha\nzeta\ngamma\nnew152\ndelta\nalpha\nalpha\neps\n\n\ndelta\nnew152\nbeta\neps\nbeta\nnew152\nzeta\nnew152",
+   "display": {
+    "diff": "    ...\n  6 zeta\n  7 alpha\n  8 zeta\n  9 eps\n-10 gamma\n 11 zeta\n+11 zeta\n 12 alpha\n-13 delta\n 14 zeta\n 15 gamma\n+15 new152\n+16 delta\n 16 alpha\n-17 eps\n 18 alpha\n 19 eps\n-20 beta\n+20 \n+21 \n 21 delta\n-22 delta\n+23 new152\n 23 beta\n 24 eps\n 25 beta\n-26 zeta\n+27 new152\n+28 zeta\n+29 new152",
+    "firstChangedLine": 10
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -6,21 +6,24 @@\n zeta\n alpha\n zeta\n eps\n-gamma\n zeta\n+zeta\n alpha\n-delta\n zeta\n gamma\n+new152\n+delta\n alpha\n-eps\n alpha\n eps\n-beta\n+\n+\n delta\n-delta\n+new152\n beta\n eps\n beta\n-zeta\n\\ No newline at end of file\n+new152\n+zeta\n+new152\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\ndelta\nbeta\nalpha\nalpha\ndelta\neps\nalpha\nbeta\ndelta\ngamma\nzeta\ndelta\nalpha\ndelta\neps\ndelta\nalpha\nalpha\nalpha\nalpha\nbeta\nalpha\nalpha\ngamma\ndelta",
+   "new": "eps\nnew153\ndelta\nbeta\nalpha\ndelta\neps\nalpha\nbeta\ngamma\ngamma\ndelta\nalpha\ndelta\neps\ndelta\nalpha\nalpha\nalpha\nbeta\nalpha\nnew153\nalpha\ndelta\n",
+   "display": {
+    "diff": "  1 eps\n+ 2 new153\n  2 delta\n  3 beta\n  4 alpha\n- 5 alpha\n  6 delta\n  7 eps\n  8 alpha\n  9 beta\n-10 delta\n 11 gamma\n-12 zeta\n+11 gamma\n 13 delta\n 14 alpha\n 15 delta\n 16 eps\n 17 delta\n 18 alpha\n 19 alpha\n 20 alpha\n-21 alpha\n 22 beta\n 23 alpha\n+22 new153\n 24 alpha\n-25 gamma\n-26 delta\n+24 delta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,26 +1,24 @@\n eps\n+new153\n delta\n beta\n alpha\n-alpha\n delta\n eps\n alpha\n beta\n-delta\n gamma\n-zeta\n+gamma\n delta\n alpha\n delta\n eps\n delta\n alpha\n alpha\n alpha\n-alpha\n beta\n alpha\n+new153\n alpha\n-gamma\n-delta\n\\ No newline at end of file\n+delta\n"
+  },
+  {
+   "old": "gamma\ndelta\ngamma\nbeta\n\n\nbeta\nbeta",
+   "new": "gamma\nalpha\ndelta\nbeta\n\n\n\nbeta\n",
+   "display": {
+    "diff": " 1 gamma\n+2 alpha\n 2 delta\n-3 gamma\n 4 beta\n 5 \n 6 \n+7 \n 7 beta\n-8 beta",
+    "firstChangedLine": 2
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,8 +1,8 @@\n gamma\n+alpha\n delta\n-gamma\n beta\n \n \n+\n beta\n-beta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\n\neps\n\nbeta\nalpha\nalpha\ndelta\n\n\ngamma\ngamma",
+   "new": "delta\n\neps\n\nbeta\nalpha\nalpha\ndelta\nbeta\nnew155\n",
+   "display": {
+    "diff": "    ...\n  5 beta\n  6 alpha\n  7 alpha\n  8 delta\n- 9 \n-10 \n-11 gamma\n-12 gamma\n+ 9 beta\n+10 new155",
+    "firstChangedLine": 9
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -5,8 +5,6 @@\n beta\n alpha\n alpha\n delta\n-\n-\n-gamma\n-gamma\n\\ No newline at end of file\n+beta\n+new155\n"
+  },
+  {
+   "old": "eps\ndelta\ndelta\nbeta\ngamma\ngamma\ngamma\ngamma\ndelta\ngamma\ngamma\nalpha\nalpha\ngamma\nzeta\ndelta\n",
+   "new": "eps\ndelta\ndelta\nbeta\nzeta\ngamma\nnew156\ngamma\ngamma\ndelta\ngamma\ngamma\nalpha\n\nzeta\ndelta",
+   "display": {
+    "diff": "  1 eps\n  2 delta\n  3 delta\n  4 beta\n+ 5 zeta\n  5 gamma\n+ 7 new156\n  6 gamma\n  7 gamma\n- 8 gamma\n  9 delta\n 10 gamma\n 11 gamma\n 12 alpha\n-13 alpha\n-14 gamma\n+14 \n 15 zeta\n-16 delta\n+16 delta",
+    "firstChangedLine": 5
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,16 +1,16 @@\n eps\n delta\n delta\n beta\n+zeta\n gamma\n+new156\n gamma\n gamma\n-gamma\n delta\n gamma\n gamma\n alpha\n-alpha\n-gamma\n+\n zeta\n-delta\n+delta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "eps\ngamma\nzeta\nbeta\neps\nzeta\neps\ngamma\nalpha\nalpha\ngamma\nzeta\ngamma\nzeta\nbeta\nbeta\nzeta\nbeta",
+   "new": "\nzeta\nnew158\nbeta\nnew158\neps\nzeta\neps\ngamma\nalpha\nnew158\nalpha\nzeta\ngamma\nbeta\nalpha\nzeta",
+   "display": {
+    "diff": "- 1 eps\n- 2 gamma\n+ 1 \n  3 zeta\n+ 3 new158\n  4 beta\n+ 5 new158\n  5 eps\n  6 zeta\n  7 eps\n  8 gamma\n  9 alpha\n+11 new158\n 10 alpha\n-11 gamma\n 12 zeta\n 13 gamma\n-14 zeta\n 15 beta\n-16 beta\n-17 zeta\n-18 beta\n+16 alpha\n+17 zeta",
+    "firstChangedLine": 1
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,18 +1,17 @@\n-eps\n-gamma\n+\n zeta\n+new158\n beta\n+new158\n eps\n zeta\n eps\n gamma\n alpha\n+new158\n alpha\n-gamma\n zeta\n gamma\n-zeta\n beta\n-beta\n-zeta\n-beta\n\\ No newline at end of file\n+alpha\n+zeta\n\\ No newline at end of file\n"
+  },
+  {
+   "old": "delta\nzeta\ndelta\ndelta\ndelta\nalpha\n\ndelta\ngamma\n\nalpha\ngamma\nzeta\nzeta\nbeta\ngamma\nzeta\nzeta\nalpha\n",
+   "new": "delta\nzeta\ndelta\nalpha\ngamma\n\nzeta\nnew159\ngamma\nnew159\nzeta\nzeta\nzeta\nalpha\n",
+   "display": {
+    "diff": "  1 delta\n  2 zeta\n  3 delta\n- 4 delta\n- 5 delta\n  6 alpha\n- 7 \n- 8 delta\n  9 gamma\n 10 \n-11 alpha\n-12 gamma\n 13 zeta\n-14 zeta\n-15 beta\n+ 8 new159\n 16 gamma\n+10 new159\n 17 zeta\n 18 zeta\n+13 zeta\n 19 alpha",
+    "firstChangedLine": 4
+   },
+   "patch": "--- f.txt\n+++ f.txt\n@@ -1,19 +1,14 @@\n delta\n zeta\n delta\n-delta\n-delta\n alpha\n-\n-delta\n gamma\n \n-alpha\n-gamma\n zeta\n-zeta\n-beta\n+new159\n gamma\n+new159\n zeta\n zeta\n+zeta\n alpha\n"
+  }
+ ]
+}

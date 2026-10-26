@@ -7,6 +7,7 @@ from `$PI/dist/core/tools/index.js`) and records goldens for `crates/oino-tools`
 cd scripts/pi-oracle/core-runtime/tools
 node meta.mjs > ../../../../crates/oino-tools/tests/fixtures/meta.json   # names, schemas, prompt text
 node run.mjs  > ../../../../crates/oino-tools/tests/fixtures/tools.json  # cases.json results
+node units.mjs > ../../../../crates/oino-tools/tests/fixtures/units.json # truncate, paths, diffs
 ```
 
 - `cases.json` is shared with `crates/oino-tools/tests/golden_tools.rs`: each case lists the
