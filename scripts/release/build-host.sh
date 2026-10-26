@@ -118,11 +118,11 @@ if [[ $desktop == 1 ]]; then
   desktop_status=0
   apps/oino-desktop/scripts/build.sh "${args[@]}" || desktop_status=$?
   ddist=apps/oino-desktop/dist
+  rm -f "$ddist"/rw.*.dmg # create-dmg's scratch image, left behind when it fails
   if [[ $os == macos && -d $ddist/Oino.app ]] && ! ls "$ddist"/*.dmg >/dev/null 2>&1; then
     # cargo-packager's create-dmg drives Finder over AppleScript, which times out without a
     # GUI session (SSH): build a plain compressed image with hdiutil instead.
     log "create-dmg failed; building the .dmg with hdiutil"
-    rm -f "$ddist"/rw.*.dmg
     dmg_arch=x64; [[ $target == universal-apple-darwin ]] && dmg_arch=universal
     dmg_stage="$(mktemp -d "${TMPDIR:-/tmp}/oino-dmg.XXXX")"
     cp -R "$ddist/Oino.app" "$dmg_stage/"
