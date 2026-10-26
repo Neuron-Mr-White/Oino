@@ -1,0 +1,114 @@
+[
+  { "name": "empty-defaults" },
+  {
+    "name": "merge-layers",
+    "global": {
+      "theme": "dark",
+      "compaction": { "enabled": false, "reserveTokens": 1000, "modelOverrides": { "p/m": { "keepRecentTokens": 42 } } },
+      "defaultTools": ["read", "bash"],
+      "skills": ["global-skill"],
+      "packages": ["npm:a", { "source": "git:b", "skills": ["x"] }],
+      "unknownKey": { "nested": [1, 2] },
+      "retry": { "maxRetries": 7, "provider": { "timeoutMs": 1000 } },
+      "httpProxy": "http://proxy:1",
+      "cacheWarming": "idle",
+      "defaultProjectTrust": "always",
+      "steeringMode": "all",
+      "transport": "sse",
+      "modelThinkingLevels": { "p/m": "high", "bad/x": "nope" },
+      "thinkingBudgets": { "low": 100, "high": 9000 }
+    },
+    "project": {
+      "compaction": { "keepRecentTokens": 5 },
+      "defaultTools": ["+grep", "-bash"],
+      "skills": ["project-skill"],
+      "retry": { "enabled": false },
+      "httpProxy": "http://project-proxy:2",
+      "cacheWarming": "off",
+      "defaultProjectTrust": "never",
+      "followUpMode": "all",
+      "sessionDir": "/abs/sessions",
+      "shellPath": "~/bin/zsh",
+      "enabledModels": ["claude-*", "gpt-5"]
+    }
+  },
+  {
+    "name": "untrusted-project",
+    "trusted": false,
+    "global": { "defaultModel": "g" },
+    "project": { "defaultModel": "p", "skills": ["s"] }
+  },
+  {
+    "name": "migrations",
+    "global": {
+      "queueMode": "all",
+      "websockets": false,
+      "skills": { "enableSkillCommands": false, "customDirectories": ["x"] },
+      "retry": { "maxDelayMs": 10, "provider": { "maxRetryDelayMs": null } }
+    },
+    "project": { "skills": { "customDirectories": [] }, "websockets": true, "transport": "auto" }
+  },
+  {
+    "name": "invalid-values",
+    "global": {
+      "compaction": { "reserveTokens": "x", "keepRecentTokens": 1.5 },
+      "httpIdleTimeoutMs": "abc",
+      "websocketConnectTimeoutMs": " disabled ",
+      "steeringMode": "bogus",
+      "transport": 3,
+      "defaultThinkingLevel": "ultra",
+      "defaultTools": "read"
+    }
+  },
+  {
+    "name": "invalid-model-override",
+    "global": { "compaction": { "modelOverrides": { "p/m": 5 } }, "httpIdleTimeoutMs": " 12.7 ", "websocketConnectTimeoutMs": 0 }
+  },
+  {
+    "name": "plain-project-tools-replace",
+    "global": { "defaultTools": ["-bash"] },
+    "project": { "defaultTools": ["read", "+write"] }
+  },
+  {
+    "name": "broken-global-file",
+    "global": "{ not json",
+    "project": { "defaultModel": "p" },
+    "ops": [["setDefaultProvider", "x"]]
+  },
+  {
+    "name": "writes-preserve-unknown",
+    "global": { "unknown": 1, "compaction": { "reserveTokens": 7 }, "queueMode": "all", "shellPath": "/bin/sh" },
+    "project": { "keep": true },
+    "ops": [
+      ["setCompactionEnabled", false],
+      ["setDefaultModelAndProvider", "prov", "mod"],
+      ["setModelThinkingLevel", "prov", "mod", "high"],
+      ["setModelThinkingLevel", "prov", "other", "low"],
+      ["removeModelThinkingLevel", "prov", "other"],
+      ["setRetryEnabled", true],
+      ["setImageAutoResize", false],
+      ["setBlockImages", true],
+      ["setProjectSkillPaths", ["s1", "s2"]],
+      ["setPackages", ["npm:x"]],
+      ["setTransport", "websocket"],
+      ["setCacheWarmingMode", "off"],
+      ["setDefaultProjectTrust", "never"],
+      ["setEnabledModels", ["a"]],
+      ["setHttpIdleTimeoutMs", 1234.9]
+    ]
+  },
+  {
+    "name": "untrusted-project-write",
+    "trusted": false,
+    "ops": [["setProjectSkillPaths", ["s"]]]
+  },
+  {
+    "name": "remove-last-thinking-level",
+    "global": { "modelThinkingLevels": { "a/b": "low" } },
+    "ops": [["removeModelThinkingLevel", "a", "b"]]
+  },
+  {
+    "name": "bom-file",
+    "global": "\ufeff{\"defaultModel\": \"bom\"}"
+  }
+]

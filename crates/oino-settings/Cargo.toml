@@ -8,9 +8,16 @@ repository.workspace = true
 description = "pi settings manager: global/project merge, typed getters, locking"
 
 [dependencies]
+dirs.workspace = true
+indexmap.workspace = true
+oino-ai = { path = "../oino-ai" }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror = "2"
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 # Mirrors quality.md §2 until integration switches the root workspace lints (then `workspace = true`).
 [lints.rust]

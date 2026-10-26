@@ -1,0 +1,1872 @@
+[
+  {
+    "name": "empty-defaults",
+    "settings": {},
+    "global": {},
+    "project": {},
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": null,
+      "project": null
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "merge-layers",
+    "settings": {
+      "theme": "dark",
+      "compaction": {
+        "enabled": false,
+        "reserveTokens": 1000,
+        "modelOverrides": {
+          "p/m": {
+            "keepRecentTokens": 42
+          }
+        },
+        "keepRecentTokens": 5
+      },
+      "defaultTools": [
+        "read",
+        "bash",
+        "+grep",
+        "-bash"
+      ],
+      "skills": [
+        "project-skill"
+      ],
+      "packages": [
+        "npm:a",
+        {
+          "source": "git:b",
+          "skills": [
+            "x"
+          ]
+        }
+      ],
+      "unknownKey": {
+        "nested": [
+          1,
+          2
+        ]
+      },
+      "retry": {
+        "maxRetries": 7,
+        "provider": {
+          "timeoutMs": 1000
+        },
+        "enabled": false
+      },
+      "httpProxy": "http://project-proxy:2",
+      "cacheWarming": "off",
+      "defaultProjectTrust": "never",
+      "steeringMode": "all",
+      "transport": "sse",
+      "modelThinkingLevels": {
+        "p/m": "high",
+        "bad/x": "nope"
+      },
+      "thinkingBudgets": {
+        "low": 100,
+        "high": 9000
+      },
+      "followUpMode": "all",
+      "sessionDir": "/abs/sessions",
+      "shellPath": "~/bin/zsh",
+      "enabledModels": [
+        "claude-*",
+        "gpt-5"
+      ]
+    },
+    "global": {
+      "theme": "dark",
+      "compaction": {
+        "enabled": false,
+        "reserveTokens": 1000,
+        "modelOverrides": {
+          "p/m": {
+            "keepRecentTokens": 42
+          }
+        }
+      },
+      "defaultTools": [
+        "read",
+        "bash"
+      ],
+      "skills": [
+        "global-skill"
+      ],
+      "packages": [
+        "npm:a",
+        {
+          "source": "git:b",
+          "skills": [
+            "x"
+          ]
+        }
+      ],
+      "unknownKey": {
+        "nested": [
+          1,
+          2
+        ]
+      },
+      "retry": {
+        "maxRetries": 7,
+        "provider": {
+          "timeoutMs": 1000
+        }
+      },
+      "httpProxy": "http://proxy:1",
+      "cacheWarming": "idle",
+      "defaultProjectTrust": "always",
+      "steeringMode": "all",
+      "transport": "sse",
+      "modelThinkingLevels": {
+        "p/m": "high",
+        "bad/x": "nope"
+      },
+      "thinkingBudgets": {
+        "low": 100,
+        "high": 9000
+      }
+    },
+    "project": {
+      "compaction": {
+        "keepRecentTokens": 5
+      },
+      "defaultTools": [
+        "+grep",
+        "-bash"
+      ],
+      "skills": [
+        "project-skill"
+      ],
+      "retry": {
+        "enabled": false
+      },
+      "httpProxy": "http://project-proxy:2",
+      "cacheWarming": "off",
+      "defaultProjectTrust": "never",
+      "followUpMode": "all",
+      "sessionDir": "/abs/sessions",
+      "shellPath": "~/bin/zsh",
+      "enabledModels": [
+        "claude-*",
+        "gpt-5"
+      ]
+    },
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {
+          "p/m": "high",
+          "bad/x": "nope"
+        }
+      },
+      "getSteeringMode": {
+        "value": "all"
+      },
+      "getFollowUpMode": {
+        "value": "all"
+      },
+      "getDefaultTools": {
+        "value": [
+          "read",
+          "grep"
+        ]
+      },
+      "getEnabledModels": {
+        "value": [
+          "claude-*",
+          "gpt-5"
+        ]
+      },
+      "getThinkingBudgets": {
+        "value": {
+          "low": 100,
+          "high": 9000
+        }
+      },
+      "getSessionDir": {
+        "value": "/abs/sessions"
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": false,
+          "reserveTokens": 1000,
+          "keepRecentTokens": 5
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": false,
+          "reserveTokens": 1000,
+          "keepRecentTokens": 42
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": false,
+          "maxRetries": 7,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "timeoutMs": 1000,
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "sse"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "idle"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "value": "$HOME/bin/zsh"
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "always"
+      },
+      "getPackages": {
+        "value": [
+          "npm:a",
+          {
+            "source": "git:b",
+            "skills": [
+              "x"
+            ]
+          }
+        ]
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": [
+          "project-skill"
+        ]
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "value": "http://proxy:1"
+      }
+    },
+    "files": {
+      "global": "{\n  \"theme\": \"dark\",\n  \"compaction\": {\n    \"enabled\": false,\n    \"reserveTokens\": 1000,\n    \"modelOverrides\": {\n      \"p/m\": {\n        \"keepRecentTokens\": 42\n      }\n    }\n  },\n  \"defaultTools\": [\n    \"read\",\n    \"bash\"\n  ],\n  \"skills\": [\n    \"global-skill\"\n  ],\n  \"packages\": [\n    \"npm:a\",\n    {\n      \"source\": \"git:b\",\n      \"skills\": [\n        \"x\"\n      ]\n    }\n  ],\n  \"unknownKey\": {\n    \"nested\": [\n      1,\n      2\n    ]\n  },\n  \"retry\": {\n    \"maxRetries\": 7,\n    \"provider\": {\n      \"timeoutMs\": 1000\n    }\n  },\n  \"httpProxy\": \"http://proxy:1\",\n  \"cacheWarming\": \"idle\",\n  \"defaultProjectTrust\": \"always\",\n  \"steeringMode\": \"all\",\n  \"transport\": \"sse\",\n  \"modelThinkingLevels\": {\n    \"p/m\": \"high\",\n    \"bad/x\": \"nope\"\n  },\n  \"thinkingBudgets\": {\n    \"low\": 100,\n    \"high\": 9000\n  }\n}",
+      "project": "{\n  \"compaction\": {\n    \"keepRecentTokens\": 5\n  },\n  \"defaultTools\": [\n    \"+grep\",\n    \"-bash\"\n  ],\n  \"skills\": [\n    \"project-skill\"\n  ],\n  \"retry\": {\n    \"enabled\": false\n  },\n  \"httpProxy\": \"http://project-proxy:2\",\n  \"cacheWarming\": \"off\",\n  \"defaultProjectTrust\": \"never\",\n  \"followUpMode\": \"all\",\n  \"sessionDir\": \"/abs/sessions\",\n  \"shellPath\": \"~/bin/zsh\",\n  \"enabledModels\": [\n    \"claude-*\",\n    \"gpt-5\"\n  ]\n}"
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "untrusted-project",
+    "settings": {
+      "defaultModel": "g"
+    },
+    "global": {
+      "defaultModel": "g"
+    },
+    "project": {},
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "value": "g"
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{\n  \"defaultModel\": \"g\"\n}",
+      "project": "{\n  \"defaultModel\": \"p\",\n  \"skills\": [\n    \"s\"\n  ]\n}"
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "migrations",
+    "settings": {
+      "skills": [
+        "x"
+      ],
+      "retry": {
+        "provider": {
+          "maxRetryDelayMs": 10
+        }
+      },
+      "steeringMode": "all",
+      "transport": "auto",
+      "enableSkillCommands": false,
+      "websockets": true
+    },
+    "global": {
+      "skills": [
+        "x"
+      ],
+      "retry": {
+        "provider": {
+          "maxRetryDelayMs": 10
+        }
+      },
+      "steeringMode": "all",
+      "transport": "sse",
+      "enableSkillCommands": false
+    },
+    "project": {
+      "websockets": true,
+      "transport": "auto"
+    },
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "all"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 10
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": false
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": [
+          "x"
+        ]
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{\n  \"queueMode\": \"all\",\n  \"websockets\": false,\n  \"skills\": {\n    \"enableSkillCommands\": false,\n    \"customDirectories\": [\n      \"x\"\n    ]\n  },\n  \"retry\": {\n    \"maxDelayMs\": 10,\n    \"provider\": {\n      \"maxRetryDelayMs\": null\n    }\n  }\n}",
+      "project": "{\n  \"skills\": {\n    \"customDirectories\": []\n  },\n  \"websockets\": true,\n  \"transport\": \"auto\"\n}"
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "invalid-values",
+    "settings": {
+      "compaction": {
+        "reserveTokens": "x",
+        "keepRecentTokens": 1.5
+      },
+      "httpIdleTimeoutMs": "abc",
+      "websocketConnectTimeoutMs": " disabled ",
+      "steeringMode": "bogus",
+      "transport": 3,
+      "defaultThinkingLevel": "ultra",
+      "defaultTools": "read"
+    },
+    "global": {
+      "compaction": {
+        "reserveTokens": "x",
+        "keepRecentTokens": 1.5
+      },
+      "httpIdleTimeoutMs": "abc",
+      "websocketConnectTimeoutMs": " disabled ",
+      "steeringMode": "bogus",
+      "transport": 3,
+      "defaultThinkingLevel": "ultra",
+      "defaultTools": "read"
+    },
+    "project": {},
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "value": "ultra"
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "bogus"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "value": []
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "error": "Invalid compaction.reserveTokens setting: x. Expected a non-negative safe integer."
+      },
+      "getCompactionSettingsForModel": {
+        "error": "Invalid compaction.reserveTokens setting: x. Expected a non-negative safe integer."
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": 3
+      },
+      "getHttpIdleTimeoutMs": {
+        "error": "Invalid httpIdleTimeoutMs setting: abc"
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "value": 0
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{\n  \"compaction\": {\n    \"reserveTokens\": \"x\",\n    \"keepRecentTokens\": 1.5\n  },\n  \"httpIdleTimeoutMs\": \"abc\",\n  \"websocketConnectTimeoutMs\": \" disabled \",\n  \"steeringMode\": \"bogus\",\n  \"transport\": 3,\n  \"defaultThinkingLevel\": \"ultra\",\n  \"defaultTools\": \"read\"\n}",
+      "project": null
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "invalid-model-override",
+    "settings": {
+      "compaction": {
+        "modelOverrides": {
+          "p/m": 5
+        }
+      },
+      "httpIdleTimeoutMs": " 12.7 ",
+      "websocketConnectTimeoutMs": 0
+    },
+    "global": {
+      "compaction": {
+        "modelOverrides": {
+          "p/m": 5
+        }
+      },
+      "httpIdleTimeoutMs": " 12.7 ",
+      "websocketConnectTimeoutMs": 0
+    },
+    "project": {},
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "error": "Invalid compaction.modelOverrides[\"p/m\"] setting: 5. Expected an object."
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 12
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "value": 0
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{\n  \"compaction\": {\n    \"modelOverrides\": {\n      \"p/m\": 5\n    }\n  },\n  \"httpIdleTimeoutMs\": \" 12.7 \",\n  \"websocketConnectTimeoutMs\": 0\n}",
+      "project": null
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "plain-project-tools-replace",
+    "settings": {
+      "defaultTools": [
+        "read",
+        "+write"
+      ]
+    },
+    "global": {
+      "defaultTools": [
+        "-bash"
+      ]
+    },
+    "project": {
+      "defaultTools": [
+        "read",
+        "+write"
+      ]
+    },
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "value": [
+          "read",
+          "write"
+        ]
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{\n  \"defaultTools\": [\n    \"-bash\"\n  ]\n}",
+      "project": "{\n  \"defaultTools\": [\n    \"read\",\n    \"+write\"\n  ]\n}"
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "broken-global-file",
+    "settings": {
+      "defaultProvider": "x",
+      "defaultModel": "p"
+    },
+    "global": {
+      "defaultProvider": "x"
+    },
+    "project": {
+      "defaultModel": "p"
+    },
+    "getters": {
+      "getDefaultProvider": {
+        "value": "x"
+      },
+      "getDefaultModel": {
+        "value": "p"
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{ not json",
+      "project": "{\n  \"defaultModel\": \"p\"\n}"
+    },
+    "opErrors": [],
+    "errors": [
+      "global"
+    ]
+  },
+  {
+    "name": "writes-preserve-unknown",
+    "settings": {
+      "unknown": 1,
+      "compaction": {
+        "reserveTokens": 7,
+        "enabled": false
+      },
+      "shellPath": "/bin/sh",
+      "steeringMode": "all",
+      "defaultProvider": "prov",
+      "defaultModel": "mod",
+      "modelThinkingLevels": {
+        "prov/mod": "high"
+      },
+      "retry": {
+        "enabled": true
+      },
+      "images": {
+        "autoResize": false,
+        "blockImages": true
+      },
+      "packages": [
+        "npm:x"
+      ],
+      "transport": "websocket",
+      "cacheWarming": "off",
+      "defaultProjectTrust": "never",
+      "enabledModels": [
+        "a"
+      ],
+      "httpIdleTimeoutMs": 1234,
+      "keep": true,
+      "skills": [
+        "s1",
+        "s2"
+      ]
+    },
+    "global": {
+      "unknown": 1,
+      "compaction": {
+        "reserveTokens": 7,
+        "enabled": false
+      },
+      "shellPath": "/bin/sh",
+      "steeringMode": "all",
+      "defaultProvider": "prov",
+      "defaultModel": "mod",
+      "modelThinkingLevels": {
+        "prov/mod": "high"
+      },
+      "retry": {
+        "enabled": true
+      },
+      "images": {
+        "autoResize": false,
+        "blockImages": true
+      },
+      "packages": [
+        "npm:x"
+      ],
+      "transport": "websocket",
+      "cacheWarming": "off",
+      "defaultProjectTrust": "never",
+      "enabledModels": [
+        "a"
+      ],
+      "httpIdleTimeoutMs": 1234
+    },
+    "project": {
+      "keep": true,
+      "skills": [
+        "s1",
+        "s2"
+      ]
+    },
+    "getters": {
+      "getDefaultProvider": {
+        "value": "prov"
+      },
+      "getDefaultModel": {
+        "value": "mod"
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {
+          "prov/mod": "high"
+        }
+      },
+      "getSteeringMode": {
+        "value": "all"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "value": [
+          "a"
+        ]
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": false,
+          "reserveTokens": 7,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": false,
+          "reserveTokens": 7,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "websocket"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 1234
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "off"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "value": "/bin/sh"
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": false
+      },
+      "getBlockImages": {
+        "value": true
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "never"
+      },
+      "getPackages": {
+        "value": [
+          "npm:x"
+        ]
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": [
+          "s1",
+          "s2"
+        ]
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{\n  \"unknown\": 1,\n  \"compaction\": {\n    \"reserveTokens\": 7,\n    \"enabled\": false\n  },\n  \"shellPath\": \"/bin/sh\",\n  \"steeringMode\": \"all\",\n  \"defaultProvider\": \"prov\",\n  \"defaultModel\": \"mod\",\n  \"modelThinkingLevels\": {\n    \"prov/mod\": \"high\"\n  },\n  \"retry\": {\n    \"enabled\": true\n  },\n  \"images\": {\n    \"autoResize\": false,\n    \"blockImages\": true\n  },\n  \"packages\": [\n    \"npm:x\"\n  ],\n  \"transport\": \"websocket\",\n  \"cacheWarming\": \"off\",\n  \"defaultProjectTrust\": \"never\",\n  \"enabledModels\": [\n    \"a\"\n  ],\n  \"httpIdleTimeoutMs\": 1234\n}",
+      "project": "{\n  \"keep\": true,\n  \"skills\": [\n    \"s1\",\n    \"s2\"\n  ]\n}"
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "untrusted-project-write",
+    "settings": {},
+    "global": {},
+    "project": {},
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": null,
+      "project": null
+    },
+    "opErrors": [
+      "setProjectSkillPaths: Project is not trusted; refusing to write project settings"
+    ],
+    "errors": []
+  },
+  {
+    "name": "remove-last-thinking-level",
+    "settings": {},
+    "global": {},
+    "project": {},
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "undefined": true
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "{}",
+      "project": null
+    },
+    "opErrors": [],
+    "errors": []
+  },
+  {
+    "name": "bom-file",
+    "settings": {
+      "defaultModel": "bom"
+    },
+    "global": {
+      "defaultModel": "bom"
+    },
+    "project": {},
+    "getters": {
+      "getDefaultProvider": {
+        "undefined": true
+      },
+      "getDefaultModel": {
+        "value": "bom"
+      },
+      "getDefaultThinkingLevel": {
+        "undefined": true
+      },
+      "getAllModelThinkingLevels": {
+        "value": {}
+      },
+      "getSteeringMode": {
+        "value": "one-at-a-time"
+      },
+      "getFollowUpMode": {
+        "value": "one-at-a-time"
+      },
+      "getDefaultTools": {
+        "undefined": true
+      },
+      "getEnabledModels": {
+        "undefined": true
+      },
+      "getThinkingBudgets": {
+        "undefined": true
+      },
+      "getSessionDir": {
+        "undefined": true
+      },
+      "getCompactionSettings": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getCompactionSettingsForModel": {
+        "value": {
+          "enabled": true,
+          "reserveTokens": 16384,
+          "keepRecentTokens": 20000
+        }
+      },
+      "getBranchSummarySettings": {
+        "value": {
+          "reserveTokens": 16384,
+          "skipPrompt": false
+        }
+      },
+      "getRetrySettings": {
+        "value": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "maxAgentDelayMs": 60000
+        }
+      },
+      "getProviderRetrySettings": {
+        "value": {
+          "maxRetryDelayMs": 60000
+        }
+      },
+      "getTransport": {
+        "value": "auto"
+      },
+      "getHttpIdleTimeoutMs": {
+        "value": 300000
+      },
+      "getWebSocketConnectTimeoutMs": {
+        "undefined": true
+      },
+      "getCacheWarmingMode": {
+        "value": "streaming"
+      },
+      "getShowCacheMissNotices": {
+        "value": false
+      },
+      "getShellPath": {
+        "undefined": true
+      },
+      "getShellCommandPrefix": {
+        "undefined": true
+      },
+      "getImageAutoResize": {
+        "value": true
+      },
+      "getBlockImages": {
+        "value": false
+      },
+      "getEnableSkillCommands": {
+        "value": true
+      },
+      "getDefaultProjectTrust": {
+        "value": "ask"
+      },
+      "getPackages": {
+        "value": []
+      },
+      "getExtensionPaths": {
+        "value": []
+      },
+      "getSkillPaths": {
+        "value": []
+      },
+      "getPromptTemplatePaths": {
+        "value": []
+      },
+      "getThemePaths": {
+        "value": []
+      },
+      "httpProxy": {
+        "undefined": true
+      }
+    },
+    "files": {
+      "global": "﻿{\"defaultModel\": \"bom\"}",
+      "project": null
+    },
+    "opErrors": [],
+    "errors": []
+  }
+]
