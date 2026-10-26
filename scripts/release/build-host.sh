@@ -73,6 +73,8 @@ check() {
   output="$("$@" 2>&1)" || status=$?
   if [[ $status == 0 ]]; then
     note "PASS $name: $(printf '%s' "$output" | head -1)"
+  elif [[ $status == 3 ]]; then # partial: e.g. launched but no screenshot possible
+    note "PARTIAL $name: $(printf '%s' "$output" | tail -1)"
   else
     note "FAIL $name (exit $status): $(printf '%s' "$output" | tail -3 | tr '\n' ' ')"
   fi
@@ -158,6 +160,9 @@ faux_run() { # $1 = oino binary
   local faux="$root/extensions/dist/oino.fixture.provider-faux"
   [[ $os == windows ]] && faux="$(cygpath -w "$faux")"
   local reply status=0
+  # macOS shells (nohup/ssh) default to 256 descriptors, too few for the bundle
+  # (EMFILE while instantiating components): raise like a GUI login session.
+  [[ $os == macos ]] && ulimit -n 4096 2>/dev/null
   reply="$(cd "$sandbox/work" && HOME="$sandbox/home" USERPROFILE="$sandbox/home" \
     OINO_AGENT_DIR="$sandbox/agent" tmo 300 "$1" -e "$faux" --model faux/faux-1 -p hi 2>&1)" \
     || status=$?
@@ -193,10 +198,12 @@ desktop_shot() { # $1 = oino-desktop binary, $2 = png
       local app=$!
       sleep "$wait"
       local alive=0; kill -0 "$app" 2>/dev/null && alive=1
-      screencapture -x "$2" || true
+      screencapture -x "$2" 2>/dev/null || true
       kill "$app" 2>/dev/null || true
       wait "$app" 2>/dev/null || true
       [[ $alive == 1 ]] || { echo "app exited before the screenshot"; return 1; }
+      # Over SSH screencapture has no Screen Recording grant / awake display.
+      [[ -s $2 ]] || { echo "alive after ${wait}s; no screenshot (screencapture unavailable over SSH)"; return 3; }
       ;;
     windows)
       # SSH sessions have no desktop: launch in the console session through a scheduled task.
@@ -204,6 +211,9 @@ desktop_shot() { # $1 = oino-desktop binary, $2 = png
         "$(cygpath -w "$root/scripts/release/desktop-shot.ps1")" -Exe "$(cygpath -w "$1")" \
         -Png "$(cygpath -w "$2")" -Wait "$wait" | tr -d '\r'
       [[ -f $2 ]] || return 1
+      # A locked console session captures the lock screen, not the app.
+      echo "alive; screenshot taken from the console session (blank/lock screen when locked)"
+      return 3
       ;;
   esac
   rm -rf "$agent"
