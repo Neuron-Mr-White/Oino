@@ -1,0 +1,71 @@
+# Oino GPUI apps workspace (gpui-app.md §2, D3, D17).
+#
+# Separate from the root workspace so core gates stay GPUI-free and the gpui-pre pin is
+# isolated. Path dependencies point into `../crates`.
+[workspace]
+resolver = "3"
+members = ["oino-ui", "oino-desktop"]
+exclude = ["vendor", "target"]
+
+[workspace.package]
+version = "1.0.0-alpha.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Neuron-Mr-White/Oino"
+
+[workspace.dependencies]
+# GPUI pins (exact; bump together with Cargo.lock). `cargo tree -d -i gpui-pre` must be empty.
+gpui = { package = "gpui-pre", version = "=0.3.9" }
+gpui-kit = { version = "=0.8.0", default-features = false, features = ["component", "assets", "syntect"] }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.9" }
+
+# Root workspace crates.
+oino-agent = { path = "../crates/oino-agent" }
+oino-ai = { path = "../crates/oino-ai" }
+oino-bundle = { path = "../crates/oino-bundle" }
+oino-client = { path = "../crates/oino-client" }
+oino-core = { path = "../crates/oino-core" }
+oino-models = { path = "../crates/oino-models" }
+oino-session = { path = "../crates/oino-session" }
+oino-settings = { path = "../crates/oino-settings" }
+oino-wasm-host = { path = "../crates/oino-wasm-host" }
+oino-ui = { path = "oino-ui" }
+
+anyhow = "1"
+futures = "0.3"
+indexmap = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"
+
+# GPUI is unusable at opt-level 0 (frame times); build it optimised even in dev.
+[profile.dev.package.gpui-pre]
+opt-level = 3
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = "debuginfo"

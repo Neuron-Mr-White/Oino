@@ -1,0 +1,292 @@
+//! Sidebar session list (gpui-app §5.1): sessions grouped by workspace (cwd), most recent
+//! first, with live status dots for sessions open in this app.
+
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+
+/// A session as listed in the sidebar.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionSummary {
+    /// Session id.
+    pub id: String,
+    /// Session file (absent for unsaved sessions).
+    pub path: Option<PathBuf>,
+    /// Working directory.
+    pub cwd: String,
+    /// Display title (name, else first prompt).
+    pub title: String,
+    /// Last activity, Unix milliseconds.
+    pub modified_ms: i64,
+    /// Number of messages.
+    pub message_count: usize,
+}
+
+/// Live status of a session open in this process.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LiveStatus {
+    /// Not running.
+    #[default]
+    Idle,
+    /// Streaming / executing tools.
+    Running,
+    /// A dialog waits for the user.
+    Attention,
+    /// Finished while not focused (unread).
+    Unread,
+}
+
+/// One row in a group.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionEntry {
+    /// Summary.
+    pub summary: SessionSummary,
+    /// Live status.
+    pub status: LiveStatus,
+    /// Pinned.
+    pub pinned: bool,
+}
+
+/// Sessions of one workspace.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceGroup {
+    /// Working directory.
+    pub cwd: String,
+    /// Short label (last path component).
+    pub label: String,
+    /// Sessions, most recent first.
+    pub sessions: Vec<SessionEntry>,
+}
+
+/// The session list model.
+#[derive(Clone, Debug, Default)]
+pub struct SessionList {
+    all: Vec<SessionSummary>,
+    live: HashMap<String, LiveStatus>,
+    pinned: HashSet<String>,
+    collapsed: HashSet<String>,
+    query: String,
+}
+
+/// Last path component of `cwd` (`~` for an empty path).
+#[must_use]
+pub fn workspace_label(cwd: &str) -> String {
+    let trimmed = cwd.trim_end_matches(['/', '\\']);
+    trimmed
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("~")
+        .to_owned()
+}
+
+/// Compact relative age (`now`, `5m`, `3h`, `2d`, `6w`).
+#[must_use]
+pub fn age(now_ms: i64, then_ms: i64) -> String {
+    let secs = (now_ms - then_ms).max(0) / 1000;
+    match secs {
+        0..60 => "now".to_owned(),
+        60..3600 => format!("{}m", secs / 60),
+        3600..86_400 => format!("{}h", secs / 3600),
+        86_400..1_209_600 => format!("{}d", secs / 86_400),
+        _ => format!("{}w", secs / 604_800),
+    }
+}
+
+impl SessionList {
+    /// An empty list.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Replaces the listed sessions (keeps live state and pins).
+    pub fn set_sessions(&mut self, sessions: Vec<SessionSummary>) {
+        self.all = sessions;
+    }
+
+    /// Inserts or updates one session.
+    pub fn upsert(&mut self, summary: SessionSummary) {
+        match self.all.iter_mut().find(|s| s.id == summary.id) {
+            Some(existing) => *existing = summary,
+            None => self.all.push(summary),
+        }
+    }
+
+    /// Renames a session id (runtime replaced the session: new / fork).
+    pub fn rename_id(&mut self, old: &str, new: &str) {
+        if let Some(s) = self.all.iter_mut().find(|s| s.id == old) {
+            new.clone_into(&mut s.id);
+        }
+        if let Some(status) = self.live.remove(old) {
+            self.live.insert(new.to_owned(), status);
+        }
+    }
+
+    /// Sets the live status.
+    pub fn set_live(&mut self, id: &str, status: LiveStatus) {
+        self.live.insert(id.to_owned(), status);
+    }
+
+    /// Live status of `id`.
+    #[must_use]
+    pub fn live(&self, id: &str) -> LiveStatus {
+        self.live.get(id).copied().unwrap_or_default()
+    }
+
+    /// Toggles a pin.
+    pub fn toggle_pin(&mut self, id: &str) {
+        if !self.pinned.remove(id) {
+            self.pinned.insert(id.to_owned());
+        }
+    }
+
+    /// Toggles a workspace group open/closed.
+    pub fn toggle_group(&mut self, cwd: &str) {
+        if !self.collapsed.remove(cwd) {
+            self.collapsed.insert(cwd.to_owned());
+        }
+    }
+
+    /// Whether a group is collapsed.
+    #[must_use]
+    pub fn is_collapsed(&self, cwd: &str) -> bool {
+        self.collapsed.contains(cwd)
+    }
+
+    /// Sets the filter text.
+    pub fn set_query(&mut self, query: &str) {
+        query.trim().to_lowercase().clone_into(&mut self.query);
+    }
+
+    /// Summary by id.
+    #[must_use]
+    pub fn get(&self, id: &str) -> Option<&SessionSummary> {
+        self.all.iter().find(|s| s.id == id)
+    }
+
+    /// Number of sessions.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.all.len()
+    }
+
+    /// Whether empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.all.is_empty()
+    }
+
+    fn matches(&self, s: &SessionSummary) -> bool {
+        self.query.is_empty()
+            || s.title.to_lowercase().contains(&self.query)
+            || s.cwd.to_lowercase().contains(&self.query)
+    }
+
+    fn entry(&self, s: &SessionSummary) -> SessionEntry {
+        SessionEntry {
+            summary: s.clone(),
+            status: self.live(&s.id),
+            pinned: self.pinned.contains(&s.id),
+        }
+    }
+
+    /// Pinned sessions (most recent first).
+    #[must_use]
+    pub fn pinned(&self) -> Vec<SessionEntry> {
+        let mut out: Vec<SessionEntry> = self
+            .all
+            .iter()
+            .filter(|s| self.pinned.contains(&s.id) && self.matches(s))
+            .map(|s| self.entry(s))
+            .collect();
+        out.sort_by_key(|e| std::cmp::Reverse(e.summary.modified_ms));
+        out
+    }
+
+    /// Workspace groups ordered by their most recent session.
+    #[must_use]
+    pub fn groups(&self) -> Vec<WorkspaceGroup> {
+        let mut groups: Vec<WorkspaceGroup> = Vec::new();
+        let mut sorted: Vec<&SessionSummary> =
+            self.all.iter().filter(|s| self.matches(s)).collect();
+        sorted.sort_by_key(|s| std::cmp::Reverse(s.modified_ms));
+        for s in sorted {
+            let entry = self.entry(s);
+            match groups.iter_mut().find(|g| g.cwd == s.cwd) {
+                Some(group) => group.sessions.push(entry),
+                None => groups.push(WorkspaceGroup {
+                    cwd: s.cwd.clone(),
+                    label: workspace_label(&s.cwd),
+                    sessions: vec![entry],
+                }),
+            }
+        }
+        groups
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn summary(id: &str, cwd: &str, title: &str, modified_ms: i64) -> SessionSummary {
+        SessionSummary {
+            id: id.into(),
+            path: None,
+            cwd: cwd.into(),
+            title: title.into(),
+            modified_ms,
+            message_count: 1,
+        }
+    }
+
+    #[test]
+    fn groups_by_workspace_most_recent_first() {
+        let mut list = SessionList::new();
+        list.set_sessions(vec![
+            summary("a", "/p/one", "old", 1),
+            summary("b", "/p/two/", "mid", 5),
+            summary("c", "/p/one", "new", 9),
+        ]);
+        let groups = list.groups();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].label, "one");
+        assert_eq!(groups[1].label, "two");
+        let ids: Vec<&str> = groups[0]
+            .sessions
+            .iter()
+            .map(|e| e.summary.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["c", "a"]);
+    }
+
+    #[test]
+    fn live_status_pins_and_filter() {
+        let mut list = SessionList::new();
+        list.upsert(summary("a", "/w", "Fix parser", 1));
+        list.upsert(summary("b", "/w", "Write docs", 2));
+        list.set_live("a", LiveStatus::Attention);
+        list.toggle_pin("b");
+        assert_eq!(list.pinned().len(), 1);
+        list.set_query("PARSER");
+        let groups = list.groups();
+        assert_eq!(groups[0].sessions.len(), 1);
+        assert_eq!(groups[0].sessions[0].status, LiveStatus::Attention);
+        list.rename_id("a", "a2");
+        assert_eq!(list.live("a2"), LiveStatus::Attention);
+        list.upsert(summary("a2", "/w", "Fix parser v2", 3));
+        assert_eq!(list.len(), 2);
+        list.toggle_group("/w");
+        assert!(list.is_collapsed("/w"));
+    }
+
+    #[test]
+    fn ages() {
+        assert_eq!(age(10_000, 9_000), "now");
+        assert_eq!(age(10 * 60_000, 0), "10m");
+        assert_eq!(age(3 * 3_600_000, 0), "3h");
+        assert_eq!(age(2 * 86_400_000, 0), "2d");
+        assert_eq!(age(30 * 86_400_000, 0), "4w");
+        assert_eq!(workspace_label(""), "~");
+    }
+}

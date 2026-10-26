@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Oino
+GenericName=Coding agent
+Comment=Oino coding agent desktop app
+Exec=oino-desktop
+Icon=oino-desktop
+Terminal=false
+Categories=Development;
+StartupWMClass=dev.oino.desktop

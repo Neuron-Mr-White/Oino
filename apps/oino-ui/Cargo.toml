@@ -1,0 +1,34 @@
+[package]
+name = "oino-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared GPUI views and view models for Oino Desktop and Oino Mobile"
+
+[features]
+default = ["views"]
+## GPUI views (the view models build and test without GPUI).
+views = ["dep:gpui-kit"]
+
+[dependencies]
+futures.workspace = true
+indexmap.workspace = true
+gpui-kit = { workspace = true, optional = true }
+oino-agent.workspace = true
+oino-ai.workspace = true
+oino-client = { workspace = true }
+oino-core.workspace = true
+oino-session.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

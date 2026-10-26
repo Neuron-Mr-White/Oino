@@ -1,0 +1,63 @@
+[package]
+name = "oino-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Oino Desktop: GPUI shell embedding oino-core with bundled provider and unipi extensions"
+
+[[bin]]
+name = "oino-desktop"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+futures.workspace = true
+indexmap.workspace = true
+gpui-kit.workspace = true
+oino-ai.workspace = true
+oino-bundle.workspace = true
+oino-client.workspace = true
+oino-core.workspace = true
+oino-models.workspace = true
+oino-session.workspace = true
+oino-settings.workspace = true
+oino-ui.workspace = true
+oino-wasm-host.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true
+
+# cargo-packager (gpui-app §6): AppImage + deb (Linux), .app + .dmg (macOS), NSIS (Windows).
+# `scripts/build.sh` drives it; the `oino` CLI is copied next to the app binary when built.
+[package.metadata.packager]
+product-name = "Oino"
+identifier = "dev.oino.desktop"
+category = "DeveloperTool"
+description = "Oino coding agent desktop app"
+authors = ["Oino contributors"]
+publisher = "Oino"
+license-file = "../../LICENSE"
+before-packaging-command = "true"
+out-dir = "dist"
+binaries = [{ path = "oino-desktop", main = true }]
+icons = ["assets/oino-32.png", "assets/oino-128.png", "assets/oino-256.png", "assets/oino-512.png", "assets/oino.ico"]
+
+[package.metadata.packager.deb]
+depends = ["libxkbcommon-x11-0", "libwayland-client0", "libvulkan1", "libfontconfig1"]
+desktop-template = "assets/oino-desktop.desktop"
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+signing-identity = "-"
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"
