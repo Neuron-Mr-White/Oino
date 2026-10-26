@@ -115,7 +115,24 @@ if [[ $desktop == 1 ]]; then
   [[ -n $formats ]] && args+=(--formats "$formats")
   rm -rf apps/oino-desktop/dist
   log "apps/oino-desktop/scripts/build.sh ${args[*]}"
-  apps/oino-desktop/scripts/build.sh "${args[@]}"
+  desktop_status=0
+  apps/oino-desktop/scripts/build.sh "${args[@]}" || desktop_status=$?
+  ddist=apps/oino-desktop/dist
+  if [[ $os == macos && -d $ddist/Oino.app ]] && ! ls "$ddist"/*.dmg >/dev/null 2>&1; then
+    # cargo-packager's create-dmg drives Finder over AppleScript, which times out without a
+    # GUI session (SSH): build a plain compressed image with hdiutil instead.
+    log "create-dmg failed; building the .dmg with hdiutil"
+    rm -f "$ddist"/rw.*.dmg
+    dmg_arch=x64; [[ $target == universal-apple-darwin ]] && dmg_arch=universal
+    dmg_stage="$(mktemp -d "${TMPDIR:-/tmp}/oino-dmg.XXXX")"
+    cp -R "$ddist/Oino.app" "$dmg_stage/"
+    ln -s /Applications "$dmg_stage/Applications"
+    hdiutil create -volname Oino -srcfolder "$dmg_stage" -ov -format UDZO \
+      "$ddist/Oino_${version}_${dmg_arch}.dmg" && desktop_status=0
+    rm -rf "$dmg_stage"
+  fi
+  [[ $desktop_status == 0 ]] || { log "desktop build failed ($desktop_status)"; exit "$desktop_status"; }
+  rm -f "$ddist"/rw.*.dmg
   for f in apps/oino-desktop/dist/*; do
     [[ $(basename "$f") == SHA256SUMS ]] && continue
     cp -R "$f" "$out/"

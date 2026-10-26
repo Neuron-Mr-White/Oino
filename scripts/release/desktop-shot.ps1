@@ -8,7 +8,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Png,
     [int]$Wait = 20
 )
-$ErrorActionPreference = 'Stop'
+# Continue: native stderr (schtasks "task not found") must not be terminating on PS 5.1.
+$ErrorActionPreference = 'Continue'
 $work = Join-Path $env:TEMP ("oino-shot-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path (Join-Path $work 'agent') -Force | Out-Null
 $name = 'oino-release-shot'
@@ -34,12 +35,12 @@ if (`$alive) { Stop-Process -Id `$p.Id -Force -ErrorAction SilentlyContinue }
 
 if (Test-Path $Png) { Remove-Item $Png -Force }
 $tr = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$inner`""
-schtasks /delete /tn $name /f 2>$null | Out-Null
+cmd /c "schtasks /delete /tn $name /f >nul 2>&1"
 schtasks /create /tn $name /tr $tr /sc once /st 23:59 /it /ru $env:USERNAME /f | Out-Null
 schtasks /run /tn $name | Out-Null
 $deadline = (Get-Date).AddSeconds($Wait + 60)
 while (-not (Test-Path $log) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
-schtasks /delete /tn $name /f 2>$null | Out-Null
+cmd /c "schtasks /delete /tn $name /f >nul 2>&1"
 if (-not (Test-Path $log)) { Write-Output 'no result from the console session (is the user logged on?)'; exit 1 }
 $result = (Get-Content $log) -join ' '
 Write-Output $result
