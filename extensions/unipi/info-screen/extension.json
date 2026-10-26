@@ -1,0 +1,14 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.info-screen",
+  "name": "Info screen",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "The /unipi:info dashboard (this session, context bucket, usage history, tools, skills, modules and module pages) and the Unicrab startup splash.",
+  "license": "MIT",
+  "permissions": {
+    "sessions": { "readAll": true },
+    "fs": { "project": "read" },
+    "services": { "call": ["*/info-screen.groups"] }
+  }
+}

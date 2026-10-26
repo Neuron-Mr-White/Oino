@@ -1,0 +1,10 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.command-enchantment",
+  "name": "Command enchantment",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Enhanced /unipi:* autocomplete: package tags and colours, tiered sorting, namespace queries, /skill: hidden until typed.",
+  "license": "MIT",
+  "permissions": {}
+}

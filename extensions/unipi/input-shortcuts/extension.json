@@ -1,0 +1,13 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.input-shortcuts",
+  "name": "Input shortcuts",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Editor chords: stash/restore, undo/redo, copy the last reply, capture to the kanboard backlog, insert a tab; Ctrl+C keeps the cleared text.",
+  "license": "MIT",
+  "permissions": {
+    "clipboard": { "write": true },
+    "services": { "call": ["unipi.kanboard/kanboard.capture"] }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.ask-user",
+  "name": "Ask user",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "The ask_user tool: the agent asks 1-4 multiple-choice questions in one dialog, with end-turn and new-session handoffs. Off by default.",
+  "license": "MIT",
+  "resources": { "skills": ["skills"] },
+  "permissions": {
+    "sessionControl": true,
+    "osNotify": true,
+    "clipboard": { "read": true }
+  }
+}

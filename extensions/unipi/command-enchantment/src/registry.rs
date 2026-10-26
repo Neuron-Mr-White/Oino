@@ -1,0 +1,423 @@
+//! Static command registry, package order, labels and tones (unipi `src/constants.ts`,
+//! `core/src/package-colors.ts`) plus pi's built-in slash commands.
+
+/// Packages by display priority (top-to-bottom in autocomplete).
+pub const PACKAGE_ORDER: &[&str] = &[
+    "workflow",
+    "long-horizon",
+    "memory",
+    "btw",
+    "mcp",
+    "utility",
+    "skill-registry",
+    "ask-user",
+    "info",
+    "web-api",
+    "compact",
+    "notify",
+    "kanboard",
+    "footer",
+    "updater",
+    "input-shortcuts",
+    "image",
+    "subagents",
+    "background-tasks",
+    "fusion",
+];
+
+/// Full command name → package (unipi `COMMAND_REGISTRY`; `/unipi:cron` dropped, D22).
+pub const COMMAND_REGISTRY: &[(&str, &str)] = &[
+    ("unipi:plan", "workflow"),
+    ("unipi:permission", "workflow"),
+    ("unipi:goal", "long-horizon"),
+    ("unipi:ralph", "long-horizon"),
+    ("unipi:swarm", "long-horizon"),
+    ("unipi:graph", "long-horizon"),
+    ("unipi:regular", "long-horizon"),
+    ("unipi:visualize-progress", "long-horizon"),
+    ("unipi:memory", "memory"),
+    ("unipi:memory-process", "memory"),
+    ("unipi:memory-consolidate", "memory"),
+    ("unipi:memory-search", "memory"),
+    ("unipi:global-memory-search", "memory"),
+    ("unipi:memory-forget", "memory"),
+    ("unipi:global-memory-list", "memory"),
+    ("unipi:btw", "btw"),
+    ("unipi:subagents", "subagents"),
+    ("unipi:agents", "subagents"),
+    ("unipi:mcp-status", "mcp"),
+    ("unipi:continue", "utility"),
+    ("unipi:retry", "utility"),
+    ("unipi:cleanup", "utility"),
+    ("unipi:doctor", "utility"),
+    ("unipi:dream", "utility"),
+    ("unipi:answer", "utility"),
+    ("unipi:summarize", "utility"),
+    ("unipi:move", "utility"),
+    ("unipi:skills", "skill-registry"),
+    ("unipi:settings", "utility"),
+    ("unipi:bg", "background-tasks"),
+    ("unipi:bg-tasks", "background-tasks"),
+    ("unipi:model", "fusion"),
+    ("unipi:fusion-stats", "fusion"),
+    ("unipi:info", "info"),
+    ("unipi:hint", "info"),
+    ("unipi:compact-vcc", "compact"),
+    ("unipi:compact-by-llm", "compact"),
+    ("unipi:session-recall", "compact"),
+    ("unipi:compact-stats", "compact"),
+    ("unipi:compact-doctor", "compact"),
+    ("unipi:compact-help", "compact"),
+    ("unipi:notify-event", "notify"),
+    ("unipi:kanboard", "kanboard"),
+    ("unipi:kanboard-add", "kanboard"),
+    ("unipi:kanboard-do", "kanboard"),
+    ("unipi:kanboard-autowork", "kanboard"),
+    ("unipi:footer", "footer"),
+    ("unipi:readme", "updater"),
+    ("unipi:changelog", "updater"),
+];
+
+/// Short descriptions used when the host's command list lacks one (unipi `COMMAND_DESCRIPTIONS`).
+pub const COMMAND_DESCRIPTIONS: &[(&str, &str)] = &[
+    (
+        "unipi:plan",
+        "Plan mode — investigate read-only, then approve a plan",
+    ),
+    (
+        "unipi:permission",
+        "Permission mode — ask · auto (jev-judged) · full",
+    ),
+    (
+        "unipi:goal",
+        "One objective until verifiably true · medium complexity · pareto cost/success",
+    ),
+    (
+        "unipi:ralph",
+        "Checklist grind over iterations · enumerable chores · low cost, solid success",
+    ),
+    (
+        "unipi:swarm",
+        "Parallel fan-out + synthesis · complex decomposable · higher cost, high coverage",
+    ),
+    (
+        "unipi:graph",
+        "Dependent multi-step work · later steps need earlier results · highest cost",
+    ),
+    (
+        "unipi:regular",
+        "Regular mode — stop the active owner and run prompts without long-horizon routing",
+    ),
+    (
+        "unipi:visualize-progress",
+        "Live view of the goal / ralph / swarm / graph run (Esc closes)",
+    ),
+    (
+        "unipi:memory",
+        "Memory palace — status, migrate, recall/write toggles",
+    ),
+    (
+        "unipi:memory-process",
+        "Analyze text and store extracted memories",
+    ),
+    (
+        "unipi:memory-consolidate",
+        "Consolidate the current session into memory",
+    ),
+    ("unipi:memory-search", "Search project memories"),
+    (
+        "unipi:global-memory-search",
+        "Search memories across all projects",
+    ),
+    ("unipi:memory-forget", "Delete a memory by title"),
+    (
+        "unipi:global-memory-list",
+        "List all memories across all projects",
+    ),
+    (
+        "unipi:btw",
+        "Ask a side question in an inline panel (read-only)",
+    ),
+    (
+        "unipi:subagents",
+        "Open the subagent panel (also ↓ from an empty input)",
+    ),
+    (
+        "unipi:agents",
+        "Manage subagent profiles — create, edit, copy, delete custom agents",
+    ),
+    ("unipi:mcp-status", "Show MCP server status"),
+    (
+        "unipi:continue",
+        "Continue from where the agent stopped (/unipi:retry)",
+    ),
+    (
+        "unipi:retry",
+        "Retry the last turn (alias of /unipi:continue)",
+    ),
+    (
+        "unipi:cleanup",
+        "Remove stale UniPi temp files and leftovers (preview first)",
+    ),
+    (
+        "unipi:doctor",
+        "Check UniPi's runtime: config, model cache, Decision Model, skills",
+    ),
+    (
+        "unipi:answer",
+        "Answer the last reply — fixed input under the scrollable reply, per question, or web form",
+    ),
+    (
+        "unipi:summarize",
+        "Summarize your last reply again (answer first, then findings, open items, questions). Add text to ask about it",
+    ),
+    (
+        "unipi:skills",
+        "Manage skills — on/off per project, listed or not, the skill vault",
+    ),
+    (
+        "unipi:move",
+        "Re-link sessions, trust, worktrees, boards and memories after moving this project",
+    ),
+    (
+        "unipi:kanboard",
+        "Kanboard — capture tasks, run them, open the board",
+    ),
+    (
+        "unipi:kanboard-add",
+        "Kanboard — capture a task into Backlog",
+    ),
+    (
+        "unipi:kanboard-do",
+        "Kanboard — let the agent work the board for a turn",
+    ),
+    (
+        "unipi:kanboard-autowork",
+        "Kanboard — start or stop the queue runner",
+    ),
+    ("unipi:settings", "Configure all unipi modules in one panel"),
+    (
+        "unipi:info",
+        "Dashboard — this session, context, usage, compaction savings, modules",
+    ),
+    (
+        "unipi:hint",
+        "Browse and search Unicrab hints, or cycle/reset",
+    ),
+    (
+        "unipi:compact-vcc",
+        "Lossless compaction now — no model call (keep:N)",
+    ),
+    (
+        "unipi:compact-by-llm",
+        "Compact now with a model-written summary",
+    ),
+    (
+        "unipi:session-recall",
+        "Search session history, including compacted-away messages",
+    ),
+    (
+        "unipi:compact-stats",
+        "Show this session's compaction savings",
+    ),
+    ("unipi:compact-doctor", "Check compaction settings"),
+    ("unipi:compact-help", "Show compactor command help"),
+    (
+        "unipi:notify-event",
+        "Toggle a notify event without the TUI: <event> <on|off>",
+    ),
+    ("unipi:footer", "Toggle footer on or off"),
+    ("unipi:readme", "Browse package README files"),
+    (
+        "unipi:changelog",
+        "Browse changelog (Keep a Changelog format)",
+    ),
+    (
+        "unipi:bg",
+        "Start a shell command as a tracked background task",
+    ),
+    ("unipi:bg-tasks", "Open the background task manager UI"),
+    ("unipi:dream", "Dream status, report and proposal approval"),
+    (
+        "unipi:model",
+        "Pick a model or Fusion lead+sidekick pair (Devin-style picker)",
+    ),
+    (
+        "unipi:fusion-stats",
+        "Estimated Fusion savings (sidekick tokens priced at lead rates)",
+    ),
+];
+
+/// Package tag labels (unipi `PACKAGE_LABELS`).
+pub const PACKAGE_LABELS: &[(&str, &str)] = &[
+    ("long-horizon", "long-horizon"),
+    ("workflow", "workflow"),
+    ("ralph", "long-horizon"),
+    ("memory", "memory"),
+    ("btw", "btw"),
+    ("mcp", "mcp"),
+    ("utility", "utility"),
+    ("skill-registry", "skills"),
+    ("ask-user", "ask-user"),
+    ("info", "info"),
+    ("web-api", "web-api"),
+    ("compact", "compact"),
+    ("notify", "notify"),
+    ("kanboard", "kanboard"),
+    ("footer", "footer"),
+    ("updater", "updater"),
+    ("input-shortcuts", "input-shortcuts"),
+    ("image", "image"),
+    ("subagents", "subagents"),
+    ("background-tasks", "background-tasks"),
+    ("fusion", "fusion"),
+];
+
+/// Package colour as an OUS tone (unipi `PACKAGE_COLORS`, ANSI → categorical palette: packages
+/// sharing an ANSI colour in unipi share a tone here).
+pub const PACKAGE_TONES: &[(&str, &str)] = &[
+    ("autocomplete", "c12"),
+    ("workflow", "c1"),
+    ("long-horizon", "c2"),
+    ("memory", "c3"),
+    ("btw", "c4"),
+    ("mcp", "c5"),
+    ("utility", "c6"),
+    ("ask-user", "c7"),
+    ("info", "c8"),
+    ("web-api", "c4"),
+    ("compact", "default"),
+    ("notify", "c9"),
+    ("kanboard", "c10"),
+    ("footer", "c11"),
+    ("updater", "c3"),
+    ("input-shortcuts", "c4"),
+    ("image", "c8"),
+    ("subagents", "c11"),
+    ("background-tasks", "c1"),
+    ("fusion", "c9"),
+    ("watchdog", "muted"),
+    ("skill-registry", "c10"),
+];
+
+/// pi 1.4.0 `BUILTIN_SLASH_COMMANDS` (`pi` → `Oino` in the quit text, D13): `(name, description,
+/// argument hint)`. Frontends list these in their own slash group; the enchanted group re-ranks
+/// them together with extension commands.
+pub const BUILTIN_COMMANDS: &[(&str, &str, Option<&str>)] = &[
+    ("settings", "Open settings menu", None),
+    (
+        "model",
+        "Select model (opens selector UI)",
+        Some("<provider/model>"),
+    ),
+    ("tree", "Navigate session tree (switch branches)", None),
+    ("thinking", "Set thinking level", Some("<level>")),
+    (
+        "scoped-models",
+        "Enable/disable models for Ctrl+P cycling",
+        None,
+    ),
+    (
+        "export",
+        "Export session (HTML default, or specify path: .html/.jsonl)",
+        None,
+    ),
+    (
+        "import",
+        "Import and resume a session from a JSONL file",
+        None,
+    ),
+    (
+        "share",
+        "Share session via a Radius artifact or a GitHub gist",
+        None,
+    ),
+    (
+        "bug",
+        "Report a bug to the Pi developers",
+        Some("<description>"),
+    ),
+    ("copy", "Copy last agent message to clipboard", None),
+    ("name", "Set session display name", None),
+    ("session", "Show session info and stats", None),
+    ("changelog", "Show changelog entries", None),
+    ("hotkeys", "Show all keyboard shortcuts", None),
+    (
+        "fork",
+        "Create a new fork from a previous user message",
+        None,
+    ),
+    (
+        "clone",
+        "Duplicate the current session at the current position",
+        None,
+    ),
+    (
+        "trust",
+        "Save project trust decision for future sessions",
+        None,
+    ),
+    (
+        "login",
+        "Configure provider authentication",
+        Some("<provider>"),
+    ),
+    ("logout", "Remove provider authentication", None),
+    ("new", "Start a new session", None),
+    ("compact", "Manually compact the session context", None),
+    ("resume", "Resume a different session", None),
+    (
+        "reload",
+        "Reload keybindings, extensions, skills, prompts, themes, and context files",
+        None,
+    ),
+    ("quit", "Quit Oino", None),
+];
+
+/// Looks up `key` in a `(key, value)` table.
+#[must_use]
+pub fn lookup(table: &'static [(&'static str, &'static str)], key: &str) -> Option<&'static str> {
+    table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+}
+
+/// Package of a registered unipi command.
+#[must_use]
+pub fn package_of(command: &str) -> Option<&'static str> {
+    lookup(COMMAND_REGISTRY, command)
+}
+
+/// Display index of a package (unknown packages sort last, like JS `indexOf` = -1 … but stable).
+#[must_use]
+pub fn package_rank(package: &str) -> isize {
+    PACKAGE_ORDER
+        .iter()
+        .position(|p| *p == package)
+        .and_then(|i| isize::try_from(i).ok())
+        .unwrap_or(-1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_and_descriptions_cover_the_same_commands() {
+        let mut registry: Vec<&str> = COMMAND_REGISTRY.iter().map(|(c, _)| *c).collect();
+        let mut described: Vec<&str> = COMMAND_DESCRIPTIONS.iter().map(|(c, _)| *c).collect();
+        registry.sort_unstable();
+        described.sort_unstable();
+        assert_eq!(registry, described);
+        assert!(registry.iter().all(|c| c.starts_with("unipi:")));
+        assert!(!registry.contains(&"unipi:cron"), "cron is dropped (D22)");
+    }
+
+    #[test]
+    fn every_registry_package_has_a_label_and_tone() {
+        for (_, pkg) in COMMAND_REGISTRY {
+            assert!(lookup(PACKAGE_LABELS, pkg).is_some(), "{pkg} label");
+            assert!(lookup(PACKAGE_TONES, pkg).is_some(), "{pkg} tone");
+        }
+        assert_eq!(package_rank("workflow"), 0);
+        assert_eq!(package_rank("nope"), -1);
+    }
+}

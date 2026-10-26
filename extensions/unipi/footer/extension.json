@@ -1,0 +1,12 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.footer",
+  "name": "Footer",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "The glance frame around the editor (brand, branch, mode badges, context, model, Fusion pair), the session stats strip and the background-task line.",
+  "license": "MIT",
+  "permissions": {
+    "fs": { "project": "read" }
+  }
+}
