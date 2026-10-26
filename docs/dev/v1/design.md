@@ -18,6 +18,48 @@ Two parity targets, one rule each:
    states, board lanes, needs-you) follow `/home/oi/Projects/Personal/archived/unipi/unipi-app/DESIGN.md`
    §1.3, §1.5, §3.9 — but rendered in the ZCode visual language, not in the unipi app palette.
 
+### Amendment A1 (owner direction, 2026-10-27) — overrides anything below that conflicts
+
+1. **Priority: unipi first, ZCode second.** When the two disagree, unipi wins.
+2. **unipi owns theming and features.** The palette, brand and state language come from
+   `/home/oi/Projects/Personal/archived/unipi/unipi-app/DESIGN.md` §1.1–§1.6, not from Zai:
+   - Oino Dark (default) = unipi warm OLED surfaces (`bg #0A0908`, `surface-1/2/3`, `line`,
+     `text`, `text-muted`, `text-dim`), primary = `shell #F03018` (hover `shell-hi`), secondary
+     accent `claw`, badges `amber`, highlights `gold`, caret/focus glow `cream`, destructive
+     `deep`; semantic info/success/warning/error = wordmark `wm-cyan/green/yellow/red`; ember
+     glow behind the welcome header. Text on primary = `face #181818`.
+   - Oino Light: derived from the same hues (warm off-white surfaces, same shell primary and
+     wordmark semantics, contrast ≥ 4.5:1). unipi had no light theme; this is ours.
+   - Agent state colour + icon + word table (unipi §1.3: needs-you/working/done/idle/error/
+     offline) is used everywhere a session or agent state shows (sidebar rows, header, status
+     panel, toasts, tabs). The `waiting_surface` treatment of §2 becomes unipi needs-you.
+   - Shapes from unipi §1.4/§1.6: cards 16, dialogs/menus 16, sheets 24 (top), inputs 12,
+     buttons/chips/toolbar capsules pill-shaped; uppercase muted section labels (12/500/.1em);
+     focus = 2 px shell outline offset 2. Inter + JetBrains Mono and Lucide 1.5 stay.
+   - The animated Unicrab rig (unipi §1.5.1: six states, part tracks, blink, reduced motion)
+     is the needs-you indicator in the desktop header and the mobile floating crab, plus the
+     opt-in desktop **mascot window** (transparent, always-on-top, bubble) — all native GPUI.
+   - Every existing unipi feature surface (§7 mapping) must be present and themed this way.
+3. **ZCode owns UX, layout and the tiny details**: frames, navigation, sidebar, header,
+   timeline rows, composer, docked interaction cards, status panel, side pane, palette, model
+   menu, keyboard behaviour, micro-interactions, density, empty/loading states. §2 Zai colour
+   values are replaced by A1.2; all non-colour ZCode rules in §2–§6 stay binding.
+4. **Embedded browser is in scope (was Diverge).** Use `gpui-webview` (longbridge/gpui-kit
+   `crates/webview`, Wry-based; WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux).
+   Bump the apps workspace to gpui-kit 0.8.1 for it. Linux: gpui-webview hosts WebKitGTK in an
+   X11 child window, so Oino Desktop on Linux runs on X11 / XWayland when the browser feature
+   is on (default on; a setting "Native Wayland (disables embedded browser)" switches back).
+   Enable the `gpui-fast` composition feature where supported so overlays draw above the page.
+   Placement: side-pane **Browser** tab (URL bar, back/forward/reload, open externally, devtools
+   in debug); `openUrl` from extensions and links in the transcript open there; local dev
+   server previews (`localhost:*`) are detected from bash output and offered as a chip.
+   Mobile: in-app browser via the OS (Android Custom Tabs, iOS SFSafariViewController).
+5. **Interactive terminal is in scope (was Diverge).** Bottom frame **Terminal** tab with real
+   PTYs (tabs, split, copy/paste, links, 10k scrollback, theme from tokens), built like Zed:
+   `alacritty_terminal` for emulation + `portable-pty`/the platform PTY, rendered with GPUI text
+   runs. Desktop only in v1; mobile shows Output/Tasks logs.
+6. Checklist §8 rows 41–43 are therefore **Match**; the only Diverge left is row 50.
+
 Reference images (small PNGs, 800 px wide) live in [design/ref/](design/ref/):
 
 | File | What |
@@ -1322,9 +1364,9 @@ Status column: **Match** = same behaviour; **Adapt** = same intent, Oino-specifi
 | 38 | Plan mode approval | ExitPlanMode card, plan side pane | PlanReviewCard + Plan tab | Match |
 | 39 | Waiting badge | one green confirmation treatment | `waiting_surface/fg` everywhere | Match |
 | 40 | Status panel | floating Git/Goal/Progress/Run, mini capsule < 1280 | §4.19 | Match |
-| 41 | Side pane tabs | Git review, browser, code viewer, terminal, plan, subagents, plugins | Review, Files, Plan, Agent, Tree, extension panels | Adapt (no browser) |
-| 42 | Embedded browser | browser tab / browser-use | not built: no webview on Linux in GPUI; `openUrl` uses the OS | Diverge |
-| 43 | Interactive terminal | xterm PTY bottom frame, tabs | Output + Tasks log tabs, no PTY in v1 | Diverge (scope; PTY later) |
+| 41 | Side pane tabs | Git review, browser, code viewer, terminal, plan, subagents, plugins | Review, Files, Plan, Agent, Tree, Browser, extension panels | Match |
+| 42 | Embedded browser | browser tab / browser-use | gpui-webview Browser tab (A1.4); browser-use agent control later | Match |
+| 43 | Interactive terminal | xterm PTY bottom frame, tabs | Terminal tab with alacritty_terminal PTYs + Output/Tasks (A1.5) | Match |
 | 44 | Command center | ⌘K, scopes All/Actions/Tasks/Files, prefixes, history, sections | §4.25 | Match |
 | 45 | Platform primary modifier | Cmd on Apple, Ctrl elsewhere, never both | same | Match |
 | 46 | Settings | full page, nav, forms in bordered groups | §5.7 + extension hub | Match |
@@ -1337,8 +1379,8 @@ Status column: **Match** = same behaviour; **Adapt** = same intent, Oino-specifi
 | 53 | i18n | zh/en | English only in v1; layouts tolerate +40 % text length | Adapt |
 | 54 | Window chrome | per-OS controls, Linux 16 px shell radius | client decorations, per-OS insets (§3.1) | Match |
 
-Summary: 54 items — **42 Match, 9 Adapt, 3 Diverge** (embedded browser, interactive PTY
-terminal, ZCode-only product features such as bots, coding-plan purchase, share links and CUA).
+Summary (after A1): 54 items — **45 Match, 8 Adapt, 1 Diverge** (ZCode-only product features
+such as bots, coding-plan purchase, share links and CUA).
 
 ---
 
