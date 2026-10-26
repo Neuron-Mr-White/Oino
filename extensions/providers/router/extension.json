@@ -1,0 +1,29 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.router",
+  "name": "Oino Router",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "Oino Router: Anthropic Messages for Claude models, OpenAI chat completions for the rest.",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "oino-router"
+    ],
+    "providers": [
+      "oino"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "router.oino.dev"
+      ]
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION"
+    ]
+  }
+}

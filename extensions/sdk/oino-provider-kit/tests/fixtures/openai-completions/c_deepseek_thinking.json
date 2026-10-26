@@ -1,0 +1,225 @@
+{
+ "name": "c_deepseek_thinking",
+ "model": {
+  "id": "deepseek-v4-pro",
+  "name": "DeepSeek V4 Pro",
+  "api": "openai-completions",
+  "baseUrl": "https://api.deepseek.com",
+  "provider": "deepseek",
+  "reasoning": true,
+  "input": [
+   "text"
+  ],
+  "cost": {
+   "input": 1.32,
+   "output": 3.96,
+   "cacheRead": 0.044,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 384000,
+  "compat": {
+   "supportsStore": false,
+   "supportsDeveloperRole": false,
+   "maxTokensField": "max_tokens",
+   "requiresReasoningContentOnAssistantMessages": true,
+   "thinkingFormat": "deepseek",
+   "supportsStrictMode": true,
+   "supportsMidConvoSystemMessages": true
+  },
+  "thinkingLevelMap": {
+   "minimal": null,
+   "low": null,
+   "medium": null,
+   "high": "high",
+   "max": "max"
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   },
+   {
+    "role": "assistant",
+    "api": "openai-completions",
+    "provider": "deepseek",
+    "model": "deepseek-v4-pro",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "t1",
+      "thinkingSignature": "reasoning_content"
+     },
+     {
+      "type": "text",
+      "text": "a1"
+     }
+    ],
+    "stopReason": "stop",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "timestamp": 2
+   },
+   {
+    "role": "user",
+    "content": "again",
+    "timestamp": 4
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "reasoning": "high"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"think\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"ing\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":40,\"total_tokens\":60,\"prompt_tokens_details\":{\"cached_tokens\":4},\"completion_tokens_details\":{\"reasoning_tokens\":25}}}\n\ndata: [DONE]\n\n",
+ "request": {
+  "url": "https://api.deepseek.com/chat/completions",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "deepseek-v4-pro",
+   "messages": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "a1",
+     "reasoning_content": "t1"
+    },
+    {
+     "role": "user",
+     "content": "again"
+    }
+   ],
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   },
+   "max_tokens": 384000,
+   "thinking": {
+    "type": "enabled"
+   },
+   "reasoning_effort": "high"
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "think"
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ing"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "answer"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "thinking"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 1,
+   "content": "answer"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "thinking",
+      "thinkingSignature": "reasoning_content"
+     },
+     {
+      "type": "text",
+      "text": "answer"
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "deepseek",
+    "model": "deepseek-v4-pro",
+    "usage": {
+     "input": 16,
+     "output": 40,
+     "cacheRead": 4,
+     "cacheWrite": 0,
+     "reasoning": 25,
+     "totalTokens": 60,
+     "cost": {
+      "input": 0.00002112,
+      "output": 0.0001584,
+      "cacheRead": 1.76e-7,
+      "cacheWrite": 0,
+      "total": 0.00017969600000000002
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "chatcmpl-1",
+    "responseModel": "m",
+    "rawStopReason": "stop",
+    "durationMs": 24
+   }
+  }
+ ]
+}

@@ -1,0 +1,65 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.anthropic",
+  "name": "Anthropic Messages",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "Anthropic Messages wire with Claude Pro/Max OAuth (pi-ai 1.4.0 port); also serves anthropic-messages models of other providers.",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "anthropic-messages"
+    ],
+    "providers": [
+      "anthropic",
+      "minimax",
+      "minimax-cn"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "api.anthropic.com",
+        "api.minimax.io",
+        "api.minimaxi.com",
+        "platform.claude.com",
+        "claude.ai",
+        "api.ant-ling.com",
+        "inference.baseten.co",
+        "api.cerebras.ai",
+        "api.deepseek.com",
+        "api.fireworks.ai",
+        "api.groq.com",
+        "router.huggingface.co",
+        "api.kimi.com",
+        "api.moonshot.ai",
+        "api.moonshot.cn",
+        "integrate.api.nvidia.com",
+        "opencode.ai",
+        "openrouter.ai",
+        "token-plan.ap-southeast-1.maas.aliyuncs.com",
+        "token-plan.cn-beijing.maas.aliyuncs.com",
+        "api.together.ai",
+        "ai-gateway.vercel.sh",
+        "api.xiaomimimo.com",
+        "token-plan-ams.xiaomimimo.com",
+        "token-plan-cn.xiaomimimo.com",
+        "token-plan-sgp.xiaomimimo.com",
+        "api.z.ai",
+        "open.bigmodel.cn",
+        "localhost",
+        "api.mistral.ai",
+        "api.deepinfra.com",
+        "llm.chutes.ai",
+        "api.perplexity.ai"
+      ],
+      "listenLoopback": true
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION"
+    ],
+    "openUrl": true
+  }
+}

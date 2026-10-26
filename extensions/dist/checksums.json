@@ -3,6 +3,8 @@
   "wasmTools": "wasm-tools 1.262.0",
   "profile": "release",
   "files": {
+    "oino.anthropic/component.wasm": "sha256:5824655072630ae6a950f76c7b9f9456caa4dd90a02500b28fe3b5d0b8102338",
+    "oino.anthropic/extension.json": "sha256:a7cccd1a3b421543fada8a5562ad904100475816614350d57c3abede277fa6f9",
     "oino.fixture.async-probe/component.wasm": "sha256:0b470d4859196dfb27eb1e43070967c48c6157235a13f7d823c6ef92510996e0",
     "oino.fixture.async-probe/extension.json": "sha256:73d66c73254d49dcde45cdeb0600da0bb0839a19d5f78c33f609bff1e3727f2d",
     "oino.fixture.echo/component.wasm": "sha256:2e2393f8071feefbe17a793ba0aba24f18fe45400c5fa37eb32e9a3784090c12",
@@ -10,6 +12,12 @@
     "oino.fixture.provider-faux/component.wasm": "sha256:e7084c170663c80c4b4517674d13001fcc217a5dd5a489eddaab63e5a5223b1a",
     "oino.fixture.provider-faux/extension.json": "sha256:dc8886af46b306f5336dc16b73f893e3f380ef14d15a52ff4db895ef143aff74",
     "oino.fixture.ui-probe/component.wasm": "sha256:69367a1c4e1baf853bbbbf403a5391fc73c7cddc8e493d1508a2758b8ca5c7e9",
-    "oino.fixture.ui-probe/extension.json": "sha256:2dd6d4f277b6af69d06d3913ea3876a886788586591fb4178b6b624108ed3c33"
+    "oino.fixture.ui-probe/extension.json": "sha256:2dd6d4f277b6af69d06d3913ea3876a886788586591fb4178b6b624108ed3c33",
+    "oino.openai-compat/component.wasm": "sha256:74d87b13af439e93f075b0fdc30a8b3e19aa7ad5351dc12701e8d756dc935cb8",
+    "oino.openai-compat/extension.json": "sha256:ea17ae775cf4a22e9c621d4c56c59526f36c23ea71ff2c64531f42ab9890e4e1",
+    "oino.openai-responses/component.wasm": "sha256:bb99ad4c4e4e70aa53838cd923db0dd97c63288bb48686bddb2859f0dfd4f373",
+    "oino.openai-responses/extension.json": "sha256:fc814ffec68a6850ec969b9c4c6d055280c8f0fda99aa6c02b5a0ab65c95d659",
+    "oino.router/component.wasm": "sha256:5edaf32f7651b812503dcbd4f1fcddaf0989af781fc7df2bc071856461041427",
+    "oino.router/extension.json": "sha256:9c6a829ed235d8ddc7dff5e06182c0ac61fcf61b75e00662ee06d439c6e14196"
   }
 }

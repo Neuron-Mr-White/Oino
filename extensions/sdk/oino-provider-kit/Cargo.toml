@@ -1,0 +1,21 @@
+[package]
+name = "oino-provider-kit"
+version = "1.0.0-alpha.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure wire logic of the Oino provider components (pi-ai 1.4.0 ports): request payloads, SSE parsing, usage and cost"
+
+[features]
+## Component-side driver over the guest SDK (`guest` module).
+guest = ["dep:oino-extension"]
+
+[dependencies]
+oino-ai.workspace = true
+oino-extension = { workspace = true, features = ["provider"], optional = true }
+serde.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,142 @@
+{
+ "name": "a_system_user",
+ "model": {
+  "id": "llama-3.3-70b-versatile",
+  "name": "Llama 3.3 70B",
+  "api": "openai-completions",
+  "provider": "groq",
+  "baseUrl": "https://api.groq.com/openai/v1",
+  "reasoning": false,
+  "input": [
+   "text"
+  ],
+  "cost": {
+   "input": 0.59,
+   "output": 0.79,
+   "cacheRead": 0,
+   "cacheWrite": 0
+  },
+  "contextWindow": 131072,
+  "maxTokens": 32768,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":5,\"total_tokens\":17,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":0}}}\n\ndata: [DONE]\n\n",
+ "request": {
+  "url": "https://api.groq.com/openai/v1/chat/completions",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "llama-3.3-70b-versatile",
+   "messages": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   },
+   "store": false,
+   "max_completion_tokens": 32768
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "Hel"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "lo"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "Hello"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "Hello"
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "usage": {
+     "input": 12,
+     "output": 5,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 17,
+     "cost": {
+      "input": 0.00000708,
+      "output": 0.00000395,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.000011030000000000001
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "chatcmpl-1",
+    "responseModel": "m",
+    "rawStopReason": "stop",
+    "durationMs": 25
+   }
+  }
+ ]
+}

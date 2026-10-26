@@ -1,0 +1,213 @@
+{
+ "name": "c_thinking_xhigh_clamped",
+ "model": {
+  "id": "claude-haiku-4-5",
+  "name": "Claude Haiku 4.5 (latest)",
+  "api": "anthropic-messages",
+  "provider": "anthropic",
+  "baseUrl": "https://api.anthropic.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 1,
+   "output": 5,
+   "cacheRead": 0.1,
+   "cacheWrite": 1.25
+  },
+  "contextWindow": 200000,
+  "maxTokens": 64000,
+  "compat": {
+   "supportsStrictTools": true
+  },
+  "promptCache": {
+   "short": 300,
+   "long": 3600
+  },
+  "inputLimits": {
+   "maxRequestBytes": 33554432,
+   "images": {
+    "maxPerRequest": 100,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "q",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234",
+  "reasoning": "xhigh"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_think\",\"model\":\"claude-sonnet-5\",\"usage\":{\"input_tokens\":20,\"output_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"ponder\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"ing\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sigABC\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"redacted_thinking\",\"data\":\"opaque==\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"text_delta\",\"text\":\"answer\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":20,\"output_tokens\":40,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens_details\":{\"thinking_tokens\":25}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+ "request": {
+  "url": "https://api.anthropic.com/v1/messages?beta=true",
+  "headers": {
+   "accept": "application/json",
+   "anthropic-beta": "interleaved-thinking-2025-05-14",
+   "anthropic-dangerous-direct-browser-access": "true",
+   "anthropic-version": "2023-06-01",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-api-key": "test-key",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "0.129.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0",
+   "x-stainless-timeout": "600"
+  },
+  "body": {
+   "model": "claude-haiku-4-5",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "q",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ]
+    }
+   ],
+   "max_tokens": 64000,
+   "stream": true,
+   "system": [
+    {
+     "type": "text",
+     "text": "Sys",
+     "cache_control": {
+      "type": "ephemeral"
+     }
+    }
+   ],
+   "thinking": {
+    "type": "enabled",
+    "budget_tokens": 16384,
+    "display": "summarized"
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ponder"
+  },
+  {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "ing"
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "pondering"
+  },
+  {
+   "type": "thinking_start",
+   "contentIndex": 1
+  },
+  {
+   "type": "thinking_end",
+   "contentIndex": 1,
+   "content": "[Reasoning redacted]"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 2
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 2,
+   "delta": "answer"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 2,
+   "content": "answer"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "pondering",
+      "thinkingSignature": "sigABC"
+     },
+     {
+      "type": "thinking",
+      "thinking": "[Reasoning redacted]",
+      "thinkingSignature": "opaque==",
+      "redacted": true
+     },
+     {
+      "type": "text",
+      "text": "answer"
+     }
+    ],
+    "api": "anthropic-messages",
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "usage": {
+     "input": 20,
+     "output": 40,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 60,
+     "cost": {
+      "input": 0.000019999999999999998,
+      "output": 0.0002,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0.00022
+     },
+     "cacheWrite1h": 0,
+     "reasoning": 25
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "msg_think",
+    "responseModel": "claude-sonnet-5",
+    "rawStopReason": "end_turn",
+    "durationMs": 35
+   }
+  }
+ ]
+}

@@ -1,0 +1,149 @@
+{
+ "name": "h_error_429",
+ "model": {
+  "id": "claude-sonnet-5",
+  "name": "Claude Sonnet 5",
+  "api": "anthropic-messages",
+  "provider": "anthropic",
+  "baseUrl": "https://api.anthropic.com",
+  "reasoning": true,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 10,
+   "cacheRead": 0.2,
+   "cacheWrite": 2.5
+  },
+  "contextWindow": 1000000,
+  "maxTokens": 128000,
+  "thinkingLevelMap": {
+   "xhigh": "xhigh",
+   "max": "max"
+  },
+  "compat": {
+   "forceAdaptiveThinking": true,
+   "supportsStrictTools": true
+  },
+  "promptCache": {
+   "short": 300,
+   "long": 3600
+  },
+  "inputLimits": {
+   "maxRequestBytes": 33554432,
+   "images": {
+    "maxPerRequest": 600,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 429,
+ "sse": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}",
+ "request": {
+  "url": "https://api.anthropic.com/v1/messages?beta=true",
+  "headers": {
+   "accept": "application/json",
+   "anthropic-dangerous-direct-browser-access": "true",
+   "anthropic-version": "2023-06-01",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-api-key": "test-key",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "0.129.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0",
+   "x-stainless-timeout": "600"
+  },
+  "body": {
+   "model": "claude-sonnet-5",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hi",
+       "cache_control": {
+        "type": "ephemeral"
+       }
+      }
+     ]
+    }
+   ],
+   "max_tokens": 128000,
+   "stream": true,
+   "system": [
+    {
+     "type": "text",
+     "text": "Sys",
+     "cache_control": {
+      "type": "ephemeral"
+     }
+    }
+   ],
+   "thinking": {
+    "type": "disabled"
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [],
+    "api": "anthropic-messages",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "errorMessage": "429 {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}",
+    "durationMs": 25
+   }
+  }
+ ]
+}

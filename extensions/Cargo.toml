@@ -10,15 +10,18 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/Neuron-Mr-White/Oino"
 
 [workspace.dependencies]
+base64 = "0.22"
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 oino-ai = { path = "../crates/oino-ai" }
 oino-extension = { path = "sdk/oino-extension" }
 oino-extension-macros = { path = "sdk/oino-extension-macros" }
+oino-provider-kit = { path = "sdk/oino-provider-kit" }
 proc-macro2 = "1"
 quote = "1"
 schemars = "1.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
 syn = { version = "2", features = ["full"] }
 thiserror = "2"
 unipi-kit = { path = "sdk/unipi-kit" }

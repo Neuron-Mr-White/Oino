@@ -1,0 +1,136 @@
+{
+ "name": "l_no_finish",
+ "model": {
+  "id": "llama-3.3-70b-versatile",
+  "name": "Llama 3.3 70B",
+  "api": "openai-completions",
+  "provider": "groq",
+  "baseUrl": "https://api.groq.com/openai/v1",
+  "reasoning": false,
+  "input": [
+   "text"
+  ],
+  "cost": {
+   "input": 0.59,
+   "output": 0.79,
+   "cacheRead": 0,
+   "cacheWrite": 0
+  },
+  "contextWindow": 131072,
+  "maxTokens": 32768,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n",
+ "request": {
+  "url": "https://api.groq.com/openai/v1/chat/completions",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "llama-3.3-70b-versatile",
+   "messages": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "stream": true,
+   "stream_options": {
+    "include_usage": true
+   },
+   "store": false,
+   "max_completion_tokens": 32768
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "x"
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "x"
+  },
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "responseId": "chatcmpl-1",
+    "responseModel": "m",
+    "errorMessage": "Stream ended without finish_reason",
+    "durationMs": 21
+   }
+  }
+ ]
+}

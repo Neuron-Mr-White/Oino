@@ -1,0 +1,19 @@
+[package]
+name = "provider-openai-responses"
+version = "1.0.0-alpha.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Oino provider component: openai-responses"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+oino-extension = { workspace = true, features = ["provider"] }
+oino-provider-kit = { workspace = true, features = ["guest"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true

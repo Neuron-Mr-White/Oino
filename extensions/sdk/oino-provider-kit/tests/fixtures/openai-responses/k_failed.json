@@ -1,0 +1,134 @@
+{
+ "name": "k_failed",
+ "model": {
+  "id": "gpt-4.1",
+  "name": "GPT-4.1",
+  "api": "openai-responses",
+  "provider": "openai",
+  "baseUrl": "https://api.openai.com/v1",
+  "reasoning": false,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 8,
+   "cacheRead": 0.5,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1047576,
+  "maxTokens": 32768,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "inputLimits": {
+   "maxRequestBytes": 536870912,
+   "images": {
+    "maxPerRequest": 1500,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_6\",\"status\":\"in_progress\",\"output\":[]}}\n\nevent: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_6\",\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"boom\"}}}\n\n",
+ "request": {
+  "url": "https://api.openai.com/v1/responses",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "session_id": "sess-1234",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-client-request-id": "sess-1234",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "gpt-4.1",
+   "input": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "hi"
+      }
+     ]
+    }
+   ],
+   "stream": true,
+   "prompt_cache_key": "sess-1234",
+   "store": false
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "error",
+   "reason": "error",
+   "error": {
+    "role": "assistant",
+    "content": [],
+    "api": "openai-responses",
+    "provider": "openai",
+    "model": "gpt-4.1",
+    "usage": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "totalTokens": 0,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "error",
+    "timestamp": 0,
+    "responseId": "resp_6",
+    "rawStopReason": "failed",
+    "errorMessage": "server_error: boom",
+    "durationMs": 25
+   }
+  }
+ ]
+}

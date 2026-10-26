@@ -1,0 +1,86 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.openai-compat",
+  "name": "OpenAI-compatible providers",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "OpenAI chat-completions wire for OpenRouter, Groq, DeepSeek, Together, Fireworks, Cerebras, Ollama, LM Studio and other OpenAI-compatible providers (pi-ai 1.4.0 port).",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "openai-completions"
+    ],
+    "providers": [
+      "ant-ling",
+      "baseten",
+      "cerebras",
+      "deepseek",
+      "fireworks",
+      "groq",
+      "huggingface",
+      "kimi-coding",
+      "moonshotai",
+      "moonshotai-cn",
+      "nvidia",
+      "opencode",
+      "opencode-go",
+      "openrouter",
+      "qwen-token-plan",
+      "qwen-token-plan-cn",
+      "qwen-token-plan-individual",
+      "together",
+      "vercel-ai-gateway",
+      "xiaomi",
+      "xiaomi-token-plan-ams",
+      "xiaomi-token-plan-cn",
+      "xiaomi-token-plan-sgp",
+      "zai",
+      "zai-coding-cn",
+      "ollama",
+      "lmstudio",
+      "mistral",
+      "deepinfra",
+      "chutes",
+      "perplexity"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "api.ant-ling.com",
+        "inference.baseten.co",
+        "api.cerebras.ai",
+        "api.deepseek.com",
+        "api.fireworks.ai",
+        "api.groq.com",
+        "router.huggingface.co",
+        "api.kimi.com",
+        "api.moonshot.ai",
+        "api.moonshot.cn",
+        "integrate.api.nvidia.com",
+        "opencode.ai",
+        "openrouter.ai",
+        "token-plan.ap-southeast-1.maas.aliyuncs.com",
+        "token-plan.cn-beijing.maas.aliyuncs.com",
+        "api.together.ai",
+        "ai-gateway.vercel.sh",
+        "api.xiaomimimo.com",
+        "token-plan-ams.xiaomimimo.com",
+        "token-plan-cn.xiaomimimo.com",
+        "token-plan-sgp.xiaomimimo.com",
+        "api.z.ai",
+        "open.bigmodel.cn",
+        "localhost",
+        "api.mistral.ai",
+        "api.deepinfra.com",
+        "llm.chutes.ai",
+        "api.perplexity.ai"
+      ]
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION"
+    ]
+  }
+}

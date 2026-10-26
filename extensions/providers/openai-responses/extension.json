@@ -1,0 +1,33 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "oino.openai-responses",
+  "name": "OpenAI Responses",
+  "version": "1.0.0",
+  "kind": "provider",
+  "description": "OpenAI Responses wire for OpenAI, xAI and Meta (pi-ai 1.4.0 port).",
+  "license": "MIT",
+  "provides": {
+    "apis": [
+      "openai-responses"
+    ],
+    "providers": [
+      "meta",
+      "openai",
+      "xai"
+    ]
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "*",
+        "api.meta.ai",
+        "api.openai.com",
+        "api.x.ai"
+      ]
+    },
+    "env": [
+      "OINO_CACHE_RETENTION",
+      "PI_CACHE_RETENTION"
+    ]
+  }
+}

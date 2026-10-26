@@ -1,0 +1,159 @@
+{
+ "name": "g_usage_cache",
+ "model": {
+  "id": "gpt-4.1",
+  "name": "GPT-4.1",
+  "api": "openai-responses",
+  "provider": "openai",
+  "baseUrl": "https://api.openai.com/v1",
+  "reasoning": false,
+  "input": [
+   "text",
+   "image"
+  ],
+  "cost": {
+   "input": 2,
+   "output": 8,
+   "cacheRead": 0.5,
+   "cacheWrite": 0
+  },
+  "contextWindow": 1047576,
+  "maxTokens": 32768,
+  "compat": {
+   "supportsStrictMode": true
+  },
+  "inputLimits": {
+   "maxRequestBytes": 536870912,
+   "images": {
+    "maxPerRequest": 1500,
+    "resize": {
+     "maxWidth": 2000,
+     "maxHeight": 2000,
+     "maxBytes": 4718592,
+     "jpegQuality": 80
+    }
+   }
+  },
+  "type": "chat"
+ },
+ "context": {
+  "messages": [
+   {
+    "role": "system",
+    "content": "Sys",
+    "timestamp": 0
+   },
+   {
+    "role": "user",
+    "content": "hi",
+    "timestamp": 1
+   }
+  ]
+ },
+ "options": {
+  "sessionId": "sess-1234"
+ },
+ "apiKey": "test-key",
+ "status": 200,
+ "sse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\",\"output\":[]}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_o1\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[],\"phase\":\"final_answer\"}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"output_index\":0,\"item_id\":\"msg_o1\",\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"msg_o1\",\"content_index\":0,\"delta\":\"ok\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"msg_o1\",\"content_index\":0,\"delta\":\"\"}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_o1\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":[]}],\"phase\":\"final_answer\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":100,\"input_tokens_details\":{\"cached_tokens\":60,\"cache_write_tokens\":10},\"output_tokens\":7,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":107}}}\n\n",
+ "request": {
+  "url": "https://api.openai.com/v1/responses",
+  "headers": {
+   "accept": "application/json",
+   "authorization": "Bearer test-key",
+   "content-type": "application/json",
+   "session_id": "sess-1234",
+   "user-agent": "pi/1.4.0 (linux; node/v24.16.0; x64)",
+   "x-client-request-id": "sess-1234",
+   "x-stainless-arch": "x64",
+   "x-stainless-lang": "js",
+   "x-stainless-os": "Linux",
+   "x-stainless-package-version": "7.19.0",
+   "x-stainless-retry-count": "0",
+   "x-stainless-runtime": "node",
+   "x-stainless-runtime-version": "v24.16.0"
+  },
+  "body": {
+   "model": "gpt-4.1",
+   "input": [
+    {
+     "role": "system",
+     "content": "Sys"
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "input_text",
+       "text": "hi"
+      }
+     ]
+    }
+   ],
+   "stream": true,
+   "prompt_cache_key": "sess-1234",
+   "store": false
+  }
+ },
+ "events": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "text_start",
+   "contentIndex": 0
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": "ok"
+  },
+  {
+   "type": "text_delta",
+   "contentIndex": 0,
+   "delta": ""
+  },
+  {
+   "type": "text_end",
+   "contentIndex": 0,
+   "content": "ok"
+  },
+  {
+   "type": "done",
+   "reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "ok",
+      "textSignature": "{\"v\":1,\"id\":\"msg_o1\",\"phase\":\"final_answer\"}"
+     }
+    ],
+    "api": "openai-responses",
+    "provider": "openai",
+    "model": "gpt-4.1",
+    "usage": {
+     "input": 30,
+     "output": 7,
+     "cacheRead": 60,
+     "cacheWrite": 10,
+     "reasoning": 0,
+     "totalTokens": 107,
+     "cost": {
+      "input": 0.000059999999999999995,
+      "output": 0.000056,
+      "cacheRead": 0.000029999999999999997,
+      "cacheWrite": 0,
+      "total": 0.000146
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 0,
+    "responseId": "resp_1",
+    "rawStopReason": "completed",
+    "durationMs": 27
+   }
+  }
+ ]
+}
