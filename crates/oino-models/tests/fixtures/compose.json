@@ -1,0 +1,1616 @@
+{
+  "composeCases": [
+    {
+      "name": "baseOnlyBaseUrl",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": {
+        "baseUrl": "https://proxy/v1"
+      },
+      "extension": null,
+      "models": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://proxy/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://proxy/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    {
+      "name": "upsertAndOverride",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": {
+        "models": [
+          {
+            "id": "new-model",
+            "contextWindow": 5000
+          },
+          {
+            "id": "base-b",
+            "name": "Replaced B",
+            "api": "openai-responses",
+            "cost": {
+              "input": 1,
+              "output": 2,
+              "cacheRead": 3,
+              "cacheWrite": 4
+            }
+          }
+        ],
+        "modelOverrides": {
+          "base-a": {
+            "name": "Renamed A",
+            "thinkingLevelMap": {
+              "high": null,
+              "low": "lo"
+            },
+            "cost": {
+              "output": 9
+            },
+            "compat": {
+              "openRouterRouting": {
+                "only": [
+                  "x"
+                ]
+              },
+              "extra": 1
+            },
+            "inputLimits": {
+              "images": {
+                "resize": {
+                  "maxHeight": 50
+                }
+              }
+            },
+            "promptCache": {
+              "long": 3600
+            },
+            "samplingParams": {
+              "top_k": 3
+            },
+            "samplingParamsByThinkingLevel": {
+              "off": {
+                "min_p": 0.1
+              },
+              "high": {
+                "top_k": 20
+              }
+            },
+            "contextWindow": 999,
+            "maxTokens": 77,
+            "reasoning": false,
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          "new-model": {
+            "maxTokens": 1234
+          },
+          "missing": {
+            "name": "ignored"
+          }
+        }
+      },
+      "extension": null,
+      "models": [
+        {
+          "id": "base-a",
+          "name": "Renamed A",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text",
+            "image"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 9,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 999,
+          "maxTokens": 77,
+          "thinkingLevelMap": {
+            "high": null,
+            "xhigh": "max",
+            "low": "lo"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ],
+              "only": [
+                "x"
+              ]
+            },
+            "extra": 1
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100,
+                "maxHeight": 50
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          },
+          "samplingParams": {
+            "temperature": 1,
+            "top_k": 3
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5,
+              "min_p": 0.1
+            },
+            "high": {
+              "top_k": 20
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "Replaced B",
+          "api": "openai-responses",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 1,
+            "output": 2,
+            "cacheRead": 3,
+            "cacheWrite": 4
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "new-model",
+          "name": "new-model",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 5000,
+          "maxTokens": 1234
+        }
+      ]
+    },
+    {
+      "name": "providerCompat",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": {
+        "compat": {
+          "supportsStore": false,
+          "chatTemplateKwargs": {
+            "a": 1
+          }
+        },
+        "models": [
+          {
+            "id": "c",
+            "compat": {
+              "chatTemplateKwargs": {
+                "b": 2
+              }
+            }
+          }
+        ]
+      },
+      "extension": null,
+      "models": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": false,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            },
+            "chatTemplateKwargs": {
+              "a": 1
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "compat": {
+            "supportsStore": false,
+            "chatTemplateKwargs": {
+              "a": 1
+            }
+          }
+        },
+        {
+          "id": "c",
+          "name": "c",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "compat": {
+            "supportsStore": false,
+            "chatTemplateKwargs": {
+              "a": 1,
+              "b": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "emptyEntry",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": {},
+      "extension": null,
+      "error": "Provider p: must specify \"baseUrl\", \"headers\", \"compat\", \"modelOverrides\", or \"models\"."
+    },
+    {
+      "name": "oauthNoBaseUrl",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": {
+        "oauth": "radius"
+      },
+      "extension": null,
+      "error": "Provider p: \"baseUrl\" is required when \"oauth\" is set."
+    },
+    {
+      "name": "noApiCustom",
+      "base": null,
+      "modelsJson": {
+        "baseUrl": "https://x",
+        "models": [
+          {
+            "id": "m"
+          }
+        ]
+      },
+      "extension": null,
+      "error": "Provider p, model m: no \"api\" specified. Set at provider or model level."
+    },
+    {
+      "name": "noBaseUrlCustom",
+      "base": null,
+      "modelsJson": {
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "m"
+          }
+        ]
+      },
+      "extension": null,
+      "error": "Provider p: \"baseUrl\" is required when defining custom models."
+    },
+    {
+      "name": "customProvider",
+      "base": null,
+      "modelsJson": {
+        "baseUrl": "https://ollama/v1",
+        "api": "openai-completions",
+        "apiKey": "ollama",
+        "models": [
+          {
+            "id": "qwen",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ]
+          },
+          {
+            "id": "llama",
+            "api": "anthropic-messages",
+            "baseUrl": "https://other"
+          }
+        ]
+      },
+      "extension": null,
+      "models": [
+        {
+          "id": "qwen",
+          "name": "qwen",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://ollama/v1",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "llama",
+          "name": "llama",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://other",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    {
+      "name": "extensionBaseUrl",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": null,
+      "extension": {
+        "baseUrl": "https://ext/v1"
+      },
+      "models": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://ext/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://ext/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    {
+      "name": "extensionModels",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": null,
+      "extension": {
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "ext-1",
+            "name": "Ext 1",
+            "reasoning": false,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 1000,
+            "maxTokens": 100
+          }
+        ]
+      },
+      "models": [
+        {
+          "id": "ext-1",
+          "name": "Ext 1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1000,
+          "maxTokens": 100,
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1"
+        }
+      ]
+    },
+    {
+      "name": "extensionAndModelsJson",
+      "base": [
+        {
+          "id": "base-a",
+          "name": "base-a",
+          "api": "anthropic-messages",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384,
+          "thinkingLevelMap": {
+            "high": "high",
+            "xhigh": "max"
+          },
+          "headers": {
+            "X-Model": "m"
+          },
+          "compat": {
+            "supportsStore": true,
+            "openRouterRouting": {
+              "order": [
+                "a"
+              ]
+            }
+          },
+          "inputLimits": {
+            "maxRequestBytes": 1000,
+            "images": {
+              "maxPerMessage": 2,
+              "resize": {
+                "maxWidth": 100
+              }
+            }
+          },
+          "promptCache": {
+            "short": 300
+          },
+          "samplingParams": {
+            "temperature": 1
+          },
+          "samplingParamsByThinkingLevel": {
+            "off": {
+              "top_p": 0.5
+            }
+          }
+        },
+        {
+          "id": "base-b",
+          "name": "base-b",
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://p.example/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ],
+      "modelsJson": {
+        "baseUrl": "https://proxy/v1",
+        "modelOverrides": {
+          "ext-1": {
+            "name": "Overridden ext"
+          }
+        }
+      },
+      "extension": {
+        "models": [
+          {
+            "id": "ext-1",
+            "name": "Ext 1",
+            "reasoning": false,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 1000,
+            "maxTokens": 100
+          }
+        ]
+      },
+      "models": [
+        {
+          "id": "ext-1",
+          "name": "Overridden ext",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 1000,
+          "maxTokens": 100,
+          "api": "openai-completions",
+          "provider": "p",
+          "baseUrl": "https://proxy/v1"
+        }
+      ]
+    }
+  ],
+  "authCases": [
+    {
+      "name": "envOnly",
+      "input": {
+        "env": {
+          "P_KEY": "env-key"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "P_KEY"
+      },
+      "resolved": {
+        "apiKey": "env-key",
+        "headers": null,
+        "source": "P_KEY"
+      },
+      "error": null
+    },
+    {
+      "name": "envSecond",
+      "input": {
+        "envVars": [
+          "P_FIRST",
+          "P_KEY"
+        ],
+        "env": {
+          "P_KEY": "env-key"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "P_KEY"
+      },
+      "resolved": {
+        "apiKey": "env-key",
+        "headers": null,
+        "source": "P_KEY"
+      },
+      "error": null
+    },
+    {
+      "name": "nothing",
+      "input": {
+        "env": {}
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": null,
+      "resolved": null,
+      "error": null
+    },
+    {
+      "name": "storedWins",
+      "input": {
+        "env": {
+          "P_KEY": "env-key"
+        },
+        "credential": {
+          "type": "api_key",
+          "key": "stored"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "stored credential"
+      },
+      "resolved": {
+        "apiKey": "stored",
+        "headers": null,
+        "source": "stored credential"
+      },
+      "error": null
+    },
+    {
+      "name": "storedNoKeyFallsBackToEnv",
+      "input": {
+        "env": {
+          "P_KEY": "env-key"
+        },
+        "credential": {
+          "type": "api_key"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "P_KEY"
+      },
+      "resolved": {
+        "apiKey": "env-key",
+        "headers": null,
+        "source": "P_KEY"
+      },
+      "error": null
+    },
+    {
+      "name": "modelsJsonKeyBeatsEnv",
+      "input": {
+        "env": {
+          "P_KEY": "env-key"
+        },
+        "modelsJson": {
+          "apiKey": "literal-key"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "configured API key"
+      },
+      "resolved": {
+        "apiKey": "literal-key",
+        "headers": null,
+        "source": "stored credential"
+      },
+      "error": null
+    },
+    {
+      "name": "modelsJsonEnvKey",
+      "input": {
+        "env": {
+          "MY_KEY": "mine"
+        },
+        "modelsJson": {
+          "apiKey": "$MY_KEY"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "configured API key"
+      },
+      "resolved": {
+        "apiKey": "mine",
+        "headers": null,
+        "source": "stored credential"
+      },
+      "error": null
+    },
+    {
+      "name": "modelsJsonMissingEnv",
+      "input": {
+        "env": {
+          "P_KEY": "env-key"
+        },
+        "modelsJson": {
+          "apiKey": "${MISSING_KEY}"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": null,
+      "resolved": null,
+      "error": "Failed to resolve API key for provider \"p\" from environment variable: MISSING_KEY"
+    },
+    {
+      "name": "authHeader",
+      "input": {
+        "env": {
+          "P_KEY": "env-key"
+        },
+        "modelsJson": {
+          "authHeader": true,
+          "headers": {
+            "X-Org": "$ORG",
+            "X-Lit": "lit"
+          }
+        },
+        "envExtra": {
+          "ORG": "org-1"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "P_KEY"
+      },
+      "resolved": {
+        "apiKey": "env-key",
+        "headers": {
+          "X-Org": "org-1",
+          "X-Lit": "lit",
+          "Authorization": "Bearer env-key"
+        },
+        "source": "P_KEY"
+      },
+      "error": null
+    },
+    {
+      "name": "authHeaderNoKey",
+      "input": {
+        "noBase": true,
+        "modelsJson": {
+          "baseUrl": "https://x",
+          "api": "openai-completions",
+          "authHeader": true,
+          "models": [
+            {
+              "id": "m"
+            }
+          ]
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": null,
+      "resolved": null,
+      "error": null
+    },
+    {
+      "name": "headerMissingEnv",
+      "input": {
+        "env": {
+          "P_KEY": "env-key"
+        },
+        "modelsJson": {
+          "headers": {
+            "X-Org": "$ORG_MISSING"
+          }
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "P_KEY"
+      },
+      "resolved": null,
+      "error": "Failed to resolve provider \"p\" header \"X-Org\" from environment variable: ORG_MISSING"
+    },
+    {
+      "name": "customNoKey",
+      "input": {
+        "noBase": true,
+        "modelsJson": {
+          "baseUrl": "https://x",
+          "api": "openai-completions",
+          "models": [
+            {
+              "id": "m"
+            }
+          ]
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": null,
+      "resolved": null,
+      "error": null
+    },
+    {
+      "name": "customLiteral",
+      "input": {
+        "noBase": true,
+        "modelsJson": {
+          "baseUrl": "https://x",
+          "api": "openai-completions",
+          "apiKey": "lit",
+          "models": [
+            {
+              "id": "m"
+            }
+          ]
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "configured API key"
+      },
+      "resolved": {
+        "apiKey": "lit",
+        "headers": null,
+        "source": "configured API key"
+      },
+      "error": null
+    },
+    {
+      "name": "extensionKeyBeatsModelsJson",
+      "input": {
+        "modelsJson": {
+          "apiKey": "mj"
+        },
+        "extension": {
+          "apiKey": "ext"
+        }
+      },
+      "hasApiKeyMethod": true,
+      "hasOAuth": false,
+      "check": {
+        "type": "api_key",
+        "source": "configured API key"
+      },
+      "resolved": {
+        "apiKey": "ext",
+        "headers": null,
+        "source": "stored credential"
+      },
+      "error": null
+    },
+    {
+      "name": "oauthOnly",
+      "input": {
+        "envVars": null,
+        "oauth": true,
+        "env": {}
+      },
+      "hasApiKeyMethod": false,
+      "hasOAuth": true,
+      "check": null,
+      "resolved": null,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "api": "pi-virtual",
+  "stateEntry": "pi.virtual-model-state",
+  "models": [
+    {
+      "definition": {
+        "provider": "router",
+        "id": "auto",
+        "name": "Auto",
+        "thinkingLevels": [
+          "low",
+          "high"
+        ]
+      },
+      "model": {
+        "id": "auto",
+        "name": "Auto",
+        "api": "pi-virtual",
+        "provider": "router",
+        "baseUrl": "",
+        "reasoning": true,
+        "thinkingLevelMap": {
+          "off": null,
+          "minimal": null,
+          "low": "low",
+          "medium": null,
+          "high": "high",
+          "xhigh": null,
+          "max": null
+        },
+        "input": [
+          "text",
+          "image"
+        ],
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 0,
+        "maxTokens": 0
+      }
+    },
+    {
+      "definition": {
+        "provider": "router",
+        "id": "plain",
+        "name": "Plain"
+      },
+      "model": {
+        "id": "plain",
+        "name": "Plain",
+        "api": "pi-virtual",
+        "provider": "router",
+        "baseUrl": "",
+        "reasoning": false,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": null,
+          "low": null,
+          "medium": null,
+          "high": null,
+          "xhigh": null,
+          "max": null
+        },
+        "input": [
+          "text",
+          "image"
+        ],
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 0,
+        "maxTokens": 0
+      }
+    },
+    {
+      "definition": {
+        "provider": "router",
+        "id": "limits",
+        "name": "Limits",
+        "thinkingLevels": [
+          "off",
+          "max"
+        ],
+        "contextWindow": 1000,
+        "maxTokens": 10,
+        "input": [
+          "text"
+        ]
+      },
+      "model": {
+        "id": "limits",
+        "name": "Limits",
+        "api": "pi-virtual",
+        "provider": "router",
+        "baseUrl": "",
+        "reasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": null,
+          "low": null,
+          "medium": null,
+          "high": null,
+          "xhigh": null,
+          "max": "max"
+        },
+        "input": [
+          "text"
+        ],
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 1000,
+        "maxTokens": 10
+      }
+    }
+  ]
+}

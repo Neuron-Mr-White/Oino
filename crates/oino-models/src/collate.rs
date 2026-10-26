@@ -56,4 +56,16 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn matches_pi_fixture() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/resolver.json");
+        let data: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let expected: Vec<String> = serde_json::from_value(data["collation"].clone()).unwrap();
+        let mut actual = expected.clone();
+        actual.reverse();
+        actual.sort_by(|a, b| locale_compare(a, b));
+        assert_eq!(actual, expected);
+    }
 }
