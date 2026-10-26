@@ -1,0 +1,38 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.utility",
+  "name": "Utility",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "The unipi grab-bag: /unipi:settings, /unipi:continue|retry, automatic session naming, /unipi:answer (reply panel, Q/A editor, web form), pasted-file attachments, image_generate/image_edit/image_recognize, simple|regular|advanced tool rendering and harness panels, /unipi:summarize, /unipi:doctor, /unipi:cleanup and /unipi:move.",
+  "license": "MIT",
+  "resources": { "skills": ["skills"] },
+  "permissions": {
+    "sessionControl": true,
+    "sessions": { "readAll": true },
+    "models": { "complete": true },
+    "credentials": ["*"],
+    "tools": { "override": ["read", "bash", "edit", "write"] },
+    "agents": { "spawn": true, "maxDepth": 1 },
+    "process": { "spawn": true, "allow": ["git", "test"] },
+    "network": { "hosts": ["*"], "listenLoopback": true },
+    "fs": {
+      "project": "read",
+      "agentDir": "read",
+      "paths": [
+        { "path": "~/.oino/sessions", "access": "write", "alias": "oino-sessions" },
+        { "path": "~/Downloads", "access": "read", "alias": "home-downloads" },
+        { "path": "~/Desktop", "access": "read", "alias": "home-desktop" },
+        { "path": "~/Pictures", "access": "read", "alias": "home-pictures" },
+        { "path": "~/Documents", "access": "read", "alias": "home-documents" },
+        { "path": "/tmp", "access": "read", "alias": "host-tmp" }
+      ]
+    },
+    "clipboard": { "read": true },
+    "openUrl": true,
+    "editExternally": true,
+    "services": { "call": ["*"] },
+    "secrets": true,
+    "env": ["HOME", "USERPROFILE", "HOSTNAME", "SSH_CONNECTION", "SSH_TTY", "SSH_CLIENT", "OPENROUTER_API_KEY", "TYPESAFE_API_KEY", "FAL_KEY", "FAL_API_KEY"]
+  }
+}

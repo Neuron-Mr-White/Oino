@@ -1,0 +1,24 @@
+[package]
+name = "unipi-utility"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.utility: settings hub entry, continue/retry, auto-rename, /unipi:answer, attachments, image tools, render styles, doctor/cleanup/move"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64.workspace = true
+futures.workspace = true
+oino-extension.workspace = true
+regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
+serde.workspace = true
+serde_json.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true
