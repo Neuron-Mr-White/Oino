@@ -1,0 +1,16 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.web-api",
+  "name": "Web API",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "web_search, multi_web_content_read and web_llm_summarize: free providers first, TLS-fingerprinted smart fetch with readable markdown extraction, 1 h cache.",
+  "license": "MIT",
+  "permissions": {
+    "sessionControl": true,
+    "network": { "hosts": ["*"], "fingerprint": true },
+    "secrets": true,
+    "models": { "complete": true },
+    "env": ["FIRECRAWL_API_KEY", "JINA_API_KEY", "PERPLEXITY_API_KEY", "SERPAPI_KEY", "TAVILY_API_KEY"]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.mcp",
+  "name": "MCP",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Connects MCP servers (stdio and streamable HTTP) and registers their tools as <server>__<tool>; server registry, catalog browser and status.",
+  "license": "MIT",
+  "permissions": {
+    "process": { "spawn": true, "allow": ["*"] },
+    "network": { "hosts": ["*"] },
+    "fs": { "project": "read", "agentDir": "read" },
+    "secrets": true,
+    "env": ["HOME", "USERPROFILE"]
+  }
+}

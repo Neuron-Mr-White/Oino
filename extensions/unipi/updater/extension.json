@@ -1,0 +1,15 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.updater",
+  "name": "Updater",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Checks GitHub for new Oino releases, shows what changed, and browses the bundled READMEs and the changelog.",
+  "license": "MIT",
+  "permissions": {
+    "network": {
+      "hosts": ["api.github.com", "github.com", "objects.githubusercontent.com", "raw.githubusercontent.com"]
+    },
+    "fs": { "agentDir": "read" }
+  }
+}

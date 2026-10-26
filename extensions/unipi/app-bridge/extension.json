@@ -1,0 +1,19 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.app-bridge",
+  "name": "App bridge",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Session control centre for Oino Desktop and Oino Mobile: run state, model and thinking, context and cost, the work list, long-horizon mode, Fusion pair, dream and btw in one side pane.",
+  "license": "MIT",
+  "permissions": {
+    "sessionControl": true,
+    "services": {
+      "call": [
+        "*/work-tray.tab", "*/work-tray.action", "*/info-screen.groups",
+        "unipi.fusion/fusion.status", "unipi.btw/btw.ask",
+        "unipi.dream/dream.status", "unipi.dream/dream.run", "unipi.dream/dream.stop"
+      ]
+    }
+  }
+}

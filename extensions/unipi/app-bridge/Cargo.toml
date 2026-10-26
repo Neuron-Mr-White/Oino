@@ -1,0 +1,21 @@
+[package]
+name = "unipi-app-bridge"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.app-bridge: the session control centre for Oino Desktop/Mobile (side-pane panel + snapshot/action services over the unipi work, fusion, long-horizon, dream and btw services)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oino-extension.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true
