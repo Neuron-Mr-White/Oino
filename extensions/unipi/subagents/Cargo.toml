@@ -1,0 +1,22 @@
+[package]
+name = "unipi-subagents"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.subagents: run_subagent/read_subagent over host nested agents, profiles, /unipi:subagents tray tab, /unipi:agents manager, graph-run service"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+futures.workspace = true
+oino-extension.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true
