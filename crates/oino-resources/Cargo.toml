@@ -8,11 +8,19 @@ repository.workspace = true
 description = "pi resource loading: context files, SYSTEM/APPEND, skills, prompt templates, system prompt"
 
 [dependencies]
+globset.workspace = true
+ignore.workspace = true
+indexmap.workspace = true
 oino-ai = { path = "../oino-ai" }
 oino-settings = { path = "../oino-settings" }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
+serde_yaml_ng.workspace = true
 thiserror = "2"
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
 
 # Mirrors quality.md §2 until integration switches the root workspace lints (then `workspace = true`).
 [lints.rust]

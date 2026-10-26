@@ -67,13 +67,13 @@ impl Storage {
                     SettingsScope::Global => global.as_path(),
                     SettingsScope::Project => project.as_path(),
                 };
-                with_file_lock(path, || {
-                    let current =
-                        read_optional(path).map_err(|e| SettingsErrorKind::Read(e.to_string()))?;
-                    let content = next(current.as_deref())?;
-                    write_atomic(path, content.as_bytes())
-                        .map_err(|e| SettingsErrorKind::Write(e.to_string()))
-                })
+                let _lock =
+                    FileLock::acquire(path).map_err(|e| SettingsErrorKind::Lock(e.to_string()))?;
+                let current =
+                    read_optional(path).map_err(|e| SettingsErrorKind::Read(e.to_string()))?;
+                let content = next(current.as_deref())?;
+                write_atomic(path, content.as_bytes())
+                    .map_err(|e| SettingsErrorKind::Write(e.to_string()))
             }
         }
     }
@@ -88,22 +88,31 @@ pub(crate) fn read_optional(path: &Path) -> io::Result<Option<String>> {
     }
 }
 
-/// Run `f` while holding an exclusive advisory lock on `<path>.lock` (parent dirs created).
-///
-/// # Errors
-///
-/// [`SettingsErrorKind::Lock`] when the lock file cannot be created or locked, or `f`'s error.
-pub(crate) fn with_file_lock<T>(
-    path: &Path,
-    f: impl FnOnce() -> Result<T, SettingsErrorKind>,
-) -> Result<T, SettingsErrorKind> {
-    let lock = open_lock(path).map_err(|e| SettingsErrorKind::Lock(e.to_string()))?;
-    lock.lock()
-        .map_err(|e| SettingsErrorKind::Lock(e.to_string()))?;
-    let result = f();
-    // Closing the descriptor releases the lock even if unlock fails.
-    let _ = lock.unlock();
-    result
+/// An exclusive advisory lock on `<path>.lock`, released on drop (pi uses `proper-lockfile`
+/// on the same lock path).
+#[derive(Debug)]
+pub struct FileLock {
+    file: File,
+}
+
+impl FileLock {
+    /// Block until the exclusive lock for `path` is held (parent dirs are created).
+    ///
+    /// # Errors
+    ///
+    /// The lock file cannot be created or locked.
+    pub fn acquire(path: &Path) -> io::Result<Self> {
+        let file = open_lock(path)?;
+        file.lock()?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for FileLock {
+    fn drop(&mut self) {
+        // Closing the descriptor releases the lock even if unlock fails.
+        let _ = self.file.unlock();
+    }
 }
 
 fn open_lock(path: &Path) -> io::Result<File> {

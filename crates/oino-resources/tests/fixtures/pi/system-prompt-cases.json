@@ -1,0 +1,40 @@
+[
+  { "name": "defaults", "options": { "cwd": "/work/proj" } },
+  {
+    "name": "full",
+    "options": {
+      "cwd": "C:\\work\\proj",
+      "selectedTools": ["read", "bash", "edit", "write", "grep", "mytool"],
+      "toolSnippets": { "read": "Read file contents", "bash": "Execute bash commands", "edit": "Edit files", "mytool": "Custom" , "unused": "x"},
+      "toolGuidelines": {
+        "bash": ["You can inspect PI_* environment variables for current model and session details.", "  Use bash carefully  "],
+        "read": ["Use read to examine files", "Be concise in your responses"]
+      },
+      "promptGuidelines": ["Prefer small diffs", "Use read to examine files", ""],
+      "appendSystemPrompt": "Extra line one\n\nExtra two",
+      "contextFiles": [{ "path": "/home/u/.pi/agent/AGENTS.md", "content": "global rules" }, { "path": "/work/proj/AGENTS.md", "content": "project rules\n" }],
+      "skills": [
+        { "name": "alpha", "description": "Does <alpha> & 'beta' \"things\"", "filePath": "/s/alpha/SKILL.md", "baseDir": "/s/alpha", "sourceInfo": { "path": "/s/alpha/SKILL.md", "source": "local", "scope": "user", "origin": "top-level" }, "disableModelInvocation": false },
+        { "name": "hidden", "description": "hidden", "filePath": "/s/hidden/SKILL.md", "baseDir": "/s/hidden", "sourceInfo": { "path": "/s/hidden/SKILL.md", "source": "local", "scope": "user", "origin": "top-level" }, "disableModelInvocation": true }
+      ],
+      "sections": { "memory": "remember things", "empty": "", "cwd": "overridden cwd" }
+    }
+  },
+  { "name": "bash-only-no-grep", "options": { "cwd": "/w", "selectedTools": ["bash"], "toolSnippets": {} ,
+      "skills": [{ "name": "s", "description": "d", "filePath": "/s/SKILL.md", "baseDir": "/s", "sourceInfo": { "path": "/s/SKILL.md", "source": "local", "scope": "temporary", "origin": "top-level" }, "disableModelInvocation": false }] } },
+  { "name": "powershell", "options": { "cwd": "/w", "selectedTools": ["powershell"] } },
+  { "name": "bash-and-powershell", "options": { "cwd": "/w", "selectedTools": ["bash", "powershell"] } },
+  { "name": "with-ls", "options": { "cwd": "/w", "selectedTools": ["bash", "ls"] } },
+  { "name": "hidden-reader", "options": { "cwd": "/w", "selectedTools": ["read", "edit"], "hiddenTools": ["read"], "toolSnippets": { "read": "r", "edit": "e" },
+      "skills": [{ "name": "s", "description": "d", "filePath": "/s/SKILL.md", "baseDir": "/s", "sourceInfo": { "path": "/s/SKILL.md", "source": "local", "scope": "temporary", "origin": "top-level" }, "disableModelInvocation": false }] } },
+  { "name": "no-reader-drops-skills", "options": { "cwd": "/w", "selectedTools": ["edit"],
+      "skills": [{ "name": "s", "description": "d", "filePath": "/s/SKILL.md", "baseDir": "/s", "sourceInfo": { "path": "/s/SKILL.md", "source": "local", "scope": "temporary", "origin": "top-level" }, "disableModelInvocation": false }] } },
+  { "name": "only-hidden-skills", "options": { "cwd": "/w",
+      "skills": [{ "name": "s", "description": "d", "filePath": "/s/SKILL.md", "baseDir": "/s", "sourceInfo": { "path": "/s/SKILL.md", "source": "local", "scope": "temporary", "origin": "top-level" }, "disableModelInvocation": true }] } },
+  { "name": "custom-prompt", "options": { "cwd": "/w", "customPrompt": "You are custom.", "appendSystemPrompt": "addendum", "toolSnippets": { "read": "r" } } },
+  { "name": "empty-custom-prompt-is-default", "options": { "cwd": "/w", "customPrompt": "" } },
+  { "name": "forced", "options": { "cwd": "/w", "forceSystemPrompt": "FORCED" } },
+  { "name": "no-tools", "options": { "cwd": "/w", "selectedTools": [] } },
+  { "name": "bad-section", "options": { "cwd": "/w", "sections": { "Bad": "x" } } },
+  { "name": "preamble-section", "options": { "cwd": "/w", "sections": { "preamble": "x" } } }
+]

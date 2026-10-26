@@ -1,0 +1,81 @@
+{
+  "trees": {
+    "main": {
+      "work/.git/HEAD": "ref: refs/heads/main\n",
+      "agent/AGENTS.md": "agent rules",
+      "agent/SYSTEM.md": "agent system",
+      "agent/APPEND_SYSTEM.md": "\ufeffagent append",
+      "agent/skills/alpha/SKILL.md": "---\nname: alpha\ndescription: Alpha skill\n---\nAlpha body",
+      "agent/skills/beta.md": "---\ndescription: Beta standalone\n---\nBeta",
+      "agent/skills/nodesc.md": "# no frontmatter",
+      "agent/skills/sub/gamma/SKILL.md": "---\nname: gamma-x\ndescription: Gamma in sub\n---\nG",
+      "agent/skills/sub/loose.md": "---\ndescription: nested loose md is not a skill in pi mode\n---\n",
+      "agent/skills/bad/SKILL.md": "---\nname: Bad_Name--\n---\nno description",
+      "agent/skills/badyaml/SKILL.md": "---\nname: [unclosed\n---\n",
+      "agent/skills/.hidden/SKILL.md": "---\ndescription: hidden dir\n---\n",
+      "agent/skills/.gitignore": "ignored/\n",
+      "agent/skills/ignored/SKILL.md": "---\ndescription: ignored\n---\n",
+      "agent/skills/node_modules/x/SKILL.md": "---\ndescription: dep\n---\n",
+      "agent/skills/dup/SKILL.md": "---\nname: alpha\ndescription: Duplicate alpha\ndisable-model-invocation: true\n---\n",
+      "agent/skills/flagged/SKILL.md": "---\ndescription: Hidden from model\ndisable-model-invocation: true\nlicense: MIT\n---\nF",
+      "agent/prompts/review.md": "---\ndescription: Review code\nargument-hint: <file>\n---\nReview $1",
+      "agent/prompts/sub/nested.md": "nested prompt",
+      "agent/prompts/plain.md": "\n\n  First line of a plain prompt that is definitely longer than sixty characters total\nsecond",
+      "agent/themes/dark.json": "{\"name\": \"dark\"}",
+      "home/.agents/skills/home-skill/SKILL.md": "---\ndescription: From home agents\n---\n",
+      "home/.agents/skills/root.md": "---\ndescription: root md in agents mode is skipped\n---\n",
+      "work/AGENTS.md": "work rules",
+      "work/proj/AGENTS.override.md": "override wins",
+      "work/proj/CLAUDE.md": "claude loses",
+      "work/proj/{CONFIG}/SYSTEM.md": "project system",
+      "work/proj/{CONFIG}/skills/proj-skill/SKILL.md": "---\ndescription: Project skill\n---\nP",
+      "work/proj/{CONFIG}/prompts/review.md": "Project review $@",
+      "work/proj/{CONFIG}/prompts/extra.md": "---\ndescription: \"\"\n---\n\nExtra first line",
+      "work/proj/{CONFIG}/themes/dark.json": "{\"name\": \"dark\"}",
+      "work/proj/{CONFIG}/themes/light.json": "{\"name\": \"light\"}",
+      "work/proj/.agents/skills/agent-skill/SKILL.md": "---\ndescription: Project agents skill\n---\n",
+      "work/proj/.agents/skills/root.md": "---\ndescription: root md skipped\n---\n",
+      "work/proj/.agents/skills/nested/notes.md": "---\ndescription: nested md in agents mode\n---\n",
+      "work/.agents/skills/parent-skill/SKILL.md": "---\ndescription: Parent agents skill\n---\n",
+      "agent/extra/x-skill/SKILL.md": "---\ndescription: From settings\n---\n",
+      "agent/more-prompts/deep/p.md": "deep prompt via settings",
+      "work/proj/{CONFIG}/shared/s-skill/SKILL.md": "---\ndescription: Project settings skill\n---\n",
+      "work/proj/cli-skill/SKILL.md": "---\ndescription: CLI skill\n---\n",
+      "work/proj/cli.md": "cli prompt",
+      "work/proj/append-file.md": "append from file"
+    },
+    "worktree": {
+      "repo/.git/HEAD": "ref: refs/heads/main\n",
+      "repo/.git/worktrees/wt/HEAD": "ref: refs/heads/wt\n",
+      "repo/.git/worktrees/wt/commondir": "../..\n",
+      "repo/AGENTS.md": "main repo rules",
+      "repo/wt/.git": "gitdir: ../.git/worktrees/wt\n",
+      "repo/wt/AGENTS.md": "worktree rules",
+      "agent/.keep": ""
+    }
+  },
+  "cases": [
+    { "name": "trusted", "tree": "main", "trusted": true },
+    { "name": "untrusted", "tree": "main", "trusted": false },
+    {
+      "name": "settings-arrays",
+      "tree": "main",
+      "trusted": true,
+      "globalSettings": { "skills": ["extra", "-skills/dup", "!flagged"], "prompts": ["more-prompts", "!plain.md"], "themes": ["!dark.json"] },
+      "projectSettings": { "skills": ["shared", "!proj-skill", "+proj-skill"], "prompts": ["-prompts/extra.md"] }
+    },
+    {
+      "name": "cli-flags",
+      "tree": "main",
+      "trusted": true,
+      "noSkills": true,
+      "noContextFiles": true,
+      "skillPaths": ["./cli-skill", "missing-skill"],
+      "promptPaths": ["cli.md", "nope.md"],
+      "systemPrompt": "inline system text",
+      "appendSystemPrompt": ["append text", "append-file.md"]
+    },
+    { "name": "no-prompts", "tree": "main", "trusted": true, "noPromptTemplates": true, "promptPaths": ["cli.md"] },
+    { "name": "worktree-shadowing", "tree": "worktree", "cwd": "repo/wt", "trusted": true }
+  ]
+}

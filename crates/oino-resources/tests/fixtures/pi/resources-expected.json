@@ -1,0 +1,986 @@
+[
+  {
+    "name": "trusted",
+    "skills": {
+      "skills": [
+        {
+          "name": "proj-skill",
+          "description": "Project skill",
+          "filePath": "$ROOT/work/proj/.oino/skills/proj-skill/SKILL.md",
+          "baseDir": "$ROOT/work/proj/.oino/skills/proj-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/skills/proj-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.oino"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "agent-skill",
+          "description": "Project agents skill",
+          "filePath": "$ROOT/work/proj/.agents/skills/agent-skill/SKILL.md",
+          "baseDir": "$ROOT/work/proj/.agents/skills/agent-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.agents/skills/agent-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "nested",
+          "description": "nested md in agents mode",
+          "filePath": "$ROOT/work/proj/.agents/skills/nested/notes.md",
+          "baseDir": "$ROOT/work/proj/.agents/skills/nested",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.agents/skills/nested/notes.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "parent-skill",
+          "description": "Parent agents skill",
+          "filePath": "$ROOT/work/.agents/skills/parent-skill/SKILL.md",
+          "baseDir": "$ROOT/work/.agents/skills/parent-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/.agents/skills/parent-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "alpha",
+          "description": "Alpha skill",
+          "filePath": "$ROOT/agent/skills/alpha/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/alpha",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/alpha/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "skills",
+          "description": "Beta standalone",
+          "filePath": "$ROOT/agent/skills/beta.md",
+          "baseDir": "$ROOT/agent/skills",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/beta.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "flagged",
+          "description": "Hidden from model",
+          "filePath": "$ROOT/agent/skills/flagged/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/flagged",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/flagged/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": true
+        },
+        {
+          "name": "gamma-x",
+          "description": "Gamma in sub",
+          "filePath": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/sub/gamma",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "home-skill",
+          "description": "From home agents",
+          "filePath": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+          "baseDir": "$ROOT/home/.agents/skills/home-skill",
+          "sourceInfo": {
+            "path": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/home/.agents"
+          },
+          "disableModelInvocation": false
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "warning",
+          "message": "description is required",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not start or end with a hyphen",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not contain consecutive hyphens",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "Flow sequence in block collection must be sufficiently indented and end with a ] at line 1, column 16:\n\nname: [unclosed\n               ^\n",
+          "path": "$ROOT/agent/skills/badyaml/SKILL.md"
+        },
+        {
+          "type": "collision",
+          "message": "name \"alpha\" collision",
+          "path": "$ROOT/agent/skills/dup/SKILL.md",
+          "collision": {
+            "resourceType": "skill",
+            "name": "alpha",
+            "winnerPath": "$ROOT/agent/skills/alpha/SKILL.md",
+            "loserPath": "$ROOT/agent/skills/dup/SKILL.md"
+          }
+        }
+      ]
+    },
+    "prompts": {
+      "prompts": [
+        {
+          "name": "extra",
+          "description": "Extra first line",
+          "content": "Extra first line",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/prompts/extra.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.oino"
+          },
+          "filePath": "$ROOT/work/proj/.oino/prompts/extra.md"
+        },
+        {
+          "name": "review",
+          "description": "Project review $@",
+          "content": "Project review $@",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/prompts/review.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.oino"
+          },
+          "filePath": "$ROOT/work/proj/.oino/prompts/review.md"
+        },
+        {
+          "name": "plain",
+          "description": "  First line of a plain prompt that is definitely longer tha...",
+          "content": "\n\n  First line of a plain prompt that is definitely longer than sixty characters total\nsecond",
+          "sourceInfo": {
+            "path": "$ROOT/agent/prompts/plain.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "filePath": "$ROOT/agent/prompts/plain.md"
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "collision",
+          "message": "name \"/review\" collision",
+          "path": "$ROOT/agent/prompts/review.md",
+          "collision": {
+            "resourceType": "prompt",
+            "name": "review",
+            "winnerPath": "$ROOT/work/proj/.oino/prompts/review.md",
+            "loserPath": "$ROOT/agent/prompts/review.md"
+          }
+        }
+      ]
+    },
+    "agentsFiles": [
+      {
+        "path": "$ROOT/agent/AGENTS.md",
+        "content": "agent rules"
+      },
+      {
+        "path": "$ROOT/work/AGENTS.md",
+        "content": "work rules"
+      },
+      {
+        "path": "$ROOT/work/proj/AGENTS.override.md",
+        "content": "override wins"
+      }
+    ],
+    "systemPrompt": "project system",
+    "systemPromptSource": "$ROOT/work/proj/.oino/SYSTEM.md",
+    "appendSystemPrompt": [
+      "agent append"
+    ],
+    "appendSystemPromptSources": [
+      "$ROOT/agent/APPEND_SYSTEM.md"
+    ]
+  },
+  {
+    "name": "untrusted",
+    "skills": {
+      "skills": [
+        {
+          "name": "alpha",
+          "description": "Alpha skill",
+          "filePath": "$ROOT/agent/skills/alpha/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/alpha",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/alpha/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "skills",
+          "description": "Beta standalone",
+          "filePath": "$ROOT/agent/skills/beta.md",
+          "baseDir": "$ROOT/agent/skills",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/beta.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "flagged",
+          "description": "Hidden from model",
+          "filePath": "$ROOT/agent/skills/flagged/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/flagged",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/flagged/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": true
+        },
+        {
+          "name": "gamma-x",
+          "description": "Gamma in sub",
+          "filePath": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/sub/gamma",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "home-skill",
+          "description": "From home agents",
+          "filePath": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+          "baseDir": "$ROOT/home/.agents/skills/home-skill",
+          "sourceInfo": {
+            "path": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/home/.agents"
+          },
+          "disableModelInvocation": false
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "warning",
+          "message": "description is required",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not start or end with a hyphen",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not contain consecutive hyphens",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "Flow sequence in block collection must be sufficiently indented and end with a ] at line 1, column 16:\n\nname: [unclosed\n               ^\n",
+          "path": "$ROOT/agent/skills/badyaml/SKILL.md"
+        },
+        {
+          "type": "collision",
+          "message": "name \"alpha\" collision",
+          "path": "$ROOT/agent/skills/dup/SKILL.md",
+          "collision": {
+            "resourceType": "skill",
+            "name": "alpha",
+            "winnerPath": "$ROOT/agent/skills/alpha/SKILL.md",
+            "loserPath": "$ROOT/agent/skills/dup/SKILL.md"
+          }
+        }
+      ]
+    },
+    "prompts": {
+      "prompts": [
+        {
+          "name": "plain",
+          "description": "  First line of a plain prompt that is definitely longer tha...",
+          "content": "\n\n  First line of a plain prompt that is definitely longer than sixty characters total\nsecond",
+          "sourceInfo": {
+            "path": "$ROOT/agent/prompts/plain.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "filePath": "$ROOT/agent/prompts/plain.md"
+        },
+        {
+          "name": "review",
+          "description": "Review code",
+          "argumentHint": "<file>",
+          "content": "Review $1",
+          "sourceInfo": {
+            "path": "$ROOT/agent/prompts/review.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "filePath": "$ROOT/agent/prompts/review.md"
+        }
+      ],
+      "diagnostics": []
+    },
+    "agentsFiles": [
+      {
+        "path": "$ROOT/agent/AGENTS.md",
+        "content": "agent rules"
+      },
+      {
+        "path": "$ROOT/work/AGENTS.md",
+        "content": "work rules"
+      },
+      {
+        "path": "$ROOT/work/proj/AGENTS.override.md",
+        "content": "override wins"
+      }
+    ],
+    "systemPrompt": "agent system",
+    "systemPromptSource": "$ROOT/agent/SYSTEM.md",
+    "appendSystemPrompt": [
+      "agent append"
+    ],
+    "appendSystemPromptSources": [
+      "$ROOT/agent/APPEND_SYSTEM.md"
+    ]
+  },
+  {
+    "name": "settings-arrays",
+    "skills": {
+      "skills": [
+        {
+          "name": "s-skill",
+          "description": "Project settings skill",
+          "filePath": "$ROOT/work/proj/.oino/shared/s-skill/SKILL.md",
+          "baseDir": "$ROOT/work/proj/.oino/shared/s-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/shared/s-skill/SKILL.md",
+            "source": "local",
+            "scope": "project",
+            "origin": "top-level"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "agent-skill",
+          "description": "Project agents skill",
+          "filePath": "$ROOT/work/proj/.agents/skills/agent-skill/SKILL.md",
+          "baseDir": "$ROOT/work/proj/.agents/skills/agent-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.agents/skills/agent-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "nested",
+          "description": "nested md in agents mode",
+          "filePath": "$ROOT/work/proj/.agents/skills/nested/notes.md",
+          "baseDir": "$ROOT/work/proj/.agents/skills/nested",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.agents/skills/nested/notes.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "parent-skill",
+          "description": "Parent agents skill",
+          "filePath": "$ROOT/work/.agents/skills/parent-skill/SKILL.md",
+          "baseDir": "$ROOT/work/.agents/skills/parent-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/.agents/skills/parent-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "x-skill",
+          "description": "From settings",
+          "filePath": "$ROOT/agent/extra/x-skill/SKILL.md",
+          "baseDir": "$ROOT/agent/extra/x-skill",
+          "sourceInfo": {
+            "path": "$ROOT/agent/extra/x-skill/SKILL.md",
+            "source": "local",
+            "scope": "user",
+            "origin": "top-level"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "alpha",
+          "description": "Alpha skill",
+          "filePath": "$ROOT/agent/skills/alpha/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/alpha",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/alpha/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "skills",
+          "description": "Beta standalone",
+          "filePath": "$ROOT/agent/skills/beta.md",
+          "baseDir": "$ROOT/agent/skills",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/beta.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "gamma-x",
+          "description": "Gamma in sub",
+          "filePath": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/sub/gamma",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "home-skill",
+          "description": "From home agents",
+          "filePath": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+          "baseDir": "$ROOT/home/.agents/skills/home-skill",
+          "sourceInfo": {
+            "path": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/home/.agents"
+          },
+          "disableModelInvocation": false
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "warning",
+          "message": "description is required",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not start or end with a hyphen",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not contain consecutive hyphens",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "Flow sequence in block collection must be sufficiently indented and end with a ] at line 1, column 16:\n\nname: [unclosed\n               ^\n",
+          "path": "$ROOT/agent/skills/badyaml/SKILL.md"
+        }
+      ]
+    },
+    "prompts": {
+      "prompts": [
+        {
+          "name": "review",
+          "description": "Project review $@",
+          "content": "Project review $@",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/prompts/review.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.oino"
+          },
+          "filePath": "$ROOT/work/proj/.oino/prompts/review.md"
+        },
+        {
+          "name": "p",
+          "description": "deep prompt via settings",
+          "content": "deep prompt via settings",
+          "sourceInfo": {
+            "path": "$ROOT/agent/more-prompts/deep/p.md",
+            "source": "local",
+            "scope": "user",
+            "origin": "top-level"
+          },
+          "filePath": "$ROOT/agent/more-prompts/deep/p.md"
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "collision",
+          "message": "name \"/review\" collision",
+          "path": "$ROOT/agent/prompts/review.md",
+          "collision": {
+            "resourceType": "prompt",
+            "name": "review",
+            "winnerPath": "$ROOT/work/proj/.oino/prompts/review.md",
+            "loserPath": "$ROOT/agent/prompts/review.md"
+          }
+        }
+      ]
+    },
+    "agentsFiles": [
+      {
+        "path": "$ROOT/agent/AGENTS.md",
+        "content": "agent rules"
+      },
+      {
+        "path": "$ROOT/work/AGENTS.md",
+        "content": "work rules"
+      },
+      {
+        "path": "$ROOT/work/proj/AGENTS.override.md",
+        "content": "override wins"
+      }
+    ],
+    "systemPrompt": "project system",
+    "systemPromptSource": "$ROOT/work/proj/.oino/SYSTEM.md",
+    "appendSystemPrompt": [
+      "agent append"
+    ],
+    "appendSystemPromptSources": [
+      "$ROOT/agent/APPEND_SYSTEM.md"
+    ]
+  },
+  {
+    "name": "cli-flags",
+    "skills": {
+      "skills": [
+        {
+          "name": "cli-skill",
+          "description": "CLI skill",
+          "filePath": "$ROOT/work/proj/cli-skill/SKILL.md",
+          "baseDir": "$ROOT/work/proj/cli-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/cli-skill/SKILL.md",
+            "source": "local",
+            "scope": "temporary",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/cli-skill"
+          },
+          "disableModelInvocation": false
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "warning",
+          "message": "skill path does not exist",
+          "path": "$ROOT/work/proj/missing-skill"
+        }
+      ]
+    },
+    "prompts": {
+      "prompts": [
+        {
+          "name": "extra",
+          "description": "Extra first line",
+          "content": "Extra first line",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/prompts/extra.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.oino"
+          },
+          "filePath": "$ROOT/work/proj/.oino/prompts/extra.md"
+        },
+        {
+          "name": "review",
+          "description": "Project review $@",
+          "content": "Project review $@",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/prompts/review.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.oino"
+          },
+          "filePath": "$ROOT/work/proj/.oino/prompts/review.md"
+        },
+        {
+          "name": "plain",
+          "description": "  First line of a plain prompt that is definitely longer tha...",
+          "content": "\n\n  First line of a plain prompt that is definitely longer than sixty characters total\nsecond",
+          "sourceInfo": {
+            "path": "$ROOT/agent/prompts/plain.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "filePath": "$ROOT/agent/prompts/plain.md"
+        },
+        {
+          "name": "cli",
+          "description": "cli prompt",
+          "content": "cli prompt",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/cli.md",
+            "source": "local",
+            "scope": "temporary",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj"
+          },
+          "filePath": "$ROOT/work/proj/cli.md"
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "collision",
+          "message": "name \"/review\" collision",
+          "path": "$ROOT/agent/prompts/review.md",
+          "collision": {
+            "resourceType": "prompt",
+            "name": "review",
+            "winnerPath": "$ROOT/work/proj/.oino/prompts/review.md",
+            "loserPath": "$ROOT/agent/prompts/review.md"
+          }
+        },
+        {
+          "type": "error",
+          "message": "Prompt template path does not exist",
+          "path": "$ROOT/work/proj/nope.md"
+        }
+      ]
+    },
+    "agentsFiles": [],
+    "systemPrompt": "inline system text",
+    "systemPromptSource": null,
+    "appendSystemPrompt": [
+      "append text",
+      "append from file"
+    ],
+    "appendSystemPromptSources": [
+      "$ROOT/work/proj/append-file.md"
+    ]
+  },
+  {
+    "name": "no-prompts",
+    "skills": {
+      "skills": [
+        {
+          "name": "proj-skill",
+          "description": "Project skill",
+          "filePath": "$ROOT/work/proj/.oino/skills/proj-skill/SKILL.md",
+          "baseDir": "$ROOT/work/proj/.oino/skills/proj-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.oino/skills/proj-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.oino"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "agent-skill",
+          "description": "Project agents skill",
+          "filePath": "$ROOT/work/proj/.agents/skills/agent-skill/SKILL.md",
+          "baseDir": "$ROOT/work/proj/.agents/skills/agent-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.agents/skills/agent-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "nested",
+          "description": "nested md in agents mode",
+          "filePath": "$ROOT/work/proj/.agents/skills/nested/notes.md",
+          "baseDir": "$ROOT/work/proj/.agents/skills/nested",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/.agents/skills/nested/notes.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "parent-skill",
+          "description": "Parent agents skill",
+          "filePath": "$ROOT/work/.agents/skills/parent-skill/SKILL.md",
+          "baseDir": "$ROOT/work/.agents/skills/parent-skill",
+          "sourceInfo": {
+            "path": "$ROOT/work/.agents/skills/parent-skill/SKILL.md",
+            "source": "auto",
+            "scope": "project",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/.agents"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "alpha",
+          "description": "Alpha skill",
+          "filePath": "$ROOT/agent/skills/alpha/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/alpha",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/alpha/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "skills",
+          "description": "Beta standalone",
+          "filePath": "$ROOT/agent/skills/beta.md",
+          "baseDir": "$ROOT/agent/skills",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/beta.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "flagged",
+          "description": "Hidden from model",
+          "filePath": "$ROOT/agent/skills/flagged/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/flagged",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/flagged/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": true
+        },
+        {
+          "name": "gamma-x",
+          "description": "Gamma in sub",
+          "filePath": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+          "baseDir": "$ROOT/agent/skills/sub/gamma",
+          "sourceInfo": {
+            "path": "$ROOT/agent/skills/sub/gamma/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/agent"
+          },
+          "disableModelInvocation": false
+        },
+        {
+          "name": "home-skill",
+          "description": "From home agents",
+          "filePath": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+          "baseDir": "$ROOT/home/.agents/skills/home-skill",
+          "sourceInfo": {
+            "path": "$ROOT/home/.agents/skills/home-skill/SKILL.md",
+            "source": "auto",
+            "scope": "user",
+            "origin": "top-level",
+            "baseDir": "$ROOT/home/.agents"
+          },
+          "disableModelInvocation": false
+        }
+      ],
+      "diagnostics": [
+        {
+          "type": "warning",
+          "message": "description is required",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not start or end with a hyphen",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "name must not contain consecutive hyphens",
+          "path": "$ROOT/agent/skills/bad/SKILL.md"
+        },
+        {
+          "type": "warning",
+          "message": "Flow sequence in block collection must be sufficiently indented and end with a ] at line 1, column 16:\n\nname: [unclosed\n               ^\n",
+          "path": "$ROOT/agent/skills/badyaml/SKILL.md"
+        },
+        {
+          "type": "collision",
+          "message": "name \"alpha\" collision",
+          "path": "$ROOT/agent/skills/dup/SKILL.md",
+          "collision": {
+            "resourceType": "skill",
+            "name": "alpha",
+            "winnerPath": "$ROOT/agent/skills/alpha/SKILL.md",
+            "loserPath": "$ROOT/agent/skills/dup/SKILL.md"
+          }
+        }
+      ]
+    },
+    "prompts": {
+      "prompts": [
+        {
+          "name": "cli",
+          "description": "cli prompt",
+          "content": "cli prompt",
+          "sourceInfo": {
+            "path": "$ROOT/work/proj/cli.md",
+            "source": "local",
+            "scope": "temporary",
+            "origin": "top-level",
+            "baseDir": "$ROOT/work/proj"
+          },
+          "filePath": "$ROOT/work/proj/cli.md"
+        }
+      ],
+      "diagnostics": []
+    },
+    "agentsFiles": [
+      {
+        "path": "$ROOT/agent/AGENTS.md",
+        "content": "agent rules"
+      },
+      {
+        "path": "$ROOT/work/AGENTS.md",
+        "content": "work rules"
+      },
+      {
+        "path": "$ROOT/work/proj/AGENTS.override.md",
+        "content": "override wins"
+      }
+    ],
+    "systemPrompt": "project system",
+    "systemPromptSource": "$ROOT/work/proj/.oino/SYSTEM.md",
+    "appendSystemPrompt": [
+      "agent append"
+    ],
+    "appendSystemPromptSources": [
+      "$ROOT/agent/APPEND_SYSTEM.md"
+    ]
+  },
+  {
+    "name": "worktree-shadowing",
+    "skills": {
+      "skills": [],
+      "diagnostics": []
+    },
+    "prompts": {
+      "prompts": [],
+      "diagnostics": []
+    },
+    "agentsFiles": [
+      {
+        "path": "$ROOT/repo/wt/AGENTS.md",
+        "content": "worktree rules"
+      }
+    ],
+    "systemPrompt": null,
+    "systemPromptSource": null,
+    "appendSystemPrompt": [],
+    "appendSystemPromptSources": []
+  }
+]

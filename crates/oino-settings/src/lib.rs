@@ -15,7 +15,7 @@
 //! | [`json`] | `deepMergeSettings`, `migrateSettings` | merge/migrate/path helpers over [`JsonObject`] |
 //! | [`tools`] | `DEFAULT_TOOL_NAMES`, tool modifiers | [`tools::resolve_default_tools`], [`tools::apply_tool_modifiers`], [`tools::tool_list_error`] |
 //! | [`paths`] | `config.ts`, `utils/paths.ts` | [`paths::agent_dir`], [`paths::project_dir`], file-name constants, [`paths::env`] names, tilde/`file://` resolution |
-//! | [`storage`] | `proper-lockfile` use | [`storage::write_atomic`] (also used for other agent-dir files) |
+//! | [`storage`] | `proper-lockfile` use | [`storage::FileLock`] (`<file>.lock`), [`storage::write_atomic`] (shared with other agent-dir files) |
 //!
 //! # Semantics (pi parity)
 //!
