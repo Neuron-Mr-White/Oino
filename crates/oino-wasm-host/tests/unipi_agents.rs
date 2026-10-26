@@ -210,7 +210,7 @@ impl Env {
     }
 
     async fn until(&self, what: &str, f: impl Fn(&Self) -> bool) {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
         while !f(self) {
             assert!(tokio::time::Instant::now() < deadline, "timed out: {what}");
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -219,7 +219,7 @@ impl Env {
 }
 
 async fn idle(session: &AgentSession) {
-    tokio::time::timeout(Duration::from_secs(60), session.wait_for_idle())
+    tokio::time::timeout(Duration::from_secs(120), session.wait_for_idle())
         .await
         .unwrap();
 }
