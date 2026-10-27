@@ -2156,7 +2156,7 @@ Status column: **Match** = same behaviour; **Adapt** = same intent, Oino-specifi
 | 6 | Motion | 100–300 ms, low drama, hidden-window pause | 120/180/280 ms, reduce motion, ticker stops when idle | Match |
 | 7 | Workspace frames | sidebar + independent conversation / terminal / side frames, 4 px gaps, xl radius | flush unipi columns (A2 L1) | Adapt |
 | 8 | Sidebar width | 264 default/min, ≤ 50 % | same | Match |
-| 9 | Sidebar nav order | New Task → Search → Automations → Plugins → view switcher | New session → Search → Board → Extensions → view switcher | Adapt (Automations → Board) |
+| 9 | Sidebar nav order | New Task → Search → Automations → Plugins → view switcher | New session → Search → Board → Automations → Extensions → view switcher | Adapt (Automations after Board) |
 | 10 | Workspace groups, counts, pinned, unread dots | yes | §4.7 | Match |
 | 11 | Sidebar footer | settings, plan/usage badge, update | settings, update badge, model label, Unicrab glyph | Adapt |
 | 12 | Header | title, project, branch switcher, more menu, terminal/side toggles | §4.8 (branch read-only) | Adapt (no branch switching) |
@@ -2196,7 +2196,7 @@ Status column: **Match** = same behaviour; **Adapt** = same intent, Oino-specifi
 | 46 | Settings | full page, nav, forms in bordered groups | §5.7 + extension hub | Match |
 | 47 | Toasts | bottom stack, rounded-2xl, blur | bottom-right, `R_2XL`, 95 % opaque (no blur in GPUI) | Adapt |
 | 48 | Split panes | ≤ 4 panes, close ≠ stop | none: one visible session, others keep running (A2.18) | Diverge |
-| 49 | Automations / scheduled tasks | main view | Board (kanboard autowork) instead; cron not ported (D22) | Adapt |
+| 49 | Automations / scheduled tasks | main view | Native Automations page (cron view: job list, state colour+icon+word, run history + session links, create/edit with schedule presets) next to Board | Ported |
 | 50 | Bots (Feishu), coding-plan purchase, rewards, share links, whiteboard, office previews, CUA | product features | not built (out of Oino scope) | Diverge |
 | 51 | Mobile remote | single column, drawers instead of side tabs, QR pairing | §6 (drawers, sheets, M10 pairing) | Match |
 | 52 | Performance bar | 4 panes streaming without dropped frames | §2.11 (≥ 100 fps, 120 fps single) | Match |

@@ -92,7 +92,11 @@ Visible commands:
 | `/unipi:readme` | `/readme` | unipi.updater | Browse bundled README files |
 | `/unipi:changelog` | `/changelog` (core) | unipi.updater → core | Merged (§2) |
 | `/unipi:app` | `/app` | unipi.app-bridge | Session control centre (Desktop/Mobile side pane) |
-| `/unipi:cron` | — | — | Dropped earlier (D22) |
+| `/unipi:cron` | `/cron` | unipi.cron | Scheduled, unattended Oino runs — list/show/runs/run/stop/enable/disable/pause/resume/status/add/edit/remove ([docs/cron.md](../../../docs/cron.md)) |
+
+`/cron` is an Oino-native feature (owner decision 2026-10-28, superseding D22's drop): the
+unipi host scheduler's behaviour ported to `crates/oino-cron` + the `unipi.cron` component
+(unipi-port §3.24); no `unipi:` prefix, Oino wording everywhere (commands.md §1).
 
 Hidden runners (settings-hub actions and cross-component runners):
 

@@ -75,8 +75,11 @@ components (`unipi_settings.rs`); both ran in the gates.
 ## 4. Parity matrix — unipi 3.0.0
 
 All 23 packages plus `unipi.app-bridge` are ported and bundled (load order
-`unipi_kit::suite::LOAD_ORDER`). Not ported by decision (D22): `/cron`, browser
-skills/state, app push encryption, Herdr, the unipi desktop app.
+`unipi_kit::suite::LOAD_ORDER`), and cron is ported as an Oino-native feature (owner
+decision 2026-10-28, superseding D22): crate `oino-cron`, extension `unipi.cron`, the
+`oino cron` CLI (serve/install/…), `/cron`, and the desktop Automations page
+(unipi-port §3.24). Not ported by decision (D22): browser skills/state, app push
+encryption, Herdr, the unipi desktop app.
 Since `unipi-native`: feature commands have plain names (no `unipi:` prefix, no aliases;
 `/settings` and `/changelog` merged into the core built-ins, the Fusion picker is `/fusion`,
 [commands.md](commands.md)) and there is no legacy unipi support (no `~/.unipi` reads,
@@ -104,6 +107,7 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | compactor | ✅ | `llm` method lacks pi's previous-summary parameter (R1) |
 | footer | ✅ | |
 | updater | ✅ | never installs (by design); `/changelog` falls back to GitHub release notes when no `CHANGELOG.md` exists ([gui-qa-fix] QA-4) |
+| cron (Oino-native) | ✅ | scheduler crate + daemon + user service install, `/cron` + `cron_*` tools + skill + settings namespace, desktop Automations page (`docs/dev/v1/design/shots/desktop/66-automations.png`); verified by `scripts/round3/cron-e2e.sh` with the faux provider (every-minute job: 3 runs, sessions written; `at:` job; pause/resume; missed-run catch-up after the daemon stopped; install/uninstall in a scratch HOME) plus one real `oino/deepseek/deepseek-flash` run ([docs/cron.md](../../../docs/cron.md)) |
 | input-shortcuts | ✅ | TUI and desktop send editor intents; no composer-history push (Q2) |
 | fusion | ✅ | sidekick handoff verified (e2e + live); startup model not persisted to core settings (R4) |
 | watchdog | 🟡 | stuck detection + session caps + kill / background via `bash-detach` ✅; process stats Linux-only |

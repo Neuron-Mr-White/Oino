@@ -43,10 +43,13 @@ input-shortcuts, fusion, watchdog.
 | workflow | `unipi.workflow` | `workflow` | unipi-context | B3 |
 | dream | `unipi.dream` | `dream` | unipi-context | B3 |
 | kanboard | `unipi.kanboard` (+ crate `oino-kanboard`) | `kanboard` | unipi-kanboard | B3 |
+| cron (Oino-native) | `unipi.cron` (+ crate `oino-cron`) | `cron` | cron | B2 |
 
 Not ported (D22): `app-bridge` (replaced by `oino serve` multi-client + mobile app),
 `unipi` umbrella (replaced by bundling + load order above), `kanboard-bin` (replaced by the
-Oino installer shipping `oino-kanboard`).
+Oino installer shipping `oino-kanboard`). **Cron is ported after all** (owner decision
+2026-10-28): the unipi host scheduler's behaviour is Oino-native as `crates/oino-cron` +
+extension `unipi.cron` (§3.24) — the D22 drop of `/cron` is superseded.
 
 Batch readiness: B1 needs wit-v1 SDK + core-runtime host services for registry/session/ui/
 settings/bus/http. B2 needs `agents`, `process`, `tasks`. B3 needs B2 subagents (for
@@ -134,9 +137,10 @@ structured-output prompt against a configured model (opt-in, never default).
 
 ### 2.5 Cuts and changes (D22)
 
-- Dropped: `/cron`, `cron` and `browser` bundled skills, browser-state context,
+- Dropped: `browser` bundled skill, browser-state context,
   notify app-push encryption, Herdr integration (`herdrSync`, `herdr:*`), app-bridge,
-  `/unipi-app-session`.
+  `/unipi-app-session`. (`/cron` was dropped here originally; it is back as an Oino-native
+  feature, §3.24.)
 - Budget caps (Oino `budget`) move into watchdog (§3.10).
 - Kanboard: no web UI; board panel (§3.16).
 - Updater: Oino releases (§3.20).
@@ -341,6 +345,49 @@ Caps: C13 C15 C17. Periodic check (`checkIntervalMs`, default 1 h) of
 (no in-extension install; notification tells the user to run `oino update` or use the desktop
 updater); `/readme [extension]` (bundled `docs` of that extension as `markdown` panel),
 `/changelog` (bundled Oino CHANGELOG).
+
+### 3.24 `unipi.cron` + `oino-cron` (cron, Oino-native; supersedes D22)
+
+Port of the unipi host scheduler (UNI-314–319) as an Oino-native feature (owner decision
+2026-10-28). Behaviour is unipi's; the machinery is Oino's (no unipi host app, no phone
+sharing, no bridge wake).
+
+**Crate `crates/oino-cron`** (lib): job model (`prompt`, `cwd`, model/thinking, 6-field cron
+with seconds or `at:<RFC3339>` + plain-language forms, tz, enabled, `overlap`
+skip/allow, `missed` run-latest/skip, time limit, cost cap, notify), atomic JSON storage
+under `~/.oino/cron/` (`jobs.json`, `runs/<job>/<run>.json|.log` capped at 64 KiB,
+`settings.json`), run history with bounded retention, execution of each fire as a headless
+`oino -p --mode json --session sessions/--<cwd>--/<ts>_<run id>.jsonl` child (its own
+session file, so runs are browsable; summary/cost parsed from the JSON stream), missed-run
+collapse within a window,
+FIFO concurrency gate, notifications through the user's `unipi.notify` channels (ntfy /
+gotify / telegram, secrets from the secret store), single-owner flock + loopback TCP
+control socket, service install (systemd --user / launchd / schtasks).
+
+**Extension `unipi.cron`** (`extensions/unipi/cron`): manifest `cron: true` (WIT
+`oino:extension/cron.call(op, payload)`); `/cron` with the unipi subcommands **plus**
+`add`/`edit`/`remove` (key=value form); job-id argument completions (5 s cache); agent
+tools `cron_list` (read-only), `cron_add`, `cron_update`, `cron_remove`, `cron_run` (write
+tools go through the normal permission gate — approval in ask/auto mode); settings
+namespace `cron` mirroring the scheduler block (write-through, like unipi's settings.ts);
+bundled skill `cron` (Oino wording).
+
+**CLI** (`oino cron …`, no daemon needed for storage ops): `serve`, `install`, `uninstall`,
+`status`, `list`, `show`, `add`, `edit`, `remove`, `enable`, `disable`, `run`, `stop`,
+`runs`, `log`, `pause`, `resume`, `settings`, `test-notify`; every op takes `--json`.
+`run`/`stop` route to the live scheduler (daemon or embedded) and say how to start one.
+
+**Desktop**: the Automations page (design.md §8 #49; ZCode Automations layout, unipi look
+A2) — job list with state colour+icon+word, next/last run, run history with links to run
+sessions, create/edit form (schedule presets + raw), run now/stop/pause/resume,
+enable/disable, sidebar entry (⌘4). The app embeds the scheduler as the single owner
+(owner lock) or attaches to the daemon as a client.
+
+**unipi deltas** (documented, not cuts): per-job `overlap`/`missed` policies replace the
+fixed behaviour; `run`/`stop`/`status` need a live scheduler while storage ops work
+daemonless; the `session_link` wake becomes the bus topic `unipi:cron:run-finished`
+published by an embedded scheduler (a request remains for `unipi.notify` to consume it);
+phone sharing (`enabled`/`devices`/ntfy topic) is dropped (no unipi phone app).
 
 ## 4. Oino built-ins replaced (charter: all removed)
 
