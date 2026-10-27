@@ -1390,12 +1390,11 @@ impl Render for Workspace {
         // radius while the window floats (design.md §3.1).
         let csd = crate::components::window_chrome::client_decorated(window);
         let floating = csd && crate::components::window_chrome::floating(window);
-        if csd && window.client_inset() != Some(px(space::S0)) {
-            // No invisible shadow margin: the frames reach the window edge and our own resize
-            // edges (`WINDOW_INSET`) handle resizing.
-            window.set_client_inset(px(space::S0));
-        }
-        let edges = if floating {
+        // The client inset is owned by gpui-kit's `Root` (`window_border`), which sets it to
+        // its shadow size on every frame and draws the resize band. Setting it here as well made
+        // the two fight each frame: the X11 frame extents flipped between 0 and the shadow size,
+        // mutter resized the window by 2x the shadow each time, and the window flashed.
+        let edges = if floating && window.client_inset().is_none() {
             crate::components::window_chrome::resize_edges(size::WINDOW_INSET)
         } else {
             Vec::new()
