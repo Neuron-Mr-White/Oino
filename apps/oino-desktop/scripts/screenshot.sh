@@ -7,7 +7,8 @@
 # 05-palette 06-settings 07-board 08-light-theme 09-info-overlay, plus 10-plan-review
 # 11-side-review 12-model-menu 13-settings-hub 14-extensions 15-split-panes 16-narrow, and
 # 17-30 for the review fix-up (terminal, browser, light theme, find, completion, toasts, bottom
-# frame, side tabs, menus, confirm dialog, onboarding, 720 px).
+# frame, side tabs, menus, confirm dialog, onboarding, 720 px); 66-automations is the cron
+# (Automations) page.
 # Needs: Xvfb, python3-pil (XCB), mesa Vulkan (lvp). Each shot runs its own app instance.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -76,4 +77,6 @@ want 27-session-menu && shoot 27-session-menu 10 OINO_DESKTOP_THEME=dark OINO_DE
 want 28-delete-confirm && shoot 28-delete-confirm 10 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=delete
 want 29-onboarding && shoot 29-onboarding 8 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_ONBOARDING=1
 want 30-720 && SHOT_W=720 SHOT_H=600 shoot 30-720 30 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=run OINO_DESKTOP_DEMO_APPROVE_MS=9000
+# Cron (Automations) page — [cron] round-3 (docs/cron.md, unipi-port §3.24).
+want 66-automations && shoot 66-automations 18 OINO_DESKTOP_THEME=dark OINO_DESKTOP_DEMO_SCENE=welcome OINO_DESKTOP_OPEN=cron
 true

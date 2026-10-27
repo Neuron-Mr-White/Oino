@@ -31,7 +31,7 @@ use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
 use crate::host::SessionHost;
-use crate::model::cron::{self, CronJob, CronRun, CronSnapshot, short_time};
+use crate::model::cron::{self, CronJob, CronRun, CronSnapshot};
 use crate::rt::Tokio;
 use crate::views::shell::{AppShell as Workspace, Route};
 
@@ -137,6 +137,7 @@ impl Workspace {
                 match (status, list) {
                     (Ok(Ok(status)), Ok(Ok(list))) => {
                         ws.cron_ui.snapshot = Some(cron::snapshot(&status, &list));
+                        ws.cron_ensure_selection(cx);
                     }
                     (Ok(Err(e)), _) | (_, Ok(Err(e))) => {
                         ws.toast(ToastKind::Error, None, e, cx);
@@ -200,6 +201,7 @@ impl Workspace {
             let _ = this.update(cx, |ws, cx| {
                 if let (Ok(Ok(status)), Ok(Ok(list))) = (status, list) {
                     ws.cron_ui.snapshot = Some(cron::snapshot(&status, &list));
+                    ws.cron_ensure_selection(cx);
                     cx.notify();
                 }
             });
@@ -227,6 +229,31 @@ impl Workspace {
         self.cron_ui.selected = Some(id.to_owned());
         self.cron_load_runs(cx);
         cx.notify();
+    }
+
+    /// Keeps a job selected after a refresh: the first one when none is (so the page
+    /// always shows a run history), nothing when the jobs are gone.
+    fn cron_ensure_selection(&mut self, cx: &mut Context<Self>) {
+        let ids: Vec<String> = self
+            .cron_ui
+            .snapshot
+            .as_ref()
+            .map(|s| s.jobs.iter().map(|j| j.id.clone()).collect())
+            .unwrap_or_default();
+        if self
+            .cron_ui
+            .selected
+            .as_ref()
+            .is_some_and(|id| ids.contains(id))
+        {
+            return;
+        }
+        if let Some(id) = ids.first().cloned() {
+            self.cron_select(&id, cx);
+        } else {
+            self.cron_ui.selected = None;
+            self.cron_ui.runs.clear();
+        }
     }
 
     fn cron_run_now(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -616,38 +643,14 @@ impl Workspace {
             ("running", t.working(), IconName::Loader)
         } else if !job.enabled {
             ("off", t.fg_subtlest(), IconName::CircleSlash)
-        } else if self
-            .cron_ui
-            .runs
-            .first()
-            .is_some_and(|r| r.job_id == job.id && r.is_failure())
-        {
+        } else if job.last_run_failed() {
             ("failing", t.danger(), IconName::TriangleAlert)
-        } else if self
-            .cron_ui
-            .runs
-            .first()
-            .is_some_and(|r| r.job_id == job.id && r.status == "ok")
-        {
+        } else if job.last_status.as_deref() == Some("ok") {
             ("ok", t.success(), IconName::Check)
         } else {
             ("scheduled", t.info(), IconName::CalendarClock)
         };
-        let last = self
-            .cron_ui
-            .runs
-            .iter()
-            .find(|r| r.job_id == job.id)
-            .map_or_else(
-                || "—".to_owned(),
-                |r| {
-                    format!(
-                        "{} {}",
-                        r.status,
-                        short_time(chrono_millis(r.fired_at).as_deref())
-                    )
-                },
-            );
+        let last = job.last_run_text();
         let id = job.id.clone();
         let id2 = job.id.clone();
         let enabled = job.enabled;
@@ -1172,25 +1175,4 @@ fn labeled_input(
                 .child(label.to_owned()),
         )
         .child(Input::new(&input.clone()))
-}
-
-/// `fired_at` unix ms → RFC3339 (approximation for the short list form; the scheduler
-/// already reports RFC3339 for `next_fire`, and runs sort newest-first regardless).
-fn chrono_millis(ms: u64) -> Option<String> {
-    let secs = i64::try_from(ms / 1000).ok()?;
-    let days = secs.div_euclid(86_400);
-    let rest = secs.rem_euclid(86_400);
-    let (h, m) = (rest / 3600, (rest % 3600) / 60);
-    // Epoch-day → Y-M-D (civil from days algorithm).
-    let z = 719_468 + days;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let mth = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if mth <= 2 { y + 1 } else { y };
-    Some(format!("{y:04}-{mth:02}-{d:02}T{h:02}:{m:02}:00Z"))
 }

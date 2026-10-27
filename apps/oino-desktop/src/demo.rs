@@ -32,6 +32,9 @@ use oino_client::{
 };
 use oino_core::events::ClientEvent;
 use oino_core::ui::{UiAnswer, UiResponse};
+use oino_extension_api::RawJson;
+use oino_extension_api::cron::CronHost;
+use oino_extension_api::runtime::BoxFut;
 use oino_ui::host::{
     AppSettings, ExtensionInfo, HostError, HostInfo, OpenRequest, OpenedSession, SessionHost,
     ThemePref,
@@ -948,6 +951,81 @@ fn history() -> Vec<AgentMessage> {
     .collect()
 }
 
+/// Canned cron data for the Automations page in `--demo` mode.
+struct DemoCronHost;
+
+impl CronHost for DemoCronHost {
+    fn call(
+        &self,
+        op: &str,
+        payload: RawJson,
+    ) -> BoxFut<'_, Result<RawJson, oino_extension_api::HostError>> {
+        let op = op.to_owned();
+        let id = payload
+            .to_value()
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_owned();
+        Box::pin(async move {
+            let reply = match op.as_str() {
+                "status" => serde_json::json!({
+                    "paused": false,
+                    "concurrency": 2,
+                    "jobs": [
+                        {"id": "inbox-digest", "enabled": true, "running": false,
+                         "next_fire": "2026-10-28T09:00:00+01:00",
+                         "last_status": "ok", "last_fire": 1_793_088_000_000_u64},
+                        {"id": "dep-audit", "enabled": true, "running": true,
+                         "next_fire": "2026-10-29T06:30:00+01:00",
+                         "last_status": "ok", "last_fire": 1_793_169_000_000_u64},
+                        {"id": "weekly-report", "enabled": false, "running": false},
+                    ],
+                }),
+                "list" => serde_json::json!({"jobs": [
+                    {"id": "inbox-digest", "name": "Inbox digest",
+                     "schedule": "0 0 9 * * *", "tz": "Europe/Berlin", "enabled": true,
+                     "cwd": "~/jobs/digest", "prompt": "Summarise the inbox; write the digest to notes/digest.md"},
+                    {"id": "dep-audit", "name": "Dependency audit",
+                     "schedule": "0 30 6 * * MON", "tz": "Europe/Berlin", "enabled": true,
+                     "cwd": "~/src/app", "prompt": "Check dependencies for CVEs; report"},
+                    {"id": "weekly-report", "name": "Weekly report", "schedule": "0 0 18 * * FRI",
+                     "tz": "Europe/Berlin", "enabled": false, "cwd": "~/src/app", "prompt": "Write the weekly report"},
+                ]}),
+                "runs" => serde_json::json!({"runs": demo_runs(&id)}),
+                _ => serde_json::json!({}),
+            };
+            Ok(RawJson::from_json_value(&reply))
+        })
+    }
+}
+
+/// The demo run history of one job (newest first).
+fn demo_runs(job_id: &str) -> Vec<serde_json::Value> {
+    match job_id {
+        "inbox-digest" => vec![
+            serde_json::json!({"id": "c18ac0", "job_id": "inbox-digest", "status": "ok",
+             "fired_at": 1_793_088_000_000_u64, "started_at": 1_793_088_001_000_u64,
+             "ended_at": 1_793_088_095_000_u64,
+             "summary": "12 threads, 3 needing replies. Digest written to notes/digest.md.",
+             "session_path": "/demo/sessions/c18ac0.jsonl", "cost_usd": 0.012}),
+            serde_json::json!({"id": "c17bb1", "job_id": "inbox-digest", "status": "failed",
+             "fired_at": 1_793_001_600_000_u64, "reason": "oino exited with status 1"}),
+        ],
+        "dep-audit" => vec![
+            serde_json::json!({"id": "c1902c", "job_id": "dep-audit", "status": "ok",
+             "fired_at": 1_793_169_000_000_u64, "started_at": 1_793_169_001_000_u64,
+             "ended_at": 1_793_169_212_000_u64,
+             "summary": "2 advisories (lodash, serde_json). Report written to notes/audit.md.",
+             "session_path": "/demo/sessions/c1902c.jsonl", "cost_usd": 0.041}),
+            serde_json::json!({"id": "c1902b", "job_id": "dep-audit", "status": "failed",
+             "fired_at": 1_792_573_200_000_u64,
+             "reason": "exceeded the 1800s time limit", "cost_usd": 0.31}),
+        ],
+        _ => Vec::new(),
+    }
+}
+
 impl SessionHost for DemoHost {
     fn info(&self) -> HostInfo {
         HostInfo {
@@ -1108,6 +1186,10 @@ impl SessionHost for DemoHost {
             disabled.push(id.to_owned());
         }
         Ok(())
+    }
+
+    fn cron_host(&self) -> Option<Arc<dyn CronHost>> {
+        Some(Arc::new(DemoCronHost))
     }
 
     fn extensions_dir(&self) -> Option<std::path::PathBuf> {

@@ -369,6 +369,7 @@ impl AppShell {
             ("switch", _) => self.open_switch(window, cx),
             ("settings", ns) => self.open_settings((!ns.is_empty()).then_some(ns), window, cx),
             ("board", _) => self.open_board(window, cx),
+            ("cron", _) => self.open_cron(window, cx),
             ("extensions", _) => self.run_app_action("extensions", window, cx),
             ("model", _) => self.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
             ("needs", _) => {
@@ -1175,6 +1176,7 @@ impl AppShell {
                 cx.notify();
             }
             "board" => self.open_board(window, cx),
+            "cron" => self.open_cron(window, cx),
             "extensions" => {
                 self.route = Route::Extensions;
                 self.settings_view = None;

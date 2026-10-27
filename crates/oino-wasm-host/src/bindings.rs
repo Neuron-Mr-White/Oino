@@ -50,6 +50,7 @@ pub(crate) fn add_oino_to_linker(
     e::bus::add_to_linker::<HostState, HostState>(linker, get)?;
     e::services::add_to_linker::<HostState, HostState>(linker, get)?;
     e::browser::add_to_linker::<HostState, HostState>(linker, get)?;
+    e::cron::add_to_linker::<HostState, HostState>(linker, get)?;
     e::provider_host::add_to_linker::<HostState, HostState>(linker, get)?;
     Ok(())
 }
