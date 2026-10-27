@@ -753,8 +753,10 @@ Rules for all batches:
 - **First landing**: `gui-fix-shell` lands **S0 tokens + primitives first**: A2.2–A2.5 in
   `design/*`, plus `button`, `chip`, `card`, `section_label`, `kbd`, `page_header`,
   `DetailHeader` and dialog. Others build on them.
-- **What can start at once**: the crash and freeze fixes (GA-1/40, GA-30/42, GA-32) start
-  immediately in every batch, because they need no tokens.
+- **What can start at once**: the crash and freeze fixes (GA-1 + core GA-40, GA-30 + core
+  GA-42, GA-32) start immediately, because they need no tokens.
+- **Area E (core / backend) ids GA-40…GA-46** belong to the fifth batch **core-gui-gaps**
+  (below). The GUI batches only consume its results.
 - **Mobile**: `apps/oino-ui/src/mobile/**` is not in these batches (follow-up
   `gui-fix-mobile` per A2.19). Shared component changes must keep it compiling.
 - **Screenshots**: refresh `docs/dev/v1/design/shots/desktop/*` for every visual change, and
@@ -766,17 +768,17 @@ Files owned:
 - `apps/oino-ui/src/components/{conversation.rs, composer.rs, dock.rs, query_rail.rs, timeline/{mod,user,tool,cards}.rs, interaction/{mod,approval,question,plan,dock_dialog}.rs}`
 - `apps/oino-ui/src/views/session_pane.rs`
 - `apps/oino-ui/src/model/{composer,timeline,transcript,tools,interaction,dialog,coalesce}.rs`
-- core: `crates/oino-core/src/session/frontend.rs`, `crates/oino-core/src/extensions/runner.rs`
-- wasm host: `crates/oino-wasm-host/src/instance.rs`
 - extension: `extensions/unipi/workflow` (active-tools restore only)
 
-GA ids (17): **GA-1, GA-40** (P0 crash), **GA-30, GA-42** (P0 orphan approvals), GA-2, GA-3,
-GA-4, GA-5, GA-6, GA-7, GA-21, GA-25, GA-27, GA-28, GA-29, GA-8, GA-9.
+(The core files behind GA-40/GA-42 belong to core-gui-gaps.)
+
+GA ids (15): **GA-1** (P0 crash), **GA-30** (P0 orphan approvals), GA-2, GA-3, GA-4, GA-5,
+GA-6, GA-7, GA-21, GA-25, GA-27, GA-28, GA-29, GA-8, GA-9.
 
 | Step | Files | Change |
 |---|---|---|
-| C1 crash | `views/session_pane.rs:966-981` (`on_text_changed`) → spawn on the stored tokio `Handle` (`rt.rs`); `crates/oino-core/src/session/frontend.rs:447` bare `tokio::spawn` → the session's runtime handle | GA-1, GA-40; add a test that runs `editor_event` from a non-tokio thread |
-| C2 interactions never time out | `crates/oino-wasm-host/src/instance.rs:401` (no deadline while a handler awaits a UI dialog; deadline paused per dialog), `crates/oino-core/src/extensions/runner.rs:361` (on handler death send `extension_ui_dismiss{reason:"cancelled"}`), `model/dialog.rs` (drop cards on dismiss; queue "1 of N") | GA-30, GA-42 |
+| C1 crash | `views/session_pane.rs:966-981` (`on_text_changed`) → spawn on the stored tokio `Handle` (`rt.rs`), never on GPUI's `background_executor` | GA-1 (core side is K1 / GA-40) |
+| C2 no orphan cards | `model/dialog.rs`, `components/interaction/mod.rs` (drop a card on `extension_ui_dismiss`; queue "1 of N"; a stale card never blocks send: the composer refuses only while a live request is pending) | GA-30 (handler deadline is K2 / GA-42) |
 | C3 input integrity | `views/session_pane.rs` (`pending_text` / `set_value` race after `/`; completion refresh must not overwrite typed keys), `model/composer.rs:42` `intent()` dispatches pi built-ins `/new /compact /model /resume /name /fork /tree /copy /export /reload …` locally; ↓ on empty editor → `emptyArrowDown` editor event → tray panel, `/unipi:subagents` opens the tray tab | GA-2, GA-3, GA-21 |
 | C4 composer look | `components/composer.rs` (A2.11 shell R 26, placeholder, attach circle, mode chip from `unipi:workflow:status` topic, model chip with ring → control centre, send/stop circle + chevron Steer/Queue, glance frame slot rendering `setFrame`/`setFooter` provided by `meta_row.rs`), completion menu (one group per source, enchanted replaces base, colour tags) | GA-4, GA-25 (glance slot shared with GA-26) |
 | C5 timeline look | `components/timeline/{user,tool,cards,mod}.rs`, `model/{timeline,tools,transcript}.rs` (A2.10: bubble, prose tokens, **fold line per turn** model, tool row 32, tool body, harness card collapsed by default for memory/bg notification/plan-mode reminder/kanboard tables via OUS `table`, turn end, Changes this turn card, inline error row, remove gutter glyph artifact) | GA-6, GA-8, GA-9 (dedupe "Compaction failed:", no "Switch model" for non-model errors) |
@@ -789,15 +791,14 @@ GA-4, GA-5, GA-6, GA-7, GA-21, GA-25, GA-27, GA-28, GA-29, GA-8, GA-9.
 Files owned:
 - `apps/oino-ui/src/components/{side_pane.rs, browser.rs (host chrome only, not the webview crate), terminal.rs, log_view.rs, tabs.rs}`
 - the diff viewer inside `side_pane.rs`
-- `crates/oino-modes` `_oino/agents` feed (GA-44)
 
-GA ids (5): GA-13, GA-14, GA-15, GA-18, GA-44.
+GA ids (4): GA-13, GA-14, GA-15, GA-18. (The `_oino/agents` feed, GA-44, is core-gui-gaps K5.)
 
 | Step | Files | Change |
 |---|---|---|
 | P1 look | `tabs.rs`, `side_pane.rs` | Side pane = flush right column (rule `line_soft`), default 440, min 320. `DetailHeader` (56) per tab content instead of a ZCode tab bar for Browser/Review/Agent; tab strip only when > 1 tab: 38 px pills (chip look), close ✕ on hover; launcher `+` → anchored menu (Review, Files, Plan, Tree, Browser, Terminal, extension panels) |
 | P2 routing | `side_pane.rs:152` (`openPanel sidePane` for `unipi.app-bridge/control`), `side_pane.rs:338-345` (`+` opens the launcher) | GA-18, GA-13 |
-| P3 tasks + agents | `side_pane.rs` Tasks tab reads the `unipi:bg:tasks` topic (rows: name, command mono 12, status capsule, elapsed, logs/kill pills; empty state per A2.14); Agent tab = read-only child timeline using the conversation batch's timeline components once `_oino/agents` lands | GA-14, GA-15, GA-44 |
+| P3 tasks + agents | `side_pane.rs` Tasks tab reads the `unipi:bg:tasks` topic (rows: name, command mono 12, status capsule, elapsed, logs/kill pills; empty state per A2.14); Agent tab = read-only child timeline using the conversation batch's timeline components once K5 lands; until then a compact EmptyState "Live view needs the agents feed" | GA-14, GA-15 |
 | P4 browser host | `browser.rs` | `DetailHeader`-style URL row (40 high pill field, back/forward/reload/open-externally 32 round), agent-driving strip "Agent is using the browser · Take over" (`attention_surface`), localhost chip in the chat (`m7-desktop-browser-pane.png`) |
 | P5 terminal / diff / log | `terminal.rs`, `log_view.rs`, diff in `side_pane.rs` | Terminal bg surface-1, tab strip 38 (term tabs, not sessions), ANSI from tokens; diff with `diff_*_bg/_fg`, file card radius 16; log view mono 11.5/17, thin scrollbars A2.5 |
 
@@ -812,35 +813,35 @@ Files owned:
 - extensions: `extensions/unipi/{info-screen, updater, memory, kanboard}` (only the parts
   named here)
 
-GA ids (12): **GA-17** (P0 board), **GA-19a** (P0 readme/changelog content), **GA-32** (P0
-mascot crash), GA-20, GA-22, GA-23, GA-26, GA-43, GA-10, GA-12, GA-31, GA-39.
+GA ids (11): **GA-17** (P0 board), **GA-19** (P0 readme/changelog), **GA-32** (P0 mascot
+crash), GA-20, GA-22, GA-23, GA-26, GA-10, GA-12, GA-31, GA-39.
 
 | Step | Files | Change |
 |---|---|---|
 | U1 mascot crash | `views/mascot.rs` (render from a `MascotSnapshot` passed in; never read `Workspace`/`AppShell` inside its update), plus a request to shell: `sync_mascot` defers `MascotView::open` with `cx.defer` | GA-32 |
-| U2 board | `views/board.rs:96,246` (`/unipi:kanboard open`, New task → native New task dialog or `/unipi:kanboard-add`), `components/ous/kanban.rs` (A2.17 board look: lanes, cards, lane strip, dashed empty, FAB) — needs GA-41 (shell) for the binary | GA-17, GA-20 |
+| U2 board | `views/board.rs:96,246` (`/unipi:kanboard open`, New task → native New task dialog or `/unipi:kanboard-add`), `components/ous/kanban.rs` (A2.17 board look: lanes, cards, lane strip, dashed empty, FAB) — needs K3 (GA-41) for the binary | GA-17, GA-20 |
 | U3 OUS panels | `components/ous/mod.rs` (dialog look per A2.12; panel `keys` → footer legend + key bindings, never buttons; title vs footer hint drawn once; Esc closes/back; `meter` values formatted (no raw floats); `barChart`/`sparkline` drawn; tabs as segmented pills), `model/ous.rs` | GA-22, GA-23 |
 | U4 tray | `model/ui_state.rs` (editorReplace panel lifecycle), `ous/mod.rs` tray rendering in the composer slot (radius 26 shell, segmented tabs, rows 56) | GA-22 (tray part) |
 | U5 footer glance | `components/meta_row.rs` (A2.11 glance frame: top/bottom segments with 1 px dividers, wordmark brand, toned numbers, priority dropping, never wraps; session strip summary for `DetailHeader`) | GA-26 |
-| U6 shortcuts state | `model/ui_state.rs:603` keep `setShortcuts` per extension, expose a table to shell's key dispatcher | GA-43 |
+| U6 shortcuts table | `model/ui_state.rs:603` exposes the per-extension `setShortcuts` table delivered by K4 to shell's key dispatcher (S3) | — (consumes K4 / GA-43) |
 | U7 status | `components/status_panel.rs`, `model/status.rs` (plan todos only from workflow plan, not assistant questions; working-mode chip + Progress sheet per L10; status panel opt-in) | GA-10 |
 | U8 Unicrab + empty | `design/brand.rs` (sprite + anim tables from unipi JSON), `components/unicrab.rs` (rig, states, header crab 28 with badge, needs-you drawer), `components/empty.rs` (A2.14), new `design/lore.rs` | L7, L8 |
-| U9 extension content | `extensions/unipi/updater` (bundled README/CHANGELOG paths vs `oino_bundle::DOCS`), `extensions/unipi/info-screen` (local hour greeting, usage index), `extensions/unipi/memory` (import prompt once, not per session), hint browser "learned" toggle | GA-19a, GA-12, GA-39, GA-31 |
+| U9 extension content | `extensions/unipi/updater` (bundled README/CHANGELOG paths vs `oino_bundle::DOCS`), `extensions/unipi/info-screen` (local hour greeting, usage index), `extensions/unipi/memory` (import prompt once, not per session), hint browser "learned" toggle; the Extensions page Readme button (`views/extensions_page.rs:92`, shell-owned file) is a one-line hunk landed by shell in S4 under GA-19 | GA-19, GA-12, GA-39, GA-31 |
 
 **gui-fix-shell**: shell, sidebar, header, palette, settings, extensions, onboarding,
 theme/tokens.
 
 Files owned:
-- `apps/oino-ui/src/views/{shell.rs, mod.rs, settings_page.rs, extensions_page.rs, onboarding.rs, soak.rs}`
+- `apps/oino-ui/src/views/{shell.rs, mod.rs, settings_page.rs, extensions_page.rs, onboarding.rs}`
 - `apps/oino-ui/src/components/{sidebar.rs, header.rs, window_chrome.rs, palette.rs, keys.rs, menu.rs, dialog.rs, toast.rs, button.rs, badge.rs, controls.rs, tooltip.rs, settings.rs, model_menu.rs, mod.rs}` and the new `components/{page_header,chip,card,section_label,kbd}.rs`
-- `apps/oino-ui/src/design/{tokens,theme,type_scale,motion,icons,ticker,tones,tests,syntax,perf,mod}.rs`
+- `apps/oino-ui/src/design/{tokens,theme,type_scale,motion,icons,ticker,tones,tests,syntax,mod}.rs`
 - `apps/oino-ui/src/{host.rs, platform.rs, lib.rs}`
 - `apps/oino-ui/src/model/{palette,session,sessions}.rs`
-- all of `apps/oino-desktop/src/*`
+- `apps/oino-desktop/src/{main.rs, prefs.rs, demo.rs}`
 - `crates/oino-resources/src/discovery.rs`
 
-GA ids (13): **GA-16** (P0 shortcuts dead), **GA-19b** (Extensions Readme button), GA-35,
-GA-36, GA-11, GA-24, GA-33, GA-34, GA-37, GA-38, GA-41, GA-45, GA-46.
+GA ids (9): **GA-16** (P0 shortcuts dead), GA-35, GA-36, GA-11, GA-24, GA-33, GA-34, GA-37,
+GA-38.
 
 | Step | Files | Change |
 |---|---|---|
@@ -848,14 +849,49 @@ GA-36, GA-11, GA-24, GA-33, GA-34, GA-37, GA-38, GA-41, GA-45, GA-46.
 | S1 no multiplexer | `views/shell.rs` (delete split/layout/`Pane`; rename `Workspace` → `AppShell`, `MAX_LIVE_PANES` → `MAX_WARM_SESSIONS`; flush columns L1; list column 400 resizable; switch sheet Ctrl+O; startup reopens the last session instead of creating an empty one), `components/sidebar.rs` (A2.8 nav sidebar 224 + list column with project sections and needs-you strip; drop ViewSwitcher and "Open in new pane"), `views/mod.rs` keymap, `model/sessions.rs` | GA-35, GA-11 |
 | S2 headers | `components/header.rs` → `DetailHeader` (A2.7), `window_chrome.rs` (client decorations over the flush layout; title "● Oino" on needs-you) | L3 |
 | S3 keys + palette | `components/keys.rs` (bind extension `setShortcuts` from GA-43 table; Ctrl+M control centre; resolve `ctrl+b` collision: sidebar = Ctrl+B only when the composer is not focused, else extension wins with a toast once), `components/palette.rs`, `model/palette.rs` (A2.17 palette; Extensions group lists shortcuts), Settings → Keyboard shortcuts lists them | GA-16, GA-34 |
-| S4 settings + extensions | `views/settings_page.rs` (A2.16 layout; Permissions finds namespace by extension id `unipi.workflow` not `workflow` (1249-1254); General/Sessions editable; About with Check for updates; Remote hidden), `views/extensions_page.rs` (A2.17 rows; Readme button opens the updater readme panel :92), `views/onboarding.rs` | GA-33, GA-37, GA-19b |
-| S5 desktop host | `apps/oino-desktop/src/embedded.rs` (find `oino-kanboard` next to the executable / bundle dir / PATH; report `ExtensionMode` desktop + frontend `gpui` to host-info), `main.rs`, `prefs.rs` (guard: a failing mascot open resets `mascotWindow` instead of crash-looping), packaging scripts bundle `oino-kanboard` | GA-41, GA-45 |
+| S4 settings + extensions | `views/settings_page.rs` (A2.16 layout; Permissions finds namespace by extension id `unipi.workflow` not `workflow` (1249-1254); General/Sessions editable; About with Check for updates; Remote hidden), `views/extensions_page.rs` (A2.17 rows; Readme button opens the updater readme panel :92), `views/onboarding.rs` | GA-33, GA-37 (+ the GA-19 Readme hunk for unipi) |
+| S5 desktop shell | `apps/oino-desktop/src/main.rs`, `prefs.rs` (guard: a failing mascot open resets `mascotWindow` instead of crash-looping; window min size, client decorations over the flush layout), `demo.rs` (demo emits the A2 surfaces for screenshots) | hardening for GA-32 (id owned by unipi) |
 | S6 skills discovery | `crates/oino-resources/src/discovery.rs:48` (no implicit `~/.agents/skills` when an agent dir is set) | GA-38 |
-| S7 perf | `design/ticker.rs`, `views/soak.rs`, `design/perf.rs` (no 8 ms refresh while idle; one ticker; thread count audit; soak = 1 visible + 3 background streaming) | GA-46 |
+| S7 ticker | `design/ticker.rs` (one app-wide ticker that stops when nothing animates; no view requests a refresh while idle) | — (input to K6 / GA-46) |
 
-Order across batches: start C1, C2, U1 and S0 at once. Then run S1/S2 with C4/C5/C7 and
-U2/U3/U5. P1–P5 and U8 come next, followed by S3/S4. Re-run the GUI audit (`gui-audit`)
-after all four batches land, and close the GA ids in `gui-audit.md`.
+**core-gui-gaps**: area E of the audit (core / backend gaps behind the GUI). This is a
+non-GUI batch with the same gates plus the root workspace `cargo test`.
+
+Files owned:
+- `crates/oino-core/src/session/frontend.rs`, `crates/oino-core/src/extensions/runner.rs`
+- `crates/oino-wasm-host/src/instance.rs`
+- the modes / frontend-protocol code that delivers `setShortcuts` and `_oino/agents`
+  (`crates/oino-modes`, `oino_protocol::ui`)
+- `apps/oino-desktop/src/embedded.rs` and the desktop packaging scripts (`apps/oino-desktop/scripts/*`)
+- `apps/oino-ui/src/views/soak.rs`, `apps/oino-ui/src/design/perf.rs`
+
+GA ids (7): **GA-40** (P0 runtime panic), GA-41, GA-42, GA-43, GA-44, GA-45, GA-46.
+
+| Step | Files | Change |
+|---|---|---|
+| K1 runtime-agnostic core | `crates/oino-core/src/session/frontend.rs:447` (bare `tokio::spawn` → the session's stored runtime `Handle`; audit other bare spawns on frontend-called paths) | GA-40 (+ a test calling `editor_event` from a non-tokio thread); unblocks C1 |
+| K2 dialog-aware deadline | `crates/oino-wasm-host/src/instance.rs:401` (pause the 30 s handler deadline while the handler awaits a UI dialog), `crates/oino-core/src/extensions/runner.rs:361` (on handler death or timeout send `extension_ui_dismiss{reason:"cancelled"}` for its open dialogs) | GA-42; unblocks C2 |
+| K3 kanboard binary | `embedded.rs` (`HostConfig` program search: next to the executable, bundle `libexec`, then `PATH`), packaging scripts bundle `oino-kanboard` | GA-41; unblocks U2 |
+| K4 extension shortcuts delivery | frontend protocol + `embedded.rs` (deliver `setShortcuts` to the GPUI frontend and keep the table across reloads; the hunk in `model/ui_state.rs:603` is landed with unipi named) | GA-43; unblocks S3 / GA-16 |
+| K5 agents feed | modes / core runtime (`_oino/agents` child-session event stream, STATUS §8.2) | GA-44; unblocks P3 / GA-15 |
+| K6 idle cost | `views/soak.rs` (soak = 1 visible + 3 background sessions streaming), `design/perf.rs`, runtime thread pools (core + wasm host worker counts) | GA-46: idle CPU ≈ 0 with GPU, threads ≤ 100 with 2 sessions, RSS slope logged |
+| K7 frontend mode | `embedded.rs` (report the GPUI frontend, `ExtensionMode` desktop, to host-info and `/unipi:doctor`) | GA-45 |
+
+**GA assignment check** (every id in [gui-audit.md](gui-audit.md) exactly once):
+
+| Batch | Ids | Count |
+|---|---|---|
+| gui-fix-conversation | 1, 2, 3, 4, 5, 6, 7, 8, 9, 21, 25, 27, 28, 29, 30 | 15 |
+| gui-fix-panes | 13, 14, 15, 18 | 4 |
+| gui-fix-unipi | 10, 12, 17, 19, 20, 22, 23, 26, 31, 32, 39 | 11 |
+| gui-fix-shell | 11, 16, 24, 33, 34, 35, 36, 37, 38 | 9 |
+| core-gui-gaps | 40, 41, 42, 43, 44, 45, 46 | 7 |
+| **Total** | GA-1 … GA-46 | **46** |
+
+Order across batches: start K1, K2, C1, C2, U1 and S0 at once. Then run S1/S2 with C4/C5/C7
+and U2/U3/U5, with K3 before U2 and K4 before S3. P1–P5 and U8 come next, followed by S3/S4
+and K5/K6/K7. Re-run the GUI audit (`gui-audit`) after all five batches land, and close the GA
+ids in `gui-audit.md`.
 
 
 ---
