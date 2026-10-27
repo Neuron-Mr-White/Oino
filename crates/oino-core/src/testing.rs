@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::extensions::api::{
     CallContext, ExtensionCallError, ExtensionInstance, ExtensionKind, ExtensionMode,
-    ProviderInstance, Registration,
+    PackageResourceDirs, ProviderInstance, Registration,
 };
 use crate::extensions::runner::{ExtensionSet, LoadedExtension};
 use crate::provider::ProviderStream;
@@ -354,6 +354,7 @@ pub struct FakeExtension {
     events: Mutex<Vec<(String, JsonValue)>>,
     contexts: Mutex<Vec<(String, CallContext)>>,
     delivered: Mutex<Vec<String>>,
+    resources: PackageResourceDirs,
 }
 
 impl std::fmt::Debug for FakeExtension {
@@ -379,7 +380,15 @@ impl FakeExtension {
             events: Mutex::new(Vec::new()),
             contexts: Mutex::new(Vec::new()),
             delivered: Mutex::new(Vec::new()),
+            resources: PackageResourceDirs::default(),
         }
+    }
+
+    /// Declares package resource directories (manifest `resources`).
+    #[must_use]
+    pub fn with_resources(mut self, resources: PackageResourceDirs) -> Self {
+        self.resources = resources;
+        self
     }
 
     /// Makes the extension an arbiter nudge provider.
@@ -456,6 +465,10 @@ impl FakeExtension {
 impl ExtensionInstance for FakeExtension {
     fn id(&self) -> &str {
         &self.id
+    }
+
+    fn resource_dirs(&self) -> PackageResourceDirs {
+        self.resources.clone()
     }
 
     fn init(&self, _cx: CallContext) -> BoxFuture<'_, Result<Registration, ExtensionCallError>> {

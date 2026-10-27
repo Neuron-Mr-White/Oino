@@ -393,39 +393,65 @@ impl AgentSession {
         self.extend_resources_from_extensions(discover_reason).await;
     }
 
+    /// Package resources (manifest `resources` of every loaded extension, pi package
+    /// resources) followed by `resources_discover` results.
     async fn extend_resources_from_extensions(&self, reason: &str) {
+        use oino_resources::source::{PathMetadata, SourceOrigin, SourceScope};
         let runner = self.runner();
-        if !runner.has_handlers("resources_discover") {
-            return;
+        let entry =
+            |path: PathBuf, extension: &str, origin: SourceOrigin, base: Option<PathBuf>| {
+                oino_resources::ExtraResourcePath {
+                    path,
+                    metadata: PathMetadata {
+                        source: format!("extension:{extension}"),
+                        scope: SourceScope::Temporary,
+                        origin,
+                        base_dir: base,
+                    },
+                }
+            };
+        let mut paths = oino_resources::ResourceExtensionPaths::default();
+        for extension in runner.set().extensions() {
+            let id = extension.instance.id();
+            let dirs = extension.instance.resource_dirs();
+            let package = |list: Vec<PathBuf>| {
+                list.into_iter()
+                    .map(|dir| {
+                        let base = dir.parent().map(Path::to_path_buf);
+                        entry(dir, id, SourceOrigin::Package, base)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            paths.skill_paths.extend(package(dirs.skills));
+            paths.prompt_paths.extend(package(dirs.prompts));
+            paths.theme_paths.extend(package(dirs.themes));
         }
-        let found = runner
-            .emit_resources_discover(&self.inner.cwd.display().to_string(), reason)
-            .await;
-        if found.skill_paths.is_empty()
-            && found.prompt_paths.is_empty()
-            && found.theme_paths.is_empty()
+        if runner.has_handlers("resources_discover") {
+            let found = runner
+                .emit_resources_discover(&self.inner.cwd.display().to_string(), reason)
+                .await;
+            let discovered = |list: Vec<(String, String)>| {
+                list.into_iter()
+                    .map(|(path, extension)| {
+                        entry(
+                            PathBuf::from(path),
+                            &extension,
+                            SourceOrigin::TopLevel,
+                            None,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            paths.skill_paths.extend(discovered(found.skill_paths));
+            paths.prompt_paths.extend(discovered(found.prompt_paths));
+            paths.theme_paths.extend(discovered(found.theme_paths));
+        }
+        if paths.skill_paths.is_empty()
+            && paths.prompt_paths.is_empty()
+            && paths.theme_paths.is_empty()
         {
             return;
         }
-        let convert = |paths: Vec<(String, String)>| -> Vec<oino_resources::ExtraResourcePath> {
-            paths
-                .into_iter()
-                .map(|(path, extension)| oino_resources::ExtraResourcePath {
-                    path: PathBuf::from(path),
-                    metadata: oino_resources::source::PathMetadata {
-                        source: format!("extension:{extension}"),
-                        scope: oino_resources::source::SourceScope::Temporary,
-                        origin: oino_resources::source::SourceOrigin::TopLevel,
-                        base_dir: None,
-                    },
-                })
-                .collect()
-        };
-        let paths = oino_resources::ResourceExtensionPaths {
-            skill_paths: convert(found.skill_paths),
-            prompt_paths: convert(found.prompt_paths),
-            theme_paths: convert(found.theme_paths),
-        };
         self.inner
             .resources
             .write()

@@ -15,7 +15,9 @@ use indexmap::IndexMap;
 use oino_ai::{AgentMessage, JsonObject};
 use oino_core::builtin::{SessionToolContext, builtin_tool_entries};
 use oino_core::events::{ClientEvent, OinoEvent, ReplaceReason};
-use oino_core::extensions::api::{ExtensionInstance, ExtensionMode, Registration};
+use oino_core::extensions::api::{
+    ExtensionInstance, ExtensionMode, PackageResourceDirs, Registration,
+};
 use oino_core::runtime::{AgentSessionRuntime, ForkPosition, SessionOptions, SessionSource};
 use oino_core::services::{ResourceFlags, Services, ServicesOptions, StaticLoader};
 use oino_core::session::PromptOptions;
@@ -254,4 +256,101 @@ async fn fork_before_user_message_returns_its_text() {
         .map(|m| m.text)
         .collect();
     assert_eq!(users, vec!["first".to_owned()]);
+}
+
+/// Package skills (manifest `resources.skills`) load; an opt-in skill (`default-enabled:
+/// false`) stays out of the prompt until `extensionSettings.skills.states.<name>.enabled` is
+/// true, and `/skill:name` runs it either way.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn package_skills_and_opt_in_skills() {
+    let dir = tempfile::tempdir().unwrap();
+    let skills = dir.path().join("pkg").join("skills");
+    for (name, extra) in [
+        ("plain-skill", ""),
+        ("unipi-migrate", "default-enabled: false\n"),
+    ] {
+        std::fs::create_dir_all(skills.join(name)).unwrap();
+        std::fs::write(
+            skills.join(name).join("SKILL.md"),
+            format!(
+                "---\nname: {name}\ndescription: {name} description\n{extra}---\nBody of {name}.\n"
+            ),
+        )
+        .unwrap();
+    }
+    let provider = FauxProvider::new(vec![
+        FauxResponse::Text("one".into()),
+        FauxResponse::Text("two".into()),
+        FauxResponse::Text("three".into()),
+    ]);
+    let package = Arc::new(
+        FakeExtension::new("acme.pkg", Registration::default()).with_resources(
+            PackageResourceDirs {
+                skills: vec![skills.clone()],
+                ..PackageResourceDirs::default()
+            },
+        ),
+    );
+    let services = services(
+        dir.path(),
+        Arc::clone(&provider),
+        vec![package as Arc<dyn ExtensionInstance>],
+    )
+    .await;
+    let (options, _context) = tool_options(&services);
+    let runtime = AgentSessionRuntime::create(Arc::clone(&services), options)
+        .await
+        .unwrap();
+    let session = runtime.session();
+    let commands: Vec<String> = session.commands().into_iter().map(|c| c.name).collect();
+    assert!(
+        commands.contains(&"skill:plain-skill".to_owned()),
+        "{commands:?}"
+    );
+    assert!(
+        commands.contains(&"skill:unipi-migrate".to_owned()),
+        "{commands:?}"
+    );
+    let prompt = session.system_prompt();
+    assert!(prompt.contains("<name>plain-skill</name>"), "{prompt}");
+    assert!(!prompt.contains("unipi-migrate"), "{prompt}");
+
+    let run = |text: &str| {
+        let session = session.clone();
+        let text = text.to_owned();
+        async move {
+            session
+                .prompt(text, PromptOptions::default())
+                .await
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(10), session.wait_for_idle())
+                .await
+                .unwrap();
+        }
+    };
+    run("hello").await;
+    let first = provider.requests()[0]["context"]["messages"][0]["sections"].to_string();
+    assert!(
+        first.contains("plain-skill") && !first.contains("unipi-migrate"),
+        "{first}"
+    );
+
+    run("/skill:unipi-migrate go").await;
+    let invoked = provider.requests()[1]["context"]["messages"].to_string();
+    assert!(invoked.contains("Body of unipi-migrate."), "{invoked}");
+
+    services
+        .settings
+        .lock()
+        .unwrap()
+        .set_extension_setting(
+            oino_settings::SettingsScope::Global,
+            "skills",
+            "states",
+            Some(json!({"unipi-migrate": {"enabled": true}})),
+        )
+        .unwrap();
+    run("again").await;
+    let enabled = provider.requests()[2]["context"]["messages"].to_string();
+    assert!(enabled.contains("<name>unipi-migrate</name>"), "{enabled}");
 }

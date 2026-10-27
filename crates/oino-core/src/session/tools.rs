@@ -379,6 +379,7 @@ impl AgentSession {
             skills: resources.skills().to_vec(),
         };
         drop(resources);
+        self.apply_skill_opt_in(&mut options.skills);
         if let Some(link) = &self.inner.agents.link {
             match &link.prompt {
                 crate::agents::SystemPromptSpec::Default => {}
@@ -396,6 +397,19 @@ impl AgentSession {
             }
         }
         lock(&self.inner.tools).base_options = options;
+    }
+
+    /// Turns opt-in (`default-enabled: false`) skills on or off from the current
+    /// `extensionSettings.skills.states` (read at every rebuild and run, so a toggle in
+    /// `/skills` applies from the next prompt).
+    pub(crate) fn apply_skill_opt_in(&self, skills: &mut [oino_resources::Skill]) {
+        if skills.iter().all(|skill| skill.default_enabled) {
+            return;
+        }
+        let states = lock(&self.inner.settings)
+            .settings()
+            .extension_settings(oino_resources::skills::SKILL_STATES_NAMESPACE, None);
+        oino_resources::skills::apply_opt_in(skills, &states);
     }
 
     /// Base prompt options (pi `getSystemPromptOptions`).

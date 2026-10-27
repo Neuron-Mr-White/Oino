@@ -570,7 +570,15 @@ Exactly pi (audit-pi §12.5, §12.6): locations (`<agent>/skills`, trusted `.oin
 validation (pi rules, **no** dir-name match requirement), first-wins collisions, the
 `formatSkillsForPrompt` text, `/skill:name args` block `<skill name="{name}"
 location="{filePath}">\nReferences are relative to {baseDir}.\n\n{body}\n</skill>` +
-`\n\n{args}`, `enableSkillCommands`. Templates: `<agent>/prompts`, trusted `.oino/prompts`,
+`\n\n{args}`, `enableSkillCommands`. Package skills: every loaded extension's manifest
+`resources.skills` dirs (under its package root, e.g. `~/.oino/bundled/<id>@…/skills`) are
+added like pi package resources (origin `package`, source `extension:<id>`) before the
+`resources_discover` paths, at startup and on reload (`ExtensionInstance::resource_dirs`).
+Oino addition — **opt-in skills**: front matter `default-enabled: false` (`Skill.default_enabled`,
+serialised `defaultEnabled`) makes a skill off until `extensionSettings.skills.states.<name>`
+has `enabled: true` or `mustShow: true` (merged global ⊕ project, read at every prompt rebuild
+and run, `skills::apply_opt_in` → `Skill.enabled`). An off opt-in skill is left out of
+`formatSkillsForPrompt` but stays in `/skill:name` and the command list. Templates: `<agent>/prompts`, trusted `.oino/prompts`,
 settings, `--prompt-template`, `resources_discover.promptPaths`; `parseCommandArgs` quoting,
 `$1…`, `$@`, `$ARGUMENTS`, `${1:-d}`, `${@:-d}`, `${@:N}`, `${@:N:L}`; extension command with
 the same name wins.

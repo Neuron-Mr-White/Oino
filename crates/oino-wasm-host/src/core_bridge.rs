@@ -980,6 +980,21 @@ pub struct CoreInstance {
     progress: Arc<ProgressRoutes>,
     prepare: Mutex<HashSet<String>>,
     path: String,
+    resources: ca::PackageResourceDirs,
+}
+
+/// Manifest `resources` of `package` as absolute directories (none without a package root).
+fn package_resource_dirs(package: &LoadedPackage) -> ca::PackageResourceDirs {
+    let Some(root) = package.root.as_deref() else {
+        return ca::PackageResourceDirs::default();
+    };
+    let join = |list: &[String]| list.iter().map(|rel| root.join(rel)).collect();
+    let declared = &package.manifest.resources;
+    ca::PackageResourceDirs {
+        skills: join(&declared.skills),
+        prompts: join(&declared.prompts),
+        themes: join(&declared.themes),
+    }
 }
 
 impl std::fmt::Debug for CoreInstance {
@@ -1029,6 +1044,10 @@ impl ca::ExtensionInstance for CoreInstance {
 
     fn path(&self) -> String {
         self.path.clone()
+    }
+
+    fn resource_dirs(&self) -> ca::PackageResourceDirs {
+        self.resources.clone()
     }
 
     fn init(
@@ -1462,6 +1481,7 @@ impl ExtensionLoader for CoreLoader {
                         progress: Arc::clone(&core_host.progress),
                         prepare: Mutex::new(HashSet::new()),
                         path,
+                        resources: package_resource_dirs(&sourced.package),
                     })),
                     Err(e) => lock(&self.errors).push(e),
                 }

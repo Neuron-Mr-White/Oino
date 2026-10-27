@@ -1,0 +1,85 @@
+# old	new	note — generated from docs/dev/v1/commands.md §3; sorted longest first: replace in this order and only at a word boundary (next char not [A-Za-z0-9-])
+/unipi:permission-clear-rules	/permission-clear-rules	hidden runner
+/unipi:kanboard-rotate-token	/kanboard-rotate-token	hidden runner
+/unipi:global-memory-search	/global-memory-search	
+/unipi:ask-user-new-session	/ask-user-new-session	hidden runner
+/unipi:kanboard-stop-daemon	/kanboard-stop-daemon	hidden runner
+/unipi:visualize-progress	/visualize-progress	
+/unipi:memory-consolidate	/memory-consolidate	
+/unipi:global-memory-list	/global-memory-list	
+/unipi:kanboard-autowork	/kanboard-autowork	
+/unipi:notify-set-gotify	/notify-set-gotify	hidden runner
+/unipi:notify-set-ntfy	/notify-set-ntfy	hidden runner
+/unipi:web-cache-clear	/web-cache-clear	hidden runner
+/unipi:memory-process	/memory-process	
+/unipi:compact-by-llm	/compact-by-llm	
+/unipi:session-recall	/session-recall	
+/unipi:compact-doctor	/compact-doctor	
+/unipi:memory-search	/memory-search	
+/unipi:memory-forget	/memory-forget	
+/unipi:compact-stats	/compact-stats	
+/unipi:fusion-preset	/fusion-preset	hidden runner
+/unipi:skills-editor	/skills-editor	hidden runner
+/unipi:notify-set-tg	/notify-set-tg	hidden runner
+/unipi:kanboard-open	/kanboard-open	hidden runner
+/unipi:fusion-stats	/fusion-stats	
+/unipi:compact-then	/compact-then	
+/unipi:compact-help	/compact-help	
+/unipi:notify-event	/notify-event	
+/unipi:kanboard-add	/kanboard-add	
+/unipi:mcp-settings	/mcp-settings	hidden runner
+/unipi:update-check	/update-check	hidden runner
+/unipi:compact-vcc	/compact-vcc	
+/unipi:kanboard-do	/kanboard-do	
+/unipi:goal-status	/goal-status	hidden runner
+/unipi:goal-resume	/goal-resume	hidden runner
+/unipi:ralph-start	/ralph-start	hidden runner
+/unipi:lh-explicit	/lh-explicit	hidden runner
+/unipi:notify-test	/notify-test	hidden runner
+/unipi:permission	/permission	
+/unipi:mcp-status	/mcp-status	
+/unipi:plan-enter	/plan-enter	hidden runner
+/unipi:goal-start	/goal-start	hidden runner
+/unipi:goal-pause	/goal-pause	hidden runner
+/unipi:hint-reset	/hint-reset	hidden runner
+/unipi:mcp-reload	/mcp-reload	hidden runner
+/unipi:rename-now	/rename-now	hidden runner
+/unipi:subagents	/subagents	
+/unipi:bg-detach	/bg-detach	
+/unipi:summarize	/summarize	
+/unipi:changelog	/changelog	merged into core /changelog
+/unipi:plan-exit	/plan-exit	hidden runner
+/unipi:goal-stop	/goal-stop	hidden runner
+/unipi:bg-tasks	/bg-tasks	
+/unipi:continue	/continue	
+/unipi:settings	/settings	merged into core /settings (drop the search argument)
+/unipi:kanboard	/kanboard	
+/unipi:plan-off	/plan-off	hidden runner
+/unipi:lh-graph	/lh-graph	hidden runner
+/unipi:mcp-sync	/mcp-sync	hidden runner
+/unipi:regular	/regular	
+/unipi:cleanup	/cleanup	
+/unipi:lh-mode	/lh-mode	hidden runner
+/unipi:mcp-add	/mcp-add	hidden runner
+/unipi:memory	/memory	
+/unipi:agents	/agents	
+/unipi:doctor	/doctor	
+/unipi:answer	/answer	
+/unipi:skills	/skills	
+/unipi:footer	/footer	
+/unipi:readme	/readme	
+/unipi:ralph	/ralph	
+/unipi:swarm	/swarm	
+/unipi:graph	/graph	
+/unipi:dream	/dream	
+/unipi:model	/fusion	renamed (Fusion lead+sidekick picker); core /model is the plain model picker
+/unipi:retry	/retry	
+/unipi:plan	/plan	
+/unipi:goal	/goal	
+/unipi:move	/move	
+/unipi:info	/info	
+/unipi:hint	/hint	
+/unipi:cron	—	dropped: no Oino equivalent (cron)
+/unipi:btw	/btw	
+/unipi:app	/app	
+/unipi:bg	/bg	

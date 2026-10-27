@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::registry::{SkillSource, SkillState, default_must_show};
+use crate::registry::{SkillSource, SkillState, default_enabled, default_must_show};
 
 /// Panel id.
 pub const PANEL: &str = "unipi.skill-registry/editor";
@@ -60,6 +60,9 @@ pub struct EditorSkill {
     pub description: String,
     /// Source.
     pub source: SkillSource,
+    /// `false` for an opt-in skill (`default-enabled: false`, shown as `opt-in`, off by
+    /// default).
+    pub default_enabled: bool,
 }
 
 /// Edited scope.
@@ -103,7 +106,7 @@ pub enum Outcome {
 
 fn default_for(c: Column, s: &EditorSkill) -> bool {
     match c {
-        Column::Enabled => s.source != SkillSource::Vault,
+        Column::Enabled => default_enabled(s.source, s.default_enabled),
         Column::MustShow => default_must_show(&s.name, s.source),
     }
 }
@@ -230,7 +233,7 @@ impl Editor {
                 toggle(Column::MustShow),
                 {"t": "text", "wrap": false, "value": [
                     {"text": s.name.clone(), "bold": true},
-                    {"text": format!("  {}  ", s.source.as_str()), "tone": "muted"},
+                    {"text": format!("  {}{}  ", s.source.as_str(), if s.default_enabled { "" } else { " · opt-in" }), "tone": "muted"},
                     {"text": desc, "dim": true},
                 ]},
                 {"t": "button", "label": "inherit", "actionId": format!("clear:{}", s.name)},
@@ -249,7 +252,7 @@ impl Editor {
             {"t": "divider"},
             {"t": "stack", "direction": "vertical", "children": rows},
             {"t": "divider"},
-            {"t": "text", "value": "E enabled — the model sees it (judged first when exposure is on); off removes it and blocks /skill:name", "wrap": true},
+            {"t": "text", "value": "E enabled — the model sees it (judged first when exposure is on); off removes it and blocks /skill:name. opt-in skills are off until enabled here (no proxy needed); /skill:name still runs them", "wrap": true},
             {"t": "text", "value": "M must show — always listed, even when judging would hide it"},
             {"t": "stack", "direction": "horizontal", "gap": 2, "children": [
                 {"t": "button", "label": "Save", "actionId": "save", "primary": true},
@@ -309,11 +312,19 @@ mod tests {
                     name: "aws-deploy".into(),
                     description: "Deploy to AWS".into(),
                     source: SkillSource::Vault,
+                    default_enabled: true,
                 },
                 EditorSkill {
                     name: "sql-review".into(),
                     description: "Review SQL".into(),
                     source: SkillSource::User,
+                    default_enabled: true,
+                },
+                EditorSkill {
+                    name: "unipi-migrate".into(),
+                    description: "Migrate".into(),
+                    source: SkillSource::Unipi,
+                    default_enabled: false,
                 },
             ],
             global: BTreeMap::new(),
@@ -345,6 +356,14 @@ mod tests {
         assert_eq!(ed.act("save", None), Outcome::Save);
         assert_eq!(ed.act("$close", None), Outcome::Cancel);
         assert_eq!(ed.act("bogus", None), Outcome::Ignored);
+        let migrate = ed.skills[2].clone();
+        assert_eq!(ed.cell(&migrate, Column::Enabled), (false, false));
+        ed.act("enabled:unipi-migrate", None);
+        assert_eq!(ed.cell(&migrate, Column::Enabled), (true, true));
+        ed.act("filter", Some(&json!("")));
+        let spec = ed.spec().to_string();
+        assert!(spec.contains("unipi · opt-in"));
+        ed.act("filter", Some(&json!("sql")));
         let spec = ed.spec().to_string();
         assert!(spec.contains("editing global"));
         assert!(spec.contains("sql-review"));

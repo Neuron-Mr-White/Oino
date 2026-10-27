@@ -3,11 +3,12 @@
 All of unipi 3.0.0 except its desktop app is ported to
 Rust WASM components and bundled into `oino` and Oino Desktop. They load in unipi's order,
 `unipi.core` first. Settings live under `extensionSettings.<namespace>` in `settings.json`
-([settings.md](settings.md)); state under `~/.oino/state/<id>/`.
+([settings.md](settings.md)); state under `~/.oino/state/<id>/`. Oino does not read an existing pi + unipi install; to
+bring one over, run the `unipi-migrate` skill ([migrate-from-unipi.md](migrate-from-unipi.md)).
 
 | Component | What it does |
 |---|---|
-| `unipi.core` | Unicrab hints, start header, work tray (`/hint`) |
+| `unipi.core` | Unicrab hints, start header, work tray (`/hint`); bundles the opt-in `unipi-migrate` skill ([migrate-from-unipi.md](migrate-from-unipi.md)) |
 | `unipi.workflow` | permission gate (ask · auto · full) with approval dialogs and saved rules; plan mode with `plan_submit` and review (`/permission`, `/plan`, `alt+p`, `alt+m`) |
 | `unipi.long-horizon` | goal mode with verifier, ralph task-file loops, swarms and durable agent graphs (`/goal`, `/ralph`, `/swarm`, `/graph`) |
 | `unipi.memory` | Markdown memories plus MemPalace integration; recall reminder, `memory_*` tools |

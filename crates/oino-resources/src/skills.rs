@@ -35,6 +35,43 @@ pub struct Skill {
     pub source_info: SourceInfo,
     /// `disable-model-invocation: true`: hidden from the prompt, still invocable by command.
     pub disable_model_invocation: bool,
+    /// `default-enabled: false` (Oino): an opt-in skill. It is off until the user turns it on
+    /// (`extensionSettings.skills.states.<name>` `enabled`/`mustShow` true, see
+    /// [`apply_opt_in`]); while off it is left out of the prompt but `/skill:name` still works.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub default_enabled: bool,
+    /// Effective on/off of an opt-in skill ([`apply_opt_in`]); always `true` for other skills.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub enabled: bool,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if takes a reference"
+)]
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// Settings namespace whose `states.<name>.{enabled, mustShow}` turn opt-in skills on (the
+/// skill registry's per-skill states, edited in `/skills` → "Skill settings…").
+pub const SKILL_STATES_NAMESPACE: &str = "skills";
+
+/// Resolves opt-in skills against the merged `extensionSettings.skills` value: a
+/// `default-enabled: false` skill is on when its state sets `enabled: true` or
+/// `mustShow: true`; every other skill stays on (per-skill states of ordinary skills belong to
+/// the skill registry's proxy).
+pub fn apply_opt_in(skills: &mut [Skill], namespace: &Value) {
+    let states = namespace.get("states");
+    for skill in skills {
+        let state = states.and_then(|s| s.get(&skill.name));
+        let flag = |key: &str| state.and_then(|s| s.get(key)) == Some(&Value::Bool(true));
+        skill.enabled = skill.default_enabled || flag("enabled") || flag("mustShow");
+    }
 }
 
 /// Skills plus diagnostics (pi `LoadSkillsResult`).
@@ -188,6 +225,7 @@ pub fn load_skill_from_file(
     let Some(description) = description_text else {
         return (None, diagnostics);
     };
+    let default_enabled = frontmatter.get("default-enabled") != Some(&Value::Bool(false));
     let skill = Skill {
         name,
         description: description.to_owned(),
@@ -196,6 +234,8 @@ pub fn load_skill_from_file(
         source_info: skill_source_info(file_path, &skill_dir, source),
         disable_model_invocation: frontmatter.get("disable-model-invocation")
             == Some(&Value::Bool(true)),
+        default_enabled,
+        enabled: default_enabled,
     };
     (Some(skill), diagnostics)
 }
@@ -373,12 +413,13 @@ pub enum SkillReader {
 }
 
 /// pi `formatSkillsForPrompt`: the `<available_skills>` block (leading `\n\n`), excluding
-/// `disable-model-invocation` skills; empty when none are visible.
+/// `disable-model-invocation` skills and opt-in skills that are off; empty when none are
+/// visible.
 #[must_use]
 pub fn format_skills_for_prompt(skills: &[Skill], reader: SkillReader) -> String {
     let visible: Vec<&Skill> = skills
         .iter()
-        .filter(|skill| !skill.disable_model_invocation)
+        .filter(|skill| !skill.disable_model_invocation && skill.enabled)
         .collect();
     if visible.is_empty() {
         return String::new();
@@ -591,6 +632,38 @@ mod tests {
     }
 
     #[test]
+    fn opt_in_skills_follow_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("unipi-migrate").join("SKILL.md");
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(
+            &file,
+            "---\nname: unipi-migrate\ndescription: d\ndefault-enabled: false\n---\nbody",
+        )
+        .unwrap();
+        let (skill, diagnostics) = load_skill_from_file(&file, SkillSource::Path);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let mut skills = vec![skill.unwrap()];
+        assert!(!skills[0].default_enabled && !skills[0].enabled);
+        assert_eq!(format_skills_for_prompt(&skills, SkillReader::Read), "");
+        let json = serde_json::to_value(&skills[0]).unwrap();
+        assert_eq!(json["defaultEnabled"], false);
+        apply_opt_in(
+            &mut skills,
+            &serde_json::json!({"states": {"unipi-migrate": {"mustShow": true}}}),
+        );
+        assert!(skills[0].enabled);
+        assert!(format_skills_for_prompt(&skills, SkillReader::Read).contains("unipi-migrate"));
+        apply_opt_in(&mut skills, &serde_json::json!({}));
+        assert!(!skills[0].enabled);
+        assert!(
+            expand_skill_command("/skill:unipi-migrate", &skills)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
     fn skill_command_parsing() {
         assert_eq!(
             parse_skill_command("/skill:x  do it "),
@@ -618,6 +691,8 @@ mod tests {
             base_dir: "/a/s".into(),
             source_info: SourceInfo::synthetic(Path::new("/a/s/SKILL.md"), "local", None, None),
             disable_model_invocation: false,
+            default_enabled: true,
+            enabled: true,
         };
         let block = render_skill_block(&skill, "\nBody\n", "go now");
         assert_eq!(

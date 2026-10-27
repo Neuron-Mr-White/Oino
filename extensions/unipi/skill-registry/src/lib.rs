@@ -79,6 +79,15 @@ fn host_of(guest: &str) -> Option<String> {
         .map(|p| p.host_path)
 }
 
+/// Guest path of a host path under one of the preopens.
+fn guest_of(host: &str) -> Option<String> {
+    oino_extension::fs::preopens().into_iter().find_map(|p| {
+        let rest = host.strip_prefix(p.host_path.trim_end_matches('/'))?;
+        rest.starts_with('/')
+            .then(|| format!("{}{rest}", p.guest_path.trim_end_matches('/')))
+    })
+}
+
 fn parent(p: &str) -> Option<String> {
     p.trim_end_matches('/')
         .rsplit_once('/')
@@ -192,10 +201,24 @@ impl Registry {
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned),
                 base_dir: None,
+                ..CatalogSkill::default()
             });
         }
         for v in registry::list_vault_skills(VAULT_GUEST, &p.vault) {
             by.entry(v.name.clone()).or_insert(v);
+        }
+        // Skills only known from the command list (no prompt yet): read `default-enabled`
+        // from the file when a preopen reaches it.
+        for s in by.values_mut() {
+            if s.default_enabled
+                && let Some(text) = s
+                    .file_path
+                    .as_deref()
+                    .and_then(guest_of)
+                    .and_then(|g| std::fs::read_to_string(g).ok())
+            {
+                s.default_enabled = !registry::is_opt_in(&text);
+            }
         }
         by.into_values().collect()
     }
@@ -212,6 +235,7 @@ impl Registry {
                 name: s.name.clone(),
                 description: s.description.clone(),
                 source: skill_source(s, &p),
+                default_enabled: s.default_enabled,
             })
             .collect();
         skills.sort_by(|a, b| a.name.cmp(&b.name));
@@ -392,6 +416,12 @@ impl Registry {
             .collect();
         let mut disabled = BTreeSet::new();
         let mut must_show = BTreeSet::new();
+        // Opt-in skills core reports as off are unlisted (never judged or indexed) but stay
+        // invocable by `/skill:name`.
+        let catalog: Vec<usize> = catalog
+            .into_iter()
+            .filter(|i| full[*i].enabled || cfg.proxy)
+            .collect();
         let pool: Vec<usize> = if cfg.proxy {
             let sub: Vec<CatalogSkill> = catalog.iter().map(|i| full[*i].clone()).collect();
             let r = apply_registry(&sub, &cfg.states, &p);

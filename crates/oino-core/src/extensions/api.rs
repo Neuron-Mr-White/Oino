@@ -339,6 +339,17 @@ pub trait ProviderInstance: Send + Sync {
     }
 }
 
+/// Skill, prompt and theme directories of an extension package (manifest `resources`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackageResourceDirs {
+    /// Skill directories.
+    pub skills: Vec<PathBuf>,
+    /// Prompt template directories.
+    pub prompts: Vec<PathBuf>,
+    /// Theme directories.
+    pub themes: Vec<PathBuf>,
+}
+
 /// One loaded extension instance (≈ `oino_extension_api::ExtensionInstance`).
 pub trait ExtensionInstance: Send + Sync {
     /// Manifest id.
@@ -352,6 +363,12 @@ pub trait ExtensionInstance: Send + Sync {
     /// Path or label used in `extension_error.extensionPath`.
     fn path(&self) -> String {
         self.id().to_owned()
+    }
+
+    /// Resource directories the package declares (manifest `resources`, absolute paths under
+    /// the package root); loaded like pi package resources (runtime §9.6).
+    fn resource_dirs(&self) -> PackageResourceDirs {
+        PackageResourceDirs::default()
     }
 
     /// Initialises the instance and returns its static registrations.

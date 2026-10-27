@@ -612,7 +612,8 @@ impl AgentSession {
         if let Some(last) = self.last_assistant_message() {
             self.check_compaction(&last, false).await;
         }
-        let base = self.system_prompt_options();
+        let mut base = self.system_prompt_options();
+        self.apply_skill_opt_in(&mut base.skills);
         let runner = self.runner();
         let mut trigger_json = serde_json::Map::new();
         match &trigger {

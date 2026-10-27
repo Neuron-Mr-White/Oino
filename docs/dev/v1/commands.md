@@ -120,3 +120,11 @@ entry ids (`unipi:kanboard-reminder`, `-notice`, `-badge`, `-continue`, `-next`,
 `-help`, `-doctor`; `unipi:plan-mode`, `unipi:plan-mode-message`; `unipi:skills-revealed`,
 `unipi:skills-judged`; `unipi:auto-name`; `unipi:attachments`; `unipi:lh-continue`),
 extension ids `unipi.*` and settings namespaces keep their names.
+
+## 5. Migrating user files
+
+Oino does not translate old names at runtime. The bundled opt-in skill `unipi-migrate`
+(`extensions/unipi/core/skills/unipi-migrate/`, user doc [docs/migrate-from-unipi.md](../../migrate-from-unipi.md))
+rewrites `/unipi:*` in the user's prompts, skills, subagent profiles, ralph files and
+`AGENTS.md`/`CLAUDE.md` with the table in §3, kept as data in
+`references/commands.tsv` (regenerate it when §3 changes). Session history is not rewritten.

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// The slice of pi's `Skill` the registry needs.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogSkill {
     /// Name.
@@ -23,6 +23,38 @@ pub struct CatalogSkill {
     /// Directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_dir: Option<String>,
+    /// `false` for an opt-in skill (frontmatter `default-enabled: false`): off until a scope
+    /// turns it on.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub default_enabled: bool,
+    /// Core's effective on/off of an opt-in skill (from the same `states`); `true` otherwise.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub enabled: bool,
+}
+
+impl Default for CatalogSkill {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: String::new(),
+            file_path: None,
+            base_dir: None,
+            default_enabled: true,
+            enabled: true,
+        }
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if takes a reference"
+)]
+fn is_true(v: &bool) -> bool {
+    *v
 }
 
 impl CatalogSkill {
@@ -162,9 +194,21 @@ pub struct Effective {
     pub must_show: bool,
 }
 
-/// unipi `effectiveState`.
+/// Default "Enabled" of a skill: vault and opt-in (`default-enabled: false`) skills are off.
 #[must_use]
-pub fn effective_state(state: Option<&SkillState>, source: SkillSource, name: &str) -> Effective {
+pub fn default_enabled(source: SkillSource, opt_in_default: bool) -> bool {
+    source != SkillSource::Vault && opt_in_default
+}
+
+/// unipi `effectiveState` (plus Oino opt-in skills: `default_on` is the skill's
+/// `default-enabled`).
+#[must_use]
+pub fn effective_state(
+    state: Option<&SkillState>,
+    source: SkillSource,
+    name: &str,
+    default_on: bool,
+) -> Effective {
     let must_show = state
         .and_then(|s| s.must_show)
         .unwrap_or_else(|| default_must_show(name, source));
@@ -172,7 +216,7 @@ pub fn effective_state(state: Option<&SkillState>, source: SkillSource, name: &s
         enabled: must_show
             || state
                 .and_then(|s| s.enabled)
-                .unwrap_or(source != SkillSource::Vault),
+                .unwrap_or_else(|| default_enabled(source, default_on)),
         must_show,
     }
 }
@@ -184,7 +228,8 @@ pub struct Applied {
     pub must_show: BTreeSet<String>,
     /// Listed skills (catalog order, by index).
     pub listed: Vec<usize>,
-    /// Removed names.
+    /// Removed names (`/skill:name` blocked). An opt-in skill that is merely off by default
+    /// is unlisted but stays invocable by name.
     pub disabled: BTreeSet<String>,
 }
 
@@ -197,13 +242,15 @@ pub fn apply_registry(
 ) -> Applied {
     let mut out = Applied::default();
     for (i, s) in catalog.iter().enumerate() {
-        let eff = effective_state(states.get(&s.name), skill_source(s, p), &s.name);
+        let state = states.get(&s.name);
+        let eff = effective_state(state, skill_source(s, p), &s.name, s.default_enabled);
         if eff.must_show {
             out.must_show.insert(s.name.clone());
         }
+        let opt_in_default_off = !s.default_enabled && state.and_then(|st| st.enabled).is_none();
         if eff.enabled {
             out.listed.push(i);
-        } else {
+        } else if !opt_in_default_off {
             out.disabled.insert(s.name.clone());
         }
     }
@@ -245,6 +292,22 @@ pub fn normalize_states(raw: &Value) -> BTreeMap<String, SkillState> {
         }
     }
     out
+}
+
+/// `default-enabled: false` in the front matter (an opt-in skill).
+#[must_use]
+pub fn is_opt_in(text: &str) -> bool {
+    let Some(rest) = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))
+    else {
+        return false;
+    };
+    let head = rest.find("\n---").map_or("", |end| &rest[..end]);
+    head.lines().any(|l| {
+        l.strip_prefix("default-enabled:")
+            .is_some_and(|v| v.trim().trim_matches(['"', '\'']) == "false")
+    })
 }
 
 /// Minimal front-matter reader: `name:` and `description:` (plain, `>`, `|`).
@@ -330,6 +393,7 @@ pub fn list_vault_skills(guest: &str, host: &str) -> Vec<CatalogSkill> {
                         description: d,
                         file_path: Some(format!("{h}/SKILL.md")),
                         base_dir: Some(h.to_owned()),
+                        ..CatalogSkill::default()
                     });
                 }
             }
@@ -386,6 +450,7 @@ mod tests {
             description: "d".into(),
             file_path: None,
             base_dir: Some(dir.into()),
+            ..CatalogSkill::default()
         }
     }
 
@@ -432,7 +497,7 @@ mod tests {
 
     #[test]
     fn defaults_per_source() {
-        let e = |s: Option<SkillState>, src, n| effective_state(s.as_ref(), src, n);
+        let e = |s: Option<SkillState>, src, n| effective_state(s.as_ref(), src, n, true);
         let eff = |enabled, must_show| Effective { enabled, must_show };
         assert_eq!(e(None, SkillSource::Vault, ""), eff(false, false));
         assert_eq!(
@@ -469,6 +534,49 @@ mod tests {
             skill_source(&sk("x", "/opt/x"), &places()),
             SkillSource::Package
         );
+    }
+
+    #[test]
+    fn opt_in_skills_are_off_until_enabled_but_stay_invocable() {
+        let migrate = CatalogSkill {
+            default_enabled: false,
+            ..sk(
+                "unipi-migrate",
+                "/home/u/.oino/bundled/unipi.core@3.0.0-ab/skills/x",
+            )
+        };
+        let other = sk(
+            "summarize",
+            "/home/u/.oino/bundled/unipi.utility@3.0.0-ab/skills/s",
+        );
+        let catalog = [migrate, other];
+        let names = |a: &Applied| -> Vec<String> {
+            a.listed.iter().map(|i| catalog[*i].name.clone()).collect()
+        };
+        let off = apply_registry(&catalog, &BTreeMap::new(), &places());
+        assert_eq!(names(&off), ["summarize"]);
+        assert!(off.disabled.is_empty(), "default-off is not blocked");
+        let on = apply_registry(
+            &catalog,
+            &BTreeMap::from([("unipi-migrate".to_owned(), st(Some(true), None))]),
+            &places(),
+        );
+        assert_eq!(names(&on), ["unipi-migrate", "summarize"]);
+        let blocked = apply_registry(
+            &catalog,
+            &BTreeMap::from([("unipi-migrate".to_owned(), st(Some(false), None))]),
+            &places(),
+        );
+        assert_eq!(
+            blocked.disabled.iter().collect::<Vec<_>>(),
+            ["unipi-migrate"]
+        );
+        assert!(!default_enabled(SkillSource::Unipi, false));
+        let parsed = CatalogSkill::from_value(&json!({"name": "x", "defaultEnabled": false}));
+        assert!(!parsed.default_enabled && parsed.enabled);
+        assert!(CatalogSkill::from_value(&json!({"name": "y"})).default_enabled);
+        assert!(is_opt_in("---\nname: x\ndefault-enabled: false\n---\nbody"));
+        assert!(!is_opt_in("---\nname: x\n---\ndefault-enabled: false"));
     }
 
     #[test]

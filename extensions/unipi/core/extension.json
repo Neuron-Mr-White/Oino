@@ -6,6 +6,7 @@
   "kind": "extension",
   "description": "Unicrab hints, the start screen and the work tray; owns the hints and decision-model settings.",
   "license": "MIT",
+  "resources": { "skills": ["skills"] },
   "permissions": {
     "services": { "call": ["*/work-tray.tab", "*/work-tray.action"] }
   }
