@@ -137,6 +137,19 @@ Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mo
 | unipi surfaces (design.md §7) | ✅ | ✅ | all render through OUS / docked cards / native board; `_oino/*` wired |
 
 
+## 5b. Browser control ([browser-control.md](browser-control.md), work id `browser-impl`)
+
+| WP | Status | Notes |
+|---|---|---|
+| WP1 contracts | ✅ | `crates/oino-browser-protocol` (commands, results, status, view events, input, frontend requests); `oino-extension-api::browser::BrowserHost`, `HostServices::browser_execute/status`, manifest permission `browser`; WIT `browser` (`execute`, `status`). `ClientEvent::Browser` / `_oino/browser_*` RPC ❌ (frontends use `BrowserHost` in-process) |
+| WP2 `oino-browser` | ✅ | in-house CDP client (pipe on Unix, loopback ws on Windows/`transport: port`), engine detection (CloakBrowser cache → Chrome/Chromium/Edge/Brave → Playwright cache), Xvfb hidden display (`-terminate`), `--no-sandbox` only where AppArmor blocks userns for home-dir builds, process-group kill, AX snapshot (shadow DOM, same-origin frames, OOPIF) with stable refs, actionability + `obscured`, trusted input, dialogs, popups, downloads, logs, screenshot ladder, isolated-world evaluate, waits, reuse-tab navigate, per-session isolation, take-over gate, handoff, residency LRU, idle reaper, default-deny site permissions, screencast views + viewer input. Real-Chromium test `crates/oino-browser/tests/real_browser.rs` (`OINO_TEST_BROWSER=...`) ✅ with Playwright Chromium 1248. CloakBrowser install/download, cookie import, external CDP endpoint, `browserScope: own` contexts, relaunch on display change ❌ |
+| WP3 host wiring | ✅ | wasm-host import + `LocalServices::set_browser`, nested agents resolve to the root session; `oino` CLI installs one service per process (`OINO_BROWSER=off\|ephemeral\|headless\|window`; `--browser` flag and `oino browser …` ❌) |
+| WP4 `oino.browser` | ✅ | `extensions/oino/browser`: 19 tools (token budget test), approval dialog (once / site / deny), prompt section, turn-tail screenshot entry + renderer, `/browser`, `skill:browser` (replaces unipi's agent-browser skill). Ambient context ❌ (DEVIATIONS.md) |
+| WP5 desktop | 🟡 | screencast Browser tab with agent/user tabs, take-over strip, dialog + handoff cards, mouse/wheel/key/clipboard, cursor probe; reveal opens the side tab; fallback web view. IME, file drag-drop, site-permissions popover, Fit-to-pane, Settings → Browser section ❌ (settings via `settings.json` `browser.*`) |
+| WP6 mobile / WP7 TUI / WP8 integration | ❌ | |
+
+Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a local fixture page, clicked twice, read `clicked 2`; Oino Desktop (Xvfb + lavapipe) with Kimi K2.6: the agent's tab appeared in the side pane, frames showed `clicked 1`, user clicks/typing in the screencast reached the page; no browser or Xvfb process left after the app was killed.
+
 ## 6. Known issues
 
 1. **Bash detach** is wired (core-gui-gaps); needs the WASM host's task service
