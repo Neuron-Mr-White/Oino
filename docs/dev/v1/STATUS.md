@@ -179,6 +179,10 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
     ([gui-qa.md](gui-qa.md) Resolution; commits `d94a75f`…`1e1242c`); the 30-min faux soak passes
     (2.80 MB/min, [stability.md](stability.md)). GA-12 (unipi splash UTC-hour greeting) stays
     open until `host-info` grows the R3 local-offset field.
+14. **`--session-id`** only opens an existing session; pi creates one that does not exist
+    (modes.md deviation #13, core `SessionSource` has no explicit id). Cron works around it by
+    passing `--session <agent>/sessions/--<cwd>--/<ts>_<run id>.jsonl` for every run, so the run
+    id is the file-name id, not the header id.
 
 ### 6.1 gui-audit area E (core-gui-gaps)
 
