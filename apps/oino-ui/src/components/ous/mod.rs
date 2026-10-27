@@ -99,6 +99,11 @@ pub struct Ous<'a> {
 #[derive(Default)]
 struct Drains(HashMap<u64, Instant>);
 
+/// Drain start times kept before old ones are pruned.
+const MAX_DRAINS: usize = 128;
+/// Age after which a drain start may be pruned (longer than any countdown).
+const DRAIN_KEEP: std::time::Duration = std::time::Duration::from_secs(600);
+
 impl gpui_kit::Global for Drains {}
 
 /// Renders rich text as one paragraph.
@@ -718,11 +723,12 @@ pub fn render(
                 && !t.reduce_motion
             {
                 let hash = node.content_hash();
-                let start = *cx
-                    .default_global::<Drains>()
-                    .0
-                    .entry(hash)
-                    .or_insert_with(Instant::now);
+                let drains = &mut cx.default_global::<Drains>().0;
+                // Bounded: every countdown ever shown left an entry behind.
+                if drains.len() >= MAX_DRAINS {
+                    drains.retain(|_, at| at.elapsed() < DRAIN_KEEP);
+                }
+                let start = *drains.entry(hash).or_insert_with(Instant::now);
                 #[allow(clippy::cast_precision_loss, reason = "durations in ms")]
                 let left = 1.0 - (start.elapsed().as_millis() as f32 / ms as f32);
                 r *= left.clamp(0.0, 1.0);
