@@ -24,6 +24,11 @@ use crate::launch::{BrowserProcess, LaunchSpec, Placement};
 use crate::profile::ProfileRt;
 use crate::tab::{Candidate, Tab, lock, residency_victim};
 
+/// Overall browser launch budget (QA-2): engine start plus the CDP handshake. A wedged
+/// launch becomes `launch_failed` (browser-control.md §5.5) instead of a tool call that
+/// never ends.
+const LAUNCH_TIMEOUT: Duration = Duration::from_secs(90);
+
 /// Construction options.
 #[derive(Clone, Debug)]
 pub struct BrowserOptions {
@@ -245,7 +250,20 @@ impl BrowserService {
                 "browser control is off (Settings → Browser, `browser.enabled`)",
             ));
         }
-        let _guard = self.inner.launching.lock().await;
+        // QA-2: a launch that wedges must not wedge every later browser call waiting on this
+        // mutex; fail as `launch_failed` once the wait exceeds the launch budget.
+        let acquire = self.inner.launching.lock();
+        let _guard = tokio::time::timeout(LAUNCH_TIMEOUT, acquire)
+            .await
+            .map_err(|_| {
+                BrowserResult::unavailable(
+                    "launch_failed",
+                    format!(
+                        "another browser launch has been pending for over {} s; try again",
+                        LAUNCH_TIMEOUT.as_secs()
+                    ),
+                )
+            })?;
         if let Some(p) = lock(&self.inner.live).get(name).cloned()
             && !p.dead.load(Ordering::SeqCst)
         {
@@ -323,25 +341,61 @@ impl BrowserService {
             placement,
             pipe,
         };
-        let process = BrowserProcess::launch(&spec).await.map_err(|e| {
-            BrowserResult::unavailable(
-                "launch_failed",
-                format!("{} did not start: {e}", engine.product),
-            )
-        })?;
+        let process = {
+            // QA-2: browser start is bounded; a wedged launch surfaces as `launch_failed`
+            // (browser-control.md §5.5) instead of a tool call that never ends.
+            let launch = BrowserProcess::launch(&spec);
+            match tokio::time::timeout(LAUNCH_TIMEOUT, launch).await {
+                Ok(Ok(p)) => p,
+                Ok(Err(e)) => {
+                    return Err(BrowserResult::unavailable(
+                        "launch_failed",
+                        format!("{} did not start: {e}", engine.product),
+                    ));
+                }
+                Err(_) => {
+                    return Err(BrowserResult::unavailable(
+                        "launch_failed",
+                        format!(
+                            "{} did not start within {} s",
+                            engine.product,
+                            LAUNCH_TIMEOUT.as_secs()
+                        ),
+                    ));
+                }
+            }
+        };
         let generation = self.inner.generation.fetch_add(1, Ordering::SeqCst) + 1;
         let grants = crate::permissions::load(&self.inner.hub.paths.site_permissions());
-        let rt = ProfileRt::start(
-            name.to_owned(),
-            generation,
-            engine.kind.as_str().to_owned(),
-            process,
-            Arc::clone(&self.inner.hub),
-            settings.downloads_dir.clone(),
-            &grants,
-        )
-        .await
-        .map_err(|e| BrowserResult::unavailable("launch_failed", e.to_string()))?;
+        let rt = {
+            let start = ProfileRt::start(
+                name.to_owned(),
+                generation,
+                engine.kind.as_str().to_owned(),
+                process,
+                Arc::clone(&self.inner.hub),
+                settings.downloads_dir.clone(),
+                &grants,
+            );
+            // QA-2: the CDP handshake is bounded too; a wedged engine becomes
+            // `launch_failed` instead of a tool call that never ends. Dropping the future
+            // drops `BrowserProcess`, which kills the process group.
+            match tokio::time::timeout(LAUNCH_TIMEOUT, start).await {
+                Ok(Ok(rt)) => rt,
+                Ok(Err(e)) => {
+                    return Err(BrowserResult::unavailable("launch_failed", e.to_string()));
+                }
+                Err(_) => {
+                    return Err(BrowserResult::unavailable(
+                        "launch_failed",
+                        format!(
+                            "the browser did not answer CDP within {} s",
+                            LAUNCH_TIMEOUT.as_secs()
+                        ),
+                    ));
+                }
+            }
+        };
         crate::profiles::touch_meta(&user_data_dir);
         lock(&self.inner.live).insert(name.to_owned(), Arc::clone(&rt));
         self.start_reaper();

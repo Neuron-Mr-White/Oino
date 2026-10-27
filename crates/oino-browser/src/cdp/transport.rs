@@ -2,7 +2,11 @@
 //! loopback WebSocket (Windows, `browser.externalCdp`, tests).
 
 use futures::{SinkExt as _, StreamExt as _};
+use std::time::Duration;
 use tokio::sync::mpsc;
+
+/// WebSocket handshake deadline (QA-2).
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A connected transport, consumed by [`super::Cdp::start`].
 pub(crate) enum Transport {
@@ -33,10 +37,13 @@ pub(crate) enum Transport {
 }
 
 impl Transport {
-    /// Connects to a `DevTools` WebSocket URL.
+    /// Connects to a `DevTools` WebSocket URL. Bounded (QA-2): a browser that listens but
+    /// never completes the handshake must fail as a launch error, not hang the tool call.
     pub(crate) async fn connect_ws(url: &str) -> Result<Self, String> {
-        let (ws, _) = tokio_tungstenite::connect_async(url)
+        let connect = tokio_tungstenite::connect_async(url);
+        let (ws, _) = tokio::time::timeout(CONNECT_TIMEOUT, connect)
             .await
+            .map_err(|_| format!("{url}: the browser did not complete the DevTools handshake"))?
             .map_err(|e| e.to_string())?;
         Ok(Self::WebSocket(Box::new(ws)))
     }
