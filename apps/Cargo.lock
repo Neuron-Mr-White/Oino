@@ -5785,6 +5785,7 @@ dependencies = [
  "jni 0.22.4",
  "log",
  "oino-ai",
+ "oino-browser",
  "oino-bundle",
  "oino-client",
  "oino-core",

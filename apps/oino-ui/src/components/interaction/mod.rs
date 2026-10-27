@@ -14,11 +14,10 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Div, Entity, EventEmitter, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render, SharedString,
-    Styled as _, Window, div, px,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use oino_core::ui::UiResponse;
 
-use crate::components::badge::pill;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::ticker::Ticker;
@@ -178,7 +177,7 @@ impl InteractionView {
             dangerous,
             count,
             opened: Instant::now(),
-            max_height: px(size::DETAIL_MAX),
+            max_height: px(size::DIALOG_MAX_H),
             focus,
             promoted: false,
         }
@@ -275,14 +274,23 @@ impl InteractionView {
         self.respond(response, cx);
     }
 
-    /// Card shell shared by every docked kind (`R_XL`, E2, header bg).
-    pub(crate) fn shell(
+    /// The interaction card in the composer slot (A2.11): radius 24, surface-2, inset 1 px
+    /// claw at 45 %, composer elevation, padding 12 14. Head: eyebrow icon + label (claw
+    /// 12/600), "1 of N", the countdown pill (only when the extension set one) and ✕ 34.
+    /// Body: the question 16/22 medium, then `body`, which scrolls inside the card's max
+    /// height so the footer always stays visible (GA-7). The footer is laid out on the first
+    /// paint, so the card never grows under the pointer (GA-27).
+    #[allow(clippy::too_many_arguments, reason = "card parts")]
+    pub(crate) fn card(
         &self,
         t: &OinoTheme,
         glyph: gpui_kit::assets::IconName,
-        title: SharedString,
-        cx: &mut App,
-    ) -> Div {
+        eyebrow: SharedString,
+        title: Option<SharedString>,
+        body: AnyElement,
+        footer: Option<AnyElement>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let timeout = interaction::countdown(
             self.dialog.timeout_ms,
             u64::try_from(self.opened.elapsed().as_millis()).unwrap_or(u64::MAX),
@@ -292,75 +300,210 @@ impl InteractionView {
         }
         let draining = timeout.as_ref().is_some_and(|(_, left)| *left <= 10_000);
         let queue = interaction::queue_label(self.count);
-        let source = self.dialog.extension_id.clone();
+        let accent = if self.dangerous {
+            t.warning()
+        } else {
+            t.working()
+        };
+        let head = div()
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap(px(space::S2))
+            .h(px(size::ATTACH))
+            .child(icon(glyph, size::ICON_MD, accent))
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_role(t, TextRole::Sm)
+                    .weight_semibold()
+                    .text_color(accent)
+                    .child(eyebrow),
+            )
+            .when_some(queue, |el, q| {
+                el.child(
+                    div()
+                        .text_role(t, TextRole::Sm)
+                        .text_color(t.fg_subtlest())
+                        .child(SharedString::from(q)),
+                )
+            })
+            .when_some(self.dialog.extension_id.clone(), |el, s| {
+                el.child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_role(t, TextRole::Xs)
+                        .text_color(t.fg_subtlest())
+                        .child(SharedString::from(s)),
+                )
+            })
+            .child(div().flex_1())
+            .when_some(timeout, |el, (text, _)| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .h(px(size::BADGE + space::S1))
+                        .px(px(space::S2))
+                        .rounded(px(radius::R_FULL))
+                        .bg(if draining {
+                            t.attention_surface()
+                        } else {
+                            t.bubble()
+                        })
+                        .text_role(t, TextRole::Sm)
+                        .weight_semibold()
+                        .text_color(if draining { t.amber() } else { t.fg_subtle() })
+                        .child(text),
+                )
+            })
+            .child(
+                div()
+                    .id("card-close")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(size::ATTACH))
+                    .rounded(px(radius::R_FULL))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.bubble()))
+                    .on_click(cx.listener(|this, _: &gpui_kit::ClickEvent, _, cx| this.cancel(cx)))
+                    .child(icon(
+                        gpui_kit::assets::IconName::X,
+                        size::ICON,
+                        t.fg_subtle(),
+                    )),
+            );
         div()
             .flex()
             .flex_col()
             .w_full()
-            .rounded(px(radius::R_CARD))
-            .bg(t.card())
+            .max_h(self.max_height)
+            .gap(px(space::S2))
+            .px(px(space::S3_5))
+            .py(px(space::S3))
+            .rounded(px(radius::R_DIALOG_CARD))
+            .bg(t.input())
             .border_1()
-            .border_color(t.card_border())
-            .shadow(t.e2())
-            .overflow_hidden()
+            .border_color(accent.opacity(0.45))
+            .shadow(t.e_composer())
+            .child(head)
+            .child(
+                div()
+                    .id("card-body")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .gap(px(space::S2_5))
+                    .overflow_y_scroll()
+                    .when_some(title, |el, title| {
+                        let (lg, _) = t.text(TextRole::Lg);
+                        el.child(
+                            div()
+                                .text_size(lg)
+                                .line_height(px(f32::from(lg) + space::S1_5))
+                                .weight_medium()
+                                .text_color(t.fg())
+                                .child(title),
+                        )
+                    })
+                    .child(body),
+            )
+            .children(footer.map(|f| div().flex_shrink_0().child(f)))
+            .into_any_element()
+    }
+
+    /// An option row (A2.11): min 46, radius 14, surface-3, number tile 22 (radius 7,
+    /// surface-1), label 15/500 + description 13 dim; selected = inset 1.5 claw ring + claw
+    /// 10 % fill.
+    pub(crate) fn option_row(
+        t: &OinoTheme,
+        id: gpui_kit::ElementId,
+        n: Option<usize>,
+        label: &str,
+        description: Option<&str>,
+        selected: bool,
+        lead: Option<AnyElement>,
+    ) -> gpui_kit::Stateful<Div> {
+        let (prose, _) = t.text(TextRole::Prose);
+        div()
+            .id(id)
+            .flex()
+            .items_center()
+            .flex_shrink_0()
+            .gap(px(space::S2_5))
+            .min_h(px(size::OPTION_ROW))
+            .px(px(space::S3))
+            .py(px(space::S1_5))
+            .rounded(px(radius::R_OPTION))
+            .cursor_pointer()
+            .bg(if selected {
+                t.working().opacity(0.10)
+            } else {
+                t.bubble()
+            })
+            .border_1()
+            .border_color(if selected { t.working() } else { t.bubble() })
+            .when(!selected, |el| {
+                el.hover(|s| s.border_color(t.border_hover()))
+            })
+            .when_some(n.filter(|_| !t.touch()), |el, n| {
+                el.child(
+                    div()
+                        .flex()
+                        .flex_shrink_0()
+                        .items_center()
+                        .justify_center()
+                        .size(px(size::NUMBER_TILE))
+                        .rounded(px(radius::R_NUMBER))
+                        .bg(t.card())
+                        .text_role(t, TextRole::Xs)
+                        .weight_semibold()
+                        .text_color(t.fg_subtle())
+                        .child(SharedString::from((n + 1).to_string())),
+                )
+            })
+            .children(lead)
             .child(
                 div()
                     .flex()
-                    .items_center()
-                    .gap(px(space::S2))
-                    .px(px(space::S4))
-                    .h(px(size::INPUT + space::S1))
-                    .bg(if draining {
-                        t.waiting_surface()
-                    } else {
-                        t.header()
-                    })
-                    .border_b_1()
-                    .border_color(t.border())
-                    .child(icon(
-                        glyph,
-                        size::ICON,
-                        if self.dangerous {
-                            t.warning()
-                        } else {
-                            t.waiting_fg()
-                        },
-                    ))
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
                     .child(
                         div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_role(t, TextRole::Base)
+                            .text_size(prose)
                             .weight_medium()
-                            .child(title),
+                            .text_color(t.fg())
+                            .child(SharedString::from(label.to_owned())),
                     )
-                    .when_some(queue, |el, q| el.child(pill(t, t.tag(), t.fg_subtle(), q)))
-                    .when_some(timeout, |el, (text, _)| {
+                    .when_some(description.map(str::to_owned), |el, d| {
                         el.child(
                             div()
-                                .flex()
-                                .items_center()
-                                .gap(px(space::S1))
-                                .mono_text(t, TextRole::Sm)
-                                .text_color(t.fg_subtle())
-                                .child(icon(
-                                    gpui_kit::assets::IconName::Clock,
-                                    size::ICON_SM,
-                                    t.fg_subtle(),
-                                ))
-                                .child(text),
-                        )
-                    })
-                    .when_some(source, |el, s| {
-                        el.child(
-                            div()
-                                .text_role(t, TextRole::Xs)
+                                .text_role(t, TextRole::Caption)
                                 .text_color(t.fg_subtlest())
-                                .child(SharedString::from(s)),
+                                .child(SharedString::from(d)),
                         )
                     }),
             )
+    }
+
+    /// A text field with its height reserved from the first paint (GA-27).
+    pub(crate) fn field_box(t: &OinoTheme, el: impl IntoElement) -> AnyElement {
+        div()
+            .flex()
+            .items_center()
+            .flex_shrink_0()
+            .h(px(size::FIELD + space::S1))
+            .px(px(space::S3))
+            .rounded(px(radius::R_OPTION))
+            .bg(t.card())
+            .border_1()
+            .border_color(t.border())
+            .child(div().w_full().child(el))
+            .into_any_element()
     }
 
     /// Moves keyboard focus into the card (from the composer).

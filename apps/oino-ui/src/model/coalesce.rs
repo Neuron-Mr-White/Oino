@@ -3,7 +3,7 @@
 //! the same call keep only the latest, so a burst of deltas costs one reduction and one
 //! redraw. Every other event is kept in order.
 
-use oino_core::events::{AgentSessionEvent, ClientEvent};
+use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent};
 
 fn same_run(previous: &ClientEvent, next: &ClientEvent) -> bool {
     match (previous, next) {
@@ -19,6 +19,17 @@ fn same_run(previous: &ClientEvent, next: &ClientEvent) -> bool {
                 tool_call_id: b, ..
             }),
         ) => a == b,
+        // Nested agent deltas (`agent_event`) coalesce per agent the same way.
+        (
+            ClientEvent::Oino(OinoEvent::AgentEvent {
+                agent_id: a,
+                event: e1,
+            }),
+            ClientEvent::Oino(OinoEvent::AgentEvent {
+                agent_id: b,
+                event: e2,
+            }),
+        ) => a == b && same_run(e1, e2),
         _ => false,
     }
 }

@@ -10,7 +10,6 @@ use gpui_kit::{
 };
 
 use super::{InteractionView, digit};
-use crate::components::badge::kbd;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::check;
 use crate::design::icons::icon;
@@ -138,171 +137,161 @@ impl InteractionView {
         };
         let n = questions.len();
         let step = self.step.min(n.saturating_sub(1));
-        let title = SharedString::from(if n == 1 {
-            "Oino has a question".to_owned()
+        let eyebrow = SharedString::from(if n == 1 {
+            "Question".to_owned()
         } else {
-            format!("Oino has {n} questions")
+            format!("{n} questions · {} of {n}", step + 1)
         });
-        let shell = self.shell(&t, IconName::MessageCircleQuestionMark, title, cx);
-        let chips = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap(px(space::S1))
-            .children(questions.iter().enumerate().map(|(i, q)| {
-                let done = self
-                    .form_checks
-                    .get(i)
-                    .is_some_and(|r| r.iter().any(|c| *c));
-                let label = q.header.clone().unwrap_or_else(|| format!("Q{}", i + 1));
-                div()
-                    .id(ElementId::NamedInteger(
-                        "q-chip".into(),
-                        u64::try_from(i).unwrap_or(0),
-                    ))
-                    .flex()
-                    .items_center()
-                    .gap(px(space::S1))
-                    .px(px(space::S2))
-                    .h(px(size::CONTROL_SM))
-                    .rounded(px(radius::R_MD))
-                    .cursor_pointer()
-                    .text_role(&t, TextRole::Sm)
-                    .text_color(if i == step { t.fg() } else { t.fg_subtle() })
-                    .when(i == step, |el| el.bg(t.selected()))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        this.step = i;
-                        cx.notify();
-                    }))
-                    .when(done, |el| {
-                        el.child(icon(IconName::Check, size::ICON_SM, t.success()))
-                    })
-                    .child(SharedString::from(label))
-            }));
         let Some(q) = questions.get(step).cloned() else {
-            return shell.into_any_element();
+            return div().into_any_element();
         };
-        let other = self.form_other.get(step).cloned().flatten();
-        let options = q.options.iter().enumerate().map(|(oi, o)| {
-            let checked = self
-                .form_checks
-                .get(step)
-                .and_then(|r| r.get(oi))
-                .copied()
-                .unwrap_or(false);
+        let chips = (n > 1).then(|| {
             div()
-                .id(ElementId::NamedInteger(
-                    "q-opt".into(),
-                    u64::try_from(oi).unwrap_or(0),
-                ))
                 .flex()
-                .items_center()
-                .gap(px(space::S3))
-                .min_h(t.option_row())
-                .px(px(space::S3))
-                .rounded(px(radius::R_INPUT))
-                .cursor_pointer()
-                .border_1()
-                .border_color(if checked {
-                    t.border_hover()
-                } else {
-                    t.border()
-                })
-                .when(checked, |el| el.bg(t.selected()))
-                .hover(|s| s.bg(t.hover()))
+                .flex_row()
+                .flex_wrap()
+                .gap(px(space::S1))
+                .children(questions.iter().enumerate().map(|(i, q)| {
+                    let done = self
+                        .form_checks
+                        .get(i)
+                        .is_some_and(|r| r.iter().any(|c| *c));
+                    let label = q.header.clone().unwrap_or_else(|| format!("Q{}", i + 1));
+                    div()
+                        .id(ElementId::NamedInteger(
+                            "q-chip".into(),
+                            u64::try_from(i).unwrap_or(0),
+                        ))
+                        .flex()
+                        .items_center()
+                        .gap(px(space::S1))
+                        .px(px(space::S2_5))
+                        .h(px(size::CONTROL))
+                        .rounded(px(radius::R_FULL))
+                        .cursor_pointer()
+                        .text_role(&t, TextRole::Sm)
+                        .weight_medium()
+                        .text_color(if i == step { t.fg() } else { t.fg_subtle() })
+                        .bg(if i == step { t.bubble() } else { t.card() })
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.step = i;
+                            cx.notify();
+                        }))
+                        .when(done, |el| {
+                            el.child(icon(IconName::Check, size::ICON_SM, t.success()))
+                        })
+                        .child(SharedString::from(label))
+                }))
+        });
+        let other = self.form_other.get(step).cloned().flatten();
+        let options: Vec<AnyElement> = q
+            .options
+            .iter()
+            .enumerate()
+            .map(|(oi, o)| {
+                let checked = self
+                    .form_checks
+                    .get(step)
+                    .and_then(|r| r.get(oi))
+                    .copied()
+                    .unwrap_or(false);
+                Self::option_row(
+                    &t,
+                    ElementId::NamedInteger("q-opt".into(), u64::try_from(oi).unwrap_or(0)),
+                    (oi < 9).then_some(oi),
+                    &o.label,
+                    o.description.as_deref(),
+                    checked,
+                    q.multi
+                        .then(|| check(&t, checked, false).into_any_element()),
+                )
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                     this.toggle_option(step, oi);
                     cx.notify();
                 }))
-                .when(oi < 9 && !t.touch(), |el| {
-                    el.child(kbd(&t, (oi + 1).to_string()))
-                })
-                .child(check(&t, checked, !q.multi))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .py(px(space::S1_5))
-                        .child(
-                            div()
-                                .text_role(&t, TextRole::Base)
-                                .child(SharedString::from(o.label.clone())),
-                        )
-                        .when_some(o.description.clone(), |el, d| {
-                            el.child(
-                                div()
-                                    .text_role(&t, TextRole::Sm)
-                                    .text_color(t.fg_subtle())
-                                    .child(SharedString::from(d)),
-                            )
-                        }),
-                )
-        });
+                .into_any_element()
+            })
+            .collect();
         let last = step + 1 >= n;
         let label = if last {
             submit_label.unwrap_or_else(|| "Submit".to_owned())
         } else {
             "Next".to_owned()
         };
-        shell
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap(px(space::S2))
+            .children(chips)
+            .children(options)
+            .when_some(other, |el, s| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(space::S2_5))
+                        .child(icon(IconName::Pencil, size::ICON_MD, t.fg_subtlest()))
+                        .child(
+                            div()
+                                .flex_1()
+                                .child(Self::field_box(&t, Input::new(&s).appearance(false))),
+                        ),
+                )
+            })
+            .into_any_element();
+        let footer = div()
+            .flex()
+            .items_center()
+            .gap(px(space::S2))
+            .when(n > 1, |el| {
+                el.child(
+                    Btn::icon_only("q-prev", IconName::ChevronLeft, "Previous question")
+                        .size(BtnSize::Md)
+                        .disabled(step == 0)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.step = this.step.saturating_sub(1);
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Btn::icon_only("q-fwd", IconName::ChevronRight, "Next question")
+                        .size(BtnSize::Md)
+                        .disabled(last)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if this.step + 1 < n {
+                                this.step += 1;
+                            }
+                            cx.notify();
+                        })),
+                )
+            })
+            .child(div().flex_1())
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(space::S3))
-                    .p(px(space::S4))
-                    .when(n > 1, |el| el.child(chips))
-                    .child(
-                        div()
-                            .text_role(&t, TextRole::Base)
-                            .weight_medium()
-                            .child(SharedString::from(q.question.clone())),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(space::S1_5))
-                            .children(options),
-                    )
-                    .when_some(other, |el, s| el.child(Input::new(&s)))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(space::S2))
-                            .when(step > 0, |el| {
-                                el.child(
-                                    Btn::new("q-back")
-                                        .label("Back")
-                                        .variant(Variant::Ghost)
-                                        .size(BtnSize::Default)
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.step = this.step.saturating_sub(1);
-                                            cx.notify();
-                                        })),
-                                )
-                            })
-                            .child(div().flex_1())
-                            .child(
-                                Btn::new("q-skip")
-                                    .label("Cancel")
-                                    .kbd("esc")
-                                    .variant(Variant::Ghost)
-                                    .on_click(cx.listener(|this, _, _, cx| this.cancel(cx))),
-                            )
-                            .child(
-                                Btn::new("q-next")
-                                    .label(SharedString::from(label))
-                                    .variant(Variant::Primary)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.next_or_submit(cx);
-                                        cx.notify();
-                                    })),
-                            ),
-                    ),
+                Btn::new("q-skip")
+                    .label("Cancel")
+                    .variant(Variant::Secondary)
+                    .size(BtnSize::Md)
+                    .on_click(cx.listener(|this, _, _, cx| this.cancel(cx))),
             )
-            .into_any_element()
+            .child(
+                Btn::new("q-next")
+                    .label(SharedString::from(label))
+                    .variant(Variant::Primary)
+                    .size(BtnSize::Md)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.next_or_submit(cx);
+                        cx.notify();
+                    })),
+            )
+            .into_any_element();
+        self.card(
+            &t,
+            IconName::MessageCircleQuestionMark,
+            eyebrow,
+            Some(SharedString::from(q.question.clone())),
+            body,
+            Some(footer),
+            cx,
+        )
     }
 }

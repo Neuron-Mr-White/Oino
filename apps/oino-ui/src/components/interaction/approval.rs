@@ -103,7 +103,6 @@ impl InteractionView {
         } else {
             self.dialog.title.clone()
         });
-        let shell = self.shell(&t, IconName::ShieldCheck, title, cx);
         let detail_el = detail.map(|d| {
             let mut o = Ous {
                 t,
@@ -116,47 +115,44 @@ impl InteractionView {
                 .id("approval-detail")
                 .max_h(px(size::APPROVAL_DETAIL_MAX))
                 .overflow_y_scroll()
+                .rounded(px(radius::R_TOOL))
+                .bg(t.card())
+                .p(px(space::S2))
                 .child(ous::render(&d, "approval", &mut o, window, cx))
                 .into_any_element()
         });
         let field = match &self.field {
-            Field::Line(s) => Some(s.clone()),
+            Field::Line(s) => Some(Self::field_box(&t, Input::new(s).appearance(false))),
             _ => None,
         };
         let highlighted = self.highlighted;
         // Touch: 44 pt buttons, stacked full width when there are more than two (design.md §6.3).
         let touch = t.touch();
         let stacked = touch && options.len() > 2;
-        let buttons: Vec<AnyElement> = options
+        // A2.11: allow-once → primary, always → secondary, reject → danger pill.
+        let buttons: Vec<(AnyElement, bool)> = options
             .iter()
             .enumerate()
             .map(|(i, o)| {
                 let variant = match o.kind {
                     ApprovalKind::AllowOnce => Variant::Primary,
-                    ApprovalKind::AllowAlways => Variant::Outline,
-                    ApprovalKind::RejectOnce => Variant::OutlineDanger,
-                    ApprovalKind::RejectAlways => Variant::GhostDanger,
+                    ApprovalKind::AllowAlways => Variant::Secondary,
+                    ApprovalKind::RejectOnce | ApprovalKind::RejectAlways => Variant::DangerSoft,
                 };
-                Btn::new(ElementId::Name(format!("ap-{}", o.option_id).into()))
+                let b = Btn::new(ElementId::Name(format!("ap-{}", o.option_id).into()))
                     .label(SharedString::from(o.label.clone()))
                     .kbd_lead((i + 1).to_string())
                     .variant(variant)
-                    .size(if touch {
-                        BtnSize::Touch
-                    } else {
-                        BtnSize::Default
-                    })
+                    .size(if touch { BtnSize::Touch } else { BtnSize::Md })
                     .when(stacked, Btn::full)
                     .selected(i == highlighted && variant != Variant::Primary && !touch)
                     .on_click(cx.listener(move |this, _, _, cx| this.approve_at(i, cx)))
-                    .into_any_element()
+                    .into_any_element();
+                (b, o.kind.is_allow())
             })
             .collect();
-        let (allow, reject): (Vec<_>, Vec<_>) = buttons
-            .into_iter()
-            .zip(options.iter())
-            .partition(|(_, o)| o.kind.is_allow());
-        let actions = if stacked {
+        let (allow, reject): (Vec<_>, Vec<_>) = buttons.into_iter().partition(|(_, a)| *a);
+        let footer = if stacked {
             div()
                 .flex()
                 .flex_col()
@@ -169,61 +165,67 @@ impl InteractionView {
                 .flex_row()
                 .flex_wrap()
                 .items_center()
+                .justify_end()
                 .gap(px(space::S2))
-                .children(allow.into_iter().map(|(b, _)| b))
-                .child(div().flex_1())
                 .children(reject.into_iter().map(|(b, _)| b))
+                .children(allow.into_iter().rev().map(|(b, _)| b))
         };
-        shell
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap(px(space::S2_5))
+            .when(self.dangerous, |el| {
+                el.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(space::S2))
+                        .px(px(space::S3))
+                        .py(px(space::S2))
+                        .rounded(px(radius::R_INPUT))
+                        .bg(t.warning_surface())
+                        .text_color(t.warning_surface_fg())
+                        .text_role(&t, TextRole::Sm)
+                        .weight_medium()
+                        .child(icon(IconName::TriangleAlert, size::ICON_MD, t.warning()))
+                        .child("Destructive command — review before allowing"),
+                )
+            })
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap(px(space::S3))
-                    .p(px(space::S4))
-                    .when(self.dangerous, |el| {
+                    .items_center()
+                    .gap(px(space::S2))
+                    .min_w_0()
+                    .when_some(tool_name, |el, tool| {
                         el.child(
                             div()
-                                .flex()
-                                .items_center()
-                                .gap(px(space::S2))
-                                .px(px(space::S3))
-                                .py(px(space::S2))
-                                .rounded(px(radius::R_INPUT))
-                                .bg(t.warning_surface())
-                                .text_color(t.warning_surface_fg())
-                                .text_role(&t, TextRole::Sm)
-                                .weight_medium()
-                                .child(icon(IconName::TriangleAlert, size::ICON_MD, t.warning()))
-                                .child("Destructive command — review before allowing"),
+                                .flex_shrink_0()
+                                .mono_text(&t, TextRole::Sm)
+                                .text_color(t.working())
+                                .child(SharedString::from(tool)),
                         )
                     })
                     .child(
                         div()
-                            .flex()
-                            .items_center()
-                            .gap(px(space::S2))
-                            .text_role(&t, TextRole::Base)
-                            .when_some(tool_name, |el, tool| {
-                                el.child(
-                                    div()
-                                        .mono_text(&t, TextRole::Sm)
-                                        .text_color(t.fg_subtle())
-                                        .child(SharedString::from(tool)),
-                                )
-                                .child(div().text_color(t.fg_subtlest()).child("·"))
-                            })
-                            .child(
-                                div()
-                                    .mono_text(&t, TextRole::Base)
-                                    .truncate()
-                                    .child(SharedString::from(summary)),
-                            ),
-                    )
-                    .children(detail_el)
-                    .when_some(field, |el, s| el.child(Input::new(&s)))
-                    .child(actions),
+                            .min_w_0()
+                            .truncate()
+                            .mono_text(&t, TextRole::Sm)
+                            .text_color(t.fg_subtle())
+                            .child(SharedString::from(summary)),
+                    ),
             )
-            .into_any_element()
+            .children(detail_el)
+            .children(field)
+            .into_any_element();
+        self.card(
+            &t,
+            IconName::ShieldCheck,
+            "Approve".into(),
+            Some(title),
+            body,
+            Some(footer.into_any_element()),
+            cx,
+        )
     }
 }

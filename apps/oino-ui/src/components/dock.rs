@@ -11,7 +11,9 @@ use gpui_kit::{
 };
 use oino_client::PiCommand;
 
-use crate::components::badge::{kbd, pill};
+use gpui_kit::component::input::Input;
+
+use crate::components::badge::kbd;
 use crate::components::button::{Btn, BtnSize};
 use crate::components::ous::{self, Ous};
 use crate::design::icons::{icon, spinner};
@@ -133,12 +135,21 @@ impl SessionPane {
         out
     }
 
-    /// The `QueuePanel` (steer / follow-up rows with send-now, edit, remove).
+    /// The queue strip (A2.11): surface-1, radius 16, rows 13 px with a kind tag (Steer
+    /// amber / Queue gold) and ↑ send now, ✎ edit in place, ✕ remove (`_oino/queue_edit`).
+    #[allow(clippy::too_many_lines, reason = "row layout with three actions")]
     pub(crate) fn render_queue(&self, t: &OinoTheme, cx: &mut Context<Self>) -> Option<AnyElement> {
         let n = self.model.steering.len() + self.model.follow_up.len();
         if n == 0 {
             return None;
         }
+        let editing = self.queue_edit.as_ref().map(|(q, i, input)| {
+            let row = match q {
+                oino_client::protocol::QueueKind::Steering => *i,
+                oino_client::protocol::QueueKind::FollowUp => self.model.steering.len() + *i,
+            };
+            (row, input.clone())
+        });
         let rows = self
             .model
             .steering
@@ -147,62 +158,72 @@ impl SessionPane {
             .chain(self.model.follow_up.iter().map(|s| (false, s)))
             .enumerate()
             .map(|(i, (steer, text))| {
-                let edit = text.clone();
+                let id = |name: &'static str| {
+                    ElementId::NamedInteger(name.into(), u64::try_from(i).unwrap_or(0))
+                };
+                let (tag_color, tag) = if steer {
+                    (t.amber(), "Steer")
+                } else {
+                    (t.gold(), "Queue")
+                };
+                let field = editing
+                    .as_ref()
+                    .filter(|(row, _)| *row == i)
+                    .map(|(_, input)| input.clone());
                 div()
-                    .id(ElementId::NamedInteger(
-                        "queue".into(),
-                        u64::try_from(i).unwrap_or(0),
-                    ))
+                    .id(id("queue"))
                     .group(SharedString::from(format!("q{i}")))
                     .flex()
                     .items_center()
                     .gap(px(space::S2))
-                    .h(px(size::CONTROL))
+                    .min_h(px(size::CONTROL_LG))
                     .px(px(space::S2))
-                    .rounded(px(radius::R_MD))
+                    .rounded(px(radius::R_ROW))
                     .hover(|s| s.bg(t.hover()))
-                    .child(if steer {
-                        pill(t, t.warning_surface(), t.warning_surface_fg(), "Steer")
-                    } else {
-                        pill(t, t.idle_task_surface(), t.idle_task(), "Follow-up")
-                    })
-                    .child(
-                        div()
+                    .child(crate::components::chip::tag(t, tag_color, tag))
+                    .child(match field {
+                        Some(input) => div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(Input::new(&input).appearance(false))
+                            .into_any_element(),
+                        None => div()
                             .flex_1()
                             .min_w_0()
                             .truncate()
-                            .text_role(t, TextRole::Base)
+                            .text_role(t, TextRole::Caption)
                             .text_color(t.fg())
-                            .child(SharedString::from(text.clone())),
-                    )
+                            .child(SharedString::from(text.clone()))
+                            .into_any_element(),
+                    })
                     .child(
                         div()
                             .flex()
-                            .invisible()
-                            .group_hover(
-                                SharedString::from(format!("q{i}")),
-                                gpui_kit::Styled::visible,
+                            .gap(px(space::HALF))
+                            .child(
+                                Btn::icon_only(id("q-now"), IconName::ArrowUp, "Send now")
+                                    .size(BtnSize::Sm)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.queue_send_now(i, cx);
+                                    })),
                             )
                             .child(
-                                Btn::icon_only(
-                                    ElementId::NamedInteger(
-                                        "q-edit".into(),
-                                        u64::try_from(i).unwrap_or(0),
-                                    ),
-                                    IconName::Pencil,
-                                    "Edit",
-                                )
-                                .size(BtnSize::Sm)
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        if this.composer.read(cx).value().is_empty() {
-                                            this.set_composer_text(&edit, cx);
-                                            this.send(PiCommand::ClearQueue.into(), cx);
+                                Btn::icon_only(id("q-edit"), IconName::Pencil, "Edit")
+                                    .size(BtnSize::Sm)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        if this.queue_edit.is_some() {
+                                            this.queue_commit_edit(cx);
                                         } else {
-                                            this.toast("The composer has a draft", cx);
+                                            this.queue_begin_edit(i, window, cx);
                                         }
-                                    },
-                                )),
+                                    })),
+                            )
+                            .child(
+                                Btn::icon_only(id("q-remove"), IconName::X, "Remove")
+                                    .size(BtnSize::Sm)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.queue_remove(i, cx);
+                                    })),
                             ),
                     )
             });
@@ -212,8 +233,10 @@ impl SessionPane {
                 .flex_col()
                 .w_full()
                 .p(px(space::S1))
-                .rounded(px(radius::R_LG))
-                .bg(t.surface())
+                .rounded_t(px(radius::R_FLOAT))
+                .bg(t.card())
+                .border_1()
+                .border_color(t.border())
                 .child(
                     div()
                         .id("queue-head")
@@ -229,14 +252,16 @@ impl SessionPane {
                         }))
                         .text_role(t, TextRole::Sm)
                         .text_color(t.fg_subtle())
-                        .child(icon(IconName::ListOrdered, size::ICON_MD, t.fg_subtle()))
+                        .child(icon(IconName::ListOrdered, size::ICON_MD, t.fg_subtlest()))
                         .child(format!("{n} queued"))
                         .child(div().flex_1())
                         .child(
                             Btn::new("queue-clear")
                                 .label("Clear")
+                                .variant(crate::components::button::Variant::Ghost)
                                 .size(BtnSize::Xs)
                                 .on_click(cx.listener(|this, _, _, cx| {
+                                    this.queue_edit = None;
                                     this.send(PiCommand::ClearQueue.into(), cx);
                                 })),
                         )
@@ -250,7 +275,17 @@ impl SessionPane {
                             t.fg_subtlest(),
                         )),
                 )
-                .when(self.queue_open, |el| el.children(rows))
+                .when(self.queue_open, |el| {
+                    el.child(
+                        div()
+                            .id("queue-rows")
+                            .flex()
+                            .flex_col()
+                            .max_h(px(size::QUEUE_MAX))
+                            .overflow_y_scroll()
+                            .children(rows),
+                    )
+                })
                 .into_any_element(),
         )
     }
@@ -295,7 +330,7 @@ impl SessionPane {
                 .px(px(space::S2))
                 .text_role(t, TextRole::Sm)
                 .text_color(t.fg_subtle())
-                .child(spinner(frame, size::ICON_MD, t.fg_subtle()))
+                .child(spinner(frame, size::ICON_MD, t.working()))
                 .child(div().opacity(shimmer).child(SharedString::from(message)))
                 .when_some(elapsed, |el, e| {
                     el.child(

@@ -294,10 +294,6 @@ fn agent_state_word(state: oino_core::agents::AgentRunState) -> (bool, &'static 
 }
 
 /// What the Agent tab shows of a live child agent.
-#[allow(
-    dead_code,
-    reason = "built from the agents feed once gui-fix-conversation lands it"
-)]
 struct AgentView<'a> {
     id: &'a str,
     owner: &'a str,
@@ -1435,12 +1431,29 @@ impl SessionPane {
             .into_any_element()
     }
 
-    /// The live child agent behind subagent tool row `call_id` (`_oino/agents` feed). The
-    /// session's feed reducer (gui-fix-conversation `AgentFeed`) plugs in here; until it lands
-    /// the tab shows the agent's final output.
+    /// The live child agent behind subagent tool row `call_id` (`_oino/agents` feed).
     fn agent_live(&self, call_id: &str) -> Option<AgentView<'_>> {
-        let _ = (call_id, &self.model);
-        None
+        let rows = self.model.transcript.rows();
+        let ix = rows
+            .iter()
+            .position(|r| matches!(&r.kind, RowKind::Tool(t) if t.call_id == call_id))?;
+        let RowKind::Tool(tool) = &rows[ix].kind else {
+            return None;
+        };
+        let agent = timeline::agent_line(tool)?;
+        let nth = rows[..ix]
+            .iter()
+            .filter(|r| matches!(&r.kind, RowKind::Tool(t) if timeline::agent_line(t).is_some()))
+            .count();
+        let a = self.agents.for_row(agent.child.as_deref(), nth)?;
+        Some(AgentView {
+            id: &a.info.id,
+            owner: &a.info.owner,
+            state: a.info.state,
+            elapsed_ms: u64::try_from(a.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            steps: a.steps(),
+            rows: a.transcript.rows(),
+        })
     }
 
     /// The Agent tab (A2.20 P3, GA-15): a read-only live child timeline from the

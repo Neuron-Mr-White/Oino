@@ -363,6 +363,364 @@ pub fn agent_line(tool: &ToolRow) -> Option<AgentLine> {
     })
 }
 
+/// Whether `row` folds into its turn's fold line (A2.10): tool calls other than agents, and
+/// assistant rows without visible text (thinking only, or blank).
+#[must_use]
+pub fn foldable(row: &Row) -> bool {
+    match &row.kind {
+        RowKind::Tool(t) => ToolKind::of(&t.name) != ToolKind::Agent,
+        RowKind::Assistant(a) => a.text.trim().is_empty() && a.error.is_none(),
+        _ => false,
+    }
+}
+
+fn fold_content(row: &Row) -> bool {
+    match &row.kind {
+        RowKind::Tool(_) => true,
+        RowKind::Assistant(a) => !a.thinking.trim().is_empty(),
+        _ => false,
+    }
+}
+
+/// The fold run containing row `ix`: `(first, last)` content rows of the maximal run of
+/// [`foldable`] rows around it. `None` when `ix` is not inside one (blank rows at the run
+/// edges are not part of it).
+#[must_use]
+pub fn fold_run(rows: &[Row], ix: usize) -> Option<(usize, usize)> {
+    let row = rows.get(ix)?;
+    if !foldable(row) {
+        return None;
+    }
+    let mut start = ix;
+    while start > 0 && foldable(&rows[start - 1]) {
+        start -= 1;
+    }
+    let mut end = ix;
+    while end + 1 < rows.len() && foldable(&rows[end + 1]) {
+        end += 1;
+    }
+    while start < end && !fold_content(&rows[start]) {
+        start += 1;
+    }
+    while end > start && !fold_content(&rows[end]) {
+        end -= 1;
+    }
+    (fold_content(&rows[start]) && (start..=end).contains(&ix)).then_some((start, end))
+}
+
+/// The fold line of one run (A2.10): "Ran commands · 2 steps", or the live action.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FoldSummary {
+    /// "Read files, edited files", "Ran commands", "Thought".
+    pub title: String,
+    /// "2 steps · 3.4s".
+    pub detail: String,
+    /// Latest action while running ("Reading · src/x.ts", "Thinking…").
+    pub live: Option<String>,
+    /// Failed tool calls.
+    pub failed: usize,
+    /// Dominant tool kind (icon).
+    pub kind: Option<ToolKind>,
+}
+
+fn category(kind: ToolKind) -> &'static str {
+    match kind {
+        ToolKind::Read => "Read files",
+        ToolKind::Write | ToolKind::Edit => "Edited files",
+        ToolKind::Shell => "Ran commands",
+        ToolKind::Search => "Searched",
+        ToolKind::Agent | ToolKind::Other => "Used tools",
+    }
+}
+
+fn subject_text(subject: &Subject) -> Option<String> {
+    match subject {
+        Subject::Path { name, dir } => Some(format!("{dir}{name}")),
+        Subject::Command(c) | Subject::Text(c) => Some(c.clone()),
+        Subject::None => None,
+    }
+}
+
+/// Summary of the fold run `start..=end`.
+#[must_use]
+pub fn fold_summary(rows: &[Row], start: usize, end: usize) -> FoldSummary {
+    let mut cats: Vec<&'static str> = Vec::new();
+    let mut steps = 0usize;
+    let mut failed = 0usize;
+    let mut ms = 0u64;
+    let mut live = None;
+    let mut kind = None;
+    let mut thought = false;
+    for row in &rows[start..=end] {
+        match &row.kind {
+            RowKind::Tool(t) => {
+                let k = ToolKind::of(&t.name);
+                kind.get_or_insert(k);
+                steps += 1;
+                let c = category(k);
+                if !cats.contains(&c) {
+                    cats.push(c);
+                }
+                if t.status == ToolStatus::Error {
+                    failed += 1;
+                }
+                ms += t.duration_ms.unwrap_or(0);
+                if matches!(t.status, ToolStatus::Running | ToolStatus::Preparing) {
+                    let tl = tool_line(t);
+                    live = Some(match subject_text(&tl.subject) {
+                        Some(subject) => format!("{} · {subject}", tl.verb),
+                        None => tl.verb,
+                    });
+                }
+            }
+            RowKind::Assistant(a) if !a.thinking.trim().is_empty() => {
+                thought = true;
+                if a.streaming && a.text.is_empty() {
+                    live = Some("Thinking…".to_owned());
+                }
+            }
+            _ => {}
+        }
+    }
+    let title = match cats.as_slice() {
+        [] if thought => "Thought".to_owned(),
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [first, rest @ ..] => {
+            let mut out = (*first).to_owned();
+            for c in rest.iter().take(2) {
+                out.push_str(", ");
+                out.push_str(&c.to_lowercase());
+            }
+            out
+        }
+    };
+    let mut detail = match steps {
+        0 => String::new(),
+        1 => "1 step".to_owned(),
+        n => format!("{n} steps"),
+    };
+    if ms >= 1000 {
+        if !detail.is_empty() {
+            detail.push_str(" · ");
+        }
+        detail.push_str(&duration(ms));
+    }
+    FoldSummary {
+        title,
+        detail,
+        live,
+        failed,
+        kind,
+    }
+}
+
+/// A harness card (A2.10): `(source, title, body)` of an extension message, collapsed to
+/// one line by default. `<tag>value</tag>` texts (background task notifications) become a
+/// summary title plus `key: value` lines.
+#[must_use]
+pub fn harness_card(
+    custom_type: &str,
+    provenance: Option<&str>,
+    text: &str,
+) -> (String, String, String) {
+    let source =
+        provenance.map_or_else(|| tool_label(&custom_type.replace('-', "_")), str::to_owned);
+    let trimmed = text.trim();
+    if trimmed.starts_with('<') && trimmed.ends_with('>') {
+        let mut fields: Vec<(String, String)> = Vec::new();
+        for line in trimmed.lines() {
+            let l = line.trim();
+            if let Some(rest) = l.strip_prefix('<')
+                && let Some((tag, tail)) = rest.split_once('>')
+                && let Some(value) = tail.strip_suffix(&format!("</{tag}>"))
+            {
+                fields.push((tag.to_owned(), value.trim().to_owned()));
+            }
+        }
+        if !fields.is_empty() {
+            let get = |k: &str| fields.iter().find(|(t, _)| t == k).map(|(_, v)| v.clone());
+            let title = get("summary")
+                .or_else(|| get("task-name"))
+                .unwrap_or_else(|| fields[0].1.clone());
+            let body = fields
+                .iter()
+                .filter(|(t, _)| t != "summary" && t != "guidance")
+                .map(|(t, v)| format!("{}: {v}", t.replace('-', " ")))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return (source, unescape(&title), unescape(&body));
+        }
+    }
+    let title = trimmed
+        .lines()
+        .map(|l| {
+            l.trim()
+                .trim_start_matches('#')
+                .trim()
+                .trim_matches('*')
+                .trim()
+        })
+        .find(|l| !l.is_empty())
+        .unwrap_or_default();
+    (source, excerpt(title, 1, 120), trimmed.to_owned())
+}
+
+fn unescape(text: &str) -> String {
+    text.replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+/// Live child agents of the session (`_oino/agents` feed, GA-15 / GA-44): their tree info and
+/// a reduced transcript per agent, so agent rows show the child's latest action and the
+/// Agent tab can render the child timeline.
+#[derive(Clone, Debug, Default)]
+pub struct AgentFeed {
+    /// Agents in first-seen order.
+    pub agents: Vec<AgentLive>,
+}
+
+/// One child agent.
+#[derive(Clone, Debug)]
+pub struct AgentLive {
+    /// Tree info.
+    pub info: oino_core::agents::AgentInfo,
+    /// Child transcript.
+    pub transcript: crate::model::transcript::Transcript,
+    /// When it was first seen.
+    pub started: std::time::Instant,
+}
+
+impl AgentFeed {
+    /// Replaces the tree (`agents_changed`); keeps transcripts of known agents.
+    pub fn set_tree(&mut self, agents: &[oino_core::agents::AgentInfo]) {
+        for info in agents {
+            if let Some(a) = self.agents.iter_mut().find(|a| a.info.id == info.id) {
+                a.info = info.clone();
+            } else {
+                self.agents.push(AgentLive {
+                    info: info.clone(),
+                    transcript: crate::model::transcript::Transcript::new(),
+                    started: std::time::Instant::now(),
+                });
+            }
+        }
+        // Closed agents leave the tree; keep the last 32 for late-opened tabs.
+        for a in &mut self.agents {
+            if !agents.iter().any(|i| i.id == a.info.id) {
+                a.info.state = oino_core::agents::AgentRunState::Closed;
+            }
+        }
+        if self.agents.len() > 32 {
+            let drop = self.agents.len() - 32;
+            self.agents.drain(..drop);
+        }
+    }
+
+    /// Applies a nested event (`agent_event`). Returns whether anything changed.
+    pub fn apply(&mut self, agent_id: &str, event: &oino_core::events::ClientEvent) -> bool {
+        let oino_core::events::ClientEvent::Session(event) = event else {
+            return false;
+        };
+        let Some(a) = self.agents.iter_mut().find(|a| a.info.id == agent_id) else {
+            return false;
+        };
+        !a.transcript.apply(event).is_empty()
+    }
+
+    /// Agent by id.
+    #[must_use]
+    pub fn get(&self, id: &str) -> Option<&AgentLive> {
+        self.agents.iter().find(|a| a.info.id == id)
+    }
+
+    /// The agent behind a subagent tool row: by child id when the row knows it, else the
+    /// `nth` agent (in start order) owned by an agent-spawning extension.
+    #[must_use]
+    pub fn for_row(&self, child: Option<&str>, nth: usize) -> Option<&AgentLive> {
+        if let Some(id) = child {
+            return self.get(id);
+        }
+        // Only agents a tool row can start (subagents, sidekicks); helper children such as the
+        // auto-rename or btw sessions have no row.
+        self.agents
+            .iter()
+            .filter(|a| {
+                a.info.parent_id.is_none()
+                    && (a.info.owner.contains("subagent") || a.info.owner.contains("fusion"))
+            })
+            .nth(nth)
+    }
+}
+
+impl AgentLive {
+    /// The child's latest action ("Reading · src/x.rs", "Thinking…", last text line).
+    #[must_use]
+    pub fn latest(&self) -> Option<String> {
+        let rows = self.transcript.rows();
+        for row in rows.iter().rev() {
+            match &row.kind {
+                RowKind::Tool(t) => {
+                    let line = tool_line(t);
+                    return Some(match subject_text(&line.subject) {
+                        Some(s) => format!("{} · {s}", line.verb),
+                        None => line.verb,
+                    });
+                }
+                RowKind::Assistant(a) if !a.text.trim().is_empty() => {
+                    return Some(excerpt(a.text.lines().last().unwrap_or_default(), 1, 80));
+                }
+                RowKind::Assistant(a) if a.streaming => return Some("Thinking…".to_owned()),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Tool calls the child has made.
+    #[must_use]
+    pub fn steps(&self) -> usize {
+        self.transcript
+            .rows()
+            .iter()
+            .filter(|r| matches!(r.kind, RowKind::Tool(_)))
+            .count()
+    }
+}
+
+/// Whether an error came from the model or provider, so "Switch model" helps (GA-9).
+#[must_use]
+pub fn is_model_error(text: &str) -> bool {
+    let t = text.to_lowercase();
+    [
+        "model",
+        "provider",
+        "rate limit",
+        "429",
+        "401",
+        "403",
+        "500",
+        "502",
+        "503",
+        "529",
+        "api key",
+        "overloaded",
+        "quota",
+        "context length",
+        "context window",
+        "too many tokens",
+        "request failed",
+        "connection",
+        "timed out",
+        "unauthorized",
+    ]
+    .iter()
+    .any(|k| t.contains(k))
+}
+
 /// First `lines` lines of `text`, each truncated to `width` chars.
 #[must_use]
 pub fn excerpt(text: &str, lines: usize, width: usize) -> String {
@@ -588,6 +946,111 @@ mod tests {
         assert!(!is_turn_end(&rows, 2, false));
         assert!(!is_turn_end(&rows, 4, true));
         assert!(is_turn_end(&rows, 4, false));
+    }
+
+    fn thought(text: &str) -> Row {
+        Row {
+            id: "t".into(),
+            version: 0,
+            kind: RowKind::Assistant(AssistantRow {
+                thinking: text.into(),
+                ..AssistantRow::default()
+            }),
+        }
+    }
+
+    #[test]
+    fn fold_runs_and_summaries() {
+        let mut rows = vec![
+            user("q"),
+            thought("hmm"),
+            tool("r", "read", json!({"path":"src/a.rs"}), ToolStatus::Done),
+            blank(),
+            tool("b", "bash", json!({"command":"ls"}), ToolStatus::Done),
+            tool(
+                "b2",
+                "bash",
+                json!({"command":"cargo test"}),
+                ToolStatus::Error,
+            ),
+            blank(),
+        ];
+        assert_eq!(fold_run(&rows, 0), None);
+        assert_eq!(fold_run(&rows, 1), Some((1, 5)));
+        assert_eq!(fold_run(&rows, 4), Some((1, 5)));
+        assert_eq!(fold_run(&rows, 6), None, "trailing blank rows are outside");
+        let s = fold_summary(&rows, 1, 5);
+        assert_eq!(s.title, "Read files, ran commands");
+        assert_eq!(s.detail, "3 steps");
+        assert_eq!(s.failed, 1);
+        assert_eq!(s.live, None);
+        rows.push(tool(
+            "r2",
+            "read",
+            json!({"path":"x.ts"}),
+            ToolStatus::Running,
+        ));
+        assert_eq!(fold_run(&rows, 7), Some((1, 7)));
+        assert_eq!(
+            fold_summary(&rows, 1, 7).live.as_deref(),
+            Some("Reading · x.ts")
+        );
+        assert_eq!(fold_summary(&rows, 1, 1).title, "Thought");
+    }
+
+    #[test]
+    fn agent_feed_maps_rows_to_spawned_agents() {
+        let info = |id: &str, owner: &str| -> oino_core::agents::AgentInfo {
+            serde_json::from_value(json!({
+                "id": id, "label": id, "owner": owner, "state": "running", "depth": 1
+            }))
+            .unwrap()
+        };
+        let mut feed = AgentFeed::default();
+        feed.set_tree(&[info("r", "unipi.utility"), info("s1", "unipi.subagents")]);
+        assert_eq!(
+            feed.for_row(None, 0).map(|a| a.info.id.as_str()),
+            Some("s1")
+        );
+        assert_eq!(
+            feed.for_row(Some("r"), 0).map(|a| a.info.id.as_str()),
+            Some("r")
+        );
+        let event: oino_core::events::ClientEvent = serde_json::from_value(json!({
+            "type": "tool_execution_start", "toolCallId": "c1", "toolName": "read",
+            "args": {"path": "src/a.rs"}
+        }))
+        .unwrap();
+        assert!(feed.apply("s1", &event));
+        let live = feed.get("s1").unwrap();
+        assert_eq!(live.latest().as_deref(), Some("Reading · src/a.rs"));
+        assert_eq!(live.steps(), 1);
+        feed.set_tree(&[]);
+        assert_eq!(
+            feed.get("s1").unwrap().info.state,
+            oino_core::agents::AgentRunState::Closed
+        );
+    }
+
+    #[test]
+    fn model_errors() {
+        assert!(is_model_error("429 Too Many Requests"));
+        assert!(!is_model_error("Compaction failed: Nothing to compact"));
+    }
+
+    #[test]
+    fn harness_cards_parse_tagged_text() {
+        let text = "<background-task-notification>\n  <task-id>t7</task-id>\n  <task-name>sleep 45</task-name>\n  <status>completed</status>\n  <summary>Background task &quot;sleep 45&quot; completed</summary>\n  <guidance>x</guidance>\n</background-task-notification>";
+        let (source, title, body) = harness_card("background-task-notification", None, text);
+        assert_eq!(source, "Background task notification");
+        assert_eq!(title, "Background task \"sleep 45\" completed");
+        assert!(body.contains("task id: t7"));
+        assert!(!body.contains("guidance"));
+        let (source, title, _) = harness_card("x", Some("Memory"), "# Wake-up text\n\nbody");
+        assert_eq!(
+            (source.as_str(), title.as_str()),
+            ("Memory", "Wake-up text")
+        );
     }
 
     #[test]

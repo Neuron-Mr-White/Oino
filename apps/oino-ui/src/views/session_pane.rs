@@ -9,6 +9,7 @@
 //! incremental markdown state.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -21,10 +22,12 @@ use gpui_kit::{
     ListAlignment, ListState, Pixels, Subscription, Task, Window, px,
 };
 use oino_ai::{AgentMessage, ImageContent, JsonValue, Model, ThinkingLevel};
+use oino_client::protocol::QueueKind;
 use oino_client::{
-    ClientError, FrontendApi as _, OinoCommand, PiCommand, RpcCommand, SessionBackend,
+    ClientError, FrontendApi as _, OinoCommand, PiCommand, RewindOptions, RpcCommand,
+    SessionBackend,
 };
-use oino_core::events::{ClientEvent, RunState};
+use oino_core::events::{ClientEvent, OinoEvent, RunState};
 use oino_core::session::{EditorEvent, EditorIntent};
 use oino_core::ui::UiResponse;
 
@@ -32,11 +35,12 @@ use crate::components::interaction::{InteractionEvent, InteractionView};
 use crate::design::brand::CrabState;
 use crate::host::{AppSettings, OpenedSession};
 use crate::model::coalesce::coalesce;
-use crate::model::composer::{self, CompletionRow, Drafts, Intent, ModeChip, SubmitKey};
+use crate::model::composer::{self, Builtin, CompletionRow, Drafts, Intent, ModeChip, SubmitKey};
 use crate::model::interaction::{self, InteractionKind};
 use crate::model::session::{Applied, SessionModel};
 use crate::model::sessions::LiveStatus;
 use crate::model::status::StatusModel;
+use crate::model::timeline::AgentFeed;
 use crate::model::transcript::{NoticeTone, Row, RowChange, RowKind};
 use crate::model::ui_state::{PanelPlacement, UiEffect};
 use crate::rt::Tokio;
@@ -244,6 +248,8 @@ pub enum PaneMenu {
     Project,
     /// Meta row overflow.
     MetaOverflow,
+    /// Send chevron: Steer / Queue (A2.11).
+    Send,
 }
 
 /// Backend completion state of the composer.
@@ -343,6 +349,30 @@ pub struct SessionPane {
     #[cfg(feature = "terminal")]
     pub(crate) next_terminal: u64,
     editor_task: Option<Task<Result<(), tokio::task::JoinError>>>,
+    /// Live child agents (`_oino/agents` feed): agent rows and the Agent tab.
+    pub agents: AgentFeed,
+    /// Open harness cards (collapsed by default, A2.10).
+    pub(crate) cards_open: HashSet<String>,
+    /// Prompt numbers (nth user message) with a file checkpoint (`_oino/checkpoints`).
+    pub(crate) checkpoints: HashSet<usize>,
+    /// Queue item being edited in place: (queue, index, field).
+    pub(crate) queue_edit: Option<(
+        QueueKind,
+        usize,
+        Entity<gpui_kit::component::input::InputState>,
+    )>,
+    /// When the last user prompt was sent (turn end "Done in …").
+    pub(crate) turn_started: Option<Instant>,
+    /// Duration and cost of finished turns, keyed by the last row id of the turn.
+    pub(crate) turn_stats: HashMap<String, (Duration, f64)>,
+    turn_cost_start: f64,
+    /// Last mode the footer showed: only a fallback while the topic has no permission mode
+    /// (turning the footer off keeps it, GA-25).
+    mode_seen: Option<ModeChip>,
+    /// Window y of the composer shell's top (caps the completion menu above it).
+    pub(crate) composer_top: std::rc::Rc<std::cell::Cell<f32>>,
+    /// Focus of an `editorReplace` panel in the composer slot, and the panel it was given to.
+    pub(crate) panel_focus: (FocusHandle, Option<String>),
     _pump: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -374,10 +404,12 @@ struct Loaded {
     models: Vec<Model>,
 }
 
-/// Composer placeholder (design.md §4.11).
-pub const PLACEHOLDER: &str = "Ask Oino anything, @ files, / commands, $ skills";
-/// Composer placeholder while a run is active (design.md §4.11 steering).
-pub const PLACEHOLDER_STEER: &str = "Steer Oino… (Enter steers, Alt+Enter queues a follow-up)";
+/// Composer placeholder (design.md A2.11).
+pub const PLACEHOLDER: &str = "Message Oino, / commands, @ files";
+/// Composer placeholder while a run is active (A2.11 steering).
+pub const PLACEHOLDER_STEER: &str = "Steer Oino…";
+/// The workflow status topic (mode chip, GA-25).
+pub const WORKFLOW_TOPIC: &str = "unipi:workflow:status";
 
 impl SessionPane {
     /// A pane for `opened`; starts the event pump and loads history.
@@ -452,9 +484,24 @@ impl SessionPane {
             #[cfg(feature = "terminal")]
             next_terminal: 1,
             editor_task: None,
+            agents: AgentFeed::default(),
+            cards_open: HashSet::new(),
+            checkpoints: HashSet::new(),
+            queue_edit: None,
+            turn_started: None,
+            turn_stats: HashMap::new(),
+            turn_cost_start: 0.0,
+            mode_seen: None,
+            composer_top: std::rc::Rc::default(),
+            panel_focus: (cx.focus_handle(), None),
             _pump: pump,
             _subscriptions: subscriptions,
         };
+        // The greeting's local hour spawns `date` once: keep it off the UI thread.
+        cx.background_spawn(async {
+            crate::components::conversation::utc_offset();
+        })
+        .detach();
         pane.say_hello(cx);
         pane.reload(cx);
         pane
@@ -521,13 +568,20 @@ impl SessionPane {
         &self.status
     }
 
-    /// The workflow mode chip, when `unipi.workflow` is loaded.
+    /// The workflow mode chip, when `unipi.workflow` is loaded. It reads the sticky
+    /// `unipi:workflow:status` topic, never footer segments (GA-25).
     #[must_use]
     pub fn mode(&self) -> Option<ModeChip> {
         if !self.has_command("permission") {
             return None;
         }
-        Some(ModeChip::from_segments(self.model.ui.frame_segments()).unwrap_or(ModeChip::Auto))
+        Some(
+            self.model
+                .topic(WORKFLOW_TOPIC)
+                .and_then(ModeChip::from_topic)
+                .or(self.mode_seen)
+                .unwrap_or(ModeChip::Auto),
+        )
     }
 
     fn pump(backend: &Arc<dyn SessionBackend>, cx: &mut Context<Self>) -> Task<()> {
@@ -576,13 +630,37 @@ impl SessionPane {
         let _activity = crate::stability::activity("pane apply_batch");
         let before = (self.live(), self.model.title(), self.model.id.clone());
         let was_busy = self.model.is_busy();
+        let mut feed = self.apply_feeds(batch);
         let applied = self.model.apply_all(batch);
+        if let Some(m) = ModeChip::from_segments(self.model.ui.frame_segments()) {
+            self.mode_seen = Some(m);
+        }
         if self.model.is_busy() && !was_busy {
             self.run_started = Some(Instant::now());
+            if self.turn_started.is_none() {
+                self.turn_started = self.run_started;
+                self.turn_cost_start = self.model.usage.cost;
+            }
         }
         if !self.model.is_busy() && was_busy {
             self.run_started = None;
             self.unread = !self.focused_pane;
+            if let (Some(started), Some(last)) = (
+                self.turn_started.take(),
+                self.model.transcript.rows().last(),
+            ) {
+                let cost = (self.model.usage.cost - self.turn_cost_start).max(0.0);
+                self.turn_stats
+                    .insert(last.id.clone(), (started.elapsed(), cost));
+                if let Some(ix) = self.model.transcript.position(&last.id) {
+                    self.list.remeasure_items(ix..ix + 1);
+                }
+            }
+            self.load_checkpoints(cx);
+            feed = true;
+        }
+        if feed {
+            cx.notify();
         }
         self.absorb(applied, cx);
         let after = (self.live(), self.model.title(), self.model.id.clone());
@@ -798,6 +876,112 @@ impl SessionPane {
             .into(),
             cx,
         );
+        self.subscribe_feeds(cx);
+    }
+
+    /// Subscribes to the sticky topic feed and the nested agents feed (frontend-api §2–§3).
+    /// Called again after a session replacement (fresh snapshot).
+    fn subscribe_feeds(&self, cx: &mut Context<Self>) {
+        let backend = Arc::clone(&self.backend);
+        let task = Tokio::spawn(cx, async move {
+            let topics = backend
+                .topics(&["unipi:*", oino_core::topics::GIT_TOPIC], &[])
+                .await
+                .unwrap_or_default();
+            let agents = backend.agents(Some(true)).await.ok();
+            (topics, agents)
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok((topics, agents)) = task.await {
+                let _ = this.update(cx, |pane, cx| {
+                    for t in topics {
+                        pane.model.set_topic(&t.topic, t.data);
+                    }
+                    if let Some(tree) = agents {
+                        pane.agents.set_tree(&tree.agents);
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Applies agent events of a batch (child transcripts; the session model keeps the tree
+    /// and topics). Returns
+    /// whether anything visible changed.
+    fn apply_feeds(&mut self, batch: &[ClientEvent]) -> bool {
+        let mut changed = false;
+        for event in batch {
+            match event {
+                ClientEvent::Oino(OinoEvent::Topic { topic, .. }) if topic == WORKFLOW_TOPIC => {
+                    changed = true;
+                }
+                ClientEvent::Oino(OinoEvent::AgentsChanged { agents }) => {
+                    self.agents.set_tree(agents);
+                    changed = true;
+                }
+                ClientEvent::Oino(OinoEvent::AgentEvent { agent_id, event }) => {
+                    changed |= self.agents.apply(agent_id, event);
+                }
+                _ => {}
+            }
+        }
+        if changed {
+            // Agent rows show the child's latest action.
+            let rows = self.model.transcript.rows();
+            for (i, r) in rows.iter().enumerate() {
+                if let RowKind::Tool(t) = &r.kind
+                    && crate::model::tools::ToolKind::of(&t.name)
+                        == crate::model::tools::ToolKind::Agent
+                {
+                    self.list.remeasure_items(i..i + 1);
+                }
+            }
+        }
+        changed
+    }
+
+    /// Refreshes the user entries that have file checkpoints (undo / rewind buttons).
+    pub(crate) fn load_checkpoints(&mut self, cx: &mut Context<Self>) {
+        let backend = Arc::clone(&self.backend);
+        let task = Tokio::spawn(cx, async move {
+            let list = backend.checkpoints().await.ok()?;
+            if list.is_empty() {
+                return Some(HashSet::new());
+            }
+            let data = backend
+                .send(PiCommand::GetForkMessages.into())
+                .await
+                .ok()
+                .flatten()?;
+            let entries: Vec<String> = data
+                .get("messages")?
+                .as_array()?
+                .iter()
+                .filter_map(|m| m.get("entryId")?.as_str().map(str::to_owned))
+                .collect();
+            Some(
+                entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| list.iter().any(|c| &c.entry_id == *e))
+                    .map(|(i, _)| i)
+                    .collect::<HashSet<usize>>(),
+            )
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Some(set)) = task.await {
+                let _ = this.update(cx, |pane, cx| {
+                    if pane.checkpoints != set {
+                        pane.checkpoints = set;
+                        pane.list.remeasure();
+                        cx.notify();
+                    }
+                });
+            }
+        })
+        .detach();
     }
 
     /// Reloads state, messages, UI snapshot, commands and models.
@@ -873,7 +1057,24 @@ impl SessionPane {
         }
         self.commands = loaded.commands;
         self.models = loaded.models;
+        // Reconcile the dialog queue with core's snapshot: a card core no longer has (its
+        // handler died, or the session was replaced) must not block the composer (GA-30).
+        if let Some(snapshot) = &loaded.snapshot {
+            let live: HashSet<&str> = snapshot.iter().map(|r| r.id.as_str()).collect();
+            let stale: Vec<String> = self
+                .model
+                .ui
+                .dialog_ids()
+                .into_iter()
+                .filter(|id| !live.contains(id.as_str()))
+                .collect();
+            for id in stale {
+                self.model.ui.dismiss(&id);
+            }
+        }
         self.absorb(applied, cx);
+        self.subscribe_feeds(cx);
+        self.load_checkpoints(cx);
         cx.emit(PaneEvent::Changed);
         cx.emit(PaneEvent::Live(self.live()));
         self.list.scroll_to_end();
@@ -988,7 +1189,12 @@ impl SessionPane {
             self.completion = Completion::default();
             return;
         };
-        let local = if prefix == '/' {
+        let builtins = if prefix == '/' {
+            composer::builtin_completions(&text)
+        } else {
+            Vec::new()
+        };
+        let mut local: Vec<CompletionRow> = if prefix == '/' {
             composer::slash_completions(&self.commands, &text, 8)
                 .into_iter()
                 .map(|c| CompletionRow {
@@ -1004,9 +1210,11 @@ impl SessionPane {
         } else {
             Vec::new()
         };
+        local.extend(builtins.iter().cloned());
         self.completion.rows = local;
         self.completion.active = 0;
         self.completion.cursor = cursor;
+        let asked = text.clone();
         let backend = Arc::clone(&self.backend);
         let task = Tokio::spawn(cx, async move {
             tokio::time::sleep(COMPLETION_DEBOUNCE).await;
@@ -1015,10 +1223,26 @@ impl SessionPane {
         self.completion.task = Some(cx.spawn(async move |this, cx| {
             if let Ok(Ok(groups)) = task.await {
                 let _ = this.update(cx, |pane, cx| {
-                    let rows = composer::merge_completions(&groups, from, 40);
+                    // A late answer for older text never replaces the rows of newer keys.
+                    if pane.composer.read(cx).value().as_ref() != asked.as_str() {
+                        return;
+                    }
+                    let mut rows = composer::merge_completions(&groups, from, 40);
+                    for b in &builtins {
+                        if !rows.iter().any(|r| r.value.trim_end() == b.value) {
+                            rows.push(b.clone());
+                        }
+                    }
                     if !rows.is_empty() {
+                        let keep = pane
+                            .completion
+                            .rows
+                            .get(pane.completion.active)
+                            .map(|r| r.value.clone());
+                        pane.completion.active = keep
+                            .and_then(|v| rows.iter().position(|r| r.value == v))
+                            .unwrap_or(0);
                         pane.completion.rows = rows;
-                        pane.completion.active = 0;
                     }
                     cx.notify();
                 });
@@ -1084,6 +1308,21 @@ impl SessionPane {
         if intent == Intent::Nothing {
             return;
         }
+        if let Intent::Builtin(builtin, arg) = intent {
+            // pi built-ins act locally and never reach the model (GA-3).
+            self.drafts.history(&self.model.id.clone()).push(&text);
+            self.drafts.save(&self.model.id, "");
+            self.set_composer_text("", cx);
+            self.run_builtin(builtin, arg, cx);
+            return;
+        }
+        if text.trim() == "/subagents" {
+            // The Subagents tab of the work tray, even before the first subagent (GA-21).
+            self.drafts.history(&self.model.id.clone()).push(&text);
+            self.set_composer_text("", cx);
+            self.open_tray(Some("subagents"), Some(text.trim().to_owned()), cx);
+            return;
+        }
         let images: Vec<ImageContent> = token_ids
             .iter()
             .filter_map(|id| self.images.get(id).cloned())
@@ -1128,12 +1367,391 @@ impl SessionPane {
         cx.notify();
     }
 
-    /// Sends a slash command (or any text) as a prompt.
+    /// Sends a slash command (or any text) as a prompt; pi built-ins run locally.
     pub fn run_prompt(&mut self, text: &str, cx: &mut Context<Self>) {
         let intent = composer::intent(text, self.model.is_busy(), SubmitKey::Enter);
+        if let Intent::Builtin(builtin, arg) = intent {
+            self.run_builtin(builtin, arg, cx);
+            return;
+        }
         if let Some(command) = intent.command(Vec::new()) {
             self.send(command, cx);
         }
+    }
+
+    /// Runs a pi built-in slash command in the frontend (pi interactive mode, GA-3).
+    #[allow(clippy::too_many_lines, reason = "one arm per built-in")]
+    pub fn run_builtin(&mut self, builtin: Builtin, arg: Option<String>, cx: &mut Context<Self>) {
+        match builtin {
+            Builtin::New => self.new_session(cx),
+            Builtin::Compact => self.send(
+                PiCommand::Compact {
+                    custom_instructions: arg,
+                }
+                .into(),
+                cx,
+            ),
+            Builtin::Model => {
+                let query = arg.unwrap_or_default().to_lowercase();
+                let found = (!query.is_empty())
+                    .then(|| {
+                        self.models
+                            .iter()
+                            .find(|m| format!("{}/{}", m.provider, m.id).to_lowercase() == query)
+                            .or_else(|| self.models.iter().find(|m| m.id.to_lowercase() == query))
+                            .or_else(|| {
+                                self.models.iter().find(|m| {
+                                    format!("{}/{} {}", m.provider, m.id, m.name)
+                                        .to_lowercase()
+                                        .contains(&query)
+                                })
+                            })
+                    })
+                    .flatten()
+                    .map(|m| (m.provider.clone(), m.id.clone()));
+                if let Some((provider, model_id)) = found {
+                    self.set_model(provider, model_id, cx);
+                } else {
+                    if !query.is_empty() {
+                        self.toast(&format!("No model matches “{query}”"), cx);
+                    }
+                    self.menu = Some(PaneMenu::Model);
+                    cx.notify();
+                }
+            }
+            Builtin::Thinking => {
+                if let Some(level) = arg.and_then(|a| a.parse::<ThinkingLevel>().ok()) {
+                    self.set_thinking(level, cx);
+                } else {
+                    self.menu = Some(PaneMenu::Thinking);
+                    cx.notify();
+                }
+            }
+            Builtin::Name => {
+                if let Some(name) = arg {
+                    self.model.name = Some(name.clone());
+                    self.send(PiCommand::SetSessionName { name }.into(), cx);
+                    cx.emit(PaneEvent::Changed);
+                } else {
+                    let title = self.model.title();
+                    self.toast(&format!("Session name: {title}"), cx);
+                }
+            }
+            Builtin::Session => {
+                let u = &self.model.usage;
+                let text = format!(
+                    "Session {} · {} · {} prompts · {}k in / {}k out · ${:.4}{}",
+                    self.model.id,
+                    self.model.model_label(),
+                    self.model.transcript.prompt_indices().len(),
+                    u.input / 1000,
+                    u.output / 1000,
+                    u.cost,
+                    self.model
+                        .file
+                        .as_ref()
+                        .map(|f| format!(" · {f}"))
+                        .unwrap_or_default()
+                );
+                let change = self.model.transcript.notice(NoticeTone::Info, text);
+                self.absorb(
+                    Applied {
+                        rows: vec![change],
+                        ..Applied::default()
+                    },
+                    cx,
+                );
+                self.list.scroll_to_end();
+            }
+            Builtin::Tree => self.open_side(SideTab::Tree, cx),
+            Builtin::Fork => {
+                self.open_side(SideTab::Tree, cx);
+                self.toast(
+                    "Pick a message in the tree, or hover a prompt → Edit & resend",
+                    cx,
+                );
+            }
+            Builtin::Clone => self.fork_session(cx),
+            Builtin::Copy => {
+                let backend = Arc::clone(&self.backend);
+                let task = Tokio::spawn(cx, async move {
+                    backend
+                        .send(PiCommand::GetLastAssistantText.into())
+                        .await
+                        .ok()
+                        .flatten()
+                });
+                cx.spawn(async move |this, cx| {
+                    let text =
+                        task.await.ok().flatten().and_then(|d| {
+                            d.get("text").and_then(JsonValue::as_str).map(str::to_owned)
+                        });
+                    let _ = this.update(cx, |_, cx| match text {
+                        Some(t) if !t.is_empty() => {
+                            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(t));
+                            cx.emit(PaneEvent::Toast("Copied the last reply".into()));
+                        }
+                        _ => cx.emit(PaneEvent::Toast("Nothing to copy yet".into())),
+                    });
+                })
+                .detach();
+            }
+            Builtin::Export => {
+                let jsonl = arg.as_deref().is_some_and(|a| {
+                    std::path::Path::new(a)
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("jsonl"))
+                });
+                if jsonl {
+                    self.send(OinoCommand::ExportJsonl { output_path: arg }.into(), cx);
+                    cx.emit(PaneEvent::Toast("Exported the session as JSONL".into()));
+                } else {
+                    self.send(PiCommand::ExportHtml { output_path: arg }.into(), cx);
+                    cx.emit(PaneEvent::Toast("Exported the session as HTML".into()));
+                }
+            }
+            Builtin::Import => {
+                if let Some(path) = arg {
+                    self.send(OinoCommand::ImportJsonl { path }.into(), cx);
+                } else {
+                    self.toast("Usage: /import <path to .jsonl>", cx);
+                }
+            }
+            Builtin::Settings | Builtin::Login | Builtin::Logout | Builtin::ScopedModels => {
+                cx.emit(PaneEvent::Effect(UiEffect::OpenSettings {
+                    namespace: None,
+                }));
+            }
+            Builtin::Hotkeys => {
+                self.toast(
+                    "Keyboard shortcuts are in Settings → Keyboard shortcuts",
+                    cx,
+                );
+                cx.emit(PaneEvent::Effect(UiEffect::OpenSettings {
+                    namespace: None,
+                }));
+            }
+            Builtin::Resume => self.toast("Pick a session in the list on the left", cx),
+            Builtin::Reload => {
+                self.reload(cx);
+                self.toast("Reloaded the session state", cx);
+            }
+            Builtin::Changelog => {
+                if self.has_command("changelog") {
+                    self.send(
+                        PiCommand::Prompt {
+                            message: "/changelog".into(),
+                            images: Vec::new(),
+                            streaming_behavior: None,
+                        }
+                        .into(),
+                        cx,
+                    );
+                } else {
+                    self.toast("No changelog in this build", cx);
+                }
+            }
+            Builtin::Trust => self.toast("Project trust is saved in Settings → Permissions", cx),
+            Builtin::Extensions => self.toast("Open Extensions from the sidebar", cx),
+            Builtin::Quit => cx.quit(),
+        }
+    }
+
+    /// Opens the work tray (`core.open-tray`), on `tab` when given. Falls back to sending
+    /// `fallback` as a prompt when the tray service is missing.
+    pub fn open_tray(
+        &mut self,
+        tab: Option<&str>,
+        fallback: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let backend = Arc::clone(&self.backend);
+        let payload = match tab {
+            Some(tab) => serde_json::json!({"tab": tab}),
+            None => serde_json::json!({}),
+        };
+        let task = Tokio::spawn(cx, async move {
+            backend
+                .service_call(Some("unipi.core"), "core.open-tray", payload)
+                .await
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            tracing::debug!(?result, "core.open-tray");
+            let ok = matches!(result, Ok(Ok(_)));
+            if !ok && let Some(text) = fallback {
+                let _ = this.update(cx, |pane, cx| {
+                    pane.send(
+                        PiCommand::Prompt {
+                            message: text,
+                            images: Vec::new(),
+                            streaming_behavior: None,
+                        }
+                        .into(),
+                        cx,
+                    );
+                });
+            }
+        })
+        .detach();
+    }
+
+    // ── queue (frontend-api §4) ──────────────────────────────────────────────
+
+    /// Index of row `i` of the combined queue strip (steering first) in its own queue.
+    fn queue_slot(&self, i: usize) -> (QueueKind, usize) {
+        let steer = self.model.steering.len();
+        if i < steer {
+            (QueueKind::Steering, i)
+        } else {
+            (QueueKind::FollowUp, i - steer)
+        }
+    }
+
+    /// Removes queue item `i`.
+    pub fn queue_remove(&mut self, i: usize, cx: &mut Context<Self>) {
+        let (queue, index) = self.queue_slot(i);
+        self.queue_edit = None;
+        self.frontend(
+            cx,
+            move |b| async move { b.queue_remove(queue, index).await },
+        );
+    }
+
+    /// Sends queue item `i` now (front of steering while running).
+    pub fn queue_send_now(&mut self, i: usize, cx: &mut Context<Self>) {
+        let (queue, index) = self.queue_slot(i);
+        self.frontend(
+            cx,
+            move |b| async move { b.queue_send_now(queue, index).await },
+        );
+    }
+
+    /// Moves queue item `i` one up within its queue.
+    pub fn queue_up(&mut self, i: usize, cx: &mut Context<Self>) {
+        let (queue, index) = self.queue_slot(i);
+        if index == 0 {
+            return;
+        }
+        self.frontend(cx, move |b| async move {
+            b.queue_move(queue, index, index - 1).await
+        });
+    }
+
+    /// Starts editing queue item `i` in place.
+    pub fn queue_begin_edit(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let (queue, index) = self.queue_slot(i);
+        let text = match queue {
+            QueueKind::Steering => self.model.steering.get(index),
+            QueueKind::FollowUp => self.model.follow_up.get(index),
+        }
+        .cloned()
+        .unwrap_or_default();
+        let input = cx.new(|cx| {
+            gpui_kit::component::input::InputState::new(window, cx)
+                .default_value(gpui_kit::SharedString::from(text))
+        });
+        input.update(cx, |s, cx| s.focus(window, cx));
+        cx.subscribe_in(&input, window, |this, _, event: &InputEvent, _, cx| {
+            if let InputEvent::PressEnter { .. } = event {
+                this.queue_commit_edit(cx);
+            }
+        })
+        .detach();
+        self.queue_edit = Some((queue, index, input));
+        cx.notify();
+    }
+
+    /// Saves the in-place queue edit (`queue_set_text`).
+    pub fn queue_commit_edit(&mut self, cx: &mut Context<Self>) {
+        let Some((queue, index, input)) = self.queue_edit.take() else {
+            return;
+        };
+        let text = input.read(cx).value().to_string();
+        if text.trim().is_empty() {
+            self.frontend(
+                cx,
+                move |b| async move { b.queue_remove(queue, index).await },
+            );
+        } else {
+            self.frontend(cx, move |b| async move {
+                b.queue_set_text(queue, index, &text).await
+            });
+        }
+        cx.notify();
+    }
+
+    // ── undo / rewind (frontend-api §5) ──────────────────────────────────────
+
+    /// Whether the `nth` user prompt has a file checkpoint (its turn changed files).
+    #[must_use]
+    pub fn has_checkpoint(&self, nth: usize) -> bool {
+        self.checkpoints.contains(&nth)
+    }
+
+    /// Rewinds to before the `nth` user prompt: restores the files its turn and later turns
+    /// changed and, with `conversation`, forks the session before it and puts the prompt
+    /// back in the composer.
+    pub fn rewind_at(&mut self, nth: usize, conversation: bool, cx: &mut Context<Self>) {
+        if self.model.is_busy() {
+            self.toast("Stop the run first", cx);
+            return;
+        }
+        let backend = Arc::clone(&self.backend);
+        let task = Tokio::spawn(cx, async move {
+            let data = backend
+                .send(PiCommand::GetForkMessages.into())
+                .await
+                .ok()
+                .flatten();
+            let entry = data
+                .as_ref()
+                .and_then(|d| d.get("messages"))
+                .and_then(JsonValue::as_array)
+                .and_then(|m| m.get(nth))
+                .and_then(|m| m.get("entryId"))
+                .and_then(JsonValue::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| ClientError::Protocol("message not found".into()))?;
+            backend
+                .rewind(
+                    &entry,
+                    RewindOptions {
+                        files: true,
+                        conversation,
+                    },
+                )
+                .await
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |pane, cx| match result {
+                Ok(Ok(r)) if r.cancelled => pane.toast("An extension cancelled the rewind", cx),
+                Ok(Ok(r)) => {
+                    if let Some(text) = r.text.filter(|_| conversation) {
+                        pane.set_composer_text(&text, cx);
+                    }
+                    let n = r.restored.len() + r.deleted.len();
+                    let mut msg = if n == 0 {
+                        if conversation {
+                            "Rewound the conversation".to_owned()
+                        } else {
+                            "No file changes to undo".to_owned()
+                        }
+                    } else {
+                        format!("Restored {n} file{}", if n == 1 { "" } else { "s" })
+                    };
+                    if !r.failed.is_empty() {
+                        let _ = write!(msg, " · {} failed", r.failed.len());
+                    }
+                    pane.toast(&msg, cx);
+                    pane.load_checkpoints(cx);
+                }
+                Ok(Err(e)) => pane.toast(&e.to_string(), cx),
+                Err(e) => pane.toast(&e.to_string(), cx),
+            });
+        })
+        .detach();
     }
 
     /// Starts a new session in this pane (runtime replace).
@@ -1219,9 +1837,37 @@ impl SessionPane {
         cx: &mut Context<Self>,
     ) {
         crate::design::perf::mark(cx, "keystroke");
+        let key = event.keystroke.key.as_str();
+        if self.composer_key(key, event.keystroke.modifiers, window, cx) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// The editor's own key bindings (↑ ↓ Tab Esc) run as actions before key-down
+    /// listeners, so the composer intercepts those actions in the capture phase and routes
+    /// them here (completion menu, history, work tray, abort).
+    pub(crate) fn composer_action(
+        &mut self,
+        key: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.composer_key(key, gpui_kit::Modifiers::default(), window, cx) {
+            cx.stop_propagation();
+        }
+    }
+
+    /// Composer keys; returns whether the key was handled.
+    #[allow(clippy::too_many_lines, reason = "one arm per composer key")]
+    fn composer_key(
+        &mut self,
+        key: &str,
+        modifiers: gpui_kit::Modifiers,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let text = self.composer.read(cx).value().to_string();
         let session = self.model.id.clone();
-        let key = event.keystroke.key.as_str();
         let rows = self.completion.rows.len();
         if rows > 0 {
             match key {
@@ -1229,16 +1875,17 @@ impl SessionPane {
                 "up" => self.completion.active = (self.completion.active + rows - 1) % rows,
                 "tab" => self.accept_completion(window, cx),
                 "escape" => self.completion = Completion::default(),
-                _ => return,
+                _ => return false,
             }
-            cx.stop_propagation();
             cx.notify();
-            return;
+            return true;
         }
-        if key == "up" && crate::components::secondary(&event.keystroke.modifiers) {
+        if key == "v" && crate::components::secondary(&modifiers) && self.paste_image(cx) {
+            return true;
+        }
+        if key == "up" && crate::components::secondary(&modifiers) {
             self.focus_timeline(window, cx);
-            cx.stop_propagation();
-            return;
+            return true;
         }
         let card = self
             .interaction
@@ -1246,52 +1893,61 @@ impl SessionPane {
             .filter(|v| !v.read(cx).is_modal())
             .cloned();
         if let Some(card) = card
-            && ((key == "up" && text.is_empty())
-                || (key == "tab" && event.keystroke.modifiers.shift))
+            && ((key == "up" && text.is_empty()) || (key == "tab" && modifiers.shift))
         {
             card.update(cx, |v, cx| v.focus_card(window, cx));
-            cx.stop_propagation();
-            return;
+            return true;
         }
         match key {
             "up" if text.is_empty() || self.drafts.history(&session).is_browsing() => {
                 if let Some(prev) = self.drafts.history(&session).older().map(str::to_owned) {
                     self.composer
                         .update(cx, |s, cx| s.set_value(prev, window, cx));
-                    cx.stop_propagation();
+                    return true;
                 }
+                false
             }
             "down" if self.drafts.history(&session).is_browsing() => {
                 if let Some(next) = self.drafts.history(&session).newer().map(str::to_owned) {
                     self.composer
                         .update(cx, |s, cx| s.set_value(next, window, cx));
-                    cx.stop_propagation();
+                    return true;
                 }
+                false
             }
             "down" if text.is_empty() => {
-                // Consumable intent: the work tray opens when an extension takes it.
+                // Consumable intent: the work tray opens when an extension takes it; when
+                // nobody does, ask the tray service directly (GA-21).
                 let backend = Arc::clone(&self.backend);
-                Tokio::detach(cx, async move {
-                    let _ = backend
+                let task = Tokio::spawn(cx, async move {
+                    backend
                         .editor_event(EditorEvent {
                             event_id: "down".into(),
                             intent: EditorIntent::EmptyArrowDown,
                             text: String::new(),
                             token_id: None,
                         })
-                        .await;
+                        .await
                 });
-                cx.stop_propagation();
+                cx.spawn(async move |this, cx| {
+                    let consumed = task.await;
+                    tracing::debug!(?consumed, "emptyArrowDown");
+                    if let Ok(Ok(false)) = consumed {
+                        let _ = this.update(cx, |pane, cx| pane.open_tray(None, None, cx));
+                    }
+                })
+                .detach();
+                true
             }
-            "enter" if event.keystroke.modifiers.alt => {
+            "enter" if modifiers.alt => {
                 self.submit(SubmitKey::FollowUp, cx);
-                cx.stop_propagation();
+                true
             }
             "escape" if self.model.is_busy() && text.is_empty() => {
                 self.abort(cx);
-                cx.stop_propagation();
+                true
             }
-            _ => {}
+            _ => false,
         }
     }
 
@@ -1322,11 +1978,9 @@ impl SessionPane {
                     cx.emit(PaneEvent::ShowSide);
                 }
                 let count = self.model.ui.dialog_count();
-                let typing = self
-                    .composer
-                    .read(cx)
-                    .focus_handle(cx)
-                    .contains_focused(window, cx);
+                // The card takes the composer slot (A2.11), so it takes focus too; its 400 ms
+                // arming delay keeps a keystroke meant for the draft from resolving it.
+                let typing = false;
                 let view = cx.new(|cx| InteractionView::new(dialog, count, typing, window, cx));
                 cx.subscribe(&view, |this, _, event: &InteractionEvent, cx| match event {
                     InteractionEvent::Respond(response) => this.respond(response.clone(), cx),

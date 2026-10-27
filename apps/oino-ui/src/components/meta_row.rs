@@ -22,6 +22,32 @@ use crate::views::session_pane::{PaneMenu, SessionPane};
 /// Approximate px per character of `Sm` text, for priority dropping.
 const CHAR_PX: f32 = 6.5;
 
+/// One segment's body: its spans when present (the footer's toned numbers, the rainbow
+/// wordmark), else the text in its tone, with the segment icon in front.
+pub fn segment_body(t: &OinoTheme, s: &Segment) -> AnyElement {
+    let body = match &s.spans {
+        Some(spans) => rich_text(t, spans),
+        None => div()
+            .text_color(match s.tone {
+                Tone::Default => t.fg_subtle(),
+                tone => t.tone_fg(tone),
+            })
+            .child(SharedString::from(s.text.clone()))
+            .into_any_element(),
+    };
+    div()
+        .flex()
+        .items_center()
+        .flex_shrink_0()
+        .whitespace_nowrap()
+        .gap(px(space::S1))
+        .when_some(s.icon.as_deref().and_then(ous_icon), |el, i| {
+            el.child(icon(i, size::ICON_SM, t.fg_subtlest()))
+        })
+        .child(body)
+        .into_any_element()
+}
+
 fn seg_el(t: &OinoTheme, s: &Segment, i: usize, cx: &mut Context<SessionPane>) -> AnyElement {
     let command = s.command.clone();
     let body = match &s.spans {

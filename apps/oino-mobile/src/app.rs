@@ -96,7 +96,7 @@ impl Boot {
         } else {
             // Bundled resources are extracted inside the runtime (blocking I/O off the UI).
             let _guard = runtime.enter();
-            Arc::new(embedded::EmbeddedHost::new(agent_dir, cwd))
+            Arc::new(embedded::EmbeddedHost::with_browser(agent_dir, cwd, None))
         };
         tracing::info!(info = ?host.info(), "oino mobile booted");
         Ok(Self {

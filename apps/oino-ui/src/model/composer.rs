@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use oino_ai::ImageContent;
 use oino_client::{PiCommand, RpcCommand};
 use oino_core::session::StreamingBehavior;
+use oino_view::commands::{Submitted, classify};
 
 /// Which submit chord was pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,7 +36,11 @@ pub enum Intent {
         /// `!!`: exclude from context.
         exclude: bool,
     },
+    /// A pi built-in (`/new`, `/compact`, `/model`…) handled by the frontend (GA-3).
+    Builtin(Builtin, Option<String>),
 }
+
+pub use oino_view::commands::{BUILTINS, Builtin};
 
 /// Resolves the intent of submitting `text`.
 #[must_use]
@@ -43,6 +48,9 @@ pub fn intent(text: &str, busy: bool, key: SubmitKey) -> Intent {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return Intent::Nothing;
+    }
+    if let Submitted::Builtin(builtin, arg) = classify(trimmed) {
+        return Intent::Builtin(builtin, arg);
     }
     if let Some(rest) = trimmed.strip_prefix('!') {
         let (exclude, command) = match rest.strip_prefix('!') {
@@ -76,7 +84,7 @@ impl Intent {
     #[must_use]
     pub fn command(self, images: Vec<ImageContent>) -> Option<RpcCommand> {
         let command = match self {
-            Self::Nothing => return None,
+            Self::Nothing | Self::Builtin(..) => return None,
             Self::Prompt(message) => PiCommand::Prompt {
                 message,
                 images,
@@ -280,6 +288,21 @@ impl ModeChip {
         out
     }
 
+    /// The mode from the sticky `unipi:workflow:status` topic (`{planMode, permissionMode}`,
+    /// GA-25: never from footer segments).
+    #[must_use]
+    pub fn from_topic(data: &oino_ai::JsonValue) -> Option<Self> {
+        if data.get("planMode").and_then(oino_ai::JsonValue::as_bool) == Some(true) {
+            return Some(Self::Plan);
+        }
+        let mode = data.get("permissionMode")?.as_str()?;
+        Some(match mode.trim().to_lowercase().as_str() {
+            "ask" => Self::Ask,
+            "full" => Self::Full,
+            _ => Self::Auto,
+        })
+    }
+
     /// The mode from the footer frame's `plan` / `permission` segments.
     #[must_use]
     pub fn from_segments<'a>(
@@ -355,32 +378,128 @@ fn section_of(source: &str) -> String {
 
 /// Merges `_oino/get_completions` groups into rows (sorted by tier within a group, at most
 /// `limit`). `default_from` is the token start for groups without `from`.
+///
+/// One group per source (A2.11, GA-4): an extension group that lists slash commands (the
+/// command enchantment) replaces the base `commands` group. Its rows come first under
+/// "Commands" and keep their tones; base rows it already lists are dropped.
 #[must_use]
 pub fn merge_completions(
     groups: &[oino_core::session::CompletionGroup],
     default_from: usize,
     limit: usize,
 ) -> Vec<CompletionRow> {
-    let mut out = Vec::new();
-    for group in groups {
+    use oino_core::session::CompletionGroup;
+    let base: std::collections::HashSet<&str> = groups
+        .iter()
+        .filter(|g| g.source == "commands")
+        .flat_map(|g| g.items.iter().map(|i| i.value.trim_end()))
+        .collect();
+    // The enchantment sends bare names (`compact`) for the `/name` token and its own
+    // `replaces: "commands"` marker is not carried by core: recognise it by its items naming
+    // the base commands.
+    let slashed = |g: &CompletionGroup, v: &str| -> String {
+        if v.starts_with('/') || g.source == "commands" {
+            v.to_owned()
+        } else {
+            format!("/{v}")
+        }
+    };
+    let enchanted = |g: &CompletionGroup| {
+        if g.source == "commands" || g.source.starts_with("command:") || g.items.is_empty() {
+            return false;
+        }
+        if g.items.iter().all(|i| i.value.starts_with('/')) {
+            return true;
+        }
+        let known = g
+            .items
+            .iter()
+            .filter(|i| base.contains(format!("/{}", i.value.trim_end()).as_str()))
+            .count();
+        !base.is_empty() && known * 2 >= g.items.len()
+    };
+    let mut ordered: Vec<&CompletionGroup> = groups.iter().filter(|g| enchanted(g)).collect();
+    ordered.extend(groups.iter().filter(|g| !enchanted(g)));
+    let replaced: std::collections::HashSet<String> = ordered
+        .iter()
+        .filter(|g| enchanted(g))
+        .flat_map(|g| g.items.iter().map(|i| slashed(g, i.value.trim_end())))
+        .collect();
+    let mut out: Vec<CompletionRow> = Vec::new();
+    for group in ordered {
+        let is_enchanted = enchanted(group);
+        let section = if is_enchanted {
+            "Commands".to_owned()
+        } else {
+            section_of(&group.source)
+        };
         let mut items: Vec<&oino_core::session::CompletionEntry> = group.items.iter().collect();
         items.sort_by_key(|i| i.sort_tier.unwrap_or(0));
         for item in items {
+            let value = if is_enchanted {
+                slashed(group, &item.value)
+            } else {
+                item.value.clone()
+            };
+            if group.source == "commands" && replaced.contains(value.trim_end()) {
+                continue;
+            }
+            if out.iter().any(|r| r.value.trim_end() == value.trim_end()) {
+                continue;
+            }
             if out.len() >= limit {
                 return out;
             }
+            let label = item.label.clone().unwrap_or_else(|| value.clone());
             out.push(CompletionRow {
-                section: section_of(&group.source),
-                value: item.value.clone(),
-                label: item.label.clone().unwrap_or_else(|| item.value.clone()),
+                section: section.clone(),
+                label: if is_enchanted && !label.starts_with('/') {
+                    format!("/{label}")
+                } else {
+                    label
+                },
+                value,
                 description: item.description.clone(),
                 tag: item.tag.clone(),
                 tone: item.tone.clone(),
-                from: group.from.unwrap_or(default_from),
+                from: if is_enchanted {
+                    0
+                } else {
+                    group.from.unwrap_or(default_from)
+                },
             });
         }
     }
     out
+}
+
+/// Built-in rows (pi interactive commands, GA-3) matching a composer `/partial`.
+#[must_use]
+pub fn builtin_completions(text: &str) -> Vec<CompletionRow> {
+    let Some(partial) = text.strip_prefix('/') else {
+        return Vec::new();
+    };
+    if partial.contains(char::is_whitespace) {
+        return Vec::new();
+    }
+    let needle = partial.to_lowercase();
+    BUILTINS
+        .iter()
+        .filter(|b| b.name.starts_with(&needle))
+        .map(|b| CompletionRow {
+            section: "Built-in".to_owned(),
+            value: format!("/{}", b.name),
+            label: if b.args.is_empty() {
+                format!("/{}", b.name)
+            } else {
+                format!("/{} {}", b.name, b.args)
+            },
+            description: Some(b.description.to_owned()),
+            tag: None,
+            tone: None,
+            from: 0,
+        })
+        .collect()
 }
 
 /// Applies a completion: replaces chars `from..cursor` of `text` with `value` (+ a space when
@@ -399,6 +518,34 @@ pub fn apply_completion(text: &str, cursor: usize, from: usize, value: &str) -> 
     let new_cursor = out.chars().count();
     out.extend(chars[cursor..].iter());
     (out, new_cursor)
+}
+
+/// Standard base64 (RFC 4648, padded) for pasted image attachments.
+#[must_use]
+pub fn base64(bytes: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            chunk.get(1).copied().unwrap_or(0),
+            chunk.get(2).copied().unwrap_or(0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        out.push(char::from(ABC[(n >> 18) as usize & 63]));
+        out.push(char::from(ABC[(n >> 12) as usize & 63]));
+        out.push(if chunk.len() > 1 {
+            char::from(ABC[(n >> 6) as usize & 63])
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            char::from(ABC[n as usize & 63])
+        } else {
+            '='
+        });
+    }
+    out
 }
 
 /// Greeting by local hour (`ZCode` `chat-empty-time-greeting.md`).
@@ -552,6 +699,59 @@ mod tests {
         assert_eq!(apply_completion("@s", 2, 0, "@src/").0, "@src/");
         assert_eq!(greeting(13), "Noon break?");
         assert_eq!(greeting(2), "It's late — remember to rest.");
+    }
+
+    #[test]
+    fn builtins_are_local_and_enchanted_groups_replace_base() {
+        assert_eq!(
+            intent("/new", false, SubmitKey::Enter),
+            Intent::Builtin(Builtin::New, None)
+        );
+        assert_eq!(
+            intent("/compact keep tests", true, SubmitKey::Enter),
+            Intent::Builtin(Builtin::Compact, Some("keep tests".into()))
+        );
+        assert_eq!(
+            intent("/plan on", false, SubmitKey::Enter),
+            Intent::Prompt("/plan on".into())
+        );
+        assert!(
+            Intent::Builtin(Builtin::New, None)
+                .command(Vec::new())
+                .is_none()
+        );
+        assert!(builtin_completions("/ne").iter().any(|r| r.value == "/new"));
+        assert!(builtin_completions("/new x").is_empty());
+        let groups: Vec<oino_core::session::CompletionGroup> = serde_json::from_value(serde_json::json!([
+            {"source":"commands","from":0,"items":[{"value":"/compact"},{"value":"/plan"},{"value":"/other"}]},
+            {"source":"unipi.command-enchantment","items":[{"value":"plan","tag":"workflow","tone":"c3"},{"value":"compact","tag":"compactor","tone":"c5"}]}
+        ])).unwrap();
+        let rows = merge_completions(&groups, 0, 10);
+        let values: Vec<&str> = rows.iter().map(|r| r.value.as_str()).collect();
+        assert_eq!(values, vec!["/plan", "/compact", "/other"]);
+        assert!(rows.iter().all(|r| r.section == "Commands"));
+        assert_eq!(rows[0].tone.as_deref(), Some("c3"));
+        assert_eq!(
+            ModeChip::from_topic(&serde_json::json!({"planMode": false, "permissionMode": "ask"})),
+            Some(ModeChip::Ask)
+        );
+        assert_eq!(
+            ModeChip::from_topic(&serde_json::json!({"planMode": true, "permissionMode": "full"})),
+            Some(ModeChip::Plan)
+        );
+        assert_eq!(
+            ModeChip::from_topic(&serde_json::json!({"planMode": false})),
+            None
+        );
+    }
+
+    #[test]
+    fn base64_matches_rfc4648() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
     }
 
     #[test]

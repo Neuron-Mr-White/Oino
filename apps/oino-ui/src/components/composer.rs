@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::input::Textarea;
+use gpui_kit::component::input::{self, Textarea};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, ElementId, InteractiveElement as _, IntoElement,
@@ -58,6 +58,33 @@ fn token_color(t: &OinoTheme, text: &str) -> (gpui_kit::Hsla, gpui_kit::Hsla, Ic
     }
 }
 
+/// Mode tint (A2.2): Ask `fg_subtle`, Plan `gold`, Auto `claw`, Full `danger`.
+fn mode_tint(t: &OinoTheme, mode: ModeChip) -> gpui_kit::Hsla {
+    match mode {
+        ModeChip::Ask => t.fg_subtle(),
+        ModeChip::Plan => t.gold(),
+        ModeChip::Auto => t.working(),
+        ModeChip::Full => t.danger(),
+    }
+}
+
+/// A 30 px toolbar pill (A2.11 capsule items).
+fn capsule_pill(t: &OinoTheme, id: &'static str) -> gpui_kit::Stateful<gpui_kit::Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .flex_shrink_0()
+        .gap(px(space::S1))
+        .h(px(size::MODE_CHIP))
+        .pl(px(space::S2))
+        .pr(px(space::S2_5))
+        .rounded(px(radius::R_FULL))
+        .cursor_pointer()
+        .text_role(t, TextRole::Sm)
+        .weight_medium()
+}
+
 impl SessionPane {
     /// The composer area: shell (or editor-replace panel) plus completion menu.
     pub(crate) fn render_composer(
@@ -76,6 +103,10 @@ impl SessionPane {
         if let Some(panel) = panel {
             return self.render_editor_panel(&panel, &t, window, cx);
         }
+        if self.panel_focus.1.take().is_some() {
+            let composer = self.composer.clone();
+            composer.update(cx, |s, cx| s.focus(window, cx));
+        }
         let busy = self.model.is_busy();
         let narrow = self.width < px(COMPRESS_BELOW);
         let empty = self.composer.read(cx).value().is_empty();
@@ -84,17 +115,33 @@ impl SessionPane {
         let header = (welcome || !frame_top.is_empty())
             .then(|| self.render_context_header(welcome, &frame_top, &t, cx));
         let completion = (!self.completion.rows.is_empty()).then(|| self.render_completion(&t, cx));
+        let (prose, _) = t.text(TextRole::Prose);
         let editor = div()
             .id("composer")
             .w_full()
             .min_h(px(size::CONTROL_LG))
-            .text_role(&t, TextRole::Base)
+            .pl(px(space::S2_5))
+            .text_size(prose)
             // Touch: editable text is 16 (no zoom-on-focus sizes, design.md §6).
             .when(t.touch(), |el| {
                 el.text_size(px(crate::design::tokens::touch::EDIT_FONT))
             })
             .text_color(t.fg())
             .capture_key_down(cx.listener(Self::on_composer_key))
+            // The editor binds ↑ ↓ Tab Esc as actions, which GPUI dispatches before key-down
+            // listeners: intercept them in the capture phase (GA-21, completion keys).
+            .capture_action(cx.listener(|this, _: &input::MoveUp, w, cx| {
+                this.composer_action("up", w, cx);
+            }))
+            .capture_action(cx.listener(|this, _: &input::MoveDown, w, cx| {
+                this.composer_action("down", w, cx);
+            }))
+            .capture_action(cx.listener(|this, _: &input::IndentInline, w, cx| {
+                this.composer_action("tab", w, cx);
+            }))
+            .capture_action(cx.listener(|this, _: &input::Escape, w, cx| {
+                this.composer_action("escape", w, cx);
+            }))
             .child(Textarea::new(&self.composer).appearance(false).token({
                 move |ctx, _, cx| {
                     let t = OinoTheme::get(cx);
@@ -106,7 +153,7 @@ impl SessionPane {
                         .gap(px(space::S1))
                         .h(px(size::TOKEN))
                         .px(px(space::S1_5))
-                        .rounded(px(radius::R_MD))
+                        .rounded(px(radius::R_CODE))
                         .bg(bg)
                         .text_color(fg)
                         .text_role(&t, TextRole::Sm)
@@ -115,6 +162,8 @@ impl SessionPane {
                 }
             }));
         let toolbar = self.render_toolbar(busy, empty, blocked, narrow, &t, cx);
+        // A2.11 shell: input (surface-2), radius 26, padding 8 8 8 0, inset line at 80 %,
+        // composer elevation. The editor has no inner border.
         div()
             .relative()
             .w_full()
@@ -124,17 +173,29 @@ impl SessionPane {
                     .flex()
                     .flex_col()
                     .w_full()
-                    .gap(px(space::S2))
-                    .p(px(space::S3))
-                    .rounded(px(radius::R_2XL))
+                    .gap(px(space::S1_5))
+                    .pt(px(space::S2))
+                    .pr(px(space::S2))
+                    .pb(px(space::S2))
+                    .pl(px(space::S2))
+                    .rounded(px(radius::R_COMPOSER))
                     .bg(t.input())
                     .border_1()
-                    .border_color(t.input_border())
-                    .hover(|s| s.border_color(t.input_border_hover()))
+                    .border_color(t.border().opacity(0.8))
+                    .shadow(t.e_composer())
                     .children(header)
                     .child(editor)
                     .child(toolbar),
             )
+            .child({
+                let top = Rc::clone(&self.composer_top);
+                gpui_kit::canvas(
+                    move |bounds, _, _| top.set(f32::from(bounds.origin.y)),
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .size_full()
+            })
             .into_any_element()
     }
 
@@ -154,8 +215,8 @@ impl SessionPane {
                 .label(SharedString::from(project))
                 .icon(IconName::Folder)
                 .trailing(IconName::ChevronDown)
+                .variant(Variant::Ghost)
                 .size(BtnSize::Sm)
-                .radius(radius::R_MD)
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Project, cx))),
             open,
             Placement::BelowStart,
@@ -187,37 +248,57 @@ impl SessionPane {
                 }
             },
         );
+        // Glance top segments (setFrame top): Sm, dim, 1 px `line` dividers, one line.
+        let segments: Vec<AnyElement> = top
+            .iter()
+            .filter(|s| s.id.as_deref() != Some("branch") || !welcome)
+            .enumerate()
+            .flat_map(|(i, s)| {
+                let divider = (i > 0).then(|| {
+                    div()
+                        .w(px(size::HAIRLINE))
+                        .h(px(space::S3))
+                        .bg(t.border())
+                        .into_any_element()
+                });
+                let seg = div()
+                    .flex_shrink_0()
+                    .text_role(t, TextRole::Sm)
+                    .text_color(match s.tone {
+                        crate::model::ous::Tone::Default => t.fg_subtlest(),
+                        tone => t.tone_fg(tone),
+                    })
+                    // gui-fix-unipi U5: spans, tones and the wordmark brand.
+                    .child(crate::components::meta_row::segment_body(t, s))
+                    .into_any_element();
+                divider.into_iter().chain(std::iter::once(seg))
+            })
+            .collect();
         div()
             .flex()
             .flex_row()
-            .flex_wrap()
             .items_center()
-            .gap(px(space::S1))
+            .overflow_hidden()
+            .gap(px(space::S2))
+            .pl(px(space::S2))
             .when(welcome, |el| el.child(project_btn))
             .when_some(branch.filter(|_| welcome), |el, b| {
                 el.child(
-                    Btn::new("ctx-branch")
-                        .label(SharedString::from(b))
-                        .icon(IconName::GitBranch)
-                        .size(BtnSize::Sm)
-                        .radius(radius::R_MD),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(space::S1))
+                        .text_role(t, TextRole::Sm)
+                        .text_color(t.fg_subtle())
+                        .child(icon(IconName::GitBranch, size::ICON_SM, t.fg_subtlest()))
+                        .child(SharedString::from(b)),
                 )
             })
-            .children(
-                top.iter()
-                    .filter(|s| s.id.as_deref() != Some("branch") || !welcome)
-                    .map(|s| {
-                        div()
-                            .px(px(space::S1))
-                            .text_role(t, TextRole::Sm)
-                            .text_color(t.tone_fg(s.tone))
-                            .child(SharedString::from(s.text.clone()))
-                    }),
-            )
+            .children(segments)
             .into_any_element()
     }
 
-    #[allow(clippy::too_many_lines, reason = "toolbar layout with its menus")]
+    #[allow(clippy::too_many_lines, reason = "toolbar capsule with its menus")]
     fn render_toolbar(
         &self,
         busy: bool,
@@ -237,14 +318,27 @@ impl SessionPane {
             }
         };
         let entity = cx.entity().downgrade();
+        // Attach: 34 circle, surface-3, paperclip (A2.11).
         let attach = popover(
-            Btn::icon_only("attach", IconName::Plus, "Attach")
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Attach, cx))),
+            div()
+                .id("attach")
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(size::ATTACH))
+                .rounded(px(radius::R_FULL))
+                .bg(t.bubble())
+                .cursor_pointer()
+                .hover(|s| s.bg(t.border()))
+                .tooltip(crate::components::tooltip::tip("Attach", None))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Attach, cx)))
+                .child(icon(IconName::Paperclip, size::ICON, t.fg())),
             self.menu == Some(PaneMenu::Attach),
             Placement::AboveStart,
             || {
                 let e1 = entity.clone();
                 let e2 = entity.clone();
+                let e3 = entity.clone();
                 menu(
                     "attach-menu",
                     t,
@@ -257,8 +351,15 @@ impl SessionPane {
                             });
                         })
                         .icon(IconName::FileText),
-                        MenuEntry::item("Mention a file (@)", move |_, cx| {
+                        MenuEntry::item("Image from clipboard", move |_, cx| {
                             let _ = e2.update(cx, |p, cx| {
+                                p.menu = None;
+                                p.paste_image(cx);
+                            });
+                        })
+                        .icon(IconName::Clipboard),
+                        MenuEntry::item("Mention a file (@)", move |_, cx| {
+                            let _ = e3.update(cx, |p, cx| {
                                 p.menu = None;
                                 let text = p.composer.read(cx).value().to_string();
                                 p.set_composer_text(&format!("{text}@"), cx);
@@ -271,24 +372,26 @@ impl SessionPane {
             },
             close.clone(),
         );
+        // Mode chip: the workflow permission mode, tinted (A2.2), from the
+        // `unipi:workflow:status` topic (GA-25).
         let mode = self.mode();
         let mode_el = mode.map(|m| {
             let entity = cx.entity().downgrade();
+            let tint = mode_tint(t, m);
             popover(
-                {
-                    let b = Btn::new("mode-chip")
-                        .icon(mode_icon(m))
-                        .size(BtnSize::Default)
-                        .tooltip("Permission mode", Some("alt+p"))
-                        .on_click(
-                            cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Mode, cx)),
-                        );
-                    if narrow {
-                        b
-                    } else {
-                        b.label(m.label()).trailing(IconName::ChevronDown)
-                    }
-                },
+                capsule_pill(t, "mode-chip")
+                    .bg(tint.opacity(0.13))
+                    .border_1()
+                    .border_color(tint.opacity(0.45))
+                    .text_color(tint)
+                    .tooltip(crate::components::tooltip::tip(
+                        "Permission mode",
+                        Some("alt+m".into()),
+                    ))
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Mode, cx)))
+                    .child(icon(mode_icon(m), size::ICON_MD, tint))
+                    .when(!narrow, |el| el.child(m.label()))
+                    .child(icon(IconName::ChevronDown, size::ICON_SM, tint)),
                 self.menu == Some(PaneMenu::Mode),
                 Placement::AboveStart,
                 || {
@@ -320,40 +423,57 @@ impl SessionPane {
                 close.clone(),
             )
         });
+        // Model chip: context ring + % + model name + thinking level (A2.11).
         let model_label = self.model.model_label();
         let reasoning = self.model.model.as_ref().is_some_and(|m| m.reasoning);
+        let level = self.model.thinking;
+        let ratio = self.model.context_percent().map(|p| f32::from(p) / 100.0);
+        let percent = self.model.context_percent();
         let model_el = popover(
-            {
-                let b = Btn::new("model-trigger")
-                    .icon(IconName::Box)
-                    .tooltip("Model", Some("⌘M"))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Model, cx)));
-                if narrow {
-                    b
-                } else {
-                    b.label(SharedString::from(model_label))
-                        .trailing(IconName::ChevronDown)
-                }
-            },
+            capsule_pill(t, "model-trigger")
+                .bg(t.card())
+                .text_color(t.fg())
+                .hover(|s| s.bg(t.bubble()))
+                .tooltip(crate::components::tooltip::tip(
+                    "Model and context",
+                    Some("⌘M".into()),
+                ))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Model, cx)))
+                .when_some(ratio, |el, r| el.child(context_ring(t, r)))
+                .when_some(percent.filter(|_| !narrow), |el, p| {
+                    el.child(
+                        div()
+                            .text_role(t, TextRole::Xs)
+                            .text_color(t.fg_subtlest())
+                            .child(format!("{p}%")),
+                    )
+                })
+                .when(!narrow, |el| {
+                    el.child(
+                        div()
+                            .max_w(px(size::MENU_MIN))
+                            .truncate()
+                            .child(SharedString::from(model_label)),
+                    )
+                })
+                .when(reasoning && !narrow, |el| {
+                    el.child(
+                        div()
+                            .text_color(t.fg_subtlest())
+                            .child(level_label(level).to_lowercase()),
+                    )
+                })
+                .child(icon(IconName::ChevronDown, size::ICON_SM, t.fg_subtlest())),
             self.menu == Some(PaneMenu::Model),
             Placement::AboveEnd,
             || crate::components::model_menu::model_menu(self, t, cx),
             close.clone(),
         );
-        let level = self.model.thinking;
-        let thinking_el = reasoning.then(|| {
+        let thinking_el = (reasoning && self.menu == Some(PaneMenu::Thinking)).then(|| {
             let entity = cx.entity().downgrade();
             popover(
-                Btn::new("thinking-trigger")
-                    .tooltip("Thinking", Some("⌘⇧M"))
-                    .on_click(
-                        cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Thinking, cx)),
-                    )
-                    .icon(IconName::Brain)
-                    .when(!narrow, |b| {
-                        b.label(level_label(level)).trailing(IconName::ChevronDown)
-                    }),
-                self.menu == Some(PaneMenu::Thinking),
+                div(),
+                true,
                 Placement::AboveEnd,
                 || {
                     menu(
@@ -377,75 +497,114 @@ impl SessionPane {
                 close.clone(),
             )
         });
-        let ratio = self.model.context_percent().map(|p| f32::from(p) / 100.0);
-        let ring = ratio.map(|r| {
-            let window_k = self
-                .model
-                .model
-                .as_ref()
-                .map_or(0, |m| m.context_window / 1000);
-            let used_k = self.model.usage.context_tokens / 1000;
-            div()
-                .id("context-ring")
-                .cursor_pointer()
-                .tooltip(crate::components::tooltip::tip(
-                    format!("{used_k}k / {window_k}k tokens · Compact now"),
-                    None,
-                ))
-                .on_click(cx.listener(|this, _, _, cx| this.compact(cx)))
-                .child(context_ring(t, r))
-        });
+        // Send / stop: a 38 shell circle; stop (square) while running with an empty editor.
         let stop = busy && empty;
-        let send = Btn::new("send")
-            .icon(if stop {
-                IconName::Square
+        let disabled = (empty || blocked) && !stop;
+        let send = div()
+            .id("send")
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(px(size::SEND))
+            .rounded(px(radius::R_FULL))
+            .bg(if disabled {
+                t.primary().opacity(0.35)
             } else {
-                IconName::ArrowUp
+                t.primary()
             })
-            .variant(if (empty || blocked) && !stop {
-                Variant::Secondary
-            } else {
-                Variant::Primary
+            .when(!disabled, |el| {
+                el.cursor_pointer().hover(|s| s.bg(t.primary_hover()))
             })
-            // Send waits for the pending card; Stop always stays available (§4.12).
-            .disabled(blocked && !stop)
-            .tooltip(
+            .tooltip(crate::components::tooltip::tip(
                 if stop {
                     "Stop"
                 } else if busy {
-                    "Steer (Enter) · Follow-up (Alt+Enter)"
+                    "Steer (Enter) · Queue (Ctrl+Enter)"
                 } else {
                     "Send"
                 },
-                Some(if stop { "esc" } else { "↵" }),
-            )
+                Some(SharedString::from(if stop { "esc" } else { "↵" })),
+            ))
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 if stop {
                     this.abort(cx);
-                } else {
+                } else if !disabled {
                     this.submit(crate::model::composer::SubmitKey::Enter, cx);
                 }
-            }));
-        let send = div()
-            .child(send)
-            .size(px(size::CONTROL))
-            .rounded(px(radius::R_BUTTON));
+            }))
+            .child(icon(
+                if stop {
+                    IconName::Square
+                } else {
+                    IconName::ArrowUp
+                },
+                size::ICON_LG,
+                t.primary_fg(),
+            ));
+        // ⌄: the Steer / Queue choice while a run is active (also Ctrl+Enter).
+        let choice = (busy && !empty).then(|| {
+            let e1 = entity.clone();
+            let e2 = entity.clone();
+            popover(
+                div()
+                    .id("send-choice")
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .w(px(space::S5 + space::HALF))
+                    .h(px(size::SEND))
+                    .rounded(px(radius::R_FULL))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t.bubble()))
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Send, cx)))
+                    .child(icon(IconName::ChevronDown, size::ICON_MD, t.fg_subtle())),
+                self.menu == Some(PaneMenu::Send),
+                Placement::AboveEnd,
+                || {
+                    menu(
+                        "send-menu",
+                        t,
+                        size::MENU_MIN * 1.25,
+                        vec![
+                            MenuEntry::item("Steer now", move |_, cx| {
+                                let _ = e1.update(cx, |p, cx| {
+                                    p.menu = None;
+                                    p.submit(crate::model::composer::SubmitKey::Enter, cx);
+                                });
+                            })
+                            .keys("↵"),
+                            MenuEntry::item("Queue after this run", move |_, cx| {
+                                let _ = e2.update(cx, |p, cx| {
+                                    p.menu = None;
+                                    p.submit(crate::model::composer::SubmitKey::FollowUp, cx);
+                                });
+                            })
+                            .keys("Ctrl+↵"),
+                        ],
+                    )
+                    .into_any_element()
+                },
+                close.clone(),
+            )
+        });
         div()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(space::S1))
+            .gap(px(space::S1_5))
             .child(attach)
             .children(mode_el)
             .child(div().flex_1())
             .child(model_el)
             .children(thinking_el)
             .when(narrow && reasoning, |el| el.child(thinking_bars(t, level)))
-            .children(ring)
+            .children(choice)
             .child(send)
             .into_any_element()
     }
 
+    /// Completion menu (A2.11): a `sheet` popover, radius 16, 360 wide, rows 40 radius 10,
+    /// at most 8 visible; section labels; package tags as colour pills (GA-4).
     fn render_completion(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
         let mut last_section: Option<&str> = None;
         let mut rows: Vec<AnyElement> = Vec::new();
@@ -454,16 +613,26 @@ impl SessionPane {
                 last_section = Some(row.section.as_str());
                 rows.push(
                     div()
-                        .px(px(space::S2))
-                        .pt(px(space::S1))
-                        .text_role(t, TextRole::Sm)
-                        .text_color(t.fg_subtle())
-                        .child(SharedString::from(row.section.clone()))
+                        .px(px(space::S2_5))
+                        .pt(px(if i == 0 { space::S1 } else { space::S2_5 }))
+                        .pb(px(space::S1))
+                        .child(crate::components::section_label::label(
+                            t,
+                            SharedString::from(row.section.clone()),
+                        ))
                         .into_any_element(),
                 );
             }
             let active = i == self.completion.active;
-            let tag_tone = row.tone.as_deref().map(crate::model::ous::Tone::parse);
+            let tag_color = row.tone.as_deref().and_then(|tone| {
+                tone.strip_prefix('c')
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .map(|n| t.categorical(n.saturating_sub(1)))
+                    .or_else(|| {
+                        let tone = crate::model::ous::Tone::parse(tone);
+                        (tone != crate::model::ous::Tone::Default).then(|| t.tone_fg(tone))
+                    })
+            });
             rows.push(
                 div()
                     .id(ElementId::NamedInteger(
@@ -472,13 +641,18 @@ impl SessionPane {
                     ))
                     .flex()
                     .items_center()
-                    .gap(px(space::S2))
-                    .min_h(px(size::CONTROL_LG))
-                    .px(px(space::S2))
-                    .rounded(px(radius::R_MD))
+                    .flex_shrink_0()
+                    .gap(px(space::S2_5))
+                    .h(px(size::MENU_ROW))
+                    .px(px(space::S2_5))
+                    .rounded(px(radius::R_ROW))
                     .cursor_pointer()
-                    .when(active, |el| el.bg(t.menu_hover()))
-                    .hover(|s| s.bg(t.menu_hover()))
+                    .when(active, |el| {
+                        el.bg(t.selected())
+                            .border_1()
+                            .border_color(t.selected_border_strong())
+                    })
+                    .when(!active, |el| el.hover(|s| s.bg(t.bubble())))
                     .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                         this.completion.active = i;
                         this.accept_completion(window, cx);
@@ -494,21 +668,20 @@ impl SessionPane {
                             .text_role(t, TextRole::Base)
                             .child(SharedString::from(row.label.clone())),
                     )
-                    .when_some(row.description.clone(), |el, d| {
-                        el.child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .text_role(t, TextRole::Sm)
-                                .text_color(t.fg_subtle())
-                                .child(SharedString::from(d)),
-                        )
-                    })
-                    .when(row.description.is_none(), |el| el.child(div().flex_1()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_role(t, TextRole::Sm)
+                            .text_color(t.fg_subtlest())
+                            .children(row.description.clone().map(SharedString::from)),
+                    )
                     .when_some(row.tag.clone(), |el, tag| {
-                        let tone = tag_tone.unwrap_or(crate::model::ous::Tone::Default);
-                        el.child(crate::components::badge::badge(t, tone, tag))
+                        el.child(match tag_color {
+                            Some(c) => crate::components::chip::tag(t, c, tag),
+                            None => crate::components::chip::tag(t, t.fg_subtle(), tag),
+                        })
                     })
                     .into_any_element(),
             );
@@ -517,19 +690,44 @@ impl SessionPane {
             .absolute()
             .bottom_full()
             .left_0()
-            .mb(px(space::S1))
+            .mb(px(space::S1_5))
             .child(
-                crate::components::menu::shell(t, size::COMPLETION)
-                    .id("completion-menu")
-                    .max_h(px(size::CONTROL_LG * 9.0))
-                    .overflow_y_scroll()
-                    .children(rows)
+                div()
+                    .flex()
+                    .flex_col()
+                    .w(px(size::COMPLETION))
+                    .p(px(space::S1_5))
+                    .rounded(px(radius::R_FLOAT))
+                    .bg(t.sheet())
+                    .border_1()
+                    .border_color(t.border())
+                    .shadow(t.e_menu())
+                    .child(
+                        div()
+                            .id("completion-menu")
+                            .flex()
+                            .flex_col()
+                            .max_h(px({
+                                // Never taller than the room above the composer (A2.11: at
+                                // most 8 rows), so the first rows stay on screen.
+                                let room = self.composer_top.get() - size::DETAIL_HEAD - space::S12;
+                                let full = size::MENU_ROW * 8.0 + space::S8;
+                                if room > size::MENU_ROW * 2.0 {
+                                    full.min(room)
+                                } else {
+                                    full
+                                }
+                            }))
+                            .overflow_y_scroll()
+                            .children(rows),
+                    )
                     .child(
                         div()
                             .flex()
+                            .items_center()
                             .gap(px(space::S2))
-                            .px(px(space::S2))
-                            .py(px(space::S1))
+                            .px(px(space::S2_5))
+                            .pt(px(space::S1_5))
                             .text_role(t, TextRole::Xs)
                             .text_color(t.fg_subtlest())
                             .child(kbd(t, "↑↓"))
@@ -565,16 +763,41 @@ impl SessionPane {
             };
             ous::render(&panel.spec, &id, &mut o, window, cx)
         };
+        let esc_id = close_id.clone();
+        // A2.11 / U4: the tray takes the composer shell (radius 26). Panel keys are not
+        // buttons; they stay bound while the panel has focus and the OUS footer shows the
+        // legend once (GA-22). Esc closes.
+        let key_action = Rc::clone(&on_action);
+        // The panel takes the composer slot, so it takes the keyboard (keys + Esc) when it
+        // opens; the composer gets focus back when it closes.
+        if self.panel_focus.1.as_deref() != Some(id.as_str()) {
+            self.panel_focus.1 = Some(id.clone());
+            window.focus(&self.panel_focus.0, cx);
+        }
         div()
+            .id("editor-panel")
+            .track_focus(&self.panel_focus.0)
             .flex()
             .flex_col()
             .w_full()
-            .p(px(space::S3))
+            .px(px(space::S3_5))
+            .py(px(space::S3))
             .gap(px(space::S2))
-            .rounded(px(radius::R_2XL))
+            .rounded(px(radius::R_COMPOSER))
             .bg(t.input())
             .border_1()
-            .border_color(t.input_border())
+            .border_color(t.border().opacity(0.8))
+            .shadow(t.e_composer())
+            .on_key_down(cx.listener(move |this, e: &gpui_kit::KeyDownEvent, _, cx| {
+                let key = e.keystroke.key.as_str();
+                if key == "escape" {
+                    this.close_panel(&esc_id, cx);
+                    cx.stop_propagation();
+                } else if let Some(k) = keys.iter().find(|k| k.key == key) {
+                    key_action(&k.action_id, JsonValue::Null, cx);
+                    cx.stop_propagation();
+                }
+            }))
             .child(
                 div()
                     .flex()
@@ -583,28 +806,15 @@ impl SessionPane {
                     .child(
                         div()
                             .flex_1()
+                            .min_w_0()
+                            .truncate()
                             .text_role(t, TextRole::Base)
-                            .weight_medium()
+                            .weight_semibold()
                             .child(SharedString::from(panel.title.clone())),
                     )
-                    .children(keys.into_iter().map(|k| {
-                        let a = Rc::clone(&on_action);
-                        let action = k.action_id.clone();
-                        Btn::new(ElementId::Name(format!("pk-{}", k.action_id).into()))
-                            .label(SharedString::from(k.label.clone()))
-                            .kbd(SharedString::from(k.key.clone()))
-                            .size(BtnSize::Sm)
-                            .on_click(move |_, _, cx| a(&action, JsonValue::Null, cx))
-                    }))
                     .child(
-                        div()
-                            .text_role(t, TextRole::Xs)
-                            .text_color(t.fg_subtlest())
-                            .child("Esc to return"),
-                    )
-                    .child(
-                        Btn::icon_only("editor-panel-close", IconName::X, "Close")
-                            .size(BtnSize::Sm)
+                        Btn::icon_only("editor-panel-close", IconName::X, "Close (Esc)")
+                            .size(BtnSize::Md)
                             .on_click(
                                 cx.listener(move |this, _, _, cx| this.close_panel(&close_id, cx)),
                             ),
@@ -618,6 +828,33 @@ impl SessionPane {
                     .child(body),
             )
             .into_any_element()
+    }
+
+    /// Attaches an image from the clipboard as an `[Image #n]` token (sent as image content).
+    /// Returns whether the clipboard held an image.
+    pub(crate) fn paste_image(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(item) = cx.read_from_clipboard() else {
+            return false;
+        };
+        let Some(image) = item.entries().iter().find_map(|e| match e {
+            gpui_kit::ClipboardEntry::Image(image) => Some(image.clone()),
+            _ => None,
+        }) else {
+            return false;
+        };
+        let n = self.images.len() + 1;
+        let id = format!("img-{}-{n}", self.model.id);
+        self.images.insert(
+            id.clone(),
+            oino_ai::ImageContent {
+                data: crate::model::composer::base64(&image.bytes),
+                mime_type: image.format.mime_type().to_owned(),
+            },
+        );
+        self.pending_tokens
+            .push((id, format!("[Image #{n}]"), format!("Image #{n}")));
+        cx.notify();
+        true
     }
 
     /// Opens a native file picker and attaches the files as `@` tokens.

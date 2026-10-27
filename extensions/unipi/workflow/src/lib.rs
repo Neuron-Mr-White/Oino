@@ -44,6 +44,45 @@ use crate::settings::{CLEAR_RULES, NAMESPACE};
 const STATUS_KEY: &str = "unipi-workflow";
 const SOURCE: &str = "Plan mode";
 
+/// Tools that plan-mode toggles must leave active (GA-28): `ask_user` (the plan flow tells
+/// the model to clarify with it) and the background-task tools. A read-modify-write
+/// `set-active-tools` by another extension can drop them; every plan toggle re-adds the
+/// registered ones that went missing.
+const RESTORE_TOOLS: &[&str] = &["ask_user", "bg_run", "bg_status", "bg_logs", "bg_kill"];
+
+/// Pure half of the GA-28 restore: appends every `RESTORE_TOOLS` entry that `registered`
+/// lists but `active` lacks. `None` when nothing is missing.
+#[must_use]
+fn restored_tools(active: &[String], registered: &[Value]) -> Option<Vec<String>> {
+    let missing: Vec<&str> = RESTORE_TOOLS
+        .iter()
+        .copied()
+        .filter(|t| {
+            registered
+                .iter()
+                .any(|r| r.get("name").and_then(Value::as_str) == Some(t))
+                && !active.iter().any(|a| a == t)
+        })
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let mut next = active.to_owned();
+    next.extend(missing.iter().map(|t| (*t).to_owned()));
+    Some(next)
+}
+
+/// Re-adds dropped interaction tools after a plan-mode toggle (GA-28).
+fn restore_tools() {
+    let active = oino_extension::control::active_tools();
+    let Ok(all) = oino_extension::control::all_tools() else {
+        return;
+    };
+    if let Some(next) = restored_tools(&active, &all) {
+        let _ = oino_extension::control::set_active_tools(&next);
+    }
+}
+
 /// Outcome of the plan approval prompt.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Approval {
@@ -371,6 +410,7 @@ impl Workflow {
         );
         let display = plan::display_plan_path(&cwd, Some(&file));
         update_status(Some(true), None);
+        restore_tools();
         unipi_kit::bus::emit(&PlanModeChanged {
             active: true,
             plan_file: display.clone(),
@@ -407,6 +447,7 @@ impl Workflow {
             Some(&json!({"active": false, "planFile": file})),
         );
         update_status(Some(false), None);
+        restore_tools();
         unipi_kit::bus::emit(&PlanModeChanged {
             active: false,
             plan_file: plan::display_plan_path(&cwd, file.as_deref()),
@@ -912,6 +953,21 @@ mod tests {
         assert_eq!(describe_tool_call("edit", &json!({"path": "a.ts"})), "a.ts");
         assert_eq!(describe_tool_call("x", &json!({"a": 1})), "{\"a\":1}");
         assert_eq!(describe_tool_call("bash", &json!({})), "");
+    }
+
+    #[test]
+    fn plan_toggle_restores_interaction_tools() {
+        let registered = ["read", "bash", "ask_user", "bg_status", "bg_logs"]
+            .into_iter()
+            .map(|n| json!({"name": n}))
+            .collect::<Vec<_>>();
+        let active = vec!["read".to_owned(), "bash".to_owned()];
+        let next = restored_tools(&active, &registered).unwrap();
+        assert_eq!(next, ["read", "bash", "ask_user", "bg_status", "bg_logs"]);
+        // Nothing missing (or not registered) -> no write.
+        assert_eq!(restored_tools(&next, &registered), None);
+        let no_bg = vec![json!({"name": "read"})];
+        assert_eq!(restored_tools(&active, &no_bg), None);
     }
 
     #[test]

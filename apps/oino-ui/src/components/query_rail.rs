@@ -23,7 +23,10 @@ impl SessionPane {
     /// The query rail (hidden with < 2 queries or a frame below 600 px).
     pub(crate) fn render_rail(&self, t: &OinoTheme, cx: &mut Context<Self>) -> Option<AnyElement> {
         let prompts = self.model.transcript.prompt_indices();
-        if prompts.len() < 2 || self.width < px(size::CONVERSATION_MIN + space::S12 * 2.5) {
+        // The rail lives in the free margin left of the reading column; without room for it
+        // the bars would sit on the transcript (GA-8).
+        let margin = (f32::from(self.width) - size::READING) / 2.0 + size::READING_PAD;
+        if prompts.len() < 2 || margin < size::QUERY_RAIL + space::S4 {
             return None;
         }
         let current = self.list.logical_scroll_top().item_ix;
@@ -60,7 +63,7 @@ impl SessionPane {
                             .w(px(w))
                             .h(px(h))
                             .rounded(px(radius::R_FULL))
-                            .bg(if active { t.fg() } else { t.fg_subtlest() }),
+                            .bg(if active { t.primary() } else { t.fg_subtlest() }),
                     )
                     .into_any_element()
             })
@@ -68,7 +71,7 @@ impl SessionPane {
         Some(
             div()
                 .absolute()
-                .left(px(space::S1))
+                .left(px(space::S2))
                 .top_0()
                 .bottom_0()
                 .w(px(size::QUERY_RAIL))
@@ -197,13 +200,13 @@ impl SessionPane {
                 .flex()
                 .items_center()
                 .gap(px(space::S1))
-                .h(px(size::INPUT))
+                .h(px(size::FIELD))
                 .px(px(space::S2))
-                .rounded(px(radius::R_DIALOG))
-                .bg(t.popover())
+                .rounded(px(radius::R_FLOAT))
+                .bg(t.sheet())
                 .border_1()
-                .border_color(t.popover_border())
-                .shadow(t.e2())
+                .border_color(t.border())
+                .shadow(t.e_menu())
                 .child(
                     div()
                         .flex_1()

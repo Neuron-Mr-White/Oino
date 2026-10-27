@@ -414,6 +414,12 @@ impl UiState {
         self.dialogs.len()
     }
 
+    /// Ids of the queued dialogs, front first (snapshot reconciliation, GA-30).
+    #[must_use]
+    pub fn dialog_ids(&self) -> Vec<String> {
+        self.dialogs.iter().map(|d| d.id.clone()).collect()
+    }
+
     /// Whether a dialog waits for the user ("attention" in the session list).
     #[must_use]
     pub fn needs_attention(&self) -> bool {

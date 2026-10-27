@@ -677,7 +677,19 @@ impl Transcript {
                 error_message: Some(error),
                 aborted: false,
                 ..
-            } => vec![self.notice(NoticeTone::Error, format!("Compaction failed: {error}"))],
+            } => {
+                // Core and the compactor may already prefix the reason (GA-9).
+                let mut reason = error.trim();
+                while let Some(rest) = reason.strip_prefix("Compaction failed:") {
+                    reason = rest.trim_start();
+                }
+                let tone = if reason.to_lowercase().starts_with("nothing to compact") {
+                    NoticeTone::Info
+                } else {
+                    NoticeTone::Error
+                };
+                vec![self.notice(tone, format!("Compaction failed: {reason}"))]
+            }
             AgentSessionEvent::AutoRetryStart {
                 attempt,
                 max_attempts,
