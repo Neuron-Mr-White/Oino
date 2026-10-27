@@ -2,8 +2,8 @@
 //! WASM host, implemented by the daemon client or an embedded scheduler.
 
 use crate::HostError;
-use crate::runtime::BoxFut;
 use crate::RawJson;
+use crate::runtime::BoxFut;
 
 /// Serves `cron.call` ops from extensions with the `cron` permission.
 ///
