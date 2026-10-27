@@ -1,20 +1,23 @@
 //! Runs one job fire as a headless Oino run:
-//! `oino -p "<prompt>" --mode json --session-id <run id> --append-system-prompt …`.
+//! `oino -p "<prompt>" --mode json --session <path> --append-system-prompt …`.
 //!
-//! The run's session id equals the run id, so its session file is browsable afterwards
-//! (`oino --session <path>`, the desktop's session list, `/cron runs`). stdout+stderr are
-//! captured into the run's capped log; the JSON event stream on stdout is parsed as it
-//! arrives ([`JsonStream`]) for:
+//! The run's session file is created at `<agent>/sessions/--<cwd>--/<ts>_<run id>.jsonl`
+//! ([`run_session_path`]): the run id is part of its name, so the run record points at the
+//! exact file that can be browsed afterwards (`oino --session <path>`, the desktop's
+//! session list, `/cron runs`). The path is passed explicitly because `oino --session`
+//! creates a missing file, while `--session-id` only finds existing sessions today
+//! (deviation modes #13, request: core `SessionSource` with an explicit id).
+//!
+//! stdout+stderr are captured into the run's capped log; the JSON event stream on stdout
+//! is parsed as it arrives ([`JsonStream`]) for:
 //!
 //! - **`cost_usd`** — the sum of every `turn_end` message usage `cost.total`.
 //! - **`summary`** — the last assistant turn's text.
-///
-/// The session file itself is located on disk after the run (the run id is known in
-/// advance, so a glob under the encoded-cwd session directory finds it; verified to exist
-/// before being recorded — never a guess). A `time_limit_s` timeout kills the whole
-/// process group (so stray children die too) and records `timeout`; a nonzero exit is
-/// `failed`, zero is `ok`. A run whose accumulated cost exceeds the job's `cost_cap_usd`
-/// is recorded `failed` with reason `"cost cap"`.
+//!
+//! The session file is verified to exist before it is recorded — never a guess. A
+//! `time_limit_s` timeout kills the whole process group (so stray children die too) and
+//! records `timeout`; a nonzero exit is `failed`, zero is `ok`. A run whose accumulated
+//! cost exceeds the job's `cost_cap_usd` is recorded `failed` with reason `"cost cap"`.
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -141,6 +144,22 @@ impl JsonStream {
     }
 }
 
+/// The session file a run writes: `<agent dir>/sessions/--<cwd>--/<ts>_<run id>.jsonl`, the
+/// pi session layout. The timestamp matches the session header's file stem
+/// (`2026-10-28T03-00-07-623Z`), so the file looks exactly like one Oino created itself;
+/// the id part is the run id.
+#[must_use]
+pub fn run_session_path(agent_dir: &Path, cwd: &str, run_id: &str, at_ms: u64) -> PathBuf {
+    let stamp = chrono::DateTime::from_timestamp_millis(at_ms.cast_signed())
+        .unwrap_or_else(chrono::Utc::now)
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+        .replace([':', '.'], "-");
+    agent_dir
+        .join("sessions")
+        .join(store::encode_cwd(Path::new(cwd)))
+        .join(format!("{stamp}_{run_id}.jsonl"))
+}
+
 /// Finds the session file a run wrote: `<agent>/sessions/<encoded cwd>/*_<run id>.jsonl`
 /// (falls back to scanning every session dir), only reporting a file that exists.
 #[must_use]
@@ -243,13 +262,22 @@ pub async fn run(
             cost_usd: None,
         };
     };
+    let session_path = run_session_path(
+        &paths.agent_dir,
+        &spec.cwd,
+        run_id,
+        chrono::Utc::now().timestamp_millis().cast_unsigned(),
+    );
+    if let Some(parent) = session_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let mut cmd = Command::new(&oino.program);
     for arg in &oino.args {
         cmd.arg(arg);
     }
     cmd.arg("-p").arg(&spec.prompt);
     cmd.arg("--mode").arg("json");
-    cmd.arg("--session-id").arg(run_id);
+    cmd.arg("--session").arg(&session_path);
     cmd.arg("--append-system-prompt").arg(UNATTENDED);
     if let Some(model) = &spec.model {
         cmd.arg("--model").arg(model);
@@ -367,8 +395,13 @@ pub async fn run(
         let s = stream.lock().await;
         (s.summary.clone().filter(|s| !s.is_empty()), s.cost_usd)
     };
-    let session_path = find_session_file(&paths.agent_dir, &spec.cwd, run_id)
-        .map(|p| p.to_string_lossy().into_owned());
+    let session_path = session_path
+        .is_file()
+        .then(|| session_path.to_string_lossy().into_owned())
+        .or_else(|| {
+            find_session_file(&paths.agent_dir, &spec.cwd, run_id)
+                .map(|p| p.to_string_lossy().into_owned())
+        });
 
     // The cost cap is checked after the process ends: refuse to record the run as `ok`
     // once it is known to have gone over.
@@ -548,6 +581,32 @@ mod tests {
         // A different cwd with no match anywhere → None.
         std::fs::remove_file(&file).unwrap();
         assert_eq!(find_session_file(agent, "/home/me/project", "r1"), None);
+    }
+
+    #[test]
+    fn run_session_path_matches_the_pi_layout() {
+        let at = Utc
+            .with_ymd_and_hms(2026, 10, 28, 3, 0, 7)
+            .unwrap()
+            .timestamp_millis()
+            .cast_unsigned()
+            + 623;
+        let path = run_session_path(Path::new("/agent"), "/home/me/project", "cabc123", at);
+        assert_eq!(
+            path,
+            PathBuf::from(
+                "/agent/sessions/--home-me-project--/2026-10-28T03-00-07-623Z_cabc123.jsonl"
+            )
+        );
+        // The id the scheduler knows is in the name, so `find_session_file` sees it.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = run_session_path(tmp.path(), "/home/me/project", "cabc123", at);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{}").unwrap();
+        assert_eq!(
+            find_session_file(tmp.path(), "/home/me/project", "cabc123").as_ref(),
+            Some(&path)
+        );
     }
 
     #[test]

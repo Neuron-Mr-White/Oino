@@ -584,6 +584,15 @@ pub async fn handle_control(
                     let extra = job_runtime(job, running.contains(&job.id), now);
                     value["next_fire"] = extra["next_fire"].clone();
                     value["running"] = extra["running"].clone();
+                    // The newest recorded run, so a UI can show "last ok 09:00" without
+                    // asking for every job's history.
+                    if let Ok(Some(last)) =
+                        store::load_runs(paths, &job.id).map(|runs| runs.into_iter().next())
+                    {
+                        value["last_run_id"] = json!(last.id);
+                        value["last_status"] = json!(last.status);
+                        value["last_fire"] = json!(last.fired_at);
+                    }
                     value
                 })
                 .collect();

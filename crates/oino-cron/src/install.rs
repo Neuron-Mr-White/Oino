@@ -118,7 +118,12 @@ pub fn install() -> Result<String> {
             std::fs::create_dir_all(parent).map_err(|e| CronError::io(e, parent))?;
         }
         std::fs::write(&unit, systemd_unit(&bin)).map_err(|e| CronError::io(e, &unit))?;
-        run_quiet("systemctl", &["--user".into(), "daemon-reload".into()])?;
+        let written = format!("wrote {}", unit.display());
+        run_quiet("systemctl", &["--user".into(), "daemon-reload".into()]).map_err(|e| {
+            CronError::control(format!(
+                "{written}, but systemd --user is not reachable ({e}) — start the scheduler with `oino cron serve`, or run `oino cron install` in a desktop session"
+            ))
+        })?;
         run_quiet(
             "systemctl",
             &[
@@ -171,7 +176,9 @@ pub fn install() -> Result<String> {
 /// [`CronError::Control`] naming the platform tool on failure.
 pub fn uninstall() -> Result<String> {
     if cfg!(target_os = "linux") {
-        run_quiet(
+        // Best effort: without a user manager (headless shells, containers) `systemctl
+        // --user` fails, but the unit file still has to go.
+        let stopped = run_quiet(
             "systemctl",
             &[
                 "--user".into(),
@@ -179,12 +186,22 @@ pub fn uninstall() -> Result<String> {
                 "--now".into(),
                 format!("{SERVICE_NAME}.service"),
             ],
-        )?;
-        if let Some(unit) = systemd_unit_path() {
-            let _ = std::fs::remove_file(&unit);
-        }
-        run_quiet("systemctl", &["--user".into(), "daemon-reload".into()])?;
-        Ok("stopped and removed the systemd user service".to_owned())
+        )
+        .is_ok();
+        let removed =
+            systemd_unit_path().filter(|unit| std::fs::remove_file(unit).is_ok() || !unit.exists());
+        let _ = run_quiet("systemctl", &["--user".into(), "daemon-reload".into()]);
+        Ok(match (removed, stopped) {
+            (Some(unit), true) => format!(
+                "stopped and removed the systemd user service ({})",
+                unit.display()
+            ),
+            (Some(unit), false) => format!(
+                "removed the systemd user service unit ({}); systemd --user did not answer, so it may not have been running",
+                unit.display()
+            ),
+            (None, _) => "no systemd user service to remove".to_owned(),
+        })
     } else if cfg!(target_os = "macos") {
         if let Some(plist) = launchd_plist_path() {
             run_quiet(
