@@ -3,6 +3,7 @@
 
 pub mod coalesce;
 pub mod composer;
+pub mod cron;
 pub mod dialog;
 pub mod interaction;
 pub mod kanban;

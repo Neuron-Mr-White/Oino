@@ -21,6 +21,7 @@ oino-browser.workspace = true
 oino-bundle.workspace = true
 oino-client.workspace = true
 oino-core.workspace = true
+oino-cron.workspace = true
 oino-extension-api.workspace = true
 oino-models.workspace = true
 oino-session.workspace = true

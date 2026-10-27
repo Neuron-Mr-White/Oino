@@ -40,10 +40,10 @@ use crate::rt::Tokio;
 use crate::views::session_pane::{BottomTab, PaneEvent, PaneMenu, SessionPane, SideTab};
 use crate::views::settings_page::{SettingsEvent, SettingsSection, SettingsView};
 use crate::views::{
-    Abort, CloseFind, CommandPalette, FindInConversation, FocusComposer, GoBoard, GoExtensions,
-    GoSessions, NewSession, OpenFolder, OpenSettings, PickModel, PickThinking, SwitchSession,
-    ToggleBottom, ToggleFrameOverlay, ToggleSidePane, ToggleSidebar, ToggleStatusPanel,
-    ToggleTheme, TreeView,
+    Abort, CloseFind, CommandPalette, FindInConversation, FocusComposer, GoBoard, GoCron,
+    GoExtensions, GoSessions, NewSession, OpenFolder, OpenSettings, PickModel, PickThinking,
+    SwitchSession, ToggleBottom, ToggleFrameOverlay, ToggleSidePane, ToggleSidebar,
+    ToggleStatusPanel, ToggleTheme, TreeView,
 };
 
 /// Main-area routes (the sidebar nav).
@@ -57,6 +57,8 @@ pub enum Route {
     Board,
     /// Extensions page (D12).
     Extensions,
+    /// Automations — the cron view (§8 row 49).
+    Cron,
     /// First-run onboarding (D13).
     Onboarding,
 }
@@ -174,6 +176,8 @@ pub struct AppShell {
     pub(crate) ext_readme: Option<(String, String)>,
     /// D9 board toolbar / cursor / overlay state.
     pub(crate) board_ui: crate::views::board::BoardUi,
+    /// Automations (cron) view state.
+    pub(crate) cron_ui: crate::views::cron::CronUi,
     /// The mascot window (opt-in) and its bubble.
     pub(crate) mascot: Option<gpui_kit::WindowHandle<crate::views::mascot::MascotView>>,
     pub(crate) mascot_bubble: Option<(String, Instant)>,
@@ -292,6 +296,7 @@ impl AppShell {
             sidebar_kb: false,
             drag_armed: Rc::default(),
             board_ui: crate::views::board::BoardUi::default(),
+            cron_ui: crate::views::cron::CronUi::default(),
             ext_readme: None,
             mascot: None,
             mascot_bubble: None,
@@ -1416,6 +1421,14 @@ impl AppShell {
                     window.focus(&self.focus, cx);
                 }
             }
+            Route::Cron => {
+                let focus = self
+                    .cron_ui
+                    .focus
+                    .get_or_insert_with(|| cx.focus_handle())
+                    .clone();
+                window.focus(&focus, cx);
+            }
             Route::Extensions | Route::Onboarding => {
                 window.focus(&self.focus, cx);
             }
@@ -1790,6 +1803,7 @@ impl Render for AppShell {
                 None => self.render_sessions(window, cx),
             },
             Route::Board => self.render_board(window, cx),
+            Route::Cron => self.render_cron(window, cx),
             Route::Extensions => self.render_extensions(window, cx),
             Route::Onboarding => self.render_onboarding(window, cx),
         };
@@ -1863,6 +1877,7 @@ impl Render for AppShell {
                 Route::Sessions => !(self.detail_open && self.focused.is_some()),
                 Route::Settings => self.settings_view.is_none(),
                 Route::Extensions => false,
+                Route::Cron => self.cron_ui.edit.is_none(),
                 Route::Board | Route::Onboarding => true,
             };
         let columns = div()
@@ -1936,6 +1951,9 @@ impl Render for AppShell {
             }))
             .on_action(cx.listener(|this, _: &GoSessions, window, cx| {
                 this.run_app_action("sessions", window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GoCron, window, cx| {
+                this.open_cron(window, cx);
             }))
             .on_action(cx.listener(|this, _: &GoBoard, window, cx| {
                 this.open_board(window, cx);

@@ -20,6 +20,7 @@
 )]
 
 pub mod board;
+pub mod cron;
 pub mod extensions_page;
 pub mod mascot;
 pub mod onboarding;
@@ -47,6 +48,8 @@ gpui_kit::actions!(
         GoBoard,
         /// Extensions screen.
         GoExtensions,
+        /// Automations (cron) screen.
+        GoCron,
         /// Show/hide the sidebar.
         ToggleSidebar,
         /// Show/hide the side pane.
@@ -117,6 +120,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new(primary!("1"), GoSessions, None),
         KeyBinding::new(primary!("2"), GoBoard, None),
         KeyBinding::new(primary!("3"), GoExtensions, None),
+        KeyBinding::new(primary!("4"), GoCron, None),
         KeyBinding::new(primary!("b"), ToggleSidebar, None),
         KeyBinding::new(primary!("j"), ToggleSidePane, None),
         KeyBinding::new(primary!("`"), ToggleBottom, None),

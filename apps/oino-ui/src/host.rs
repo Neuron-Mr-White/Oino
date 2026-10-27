@@ -12,6 +12,7 @@ use oino_client::SessionBackend;
 use serde::{Deserialize, Serialize};
 
 use crate::model::sessions::SessionSummary;
+use oino_extension_api::cron::CronHost;
 
 /// Host failures shown to the user.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -372,6 +373,13 @@ pub trait SessionHost: Send + Sync + 'static {
     }
 
     /// The user extensions folder (`~/.oino/extensions`).
+    /// The process's cron scheduler host (embedded scheduler or the daemon client);
+    /// `None` in hosts without one (the Automations page then says so).
+    fn cron_host(&self) -> Option<Arc<dyn CronHost>> {
+        None
+    }
+
+    /// Where user-visible extensions live, if this host installs them.
     fn extensions_dir(&self) -> Option<PathBuf> {
         None
     }

@@ -1055,6 +1055,21 @@ impl AppShell {
                     .child(
                         nav_item(
                             &t,
+                            "nav-cron",
+                            IconName::CalendarClock,
+                            "Automations",
+                            Some("⌘4"),
+                            route == Route::Cron,
+                        )
+                        .on_click(cx.listener(
+                            |this, _: &ClickEvent, window, cx| {
+                                this.open_cron(window, cx);
+                            },
+                        )),
+                    )
+                    .child(
+                        nav_item(
+                            &t,
                             "nav-ext",
                             IconName::Blocks,
                             "Extensions",

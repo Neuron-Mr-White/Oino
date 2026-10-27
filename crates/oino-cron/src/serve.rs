@@ -260,7 +260,7 @@ impl Embedded {
     }
 
     /// Stops ticking (running jobs are not killed; the next owner closes them).
-    pub fn shutdown(self) {
+    pub fn shutdown(&self) {
         let _ = self.shutdown.send(());
         self.ticker.abort();
     }

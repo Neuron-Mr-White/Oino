@@ -33,6 +33,7 @@ oino-browser = { path = "../crates/oino-browser" }
 oino-bundle = { path = "../crates/oino-bundle" }
 oino-client = { path = "../crates/oino-client" }
 oino-core = { path = "../crates/oino-core" }
+oino-cron = { path = "../crates/oino-cron" }
 oino-extension-api = { path = "../crates/oino-extension-api" }
 oino-models = { path = "../crates/oino-models" }
 oino-session = { path = "../crates/oino-session" }

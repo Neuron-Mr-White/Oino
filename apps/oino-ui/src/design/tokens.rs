@@ -610,6 +610,14 @@ pub mod size {
     pub const SUGGESTION: f32 = 232.0;
     /// Mini status capsule height.
     pub const MINI_STATUS: f32 = 28.0;
+    /// Automations: the state column (icon + word).
+    pub const CRON_STATE: f32 = 96.0;
+    /// Automations: the next/last column.
+    pub const CRON_TIMES: f32 = 120.0;
+    /// Automations: the run-history side column.
+    pub const CRON_DETAIL: f32 = 420.0;
+    /// Automations: label/status column widths in rows.
+    pub const CRON_LABEL: f32 = 64.0;
     /// Find bar width.
     pub const FIND_BAR: f32 = 360.0;
     /// Completion menu width.

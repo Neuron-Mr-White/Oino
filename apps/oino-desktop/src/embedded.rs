@@ -168,6 +168,42 @@ struct Inner {
     runtimes: Mutex<Vec<Weak<AgentSessionRuntime>>>,
     /// Process-wide browser service served to `oino.browser` (browser-control.md §3).
     browser: Option<oino_browser::BrowserService>,
+    /// The cron scheduler this process attaches to: the single-owner embedded scheduler
+    /// when nobody else ticks, else the daemon's client (unipi-port §3.24).
+    cron: CronAttach,
+}
+
+/// How this process reaches the cron scheduler.
+enum CronAttach {
+    /// We own the tick loop (embedded scheduler + its tick task).
+    Embedded(oino_cron::serve::Embedded),
+    /// The daemon (`oino cron serve` / the user service) owns it; we are a client.
+    Daemon,
+    /// No cron paths at all.
+    None,
+}
+
+impl CronAttach {
+    /// The host-facing handle.
+    fn host(&self) -> Option<Arc<dyn oino_extension_api::cron::CronHost>> {
+        match self {
+            Self::Embedded(embedded) => Some(Arc::new(oino_cron::host::EmbeddedCronHost {
+                scheduler: embedded.scheduler.clone(),
+            })),
+            Self::Daemon => oino_cron::CronPaths::from_agent_dir().ok().map(|paths| {
+                Arc::new(oino_cron::host::DaemonCronHost { paths })
+                    as Arc<dyn oino_extension_api::cron::CronHost>
+            }),
+            Self::None => None,
+        }
+    }
+
+    /// Stops the embedded tick loop, if we own it (app quit).
+    fn shutdown(&self) {
+        if let Self::Embedded(embedded) = self {
+            embedded.shutdown();
+        }
+    }
 }
 
 /// The in-process host.
@@ -192,6 +228,26 @@ impl EmbeddedHost {
     ) -> Self {
         let bundle = load_bundle(&agent_dir);
         tracing::info!(count = bundle.packages.len(), "bundled extensions");
+        // Attach to the cron scheduler: become the single ticking owner when nobody else
+        // holds the lock, else talk to the daemon. Single-owner lock: only one scheduler
+        // fires jobs (unipi-port §3.24).
+        let cron = {
+            let paths = oino_cron::CronPaths::new(&agent_dir);
+            match oino_cron::serve::Embedded::start(paths) {
+                Ok(embedded) => {
+                    tracing::info!("cron: embedded scheduler owns the tick loop");
+                    CronAttach::Embedded(embedded)
+                }
+                Err(oino_cron::CronError::AlreadyOwned(holder)) => {
+                    tracing::info!(%holder, "cron: daemon owns the tick loop; attaching as client");
+                    CronAttach::Daemon
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "cron: scheduler unavailable");
+                    CronAttach::None
+                }
+            }
+        };
         Self {
             inner: Arc::new(Inner {
                 infos: Mutex::new(bundle.infos.clone()),
@@ -201,6 +257,7 @@ impl EmbeddedHost {
                 workspaces: tokio::sync::Mutex::new(HashMap::new()),
                 runtimes: Mutex::new(Vec::new()),
                 browser,
+                cron,
             }),
         }
     }
@@ -221,6 +278,9 @@ impl Inner {
             hub.set_browser(Some(
                 Arc::new(browser.clone()) as Arc<dyn oino_extension_api::browser::BrowserHost>
             ));
+        }
+        if let Some(hub) = runtime.local_services() {
+            hub.set_cron(self.cron.host());
         }
         let runtime = Arc::new(runtime);
         let (global, _) =
@@ -469,7 +529,12 @@ impl SessionHost for EmbeddedHost {
         Some(self.inner.agent_dir.join("extensions"))
     }
 
+    fn cron_host(&self) -> Option<Arc<dyn oino_extension_api::cron::CronHost>> {
+        self.inner.cron.host()
+    }
+
     fn shutdown(&self) -> BoxFuture<'static, ()> {
+        self.inner.cron.shutdown();
         let live: Vec<Arc<AgentSessionRuntime>> = lock(&self.inner.runtimes)
             .drain(..)
             .filter_map(|r| r.upgrade())
