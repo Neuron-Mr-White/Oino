@@ -16,7 +16,7 @@ All run locally with `TMPDIR=$PWD/target/tmp`; components rebuilt with rustc 1.9
 | Workspace | fmt | clippy `-D warnings` (pedantic) | tests | other |
 |---|---|---|---|---|
 | root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ 699 passed (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components) | ✅ rustdoc `-D warnings`; ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh`; all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
-| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ 664 native (4 ignored); ✅ 7 wasm-host harness suites (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (37 components: 8 providers, 24 unipi, 5 fixtures) + `cargo xtask checksums` |
+| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ 664 native (4 ignored); ✅ 7 wasm-host harness suites (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
 | `apps/` (GPUI) | ✅ | ✅ | ✅ 83 | — |
 
 `cargo xtask layering` and `cargo deny` (quality §1, §6) do not exist yet.
