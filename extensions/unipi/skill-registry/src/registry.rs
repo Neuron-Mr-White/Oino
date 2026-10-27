@@ -124,7 +124,6 @@ pub fn skill_source(s: &CatalogSkill, p: &Places) -> SkillSource {
     }
     let user_dirs = [
         p.home.as_ref().map(|h| format!("{h}/.agents/skills")),
-        p.home.as_ref().map(|h| format!("{h}/.pi/agent/skills")),
         p.agent_dir.as_ref().map(|a| format!("{a}/skills")),
     ];
     if user_dirs.iter().flatten().any(|u| is_under_dir(&dir, u)) {
@@ -229,7 +228,7 @@ pub fn skill_command_name(text: &str) -> Option<String> {
     Some(name)
 }
 
-/// Normalises stored states (legacy `"on" | "unlisted" | "off"`, dropped `discoverable`).
+/// Normalises stored states (`{enabled?, mustShow?}` per skill).
 #[must_use]
 pub fn normalize_states(raw: &Value) -> BTreeMap<String, SkillState> {
     let mut out = BTreeMap::new();
@@ -237,39 +236,12 @@ pub fn normalize_states(raw: &Value) -> BTreeMap<String, SkillState> {
         return out;
     };
     for (name, v) in obj {
-        match v {
-            Value::String(s) if s == "off" || s == "unlisted" => {
-                out.insert(
-                    name.clone(),
-                    SkillState {
-                        enabled: Some(false),
-                        must_show: None,
-                    },
-                );
-            }
-            Value::String(s) if s == "on" => {
-                out.insert(
-                    name.clone(),
-                    SkillState {
-                        enabled: Some(true),
-                        must_show: None,
-                    },
-                );
-            }
-            Value::Object(o) => {
-                let mut st = SkillState {
-                    enabled: o.get("enabled").and_then(Value::as_bool),
-                    must_show: o.get("mustShow").and_then(Value::as_bool),
-                };
-                if o.get("discoverable") == Some(&Value::Bool(false))
-                    && st.enabled != Some(false)
-                    && st.must_show != Some(true)
-                {
-                    st.enabled = Some(false);
-                }
-                out.insert(name.clone(), st);
-            }
-            _ => {}
+        if let Value::Object(o) = v {
+            let st = SkillState {
+                enabled: o.get("enabled").and_then(Value::as_bool),
+                must_show: o.get("mustShow").and_then(Value::as_bool),
+            };
+            out.insert(name.clone(), st);
         }
     }
     out
@@ -508,24 +480,11 @@ mod tests {
         assert_eq!(skill_command_name("hello"), None);
         assert_eq!(skill_command_name("/SKILL:Ab"), Some("Ab".into()));
         assert_eq!(
-            normalize_states(&json!({"quiet": {"discoverable": false}})),
-            BTreeMap::from([("quiet".into(), st(Some(false), None))])
-        );
-        assert_eq!(
-            normalize_states(&json!({"quiet": "unlisted"})),
-            BTreeMap::from([("quiet".into(), st(Some(false), None))])
-        );
-        assert_eq!(
-            normalize_states(&json!({"quiet": {"discoverable": false, "mustShow": true}})),
-            BTreeMap::from([("quiet".into(), st(None, Some(true)))])
-        );
-        assert_eq!(
             normalize_states(
-                &json!({"a": "off", "b": "unlisted", "c": {"mustShow": true, "x": 1}, "e": 3})
+                &json!({"a": {"enabled": false}, "c": {"mustShow": true, "x": 1}, "e": 3})
             ),
             BTreeMap::from([
                 ("a".into(), st(Some(false), None)),
-                ("b".into(), st(Some(false), None)),
                 ("c".into(), st(None, Some(true))),
             ])
         );

@@ -275,7 +275,7 @@ impl Registry {
             .find_map(|e| e.tools.iter().find(|t| t.name == tool).map(|t| (e, t)))
     }
 
-    /// unipi `/unipi:mcp-status` text.
+    /// unipi `/mcp-status` text.
     pub(crate) fn status_text(&self) -> Option<String> {
         if self.entries.is_empty() {
             return None;

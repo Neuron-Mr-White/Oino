@@ -23,7 +23,7 @@ pub const SUMMARY_STYLE: &str = "Style: plain words only. No inflated words like
 pub struct PanelSettings {
     /// How to invoke pi for summaries: `[execPath, argv1?]` — argv1 is the
     /// script when pi runs under node, absent for a compiled binary. Written
-    /// by the extension on session start; legacy `agentCommand` is ignored.
+    /// by the extension on session start.
     #[serde(rename = "piCommand", default)]
     pub pi_command: Vec<String>,
     /// The user's available models as "provider/id" (whitelist for
@@ -290,10 +290,6 @@ pub fn validate_pi_patch(
                 }
                 out.insert(key.clone(), value.clone());
             }
-            // Legacy keys (older daemons; the removed runner's routing and
-            // queue, and the removed board "blocking" task default) —
-            // ignored, not rejected, so an older UI can still save.
-            "agentCommand" | "defaultStrategy" | "defaultPlan" | "queueMax" | "blocking" => {}
             other => return Err(format!("unknown settings key {other:?}")),
         }
     }

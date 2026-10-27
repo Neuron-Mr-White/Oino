@@ -26,12 +26,12 @@ All run locally with `TMPDIR=$PWD/target/tmp`; components rebuilt with rustc 1.9
 |---|---|---|
 | print | ✅ `Hello from faux.` (3.9 s cold, compile cache empty) | `-e extensions/dist/oino.fixture.provider-faux --model faux/faux-1 -p hi` |
 | JSON | ✅ header + full event stream; unipi tools (`run_subagent`, `memory_*`, `web_search`, `image_*`, `plan_submit`, …) in the request | `--mode json` |
-| RPC | ✅ 17/17 checks | `_oino/hello`, `prompt`, `get_commands` (51 `unipi:*`), `get_messages` |
-| panel button action | ✅ | `/unipi:info` → `openPanel unipi.info-screen/dashboard`; `_oino/ui_action{actionId: refresh}` → `updatePanel`; `close` → `closePanel` |
+| RPC | ✅ 17/17 checks | `_oino/hello`, `prompt`, `get_commands` (51 feature commands at alpha.2; renamed since, [commands.md](commands.md)), `get_messages` |
+| panel button action | ✅ | `/info` → `openPanel unipi.info-screen/dashboard`; `_oino/ui_action{actionId: refresh}` → `updatePanel`; `close` → `closePanel` |
 | settings write | ✅ | `_oino/get_settings_schema` (25 namespaces), `_oino/set_extension_setting footer.enabled=false` lands in `~/.oino/settings.json` as `extensionSettings.footer.enabled`, read back, `unset` |
-| btw | ✅ | `/unipi:btw …` answers in the panel; session message count unchanged |
-| long-horizon continuation | ✅ | `/unipi:goal-start {objective}` + prompt → `unipi:lh-continue` nudge delivered by the turn arbiter |
-| kanboard nudge | ✅ | `oino-kanboard` on `PATH`: `/unipi:kanboard onboard`, `-add`, task to `todo`, `/unipi:kanboard-autowork start` → two `unipi:kanboard-next` nudges, then "autowork stalled — no progress after 2 offers" (faux never calls tools) |
+| btw | ✅ | `/btw …` answers in the panel; session message count unchanged |
+| long-horizon continuation | ✅ | `/goal-start {objective}` + prompt → `unipi:lh-continue` nudge delivered by the turn arbiter |
+| kanboard nudge | ✅ | `oino-kanboard` on `PATH`: `/kanboard onboard`, `-add`, task to `todo`, `/kanboard-autowork start` → two `unipi:kanboard-next` nudges, then "autowork stalled — no progress after 2 offers" (faux never calls tools) |
 | ACP | ✅ | `initialize` (agentInfo 1.0.0-alpha.2), `session/new`, `session/prompt` → `agent_message_chunk` "Hello from faux.", `end_turn`, `usage_update`, `available_commands_update` |
 | TUI | ✅ | pty: typed prompt, reply, unipi chrome, `/quit` exit 0 — alternate screen and `--tui-mode regular` |
 | real provider | ✅ | Oino Router key from `~/.oino/auth.json` (`router` → provider `oino`): `oino/deepseek/deepseek-flash` print with a `bash` call |
@@ -75,13 +75,17 @@ components (`unipi_settings.rs`); both ran in the gates.
 ## 4. Parity matrix — unipi 3.0.0
 
 All 23 packages plus `unipi.app-bridge` are ported and bundled (load order
-`unipi_kit::suite::LOAD_ORDER`). Not ported by decision (D22): `/unipi:cron`, browser
+`unipi_kit::suite::LOAD_ORDER`). Not ported by decision (D22): `/cron`, browser
 skills/state, app push encryption, Herdr, the unipi desktop app.
+Since `unipi-native`: feature commands have plain names (no `unipi:` prefix, no aliases;
+`/settings` and `/changelog` merged into the core built-ins, the Fusion picker is `/fusion`,
+[commands.md](commands.md)) and there is no legacy unipi support (no `~/.unipi` reads,
+imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 
 | Package | Status | Missing / next step |
 |---|---|---|
 | core (hints, header, work tray) | ✅ | late-night hints need a `host-info` UTC offset (R3) |
-| utility | 🟡 | settings, auto-rename (verified live), `/unipi:answer`, attachments, image tools, `/unipi:move`, doctor ✅; render styles for built-in tools need core `tools.override` / `render` for built-ins (U1–U2); trust.json move (U5) |
+| utility | 🟡 | settings, auto-rename (verified live), `/answer`, attachments, image tools, `/move`, doctor ✅; render styles for built-in tools need core `tools.override` / `render` for built-ins (U1–U2); trust.json move (U5) |
 | workflow (permissions, plan mode) | ✅ | mode and rules in the settings files |
 | long-horizon | ✅ | goal continuation through the arbiter verified (e2e + smoke); graph runs not e2e-tested |
 | memory | 🟡 | markdown memories, tools, recall, side-save ✅; MemPalace untested against a real install |
@@ -155,8 +159,6 @@ Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mo
 11. **Desktop perf**: four streaming panes do not reliably meet the 10 ms p99 budget.
 12. **Release artifacts** in §7 are 1.0.0-alpha.1 (`52d3120`); alpha.2 has not been rebuilt on the
     build hosts. Nothing is signed, tagged or published.
-13. `unipi.memory` reads the legacy `~/.unipi/memory` (read-only alias) and suggests
-    `/unipi:memory migrate` on every start when it exists.
 
 ## 7. Release builds (1.0.0-alpha.1 artifacts, 2026-10-27, `v1-alpha` @ 52d3120, not tagged or published)
 

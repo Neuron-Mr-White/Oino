@@ -189,7 +189,7 @@ pub fn namespace() -> Namespace {
                     )
                     .description("Off by default; what happens to tools without a kill handle when they look stuck."),
                 )
-                .field(Field::boolean("debug", "Debug log").advanced().description("Log every heartbeat and decision to the extension log (replaces UNIPI_DEBUG_WATCHDOG).")),
+                .field(Field::boolean("debug", "Debug log").advanced().description("Log every heartbeat and decision to the extension log.")),
         )
         .section(jev::consumer_section(Some("Watchdog — Decision model"), false))
         .section(

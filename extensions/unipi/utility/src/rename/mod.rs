@@ -4,7 +4,7 @@
 //! gate (prefilter + jev, [`gate`]) → isolated one-tool naming session ([`session`]) →
 //! `session.set-session-name`. Names the user sets (`/name`) are respected: once the current
 //! name differs from the last auto name, auto-rename stops for that session. The hidden runner
-//! `unipi:rename-now` (settings hub "Rename now") bypasses the gate. Herdr pane sync is not
+//! `rename-now` (settings hub "Rename now") bypasses the gate. Herdr pane sync is not
 //! ported (D22).
 
 pub mod gate;
@@ -26,7 +26,7 @@ use self::session::{RenameRequest, candidates, name_from_event, name_from_messag
 /// Custom entry recording names auto-rename set (so resume can tell them from `/name`).
 pub const AUTO_NAME_ENTRY: &str = "unipi:auto-name";
 /// Hidden runner of the settings hub action.
-pub const RUNNER: &str = "unipi:rename-now";
+pub const RUNNER: &str = "rename-now";
 /// Rounds that must pass between two automatic renames.
 pub const MIN_ROUNDS_BETWEEN: u32 = 1;
 const MAX_REQUESTS: usize = 6;
@@ -368,7 +368,7 @@ impl Renamer {
         Ok(found.or_else(|| self.chosen.borrow_mut().take()))
     }
 
-    /// `unipi:rename-now`.
+    /// `rename-now`.
     pub async fn rename_now(&self, utility: &crate::Utility, sid: &str) -> Result<()> {
         if self.sessions.with(sid, |s| s.requests.is_empty()) {
             let _ = ui::notify("Nothing to name yet — send a request first.", "info");
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn input_tracking() {
         let mut s = State::default();
-        s.on_input("  /unipi:plan ", None);
+        s.on_input("  /plan ", None);
         s.on_input("", None);
         s.on_input("from an extension", Some("extension"));
         assert!(s.requests.is_empty() && s.pending.is_none());

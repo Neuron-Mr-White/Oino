@@ -81,7 +81,7 @@ impl Extension for Notify {
             Ok(ev.get("toolName").and_then(Value::as_str).filter(|n| *n == "rm-rf")
                 .map(|_| json!({"block": true, "reason": "nope"})))
         });
-        cx.command(Command::new("unipi:notify-test").description("Send a test notification")
+        cx.command(Command::new("notify-test").description("Send a test notification")
             .run(|_ext, _args, _cx| async { ui::notify("test", "info") }));
         cx.service("notify.send", |_ext, payload, _caller, _cx| async move { Ok(payload) });
         cx.timer("renotify", Duration::from_secs(120), true);

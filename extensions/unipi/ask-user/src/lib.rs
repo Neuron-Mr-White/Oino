@@ -5,7 +5,7 @@
 //! | tool `ask_user` (TypeBox schema, `prepareArguments`, sequential) | [`tool_schema`], [`questions::prepare_args`], `execution-mode: sequential` |
 //! | `AskPanel` (`ctx.ui.custom`) + phone race | `form` dialog ([`dialog`]); first answer wins across frontends (host) |
 //! | answers / clarify / cancel / unavailable texts | [`questions`], `AskUser::run` |
-//! | `end_turn` / `new_session` + launcher (Compact & run, Run directly) | [`handoff`]; plus "New session" via hidden command `unipi:ask-user-new-session` |
+//! | `end_turn` / `new_session` + launcher (Compact & run, Run directly) | [`handoff`]; plus "New session" via hidden command `ask-user-new-session` |
 //! | `syncAskUserTool` on `session_start` / `before_agent_start` | `AskUser::sync_tool` |
 //! | `ASK_USER_PROMPT` bus event (notify listens) | `unipi_kit::bus::emit` (+ OS notification when notify is absent) |
 //! | `renderResult` / `askRows` | tool renderer ([`render`]) |
@@ -184,7 +184,7 @@ impl AskUser {
         let notify_loaded = control::commands()
             .unwrap_or_default()
             .iter()
-            .any(|c| c.get("name").and_then(Value::as_str) == Some("unipi:notify-event"));
+            .any(|c| c.get("name").and_then(Value::as_str) == Some("notify-event"));
         if !notify_loaded && !host::frontend_focused() {
             let body = questions
                 .iter()
@@ -236,13 +236,13 @@ impl AskUser {
         let response = ui::dialog(&form_request(&questions, &s))
             .await
             .unwrap_or(Value::Null);
-        let legacy = (questions.len() == 1).then(|| questions[0].question.clone());
+        let single = (questions.len() == 1).then(|| questions[0].question.clone());
         let details = |answers: Option<Vec<questions::Answer>>, outcome: Outcome| Details {
             questions: questions.clone(),
             answers,
             outcome,
             reason: None,
-            question: legacy.clone(),
+            question: single.clone(),
             attachments: None,
         };
         match decode(&response, &questions) {

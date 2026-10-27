@@ -6,11 +6,11 @@ use unipi_kit::settings::{Field, Kind, Namespace, Section, Unit, Values, choice}
 /// Settings namespace.
 pub const NAMESPACE: &str = "kanboard";
 /// Hidden command behind the hub's "Open board…" action.
-pub const ACTION_OPEN: &str = "unipi:kanboard-open";
+pub const ACTION_OPEN: &str = "kanboard-open";
 /// Hidden command behind "Stop daemon…".
-pub const ACTION_STOP_DAEMON: &str = "unipi:kanboard-stop-daemon";
+pub const ACTION_STOP_DAEMON: &str = "kanboard-stop-daemon";
 /// Hidden command behind "Rotate access token…".
-pub const ACTION_ROTATE_TOKEN: &str = "unipi:kanboard-rotate-token";
+pub const ACTION_ROTATE_TOKEN: &str = "kanboard-rotate-token";
 
 /// Which dependency status counts as "the chain reached this task".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -104,17 +104,10 @@ fn whole(v: f64) -> u64 {
 }
 
 impl KanboardSettings {
-    /// Reads and validates `raw` (the merged namespace object). `stored` is the namespace as
-    /// the user stored it (no defaults), used for the `doCredits` → `doWrites` migration.
+    /// Reads and validates `raw` (the merged namespace object).
     #[must_use]
-    pub fn from_raw(raw: &Value, stored: Option<&Value>) -> Self {
+    pub fn from_raw(raw: &Value) -> Self {
         let get_bool = |key: &str| raw.get(key).and_then(Value::as_bool);
-        let stored_do_writes =
-            stored.is_some_and(|s| s.get("doWrites").is_some_and(Value::is_number));
-        let legacy_credits = stored
-            .and_then(|s| num(s, "doCredits"))
-            .filter(|v| *v >= 0.0)
-            .map(whole);
         let host = raw
             .get("host")
             .and_then(Value::as_str)
@@ -149,18 +142,15 @@ impl KanboardSettings {
                 .filter(|v| *v >= 0.0)
                 .map_or(20, whole),
             do_tasks: num(raw, "doTasks").filter(|v| *v >= 0.0).map_or(5, whole),
-            do_writes: match num(raw, "doWrites").filter(|v| *v >= 0.0) {
-                Some(v) if stored_do_writes => whole(v),
-                _ => legacy_credits.unwrap_or(10),
-            },
+            do_writes: num(raw, "doWrites").filter(|v| *v >= 0.0).map_or(10, whole),
             reminders: get_bool("reminders") != Some(false),
         }
     }
 
     /// From the settings store values.
     #[must_use]
-    pub fn from_values(values: &Values, stored: Option<&Value>) -> Self {
-        Self::from_raw(&values.0, stored)
+    pub fn from_values(values: &Values) -> Self {
+        Self::from_raw(&values.0)
     }
 }
 
@@ -223,11 +213,11 @@ pub fn namespace() -> Namespace {
                 )
                 .field(
                     number("doTasks", "-do task slots", 0.0, None, None, Some("off"))
-                        .description("Task slots a /unipi:kanboard-do grants; each `start` uses one."),
+                        .description("Task slots a /kanboard-do grants; each `start` uses one."),
                 )
                 .field(
                     number("doWrites", "-do write budget", 0.0, None, None, Some("off"))
-                        .description("Board writes a /unipi:kanboard-do grants (add, edit, link, order, move, notes)."),
+                        .description("Board writes a /kanboard-do grants (add, edit, link, order, move, notes)."),
                 ),
         )
         .section(
@@ -290,7 +280,7 @@ mod tests {
 
     #[test]
     fn defaults_validate_like_unipi() {
-        let s = KanboardSettings::from_raw(&defaults(), None);
+        let s = KanboardSettings::from_raw(&defaults());
         assert_eq!(s.chain_gate, ChainGate::InReview);
         assert_eq!(
             (s.idle_min, s.port, s.max_sessions, s.turn_add_limit),
@@ -309,7 +299,6 @@ mod tests {
         assert_eq!(s.host, "127.0.0.1");
         let bad = KanboardSettings::from_raw(
             &json!({"chainGate": "done", "idleMin": 0, "host": "  ", "port": 70000, "maxSessions": 0, "turnAddLimit": -1, "reminders": "no", "archiveAfterDays": -3}),
-            None,
         );
         assert_eq!(bad.chain_gate, ChainGate::Done);
         assert_eq!(
@@ -318,26 +307,16 @@ mod tests {
         );
         assert_eq!(bad.host, "127.0.0.1");
         assert!(bad.reminders, "only an explicit false turns reminders off");
-        assert!(!KanboardSettings::from_raw(&json!({"reminders": false}), None).reminders);
+        assert!(!KanboardSettings::from_raw(&json!({"reminders": false})).reminders);
     }
 
     #[test]
-    fn do_credits_migrate_into_do_writes() {
-        let merged = json!({"doWrites": 10});
-        let stored = json!({"doCredits": 3});
+    fn do_writes() {
         assert_eq!(
-            KanboardSettings::from_raw(&merged, Some(&stored)).do_writes,
-            3
-        );
-        let stored = json!({"doCredits": 3, "doWrites": 7});
-        assert_eq!(
-            KanboardSettings::from_raw(&json!({"doWrites": 7}), Some(&stored)).do_writes,
+            KanboardSettings::from_raw(&json!({"doWrites": 7})).do_writes,
             7
         );
-        assert_eq!(
-            KanboardSettings::from_raw(&merged, Some(&json!({}))).do_writes,
-            10
-        );
+        assert_eq!(KanboardSettings::from_raw(&json!({})).do_writes, 10);
     }
 
     #[test]

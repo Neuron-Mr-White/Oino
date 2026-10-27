@@ -10,7 +10,7 @@
 //! | `kill` action (`⚠ Killed by unipi watchdog …`, `isError`) | detach + `tasks.kill`, `tool_result` rewrite |
 //! | warnings at the next turn (`unipi-watchdog` message) | `before_agent_start` message with provenance |
 //! | `otherTools: abort-turn` | `control.abort` + follow-up user message |
-//! | `/unipi:bg-detach [reason]` | command |
+//! | `/bg-detach [reason]` | command |
 //! | status `watchdog: N` | `setStatus` |
 //! | settings `watchdog` + `decisionModel` | namespace ([`settings`]) |
 //! | Oino `budget` caps | `sessionCaps.*` + flags `--max-turns`, `--max-cost`, `--max-wall`, `--max-tool-errors` ([`caps`]) |
@@ -755,7 +755,7 @@ impl Watchdog {
 
     fn bg_detach(args: &str) {
         let reason = if args.trim().is_empty() {
-            "manual /unipi:bg-detach"
+            "manual /bg-detach"
         } else {
             args.trim()
         };
@@ -859,7 +859,7 @@ impl Extension for Watchdog {
             cx.flag(Flag::string(name, description));
         }
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("bg-detach"))
+            Command::<Self>::new("bg-detach")
                 .description("Move the currently running bash call to a background task")
                 .argument_hint("[reason]")
                 .run(|_ext, args, _cx| async move {

@@ -21,7 +21,7 @@ pub const EXTENSION_ID: &str = "unipi.skill-registry";
 /// Namespace.
 pub const NAMESPACE: &str = "skills";
 /// Editor runner.
-pub const EDITOR_COMMAND: &str = "unipi:skills-editor";
+pub const EDITOR_COMMAND: &str = "skills-editor";
 
 /// Exposure mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -332,32 +332,10 @@ pub fn merge_states(
     out
 }
 
-/// Resolves the namespace values plus the stored layers. Legacy `utility.skills` (in the
-/// same settings object) migrates into `exposure` on read.
+/// Resolves the namespace values plus the stored layers.
 #[must_use]
-pub fn resolve(v: &Values, utility: Option<&Value>, stored: Option<bool>) -> Skills {
-    let mut exposure_raw = v.get("exposure").cloned().unwrap_or(Value::Null);
-    if let Some(old) = utility
-        .and_then(|u| u.get("skills"))
-        .filter(|o| o.is_object())
-    {
-        let mut legacy = serde_json::Map::new();
-        match old.get("mode").and_then(Value::as_str) {
-            Some(m @ ("judged" | "all" | "off")) => {
-                legacy.insert("mode".into(), json!(m));
-            }
-            _ if old.get("discovery") == Some(&Value::Bool(false)) => {
-                legacy.insert("mode".into(), json!("off"));
-            }
-            _ => {}
-        }
-        for k in ["threshold", "maxSkills", "recheck"] {
-            if let Some(x) = old.get(k) {
-                legacy.insert(k.into(), x.clone());
-            }
-        }
-        exposure_raw = unipi_kit::settings::deep_merge(&Value::Object(legacy), &exposure_raw);
-    }
+pub fn resolve(v: &Values, stored: Option<bool>) -> Skills {
+    let exposure_raw = v.get("exposure").cloned().unwrap_or(Value::Null);
     Skills {
         proxy: stored.unwrap_or_else(|| v.bool("proxy", false)),
         states: merge_states(

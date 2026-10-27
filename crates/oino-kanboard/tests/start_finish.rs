@@ -1,7 +1,6 @@
 //! Agent self-claims: `start <ID>` (todo → `in_progress`, claimed for the
 //! session) and `finish <ID> --comment` (`in_progress` → `in_review`, own claim
-//! only). Legacy system claims in old task files are not `finish`able (a user
-//! releases them); dead agent claims are reaped.
+//! only); dead agent claims are reaped.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -221,7 +220,7 @@ fn finish_moves_the_own_claim_to_review_with_the_summary() {
 }
 
 #[test]
-fn finish_refuses_another_sessions_claim_and_legacy_system_claims() {
+fn finish_refuses_another_sessions_claim() {
     let fixture = Fixture::new();
     let theirs = fixture.add_with("theirs", Status::Todo, Priority::None, &[]);
     start(&fixture, &theirs.id, "sess-b", alive()).unwrap();
@@ -231,24 +230,6 @@ fn finish_refuses_another_sessions_claim_and_legacy_system_claims() {
         "{err}"
     );
     assert_eq!(stored(&fixture, &theirs.id).status, Status::InProgress);
-
-    // A legacy system claim (an old file's `run:` block without `owner:`) —
-    // even this session's — is not finishable; a user releases it.
-    let legacy = fixture.add_with("legacy", Status::Todo, Priority::None, &[]);
-    start(&fixture, &legacy.id, "sess-a", alive()).unwrap();
-    let board =
-        oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
-    let mut task = board.get(&legacy.id).unwrap();
-    task.run.as_mut().unwrap().owner = RunOwner::System;
-    board.save(&task).unwrap();
-    let text = std::fs::read_to_string(board.task_path(&legacy.id)).unwrap();
-    assert!(
-        !text.contains("owner:"),
-        "system claims keep the historical shape: {text}"
-    );
-    let err = finish(&fixture, &legacy.id, "sess-a", "done").unwrap_err();
-    assert!(err.to_string().contains("system claim"), "{err}");
-    assert_eq!(stored(&fixture, &legacy.id).status, Status::InProgress);
 
     // A todo task was never started.
     let todo = fixture.add_with("todo", Status::Todo, Priority::None, &[]);

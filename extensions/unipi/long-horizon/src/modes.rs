@@ -499,7 +499,7 @@ pub fn namespace() -> Namespace {
         .defaults(defaults())
         .section(
             Section::new("judge", "Judge")
-                .description("Prompt → mode routing with the Decision Model (shared settings: /unipi:settings → Decision Model)")
+                .description("Prompt → mode routing with the Decision Model (shared settings: /settings → Decision Model)")
                 .field(Field::boolean("judge.enabled", "Judge enabled").description("Route new prompts automatically; off always uses the default mode."))
                 .field(Field::number("judge.threshold", "Confidence threshold").description("Below this the judge abstains and the default mode applies (0–1).").with_kind(|k| {
                     if let Kind::Number { min, max, .. } = k {
@@ -571,7 +571,7 @@ pub fn mode_fragment(mode: Mode, owner: Option<&Owner>, parked: Option<&Owner>) 
     }
     if let Some(p) = parked {
         parts.push(format!(
-            "a parked {} owner exists (see /unipi:continue)",
+            "a parked {} owner exists (see /continue)",
             p.kind.as_str()
         ));
     }

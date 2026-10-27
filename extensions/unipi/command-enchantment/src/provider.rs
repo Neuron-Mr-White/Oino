@@ -19,7 +19,7 @@ use crate::sorting::{Tagged, sort_tagged};
 /// One command the session knows (built-in, extension, prompt template or skill).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandInfo {
-    /// Name without `/` (`unipi:plan`, `skill:x`, `compact`).
+    /// Name without `/` (`plan`, `skill:x`, `compact`).
     pub name: String,
     /// Description.
     pub description: Option<String>,
@@ -136,56 +136,26 @@ pub fn namespace_boost(query: &str) -> Option<&'static str> {
     registry::lookup(ALIASES, &query.to_lowercase())
 }
 
-fn short_name(cmd: &str) -> String {
-    cmd.replacen("unipi:", "", 1).to_lowercase()
-}
-
-/// unipi `getEnhancedUnipiItems`: the unipi commands for `prefix` (`/uni`, `/unipi:pl`, …),
-/// boosted package first, then exact > prefix > fuzzy, package order, name.
+/// unipi `getEnhancedUnipiItems`: the feature commands for `prefix` (`/pl`, `/kanb`, …), boosted
+/// package first, then exact > prefix > fuzzy, package order, name.
 #[must_use]
-pub fn enhanced_unipi_items(
-    prefix: &str,
-    overrides: &[(String, String)],
-    registered: &[String],
-) -> Vec<Item> {
-    let stripped = prefix.strip_prefix('/').unwrap_or(prefix).to_lowercase();
-    let past_colon = stripped.starts_with("unipi:");
-    let query = if past_colon {
-        stripped["unipi:".len()..].to_owned()
-    } else {
-        stripped.clone()
-    };
-    let mut entries: Vec<(String, &str)> = COMMAND_REGISTRY
+pub fn enhanced_items(prefix: &str, overrides: &[(String, String)]) -> Vec<Item> {
+    let query = prefix.strip_prefix('/').unwrap_or(prefix).to_lowercase();
+    let entries: Vec<(String, &str)> = COMMAND_REGISTRY
         .iter()
         .map(|(c, p)| ((*c).to_owned(), *p))
         .collect();
-    for cmd in registered {
-        if registry::package_of(cmd).is_none() {
-            entries.push((cmd.clone(), "other"));
-        }
-    }
     let boosted = namespace_boost(&query);
     let mut matched: Vec<(String, &str)> = if boosted.is_some() {
         entries
     } else {
         entries
             .into_iter()
-            .filter(|(cmd, _)| {
-                let text = if past_colon {
-                    short_name(cmd)
-                } else {
-                    cmd.to_lowercase()
-                };
-                fuzzy_match(&query, &text).matches
-            })
+            .filter(|(cmd, _)| fuzzy_match(&query, &cmd.to_lowercase()).matches)
             .collect()
     };
     let quality = |cmd: &str| -> u8 {
-        let name = if past_colon {
-            short_name(cmd)
-        } else {
-            cmd.to_lowercase()
-        };
+        let name = cmd.to_lowercase();
         if name == query {
             0
         } else if name.starts_with(&query) {
@@ -295,12 +265,10 @@ pub fn suggest(line: &str, commands: &[CommandInfo]) -> Option<Group> {
     }
     let prefix = command_text.to_owned();
     let base = base_items(commands, &command_text[1..]);
-    let mut non_unipi = Vec::new();
+    let mut non_feature = Vec::new();
     let mut overrides = Vec::new();
-    let mut registered = Vec::new();
     for item in base {
-        if item.value.starts_with("unipi:") {
-            registered.push(item.value.clone());
+        if registry::package_of(&item.value).is_some() {
             if let Some(d) = &item.description {
                 let clean = strip_source_tag(d);
                 if !clean.is_empty() {
@@ -308,26 +276,26 @@ pub fn suggest(line: &str, commands: &[CommandInfo]) -> Option<Group> {
                 }
             }
         } else {
-            non_unipi.push(item);
+            non_feature.push(item);
         }
     }
-    let enhanced = enhanced_unipi_items(&prefix, &overrides, &registered);
+    let enhanced = enhanced_items(&prefix, &overrides);
     let stripped = prefix[1..].to_lowercase();
     let skill_query = stripped.starts_with("skill:");
     if enhanced.is_empty() {
-        if non_unipi.is_empty() {
+        if non_feature.is_empty() {
             return None;
         }
         if skill_query {
-            return Some(group(&prefix, non_unipi));
+            return Some(group(&prefix, non_feature));
         }
-        let system: Vec<Item> = non_unipi
+        let system: Vec<Item> = non_feature
             .into_iter()
             .filter(|i| !i.value.starts_with("skill:"))
             .collect();
         return (!system.is_empty()).then(|| group(&prefix, system));
     }
-    let (skills, system): (Vec<Item>, Vec<Item>) = non_unipi
+    let (skills, system): (Vec<Item>, Vec<Item>) = non_feature
         .into_iter()
         .partition(|i| i.value.starts_with("skill:"));
     let items = if skill_query {
@@ -337,10 +305,10 @@ pub fn suggest(line: &str, commands: &[CommandInfo]) -> Option<Group> {
             .into_iter()
             .map(|i| (i, false))
             .chain(enhanced.into_iter().map(|i| (i, true)))
-            .map(|(item, is_unipi)| Tagged {
+            .map(|(item, is_feature)| Tagged {
                 value: item.value.clone(),
                 item,
-                is_unipi,
+                is_feature,
             })
             .collect();
         sort_tagged(&tagged, &stripped)
@@ -365,9 +333,8 @@ mod tests {
 
     fn session() -> Vec<CommandInfo> {
         let mut c = CommandInfo::builtins();
-        c.push(cmd("unipi:plan", Some("[u:npm:@pi-unipi/unipi] Live plan")));
-        c.push(cmd("unipi:settings", None));
-        c.push(cmd("unipi:brand-new", Some("Fresh command")));
+        c.push(cmd("plan", Some("[u:npm:@pi-unipi/unipi] Live plan")));
+        c.push(cmd("brand-new", Some("Fresh command")));
         c.push(cmd("skill:audit", Some("Audit skill")));
         c.push(cmd("review", Some("prompt")));
         c
@@ -388,16 +355,16 @@ mod tests {
     #[test]
     fn not_a_command_or_argument_position_passes_through() {
         assert!(suggest("hello", &session()).is_none());
-        assert!(suggest("/unipi:plan view", &session()).is_none());
+        assert!(suggest("/plan view", &session()).is_none());
         assert!(suggest("/zzzzqqq", &session()).is_none());
     }
 
     #[test]
-    fn unipi_items_get_tags_tones_and_overrides() {
-        let g = suggest("/unipi:pl", &session()).unwrap_or_else(|| group("", vec![]));
+    fn feature_items_get_tags_tones_and_overrides() {
+        let g = suggest("/pl", &session()).unwrap_or_else(|| group("", vec![]));
         assert_eq!(g.replaces, "commands");
-        assert_eq!(g.prefix, "/unipi:pl");
-        let plan = g.items.iter().find(|i| i.value == "unipi:plan");
+        assert_eq!(g.prefix, "/pl");
+        let plan = g.items.iter().find(|i| i.value == "plan");
         let plan = plan.map(|p| {
             (
                 p.tag.as_deref(),
@@ -409,7 +376,7 @@ mod tests {
             plan,
             Some((Some("[workflow]"), Some("c1"), Some("Live plan")))
         );
-        assert_eq!(g.items[0].value, "unipi:plan");
+        assert_eq!(g.items[0].value, "plan");
         assert!(
             g.items
                 .iter()
@@ -419,12 +386,13 @@ mod tests {
     }
 
     #[test]
-    fn settings_supersedes_builtin_and_unregistered_unipi_lands_in_other() {
+    fn builtins_win_and_other_extension_commands_stay_untagged() {
         let g = suggest("/settings", &session()).unwrap_or_else(|| group("", vec![]));
-        assert_eq!(&values(&g)[..2], ["unipi:settings", "settings"]);
+        assert_eq!(values(&g).first(), Some(&"settings"));
+        assert_eq!(g.items[0].tag, None);
         let g = suggest("/brand", &session()).unwrap_or_else(|| group("", vec![]));
-        let item = g.items.iter().find(|i| i.value == "unipi:brand-new");
-        assert_eq!(item.and_then(|i| i.tag.as_deref()), Some("[other]"));
+        let item = g.items.iter().find(|i| i.value == "brand-new");
+        assert_eq!(item.and_then(|i| i.tag.as_deref()), None);
         assert_eq!(
             item.and_then(|i| i.description.as_deref()),
             Some("Fresh command")
@@ -442,21 +410,21 @@ mod tests {
         assert_eq!(first, Some(Some("[memory]".to_owned())));
         assert!(
             g.items.len() > 10,
-            "namespace mode lists every unipi command"
+            "namespace mode lists every feature command"
         );
     }
 
     #[test]
     fn skills_hidden_until_skill_prefix() {
         let g = suggest("/au", &session()).unwrap_or_else(|| group("", vec![]));
-        assert!(values(&g).contains(&"unipi:kanboard-autowork"));
+        assert!(values(&g).contains(&"kanboard-autowork"));
         assert!(
             !values(&g).contains(&"skill:audit"),
-            "skills hidden next to unipi matches"
+            "skills hidden next to feature matches"
         );
         let g = suggest("/skill:au", &session()).unwrap_or_else(|| group("", vec![]));
         assert_eq!(values(&g).first(), Some(&"skill:audit"));
-        // No unipi match and no explicit skill query: skills are filtered out.
+        // No feature match and no explicit skill query: skills are filtered out.
         let only_skill = vec![cmd("skill:qwop", None), cmd("qwerty", None)];
         let g = suggest("/qw", &only_skill).unwrap_or_else(|| group("", vec![]));
         assert_eq!(values(&g), ["qwerty"]);
@@ -473,7 +441,7 @@ mod tests {
 
     #[test]
     fn line_before_cursor_takes_the_current_line() {
-        assert_eq!(line_before_cursor("a\n/uni", None), "/uni");
-        assert_eq!(line_before_cursor("/unipi:plan rest", Some(4)), "/uni");
+        assert_eq!(line_before_cursor("a\n/kan", None), "/kan");
+        assert_eq!(line_before_cursor("/plan rest", Some(4)), "/pla");
     }
 }

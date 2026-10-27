@@ -1,7 +1,7 @@
 //! The session budget and the write gate (unipi `guard.ts`).
 //!
 //! Bash calls into `oino-kanboard` are split into always-allowed reads and writes. A
-//! `/unipi:kanboard-do` grants task SLOTS (each `start` uses one) and a WRITE budget (add,
+//! `/kanboard-do` grants task SLOTS (each `start` uses one) and a WRITE budget (add,
 //! edit, link, order, move backlog↔todo, note on tasks you don't hold). Always free: reads,
 //! and `finish`, `move <ID> blocked`, `note <ID>` and `attach <ID>` on claims this session
 //! started — a started task can always be closed. Autowork lifts both budgets (the runaway
@@ -24,9 +24,9 @@ pub const CHILD_WRITE_REFUSAL: &str =
 pub const REMOVED_REFUSAL: &str =
     "removed: the session works tasks itself (no runner/queue/strategy)";
 /// Refusal when the task slots are spent.
-pub const SLOTS_USED_UP: &str = "no task slots left — tell the user you can't start more now: raise kanboard.doTasks or run /unipi:kanboard-do again for the next batch";
+pub const SLOTS_USED_UP: &str = "no task slots left — tell the user you can't start more now: raise kanboard.doTasks or run /kanboard-do again for the next batch";
 /// Refusal when the write budget is spent.
-pub const WRITES_USED_UP: &str = "kanboard write budget used up — run /unipi:kanboard-do to reload (reads, finish, and blocked/note on your own claims are always free)";
+pub const WRITES_USED_UP: &str = "kanboard write budget used up — run /kanboard-do to reload (reads, finish, and blocked/note on your own claims are always free)";
 /// Default `kanboard.doTasks`.
 pub const DEFAULT_DO_TASKS: u64 = 5;
 /// Default `kanboard.doWrites`.
@@ -55,7 +55,7 @@ pub struct Budget {
 }
 
 /// The write guard of one session. Budgets persist across turns until spent;
-/// `/unipi:kanboard-do` tops up without stacking past N.
+/// `/kanboard-do` tops up without stacking past N.
 #[derive(Clone, Debug, Default)]
 pub struct WriteGuard {
     slots: u64,

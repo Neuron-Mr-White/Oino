@@ -85,7 +85,7 @@ Exit codes: `0` success, `1` rule or validation error, `2` usage error. With `--
 
 ## Daemon
 
-`serve` starts the JSON API and server-sent events (SSE). There is no web UI: `/` is a 404, and Oino renders the board as a panel (`/unipi:kanboard open`).
+`serve` starts the JSON API and server-sent events (SSE). There is no web UI: `/` is a 404, and Oino renders the board as a panel (`/kanboard open`).
 
 - **One instance.** The daemon holds `flock(daemon.lock)`. A second `serve` prints `{"alreadyRunning": true, "bindingChanged": …, "daemon": …}` and exits with `0`.
 - **daemon.json** holds `{pid, port, version, startedAt, host, token?}`. The daemon removes it on exit.

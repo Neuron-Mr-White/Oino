@@ -200,9 +200,9 @@ mod tests {
         );
         assert_eq!(
             capture_outcome(
-                &json!({"ok": false, "reason": "kanboard is not set up here — run /unipi:kanboard"})
+                &json!({"ok": false, "reason": "kanboard is not set up here — run /kanboard"})
             ),
-            Err("kanboard is not set up here — run /unipi:kanboard".to_owned())
+            Err("kanboard is not set up here — run /kanboard".to_owned())
         );
         assert_eq!(
             capture_status("T-1", 1),

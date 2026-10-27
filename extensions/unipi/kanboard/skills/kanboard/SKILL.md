@@ -36,7 +36,7 @@ be on `PATH`):
 ```
 
 There is **no queue and no runner** — the session works tasks itself
-(`/unipi:kanboard-autowork` just keeps offering the next ready task).
+(`/kanboard-autowork` just keeps offering the next ready task).
 `queue`, `unqueue`, `claim-next`, `set-run` and `edit --strategy/--plan` are
 removed and refused.
 
@@ -109,7 +109,7 @@ lists them — read the files there directly if you need one.
 6. **Sidekicks and subagents can read the board but never write it** — every
    write is refused with "board writes are the lead's job". Brief them with the
    task, then update the board yourself from their reports. (The lead session
-   works tasks itself; `/unipi:kanboard-autowork` just keeps offering the next
+   works tasks itself; `/kanboard-autowork` just keeps offering the next
    ready task in the same session — there is no separate worker.)
 7. Use `note <ID> "<text>"` for progress worth remembering (decisions, what you
    verified, what you left undone) — it is the activity log the next reader sees.
@@ -127,11 +127,11 @@ lists them — read the files there directly if you need one.
 
 ## Terminal-only execution
 
-The board panel (`/unipi:kanboard open`) and the daemon's JSON API can create,
+The board panel (`/kanboard open`) and the daemon's JSON API can create,
 edit, reorder, link and move tasks, but they **never run a task** — there is no
 run button. Work starts only from a terminal: the session
-itself, driven by `/unipi:kanboard-do` (a task-slot + write budget for one
-request) or `/unipi:kanboard-autowork` (the monitor keeps offering the next
+itself, driven by `/kanboard-do` (a task-slot + write budget for one
+request) or `/kanboard-autowork` (the monitor keeps offering the next
 ready task in this session — no separate worker exists). (The daemon's
 "Summarize & archive" action does run `oino` once, but only to write a summary.)
 

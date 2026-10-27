@@ -267,16 +267,16 @@ impl ModeChip {
     #[must_use]
     pub fn commands(self, current: Option<Self>) -> Vec<String> {
         let mode = match self {
-            Self::Plan => return vec!["/unipi:plan on".to_owned()],
+            Self::Plan => return vec!["/plan on".to_owned()],
             Self::Ask => "ask",
             Self::Full => "full",
             Self::Auto => "auto",
         };
         let mut out = Vec::new();
         if current == Some(Self::Plan) {
-            out.push("/unipi:plan off".to_owned());
+            out.push("/plan off".to_owned());
         }
-        out.push(format!("/unipi:permission {mode}"));
+        out.push(format!("/permission {mode}"));
         out
     }
 
@@ -522,9 +522,9 @@ mod tests {
         assert_eq!(ModeChip::from_segments(&[seg("branch", "main")]), None);
         assert_eq!(
             ModeChip::Full.commands(Some(ModeChip::Ask)),
-            vec!["/unipi:permission full"]
+            vec!["/permission full"]
         );
-        assert_eq!(ModeChip::Plan.commands(None), vec!["/unipi:plan on"]);
+        assert_eq!(ModeChip::Plan.commands(None), vec!["/plan on"]);
         assert_eq!(ModeChip::Ask.commands(Some(ModeChip::Plan)).len(), 2);
     }
 
@@ -559,13 +559,13 @@ mod tests {
         let commands = vec![
             ("compact".to_owned(), Some("Compact".to_owned())),
             ("model".to_owned(), None),
-            ("unipi:compact-now".to_owned(), None),
+            ("compact-now".to_owned(), None),
         ];
         let labels: Vec<String> = slash_completions(&commands, "/comp", 10)
             .into_iter()
             .map(|c| c.label)
             .collect();
-        assert_eq!(labels, vec!["/compact", "/unipi:compact-now"]);
+        assert_eq!(labels, vec!["/compact", "/compact-now"]);
         assert!(slash_completions(&commands, "/compact now", 10).is_empty());
         assert!(slash_completions(&commands, "compact", 10).is_empty());
         assert_eq!(slash_completions(&commands, "/", 2).len(), 2);

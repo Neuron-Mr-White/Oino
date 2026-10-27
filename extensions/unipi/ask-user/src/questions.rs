@@ -1,8 +1,6 @@
-//! Question shapes, legacy conversion and answer texts (unipi `questions.ts`, pure).
+//! Question shapes and answer texts (unipi `questions.ts`, pure).
 //!
-//! One `ask_user` call carries 1–4 questions (Devin's shape). Older single-question calls
-//! (`{question, context, options, allowMultiple, allowFreeform, timeout}`) are converted by
-//! [`prepare_args`].
+//! One `ask_user` call carries 1–4 questions (Devin's shape), read by [`prepare_args`].
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -225,13 +223,8 @@ fn normalize_question(raw: &Map<String, Value>, index: usize) -> Option<AskQuest
         };
         h.chars().take(HEADER_MAX).collect()
     };
-    let first = |keys: &[&str]| {
-        keys.iter()
-            .find_map(|k| raw.get(*k).filter(|v| !v.is_null()))
-    };
-    let multi =
-        first(&["multi_select", "multiSelect", "allowMultiple"]) == Some(&Value::Bool(true));
-    let other = first(&["other", "allowFreeform"]) == Some(&Value::Bool(false));
+    let multi = raw.get("multi_select") == Some(&Value::Bool(true));
+    let other = raw.get("other") == Some(&Value::Bool(false));
     Some(AskQuestion {
         other: (other && !options.is_empty()).then_some(false),
         multi_select: multi.then_some(true),
@@ -241,39 +234,14 @@ fn normalize_question(raw: &Map<String, Value>, index: usize) -> Option<AskQuest
     })
 }
 
-/// Tool-call arguments → questions (current shape or legacy single question; context folded
-/// into the question; timeout dropped), capped at [`MAX_QUESTIONS`].
+/// Tool-call arguments (`{questions: [...]}`) → questions, capped at [`MAX_QUESTIONS`].
 #[must_use]
 pub fn prepare_args(args: &Value) -> Vec<AskQuestion> {
-    let empty = Map::new();
-    let a = args.as_object().unwrap_or(&empty);
-    let raw: Vec<Map<String, Value>> =
-        if let Some(qs) = a.get("questions").and_then(Value::as_array) {
-            qs.iter().filter_map(|q| q.as_object().cloned()).collect()
-        } else if let Some(q) = a.get("question").and_then(Value::as_str) {
-            let context = text(a.get("context")).trim().to_owned();
-            let mut m = a.clone();
-            let header = text(a.get("header")).trim().to_owned();
-            m.insert(
-                "header".into(),
-                json!(if header.is_empty() {
-                    derive_header(q, 0)
-                } else {
-                    header
-                }),
-            );
-            m.insert(
-                "question".into(),
-                json!(if context.is_empty() {
-                    q.to_owned()
-                } else {
-                    format!("{context}\n\n{q}")
-                }),
-            );
-            vec![m]
-        } else {
-            Vec::new()
-        };
+    let raw: Vec<Map<String, Value>> = args
+        .get("questions")
+        .and_then(Value::as_array)
+        .map(|qs| qs.iter().filter_map(|q| q.as_object().cloned()).collect())
+        .unwrap_or_default();
     raw.iter()
         .enumerate()
         .filter_map(|(i, q)| normalize_question(q, i))
@@ -379,21 +347,6 @@ pub fn clarify_text(questions: &[AskQuestion], answers: &[Answer]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn legacy_single_question() {
-        let qs = prepare_args(&json!({
-            "question": "Which database?", "context": "We need JSON.",
-            "options": [{"label": "Postgres"}, "SQLite"], "allowMultiple": true, "allowFreeform": false, "timeout": 5000
-        }));
-        assert_eq!(qs.len(), 1);
-        assert_eq!(qs[0].question, "We need JSON.\n\nWhich database?");
-        assert!(qs[0].multi());
-        assert_eq!(qs[0].other, Some(false));
-        let labels: Vec<&str> = qs[0].options.iter().map(|o| o.label.as_str()).collect();
-        assert_eq!(labels, ["Postgres", "SQLite"]);
-        assert_eq!(qs[0].header, "Database");
-    }
 
     #[test]
     fn caps_and_derives_headers() {

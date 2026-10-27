@@ -381,7 +381,7 @@ async fn btw_answers_from_a_branch_copy_without_touching_the_session() {
     );
     env.prompt("MAIN-CONTEXT").await;
     let before = env.session().messages().len();
-    env.command("unipi.btw", "unipi:btw", "SIDE-QUESTION").await;
+    env.command("unipi.btw", "btw", "SIDE-QUESTION").await;
     let child = env.requests_with("SIDE-QUESTION");
     assert_eq!(child.len(), 1, "one aside request");
     let wire = child[0]["context"].to_string();
@@ -511,7 +511,7 @@ async fn dream_run_spawns_a_memory_only_agent() {
         (wire.contains("dream") && !wire.contains("first prompt")).then(|| text("DREAM-DONE"))
     });
     env.prompt("first prompt").await;
-    env.command("unipi.dream", "unipi:dream", "run").await;
+    env.command("unipi.dream", "dream", "run").await;
     env.until("dream agent usage", |env| {
         usage_kinds(&env.session()).contains(&"child:dream".to_owned())
     })
@@ -555,7 +555,7 @@ async fn long_horizon_goal_continues_through_the_arbiter() {
     let started = env
         .command(
             "unipi.long-horizon",
-            "unipi:goal-start",
+            "goal-start",
             &json!({"objective": "GOAL-OBJECTIVE ship the feature"}).to_string(),
         )
         .await;
@@ -574,8 +574,7 @@ async fn long_horizon_goal_continues_through_the_arbiter() {
         "kickoff and continuation reached the model"
     );
     // The goal stops on its own (no-progress stall cap / max turns) or when paused.
-    env.command("unipi.long-horizon", "unipi:goal", "pause")
-        .await;
+    env.command("unipi.long-horizon", "goal", "pause").await;
     idle(&session).await;
     let requests = env.provider.requests().len();
     assert!(requests >= 2, "{requests}");

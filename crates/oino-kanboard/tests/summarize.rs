@@ -123,16 +123,9 @@ fn settings_round_trip_with_defaults() {
     let payload = put_settings(daemon.port, r#"{"summaryInstruction":"  "}"#).json();
     assert_eq!(payload["summaryInstruction"], default, "blank → default");
 
-    // Command fields are no longer accepted — ignored outright.
-    let ignored = put_settings(daemon.port, r#"{"agentCommand":"rm -rf /"}"#);
-    assert_eq!(ignored.status, 200, "{}", ignored.body);
-    let saved: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(fixture.layout.home.join("settings.json")).unwrap(),
-    )
-    .unwrap();
-    assert!(
-        saved.get("agentCommand").is_none() || saved["agentCommand"] == serde_json::Value::Null
-    );
+    // Unknown fields (e.g. a command) are refused.
+    let refused = put_settings(daemon.port, r#"{"agentCommand":"rm -rf /"}"#);
+    assert_eq!(refused.status, 400, "{}", refused.body);
 }
 
 #[test]
@@ -183,7 +176,7 @@ fn summarize_needs_pi() {
     assert_eq!(response.status, 409, "{}", response.body);
     assert_eq!(response.json()["needsAgent"], true);
     assert!(
-        response.body.contains("/unipi:kanboard open"),
+        response.body.contains("/kanboard open"),
         "{}",
         response.body
     );

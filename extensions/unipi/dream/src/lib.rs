@@ -8,7 +8,7 @@
 //! | detached `pi -p` child with craft-skill + memory tools, `timeout maxRuntimeMin` | nested agent (D8): `persistence: File` under the run's staging dir, extensions `only: [unipi.memory]`, aborted at `maxRuntimeMin`; interrupted runs resume once on the next start |
 //! | report card entry `unipi-dream-report-card` + renderer | custom entry + OUS renderer |
 //! | work-tray Dream tab (list/detail, o/s/r/a/x/d/1–9) | `work-tray.tab` / `work-tray.action` ([`tray`]) |
-//! | `/unipi:dream [status\|tray\|report\|run\|stop\|approve <n>\|reject <n>]` | command |
+//! | `/dream [status\|tray\|report\|run\|stop\|approve <n>\|reject <n>]` | command |
 //! | `unipi.dream.api` | services `dream.status`, `dream.run`, `dream.stop` (+ `dream.detail`, `dream.approve`, `dream.reject`, `dream.dismiss`) |
 //! | craft-skill `check` before an approved skill lands | [`store::craft_check`] (Rust port); the bundled `craft-skill` skill keeps its scripts |
 //! | `dream` settings | [`settings`] |
@@ -48,7 +48,7 @@ use crate::tray::View;
 /// Report card entry type.
 pub const REPORT_CARD: &str = "unipi-dream-report-card";
 const POLL_TIMER: &str = "dream-poll";
-const USAGE: &str = "usage: /unipi:dream status|tray|report|run|stop|approve <n>|reject <n>";
+const USAGE: &str = "usage: /dream status|tray|report|run|stop|approve <n>|reject <n>";
 
 /// The dream prompt (unipi `dreamPrompt`); paths are host paths.
 #[must_use]
@@ -537,7 +537,8 @@ impl Dream {
                     }
                 )
             } else {
-                "dream: off — turn on in /unipi:settings → Dream (manual /unipi:dream run still works)".to_owned()
+                "dream: off — turn on in /settings → Dream (manual /dream run still works)"
+                    .to_owned()
             },
             format!(
                 "last run {}{}",
@@ -574,9 +575,7 @@ impl Dream {
                 ));
             }
             if l.proposals.iter().any(|p| p.decision == "pending") {
-                lines.push(
-                    "approve with /unipi:dream approve <n> (or the work tray's Dream tab)".into(),
-                );
+                lines.push("approve with /dream approve <n> (or the work tray's Dream tab)".into());
             }
         }
         lines.join("\n")
@@ -835,7 +834,7 @@ impl Dream {
                     .filter(|n| *n >= 1);
                 let Some(p) = n.and_then(|n| latest.proposals.get(n - 1)) else {
                     return say(
-                        &format!("usage: /unipi:dream {sub} <1-{}>", latest.proposals.len()),
+                        &format!("usage: /dream {sub} <1-{}>", latest.proposals.len()),
                         "warning",
                     );
                 };
@@ -919,7 +918,7 @@ impl Extension for Dream {
             let pending = d.get("pending").and_then(Value::as_u64)?;
             Some(json!({"t": "card", "rail": "harness", "source": "Dream", "body": {"t": "stack", "direction": "vertical", "children": [
                 {"t": "text", "value": [{"text": "▌ Dream report ready", "bold": true}, {"text": format!(" {pending} proposal{} waiting", if pending == 1 { "" } else { "s" }), "dim": true}]},
-                {"t": "text", "value": [{"text": "/unipi:dream tray · /unipi:dream report · /unipi:dream approve <n>", "dim": true}]},
+                {"t": "text", "value": [{"text": "/dream tray · /dream report · /dream approve <n>", "dim": true}]},
             ]}}))
         });
         cx.service(fan::WORK_TRAY_TAB, |ext, payload, _caller, cx| async move {
@@ -974,8 +973,8 @@ impl Extension for Dream {
         });
 
         cx.command(
-            Command::<Self>::new("unipi:dream")
-                .description("Dream (background memory consolidation): /unipi:dream status|tray|report|run|stop|approve <n>|reject <n>")
+            Command::<Self>::new("dream")
+                .description("Dream (background memory consolidation): /dream status|tray|report|run|stop|approve <n>|reject <n>")
                 .run(|ext, args, cx| async move {
                     ext.command(&args, &cx).await;
                     Ok(())

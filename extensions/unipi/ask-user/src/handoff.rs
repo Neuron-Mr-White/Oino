@@ -87,7 +87,7 @@ pub fn compact_instructions(prefill: &str) -> String {
 pub const COMPACTOR_INSTRUCTION: &str = "__compactor__";
 
 /// Hidden command that opens a fresh session with the prefill in the editor.
-pub const NEW_SESSION_COMMAND: &str = "unipi:ask-user-new-session";
+pub const NEW_SESSION_COMMAND: &str = "ask-user-new-session";
 
 /// Delivers at most once (compaction callback vs fallback timer).
 #[derive(Clone, Debug, Default)]
@@ -107,8 +107,8 @@ mod tests {
 
     #[test]
     fn launcher_choices() {
-        let r = launcher_request("/unipi:plan x");
-        assert_eq!(r["title"], "🚀 /unipi:plan x");
+        let r = launcher_request("/plan x");
+        assert_eq!(r["title"], "🚀 /plan x");
         assert_eq!(launcher_request("")["title"], "🚀 (no command)");
         assert_eq!(
             decode_launch(&json!({"value": "🧹 Compact & run"})),
@@ -128,8 +128,8 @@ mod tests {
     #[test]
     fn prefill_and_once() {
         assert_eq!(
-            normalize_prefill(Some("  /unipi:plan specs:plan.md  ")).as_deref(),
-            Some("/unipi:plan specs:plan.md")
+            normalize_prefill(Some("  /plan specs:plan.md  ")).as_deref(),
+            Some("/plan specs:plan.md")
         );
         assert_eq!(normalize_prefill(Some("   ")), None);
         assert_eq!(normalize_prefill(None), None);

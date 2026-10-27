@@ -312,7 +312,7 @@ impl MobileShell {
                 &t,
                 IconName::Kanban,
                 "Opening the board…",
-                Some("Runs /unipi:kanboard in this session.".into()),
+                Some("Runs /kanboard in this session.".into()),
                 Vec::new(),
             )
             .into_any_element()
@@ -387,7 +387,7 @@ impl MobileShell {
         if has_refresh {
             self.board_action("refresh", JsonValue::Null, cx);
         } else {
-            self.with_pane(cx, |p, cx| p.run_prompt("/unipi:kanboard", cx));
+            self.with_pane(cx, |p, cx| p.run_prompt("/kanboard", cx));
         }
         (crate::mobile::MobilePlatform::get(cx).haptic)();
     }
@@ -403,7 +403,7 @@ impl MobileShell {
         if has_add {
             self.board_action("add", JsonValue::Null, cx);
         } else {
-            self.with_pane(cx, |p, cx| p.set_composer_text("/unipi:kanboard add ", cx));
+            self.with_pane(cx, |p, cx| p.set_composer_text("/kanboard add ", cx));
             if let Some(key) = self.active_key() {
                 self.show_session(key, cx);
             }

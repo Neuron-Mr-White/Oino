@@ -65,7 +65,7 @@ pub struct Details {
     /// Why unavailable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<Reason>,
-    /// Legacy single-question field (compactor, notify).
+    /// The question text of a single-question call (read by compactor and notify).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub question: Option<String>,
     /// Attachments.

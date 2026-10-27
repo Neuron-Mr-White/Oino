@@ -8,7 +8,7 @@ pub const EXTENSION_ID: &str = "unipi.core";
 /// Hints namespace.
 pub const HINTS: &str = "hints";
 /// Hidden command behind the "Reset hint history" action.
-pub const RESET_COMMAND: &str = "unipi:hint-reset";
+pub const RESET_COMMAND: &str = "hint-reset";
 
 /// `hints` defaults (unipi `registerSettings({namespace: "hints"})`).
 #[must_use]
@@ -71,7 +71,7 @@ mod tests {
         assert_eq!(
             f[3],
             json!({
-                "key": "reset", "type": "action", "label": "Reset hint history", "command": "unipi:hint-reset",
+                "key": "reset", "type": "action", "label": "Reset hint history", "command": "hint-reset",
                 "description": "Clear show counts and learned state — every hint becomes eligible again."
             })
         );

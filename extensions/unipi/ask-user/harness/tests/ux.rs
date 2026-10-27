@@ -208,7 +208,7 @@ async fn command_enchantment_completes_unipi_commands() {
     assert_eq!(ns[0]["namespace"], "command-enchantment");
     let out = ext
         .complete_input(
-            RawJson::from(json!({"text": "/unipi:pl", "cursor": 9})),
+            RawJson::from(json!({"text": "/pl", "cursor": 9})),
             env.cx(CallKind::Event),
         )
         .await
@@ -217,7 +217,7 @@ async fn command_enchantment_completes_unipi_commands() {
     let group = &out[0];
     assert_eq!(group["source"], "unipi.command-enchantment");
     assert_eq!(group["replaces"], "commands");
-    assert_eq!(group["items"][0]["value"], "unipi:plan");
+    assert_eq!(group["items"][0]["value"], "plan");
     assert_eq!(group["items"][0]["tag"], "[workflow]");
     assert!(
         ext.complete_input(
@@ -237,7 +237,7 @@ async fn command_enchantment_completes_unipi_commands() {
         .await;
     assert!(
         off.complete_input(
-            RawJson::from(json!({"text": "/unipi:pl"})),
+            RawJson::from(json!({"text": "/pl"})),
             env2.cx(CallKind::Event)
         )
         .await
@@ -323,7 +323,7 @@ async fn ask_user_asks_and_answers() {
     let tool = &reg.tools[0];
     assert_eq!(tool.name, "ask_user");
     assert!(tool.prepare_arguments);
-    assert_eq!(reg.commands[0].name, "unipi:ask-user-new-session");
+    assert_eq!(reg.commands[0].name, "ask-user-new-session");
     assert!(reg.commands[0].hidden);
 
     env.host
@@ -375,7 +375,7 @@ async fn ask_user_asks_and_answers() {
     let inv = ToolInvocation {
         tool_call_id: "c3".into(),
         name: "ask_user".into(),
-        args: RawJson::from(json!({"question": "x?"})),
+        args: RawJson::from(json!({"questions": [{"question": "x?"}]})),
         parent_tool_call_id: None,
     };
     let result = off
@@ -394,7 +394,7 @@ async fn ask_user_asks_and_answers() {
 async fn footer_paints_and_toggles() {
     let env = Env::new();
     let (ext, reg) = env.load("footer", json!({})).await;
-    assert_eq!(reg.commands[0].name, "unipi:footer");
+    assert_eq!(reg.commands[0].name, "footer");
     assert!(
         reg.events.contains(&EventKind::MessageUpdate)
             && reg.events.contains(&EventKind::OinoTimer)
@@ -409,7 +409,7 @@ async fn footer_paints_and_toggles() {
     assert_eq!(frame[0]["frameKey"], "glance");
     assert_eq!(frame[0]["top"][0]["id"], "brand");
     assert_eq!(frame[0]["bottom"][1]["text"], "?%");
-    env.command(&ext, "unipi:footer", "off").await;
+    env.command(&ext, "footer", "off").await;
     assert_eq!(
         env.fired("notify").last().unwrap()["message"],
         "Footer disabled"
@@ -418,7 +418,7 @@ async fn footer_paints_and_toggles() {
         env.fired("setFrame").last().unwrap().get("top").is_none(),
         "frame cleared"
     );
-    env.command(&ext, "unipi:footer", "on").await;
+    env.command(&ext, "footer", "on").await;
     assert_eq!(
         env.fired("notify").last().unwrap()["message"],
         "Footer enabled"
@@ -431,10 +431,10 @@ async fn info_screen_splash_and_dashboard() {
     let (ext, reg) = env
         .load("info-screen", json!({"info-screen": {"bootMode": "on"}}))
         .await;
-    assert_eq!(reg.commands[0].name, "unipi:info");
+    assert_eq!(reg.commands[0].name, "info");
     assert!(reg.commands[0].completions);
     let items = ext
-        .complete_command("unipi:info", "us", env.cx(CallKind::Command))
+        .complete_command("info", "us", env.cx(CallKind::Command))
         .await;
     assert_eq!(items[0].value, "usage");
     env.event(
@@ -457,7 +457,7 @@ async fn info_screen_splash_and_dashboard() {
         "splash closed on input"
     );
 
-    env.command(&ext, "unipi:info", "tools").await;
+    env.command(&ext, "info", "tools").await;
     let panels = env.calls("ui_panel");
     let open = &panels[0]["open"];
     assert_eq!(open["placement"], "overlay");

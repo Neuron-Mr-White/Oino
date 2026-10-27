@@ -241,73 +241,11 @@ impl FromStr for Actor {
     }
 }
 
-/// Legacy run strategy label (kept for old task files).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Strategy {
-    /// None.
-    None,
-    /// Goal.
-    Goal,
-    /// Ralph.
-    Ralph,
-    /// Swarm.
-    Swarm,
-    /// Graph.
-    Graph,
-}
-
-impl Strategy {
-    /// Every strategy.
-    pub const ALL: [Strategy; 5] = [
-        Strategy::None,
-        Strategy::Goal,
-        Strategy::Ralph,
-        Strategy::Swarm,
-        Strategy::Graph,
-    ];
-
-    /// Wire name.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Strategy::None => "none",
-            Strategy::Goal => "goal",
-            Strategy::Ralph => "ralph",
-            Strategy::Swarm => "swarm",
-            Strategy::Graph => "graph",
-        }
-    }
-}
-
-impl fmt::Display for Strategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl FromStr for Strategy {
-    type Err = String;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "none" => Ok(Strategy::None),
-            "goal" => Ok(Strategy::Goal),
-            "ralph" => Ok(Strategy::Ralph),
-            "swarm" => Ok(Strategy::Swarm),
-            "graph" => Ok(Strategy::Graph),
-            other => Err(format!(
-                "unknown strategy {other:?} (none|goal|ralph|swarm|graph)"
-            )),
-        }
-    }
-}
-
 /// How the claiming session runs the task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunMode {
     /// Regular.
-    #[serde(alias = "direct")]
     None,
     /// Plan mode.
     Plan,
@@ -356,8 +294,6 @@ impl FromStr for RunMode {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
-        // `direct` is the pre-CP3.5 name for `none` — kept for old files.
-        let value = if value == "direct" { "none" } else { value };
         RunMode::ALL
             .into_iter()
             .find(|mode| mode.as_str() == value)
@@ -455,12 +391,8 @@ pub struct Run {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunOwner {
-    /// Legacy: a system claim from before the runner was removed (old task
-    /// files still carry it). Nothing creates these any more; the reaper or a
-    /// user `release` hands them back.
-    #[default]
-    System,
     /// The agent self-claimed it (`start`); it moves it on with `finish`.
+    #[default]
     Agent,
 }
 
@@ -469,7 +401,6 @@ impl RunOwner {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
-            RunOwner::System => "system",
             RunOwner::Agent => "agent",
         }
     }
@@ -537,15 +468,6 @@ pub struct Task {
     /// Last update time.
     #[serde(serialize_with = "serialize_iso")]
     pub updated: DateTime<Utc>,
-    /// Legacy `strategy:` frontmatter from the removed runner's routing. Kept
-    /// only so old task files parse and re-render byte-for-byte (canonical
-    /// form); never set by commands and not part of the JSON output.
-    #[serde(default, skip_serializing)]
-    pub strategy: Option<Strategy>,
-    /// Legacy `plan:` frontmatter (same as `strategy`: read and re-rendered,
-    /// never exposed).
-    #[serde(default, skip_serializing)]
-    pub plan: Option<bool>,
     /// Claim while In Progress.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run: Option<Run>,
@@ -583,8 +505,6 @@ impl Task {
             labels: Vec::new(),
             created: now,
             updated: now,
-            strategy: None,
-            plan: None,
             run: None,
             creator: None,
             body: String::new(),

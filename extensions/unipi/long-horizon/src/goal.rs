@@ -45,7 +45,7 @@ pub const NO_TOOL_NUDGE: &str = "No-progress guard: this turn ended without usin
 /// unipi `TERMINAL_AUDIT`.
 pub const TERMINAL_AUDIT: &str = "Goal status audit (scheduled checkpoint): call get_goal and compare the full objective with current authoritative evidence. Propose completion only if proven; otherwise keep making concrete progress.";
 /// unipi `WRAP_UP_PROMPT`.
-pub const WRAP_UP_PROMPT: &str = "The active goal reached a budget limit and the loop has stopped. Summarize for the user: what was completed, what remains, and the exact next step to resume (the goal state is durable — /unipi:goal resume).";
+pub const WRAP_UP_PROMPT: &str = "The active goal reached a budget limit and the loop has stopped. Summarize for the user: what was completed, what remains, and the exact next step to resume (the goal state is durable — /goal resume).";
 /// unipi `RECOVERY_FRAGMENT`.
 pub const RECOVERY_FRAGMENT: &str = "Goal recovery: this goal is resuming after an interrupted or retracted turn; the conversation may be incomplete. Call get_goal first and treat its state as the durable source of truth before continuing.";
 /// unipi `TASK_GATE_REMINDER`.

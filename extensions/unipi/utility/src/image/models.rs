@@ -251,13 +251,13 @@ pub fn resolve_route(
 ) -> Result<Route, String> {
     let model = reference.trim();
     if model.is_empty() {
-        return Err("No image model configured — pick one in /unipi:settings → Image.".into());
+        return Err("No image model configured — pick one in /settings → Image.".into());
     }
     let base = endpoint.base_url.trim();
     if !base.is_empty() {
         if endpoint.api_key.is_empty() {
             return Err(format!(
-                "The custom image endpoint {base} has no key — set it in /unipi:settings → Image."
+                "The custom image endpoint {base} has no key — set it in /settings → Image."
             ));
         }
         return Ok(Route {
@@ -274,7 +274,7 @@ pub fn resolve_route(
     match provider {
         "openrouter" => {
             let c = cred("openrouter").ok_or(
-                "No OpenRouter key. Set Keys → OpenRouter key in /unipi:settings → Image, log in to OpenRouter, or export OPENROUTER_API_KEY.",
+                "No OpenRouter key. Set Keys → OpenRouter key in /settings → Image, log in to OpenRouter, or export OPENROUTER_API_KEY.",
             )?;
             Ok(Route {
                 api: ImageApi::OpenRouter,
@@ -286,9 +286,8 @@ pub fn resolve_route(
             })
         }
         "fal" => {
-            let c = cred("fal").ok_or(
-                "No fal key. Set Keys → fal key in /unipi:settings → Image, or export FAL_KEY.",
-            )?;
+            let c = cred("fal")
+                .ok_or("No fal key. Set Keys → fal key in /settings → Image, or export FAL_KEY.")?;
             Ok(Route {
                 api: ImageApi::Fal,
                 base_url: String::new(),

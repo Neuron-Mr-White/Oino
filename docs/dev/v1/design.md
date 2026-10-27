@@ -790,7 +790,7 @@ mini (capsule, R_FULL, h 28): [◎ 2/3] [▶ 2] [⎇ 3]  → click expands
 Section header rule (ZCode): title, chevron, then state right after the chevron (not pushed
 right). Sections appear only when they have data. Data: `unipi:long-horizon:state`,
 `unipi:workflow:status` (plan), `unipi:bg:tasks`, `_oino/agents`, `unipi:fusion:status`,
-`unipi:footer` git topic — consumed through sticky topics forwarded to the frontend (§10 R3).
+`footer` git topic — consumed through sticky topics forwarded to the frontend (§10 R3).
 Mode setting: Auto (default) / Always expanded / Always mini. Keys: ⌘⇧S toggle expand; inside,
 ↑/↓ rows, Enter acts (open/expand), Delete kills a background task (confirm).
 
@@ -853,7 +853,7 @@ Open, Retry), close `x`. Auto-dismiss 4 s info / 6 s warning / sticky error; hov
 │ SUGGESTED  ✎ New session ⌘N · ⧉ Open folder · ⚙ Settings ⌘,             │
 │ CHAT  ⤓ Compact · ⑂ Fork · ⌥ Tree ⌘⇧T · ✕ Abort ⌘.                       │
 │ PANELS  ◧ Toggle sidebar ⌘B · ◨ Side pane ⌘J · ▭ Bottom ⌘` · Board      │
-│ EXTENSIONS  /unipi:info · /unipi:btw · Toggle plan mode ⌥P …            │
+│ EXTENSIONS  /info · /btw · Toggle plan mode ⌥P …            │
 │ APP  Theme · Check for updates · Docs · Remote access                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1113,7 +1113,7 @@ within the panel.
 
 List (table): icon, name, id mono `Sm`, version, kind (provider / unipi / user), state (Loaded
 `success`, Failed `danger` with error tooltip, Disabled), permissions summary; row actions
-Enable/Disable, Settings (jump to hub), Readme (`/unipi:readme` overlay). Header actions:
+Enable/Disable, Settings (jump to hub), Readme (`/readme` overlay). Header actions:
 Install from file…, Open extensions folder.
 
 ### 5.12 D13 Onboarding / first run
@@ -1284,10 +1284,10 @@ has exactly one primary rendering. "D"/"M" = desktop/mobile screens (§5, §6); 
 | dream | tray tab, running state | work tray tab; StatusPanel Run row "Dream" (`moon`) | same |
 | subagents | `run_subagent` / `read_subagent` tools | C4.9 AgentRow → side pane Agent tab (read-only child timeline) | AgentRow → right drawer |
 | subagents | `subagent-step` entries, `subagent-completion` message | child timeline rows; completion = compact ProvenanceCard | same |
-| subagents | `/unipi:agents` profile manager (`custom`), `/unipi:subagents` tray tab | D10 dialog (medium); work tray tab | M5; tray |
+| subagents | `/agents` profile manager (`custom`), `/subagents` tray tab | D10 dialog (medium); work tray tab | M5; tray |
 | fusion | `sidekick` tool, `sidekick-step`, `sidekick-completion` | AgentRow (`users` icon, "Sidekick") → Agent tab | drawer |
 | fusion | wake widget (`setWidget aboveEditor` spinner + text) | DockStrip with spinner | same |
-| fusion | `/unipi:model` picker (`custom`) | D10 dialog medium (lead/sidekick focus, filter, thinking) | M6 sheet |
+| fusion | `/fusion` picker (`custom`) | D10 dialog medium (lead/sidekick focus, filter, thinking) | M6 sheet |
 | fusion | status topic | StatusPanel Run row "Sidekick" | Status sheet |
 | btw | side chat (`openPanel editorReplace` `unipi.btw/panel`, `updatePanel` ≤ 20/s) | D11 "Side chat" shell | composer-area panel |
 | background-tasks | `bg_run` / `bg_logs` / `bg_kill` tools | ToolRow with OUS (log tail) | same |
@@ -1300,7 +1300,7 @@ has exactly one primary rendering. "D"/"M" = desktop/mobile screens (§5, §6); 
 | kanboard | status topic (claims, autowork) | sidebar Board nav badge (ready count), StatusPanel Run row when an agent claims | M1 "Needs you" when a task waits for review |
 | mcp | servers panel (`openPanel overlay` `unipi.mcp/servers`), confirm | D10 dialog; DockDialog | M5; sheet |
 | mcp | tools | ToolRow (`plug` icon, `<server>__<tool>` shown as server chip + tool) | same |
-| skill-registry | skill settings editor (`openPanel overlay` `unipi.skill-registry/editor`), `/unipi:skills` → `openSettings` | D10 dialog; D8 hub page "Skills" | M5; M8 |
+| skill-registry | skill settings editor (`openPanel overlay` `unipi.skill-registry/editor`), `/skills` → `openSettings` | D10 dialog; D8 hub page "Skills" | M5; M8 |
 | command-enchantment | completions + package colors (`c1…c12`) | C4.11 CompletionMenu with colored source tags | same |
 | compactor | dialogs (`custom` ×3, `select`) | D10 dialog medium / DockDialog | sheet |
 | compactor | compaction result | C4.9 SummaryCard | same |
@@ -1313,7 +1313,7 @@ has exactly one primary rendering. "D"/"M" = desktop/mobile screens (§5, §6); 
 | all | settings hub namespaces (`openSettings`, schema §6.6) | D8 Extension settings | M8 |
 | all | provenance (`details.oinoProvenance`) | ProvenanceCard | same |
 | all | Unicrab aggregate state (needs-you > done > working > offline > sleep > idle) | sidebar footer glyph + header glyph; window title prefix "● " when needs-you | M1 app bar glyph + badge |
-| utility (port pending) | render styles → tool render hints + `ui.density`; `/unipi:answer` reply panel; image tools | Settings Tool rows density (C4.9); reply panel = D11 shell | same |
+| utility (port pending) | render styles → tool render hints + `ui.density`; `/answer` reply panel; image tools | Settings Tool rows density (C4.9); reply panel = D11 shell | same |
 
 ---
 

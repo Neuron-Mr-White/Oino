@@ -883,7 +883,7 @@ fn render_mcp(r: &Value) -> Value {
         .cloned()
         .unwrap_or_default();
     if servers.is_empty() {
-        return empty("No MCP servers", "add one in /unipi:settings → MCP");
+        return empty("No MCP servers", "add one in /settings → MCP");
     }
     let running = servers
         .iter()
@@ -1109,7 +1109,7 @@ fn render_updater(r: &Value, now: i64) -> Value {
                 json!(r.get("mode").and_then(Value::as_str).unwrap_or("—")),
             ),
             ("update", json!(if available { "oino update" } else { "—" })),
-            ("changelog", json!("/unipi:changelog")),
+            ("changelog", json!("/changelog")),
         ]),
     ])
 }
@@ -1285,18 +1285,6 @@ fn render_memory(r: &Value) -> Value {
                 .collect::<Vec<_>>(),
         ));
     }
-    let mig = match r.get("migrate") {
-        None | Some(Value::Null) => json!("—"),
-        Some(Value::String(x)) if x == "needed" => {
-            json!([span("needed · /unipi:memory migrate", Some("warning"))])
-        }
-        Some(m) => json!(format!(
-            "{} {}/{}",
-            s(m, "phase"),
-            f(m, "done"),
-            f(m, "total")
-        )),
-    };
     out.push(section("behaviour", vec![], None));
     out.push(kv(&[
         (
@@ -1308,16 +1296,7 @@ fn render_memory(r: &Value) -> Value {
             json!([on(r.get("write").and_then(Value::as_bool) == Some(true))]),
         ),
         ("pending writes", json!(f(r, "pending").to_string())),
-        ("migration", mig),
     ]));
-    if let Some(m) = r
-        .get("migrate")
-        .filter(|m| m.is_object() && f(m, "total") > 0.0)
-    {
-        out.push(
-            json!({"t": "gauge", "value": f(m, "done") / f(m, "total"), "label": s(m, "phase")}),
-        );
-    }
     page(out)
 }
 
@@ -1541,13 +1520,13 @@ mod tests {
         );
         let mem = group_data(
             &[],
-            json!({"total": 10, "projectCount": 4, "project": "p", "types": {"decision": 3}, "recall": true, "write": false, "pending": 0, "migrate": "needed"}),
+            json!({"total": 10, "projectCount": 4, "project": "p", "types": {"decision": 3}, "recall": true, "write": false, "pending": 0}),
         );
         let t = texts(&render_module("memory", &mem, &Value::Null, 0).unwrap_or_default());
         assert!(
             t.find("GLOBAL").unwrap_or(9999) < t.find("PROJECT").unwrap_or(0)
                 && t.contains("project / global")
-                && t.contains("needed")
+                && t.contains("pending writes")
         );
         let comp = group_data(
             &[],

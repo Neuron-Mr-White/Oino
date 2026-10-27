@@ -1,4 +1,4 @@
-//! `/unipi:answer [reply|questions|web]` (unipi `src/answer/index.ts`, `reply.ts`).
+//! `/answer [reply|questions|web]` (unipi `src/answer/index.ts`, `reply.ts`).
 //!
 //! | unipi | Oino |
 //! |---|---|
@@ -27,7 +27,7 @@ use self::web::{Reply, WebAnswer, choose_port, form_page, is_ssh, route, waiting
 use crate::settings::AnswerMethod;
 
 /// Command name.
-pub const COMMAND: &str = "unipi:answer";
+pub const COMMAND: &str = "answer";
 /// Hint widget key.
 pub const HINT_WIDGET: &str = "unipi-answer-hint";
 /// Web form waiting panel.
@@ -79,7 +79,7 @@ pub fn method_for(arg: &str, default: AnswerMethod, questions: usize) -> AnswerM
 #[must_use]
 pub fn hint_text(n: usize) -> String {
     format!(
-        "  {n} question{} in the reply — /unipi:answer questions to answer them one by one",
+        "  {n} question{} in the reply — /answer questions to answer them one by one",
         if n == 1 { "" } else { "s" }
     )
 }
@@ -87,7 +87,7 @@ pub fn hint_text(n: usize) -> String {
 /// The reply dialog (`custom`).
 #[must_use]
 pub fn reply_dialog(reply: &str, questions: usize) -> Value {
-    let mut header = vec![json!({"text": " /unipi:answer · reply ", "tone": "accent"})];
+    let mut header = vec![json!({"text": " /answer · reply ", "tone": "accent"})];
     if questions > 0 {
         header.push(json!({"text": format!(" {questions} question{} · tab answers them one by one ", if questions == 1 { "" } else { "s" }), "dim": true}));
     }
@@ -109,7 +109,7 @@ pub fn reply_dialog(reply: &str, questions: usize) -> Value {
     children.push(json!({"t": "keyHints", "hints": hints}));
     json!({
         "method": "custom",
-        "title": "/unipi:answer · reply",
+        "title": "/answer · reply",
         "size": "full",
         "spec": {"t": "stack", "direction": "vertical", "gap": 1, "children": children},
     })
@@ -195,7 +195,7 @@ pub fn web_panel(lines: &[String]) -> Value {
     })
 }
 
-/// `/unipi:answer` state.
+/// `/answer` state.
 #[derive(Default)]
 pub struct Answerer {
     hinted: SessionMap<bool>,
@@ -260,7 +260,7 @@ impl Answerer {
         settings: crate::settings::AnswerSettings,
     ) -> Result<()> {
         if !cx.has_ui() {
-            let _ = ui::notify("/unipi:answer needs an interactive frontend", "warning");
+            let _ = ui::notify("/answer needs an interactive frontend", "warning");
             return Ok(());
         }
         let reply = last_assistant_text(&session::branch(None).unwrap_or_default());
@@ -404,7 +404,7 @@ mod tests {
         );
         assert_eq!(
             hint_text(1),
-            "  1 question in the reply — /unipi:answer questions to answer them one by one"
+            "  1 question in the reply — /answer questions to answer them one by one"
         );
     }
 

@@ -77,7 +77,7 @@ ask_user({
     header: "Next step",
     question: "What would you like to do next?",
     options: [
-      { label: "Implement the plan", description: "Start work in a fresh session", action: "new_session", prefill: "/unipi:work specs:2026-09-28-auth-plan" },
+      { label: "Implement the plan", description: "Start work in a fresh session", action: "new_session", prefill: "/work specs:2026-09-28-auth-plan" },
       { label: "Done for now", description: "Return later", action: "end_turn" },
     ],
     other: false,

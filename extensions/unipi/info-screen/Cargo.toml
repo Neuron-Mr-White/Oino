@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.info-screen: /unipi:info dashboard (session, usage, tools, skills, modules, module pages) and the Unicrab startup splash"
+description = "unipi.info-screen: /info dashboard (session, usage, tools, skills, modules, module pages) and the Unicrab startup splash"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

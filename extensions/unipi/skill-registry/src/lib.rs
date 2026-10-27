@@ -9,7 +9,7 @@
 //! | `/skill:name` blocked when off or its condition fails | `input` → `{action: "handled"}` |
 //! | core skill conditions | fan-out `skill-condition.check{skill}` → `{hidden, reason?}` |
 //! | `unipi:skills:reveal {names}` | bus subscription |
-//! | `/unipi:skills` → hub on Skills; runner `unipi:skills-editor` (skill grid) | `openSettings{namespace:"skills"}`; [`editor`] overlay panel |
+//! | `/skills` → hub on Skills; runner `skills-editor` (skill grid) | `openSettings{namespace:"skills"}`; [`editor`] overlay panel |
 //! | `skills` settings | [`settings`] |
 
 #![allow(
@@ -122,14 +122,7 @@ fn provenance(title: &str, synopsis: &str) -> Provenance {
 
 impl Registry {
     fn resolved(&self) -> settings::Skills {
-        let all = control::settings()
-            .ok()
-            .and_then(|s| s.get("extensionSettings").cloned());
-        settings::resolve(
-            &self.settings.get(NAMESPACE),
-            all.as_ref().and_then(|a| a.get("utility")),
-            settings::stored_proxy(),
-        )
+        settings::resolve(&self.settings.get(NAMESPACE), settings::stored_proxy())
     }
 
     fn jev_settings() -> jev::Settings {
@@ -324,7 +317,7 @@ impl Registry {
         }
         if cx.has_ui() {
             let _ = ui::notify(
-                &format!("Skill \"{name}\" is turned off here. Turn it on in /unipi:skills."),
+                &format!("Skill \"{name}\" is turned off here. Turn it on in /skills."),
                 "warning",
             );
         }
@@ -534,7 +527,7 @@ impl Extension for Registry {
             unipi_kit::bus::emit(&ModuleReady {
                 name: "@pi-unipi/skill-registry".into(),
                 version: host::info().extension_version,
-                commands: vec!["unipi:skills".into()],
+                commands: vec!["skills".into()],
                 tools: Vec::new(),
                 load_time_ms: None,
             });
@@ -582,8 +575,8 @@ impl Extension for Registry {
         bus::subscribe(topics::SKILLS_REVEAL);
 
         cx.command(
-            Command::<Self>::new("unipi:skills")
-                .description("Skill settings — proxy, exposure, and per-skill Enabled / Must show (opens /unipi:settings on Skills)")
+            Command::<Self>::new("skills")
+                .description("Skill settings — proxy, exposure, and per-skill Enabled / Must show (opens /settings on Skills)")
                 .run(|_ext, _args, cx| async move {
                     if cx.has_ui() {
                         ui::fire(&json!({"method": "openSettings", "namespace": NAMESPACE}))?;

@@ -77,7 +77,7 @@ mod tests {
             "ok",
             "go ahead",
             "continue",
-            "/unipi:plan",
+            "/plan",
             "yes.",
             "Thank you so much!!",
             "k",

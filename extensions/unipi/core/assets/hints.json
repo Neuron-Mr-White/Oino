@@ -2,163 +2,163 @@
  {
   "id": "cmd.settings",
   "category": "command",
-  "text": "Scuttle over to /unipi:settings for every module's options in one unified panel.",
+  "text": "Scuttle over to /settings for every module's options in one unified panel.",
   "when": "startup",
-  "teaches": "/unipi:settings"
+  "teaches": "/settings"
  },
  {
   "id": "cmd.hint",
   "category": "command",
-  "text": "/unipi:hint opens the full hint browser — search, filter, and inspect every tip.",
+  "text": "/hint opens the full hint browser — search, filter, and inspect every tip.",
   "when": "startup",
-  "teaches": "/unipi:hint"
+  "teaches": "/hint"
  },
  {
   "id": "cmd.answer",
   "category": "command",
-  "text": "/unipi:answer walks through questions in the last reply field-by-field or in a form.",
+  "text": "/answer walks through questions in the last reply field-by-field or in a form.",
   "when": "startup",
-  "teaches": "/unipi:answer"
+  "teaches": "/answer"
  },
  {
   "id": "cmd.doctor",
   "category": "command",
-  "text": "Catch a pinch of trouble early: /unipi:doctor audits your unipi installation.",
+  "text": "Catch a pinch of trouble early: /doctor audits your unipi installation.",
   "when": "startup",
-  "teaches": "/unipi:doctor"
+  "teaches": "/doctor"
  },
  {
   "id": "cmd.memory",
   "category": "command",
-  "text": "/unipi:memory opens the interactive memory panel to search and inspect saved notes.",
+  "text": "/memory opens the interactive memory panel to search and inspect saved notes.",
   "when": "startup",
-  "teaches": "/unipi:memory"
+  "teaches": "/memory"
  },
  {
   "id": "cmd.global-mem",
   "category": "command",
-  "text": "/unipi:global-memory-search searches across every project's memory drawer, not just here.",
+  "text": "/global-memory-search searches across every project's memory drawer, not just here.",
   "when": "startup",
-  "teaches": "/unipi:global-memory-search"
+  "teaches": "/global-memory-search"
  },
  {
   "id": "cmd.plan",
   "category": "command",
-  "text": "Shell out a strategy first: /unipi:plan puts the agent into research-and-plan mode.",
+  "text": "Shell out a strategy first: /plan puts the agent into research-and-plan mode.",
   "when": "startup",
-  "teaches": "/unipi:plan"
+  "teaches": "/plan"
  },
  {
   "id": "cmd.permission",
   "category": "command",
-  "text": "/unipi:permission cycles tool authority between ask, auto, and full access modes.",
+  "text": "/permission cycles tool authority between ask, auto, and full access modes.",
   "when": "startup",
-  "teaches": "/unipi:permission"
+  "teaches": "/permission"
  },
  {
   "id": "cmd.goal",
   "category": "command",
-  "text": "/unipi:goal sets an autonomous objective that drives big multi-turn tasks to done.",
+  "text": "/goal sets an autonomous objective that drives big multi-turn tasks to done.",
   "when": "startup",
-  "teaches": "/unipi:goal"
+  "teaches": "/goal"
  },
  {
   "id": "cmd.ralph",
   "category": "command",
-  "text": "/unipi:ralph starts an iterative loop that works a task list until every item passes.",
+  "text": "/ralph starts an iterative loop that works a task list until every item passes.",
   "when": "startup",
-  "teaches": "/unipi:ralph"
+  "teaches": "/ralph"
  },
  {
   "id": "cmd.subagents",
   "category": "command",
-  "text": "/unipi:subagents opens the background workers panel; pressing ↓ on an empty input also opens it.",
+  "text": "/subagents opens the background workers panel; pressing ↓ on an empty input also opens it.",
   "when": "startup",
-  "teaches": "/unipi:subagents"
+  "teaches": "/subagents"
  },
  {
   "id": "cmd.agents",
   "category": "command",
-  "text": "/unipi:agents lets you create, edit, and configure custom agent profiles.",
+  "text": "/agents lets you create, edit, and configure custom agent profiles.",
   "when": "startup",
-  "teaches": "/unipi:agents"
+  "teaches": "/agents"
  },
  {
   "id": "cmd.bg-tasks",
   "category": "command",
-  "text": "Keep claws free: /unipi:bg-tasks opens the dashboard for running background jobs.",
+  "text": "Keep claws free: /bg-tasks opens the dashboard for running background jobs.",
   "when": "startup",
-  "teaches": "/unipi:bg-tasks"
+  "teaches": "/bg-tasks"
  },
  {
   "id": "cmd.model",
   "category": "command",
-  "text": "/unipi:model opens the picker to select models or pair Fusion lead and sidekick.",
+  "text": "/fusion opens the picker to select models or pair Fusion lead and sidekick.",
   "when": "startup",
-  "teaches": "/unipi:model"
+  "teaches": "/fusion"
  },
  {
   "id": "cmd.fusion-stats",
   "category": "command",
-  "text": "/unipi:fusion-stats reveals how much token budget your sidekick delegation saved.",
+  "text": "/fusion-stats reveals how much token budget your sidekick delegation saved.",
   "when": "startup",
-  "teaches": "/unipi:fusion-stats"
+  "teaches": "/fusion-stats"
  },
  {
   "id": "cmd.btw",
   "category": "command",
-  "text": "/unipi:btw asks a fast side question in a side panel without breaking agent flow.",
+  "text": "/btw asks a fast side question in a side panel without breaking agent flow.",
   "when": "startup",
-  "teaches": "/unipi:btw"
+  "teaches": "/btw"
  },
  {
   "id": "cmd.session-recall",
   "category": "command",
-  "text": "Dive beneath the surface: /unipi:session-recall searches compacted session turns.",
+  "text": "Dive beneath the surface: /session-recall searches compacted session turns.",
   "when": "startup",
-  "teaches": "/unipi:session-recall"
+  "teaches": "/session-recall"
  },
  {
   "id": "cmd.compact-stats",
   "category": "command",
-  "text": "/unipi:compact-stats summarizes token savings and message pruning across compactions.",
+  "text": "/compact-stats summarizes token savings and message pruning across compactions.",
   "when": "startup",
-  "teaches": "/unipi:compact-stats"
+  "teaches": "/compact-stats"
  },
  {
   "id": "cmd.kanboard",
   "category": "command",
-  "text": "/unipi:kanboard open shows the task board panel — live as agents work it.",
+  "text": "/kanboard open shows the task board panel — live as agents work it.",
   "when": "startup",
-  "teaches": "/unipi:kanboard"
+  "teaches": "/kanboard"
  },
  {
   "id": "cmd.skills",
   "category": "command",
-  "text": "/unipi:skills lists skills and toggles them; per-skill options live in /unipi:settings.",
+  "text": "/skills lists skills and toggles them; per-skill options live in /settings.",
   "when": "startup",
-  "teaches": "/unipi:skills"
+  "teaches": "/skills"
  },
  {
   "id": "cmd.summarize",
   "category": "command",
-  "text": "/unipi:summarize gives a plain-words recap of the session. Add words after it to set a focus.",
+  "text": "/summarize gives a plain-words recap of the session. Add words after it to set a focus.",
   "when": "startup",
-  "teaches": "/unipi:summarize"
+  "teaches": "/summarize"
  },
  {
   "id": "cmd.info",
   "category": "command",
-  "text": "/unipi:info is your crab's-eye view: press 1-9 to jump between session, usage and savings.",
+  "text": "/info is your crab's-eye view: press 1-9 to jump between session, usage and savings.",
   "when": "startup",
-  "teaches": "/unipi:info"
+  "teaches": "/info"
  },
  {
   "id": "cmd.regular",
   "category": "command",
-  "text": "Done with goal, ralph, swarm or graph? /unipi:regular stops the loop and returns to plain turns.",
+  "text": "Done with goal, ralph, swarm or graph? /regular stops the loop and returns to plain turns.",
   "when": "startup",
-  "teaches": "/unipi:regular"
+  "teaches": "/regular"
  },
  {
   "id": "key.alt-s",
@@ -231,80 +231,80 @@
  {
   "id": "set.render-style",
   "category": "setting",
-  "text": "render.style in /unipi:settings customizes tool rows: simple, regular, or advanced.",
+  "text": "render.style in /settings customizes tool rows: simple, regular, or advanced.",
   "when": "startup"
  },
  {
   "id": "set.memory-save",
   "category": "setting",
-  "text": "memory.saveMode in /unipi:settings chooses how memories save: side agent, reminder, or off.",
+  "text": "memory.saveMode in /settings chooses how memories save: side agent, reminder, or off.",
   "when": "startup"
  },
  {
   "id": "set.permission-mode",
   "category": "setting",
-  "text": "permission.defaultMode in /unipi:settings sets your global starting tool policy: ask, auto, or full.",
+  "text": "permission.defaultMode in /settings sets your global starting tool policy: ask, auto, or full.",
   "when": "startup"
  },
  {
   "id": "set.hints-crab",
   "category": "setting",
-  "text": "hints.crab in /unipi:settings selects mascot style: auto, image, or half-blocks.",
+  "text": "hints.crab in /settings selects mascot style: auto, image, or half-blocks.",
   "when": "startup"
  },
  {
   "id": "set.hints-header",
   "category": "setting",
-  "text": "hints.header in /unipi:settings controls whether Unicrab welcomes you on startup.",
+  "text": "hints.header in /settings controls whether Unicrab welcomes you on startup.",
   "when": "startup"
  },
  {
   "id": "set.watchdog-enabled",
   "category": "setting",
-  "text": "The watchdog is off by default — watchdog.enabled in /unipi:settings lets it judge and kill stuck calls.",
+  "text": "The watchdog is off by default — watchdog.enabled in /settings lets it judge and kill stuck calls.",
   "when": "startup"
  },
  {
   "id": "set.notify-platforms",
   "category": "setting",
-  "text": "notify.defaultPlatforms in /unipi:settings picks where pings land: native, Gotify, Telegram, ntfy.",
+  "text": "notify.defaultPlatforms in /settings picks where pings land: native, Gotify, Telegram, ntfy.",
   "when": "startup"
  },
  {
   "id": "set.compactor-threshold",
   "category": "setting",
-  "text": "compactor.trigger and thresholdPercent in /unipi:settings decide when context gets tidied.",
+  "text": "compactor.trigger and thresholdPercent in /settings decide when context gets tidied.",
   "when": "startup"
  },
  {
   "id": "set.web-cache-clear",
   "category": "setting",
-  "text": "Web pages are cached — /unipi:settings → Web API has a cache.clear action when a page goes stale.",
+  "text": "Web pages are cached — /settings → Web API has a cache.clear action when a page goes stale.",
   "when": "startup"
  },
  {
   "id": "set.long-horizon-judge",
   "category": "setting",
-  "text": "long-horizon.judge.enabled in /unipi:settings lets the AI classify prompts into autonomous modes.",
+  "text": "long-horizon.judge.enabled in /settings lets the AI classify prompts into autonomous modes.",
   "when": "startup"
  },
  {
   "id": "set.skills-must-show",
   "category": "setting",
-  "text": "In /unipi:skills, E turns a skill on or off, and M keeps it always in front of the agent.",
+  "text": "In /skills, E turns a skill on or off, and M keeps it always in front of the agent.",
   "when": "startup",
-  "teaches": "/unipi:skills"
+  "teaches": "/skills"
  },
  {
   "id": "set.info-splash",
   "category": "setting",
-  "text": "Info Screen → Unicrab splash in /unipi:settings: auto-close, stay until a key, or off.",
+  "text": "Info Screen → Unicrab splash in /settings: auto-close, stay until a key, or off.",
   "when": "startup"
  },
  {
   "id": "set.footer-rainbow",
   "category": "setting",
-  "text": "footer.rainbow in /unipi:settings: always, brand-only, or off when the shimmer distracts you.",
+  "text": "footer.rainbow in /settings: always, brand-only, or off when the shimmer distracts you.",
   "when": "startup"
  },
  {
@@ -424,7 +424,7 @@
  {
   "id": "exp.lh-resolved",
   "category": "explain",
-  "text": "Long-horizon mode active — /unipi:graph shows the plan · /unipi:regular exits.",
+  "text": "Long-horizon mode active — /graph shows the plan · /regular exits.",
   "when": {
    "event": "unipi:long-horizon:mode:resolved",
    "match": {
@@ -473,7 +473,7 @@
  {
   "id": "exp.update-available",
   "category": "explain",
-  "text": "A fresh unipi release is ready to molt — check /unipi:changelog to see new features.",
+  "text": "A fresh unipi release is ready to molt — check /changelog to see new features.",
   "when": {
    "event": "unipi:update:available"
   }
@@ -481,13 +481,13 @@
  {
   "id": "exp.info-scope",
   "category": "explain",
-  "text": "In /unipi:info, s means this session, p this project, and g every project on this machine.",
+  "text": "In /info, s means this session, p this project, and g every project on this machine.",
   "when": "startup"
  },
  {
   "id": "trb.tool-errors",
   "category": "trouble",
-  "text": "Tool errors encountered — /unipi:doctor checks for broken dependencies or stale paths.",
+  "text": "Tool errors encountered — /doctor checks for broken dependencies or stale paths.",
   "when": {
    "event": "hints:tool-errors"
   }
@@ -495,7 +495,7 @@
  {
   "id": "trb.compact-failed",
   "category": "trouble",
-  "text": "Compaction hit rough waters — run /unipi:compact-doctor to check compaction settings.",
+  "text": "Compaction hit rough waters — run /compact-doctor to check compaction settings.",
   "when": {
    "event": "session_compact_failed"
   }
@@ -503,7 +503,7 @@
  {
   "id": "trb.mcp-error",
   "category": "trouble",
-  "text": "An MCP server ran aground — inspect server status with /unipi:mcp-status.",
+  "text": "An MCP server ran aground — inspect server status with /mcp-status.",
   "when": {
    "event": "unipi:mcp:server:error"
   }
@@ -511,7 +511,7 @@
  {
   "id": "trb.context-high",
   "category": "trouble",
-  "text": "Context is past 70% — /unipi:compact-vcc compacts losslessly right now, no model call.",
+  "text": "Context is past 70% — /compact-vcc compacts losslessly right now, no model call.",
   "when": {
    "event": "hints:context-high"
   }
@@ -519,9 +519,9 @@
  {
   "id": "trb.cleanup",
   "category": "trouble",
-  "text": "/unipi:cleanup previews and removes stale temp files, orphan sessions, and leftover state.",
+  "text": "/cleanup previews and removes stale temp files, orphan sessions, and leftover state.",
   "when": "startup",
-  "teaches": "/unipi:cleanup"
+  "teaches": "/cleanup"
  },
  {
   "id": "new.unicrab",
@@ -540,9 +540,9 @@
  {
   "id": "new.hint-cmd",
   "category": "whatsnew",
-  "text": "Browse every hint in the new interactive /unipi:hint overlay with live filtering.",
+  "text": "Browse every hint in the new interactive /hint overlay with live filtering.",
   "when": "startup",
-  "teaches": "/unipi:hint",
+  "teaches": "/hint",
   "since": "3.0.0-alpha.21"
  },
  {
@@ -562,9 +562,9 @@
  {
   "id": "new.settings-explain",
   "category": "whatsnew",
-  "text": "/unipi:settings now explains every setting and option in a panel below the list.",
+  "text": "/settings now explains every setting and option in a panel below the list.",
   "when": "startup",
-  "teaches": "/unipi:settings",
+  "teaches": "/settings",
   "since": "3.0.0-alpha.23"
  },
  {
@@ -591,15 +591,15 @@
  {
   "id": "new.info-dashboard",
   "category": "whatsnew",
-  "text": "/unipi:info now opens on This session: cost, tokens, and what fills your context.",
+  "text": "/info now opens on This session: cost, tokens, and what fills your context.",
   "when": "startup",
-  "teaches": "/unipi:info",
+  "teaches": "/info",
   "since": "3.0.0-alpha.25"
  },
  {
   "id": "new.compaction-savings",
   "category": "whatsnew",
-  "text": "The Compactor page in /unipi:info counts the tokens and dollars compaction saved you.",
+  "text": "The Compactor page in /info counts the tokens and dollars compaction saved you.",
   "when": "startup",
   "since": "3.0.0-alpha.25"
  },
@@ -620,9 +620,9 @@
  {
   "id": "new.footer-settings",
   "category": "whatsnew",
-  "text": "Too busy down there? /unipi:settings → Footer turns off any stats part, badge or the rainbow.",
+  "text": "Too busy down there? /settings → Footer turns off any stats part, badge or the rainbow.",
   "when": "startup",
-  "teaches": "/unipi:settings",
+  "teaches": "/settings",
   "since": "3.0.0-alpha.27"
  },
  {
@@ -642,25 +642,25 @@
  {
   "id": "new.visualize-progress",
   "category": "whatsnew",
-  "text": "/unipi:visualize-progress shows a long-horizon run live: steps, bars and the log in one view.",
+  "text": "/visualize-progress shows a long-horizon run live: steps, bars and the log in one view.",
   "when": "startup",
-  "teaches": "/unipi:visualize-progress",
+  "teaches": "/visualize-progress",
   "since": "3.0.0-alpha.36"
  },
  {
   "id": "new.dream",
   "category": "whatsnew",
-  "text": "New: Dream reviews past sessions in the background. It ships off: see /unipi:dream.",
+  "text": "New: Dream reviews past sessions in the background. It ships off: see /dream.",
   "when": "startup",
-  "teaches": "/unipi:dream",
+  "teaches": "/dream",
   "since": "3.0.0-alpha.36"
  },
  {
   "id": "flow.plan-to-goal",
   "category": "workflow",
-  "text": "/unipi:plan investigates first; once you approve the plan, run /unipi:goal to execute.",
+  "text": "/plan investigates first; once you approve the plan, run /goal to execute.",
   "when": "startup",
-  "teaches": "/unipi:plan"
+  "teaches": "/plan"
  },
  {
   "id": "flow.plan-active",
@@ -677,16 +677,16 @@
  {
   "id": "flow.kanboard-autowork",
   "category": "workflow",
-  "text": "File tasks via Alt+S then K, then let /unipi:kanboard-autowork process the backlog queue.",
+  "text": "File tasks via Alt+S then K, then let /kanboard-autowork process the backlog queue.",
   "when": "startup",
-  "teaches": "/unipi:kanboard-autowork"
+  "teaches": "/kanboard-autowork"
  },
  {
   "id": "flow.btw-during-run",
   "category": "workflow",
-  "text": "Agent busy with a long task? /unipi:btw asks a side question without interrupting.",
+  "text": "Agent busy with a long task? /btw asks a side question without interrupting.",
   "when": "startup",
-  "teaches": "/unipi:btw"
+  "teaches": "/btw"
  },
  {
   "id": "flow.bg-notify",
@@ -697,21 +697,21 @@
  {
   "id": "flow.memory-recall",
   "category": "workflow",
-  "text": "Store key findings with memory_store, then query them via /unipi:global-memory-search.",
+  "text": "Store key findings with memory_store, then query them via /global-memory-search.",
   "when": "startup",
-  "teaches": "/unipi:global-memory-search"
+  "teaches": "/global-memory-search"
  },
  {
   "id": "flow.compact-recall",
   "category": "workflow",
-  "text": "After compaction clears the tide, /unipi:session-recall recovers older turn context.",
+  "text": "After compaction clears the tide, /session-recall recovers older turn context.",
   "when": "startup",
-  "teaches": "/unipi:session-recall"
+  "teaches": "/session-recall"
  },
  {
   "id": "flow.long-prompt",
   "category": "workflow",
-  "text": "Big prompt detected — consider structuring complex goals with /unipi:plan mode.",
+  "text": "Big prompt detected — consider structuring complex goals with /plan mode.",
   "when": {
    "event": "hints:long-prompt"
   }
@@ -719,7 +719,7 @@
  {
   "id": "fun.late-night",
   "category": "lore",
-  "text": "It's late. Unicrab is tucked in the sand. /unipi:summarize leaves tomorrow-you a note.",
+  "text": "It's late. Unicrab is tucked in the sand. /summarize leaves tomorrow-you a note.",
   "when": {
    "event": "hints:late-night"
   },
@@ -737,7 +737,7 @@
  {
   "id": "fun.rm-rf",
   "category": "trouble",
-  "text": "An rm -rf just went by. Unicrab hid its pebbles. /unipi:permission ask makes the agent ask first.",
+  "text": "An rm -rf just went by. Unicrab hid its pebbles. /permission ask makes the agent ask first.",
   "when": {
    "event": "hints:rm-rf"
   },
@@ -773,7 +773,7 @@
  {
   "id": "fun.goal-done",
   "category": "lore",
-  "text": "Goal reached! Unicrab does its sideways victory shuffle. /unipi:info has the bill.",
+  "text": "Goal reached! Unicrab does its sideways victory shuffle. /info has the bill.",
   "when": {
    "event": "unipi:long-horizon:owner:changed",
    "match": {
@@ -803,7 +803,7 @@
  {
   "id": "fun.mcp-tools",
   "category": "explain",
-  "text": "New MCP tools have joined the reef. /unipi:info → MCP shows who brought what.",
+  "text": "New MCP tools have joined the reef. /info → MCP shows who brought what.",
   "when": {
    "event": "unipi:mcp:tools:registered"
   },
@@ -941,28 +941,28 @@
  {
   "id": "fun.info-cost",
   "category": "capability",
-  "text": "Curious what this chat cost? /unipi:info shows it in digits big enough for a crab.",
+  "text": "Curious what this chat cost? /info shows it in digits big enough for a crab.",
   "when": "startup",
-  "teaches": "/unipi:info"
+  "teaches": "/info"
  },
  {
   "id": "fun.context-bucket",
   "category": "capability",
-  "text": "Wondering what fills your context? /unipi:info shows a bucket: prompts, replies, tool output.",
+  "text": "Wondering what fills your context? /info shows a bucket: prompts, replies, tool output.",
   "when": "startup",
-  "teaches": "/unipi:info"
+  "teaches": "/info"
  },
  {
   "id": "fun.btw",
   "category": "workflow",
-  "text": "Got a quick question mid-run? /unipi:btw asks it on the side. The main tide keeps flowing.",
+  "text": "Got a quick question mid-run? /btw asks it on the side. The main tide keeps flowing.",
   "when": "startup",
-  "teaches": "/unipi:btw"
+  "teaches": "/btw"
  },
  {
   "id": "fun.hint-reset",
   "category": "lore",
-  "text": "Seen every hint? /unipi:hint reset and Unicrab will tell you all its stories again.",
+  "text": "Seen every hint? /hint reset and Unicrab will tell you all its stories again.",
   "when": "startup"
  }
 ]

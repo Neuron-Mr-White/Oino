@@ -45,7 +45,7 @@ Extension secrets (API keys entered in extension settings) live in `~/.oino/secr
 
 ## Editing
 
-- TUI: `/settings` edits the core keys above. The extension settings hub (`/unipi:settings`,
+- TUI: `/settings` edits the core keys above. The extension settings hub (`/settings`,
   per-namespace pages) is not rendered by the TUI yet; edit `extensionSettings` by hand.
 - Desktop: Settings → General / Models / Extensions / Keybindings.
 

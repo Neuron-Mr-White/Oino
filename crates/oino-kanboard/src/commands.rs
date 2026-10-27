@@ -387,7 +387,7 @@ pub fn add(
 
 /// The report behind the task's current status — what the reviewer or the
 /// person unblocking it reads: for `in_review` the latest `finished:` (agent) or
-/// `released to in_review:` (legacy runner) entry, for blocked the latest
+/// `released to in_review:` (user `release`) entry, for blocked the latest
 /// `blocked:` entry. The status prefix is stripped; the text is the full,
 /// untruncated comment (markdown).
 fn status_report(task: &Task) -> Option<Value> {
@@ -1079,8 +1079,7 @@ pub fn start(
 }
 
 /// `finish <ID> --comment "…"`: the agent hands a task it `start`ed to review
-/// (`in_progress` → `in_review`, actor agent). Refused for another session's claim
-/// and for legacy system claims (not taken with `start`; a user releases those).
+/// (`in_progress` → `in_review`, actor agent). Refused for another session's claim.
 #[allow(clippy::too_many_arguments)]
 pub fn finish(
     layout: &Layout,
@@ -1116,12 +1115,6 @@ pub fn finish(
         None => {
             return Err(Error::rule(format!(
                 "finish {id}: the task has no claim (run `validate`)"
-            )));
-        }
-        Some(run) if run.owner != RunOwner::Agent => {
-            return Err(Error::rule(format!(
-                "finish {id}: held by a system claim (session {}), not one taken with `start` — a user releases it (`release {id} --to in_review|todo --comment …`)",
-                run.session
             )));
         }
         Some(run) if run.session != session => {
@@ -1861,7 +1854,7 @@ pub fn rotate_token(layout: &Layout, common: &Common) -> Result<Value> {
     }
     Ok(json!({
         "rotated": existed,
-        "note": "the token rotates on the next daemon start — /unipi:kanboard close, then open",
+        "note": "the token rotates on the next daemon start — /kanboard close, then open",
     }))
 }
 

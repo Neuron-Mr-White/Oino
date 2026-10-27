@@ -40,7 +40,7 @@ pub enum Method {
 impl Method {
     fn parse(v: Option<&str>) -> Option<Self> {
         match v {
-            Some("vcc" | "jev") => Some(Self::Vcc),
+            Some("vcc") => Some(Self::Vcc),
             Some("llm") => Some(Self::Llm),
             _ => None,
         }
@@ -102,61 +102,26 @@ pub fn defaults() -> Value {
     })
 }
 
-/// Loads from the namespace values; translates legacy keys (`overrideDefaultCompaction`,
-/// `autoCompaction.*`, `jev`, boolean `sections`).
+/// Loads from the namespace values.
 #[must_use]
 pub fn load(v: &Values) -> Config {
     let raw = &v.0;
     let s = |k: &str| raw.get(k).and_then(Value::as_str);
-    let auto = raw.get("autoCompaction").filter(|a| a.is_object());
-    let method = Method::parse(s("method")).unwrap_or(
-        if raw.get("overrideDefaultCompaction") == Some(&Value::Bool(false)) {
-            Method::Llm
-        } else {
-            Method::Vcc
-        },
-    );
-    let percent = match s("trigger") {
-        Some("percent") => true,
-        Some(_) => false,
-        None => auto.and_then(|a| a.get("enabled")) == Some(&Value::Bool(true)),
-    };
-    let num = |k: &str| {
-        raw.get(k)
-            .or_else(|| auto.and_then(|a| a.get(k)))
-            .and_then(Value::as_f64)
-    };
-    #[allow(clippy::single_match_else, reason = "two shapes of one setting")]
-    let sections = match raw.get("summarySections").and_then(Value::as_array) {
-        Some(list) => {
-            let on = |id: &str| list.iter().any(|x| x.as_str() == Some(id));
-            Sections {
-                active_work: on("activeWork"),
-                requests: on("requests"),
-                state: on("state"),
-                decisions: on("decisions"),
-                files: on("files"),
-                commits: on("commits"),
-                errors: on("errors"),
-                lessons: on("lessons"),
-                transcript: on("transcript"),
-            }
-        }
-        None => {
-            let legacy = raw.get("sections");
-            let on = |id: &str| legacy.and_then(|l| l.get(id)) != Some(&Value::Bool(false));
-            Sections {
-                active_work: on("activeWork"),
-                requests: on("requests"),
-                state: on("state"),
-                decisions: on("decisions"),
-                files: on("files"),
-                commits: on("commits"),
-                errors: on("errors"),
-                lessons: on("lessons"),
-                transcript: on("transcript"),
-            }
-        }
+    let method = Method::parse(s("method")).unwrap_or(Method::Vcc);
+    let percent = s("trigger") == Some("percent");
+    let num = |k: &str| raw.get(k).and_then(Value::as_f64);
+    let list = raw.get("summarySections").and_then(Value::as_array);
+    let on = |id: &str| list.is_none_or(|l| l.iter().any(|x| x.as_str() == Some(id)));
+    let sections = Sections {
+        active_work: on("activeWork"),
+        requests: on("requests"),
+        state: on("state"),
+        decisions: on("decisions"),
+        files: on("files"),
+        commits: on("commits"),
+        errors: on("errors"),
+        lessons: on("lessons"),
+        transcript: on("transcript"),
     };
     #[allow(
         clippy::cast_possible_truncation,
@@ -174,11 +139,7 @@ pub fn load(v: &Values) -> Config {
         },
         percent,
         threshold: num("thresholdPercent").unwrap_or(80.0),
-        notify: raw
-            .get("notify")
-            .or_else(|| auto.and_then(|a| a.get("notify")))
-            .and_then(Value::as_bool)
-            .unwrap_or(true),
+        notify: v.bool("notify", true),
         smart_keep_tail: v.bool("smartKeepTail", true),
         summary_budget_tokens: budget,
         sections,
@@ -459,17 +420,15 @@ mod tests {
         assert_eq!(c.method, Method::Vcc);
         assert!(!c.percent && c.notify && c.pi_compact.is_none());
         let c = load(&Values(
-            json!({"overrideDefaultCompaction": false, "autoCompaction": {"enabled": true, "thresholdPercent": 70}}),
+            json!({"method": "llm", "trigger": "percent", "thresholdPercent": 70}),
         ));
         assert_eq!(c.method, Method::Llm);
         assert!(c.percent);
         assert!((c.threshold - 70.0).abs() < f64::EPSILON);
-        let c = load(&Values(
-            json!({"method": "jev", "piCompact": "jev", "sections": {"files": false}}),
-        ));
+        let c = load(&Values(json!({"method": "vcc", "piCompact": "vcc"})));
         assert_eq!(c.method, Method::Vcc);
         assert_eq!(c.pi_compact, Some(Method::Vcc));
-        assert!(!c.sections.files && c.sections.requests);
+        assert!(c.sections.files && c.sections.requests);
         let c = load(&Values(json!({"summarySections": ["requests"]})));
         assert!(c.sections.requests && !c.sections.transcript);
         assert_eq!(namespace().to_json()["namespace"], "compactor");

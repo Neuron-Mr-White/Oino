@@ -6,7 +6,7 @@
 //! | config merge global/project (`mcp-config.json` + `config.json` enabled states) | `/ext-global/mcp.json` + `/ext-global/config.json`; trusted `/project/.oino/mcp.json`; ACP `session/new` servers from `oino:acp:mcp-servers` ([`config`]) |
 //! | parallel connect, registration barrier, sorted `<server>__<tool>`, canonical schemas, ≤ 20 servers | [`registry`], [`translate`] |
 //! | 64 KiB head/tail bound + 0600 spill | `unipi_kit::bounded` |
-//! | `/unipi:mcp-status`, runners `mcp-add`/`-settings`/`-sync`/`-reload` | same; runners are hidden commands; reload works live (Oino can unregister tools) |
+//! | `/mcp-status`, runners `mcp-add`/`-settings`/`-sync`/`-reload` | same; runners are hidden commands; reload works live (Oino can unregister tools) |
 //! | server list overlay, catalog browser with JSON editor | overlay panels + `editor` dialogs with validation |
 //! | catalog seed (49) + GitHub sync | [`catalog`], cache `/ext-global/servers.json` |
 //! | `MCP_SERVER_STARTED` / `_ERROR` / `MCP_TOOLS_REGISTERED`, info-screen group | same topics; `info-screen.groups` service |
@@ -100,19 +100,19 @@ fn namespace() -> Namespace {
         Section::new("servers", "Servers")
             .description("Server registry lives in its own overlay (catalog, jira, …)")
             .field(
-                Field::action("configure", "Configure MCP servers…", "unipi:mcp-settings")
+                Field::action("configure", "Configure MCP servers…", "mcp-settings")
                     .description("Open the server registry: add, edit and enable servers."),
             )
             .field(
-                Field::action("add", "Add server…", "unipi:mcp-add")
+                Field::action("add", "Add server…", "mcp-add")
                     .description("Browse the catalog or paste a custom config."),
             )
             .field(
-                Field::action("sync", "Sync catalog…", "unipi:mcp-sync")
+                Field::action("sync", "Sync catalog…", "mcp-sync")
                     .description("Refresh the server catalog from GitHub."),
             )
             .field(
-                Field::action("reload", "Reload servers…", "unipi:mcp-reload")
+                Field::action("reload", "Reload servers…", "mcp-reload")
                     .description("Reconnect every server and re-register its tools."),
             ),
     )
@@ -431,7 +431,7 @@ impl Mcp {
         unipi_kit::bus::emit(&ModuleReady {
             name: "@pi-unipi/mcp".into(),
             version: VERSION.into(),
-            commands: vec!["unipi:mcp-status".into()],
+            commands: vec!["mcp-status".into()],
             tools,
             load_time_ms: None,
         });
@@ -1069,7 +1069,7 @@ impl Extension for Mcp {
         unipi_kit::bus::subscribe(&[topics::foreign::ACP_MCP_SERVERS]);
 
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("mcp-status"))
+            Command::<Self>::new("mcp-status")
                 .description("Show status of all configured MCP servers")
                 .run(|ext, _args, _cx| async move {
                     match ext.registry.borrow().status_text() {
@@ -1078,7 +1078,7 @@ impl Extension for Mcp {
                         }
                         None => {
                             let _ = ui::notify(
-                                "No MCP servers configured. Add one via /unipi:settings (MCP → Add server…).",
+                                "No MCP servers configured. Add one via /settings (MCP → Add server…).",
                                 "info",
                             );
                         }
@@ -1087,7 +1087,7 @@ impl Extension for Mcp {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:mcp-settings")
+            Command::<Self>::new("mcp-settings")
                 .description("Open the MCP server registry")
                 .hidden()
                 .run(|ext, _args, cx| async move {
@@ -1105,7 +1105,7 @@ impl Extension for Mcp {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:mcp-add")
+            Command::<Self>::new("mcp-add")
                 .description("Add an MCP server from the catalog")
                 .hidden()
                 .run(|ext, _args, cx| async move {
@@ -1123,7 +1123,7 @@ impl Extension for Mcp {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:mcp-sync")
+            Command::<Self>::new("mcp-sync")
                 .description("Sync the MCP server catalog from GitHub")
                 .hidden()
                 .run(|ext, _args, _cx| async move {
@@ -1132,7 +1132,7 @@ impl Extension for Mcp {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:mcp-reload")
+            Command::<Self>::new("mcp-reload")
                 .description("Reconnect every MCP server and re-register its tools")
                 .hidden()
                 .run(|ext, _args, _cx| async move {
@@ -1194,15 +1194,7 @@ mod tests {
             .as_array()
             .map(|a| a.iter().filter_map(|x| x["command"].as_str()).collect())
             .unwrap_or_default();
-        assert_eq!(
-            cmds,
-            [
-                "unipi:mcp-settings",
-                "unipi:mcp-add",
-                "unipi:mcp-sync",
-                "unipi:mcp-reload"
-            ]
-        );
+        assert_eq!(cmds, ["mcp-settings", "mcp-add", "mcp-sync", "mcp-reload"]);
         assert_eq!(
             v["sections"][0]["description"],
             "Server registry lives in its own overlay (catalog, jira, …)"

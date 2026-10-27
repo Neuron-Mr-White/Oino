@@ -1,4 +1,4 @@
-//! `/unipi:answer web` (unipi `src/answer/web.ts`): a one-shot local page with the agent's
+//! `/answer web` (unipi `src/answer/web.ts`): a one-shot local page with the agent's
 //! full reply on the left and one answer box per question on the right (plus a free-text
 //! note). Served through the host loopback listener (`http.listener`, 127.0.0.1) behind a
 //! random token in the URL.

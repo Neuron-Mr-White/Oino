@@ -1,4 +1,4 @@
-//! `/unipi:move [<old-path>] [--dry-run]` (unipi `src/move/index.ts`): re-links state after
+//! `/move [<old-path>] [--dry-run]` (unipi `src/move/index.ts`): re-links state after
 //! the project folder moved. Never moves the project itself.
 //!
 //! | unipi move handler | Oino |
@@ -24,12 +24,12 @@ use unipi_kit::services::{MoveReport, MoveRequest, fanout as fan};
 use crate::hostfs::{self, Roots};
 
 /// Command name.
-pub const COMMAND: &str = "unipi:move";
+pub const COMMAND: &str = "move";
 /// Grant of `~/.oino/sessions` (write).
 pub const SESSIONS_GRANT: &str = "/oino-sessions";
 /// Read-only fallback (`fs.agentDir`).
 pub const SESSIONS_READ_ONLY: &str = "/agent/sessions";
-const USAGE: &str = "Usage: /unipi:move [<old-path>] [--dry-run]";
+const USAGE: &str = "Usage: /move [<old-path>] [--dry-run]";
 
 /// One log line (unipi `MoveLogEntry`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

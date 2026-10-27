@@ -11,7 +11,7 @@
 //! | 1 s incremental branch scan | [`scan`] on an `oino_timer` tick; fires UI requests only on change |
 //! | `unipi.footer.shared-tps` | sticky topic `unipi:footer:tps` |
 //! | sticky `LH_STATE`, `WORKFLOW_STATUS`, `KANBOARD_STATUS`, `FUSION_STATUS` | bus reads + `oino_bus` repaint |
-//! | `/unipi:footer [on\|off]` | command; writes `footer.enabled` to the global settings file (a local override only when the host refuses the write) |
+//! | `/footer [on\|off]` | command; writes `footer.enabled` to the global settings file (a local override only when the host refuses the write) |
 //! | settings `footer` | [`settings`] |
 
 #![allow(
@@ -44,7 +44,7 @@ use crate::tps::TpsTracker;
 /// Extension id.
 pub const EXTENSION_ID: &str = "unipi.footer";
 /// Command.
-pub const COMMAND: &str = "unipi:footer";
+pub const COMMAND: &str = "footer";
 const OVERRIDE_KEY: &str = "enabledOverride";
 const TICK_MS: u64 = 1_000;
 

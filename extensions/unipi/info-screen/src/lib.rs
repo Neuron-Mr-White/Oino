@@ -2,7 +2,7 @@
 //!
 //! | unipi | Here |
 //! |---|---|
-//! | `/unipi:info [page]` overlay (`ctx.ui.custom`) | `overlay` panel with a `tabs` node; keys `r`/`R`/`q`/`1–9` ([`InfoScreen::open_dashboard`]) |
+//! | `/info [page]` overlay (`ctx.ui.custom`) | `overlay` panel with a `tabs` node; keys `r`/`R`/`q`/`1–9` ([`InfoScreen::open_dashboard`]) |
 //! | page registry on `globalThis.__unipi_info_registry` | built-in pages + `info-screen.groups` service fan-out ([`registry`]) |
 //! | cache-first snapshots (`~/.unipi/cache/info-screen*.json`) | [`registry::Cache`] in `/cache` |
 //! | usage parser over `~/.pi/agent/sessions/**` | [`usage`] over `sessions-list` / `session-read`, per-file cache `/cache/usage-stats.json` |
@@ -48,7 +48,7 @@ use crate::usage::{CACHE_VERSION, CacheFile, CachedFile};
 /// Extension id.
 pub const EXTENSION_ID: &str = "unipi.info-screen";
 /// Command.
-pub const COMMAND: &str = "unipi:info";
+pub const COMMAND: &str = "info";
 /// Dashboard panel name.
 pub const PANEL: &str = "unipi.info-screen/dashboard";
 /// unipi child-usage entry type.
@@ -561,7 +561,7 @@ impl InfoScreen {
         Value::Array(keys)
     }
 
-    /// `/unipi:info [page]`.
+    /// `/info [page]`.
     async fn open_dashboard(&self, page: Option<&str>, cx: &Ctx) -> Result<()> {
         if !cx.has_ui() {
             return Ok(());

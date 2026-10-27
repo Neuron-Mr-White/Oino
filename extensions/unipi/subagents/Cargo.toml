@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.subagents: run_subagent/read_subagent over host nested agents, profiles, /unipi:subagents tray tab, /unipi:agents manager, graph-run service"
+description = "unipi.subagents: run_subagent/read_subagent over host nested agents, profiles, /subagents tray tab, /agents manager, graph-run service"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

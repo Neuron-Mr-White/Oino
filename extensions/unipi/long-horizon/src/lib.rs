@@ -12,7 +12,7 @@
 //! | nudge provider (priority 100) with a one-slot stash | arbiter `propose-nudge` |
 //! | compaction brief / evidence | services `compaction-context.provide`, fan-out `evidence.contribute` |
 //! | tools (schemas exact) | [`tools`] |
-//! | `/unipi:goal`, `/unipi:ralph`, `/unipi:swarm`, `/unipi:graph`, `/unipi:regular`, `/unipi:visualize-progress`, runners | commands (+ hidden runners) |
+//! | `/goal`, `/ralph`, `/swarm`, `/graph`, `/regular`, `/visualize-progress`, runners | commands (+ hidden runners) |
 //! | `LH_STATE`, `LH_PROGRESS`, owner/mode/ralph bus events, status slots | sticky topics, events, `setStatus` |
 
 #![cfg_attr(
@@ -453,7 +453,7 @@ impl Lh {
         let (mode, _) = st.turn_mode.clone()?;
         if modes::hidden_tools(mode).contains(&name) {
             return Some(
-                json!({"block": true, "reason": format!("long-horizon: \"{name}\" is not available in {} mode. Switch with /unipi:goal, /unipi:ralph, /unipi:swarm, or /unipi:graph.", mode.as_str())}),
+                json!({"block": true, "reason": format!("long-horizon: \"{name}\" is not available in {} mode. Switch with /goal, /ralph, /swarm, or /graph.", mode.as_str())}),
             );
         }
         if mode == Mode::None {
@@ -717,15 +717,15 @@ impl Lh {
                     if let Some(p) = s.as_ref().filter(|p| p.status == goal::Status::Paused) {
                         let msg = match p.reason.as_deref() {
                             Some("paused(verifier_unavailable)") => format!(
-                                "Goal verifier unavailable twice ({}) — goal paused. /unipi:goal resume to retry.",
+                                "Goal verifier unavailable twice ({}) — goal paused. /goal resume to retry.",
                                 v.reason
                             ),
                             Some("paused(verifier_inconclusive)") => format!(
-                                "Goal verifier returned inconclusive twice — goal paused. Last evaluation: {}. /unipi:goal resume.",
+                                "Goal verifier returned inconclusive twice — goal paused. Last evaluation: {}. /goal resume.",
                                 v.reason
                             ),
                             _ => format!(
-                                "Completion claim rejected {} times — goal paused.{} /unipi:goal resume.",
+                                "Completion claim rejected {} times — goal paused.{} /goal resume.",
                                 p.not_met_streak,
                                 if v.missing.is_empty() {
                                     String::new()
@@ -1035,7 +1035,7 @@ impl Lh {
             .filter(|g| g.status == goal::Status::Paused)
         {
             return text(format!(
-                "Goal not set: a parked goal exists (\"{}\", {}). Ask the user to /unipi:goal resume or /unipi:goal clear first.",
+                "Goal not set: a parked goal exists (\"{}\", {}). Ask the user to /goal resume or /goal clear first.",
                 g.objective,
                 g.status.as_str()
             ));
@@ -1392,7 +1392,7 @@ impl Lh {
         let available = Self::profiles().await;
         if available.is_empty() {
             return err(
-                "Agent graph is unavailable: subagents are not loaded or are disabled in this session (check /unipi:settings → subagents).",
+                "Agent graph is unavailable: subagents are not loaded or are disabled in this session (check /settings → subagents).",
             );
         }
         let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(ToOwned::to_owned);
@@ -1744,7 +1744,7 @@ impl Lh {
             let name = parts.get(1).copied().unwrap_or_default();
             if name.is_empty() {
                 notify(&format!(
-                    "Usage: /unipi:ralph start <name> <task content> — the checklist is written to {RALPH_DIR}/<name>.md."
+                    "Usage: /ralph start <name> <task content> — the checklist is written to {RALPH_DIR}/<name>.md."
                 ));
                 return;
             }
@@ -1801,7 +1801,7 @@ impl Lh {
                 .as_ref()
                 .map_or(0, |l| l.iteration);
             notify(&if parked.is_some() {
-                format!("Loop parked (iteration {it}). /unipi:ralph resume to continue.")
+                format!("Loop parked (iteration {it}). /ralph resume to continue.")
             } else {
                 "Park slot busy — resume or clear the parked owner first.".into()
             });
@@ -1936,10 +1936,11 @@ impl Lh {
             };
             if let Some(a) = active {
                 notify(&if a.kind == OwnerKind::RalphLoop {
-                    "A ralph loop is running — /unipi:ralph stop parks it, or /unipi:regular ends it.".to_owned()
+                    "A ralph loop is running — /ralph stop parks it, or /regular ends it."
+                        .to_owned()
                 } else {
                     format!(
-                        "A {0} is running — use /unipi:{0} stop to end it.",
+                        "A {0} is running — use /{0} stop to end it.",
                         a.kind.as_str()
                     )
                 });
@@ -1976,7 +1977,17 @@ impl Lh {
                 Some(p) => Self::owner_event("suspended", Some(&p), Some(&reason)),
                 None => {
                     let p = self.state.borrow().owners.parked.clone();
-                    notify(&p.map_or_else(|| "Cannot switch: the active owner could not be parked.".to_owned(), |p| format!("{} \"{}\" is parked — /unipi:{} resume or clear before parking another.", p.kind.as_str(), p.label, p.kind.mode().as_str())));
+                    notify(&p.map_or_else(
+                        || "Cannot switch: the active owner could not be parked.".to_owned(),
+                        |p| {
+                            format!(
+                                "{} \"{}\" is parked — /{} resume or clear before parking another.",
+                                p.kind.as_str(),
+                                p.label,
+                                p.kind.mode().as_str()
+                            )
+                        },
+                    ));
                     return;
                 }
             }
@@ -2125,7 +2136,7 @@ impl Lh {
         }
     }
 
-    /// `/unipi:visualize-progress` (mermaid source + text fallback; no PNG in v1).
+    /// `/visualize-progress` (mermaid source + text fallback; no PNG in v1).
     fn visualize(&self) {
         let st = self.state.borrow();
         let mut mermaid = vec!["flowchart TD".to_owned()];
@@ -2204,7 +2215,7 @@ impl Lh {
                 .to_owned()
         };
         let out = match name {
-            "unipi:goal-start" => {
+            "goal-start" => {
                 let obj = s("objective");
                 if obj.is_empty() {
                     json!({"ok": false, "reason": "an objective is required"})
@@ -2235,7 +2246,7 @@ impl Lh {
                     }
                 }
             }
-            "unipi:goal-status" => match self.state.borrow().machine.goal.clone() {
+            "goal-status" => match self.state.borrow().machine.goal.clone() {
                 None => json!({"found": false, "reason": "no goal in this session"}),
                 Some(g) if !s("goalId").is_empty() && s("goalId") != g.goal_id => {
                     json!({"found": false, "reason": format!("the active goal is {}", g.goal_id)})
@@ -2244,7 +2255,7 @@ impl Lh {
                     json!({"found": true, "goalId": g.goal_id, "status": g.status.as_str(), "reason": g.reason, "objective": g.objective})
                 }
             },
-            "unipi:goal-pause" => {
+            "goal-pause" => {
                 let mut st = self.state.borrow_mut();
                 match st.machine.goal.clone() {
                     Some(g)
@@ -2265,7 +2276,7 @@ impl Lh {
                     None => json!({"ok": false, "reason": "no goal in this session"}),
                 }
             }
-            "unipi:goal-resume" => {
+            "goal-resume" => {
                 let mut st = self.state.borrow_mut();
                 match st.machine.goal.clone() {
                     None => json!({"ok": false, "reason": "no goal in this session"}),
@@ -2282,7 +2293,7 @@ impl Lh {
                     }
                 }
             }
-            "unipi:goal-stop" => {
+            "goal-stop" => {
                 let gid = self
                     .state
                     .borrow()
@@ -2295,7 +2306,7 @@ impl Lh {
                     None => json!({"ok": false, "reason": "no active goal"}),
                 }
             }
-            "unipi:lh-explicit" | "unipi:lh-mode" => {
+            "lh-explicit" | "lh-mode" => {
                 let m = s("mode");
                 match Mode::parse(&m) {
                     None => json!({"ok": false, "reason": format!("unknown mode \"{m}\"")}),
@@ -2303,7 +2314,7 @@ impl Lh {
                         let owner = self.state.borrow().owners.active.as_ref().map(|o| o.kind);
                         if mode != Mode::None
                             && owner.is_some_and(|k| k.mode() != mode)
-                            && name == "unipi:lh-explicit"
+                            && name == "lh-explicit"
                         {
                             json!({"ok": false, "reason": format!("the session is owned by a {} owner — finish or suspend it first", owner.map_or("", |k| k.as_str()))})
                         } else {
@@ -2315,7 +2326,7 @@ impl Lh {
                     }
                 }
             }
-            "unipi:ralph-start" => {
+            "ralph-start" => {
                 let (n, c) = (
                     s("name"),
                     a.get("content")
@@ -2336,7 +2347,7 @@ impl Lh {
                     }
                 }
             }
-            "unipi:lh-graph" => match s("op").as_str() {
+            "lh-graph" => match s("op").as_str() {
                 "output" => match self
                     .state
                     .borrow()
@@ -2441,7 +2452,7 @@ impl Lh {
                             st.recovery_armed = false;
                             let _ = ui::notify(
                                 &format!(
-                                    "Goal continuation could not be re-delivered after {} restarts — goal paused. /unipi:goal resume to continue.",
+                                    "Goal continuation could not be re-delivered after {} restarts — goal paused. /goal resume to continue.",
                                     p.attempts
                                 ),
                                 "warning",
@@ -2510,15 +2521,15 @@ fn radix36(mut n: u64) -> String {
 
 /// Hidden runner commands (unipi `registerCommandRunner`).
 pub const RUNNERS: &[&str] = &[
-    "unipi:goal-start",
-    "unipi:goal-status",
-    "unipi:goal-pause",
-    "unipi:goal-resume",
-    "unipi:goal-stop",
-    "unipi:lh-explicit",
-    "unipi:lh-mode",
-    "unipi:ralph-start",
-    "unipi:lh-graph",
+    "goal-start",
+    "goal-status",
+    "goal-pause",
+    "goal-resume",
+    "goal-stop",
+    "lh-explicit",
+    "lh-mode",
+    "ralph-start",
+    "lh-graph",
 ];
 
 impl Extension for Lh {
@@ -2542,7 +2553,7 @@ impl Extension for Lh {
         }
         for mode in [Mode::Goal, Mode::Ralph, Mode::Swarm, Mode::Graph] {
             cx.command(
-                Command::<Self>::new(unipi_kit::suite::command(mode.as_str()))
+                Command::<Self>::new(mode.as_str())
                     .description(tools::mode_description(mode.as_str()))
                     .argument_hint(if mode == Mode::Ralph {
                         "start <name> | stop | status | resume | clear | <prompt>"
@@ -2565,7 +2576,7 @@ impl Extension for Lh {
                     }),
             );
         }
-        cx.command(Command::<Self>::new("unipi:regular").description("Regular mode — stop any active owner and run prompts without long-horizon routing")
+        cx.command(Command::<Self>::new("regular").description("Regular mode — stop any active owner and run prompts without long-horizon routing")
             .run(|ext, _a, _cx| async move {
                 ext.load();
                 ext.stop_owner(None);
@@ -2581,7 +2592,7 @@ impl Extension for Lh {
                 ui::notify("Regular mode.", "info")
             }));
         cx.command(
-            Command::<Self>::new("unipi:visualize-progress")
+            Command::<Self>::new("visualize-progress")
                 .description("Show long-horizon progress (goal, ralph checklist, agent graph)")
                 .run(|ext, _a, _cx| async move {
                     ext.load();

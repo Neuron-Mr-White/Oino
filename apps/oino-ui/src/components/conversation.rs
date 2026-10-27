@@ -275,12 +275,12 @@ impl SessionPane {
             .panel(crate::model::kanban::BOARD_PANEL)
             .and_then(|p| crate::model::kanban::recognise(&p.spec))
             .map(|b| crate::model::kanban::ready_count(&b));
-        if self.has_command("unipi:kanboard") {
+        if self.has_command("kanboard") {
             cards.push((
                 IconName::Kanban,
                 ready.map_or_else(|| "Board".to_owned(), |n| format!("Board: {n} ready")),
                 "Open the kanboard for this project".to_owned(),
-                Rc::new(|p, cx| p.run_prompt("/unipi:kanboard", cx)),
+                Rc::new(|p, cx| p.run_prompt("/kanboard", cx)),
             ));
         }
         for (name, description) in self
@@ -299,12 +299,12 @@ impl SessionPane {
                 Rc::new(move |p, cx| p.set_composer_text(&cmd, cx)),
             ));
         }
-        if cards.len() < 3 && self.has_command("unipi:info") {
+        if cards.len() < 3 && self.has_command("info") {
             cards.push((
                 IconName::Info,
                 "Session dashboard".to_owned(),
                 "Usage, modules and tools at a glance".to_owned(),
-                Rc::new(|p, cx| p.run_prompt("/unipi:info", cx)),
+                Rc::new(|p, cx| p.run_prompt("/info", cx)),
             ));
         }
         div()

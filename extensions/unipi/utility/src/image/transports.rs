@@ -171,7 +171,7 @@ pub fn build(route: &Route, prompt: &str, images: &[ImagePayload]) -> Result<Cal
         ImageApi::OpenAiImages => {
             if route.base_url.is_empty() {
                 return Err(format!(
-                    "No endpoint for {}: set a custom endpoint in /unipi:settings → Image.",
+                    "No endpoint for {}: set a custom endpoint in /settings → Image.",
                     route.model_id
                 ));
             }

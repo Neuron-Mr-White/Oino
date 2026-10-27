@@ -761,7 +761,7 @@ them.
 
 `wsid` = first 16 hex chars of `sha256(canonical project root)`; project root = `git rev-parse
 --show-toplevel` equivalent (walk up for `.git`), else cwd. Moving a project changes `wsid`;
-`/unipi:move` (utility) calls each extension's `move` service to migrate.
+`/move` (utility) calls each extension's `move` service to migrate.
 
 ### 5.9 Secrets
 
@@ -983,7 +983,7 @@ impl Extension for Notify {
             .args::<NotifyArgs>()                                 // schemars JsonSchema → parameters
             .kind(ToolKind::Other)
             .run(Self::notify_user));
-        cx.command(Command::new("unipi:notify-event").description("Toggle an event").run(Self::cmd_event).complete(Self::complete_event));
+        cx.command(Command::new("notify-event").description("Toggle an event").run(Self::cmd_event).complete(Self::complete_event));
         cx.settings(SettingsNamespace::new("notify").schema(schema()).defaults(defaults()));
         cx.timer("renotify", Duration::from_secs(120), Repeat::Yes);
         Ok(())
@@ -1216,5 +1216,5 @@ providers-more differences from pi (Codex SSE only and uncompressed, Bedrock cre
 | 3 | unipi-port §1 | `unipi_kit::suite` lists `unipi.app-bridge` (last in `LOAD_ORDER`, namespace `app-bridge`); removed from `NOT_PORTED` (unipi-integrations R9). | app-bridge was ported. | Info screen / suite lookups know the package. |
 | 4 | extension-api §4.4 | `AuthHeaderMode` accepts any header name (e.g. `"x-api-key"`) as informational (`None`: the component places the key). | Bundled anthropic / openai-compat failed `init` with `unknown authHeader "x-api-key"` (gpui-desktop R2). | Both components load. |
 | 6 | extension-api §3 `control` | Core serves `get-settings`, `models-list`, `scoped-models`, `routed-model`, `session-stats`, `is-project-trusted` (integration) and `run-state`, `shutdown`, `system-prompt-options`, `new-session`, `fork`, `switch-session`, `reload` (runtime appendix #21). | Unipi components call them. | `running-bash` and `bash-detach` remain unsupported. |
-| 7 | extension-api §3 `ui` | The core bridge serves panels (`panel-open/update/close` → retained `openPanel`/`updatePanel`/`closePanel`, generated id `<ext>/panel-<n>` when the spec has no `panelId`) and device fire-and-forget requests (`os-notify`, `open-url`, `clipboard-write-text`). | `/unipi:info`, btw, kanboard board, work tray, MCP/updater panels failed with `ui panels is not supported`. | `editor-*`, `clipboard-read-image`, `edit-externally` were added by frontend-cmds (#10). |
+| 7 | extension-api §3 `ui` | The core bridge serves panels (`panel-open/update/close` → retained `openPanel`/`updatePanel`/`closePanel`, generated id `<ext>/panel-<n>` when the spec has no `panelId`) and device fire-and-forget requests (`os-notify`, `open-url`, `clipboard-write-text`). | `/info`, btw, kanboard board, work tray, MCP/updater panels failed with `ui panels is not supported`. | `editor-*`, `clipboard-read-image`, `edit-externally` were added by frontend-cmds (#10). |
 | 8 | extension-api §3 `models` | Core serves `models.complete` (model `provider/id` or the session model, credentials and virtual routing as for summaries, no retry events, no cache writes) and `models.summarize-default` (core's compaction summariser on the session model). | jev decisions, compactor `llm`, notify recap, web summaries, long-horizon judges. | `models.stream` and `credential-for` were added by frontend-cmds (modes appendix, frontend-cmds #9); `classify` and `generate-image` remain unsupported; usage is not recorded as `ext:<id>` entries. |

@@ -223,10 +223,7 @@ async fn background_tasks_round_trip() {
         names(&reg.tools, |t| &t.name),
         ["bg_run", "bg_status", "bg_logs", "bg_kill"]
     );
-    assert_eq!(
-        names(&reg.commands, |c| &c.name),
-        ["unipi:bg", "unipi:bg-tasks"]
-    );
+    assert_eq!(names(&reg.commands, |c| &c.name), ["bg", "bg-tasks"]);
     assert_eq!(reg.shortcuts[0].id, "unipi.bg.clear");
     assert_eq!(reg.shortcuts[0].default_keys, ["ctrl+alt+c"]);
     for s in ["work-tray.tab", "work-tray.action", "tasks.notification"] {
@@ -335,7 +332,7 @@ async fn background_tasks_round_trip() {
 async fn watchdog_session_caps() {
     let env = Env::new();
     let (wd, reg) = env.load("watchdog").await;
-    assert_eq!(names(&reg.commands, |c| &c.name), ["unipi:bg-detach"]);
+    assert_eq!(names(&reg.commands, |c| &c.name), ["bg-detach"]);
     assert_eq!(
         names(&reg.flags, |f| &f.name),
         ["max-turns", "max-cost", "max-wall", "max-tool-errors"]
@@ -380,7 +377,7 @@ async fn watchdog_session_caps() {
             .starts_with("Session cap reached (1 turns).")
     );
 
-    env.command(&wd, "unipi:bg-detach", "").await;
+    env.command(&wd, "bg-detach", "").await;
     assert!(
         env.notifications()
             .iter()
@@ -402,10 +399,7 @@ async fn subagents_tools_and_prompt() {
             .unwrap()
             .contains("subagent_explore — Read-only codebase exploration and research.")
     );
-    assert_eq!(
-        names(&reg.commands, |c| &c.name),
-        ["unipi:subagents", "unipi:agents"]
-    );
+    assert_eq!(names(&reg.commands, |c| &c.name), ["subagents", "agents"]);
     assert_eq!(reg.shortcuts[0].id, "unipi.subagents.foreground");
     for s in [
         "subagents.list",
@@ -469,10 +463,8 @@ async fn subagents_tools_and_prompt() {
 async fn btw_and_fusion() {
     let env = Env::new();
     let (btw, reg) = env.load("btw").await;
-    assert_eq!(names(&reg.commands, |c| &c.name), ["unipi:btw"]);
+    assert_eq!(names(&reg.commands, |c| &c.name), ["btw"]);
     assert!(reg.services.iter().any(|s| s == "btw.ask"));
-    let ctx = env.event(&btw, EventKind::Context, json!({"type": "context", "messages": [{"role": "custom", "customType": "btw-note"}, {"role": "user", "content": "x"}]})).await.unwrap();
-    assert_eq!(ctx["messages"].as_array().unwrap().len(), 1);
     let list = btw
         .handle_service(
             "btw.list",
@@ -490,7 +482,7 @@ async fn btw_and_fusion() {
     assert!(!reg.tools[0].default_active);
     assert_eq!(
         names(&reg.commands, |c| &c.name),
-        ["unipi:model", "unipi:fusion-stats", "unipi:fusion-preset"]
+        ["fusion", "fusion-stats", "fusion-preset"]
     );
     assert!(reg.commands[2].hidden);
     let r = env
@@ -498,7 +490,7 @@ async fn btw_and_fusion() {
         .await;
     assert_eq!(
         text_of(&r),
-        "Fusion is not active — pick a Fusion pair with /unipi:model."
+        "Fusion is not active — pick a Fusion pair with /fusion."
     );
     let groups = fusion
         .complete_input(
@@ -508,8 +500,8 @@ async fn btw_and_fusion() {
         .await
         .unwrap()
         .to_value();
-    assert_eq!(groups[0]["items"][0]["value"], "/unipi:model");
-    env.command(&fusion, "unipi:fusion-stats", "").await;
+    assert_eq!(groups[0]["items"][0]["value"], "/fusion");
+    env.command(&fusion, "fusion-stats", "").await;
     assert!(
         env.notifications()
             .iter()
@@ -525,14 +517,14 @@ async fn long_horizon_ralph_loop() {
     assert!(reg.tools.iter().all(|t| !t.default_active));
     let cmds = names(&reg.commands, |c| &c.name);
     for c in [
-        "unipi:goal",
-        "unipi:ralph",
-        "unipi:swarm",
-        "unipi:graph",
-        "unipi:regular",
-        "unipi:visualize-progress",
-        "unipi:goal-start",
-        "unipi:lh-graph",
+        "goal",
+        "ralph",
+        "swarm",
+        "graph",
+        "regular",
+        "visualize-progress",
+        "goal-start",
+        "lh-graph",
     ] {
         assert!(cmds.iter().any(|x| x == c), "{c}");
     }
@@ -546,7 +538,7 @@ async fn long_horizon_ralph_loop() {
 
     env.command(
         &lh,
-        "unipi:ralph",
+        "ralph",
         "start Chores - [ ] one\\n- [ ] two\\n- [x] three",
     )
     .await;
@@ -606,7 +598,7 @@ async fn long_horizon_ralph_loop() {
         .await;
     assert_eq!(text_of(&todo), "Plan updated: 0/1 · ▶ a");
 
-    env.command(&lh, "unipi:ralph", "stop").await;
+    env.command(&lh, "ralph", "stop").await;
     assert!(
         env.notifications()
             .iter()
@@ -631,7 +623,7 @@ async fn long_horizon_ralph_loop() {
     )
     .unwrap();
     assert_eq!(state["parked"]["kind"], "ralph-loop");
-    let runner = env.command(&lh, "unipi:goal-status", "{}").await.unwrap();
+    let runner = env.command(&lh, "goal-status", "{}").await.unwrap();
     assert_eq!(runner["found"], true);
     let _ = Path::new("/");
 }

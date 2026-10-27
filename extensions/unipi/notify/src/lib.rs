@@ -11,7 +11,7 @@
 //! | renotify every `intervalMs` (≤ `maxRepeats`, "(still waiting)", high) | repeating `oino_timer`; stops on input, `agent_start`, last prompt closed, shutdown |
 //! | silence after input (`onTerminalInput`) | editor intents (`oino_editor`) and `input` events |
 //! | recap via the model registry | `models.complete` ([`recap`]) |
-//! | `/unipi:notify-event <event> on\|off`, runners set-gotify/set-ntfy/set-telegram/test | same names as commands (runners hidden); setup wizards as dialogs |
+//! | `/notify-event <event> on\|off`, runners set-gotify/set-ntfy/set-telegram/test | same names as commands (runners hidden); setup wizards as dialogs |
 //! | `NOTIFICATION_SENT` | same topic |
 //! | app push encryption, UnifiedPush fan-out, `unipi://` deep links, herdr | dropped (unipi-port §2.5) |
 
@@ -247,7 +247,7 @@ impl Notify {
         v
     }
 
-    /// Persists a wizard / `/unipi:notify-event` choice in the global settings file (unipi
+    /// Persists a wizard / `/notify-event` choice in the global settings file (unipi
     /// `setSettings`); the local overlay holds it only when the host refuses the write.
     fn write_setting(&self, key: &str, value: Value) {
         if self
@@ -605,7 +605,7 @@ impl Notify {
     fn notify_event_command(&self, args: &str) {
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.len() != 2 || !matches!(parts[1], "on" | "off") {
-            let _ = ui::notify("Usage: /unipi:notify-event <event> <on|off>", "warning");
+            let _ = ui::notify("Usage: /notify-event <event> <on|off>", "warning");
             return;
         }
         let (event, value) = (parts[0], parts[1]);
@@ -666,7 +666,7 @@ impl Notify {
         }
         if lines.is_empty() {
             let _ = ui::notify(
-                "No platforms enabled. Enable one in /unipi:settings (Notify).",
+                "No platforms enabled. Enable one in /settings (Notify).",
                 "warning",
             );
         } else {
@@ -1161,7 +1161,7 @@ impl Extension for Notify {
         unipi_kit::bus::subscribe(WORK_TOPICS);
 
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("notify-event"))
+            Command::<Self>::new("notify-event")
                 .description("Toggle a notify event without the TUI: <event> <on|off>")
                 .argument_hint("<event> <on|off>")
                 .run(|ext, args, _cx| async move {
@@ -1193,7 +1193,7 @@ impl Extension for Notify {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:notify-test")
+            Command::<Self>::new("notify-test")
                 .description("Send a test notification on every enabled platform")
                 .hidden()
                 .run(|ext, _args, _cx| async move {
@@ -1202,7 +1202,7 @@ impl Extension for Notify {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:notify-set-gotify")
+            Command::<Self>::new("notify-set-gotify")
                 .description("Set up Gotify notifications")
                 .hidden()
                 .run(|ext, _args, cx| async move {
@@ -1211,7 +1211,7 @@ impl Extension for Notify {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:notify-set-tg")
+            Command::<Self>::new("notify-set-tg")
                 .description("Set up Telegram notifications")
                 .hidden()
                 .run(|ext, _args, cx| async move {
@@ -1220,7 +1220,7 @@ impl Extension for Notify {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:notify-set-ntfy")
+            Command::<Self>::new("notify-set-ntfy")
                 .description("Set up ntfy notifications")
                 .hidden()
                 .run(|ext, _args, cx| async move {

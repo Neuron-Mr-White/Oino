@@ -959,7 +959,7 @@ impl MobileShell {
         let info = self.host.info();
         let has_updater = self
             .active_pane()
-            .is_some_and(|p| p.read(cx).has_command("unipi:update"));
+            .is_some_and(|p| p.read(cx).has_command("update-check"));
         let mut rows = vec![
             Self::setting_row(
                 t,
@@ -998,7 +998,7 @@ impl MobileShell {
                 )
                 .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                     this.back(window, cx);
-                    this.with_pane(cx, |p, cx| p.run_prompt("/unipi:update", cx));
+                    this.with_pane(cx, |p, cx| p.run_prompt("/update-check", cx));
                 }))
                 .into_any_element(),
             );

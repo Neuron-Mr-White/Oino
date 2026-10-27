@@ -89,7 +89,7 @@ pub fn tool_defs() -> Vec<ToolDef> {
                 "Write a detailed prompt — subject, style, composition and lighting all help.",
                 "Describe what you DO want; negation is unreliable in image models.",
                 "To change an existing image use image_edit instead.",
-                "Omit model to use the one configured in /unipi:settings. Images cost money; do not regenerate unasked.",
+                "Omit model to use the one configured in /settings. Images cost money; do not regenerate unasked.",
             ],
             json!({"type": "object", "required": ["prompt"], "properties": {
                 "prompt": {"type": "string", "description": "Description of the image. Be specific."},
@@ -399,7 +399,7 @@ pub async fn run_recognize(c: &ImageConfig, args: &RecognizeArgs, cwd: &str) -> 
     let (text, label) = if !r.base_url.trim().is_empty() && over.is_none() {
         if requested.is_empty() {
             return Err(Error::msg(
-                "Set a model id for the custom recognition endpoint in /unipi:settings → Image.",
+                "Set a model id for the custom recognition endpoint in /settings → Image.",
             ));
         }
         let base = r.base_url.trim();
@@ -431,7 +431,7 @@ pub async fn run_recognize(c: &ImageConfig, args: &RecognizeArgs, cwd: &str) -> 
         };
         if reference.is_empty() {
             return Err(Error::msg(
-                "No vision model configured — choose one in /unipi:settings → Image.",
+                "No vision model configured — choose one in /settings → Image.",
             ));
         }
         let all = control::models().unwrap_or_default();

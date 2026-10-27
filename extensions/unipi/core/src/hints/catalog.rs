@@ -552,7 +552,7 @@ mod tests {
                 .all(|h| h.since.is_some())
         );
         assert!(
-            hints.iter().all(|h| !h.text.contains("/unipi:cron")),
+            hints.iter().all(|h| !h.text.contains("/cron")),
             "dropped commands are not advertised"
         );
         let matched = hints

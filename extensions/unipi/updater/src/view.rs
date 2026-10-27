@@ -3,7 +3,6 @@
 use serde_json::{Value, json};
 use unipi_kit::settings::{Choice, Field, Namespace, Section, choice};
 
-use crate::changelog::Entry;
 use crate::channel::CheckResult;
 use crate::readme::Readme;
 
@@ -158,31 +157,6 @@ pub(crate) fn doc_spec(markdown: &str) -> Value {
     json!({"t": "stack", "direction": "vertical", "children": [
         {"t": "markdown", "value": markdown},
         {"t": "keyHints", "hints": [{"keys": "b", "label": "back"}, {"keys": "q", "label": "close"}]},
-    ]})
-}
-
-/// Changelog version list (unipi `renderChangelogOverlay` list pane).
-pub(crate) fn changelog_list_spec(entries: &[Entry]) -> Value {
-    if entries.is_empty() {
-        return json!({"t": "empty", "message": "No changelog found."});
-    }
-    let items: Vec<Value> = entries
-        .iter()
-        .enumerate()
-        .map(|(i, e)| {
-            let count: usize = e.sections.iter().map(|(_, items)| items.len()).sum();
-            let sections: Vec<&str> = e.sections.iter().map(|(s, _)| s.as_str()).collect();
-            json!({
-                "id": i.to_string(),
-                "label": e.version,
-                "detail": if e.date.is_empty() { sections.join(", ") } else { format!("{} · {}", e.date, sections.join(", ")) },
-                "badge": format!("{count}"),
-            })
-        })
-        .collect();
-    json!({"t": "stack", "direction": "vertical", "children": [
-        {"t": "list", "items": items, "selectable": "open"},
-        {"t": "keyHints", "hints": [{"keys": "enter", "label": "open"}, {"keys": "q", "label": "close"}]},
     ]})
 }
 

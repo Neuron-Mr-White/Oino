@@ -65,7 +65,7 @@ pub fn all() -> Vec<(&'static str, &'static str, String, Value)> {
     ]
 }
 
-/// `/unipi:<mode>` descriptions.
+/// `/<mode>` descriptions.
 #[must_use]
 pub fn mode_description(mode: &str) -> &'static str {
     match mode {

@@ -439,15 +439,14 @@ async fn registers_the_utility_surface() {
     assert_eq!(
         cmds,
         [
-            ("unipi:answer", false),
-            ("unipi:cleanup", false),
-            ("unipi:continue", false),
-            ("unipi:doctor", false),
-            ("unipi:move", false),
-            ("unipi:rename-now", true),
-            ("unipi:retry", false),
-            ("unipi:settings", false),
-            ("unipi:summarize", false),
+            ("answer", false),
+            ("cleanup", false),
+            ("continue", false),
+            ("doctor", false),
+            ("move", false),
+            ("rename-now", true),
+            ("retry", false),
+            ("summarize", false),
         ]
         .map(|(n, h)| (n.to_owned(), h))
     );
@@ -490,11 +489,7 @@ async fn registers_the_utility_surface() {
         })
         .collect();
     assert_eq!(namespaces, ["utility", "image"]);
-    let answer = reg
-        .commands
-        .iter()
-        .find(|c| c.name == "unipi:answer")
-        .unwrap();
+    let answer = reg.commands.iter().find(|c| c.name == "answer").unwrap();
     assert!(answer.completions);
 
     let env2 = Env::new();
@@ -509,16 +504,13 @@ async fn registers_the_utility_surface() {
 async fn continue_settings_summarize_and_responses() {
     let env = Env::new();
     let (ext, _) = env.load(json!({})).await;
-    env.command(&ext, "unipi:continue", "").await;
+    env.command(&ext, "continue", "").await;
     let sent = env.writes("sendMessage");
     assert_eq!(sent[0]["sendMessage"]["customType"], "unipi-continue");
     assert_eq!(sent[0]["sendMessage"]["display"], false);
     assert_eq!(sent[0]["options"]["triggerTurn"], true);
 
-    env.command(&ext, "unipi:settings", "image").await;
-    assert_eq!(env.fired("openSettings")[0]["query"], "image");
-
-    env.command(&ext, "unipi:summarize", "focus on risks").await;
+    env.command(&ext, "summarize", "focus on risks").await;
     assert!(env.fired("notify").iter().any(|n| {
         n["message"]
             .as_str()
@@ -530,7 +522,7 @@ async fn continue_settings_summarize_and_responses() {
         .lock()
         .unwrap()
         .push(json!({"name": "skill:summarize"}));
-    env.command(&ext, "unipi:summarize", "focus on risks").await;
+    env.command(&ext, "summarize", "focus on risks").await;
     let user = env.writes("sendUserMessage");
     assert_eq!(
         user[0]["sendUserMessage"],
@@ -539,8 +531,8 @@ async fn continue_settings_summarize_and_responses() {
     assert_eq!(user[0]["options"]["expandPromptTemplates"], true);
     assert_eq!(user[0]["options"]["provenance"]["source"], "Utility");
 
-    env.command(&ext, "unipi:doctor", "").await;
-    env.command(&ext, "unipi:cleanup", "--dry-run").await;
+    env.command(&ext, "doctor", "").await;
+    env.command(&ext, "cleanup", "--dry-run").await;
     let responses: Vec<String> = env
         .writes("sendMessage")
         .into_iter()
@@ -571,7 +563,7 @@ async fn continue_settings_summarize_and_responses() {
     assert_eq!(opts["options"]["triggerTurn"], false);
 
     *env.world.idle.lock().unwrap() = false;
-    env.command(&ext, "unipi:doctor", "").await;
+    env.command(&ext, "doctor", "").await;
     assert!(env.fired("notify").iter().any(|n| {
         n["message"]
             .as_str()
@@ -584,7 +576,7 @@ async fn continue_settings_summarize_and_responses() {
 async fn answer_reply_questions_and_hint() {
     let env = Env::new();
     let (ext, _) = env.load(json!({})).await;
-    env.command(&ext, "unipi:answer", "").await;
+    env.command(&ext, "answer", "").await;
     assert!(
         env.fired("notify")
             .iter()
@@ -623,7 +615,7 @@ async fn answer_reply_questions_and_hint() {
 
     env.rec
         .queue_dialog_answer(json!({"value": {"actionId": "send", "value": "8080 and yes"}}));
-    env.command(&ext, "unipi:answer", "reply").await;
+    env.command(&ext, "answer", "reply").await;
     let dialogs = env.details("ui_dialog");
     assert_eq!(dialogs[0]["method"], "custom");
     let sent = env.writes("sendUserMessage");
@@ -633,7 +625,7 @@ async fn answer_reply_questions_and_hint() {
     env.rec.queue_dialog_answer(
         json!({"value": "Q1. Which port?\nA1: 8080\n\nQ2. Should I use TLS?\nA2: "}),
     );
-    env.command(&ext, "unipi:answer", "questions").await;
+    env.command(&ext, "answer", "questions").await;
     assert_eq!(env.details("ui_dialog")[1]["method"], "editor");
     let sent = env.writes("sendUserMessage");
     assert_eq!(
@@ -642,7 +634,7 @@ async fn answer_reply_questions_and_hint() {
     );
 
     let items = ext
-        .complete_command("unipi:answer", "w", env.cx(CallKind::Command))
+        .complete_command("answer", "w", env.cx(CallKind::Command))
         .await;
     assert_eq!(
         items.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(),
@@ -658,7 +650,7 @@ async fn answer_web_form_over_the_loopback_listener() {
     let ext2 = Arc::clone(&ext);
     let cx = env.cx(CallKind::Command);
     let run = tokio::spawn(async move {
-        ext2.run_command("unipi:answer", "web", CancellationToken::new(), cx)
+        ext2.run_command("answer", "web", CancellationToken::new(), cx)
             .await
     });
     assert!(
@@ -782,7 +774,7 @@ async fn auto_rename_falls_back_to_one_completion() {
     assert_eq!(env.writes("setSessionName").len(), 1);
 
     // The runner bypasses the gate.
-    env.command(&ext, "unipi:rename-now", "").await;
+    env.command(&ext, "rename-now", "").await;
     assert_eq!(env.writes("setSessionName").len(), 2);
     assert!(
         env.fired("notify")
@@ -1073,13 +1065,13 @@ async fn image_tools_against_a_local_endpoint_and_models_complete() {
 async fn move_dry_run_and_argument_errors() {
     let env = Env::new();
     let (ext, _) = env.load(json!({})).await;
-    env.command(&ext, "unipi:move", "--bogus").await;
+    env.command(&ext, "move", "--bogus").await;
     assert!(
         env.fired("notify")
             .iter()
             .any(|n| n["message"] == "Unknown option: --bogus" && n["notifyType"] == "error")
     );
-    env.command(&ext, "unipi:move", "/definitely/not/here/anymore --dry-run")
+    env.command(&ext, "move", "/definitely/not/here/anymore --dry-run")
         .await;
     let notes: Vec<String> = env
         .fired("notify")
@@ -1097,8 +1089,7 @@ async fn move_dry_run_and_argument_errors() {
         "{notes:?}"
     );
     let here = env.project.path().canonicalize().unwrap();
-    env.command(&ext, "unipi:move", &here.display().to_string())
-        .await;
+    env.command(&ext, "move", &here.display().to_string()).await;
     assert!(env.fired("notify").iter().any(|n| {
         n["message"].as_str().unwrap_or_default().contains("same")
             || n["message"]

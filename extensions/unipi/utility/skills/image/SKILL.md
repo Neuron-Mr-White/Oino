@@ -26,12 +26,12 @@ description: |
 
 ## Models
 
-Omit `model` to use the one set in `/unipi:settings` → Image. To override, pass
+Omit `model` to use the one set in `/settings` → Image. To override, pass
 `provider/model-id`, e.g. `openrouter/black-forest-labs/flux.2-klein-4b` or
 `fal/fal-ai/flux-2/klein/4b` (edits: `fal/fal-ai/flux-2/klein/4b/edit`).
 
 ## Results
 
-Images come back inline and are saved to the folder set in `/unipi:settings`
+Images come back inline and are saved to the folder set in `/settings`
 → Image (by default the utility's own state folder; the path is in the result). If a call fails, the error says which key or setting is missing —
 tell the user that instead of retrying.

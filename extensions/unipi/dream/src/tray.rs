@@ -116,7 +116,7 @@ pub fn list_body(runs: &[Run], enabled: bool, view: &View, now: i64) -> Value {
         children.push(json!({"t": "empty", "message": if enabled {
             "No dreams yet — one starts on its own when enough new sessions pile up. r runs one now."
         } else {
-            "Background dreaming is off (turn it on in /unipi:settings → Dream). r runs one now."
+            "Background dreaming is off (turn it on in /settings → Dream). r runs one now."
         }}));
     } else {
         let items: Vec<Value> = runs

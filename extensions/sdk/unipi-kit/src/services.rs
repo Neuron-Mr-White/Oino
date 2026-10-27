@@ -16,7 +16,7 @@ pub mod fanout {
     pub const COMPACTION_CONTEXT_PROVIDE: &str = "compaction-context.provide";
     /// Hide a skill → [`super::SkillConditionReply`] for [`super::SkillConditionRequest`].
     pub const SKILL_CONDITION_CHECK: &str = "skill-condition.check";
-    /// `/unipi:move` state migration → [`super::MoveReport`] for [`super::MoveRequest`].
+    /// `/move` state migration → [`super::MoveReport`] for [`super::MoveRequest`].
     pub const MOVE_HANDLE: &str = "move.handle";
     /// Work-tray tabs → `Vec<`[`crate::tray::TrayTab`]`>` for [`crate::tray::TabRequest`].
     pub const WORK_TRAY_TAB: &str = "work-tray.tab";

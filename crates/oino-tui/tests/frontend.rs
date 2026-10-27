@@ -36,7 +36,7 @@ fn schema() -> Value {
              "options": [{"value": "native", "label": "Native"}, {"value": "ntfy", "label": "ntfy"}]},
             {"key": "ntfy.token", "type": "secret", "label": "ntfy token", "scope": "global",
              "description": "Token for the ntfy server"},
-            {"key": "test", "type": "action", "label": "Send test", "command": "unipi:notify-test"}
+            {"key": "test", "type": "action", "label": "Send test", "command": "notify-test"}
         ]}]
     }]})
 }

@@ -56,7 +56,7 @@ ones.
 Run `oino update` (`--check` only reports): it reads the release manifest, verifies the
 checksum and replaces the binary. Re-running the installer works too. The bundled
 `unipi.updater` extension checks GitHub releases and tells you when a newer version exists
-(`/unipi:changelog`).
+(`/changelog`).
 
 ## Uninstall
 

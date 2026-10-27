@@ -1,4 +1,4 @@
-//! `/unipi:doctor` (unipi `src/diagnostics/engine.ts`): runtime checks as a markdown report.
+//! `/doctor` (unipi `src/diagnostics/engine.ts`): runtime checks as a markdown report.
 //!
 //! | unipi plugin | Oino check |
 //! |---|---|
@@ -239,7 +239,7 @@ pub fn decision_check(provider: &str, model: &str, has_key: bool) -> Check {
             format!(
                 "Decision Model {provider}/{model} has no API key — auto-rename and skill judging fall back"
             ),
-            Some("Set a key in /unipi:settings → Decision Model, or export OPENROUTER_API_KEY"),
+            Some("Set a key in /settings → Decision Model, or export OPENROUTER_API_KEY"),
         )
     }
 }
@@ -257,7 +257,7 @@ pub fn exposure_check(settings: &Value) -> Check {
             "unipi.skill-registry",
             Status::Warning,
             "Skill exposure is off: UniPi's bundled skills are hidden from the model in this project",
-            Some("Switch Skills → Exposure → Skill exposure to judged or all in /unipi:settings"),
+            Some("Switch Skills → Exposure → Skill exposure to judged or all in /settings"),
         )
     } else {
         Check::new(

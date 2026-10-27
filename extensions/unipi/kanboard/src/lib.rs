@@ -4,7 +4,7 @@
 //!
 //! | unipi | here |
 //! |---|---|
-//! | `/unipi:kanboard [open\|close\|onboard\|status\|show\|doctor]`, `-add`, `-do`, `-autowork` | commands on [`Kanboard`] (see [`args`] for texts and parsing) |
+//! | `/kanboard [open\|close\|onboard\|status\|show\|doctor]`, `-add`, `-do`, `-autowork` | commands on [`Kanboard`] (see [`args`] for texts and parsing) |
 //! | runners open / stop-daemon / rotate-token | hidden commands [`settings::ACTION_OPEN`] … |
 //! | bash write guard (`tool_call`) | [`guard`] + `tool_call` handler (also exports the session env, see below) |
 //! | arbiter monitor (claims 50 / autowork 40) | [`monitor`] behind `propose-nudge` |
@@ -146,12 +146,7 @@ pub fn env_prefix(tool: &str, vars: &[(&str, String)]) -> String {
 
 impl Kanboard {
     fn config(&self) -> KanboardSettings {
-        let values = self.settings.get(NAMESPACE);
-        let stored = oino_extension::control::settings().ok().and_then(|s| {
-            s.pointer(&format!("/extensionSettings/{NAMESPACE}"))
-                .cloned()
-        });
-        KanboardSettings::from_values(&values, stored.as_ref())
+        KanboardSettings::from_values(&self.settings.get(NAMESPACE))
     }
 
     fn session_tag(cx: &Ctx) -> String {
@@ -388,10 +383,11 @@ impl Kanboard {
                 notify(
                     &[
                         format!("kanboard: {} ({}) registered", project.name, project.slug),
-                        "  /unipi:kanboard-add <title>     — capture a task into Backlog".into(),
-                        "  /unipi:kanboard-do <request>    — let the agent use the board for a turn".into(),
-                        "  /unipi:kanboard-autowork start  — work ready tasks one by one".into(),
-                        "  /unipi:kanboard open            — open the board panel".into(),
+                        "  /kanboard-add <title>     — capture a task into Backlog".into(),
+                        "  /kanboard-do <request>    — let the agent use the board for a turn"
+                            .into(),
+                        "  /kanboard-autowork start  — work ready tasks one by one".into(),
+                        "  /kanboard open            — open the board panel".into(),
                     ]
                     .join("\n"),
                     "info",
@@ -430,7 +426,7 @@ impl Kanboard {
         if let Some(e) = parsed.error {
             notify(
                 &format!(
-                    "kanboard: {e} — /unipi:kanboard-add [-p 1-5] [--after ID] [--status backlog|todo] <title>"
+                    "kanboard: {e} — /kanboard-add [-p 1-5] [--after ID] [--status backlog|todo] <title>"
                 ),
                 "warning",
             );
@@ -438,7 +434,7 @@ impl Kanboard {
         }
         if parsed.title.is_empty() && parsed.description.trim().is_empty() {
             notify(
-                "kanboard: add needs a title or a description — /unipi:kanboard-add <title> (lines below are the description)",
+                "kanboard: add needs a title or a description — /kanboard-add <title> (lines below are the description)",
                 "warning",
             );
             return;
@@ -522,7 +518,7 @@ impl Kanboard {
             return json!({"ok": false, "reason": why});
         }
         let Some(slug) = self.slug(cx).await else {
-            return json!({"ok": false, "reason": "kanboard is not set up here — run /unipi:kanboard"});
+            return json!({"ok": false, "reason": "kanboard is not set up here — run /kanboard"});
         };
         let text = payload
             .get("text")
@@ -595,7 +591,7 @@ impl Kanboard {
                     };
                     notify(
                         &format!(
-                            "kanboard: the board is running {mode} on {}:{} — /unipi:kanboard close then open to apply",
+                            "kanboard: the board is running {mode} on {}:{} — /kanboard close then open to apply",
                             existing.host.as_deref().unwrap_or("127.0.0.1"),
                             existing.port
                         ),
@@ -777,7 +773,7 @@ impl Kanboard {
         }
         match self.run(cx, &["rotate-token"], None, true).await {
             Ok(_) => notify(
-                "kanboard: new token on the next daemon start — /unipi:kanboard close, then open",
+                "kanboard: new token on the next daemon start — /kanboard close, then open",
                 "info",
             ),
             Err(e) => notify(&format!("kanboard: rotate-token failed — {e}"), "error"),
@@ -850,7 +846,7 @@ impl Kanboard {
                 }
                 Err(_) => lines.push(format!("project: {slug} (unreadable board)")),
             },
-            None => lines.push("project: not registered here — /unipi:kanboard onboard".into()),
+            None => lines.push("project: not registered here — /kanboard onboard".into()),
         }
         notify(&lines.join("\n"), "info");
     }
@@ -922,7 +918,7 @@ impl Kanboard {
         match &slug {
             None => lines.push(check(
                 Some(false),
-                "project: not registered for this folder — /unipi:kanboard onboard".into(),
+                "project: not registered for this folder — /kanboard onboard".into(),
             )),
             Some(slug) if attached.is_ok() => {
                 match self.run(cx, &["project", "show"], Some(slug), true).await {
@@ -1081,15 +1077,15 @@ impl Kanboard {
         match sub.as_str() {
             "" => Self::display_message(HELP_CUSTOM_TYPE, HELP.to_owned(), None).await,
             "add" => notify(
-                "kanboard: use /unipi:kanboard-add <title> — lines below the title become the description",
+                "kanboard: use /kanboard-add <title> — lines below the title become the description",
                 "info",
             ),
             "work" => notify(
-                "kanboard: use /unipi:kanboard-autowork start to work every ready task in this session",
+                "kanboard: use /kanboard-autowork start to work every ready task in this session",
                 "info",
             ),
             "stop" => notify(
-                "kanboard: use /unipi:kanboard-autowork stop to turn autowork offers off",
+                "kanboard: use /kanboard-autowork stop to turn autowork offers off",
                 "info",
             ),
             "onboard" => {
@@ -1113,9 +1109,7 @@ impl Kanboard {
             }
             "open" => self.open(cx, &rest).await,
             other => notify(
-                &format!(
-                    "kanboard: unknown subcommand \"{other}\" — /unipi:kanboard lists the commands"
-                ),
+                &format!("kanboard: unknown subcommand \"{other}\" — /kanboard lists the commands"),
                 "warning",
             ),
         }
@@ -1130,7 +1124,7 @@ impl Kanboard {
         }
         if request.is_empty() {
             notify(
-                "kanboard: -do needs a request — /unipi:kanboard-do <what the agent may do on the board>",
+                "kanboard: -do needs a request — /kanboard-do <what the agent may do on the board>",
                 "warning",
             );
             return;
@@ -1198,7 +1192,7 @@ impl Kanboard {
                 self.set_autowork(cx, false).await;
                 notify("kanboard: autowork off", "info");
             }
-            _ => notify("kanboard: /unipi:kanboard-autowork start|stop", "warning"),
+            _ => notify("kanboard: /kanboard-autowork start|stop", "warning"),
         }
     }
 
@@ -1242,10 +1236,7 @@ impl Kanboard {
 
     async fn open_panel(&'static self, cx: &Ctx) {
         let Some((slug, body)) = self.panel_body(cx).await else {
-            notify(
-                "kanboard: not set up here — /unipi:kanboard onboard",
-                "warning",
-            );
+            notify("kanboard: not set up here — /kanboard onboard", "warning");
             return;
         };
         if ui::panel_open(&panel::open_request(&slug, &body)).is_err() {
@@ -1772,7 +1763,7 @@ pub fn context_filter(messages: &[Value]) -> Option<Vec<Value>> {
 
 fn register_commands(cx: &mut Init<Kanboard>) {
     cx.command(
-        Command::<Kanboard>::new("unipi:kanboard")
+        Command::<Kanboard>::new("kanboard")
             .description("Kanboard — the board: open, onboard, status, doctor (bare = help)")
             .argument_hint("[open|close|onboard|status|show [--all]|doctor]")
             .run(|ext, args, cx| async move {
@@ -1782,7 +1773,7 @@ fn register_commands(cx: &mut Init<Kanboard>) {
             .complete(|_ext, prefix, _cx| async move { args::kanboard_completions(&prefix) }),
     );
     cx.command(
-        Command::<Kanboard>::new("unipi:kanboard-add")
+        Command::<Kanboard>::new("kanboard-add")
             .description("Add a board task — [-p 1-5] [--after ID] [--status backlog|todo] <title>; lines below are the description (paste file paths to attach)")
             .argument_hint("[-p 1-5] [--after ID] [--status backlog|todo] <title>")
             .run(|ext, args, cx| async move {
@@ -1797,8 +1788,8 @@ fn register_commands(cx: &mut Init<Kanboard>) {
             }),
     );
     cx.command(
-        Command::<Kanboard>::new("unipi:kanboard-do")
-            .description("Grant the agent kanboard task slots and a write budget (/unipi:kanboard-do <request>; off revokes)")
+        Command::<Kanboard>::new("kanboard-do")
+            .description("Grant the agent kanboard task slots and a write budget (/kanboard-do <request>; off revokes)")
             .argument_hint("<request>|off")
             .run(|ext, args, cx| async move {
                 ext.do_command(&args, &cx.cx).await;
@@ -1812,7 +1803,7 @@ fn register_commands(cx: &mut Init<Kanboard>) {
             }),
     );
     cx.command(
-        Command::<Kanboard>::new("unipi:kanboard-autowork")
+        Command::<Kanboard>::new("kanboard-autowork")
             .description("Work ready board tasks one by one — start | stop (stop finishes the current task first)")
             .argument_hint("start|stop")
             .run(|ext, args, cx| async move {

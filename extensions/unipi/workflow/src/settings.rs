@@ -25,7 +25,7 @@ pub const EXTENSION_ID: &str = "unipi.workflow";
 /// Namespace.
 pub const NAMESPACE: &str = "permission";
 /// Rule clear runner.
-pub const CLEAR_RULES: &str = "unipi:permission-clear-rules";
+pub const CLEAR_RULES: &str = "permission-clear-rules";
 
 /// unipi `DEFAULT_SETTINGS` (+ `decisionModel`). `mode` is not defaulted so an unset project
 /// mode falls through to `defaultMode`.
@@ -112,7 +112,7 @@ pub fn namespace(rule_count: usize) -> Namespace {
 /// What the gate stored itself.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stored {
-    /// Project mode set by `/unipi:permission` / Alt+M.
+    /// Project mode set by `/permission` / Alt+M.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
     /// Saved rules.

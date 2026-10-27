@@ -125,7 +125,7 @@ impl MobileShell {
                 "review",
             ));
         }
-        if pane.is_some_and(|p| p.has_command("unipi:kanboard")) {
+        if pane.is_some_and(|p| p.has_command("kanboard")) {
             items.push(a("Board", Section::Panels, "kanban", "board"));
         }
         if let Some(p) = pane {

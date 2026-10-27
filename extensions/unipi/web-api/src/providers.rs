@@ -173,7 +173,7 @@ pub(crate) fn chain(
             .map(|p| p.name)
             .collect();
         return Err(format!(
-            "No {} provider configured.\n→ Run /unipi:settings (Web API) to enable providers and add API keys.\n→ Free options: wigolo (search + read, local), DuckDuckGo (search), Jina Reader (read).\n→ Available providers: {}",
+            "No {} provider configured.\n→ Run /settings (Web API) to enable providers and add API keys.\n→ Free options: wigolo (search + read, local), DuckDuckGo (search), Jina Reader (read).\n→ Available providers: {}",
             cap.as_str(),
             names.join(", ")
         ));
@@ -656,14 +656,14 @@ pub(crate) fn parse_wigolo_fetch(v: &Value, url: &str) -> Result<(String, String
 /// wigolo daemon unreachable (unipi `NOT_RUNNING_MESSAGE`, Oino talks to the REST daemon).
 pub(crate) fn wigolo_unavailable(base: &str, cause: &str) -> String {
     format!(
-        "wigolo is not running at {base}.\n→ Install and start it:  npm install -g wigolo && npx wigolo init\n→ Check health:   npx wigolo doctor\n→ wigolo is a separate AGPL-licensed project and is not bundled with Oino.\n→ Disable it in /unipi:settings (Web API) to silence this.\n→ Cause: {cause}"
+        "wigolo is not running at {base}.\n→ Install and start it:  npm install -g wigolo && npx wigolo init\n→ Check health:   npx wigolo doctor\n→ wigolo is a separate AGPL-licensed project and is not bundled with Oino.\n→ Disable it in /settings (Web API) to silence this.\n→ Cause: {cause}"
     )
 }
 
 /// Missing key message (unipi).
 pub(crate) fn key_required(p: &Provider) -> String {
     format!(
-        "{} requires an API key. Set {} environment variable or configure via /unipi:settings (Web API)",
+        "{} requires an API key. Set {} environment variable or configure via /settings (Web API)",
         p.name,
         p.env.unwrap_or("its API key")
     )
@@ -733,9 +733,7 @@ mod tests {
         let none = chain(Cap::Summarize, None, enabled)
             .err()
             .unwrap_or_default();
-        assert!(
-            none.starts_with("No summarize provider configured.\n→ Run /unipi:settings (Web API)")
-        );
+        assert!(none.starts_with("No summarize provider configured.\n→ Run /settings (Web API)"));
         assert!(none.ends_with("Available providers: Perplexity"));
     }
 
@@ -878,7 +876,7 @@ mod tests {
         let serp = by_id("serpapi").unwrap_or(&PROVIDERS[0]);
         assert_eq!(
             key_required(serp),
-            "SerpAPI requires an API key. Set SERPAPI_KEY environment variable or configure via /unipi:settings (Web API)"
+            "SerpAPI requires an API key. Set SERPAPI_KEY environment variable or configure via /settings (Web API)"
         );
     }
 }

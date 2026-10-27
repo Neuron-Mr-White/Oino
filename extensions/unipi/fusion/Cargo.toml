@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.fusion: lead + persistent sidekick (nested agent), sidekick tool, lead policy and nudges, /unipi:model picker, presets, savings"
+description = "unipi.fusion: lead + persistent sidekick (nested agent), sidekick tool, lead policy and nudges, /fusion picker, presets, savings"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

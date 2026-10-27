@@ -16,7 +16,7 @@ expression: "h.frame(80, 18)"
 › Agent finished  on
   Platform        ntfy
   ntfy token      •••••• (global)
-  Send test       run /unipi:notify-test
+  Send test       run /notify-test
  enter/space change · tab scope · del reset · esc back
 /work/project (main)
 ↑1.2k ↓345 $0.012 0.8%/200k (auto)                        (faux) faux-1 • medium

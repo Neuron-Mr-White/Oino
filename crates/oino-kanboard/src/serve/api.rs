@@ -1096,7 +1096,7 @@ pub(crate) async fn models(
         let mut response = ApiResponse::error(
             StatusCode::CONFLICT,
             &Error::rule(
-                "Open the board from Oino once (/unipi:kanboard open) so it knows how to run oino",
+                "Open the board from Oino once (/kanboard open) so it knows how to run oino",
             ),
         );
         if let Value::Object(ref mut map) = response.body {
@@ -1129,7 +1129,7 @@ async fn fetch_models(
     if settings.pi_command.is_empty() {
         return Err((
             StatusCode::CONFLICT,
-            "Open the board from Oino once (/unipi:kanboard open) so it knows how to run oino"
+            "Open the board from Oino once (/kanboard open) so it knows how to run oino"
                 .to_string(),
         ));
     }
@@ -1704,7 +1704,7 @@ pub(crate) async fn summarize(
         let mut response = ApiResponse::error(
             StatusCode::CONFLICT,
             &Error::rule(
-                "Open the board from Oino once (/unipi:kanboard open) so it knows how to run oino",
+                "Open the board from Oino once (/kanboard open) so it knows how to run oino",
             ),
         );
         if let Value::Object(ref mut map) = response.body {

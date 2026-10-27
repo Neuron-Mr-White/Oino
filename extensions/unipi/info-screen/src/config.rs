@@ -39,18 +39,13 @@ pub fn defaults() -> Value {
 }
 
 impl InfoSettings {
-    /// From the namespace object; migrates legacy `showOnBoot` (`true` → on, `false` → off).
+    /// From the namespace object.
     #[must_use]
     pub fn from_json(v: &Value) -> Self {
         let boot_mode = match v.get("bootMode").and_then(Value::as_str) {
             Some("on") => BootMode::On,
             Some("off") => BootMode::Off,
-            Some("auto-close") => BootMode::AutoClose,
-            _ => match v.get("showOnBoot").and_then(Value::as_bool) {
-                Some(true) => BootMode::On,
-                Some(false) => BootMode::Off,
-                None => BootMode::AutoClose,
-            },
+            _ => BootMode::AutoClose,
         };
         #[allow(
             clippy::cast_possible_truncation,
@@ -146,12 +141,18 @@ pub fn namespace(groups: &[GroupInfo]) -> Namespace {
                         "bootMode",
                         "Unicrab splash",
                         vec![
-                            choice("auto-close", "auto-close", "show it, then fade out; never takes your keys"),
+                            choice(
+                                "auto-close",
+                                "auto-close",
+                                "show it, then fade out; never takes your keys",
+                            ),
                             choice("on", "on", "keep it up until you press a key"),
                             choice("off", "off", "no splash"),
                         ],
                     )
-                    .description("The Unicrab card shown at startup. /unipi:info opens the dashboard any time."),
+                    .description(
+                        "The Unicrab card shown at startup. /info opens the dashboard any time.",
+                    ),
                 )
                 .field(
                     Field::number("bootTimeoutMs", "Splash time")
@@ -166,8 +167,14 @@ pub fn namespace(groups: &[GroupInfo]) -> Namespace {
         )
         .section(
             Section::new("pages", "Pages")
-                .field(Field::page("groups-page", "Pages & stats…", pages).description("Choose which pages appear on the dashboard."))
-                .field(Field::order("groupOrder", "Page order", order).description("Tab order of the dashboard pages.")),
+                .field(
+                    Field::page("groups-page", "Pages & stats…", pages)
+                        .description("Choose which pages appear on the dashboard."),
+                )
+                .field(
+                    Field::order("groupOrder", "Page order", order)
+                        .description("Tab order of the dashboard pages."),
+                ),
         )
 }
 
@@ -177,21 +184,13 @@ mod tests {
     use crate::registry::StatInfo;
 
     #[test]
-    fn boot_mode_and_legacy_migration() {
+    fn boot_mode() {
         assert_eq!(
             InfoSettings::from_json(&defaults()).boot_mode,
             BootMode::AutoClose
         );
         assert_eq!(
-            InfoSettings::from_json(&json!({"showOnBoot": true})).boot_mode,
-            BootMode::On
-        );
-        assert_eq!(
-            InfoSettings::from_json(&json!({"showOnBoot": false})).boot_mode,
-            BootMode::Off
-        );
-        assert_eq!(
-            InfoSettings::from_json(&json!({"bootMode": "on", "showOnBoot": false})).boot_mode,
+            InfoSettings::from_json(&json!({"bootMode": "on"})).boot_mode,
             BootMode::On
         );
         assert_eq!(InfoSettings::from_json(&json!({})).boot_timeout_ms, 2500);

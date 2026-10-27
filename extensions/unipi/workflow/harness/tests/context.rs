@@ -229,12 +229,12 @@ async fn workflow_gate_and_plan_mode() {
     let (ext, reg) = env.load("workflow").await;
     let cmds = names(&reg.commands, |c| (c.name.as_str(), c.hidden));
     for want in [
-        ("unipi:permission", false),
-        ("unipi:plan", false),
-        ("unipi:permission-clear-rules", true),
-        ("unipi:plan-off", true),
-        ("unipi:plan-enter", true),
-        ("unipi:plan-exit", true),
+        ("permission", false),
+        ("plan", false),
+        ("permission-clear-rules", true),
+        ("plan-off", true),
+        ("plan-enter", true),
+        ("plan-exit", true),
     ] {
         assert!(
             cmds.contains(&(want.0.to_owned(), want.1)),
@@ -285,7 +285,7 @@ async fn workflow_gate_and_plan_mode() {
         "Always allow `rm -rf /tmp/x`"
     );
 
-    env.command(&ext, "unipi:plan", "on").await;
+    env.command(&ext, "plan", "on").await;
     let entries = env.appended("unipi:plan-mode");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["data"]["active"], true);
@@ -369,13 +369,13 @@ async fn settings_write_path_and_legacy_import() {
         "saved rule allows without asking"
     );
 
-    env.command(&wf, "unipi:permission", "full").await;
+    env.command(&wf, "permission", "full").await;
     assert_eq!(
         env.host
             .extension_setting_layer(SettingsScope::Project, "permission")["mode"],
         "full"
     );
-    env.command(&wf, "unipi:permission-clear-rules", "").await;
+    env.command(&wf, "permission-clear-rules", "").await;
     assert!(
         env.host
             .extension_setting_layer(SettingsScope::Project, "permission")
@@ -417,8 +417,8 @@ async fn skill_registry_exposure() {
     assert_eq!(
         names(&reg.commands, |c| (c.name.as_str(), c.hidden)),
         [
-            ("unipi:skills".to_owned(), false),
-            ("unipi:skills-editor".to_owned(), true)
+            ("skills".to_owned(), false),
+            ("skills-editor".to_owned(), true)
         ]
     );
     for k in [
@@ -453,7 +453,7 @@ async fn skill_registry_exposure() {
             .get("unipi-skills-hidden")
             .is_none()
     );
-    env.command(&ext, "unipi:skills", "").await;
+    env.command(&ext, "skills", "").await;
     let fired: Vec<Value> = env
         .host
         .calls_named("ui_fire")
@@ -476,7 +476,7 @@ async fn dream_tray_and_status() {
             .iter()
             .map(|c| c.name.as_str())
             .collect::<Vec<_>>(),
-        ["unipi:dream"]
+        ["dream"]
     );
     for s in [
         "work-tray.tab",
@@ -500,16 +500,16 @@ async fn dream_tray_and_status() {
     let status = env.service(&ext, "dream.status", json!({})).await;
     assert_eq!(status["enabled"], false);
     assert_eq!(status["runs"], json!([]));
-    env.command(&ext, "unipi:dream", "status").await;
+    env.command(&ext, "dream", "status").await;
     assert!(
-        env.notifies()[0].starts_with("dream: off — turn on in /unipi:settings → Dream"),
+        env.notifies()[0].starts_with("dream: off — turn on in /settings → Dream"),
         "{:?}",
         env.notifies()
     );
-    env.command(&ext, "unipi:dream", "bogus").await;
+    env.command(&ext, "dream", "bogus").await;
     assert_eq!(
         env.notifies()[1],
-        "usage: /unipi:dream status|tray|report|run|stop|approve <n>|reject <n>"
+        "usage: /dream status|tray|report|run|stop|approve <n>|reject <n>"
     );
 }
 
@@ -521,12 +521,12 @@ async fn compactor_lossless_and_recall() {
     assert_eq!(
         cmds,
         [
-            "unipi:compact-vcc",
-            "unipi:compact-by-llm",
-            "unipi:session-recall",
-            "unipi:compact-stats",
-            "unipi:compact-doctor",
-            "unipi:compact-help"
+            "compact-vcc",
+            "compact-by-llm",
+            "session-recall",
+            "compact-stats",
+            "compact-doctor",
+            "compact-help"
         ]
     );
     assert_eq!(
@@ -574,7 +574,7 @@ async fn compactor_lossless_and_recall() {
         .tool(&ext, "session_recall", json!({"query": "redis"}))
         .await;
     assert_eq!(text(&recall), "No matches for \"redis\".");
-    let then = env.event(&ext, EventKind::Input, json!({"type": "input", "text": "/unipi:compact-then next", "source": "interactive", "streamingBehavior": "followUp"})).await;
+    let then = env.event(&ext, EventKind::Input, json!({"type": "input", "text": "/compact-then next", "source": "interactive", "streamingBehavior": "followUp"})).await;
     assert_eq!(then, Some(json!({"action": "handled"})));
     assert!(
         env.notifies()
@@ -603,13 +603,13 @@ async fn memory_store_list_search_delete() {
     assert_eq!(
         cmds,
         [
-            "unipi:memory",
-            "unipi:memory-process",
-            "unipi:memory-consolidate",
-            "unipi:memory-search",
-            "unipi:global-memory-search",
-            "unipi:memory-forget",
-            "unipi:global-memory-list"
+            "memory",
+            "memory-process",
+            "memory-consolidate",
+            "memory-search",
+            "global-memory-search",
+            "memory-forget",
+            "global-memory-list"
         ]
     );
     let stored = env.tool(&ext, "memory_store", json!({"title": "redis_cache_ttl", "content": "Use a 60 s TTL for the session cache.", "type": "decision", "tags": ["cache"]})).await;

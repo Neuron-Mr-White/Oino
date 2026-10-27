@@ -197,7 +197,7 @@ async fn registration() {
         .collect();
     assert_eq!(
         commands,
-        [("unipi:hint", false), ("unipi:hint-reset", true)]
+        [("hint", false), ("hint-reset", true)]
     );
     assert!(reg.commands[0].completions);
     let shortcuts: Vec<(&str, &[String])> = reg
@@ -234,7 +234,7 @@ async fn registration() {
     }
     assert_eq!(reg.tools.len(), 0);
     let items = ext
-        .complete_command("unipi:hint", "n", env.cx(CallKind::Command))
+        .complete_command("hint", "n", env.cx(CallKind::Command))
         .await;
     assert_eq!(
         items.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(),
@@ -263,7 +263,7 @@ async fn hints_lifecycle() {
     assert_eq!(shown[0]["widgetPlacement"], "aboveEditor");
     let line = shown[0]["widgetLines"][0].as_str().unwrap();
     assert!(
-        line.contains("/unipi:settings") && line.ends_with("command · alt+h ›"),
+        line.contains("/settings") && line.ends_with("command · alt+h ›"),
         "{line}"
     );
     let store = env.hint_store();
@@ -279,7 +279,7 @@ async fn hints_lifecycle() {
     env.event(
         &core,
         EventKind::Input,
-        json!({"type": "input", "text": "/unipi:settings", "source": "interactive"}),
+        json!({"type": "input", "text": "/settings", "source": "interactive"}),
     )
     .await;
     let cleared = env.fired("setWidget", Some("unipi-hints"));
@@ -288,24 +288,24 @@ async fn hints_lifecycle() {
         cleared[1].get("widgetLines").is_none(),
         "input clears the hint"
     );
-    // Every hint teaching `/unipi:settings` is learned (three in the catalog).
+    // Every hint teaching `/settings` is learned (three in the catalog).
     let learned = env.hint_store()["learned"].clone();
     assert!(
         learned.as_array().unwrap().contains(&json!("cmd.settings")),
         "{learned}"
     );
 
-    env.command(&core, "unipi:hint", "next").await;
+    env.command(&core, "hint", "next").await;
     let next = env.fired("setWidget", Some("unipi-hints"));
     assert_eq!(next.len(), 3);
     assert!(
         !next[2]["widgetLines"][0]
             .as_str()
             .unwrap()
-            .contains("/unipi:settings")
+            .contains("/settings")
     );
 
-    env.command(&core, "unipi:hint", "").await;
+    env.command(&core, "hint", "").await;
     let panels = env.panels();
     assert_eq!(panels.len(), 1);
     let open = &panels[0]["open"];
@@ -321,7 +321,7 @@ async fn hints_lifecycle() {
     assert_eq!(update["update"], "panel-1");
     assert!(
         update["spec"].to_string().contains("kanboard")
-            && !update["spec"].to_string().contains("/unipi:btw")
+            && !update["spec"].to_string().contains("/btw")
     );
     env.event(
         &core,
@@ -335,10 +335,10 @@ async fn hints_lifecycle() {
         picked.last().unwrap()["widgetLines"][0]
             .as_str()
             .unwrap()
-            .contains("/unipi:hint opens the full hint browser")
+            .contains("/hint opens the full hint browser")
     );
 
-    env.command(&core, "unipi:hint-reset", "").await;
+    env.command(&core, "hint-reset", "").await;
     assert_eq!(
         env.fired("notify", None).last().unwrap()["message"],
         "Hint history cleared — every hint is eligible again."

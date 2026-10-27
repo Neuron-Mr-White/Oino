@@ -14,8 +14,8 @@
 //! | `hello`/`state`/`stats`/`watch{stats}` (run state, model, thinking, context, cost, tokens, tps) | "Session" tab, refreshed ≤ 1/s on events |
 //! | `set_model`, `set_thinking`, `compact`, `abort` | tab controls (`control.*`) |
 //! | `work_*` (list, stop, background, log, transcript) | "Work" tab over the `work-tray.tab` fan-out; actions forwarded to the owner (`work-tray.action`) |
-//! | `set_lh_mode`, `lh_progress_get`, `lh_graph` | "Modes" tab: mode chip → hidden command `unipi:lh-mode <mode>`, progress from `unipi:long-horizon:progress` |
-//! | `set_fusion` | "Change pair…" → `/unipi:model` (fusion's picker) |
+//! | `set_lh_mode`, `lh_progress_get`, `lh_graph` | "Modes" tab: mode chip → hidden command `lh-mode <mode>`, progress from `unipi:long-horizon:progress` |
+//! | `set_fusion` | "Change pair…" → `/fusion` (fusion's picker) |
 //! | `dream_get`, `dream_action` (run/stop) | `dream.status` / `dream.run` / `dream.stop` |
 //! | `btw`, `btw_list` | "BTW" tab → `btw.ask` |
 //! | `watch{info}` | "Info" tab over the `info-screen.groups` fan-out |
@@ -46,8 +46,8 @@ const NAMESPACE: &str = "app-bridge";
 const REFRESH_MS: u64 = 1000;
 const SNAPSHOT_SERVICE: &str = "app-bridge.snapshot";
 const ACTION_SERVICE: &str = "app-bridge.action";
-const LH_MODE_COMMAND: &str = "unipi:lh-mode";
-const FUSION_PICKER_COMMAND: &str = "unipi:model";
+const LH_MODE_COMMAND: &str = "lh-mode";
+const FUSION_PICKER_COMMAND: &str = "fusion";
 const TABS: [(&str, &str); 5] = [
     ("session", "Session"),
     ("work", "Work"),
@@ -90,7 +90,7 @@ fn namespace() -> Namespace {
         .defaults(json!({"enabled": true, "autoOpen": true}))
         .section(
             Section::new("control", "Control centre")
-                .field(Field::boolean("enabled", "Enabled").description("Offer the session control centre (/unipi:app)."))
+                .field(Field::boolean("enabled", "Enabled").description("Offer the session control centre (/app)."))
                 .field(
                     Field::boolean("autoOpen", "Open in the app side pane")
                         .description("Open the control centre as a side-pane tab when Oino Desktop or Oino Mobile is attached."),
@@ -576,7 +576,7 @@ impl Extension for AppBridge {
         unipi_kit::bus::subscribe(WATCHED);
 
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("app"))
+            Command::<Self>::new("app")
                 .description("Open the session control centre (Oino Desktop/Mobile side pane)")
                 .argument_hint("[session|work|modes|btw|info]")
                 .run(|ext, args, cx| async move {

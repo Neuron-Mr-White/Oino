@@ -524,7 +524,7 @@ impl SessionPane {
     /// The workflow mode chip, when `unipi.workflow` is loaded.
     #[must_use]
     pub fn mode(&self) -> Option<ModeChip> {
-        if !self.has_command("unipi:permission") {
+        if !self.has_command("permission") {
             return None;
         }
         Some(ModeChip::from_segments(self.model.ui.frame_segments()).unwrap_or(ModeChip::Auto))

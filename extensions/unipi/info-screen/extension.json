@@ -4,7 +4,7 @@
   "name": "Info screen",
   "version": "3.0.0",
   "kind": "extension",
-  "description": "The /unipi:info dashboard (this session, context bucket, usage history, tools, skills, modules and module pages) and the Unicrab startup splash.",
+  "description": "The /info dashboard (this session, context bucket, usage history, tools, skills, modules and module pages) and the Unicrab startup splash.",
   "license": "MIT",
   "permissions": {
     "sessions": { "readAll": true },

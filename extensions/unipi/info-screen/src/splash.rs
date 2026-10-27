@@ -236,7 +236,7 @@ pub fn spec(
         ]));
     }
     let mut hint = vec![
-        span("/unipi:info", Some("warning")),
+        span("/info", Some("warning")),
         dim(" dashboard   "),
         span("alt+s", Some("muted")),
         dim(" shortcuts"),

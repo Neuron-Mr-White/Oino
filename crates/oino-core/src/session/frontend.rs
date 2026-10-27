@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn fuzzy_and_indices() {
-        assert!(fuzzy("unipi:settings", "uset"));
+        assert!(fuzzy("kanboard-add", "kbad"));
         assert!(!fuzzy("model", "x"));
         assert_eq!(byte_index("añb", 2), 3);
         assert_eq!(byte_index("ab", 9), 2);

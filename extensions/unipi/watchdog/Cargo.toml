@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.watchdog: jev stuck-tool detection, /unipi:bg-detach, opt-in session caps (turns, cost, wall time, tool errors)"
+description = "unipi.watchdog: jev stuck-tool detection, /bg-detach, opt-in session caps (turns, cost, wall time, tool errors)"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

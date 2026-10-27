@@ -560,17 +560,17 @@ mod tests {
     #[test]
     fn teaches_exact_first_token() {
         let hints = [Hint {
-            teaches: Some("/unipi:kanboard".into()),
+            teaches: Some("/kanboard".into()),
             ..startup("cmd.kanboard")
         }];
         let mut store = StoreData::default();
         let mut s = Session::default();
         run(&hints, &mut store, 0, |e| {
-            s.on_input(e, "/unipi:kanboard-add my task", 0);
+            s.on_input(e, "/kanboard-add my task", 0);
         });
         assert_eq!(store.learned, Vec::<String>::new());
         run(&hints, &mut store, 0, |e| {
-            s.on_input(e, "/unipi:kanboard open", 0);
+            s.on_input(e, "/kanboard open", 0);
         });
         assert_eq!(store.learned, ["cmd.kanboard"]);
     }

@@ -147,7 +147,7 @@ pub fn details(d: &Value) -> Vec<(String, String)> {
     }
     rows.push((
         "Recall".into(),
-        "everything before stays searchable: /unipi:session-recall".into(),
+        "everything before stays searchable: /session-recall".into(),
     ));
     rows
 }
@@ -393,7 +393,7 @@ pub fn group_thousands(n: u64) -> String {
     out
 }
 
-/// `/unipi:compact-doctor` lines → `(healthy, text)`.
+/// `/compact-doctor` lines → `(healthy, text)`.
 #[must_use]
 pub fn doctor(cfg: &Config, auto_enabled: Option<bool>, has_model: bool) -> (bool, String) {
     let mut checks: Vec<(&str, &str, String)> = Vec::new();
@@ -451,7 +451,7 @@ pub fn doctor(cfg: &Config, auto_enabled: Option<bool>, has_model: bool) -> (boo
 }
 
 /// The compactor help text.
-pub const HELP: &str = "Compactor\n  /unipi:compact-vcc [keep:N]    lossless compaction now (no model call)\n  /unipi:compact-by-llm [focus]  compact now with a model-written summary\n  /unipi:session-recall <query>  search everything in this session, including compacted parts\n  /unipi:compact-stats           this session's savings\n  /unipi:compact-doctor          check settings\n\nSettings: /unipi:settings → Compactor (method, what /compact does, when to compact).";
+pub const HELP: &str = "Compactor\n  /compact-vcc [keep:N]    lossless compaction now (no model call)\n  /compact-by-llm [focus]  compact now with a model-written summary\n  /session-recall <query>  search everything in this session, including compacted parts\n  /compact-stats           this session's savings\n  /compact-doctor          check settings\n\nSettings: /settings → Compactor (method, what /compact does, when to compact).";
 
 #[cfg(test)]
 #[allow(
@@ -475,7 +475,7 @@ mod tests {
         let d = card_data(&CardInput {
             method: "vcc",
             trigger: "manual",
-            command: Some("unipi:compact-vcc".into()),
+            command: Some("compact-vcc".into()),
             tokens_before: 7900,
             tokens_after: Some(2200),
             summary_chars: 4000,
@@ -485,7 +485,7 @@ mod tests {
         });
         assert_eq!(
             headline(&d),
-            "Compacted 7.9k → 2.2k tokens · lossless · /unipi:compact-vcc"
+            "Compacted 7.9k → 2.2k tokens · lossless · /compact-vcc"
         );
         let rows = details(&d);
         assert_eq!(rows[2].1, "last 1 of 3 turns · ~500 tokens verbatim");

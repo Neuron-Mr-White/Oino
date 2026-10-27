@@ -238,7 +238,7 @@ pub(crate) fn bound_kit(text: &str, max: usize, prefix: &str) -> BoundedOutput {
 /// unipi failure text.
 pub(crate) fn failure_text(server: &str, tool: &str, message: &str) -> String {
     format!(
-        "MCP tool \"{tool}\" on server \"{server}\" failed: {message}\nConfigure servers via /unipi:settings (MCP)"
+        "MCP tool \"{tool}\" on server \"{server}\" failed: {message}\nConfigure servers via /settings (MCP)"
     )
 }
 
@@ -373,7 +373,7 @@ mod tests {
         assert_eq!(details["error"], true);
         assert_eq!(
             failure_text("srv", "t", "boom"),
-            "MCP tool \"t\" on server \"srv\" failed: boom\nConfigure servers via /unipi:settings (MCP)"
+            "MCP tool \"t\" on server \"srv\" failed: boom\nConfigure servers via /settings (MCP)"
         );
     }
 }

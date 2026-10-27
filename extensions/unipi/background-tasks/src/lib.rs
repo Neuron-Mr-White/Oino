@@ -7,7 +7,7 @@
 //! | unipi | here |
 //! |---|---|
 //! | `bg_run`, `bg_status`, `bg_logs`, `bg_kill` (schemas and texts) | tools over `tasks.*` |
-//! | `/unipi:bg [--agent] [--name "N"] <command>`, `/unipi:bg-tasks [id]` | commands |
+//! | `/bg [--agent] [--name "N"] <command>`, `/bg-tasks [id]` | commands |
 //! | `Ctrl+Alt+C` clear finished notices | shortcut `unipi.bg.clear` |
 //! | `<background-task-notification>` (followUp, wakes when `triggerOnCompletion`) | service `tasks.notification` renders the text the host delivers |
 //! | launch/completion cards | renderers for `bg_run`, `bg_logs`, `bg_kill` and the notification message |
@@ -996,8 +996,8 @@ fn register_tools(cx: &mut Init<Bg>) {
 
 fn register_ui(cx: &mut Init<Bg>) {
     cx.command(
-        Command::<Bg>::new(unipi_kit::suite::command("bg"))
-            .description("Start a shell command as a tracked background task: /unipi:bg [--agent] [--name \"Task name\"] <command>")
+        Command::<Bg>::new("bg")
+            .description("Start a shell command as a tracked background task: /bg [--agent] [--name \"Task name\"] <command>")
             .argument_hint("[--agent] [--name \"N\"] <command>")
             .run(|ext, args, cx| async move {
                 ext.bg_command(&args, &cx);
@@ -1005,7 +1005,7 @@ fn register_ui(cx: &mut Init<Bg>) {
             }),
     );
     cx.command(
-        Command::<Bg>::new(unipi_kit::suite::command("bg-tasks"))
+        Command::<Bg>::new("bg-tasks")
             .description("Open the work tray on the Background tasks tab")
             .argument_hint("[task-id]")
             .run(|ext, args, cx| async move {

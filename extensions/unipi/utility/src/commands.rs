@@ -1,10 +1,9 @@
-//! Small commands (unipi `src/commands.ts`, `src/summarize/index.ts`, `/unipi:settings`).
+//! Small commands (unipi `src/commands.ts`, `src/summarize/index.ts`).
 //!
-//! - `/unipi:settings [search]` → frontend settings hub (`openSettings`).
-//! - `/unipi:continue` / `/unipi:retry` → a turn with no text (`unipi-continue`, hidden).
-//! - `/unipi:cleanup [--dry-run] [--yes]` → allowlisted stale files, preview + confirm.
-//! - `/unipi:doctor` → diagnostics report.
-//! - `/unipi:summarize [focus]` → `/skill:summarize [focus]` as a user message.
+//! - `/continue` / `/retry` → a turn with no text (`unipi-continue`, hidden).
+//! - `/cleanup [--dry-run] [--yes]` → allowlisted stale files, preview + confirm.
+//! - `/doctor` → diagnostics report.
+//! - `/summarize [focus]` → `/skill:summarize [focus]` as a user message.
 
 use std::time::SystemTime;
 
@@ -59,7 +58,7 @@ pub async fn respond(markdown: &str) -> Result<()> {
     session::send_message(&msg, options).await
 }
 
-/// `/unipi:continue`, `/unipi:retry`.
+/// `/continue`, `/retry`.
 pub async fn continue_turn(cx: &CommandCtx) -> Result<()> {
     if busy(cx) {
         return Ok(());
@@ -80,16 +79,6 @@ pub async fn continue_turn(cx: &CommandCtx) -> Result<()> {
     .await
 }
 
-/// `/unipi:settings [search]`.
-pub fn settings(args: &str) -> Result<()> {
-    let q = args.trim();
-    let mut req = json!({"method": "openSettings"});
-    if !q.is_empty() {
-        req["query"] = json!(q);
-    }
-    ui::fire(&req)
-}
-
 fn show(p: &std::path::Path) -> String {
     unipi_kit::paths::host_path(p).map_or_else(
         || p.to_string_lossy().into_owned(),
@@ -97,7 +86,7 @@ fn show(p: &std::path::Path) -> String {
     )
 }
 
-/// Response text of `/unipi:cleanup` for a parsed argument set (pure).
+/// Response text of `/cleanup` for a parsed argument set (pure).
 #[must_use]
 pub fn cleanup_text(preview: &str, dry: bool, cancelled: bool, has_ui: bool) -> String {
     if cancelled {
@@ -106,7 +95,7 @@ pub fn cleanup_text(preview: &str, dry: bool, cancelled: bool, has_ui: bool) -> 
             if has_ui {
                 ""
             } else {
-                "\n\nRun `/unipi:cleanup --yes` to remove them."
+                "\n\nRun `/cleanup --yes` to remove them."
             }
         );
     }
@@ -116,7 +105,7 @@ pub fn cleanup_text(preview: &str, dry: bool, cancelled: bool, has_ui: bool) -> 
     )
 }
 
-/// `/unipi:cleanup`.
+/// `/cleanup`.
 pub async fn cleanup(args: &str, cx: &CommandCtx) -> Result<()> {
     if busy(cx) {
         return Ok(());
@@ -158,7 +147,7 @@ pub async fn cleanup(args: &str, cx: &CommandCtx) -> Result<()> {
     .await
 }
 
-/// `/unipi:doctor`.
+/// `/doctor`.
 pub async fn doctor(cx: &CommandCtx) -> Result<()> {
     if busy(cx) {
         return Ok(());
@@ -171,7 +160,7 @@ pub async fn doctor(cx: &CommandCtx) -> Result<()> {
     .await
 }
 
-/// The text `/unipi:summarize` sends.
+/// The text `/summarize` sends.
 #[must_use]
 pub fn summarize_prompt(focus: &str) -> String {
     let f = focus.trim();
@@ -191,13 +180,13 @@ pub fn has_skill(commands: &[Value]) -> bool {
         .any(|c| c.get("name").and_then(Value::as_str) == Some(want.as_str()))
 }
 
-/// `/unipi:summarize [focus]` (queued as a follow-up while busy).
+/// `/summarize [focus]` (queued as a follow-up while busy).
 pub async fn summarize(args: &str, cx: &CommandCtx) -> Result<()> {
     let busy = !control::is_idle();
     if !has_skill(&control::commands().unwrap_or_default()) {
         if cx.has_ui() {
             let _ = ui::notify(
-                "The summarize skill is off or missing. Turn it on in /unipi:skills.",
+                "The summarize skill is off or missing. Turn it on in /skills.",
                 "warning",
             );
         }
@@ -267,8 +256,7 @@ mod tests {
         );
         assert!(cleanup_text("p", true, false, true).starts_with("## Cleanup (dry run)"));
         assert!(
-            cleanup_text("p", false, true, false)
-                .ends_with("Run `/unipi:cleanup --yes` to remove them.")
+            cleanup_text("p", false, true, false).ends_with("Run `/cleanup --yes` to remove them.")
         );
         assert!(!cleanup_text("p", false, true, true).contains("--yes"));
     }

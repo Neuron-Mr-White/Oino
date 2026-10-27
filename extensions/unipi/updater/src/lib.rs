@@ -7,8 +7,8 @@
 //! | update overlay (changelog between versions, `Y` install, `n` skip, auto countdown) | overlay panel with the changelog, "How to update" (`oino update` / desktop updater), release page, skip ([`view::update_panel`]); no in-extension install |
 //! | remote changelog (tag → channel branch → `main`, cached per version) | same against `raw.githubusercontent.com/Neuron-Mr-White/Oino` ([`changelog`]) |
 //! | `UPDATE_CHECK` / `UPDATE_AVAILABLE` / `UPDATE_APPLIED` | same topics; `UPDATE_APPLIED` when the installed version grew since the last run |
-//! | `/unipi:readme [package]` | READMEs of bundled/installed packages under `/agent/bundled`, `/agent/extensions` ([`readme`]) as markdown panels |
-//! | `/unipi:changelog` | version list → detail from the bundled `CHANGELOG.md` (else remote) |
+//! | `/readme [package]` | READMEs of bundled/installed packages under `/agent/bundled`, `/agent/extensions` ([`readme`]) as markdown panels |
+//! | `/changelog` | merged into the core `/changelog` built-in (core commands win) |
 //! | info-screen "Updater" group | `info-screen.groups` service |
 //! | settings `updater` | same keys; `autoUpdate` `disabled`/`notify` (`auto` = `notify`) |
 
@@ -51,8 +51,6 @@ enum View {
     Instructions(CheckResult, String),
     Readmes(Vec<Readme>),
     Readme(Vec<Readme>),
-    Changelog(Vec<Entry>),
-    ChangelogEntry(Vec<Entry>),
 }
 
 #[derive(Default)]
@@ -324,25 +322,6 @@ impl Updater {
         self.open_view(&cx.cx, "readme", "READMEs", &spec, View::Readmes(readmes))
     }
 
-    async fn changelog_command(&self, cx: &CommandCtx) -> Result<()> {
-        let mut entries = bundled_changelog();
-        if entries.is_empty() {
-            let current = host::info().oino_version;
-            entries = remote_changelog(&current)
-                .await
-                .map(|t| changelog::parse(&t))
-                .unwrap_or_default();
-        }
-        let spec = view::changelog_list_spec(&entries);
-        self.open_view(
-            &cx.cx,
-            "changelog",
-            "Changelog",
-            &spec,
-            View::Changelog(entries),
-        )
-    }
-
     #[allow(
         clippy::too_many_lines,
         reason = "one match over every panel view and action"
@@ -442,23 +421,6 @@ impl Updater {
                 )?;
                 set(Some(View::Readmes(list)));
             }
-            (View::Changelog(entries), "open") => {
-                if let Some(e) = value.parse::<usize>().ok().and_then(|i| entries.get(i)) {
-                    let md = changelog::render(std::slice::from_ref(e));
-                    ui::panel_update(
-                        &panel,
-                        &json!({"spec": view::doc_spec(&md), "title": format!("Changelog — {}", e.version)}),
-                    )?;
-                    set(Some(View::ChangelogEntry(entries)));
-                }
-            }
-            (View::ChangelogEntry(entries), "back") => {
-                ui::panel_update(
-                    &panel,
-                    &json!({"spec": view::changelog_list_spec(&entries), "title": "Changelog"}),
-                )?;
-                set(Some(View::Changelog(entries)));
-            }
             _ => {}
         }
         Ok(())
@@ -516,7 +478,7 @@ impl Extension for Updater {
         });
 
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("readme"))
+            Command::<Self>::new("readme")
                 .description("Browse package README files")
                 .argument_hint("[package]")
                 .run(|ext, args, cx| async move { ext.readme_command(&args, &cx) })
@@ -530,12 +492,7 @@ impl Extension for Updater {
                 }),
         );
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("changelog"))
-                .description("Browse changelog (Keep a Changelog format)")
-                .run(|ext, _args, cx| async move { ext.changelog_command(&cx).await }),
-        );
-        cx.command(
-            Command::<Self>::new("unipi:update-check")
+            Command::<Self>::new("update-check")
                 .description("Check for an Oino update now")
                 .hidden()
                 .run_value(|ext, _args, cx| async move {

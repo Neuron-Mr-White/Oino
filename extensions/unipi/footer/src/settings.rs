@@ -128,8 +128,7 @@ pub fn defaults() -> Value {
 }
 
 impl FooterSettings {
-    /// Validates a namespace object (unknown/legacy keys ignored, `mono` → `none`, invalid →
-    /// defaults).
+    /// Validates a namespace object (unknown keys ignored, invalid → defaults).
     #[must_use]
     pub fn from_json(v: &Value) -> Self {
         let b = |k: &str, d: bool| v.pointer(k).and_then(Value::as_bool).unwrap_or(d);
@@ -144,7 +143,7 @@ impl FooterSettings {
             color_mode: match s("colorMode") {
                 Some("truecolor") => ColorMode::Truecolor,
                 Some("256") => ColorMode::Ansi256,
-                Some("none" | "mono") => ColorMode::None,
+                Some("none") => ColorMode::None,
                 _ => ColorMode::Auto,
             },
             rainbow: match s("rainbow") {
@@ -225,19 +224,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_and_legacy_values() {
+    fn defaults_and_invalid_values() {
         let d = FooterSettings::from_json(&defaults());
         assert_eq!(d, FooterSettings::from_json(&json!({})));
         assert!(d.enabled && !d.process_line);
         assert_eq!(d.icon_style, IconStyle::Nerd);
         assert_eq!(
-            FooterSettings::from_json(&json!({"colorMode": "mono"})).color_mode,
+            FooterSettings::from_json(&json!({"colorMode": "none"})).color_mode,
             ColorMode::None
         );
-        let old = FooterSettings::from_json(
-            &json!({"preset": "x", "separator": "|", "groups": {}, "glanceMode": true}),
-        );
-        assert_eq!(old, d, "old classic keys are ignored");
         let bad = FooterSettings::from_json(
             &json!({"enabled": "yes", "iconStyle": 3, "rainbow": "loud", "strip": {"cost": "no", "cache": false}}),
         );

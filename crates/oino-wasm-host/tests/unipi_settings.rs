@@ -212,7 +212,7 @@ async fn unipi_state_files_move_into_settings() {
             "unipi.workflow",
             &cx,
             HostOp::InvokeCommand {
-                name: "unipi:permission".into(),
+                name: "permission".into(),
                 args: "ask".into(),
             },
         )

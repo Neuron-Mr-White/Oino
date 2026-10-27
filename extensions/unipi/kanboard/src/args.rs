@@ -6,7 +6,7 @@ use oino_extension::command::CompletionItem;
 use crate::shapes::Task;
 use crate::shell::tokenize_args;
 
-/// `/unipi:kanboard` subcommands.
+/// `/kanboard` subcommands.
 pub const SUBCOMMANDS: &[&str] = &["open", "close", "onboard", "status", "doctor", "show"];
 /// Display-only custom types (never LLM context).
 pub const HELP_CUSTOM_TYPE: &str = "unipi:kanboard-help";
@@ -15,19 +15,19 @@ pub const DOCTOR_CUSTOM_TYPE: &str = "unipi:kanboard-doctor";
 /// In-chat board.
 pub const SHOW_CUSTOM_TYPE: &str = "unipi:kanboard-show";
 
-/// Bare `/unipi:kanboard`.
+/// Bare `/kanboard`.
 pub const HELP: &str = "Kanboard commands
-  /unipi:kanboard                       this list
-  /unipi:kanboard open [--host 127.0.0.1|0.0.0.0|tailscale] [--port N]
+  /kanboard                       this list
+  /kanboard open [--host 127.0.0.1|0.0.0.0|tailscale] [--port N]
                                         start the board and open the board panel
-  /unipi:kanboard close                 shut the board down
-  /unipi:kanboard onboard               register this project
-  /unipi:kanboard status                board and claims
-  /unipi:kanboard show [<lane>] [--all] the board, in chat (lanes + claim order)
-  /unipi:kanboard doctor                check the setup
-  /unipi:kanboard-add [-p 1-5] <title>  add a task; lines below the title are the description (paste images there)
-  /unipi:kanboard-do <request>          grant the agent task slots + a write budget
-  /unipi:kanboard-autowork start|stop   work every ready task in this session; stop just turns the offers off
+  /kanboard close                 shut the board down
+  /kanboard onboard               register this project
+  /kanboard status                board and claims
+  /kanboard show [<lane>] [--all] the board, in chat (lanes + claim order)
+  /kanboard doctor                check the setup
+  /kanboard-add [-p 1-5] <title>  add a task; lines below the title are the description (paste images there)
+  /kanboard-do <request>          grant the agent task slots + a write budget
+  /kanboard-autowork start|stop   work every ready task in this session; stop just turns the offers off
 Priority -p: 1 none · 2 low · 3 medium · 4 high · 5 urgent";
 
 fn plural(n: u64) -> &'static str {
@@ -40,7 +40,7 @@ pub fn do_text(slug: &str, cli: &str, request: &str, slots: u64, writes: u64) ->
     let s = plural(slots);
     let ws = plural(writes);
     format!(
-        "[kanboard] For this request you may use the kanboard skill on project {slug} (CLI: `{cli} --actor agent --project {slug} …`). Budget this session: {slots} task slot{s} — each `start` uses one — and {writes} board write{ws} (add, edit, link, order, move backlog↔todo, note on tasks you don't hold); /unipi:kanboard-do tops both back up. Always free: reads, and `finish`, `move <ID> blocked --comment`, `note` and `attach` on tasks you started. Work the tasks yourself in this session, in whatever mode fits: `start <ID>` right before you work it, then `finish <ID> --comment \"<summary>\"` or `move <ID> blocked --comment \"<what you need>\"` — never leave a task you started In Progress. Before starting anything, count the tasks this request needs; if that is more than {slots}, start nothing — tell me you can do {slots} now and ask whether to raise the limit (setting kanboard.doTasks) or work in batches. Read a task with `show <ID>` before editing or starting it — `list` only shows titles and a one-line excerpt. Sidekicks and subagents can read the board but not write it: brief them with the task, then update the board yourself from their report. If the request is unclear, ask me instead of guessing.\n\nRequest: {request}"
+        "[kanboard] For this request you may use the kanboard skill on project {slug} (CLI: `{cli} --actor agent --project {slug} …`). Budget this session: {slots} task slot{s} — each `start` uses one — and {writes} board write{ws} (add, edit, link, order, move backlog↔todo, note on tasks you don't hold); /kanboard-do tops both back up. Always free: reads, and `finish`, `move <ID> blocked --comment`, `note` and `attach` on tasks you started. Work the tasks yourself in this session, in whatever mode fits: `start <ID>` right before you work it, then `finish <ID> --comment \"<summary>\"` or `move <ID> blocked --comment \"<what you need>\"` — never leave a task you started In Progress. Before starting anything, count the tasks this request needs; if that is more than {slots}, start nothing — tell me you can do {slots} now and ask whether to raise the limit (setting kanboard.doTasks) or work in batches. Read a task with `show <ID>` before editing or starting it — `list` only shows titles and a one-line excerpt. Sidekicks and subagents can read the board but not write it: brief them with the task, then update the board yourself from their report. If the request is unclear, ask me instead of guessing.\n\nRequest: {request}"
     )
 }
 
@@ -80,7 +80,7 @@ pub fn glance_label(claims: &[String], autowork: bool) -> Option<String> {
     (!parts.is_empty()).then(|| format!("▣ {}", parts.join(" · ")))
 }
 
-/// Parsed `/unipi:kanboard-add`.
+/// Parsed `/kanboard-add`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AddArgs {
     /// Title (may be empty).
@@ -353,7 +353,7 @@ fn sub_description(sub: &str) -> &'static str {
     }
 }
 
-/// `/unipi:kanboard …` completions; every value is the full argument text.
+/// `/kanboard …` completions; every value is the full argument text.
 #[must_use]
 pub fn kanboard_completions(prefix: &str) -> Vec<CompletionItem> {
     let raw = prefix.trim_start();
@@ -446,7 +446,7 @@ pub fn task_completions(
         .collect()
 }
 
-/// What `/unipi:kanboard-add` completes: either items, or a request for task ids.
+/// What `/kanboard-add` completes: either items, or a request for task ids.
 #[derive(Clone, Debug)]
 pub enum AddCompletion {
     /// Static items.
@@ -463,7 +463,7 @@ const PRIORITIES: &[(&str, &str)] = &[
     ("5", "urgent"),
 ];
 
-/// `/unipi:kanboard-add …` completions.
+/// `/kanboard-add …` completions.
 #[must_use]
 pub fn add_completions(prefix: &str) -> AddCompletion {
     let (before, token) = match prefix.rfind(char::is_whitespace) {
@@ -536,7 +536,7 @@ pub fn add_completions(prefix: &str) -> AddCompletion {
     AddCompletion::Items(Vec::new())
 }
 
-/// `/unipi:kanboard-do …`: a trailing task-id-like token → `(token, before, title_search)`.
+/// `/kanboard-do …`: a trailing task-id-like token → `(token, before, title_search)`.
 #[must_use]
 pub fn do_completion_target(prefix: &str) -> Option<(String, String, bool)> {
     let at = prefix.rfind(' ');
@@ -552,7 +552,7 @@ pub fn do_completion_target(prefix: &str) -> Option<(String, String, bool)> {
     Some((token.to_owned(), before.to_owned(), id_like))
 }
 
-/// `/unipi:kanboard-autowork` completions.
+/// `/kanboard-autowork` completions.
 #[must_use]
 pub fn autowork_completions(prefix: &str) -> Vec<CompletionItem> {
     let p = prefix.trim().to_lowercase();

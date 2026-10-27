@@ -270,7 +270,7 @@ mod tests {
             "ok",
             "go ahead",
             "continue",
-            "/unipi:plan",
+            "/plan",
             "yes.",
         ] {
             assert!(!decide(&input(t, None), None).rename, "{t}");

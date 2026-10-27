@@ -66,7 +66,7 @@ oino --mode json "List the crates"      # JSON event stream
 oino --mode acp                         # Agent Client Protocol on stdio (Zed, …)
 ```
 
-Inside the TUI: `/model` picks a model, `/settings` opens settings, `/unipi:info` shows the
+Inside the TUI: `/model` picks a model, `/settings` opens settings, `/info` shows the
 bundled extensions, `/hotkeys` lists key bindings, `ctrl+d` exits.
 
 ## What's inside

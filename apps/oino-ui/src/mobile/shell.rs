@@ -1039,7 +1039,7 @@ impl MobileShell {
                 .panel(crate::model::kanban::BOARD_PANEL)
                 .is_some();
             if !has {
-                pane.update(cx, |p, cx| p.run_prompt("/unipi:kanboard", cx));
+                pane.update(cx, |p, cx| p.run_prompt("/kanboard", cx));
             }
         }
         self.sheet = None;

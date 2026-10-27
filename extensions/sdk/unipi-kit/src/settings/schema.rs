@@ -207,7 +207,7 @@ pub enum Kind {
     },
     /// Runs a command through `command-invoke` (unipi command runners).
     Action {
-        /// Command name (`unipi:hint-reset`).
+        /// Command name (`hint-reset`).
         command: String,
     },
     /// Nested page (fields use full keys).
@@ -780,7 +780,7 @@ mod tests {
                         vec![choice("native", "Native", "OS notifications")],
                     ))
                     .field(Field::secret("ntfy.token", "ntfy token").scope(Scope::Global))
-                    .field(Field::action("test", "Send test", "unipi:notify-test"))
+                    .field(Field::action("test", "Send test", "notify-test"))
                     .field(Field::number("timeoutMs", "Timeout").with_kind(|k| {
                         if let Kind::Number {
                             unit,
@@ -819,7 +819,7 @@ mod tests {
         );
         assert_eq!(
             fields[3],
-            json!({"key": "test", "type": "action", "label": "Send test", "command": "unipi:notify-test"})
+            json!({"key": "test", "type": "action", "label": "Send test", "command": "notify-test"})
         );
         assert_eq!(fields[4]["unit"], "ms");
         let back: Namespace =

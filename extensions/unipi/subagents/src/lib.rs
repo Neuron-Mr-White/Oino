@@ -5,7 +5,7 @@
 //! | `run_subagent {title, task, profile, is_background?, resume?}` (profile list in the schema) | tool; nested agents via host `agents` ([`child`]) |
 //! | `read_subagent {agent_id?, block?, timeout?}` (core, shared with fusion) | tool here; external owners via service `subagents.register-external` + `subagent-reader.read` |
 //! | profiles: built-ins + `~/.unipi/config/agents`, `<ws>/.unipi/config/agents` | built-ins + `/ext-global/profiles`, `.oino/agents` ([`profiles`]) |
-//! | `/unipi:subagents` (tray tab), `/unipi:agents` (profile manager) | commands; tray tab via `work-tray.tab` ([`view`]) |
+//! | `/subagents` (tray tab), `/agents` (profile manager) | commands; tray tab via `work-tray.tab` ([`view`]) |
 //! | `Ctrl+B` (all foreground runs → background) | shortcut `unipi.subagents.foreground` |
 //! | `subagent-step` entries, `subagent-completion` messages, cards | entries/messages + renderers |
 //! | prompt section `subagents` | `before_agent_start` `systemPromptOptions.sections.subagents` |
@@ -57,7 +57,7 @@ pub const EXTENSION_ID: &str = "unipi.subagents";
 /// Settings namespace.
 pub const NAMESPACE: &str = "subagents";
 /// Agents manager command.
-pub const AGENTS_COMMAND: &str = "unipi:agents";
+pub const AGENTS_COMMAND: &str = "agents";
 /// Service an external `read_subagent` owner (fusion) serves.
 pub const READER_SERVICE: &str = "subagent-reader.read";
 /// Profile list service (graph).
@@ -1241,7 +1241,7 @@ impl Subagents {
         }
     }
 
-    // ── /unipi:agents ──────────────────────────────────────────────────────
+    // ── /agents ──────────────────────────────────────────────────────
 
     async fn pick_model() -> Option<Option<String>> {
         const DEFAULT: &str = "Default subagent model (recommended)";
@@ -1768,7 +1768,7 @@ impl Extension for Subagents {
             cx.renderer(target, key, |ext, req, cx| ext.render(&req, &cx));
         }
         cx.command(
-            Command::<Self>::new(suite::command("subagents"))
+            Command::<Self>::new("subagents")
                 .description("Open the Subagents tab of the work tray (also ↓ from an empty input)")
                 .run(|ext, _args, cx| async move {
                     if ext.sessions.with(cx.session_id(), |s| s.records.is_empty()) {

@@ -3,12 +3,11 @@
 //!
 //! | unipi | here |
 //! |---|---|
-//! | `/unipi:btw [question]` → panel replacing the editor | `editorReplace` panel `unipi.btw/panel` |
+//! | `/btw [question]` → panel replacing the editor | `editorReplace` panel `unipi.btw/panel` |
 //! | fresh in-memory session seeded with the branch, tools `read, grep, find, ls`, main model + thinking | nested agent `seed: branchCopy`, `persistence: memory`, `extensions: none`, `ui: none` |
 //! | streaming answer, tool lines (`… Reading p` → `✓ Read p`) | panel updates coalesced to ≤ 20/s |
 //! | one answer at a time, history (↑/↓), `Ctrl+C` stop, `Esc` close (stream continues) | panel actions/keys; history in memory, cleared on `session_start` / `session_tree` / shutdown |
 //! | print mode: answer as a notification | no UI ⇒ `notify` |
-//! | legacy `btw-note` renderer + `context` filter | renderer + `context` hook |
 //! | `unipi.btw.api` (`ask`, `list`) | services `btw.ask`, `btw.list` |
 
 #![cfg_attr(
@@ -31,12 +30,9 @@ use futures::StreamExt;
 use oino_extension::agents::Agent;
 use oino_extension::prelude::*;
 use oino_extension::sync::SessionMap;
-use oino_extension::wit::registry::RendererTarget;
 use unipi_kit::ous::{dim, key_hints, span, text};
 use unipi_kit::services::point;
 
-/// Legacy custom message type.
-pub const BTW_MESSAGE_TYPE: &str = "btw-note";
 /// Panel id.
 pub const PANEL: &str = "unipi.btw/panel";
 /// unipi `BTW_SYSTEM_PROMPT`.
@@ -495,7 +491,7 @@ impl Btw {
             return;
         }
         if question.is_empty() {
-            let _ = ui::notify("usage: /unipi:btw <question>", "warning");
+            let _ = ui::notify("usage: /btw <question>", "warning");
             return;
         }
         let _ = ui::notify(&format!("btw: {question}"), "info");
@@ -590,56 +586,10 @@ fn spawn(fut: impl Future<Output = ()> + 'static) {
     drop(fut);
 }
 
-/// Legacy `btw-note` card.
-#[must_use]
-pub fn note_card(message: &Value, expanded: bool) -> Value {
-    let content = message
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or("[non-text btw message]");
-    let mut children = vec![
-        text(json!([{"text": "[BTW]", "tone": "accent", "bold": true}])),
-        text(content),
-    ];
-    if expanded && let Some(d) = message.get("details") {
-        let g = |k: &str| d.get(k).and_then(Value::as_str).unwrap_or_default();
-        children.push(text(json!([dim(&format!(
-            "model: {}/{} · thinking: {}",
-            g("provider"),
-            g("model"),
-            g("thinkingLevel")
-        ))])));
-        if let Some(u) = d.get("usage") {
-            children.push(text(json!([dim(&format!(
-                "tokens: in {} · out {} · total {}",
-                u["input"], u["output"], u["totalTokens"]
-            ))])));
-        }
-    }
-    json!({"t": "card", "body": {"t": "stack", "direction": "vertical", "gap": 0, "children": children}})
-}
-
-/// `context` hook: hides legacy `btw-note` messages from the model.
-#[must_use]
-pub fn filter_context(messages: &Value) -> Value {
-    Value::Array(
-        messages
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|m| {
-                !(m.get("role").and_then(Value::as_str) == Some("custom")
-                    && m.get("customType").and_then(Value::as_str) == Some(BTW_MESSAGE_TYPE))
-            })
-            .cloned()
-            .collect(),
-    )
-}
-
 impl Extension for Btw {
     async fn init(&'static self, cx: &mut Init<Self>) -> Result<()> {
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("btw"))
+            Command::<Self>::new("btw")
                 .description("Ask a side question in an inline panel — read-only, never reaches the main agent.")
                 .argument_hint("[question]")
                 .run(|ext, args, cx| async move {
@@ -648,23 +598,6 @@ impl Extension for Btw {
                 })
                 .complete(|_e, _p, _c| async { Vec::new() }),
         );
-        cx.renderer(
-            RendererTarget::CustomMessage,
-            BTW_MESSAGE_TYPE,
-            |_e, req, _cx| {
-                Some(note_card(
-                    req.get("data")?,
-                    req.get("expanded")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                ))
-            },
-        );
-        cx.on(EventKind::Context, |_e, ev, _cx| async move {
-            Ok(Some(
-                json!({"messages": filter_context(ev.get("messages").unwrap_or(&Value::Null))}),
-            ))
-        });
         for kind in [EventKind::SessionStart, EventKind::SessionTree] {
             cx.on(kind, |ext, _ev, cx| async move {
                 ext.clear(cx.session_id());
@@ -758,19 +691,5 @@ mod tests {
         assert_eq!(spec["children"][0]["label"], " /btw 1/1 ");
         assert_eq!(spec["children"][2]["onSubmit"], "ask");
         assert_eq!(panel_spec(&[], 0, true)["children"][2]["t"], "text");
-    }
-
-    #[test]
-    fn legacy_notes() {
-        let msgs = json!([{"role": "custom", "customType": "btw-note"}, {"role": "user"}]);
-        assert_eq!(filter_context(&msgs), json!([{"role": "user"}]));
-        let c = note_card(
-            &json!({"content": "hi", "details": {"provider": "p", "model": "m", "thinkingLevel": "low"}}),
-            true,
-        );
-        assert_eq!(
-            c["body"]["children"][2]["value"][0]["text"],
-            "model: p/m · thinking: low"
-        );
     }
 }

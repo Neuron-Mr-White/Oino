@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.background-tasks: bg_run/bg_status/bg_logs/bg_kill over host tasks, /unipi:bg, work-tray tab, completion notifications"
+description = "unipi.background-tasks: bg_run/bg_status/bg_logs/bg_kill over host tasks, /bg, work-tray tab, completion notifications"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

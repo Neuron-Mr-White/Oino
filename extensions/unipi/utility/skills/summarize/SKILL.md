@@ -2,7 +2,7 @@
 name: summarize
 description: |
   Use for every final reply that ends a piece of work (a task, a fix, an
-  investigation), and for /unipi:summarize, unless the user asked for full
+  investigation), and for /summarize, unless the user asked for full
   detail, raw output, or exact text. Shape: one-sentence answer, numbered
   sections, problems and fixes, not verified, still open, typed questions.
 ---
@@ -10,12 +10,12 @@ description: |
 # Summarize for the user
 
 Use this skill for the final reply after work (a task, an investigation, a
-fix), and when the user runs /unipi:summarize. "The work" below means the
+fix), and when the user runs /summarize. "The work" below means the
 latest piece of work: the user's last request, the tool calls and results
 that answered it, and your last reply. Use the rest of the session only as
 context to explain it.
 
-When the user runs /unipi:summarize, summarize your last reply again in
+When the user runs /summarize, summarize your last reply again in
 this shape. Do not call tools. If text follows this skill, it is the
 user's question or focus. Answer it about your last reply. Words like "it"
 or "this" refer to what your last reply covered. Use earlier parts of the

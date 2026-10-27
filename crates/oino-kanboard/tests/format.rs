@@ -46,7 +46,7 @@ fn sample() -> Task {
         mode: RunMode::Goal,
         goal: Some("goal-7".into()),
         started: Utc.with_ymd_and_hms(2026, 9, 24, 10, 5, 0).unwrap(),
-        owner: oino_kanboard::model::RunOwner::System,
+        owner: oino_kanboard::model::RunOwner::Agent,
     });
     task.push_activity(
         Utc.with_ymd_and_hms(2026, 9, 24, 10, 5, 0).unwrap(),
@@ -215,7 +215,7 @@ fn rejects_missing_frontmatter_and_unterminated_blocks() {
 
 #[test]
 fn rejects_a_broken_run_block() {
-    let text = VALID_TASK.replace("run:\n", "run:\n  session: s1\n  pid: twelve\n  host: h\n  mode: direct\n  started: 2026-09-24T10:00:00Z\n");
+    let text = VALID_TASK.replace("run:\n", "run:\n  session: s1\n  pid: twelve\n  host: h\n  mode: none\n  started: 2026-09-24T10:00:00Z\n");
     let problems = problems_for(&text);
     assert!(
         problems
@@ -401,114 +401,6 @@ fn paragraph_breaks_collapse_and_never_join_the_next_entry() {
 }
 
 #[test]
-fn legacy_strategy_plan_and_runner_run_blocks_still_parse_and_round_trip() {
-    // Files written before the runner was removed carry `strategy:`/`plan:`
-    // and runner-owned `run:` blocks (no `owner:`). They must keep parsing
-    // cleanly and re-render byte-for-byte (the board is strict about canonical
-    // form), even though nothing exposes those fields any more.
-    let (task, problems) = format::parse(
-        "T-1.md",
-        "---\nid: T-1\ntitle: t\nstatus: todo\npriority: none\norder: 1000\ndeps: []\nlabels: []\nstrategy: swarm\nplan: true\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\n---\n\nBody line one\n",
-    );
-    let task = task.unwrap();
-    assert_eq!(problems, [] as [Problem; 0]);
-    assert_eq!(task.strategy, Some(oino_kanboard::model::Strategy::Swarm));
-    assert_eq!(task.plan, Some(true));
-    let rendered = format::render(&task);
-    assert!(rendered.contains("strategy: swarm"));
-    assert!(rendered.contains("plan: true"));
-
-    // Old file without the fields → None, no problems.
-    let (task, problems) = format::parse(
-        "T-1.md",
-        "---\nid: T-1\ntitle: t\nstatus: todo\npriority: none\norder: 1000\ndeps: []\nlabels: []\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\nrun:\n  session: s1\n  pid: 1\n  host: h\n  mode: direct\n  started: 2026-01-01T00:00:00Z\n---\n\nBody\n",
-    );
-    assert!(problems.is_empty(), "{problems:?}");
-    let task = task.unwrap();
-    assert_eq!(task.strategy, None);
-    assert_eq!(task.plan, None);
-    // run.mode "direct" parses via the alias → RunMode::None
-    assert_eq!(task.run.unwrap().mode.as_str(), "none");
-}
-
-const LEGACY_TASK: &str = "---
-id: FIX-900
-title: Routed by the old runner
-status: in_progress
-priority: high
-order: 1000
-deps: []
-labels: []
-strategy: goal
-plan: true
-created: 2026-09-24T10:00:00Z
-updated: 2026-09-24T10:05:00Z
-run:
-  session: old-runner
-  pid: 999999
-  host: elsewhere
-  mode: goal
-  goal: goal-7
-  started: 2026-09-24T10:05:00Z
----
-
-Body text.
-
-## Activity
-- 2026-09-24T10:00:00Z [user] created
-- 2026-09-24T10:05:00Z [system] claimed by session old-runner (mode goal) pid 999999 on elsewhere
-";
-
-#[test]
-fn a_board_with_legacy_strategy_plan_files_validates_and_hides_them() {
-    let fixture = Fixture::new();
-    let path = common::write_task_file(&fixture, "FIX-900", LEGACY_TASK);
-
-    // validate: clean, nothing to fix.
-    let checked = commands::validate(&fixture.layout, fixture.project.clone(), false).unwrap();
-    assert!(checked.problems.is_empty(), "{:?}", checked.problems);
-    let fixed = commands::validate(&fixture.layout, fixture.project.clone(), true).unwrap();
-    assert!(
-        fixed.fixed.is_empty(),
-        "already canonical: {:?}",
-        fixed.fixed
-    );
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), LEGACY_TASK);
-
-    // The board loads it; the JSON no longer exposes the routing fields.
-    let listed = fixture.list_json();
-    let entry = &listed["tasks"][0];
-    assert_eq!(entry["id"], "FIX-900");
-    assert!(
-        listed["problems"].as_array().unwrap().is_empty(),
-        "{listed}"
-    );
-    assert!(entry.get("strategy").is_none(), "{entry}");
-    assert!(entry.get("plan").is_none(), "{entry}");
-    assert_eq!(entry["run"]["owner"], "system");
-
-    // A write keeps the legacy lines (the file stays canonical).
-    commands::note(
-        &fixture.layout,
-        fixture.project.clone(),
-        &fixture.common,
-        "FIX-900",
-        "still here",
-    )
-    .unwrap();
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("strategy: goal\nplan: true\n"), "{text}");
-    let checked = commands::validate(&fixture.layout, fixture.project.clone(), false).unwrap();
-    assert!(checked.problems.is_empty(), "{:?}", checked.problems);
-
-    // The CLI no longer accepts the flags.
-    let output = common::cli(&fixture, &["add", "x", "--strategy", "goal"]);
-    assert!(!output.status.success());
-    let output = common::cli(&fixture, &["edit", "FIX-900", "--plan", "yes"]);
-    assert!(!output.status.success());
-}
-
-#[test]
 fn pi_settings_patch_validates_and_preserves_other_keys() {
     use oino_kanboard::serve::settings::{
         load_pi_settings_at, patch_pi_settings_at, validate_pi_patch,
@@ -545,12 +437,16 @@ fn pi_settings_patch_validates_and_preserves_other_keys() {
     )
     .unwrap();
     assert_eq!(good["chainGate"], "done");
-    // Keys of the removed runner (routing, queue) and the removed board
-    // "blocking" task default are ignored, not written and not refused.
-    let legacy = validate_pi_patch(
-        &serde_json::json!({"defaultStrategy": "swarm", "defaultPlan": true, "queueMax": 5, "blocking": "ask"}).as_object().unwrap().clone(),
-    ).unwrap();
-    assert!(legacy.is_empty(), "{legacy:?}");
+    // Unknown keys are refused.
+    assert!(
+        validate_pi_patch(
+            &serde_json::json!({"queueMax": 5})
+                .as_object()
+                .unwrap()
+                .clone()
+        )
+        .is_err()
+    );
     // Invalid values are rejected.
     assert!(
         validate_pi_patch(

@@ -61,7 +61,7 @@ pub(crate) fn error_banner(
                                 .variant(Variant::Outline)
                                 .size(BtnSize::Sm)
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    this.run_prompt("/unipi:retry", cx);
+                                    this.run_prompt("/retry", cx);
                                 })),
                         )
                         .child(

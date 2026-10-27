@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.utility: settings hub entry, continue/retry, auto-rename, /unipi:answer, attachments, image tools, render styles, doctor/cleanup/move"
+description = "unipi.utility: settings hub entry, continue/retry, auto-rename, /answer, attachments, image tools, render styles, doctor/cleanup/move"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

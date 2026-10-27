@@ -207,9 +207,9 @@ pub fn header_request(
                 json!(""),
                 json!("Hi, I'm Unicrab."),
                 json!(""),
-                json!([dim("/unipi:settings  every module's options")]),
+                json!([dim("/settings  every module's options")]),
                 json!([dim("Alt+S            shortcut overlay")]),
-                json!([dim("/unipi:hint      browse every hint")]),
+                json!([dim("/hint      browse every hint")]),
                 json!(""),
                 json!([span(lore, Some("warning"))]),
             ]),
@@ -227,7 +227,7 @@ pub fn header_request(
                 json!(""),
                 Value::Array(small_title),
                 json!(""),
-                json!([dim("/unipi:settings · Alt+S · /unipi:hint")]),
+                json!([dim("/settings · Alt+S · /hint")]),
             ]),
         ],
     );
@@ -332,7 +332,7 @@ mod tests {
         Hint {
             id: "cmd.hint".into(),
             category: Category::Command,
-            text: "Try /unipi:hint".into(),
+            text: "Try /hint".into(),
             when: When::Startup(StartupTag::Startup),
             max_shows: None,
             teaches: None,
@@ -356,10 +356,7 @@ mod tests {
         assert_eq!(w["method"], "setWidget");
         assert_eq!(w["widgetKey"], WIDGET_KEY);
         assert_eq!(w["widgetPlacement"], "aboveEditor");
-        assert_eq!(
-            w["widgetLines"][0],
-            "▀▄▀█▀▄▀ Try /unipi:hint  command · alt+h ›"
-        );
+        assert_eq!(w["widgetLines"][0], "▀▄▀█▀▄▀ Try /hint  command · alt+h ›");
         assert_eq!(
             w["widgetSpec"]["children"].as_array().map(Vec::len),
             Some(3)

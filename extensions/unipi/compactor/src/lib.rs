@@ -6,11 +6,11 @@
 //! | every compaction through `session_before_compact` → `vcc` (zero-LLM) or `llm` | [`Compactor::before_compact`]; `llm` uses host `models.summarize-default` |
 //! | vcc: full raw branch, origin marks, redaction, fixed section shares, recall note | [`source`], [`summary`], [`brief`], [`cut`], [`plan`] |
 //! | percent trigger: compaction draft at `turn_end`, cooldown 60 s, growth 4 000 | [`config::decide`] + `turn_end` boundary drafts |
-//! | `/unipi:compact-then <prompt>` via `input` (+ autocomplete entry) | `input` handler + `complete-input` |
+//! | `/compact-then <prompt>` via `input` (+ autocomplete entry) | `input` handler + `complete-input` |
 //! | compaction card `unipi-compaction` + renderer, `COMPACTOR_COMPACTED` | custom entry + OUS renderer, bus topic |
 //! | active work (`registerCompactionContext`) | fan-out `compaction-context.provide` |
 //! | `session_recall`, `context_budget` | tools ([`recall`], [`card::context_budget`]) |
-//! | `/unipi:compact-vcc`, `-by-llm`, `session-recall`, `compact-stats`, `-doctor`, `-help` | commands |
+//! | `/compact-vcc`, `-by-llm`, `session-recall`, `compact-stats`, `-doctor`, `-help` | commands |
 //! | info-screen "Compactor" group | service `info-screen.groups` |
 //! | `compactor` settings | [`config`] |
 
@@ -47,13 +47,12 @@ use crate::config::{AutoState, Config, EXTENSION_ID, Method, NAMESPACE};
 use crate::cut::{COMPACTOR_INSTRUCTION, apply_tail_budget, build_own_cut, parse_instructions};
 use crate::plan::{PlanInput, Stats, plan_lossless};
 
-const LEGACY_HIDDEN_TYPES: &[&str] = &["compactor-auto-continue", "unipi-compactor-resume"];
 const RECALL_TYPE: &str = "compactor-recall";
 
-/// `/unipi:compact-then <prompt>` match → prompt.
+/// `/compact-then <prompt>` match → prompt.
 #[must_use]
 pub fn compact_then_prompt(text: &str) -> Option<String> {
-    let rest = text.strip_prefix("/unipi:compact-then")?;
+    let rest = text.strip_prefix("/compact-then")?;
     if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
         return None;
     }
@@ -498,7 +497,7 @@ impl Compactor {
         let prompt = compact_then_prompt(&text)?;
         let streaming = ev.get("streamingBehavior").and_then(Value::as_str);
         match streaming {
-            None => self.compact_now(cx, prompt, "unipi:compact-then"),
+            None => self.compact_now(cx, prompt, "compact-then"),
             Some(mode) => {
                 let mode = if mode == "followUp" {
                     QueueMode::FollowUp
@@ -534,7 +533,7 @@ impl Compactor {
             }
         });
         if let Some((prompt, _)) = queued {
-            self.compact_now(cx, prompt, "unipi:compact-then");
+            self.compact_now(cx, prompt, "compact-then");
         }
     }
 
@@ -649,7 +648,7 @@ impl Compactor {
                             let data = card::card_data(&card_input(
                                 cfg.method,
                                 "manual",
-                                Some("unipi:compact-then".into()),
+                                Some("compact-then".into()),
                                 before,
                                 stats.as_ref(),
                                 sections,
@@ -669,7 +668,7 @@ impl Compactor {
                     None => {
                         if cfg.notify && cx.has_ui() {
                             let _ = ui::notify(
-                                "compactor: nothing to compact for /unipi:compact-then",
+                                "compactor: nothing to compact for /compact-then",
                                 "warning",
                             );
                         }
@@ -767,7 +766,7 @@ impl Compactor {
     }
 
     async fn session_recall_command(&self, args: &str, cx: &CommandCtx) {
-        let usage_text = "Usage: /unipi:session-recall <query>";
+        let usage_text = "Usage: /session-recall <query>";
         let say = |m: &str| {
             if cx.has_ui() {
                 let _ = ui::notify(m, "warning");
@@ -805,10 +804,7 @@ impl Compactor {
             SendOptions {
                 trigger_turn: true,
                 deliver_as: (!idle).then_some(Delivery::FollowUp),
-                provenance: Some(provenance(
-                    "Session recall",
-                    "Results from /unipi:session-recall",
-                )),
+                provenance: Some(provenance("Session recall", "Results from /session-recall")),
             },
         )
         .await;
@@ -949,26 +945,6 @@ impl Extension for Compactor {
             let _ = ext.settings.on_changed(&ev.payload);
             Ok(())
         });
-        cx.on(EventKind::Context, |_ext, ev, _cx| async move {
-            let messages: Vec<Value> = ev
-                .get("messages")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            let n = messages.len();
-            let kept: Vec<Value> = messages
-                .into_iter()
-                .filter(|m| {
-                    m.get("role").and_then(Value::as_str) != Some("custom")
-                        || !LEGACY_HIDDEN_TYPES.contains(
-                            &m.get("customType")
-                                .and_then(Value::as_str)
-                                .unwrap_or_default(),
-                        )
-                })
-                .collect();
-            Ok((kept.len() != n).then(|| json!({"messages": kept})))
-        });
         cx.on(EventKind::Input, |ext, ev, cx| async move {
             Ok(ext.on_input(&ev, &cx))
         });
@@ -1009,10 +985,10 @@ impl Extension for Compactor {
                 return None;
             }
             let q = before[1..].to_lowercase();
-            if !"unipi:compact-then".contains(&q) && !"compact-then".starts_with(&q) {
+            if !"compact-then".contains(&q) && !"compact-then".starts_with(&q) {
                 return None;
             }
-            Some(json!([{"source": EXTENSION_ID, "items": [{"value": "unipi:compact-then", "label": "unipi:compact-then", "description": "Compacts, then sends a prompt once it lands (not a registered command)"}]}]))
+            Some(json!([{"source": EXTENSION_ID, "items": [{"value": "compact-then", "label": "compact-then", "description": "Compacts, then sends a prompt once it lands (not a registered command)"}]}]))
         });
         cx.service(
             fan::INFO_SCREEN_GROUPS,
@@ -1060,26 +1036,26 @@ impl Extension for Compactor {
         );
 
         cx.command(
-            Command::<Self>::new("unipi:compact-vcc")
+            Command::<Self>::new("compact-vcc")
                 .description("Lossless compaction now — instant structured summary, no model call (keep:N keeps N recent turns)")
                 .run(|ext, args, cx| async move {
-                    ext.run_compaction(&cx, Method::Vcc, &args, "unipi:compact-vcc").await;
+                    ext.run_compaction(&cx, Method::Vcc, &args, "compact-vcc").await;
                     Ok(())
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:compact-by-llm")
+            Command::<Self>::new("compact-by-llm")
                 .description(
                     "Compact now with a model-written summary (optional text focuses the summary)",
                 )
                 .run(|ext, args, cx| async move {
-                    ext.run_compaction(&cx, Method::Llm, &args, "unipi:compact-by-llm")
+                    ext.run_compaction(&cx, Method::Llm, &args, "compact-by-llm")
                         .await;
                     Ok(())
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:session-recall")
+            Command::<Self>::new("session-recall")
                 .description("Recall earlier parts of this session. Plain keywords work best; add scope:all to reach edited or retried turns.")
                 .run(|ext, args, cx| async move {
                     ext.session_recall_command(&args, &cx).await;
@@ -1087,7 +1063,7 @@ impl Extension for Compactor {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:compact-stats")
+            Command::<Self>::new("compact-stats")
                 .description("Show this session's compaction savings")
                 .run(|_ext, _args, cx| async move {
                     if cx.has_ui() {
@@ -1097,7 +1073,7 @@ impl Extension for Compactor {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:compact-doctor")
+            Command::<Self>::new("compact-doctor")
                 .description("Check compaction settings and leftovers")
                 .run(|ext, _args, cx| async move {
                     let auto = control::settings().ok().and_then(|s| {
@@ -1113,7 +1089,7 @@ impl Extension for Compactor {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:compact-help")
+            Command::<Self>::new("compact-help")
                 .description("Show compactor help")
                 .run(|_ext, _args, cx| async move {
                     if cx.has_ui() {
@@ -1146,15 +1122,12 @@ mod tests {
 
     #[test]
     fn compact_then() {
+        assert_eq!(compact_then_prompt("/compact-then"), Some(String::new()));
         assert_eq!(
-            compact_then_prompt("/unipi:compact-then"),
-            Some(String::new())
-        );
-        assert_eq!(
-            compact_then_prompt("/unipi:compact-then  next task \n more"),
+            compact_then_prompt("/compact-then  next task \n more"),
             Some("next task \n more".into())
         );
-        assert_eq!(compact_then_prompt("/unipi:compact-thenx"), None);
+        assert_eq!(compact_then_prompt("/compact-thenx"), None);
         assert_eq!(compact_then_prompt("hello"), None);
         assert_eq!(
             join_instructions(&[Some(" a "), None, Some(""), Some("b")]),

@@ -164,7 +164,7 @@ fn unauthorized() -> Response {
     plain_page(
         StatusCode::UNAUTHORIZED,
         "kanboard: unauthorized",
-        "Open the link printed by <code>/unipi:kanboard open</code> — it carries the access token for this board.",
+        "Open the link printed by <code>/kanboard open</code> — it carries the access token for this board.",
     )
 }
 

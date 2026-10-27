@@ -214,7 +214,7 @@ fn a_dead_pid_on_this_host_reads_as_stale_and_can_be_released_by_a_user() {
         mode: RunMode::None,
         goal: None,
         started: fixture.common.now,
-        owner: oino_kanboard::model::RunOwner::System,
+        owner: oino_kanboard::model::RunOwner::Agent,
     });
     let board =
         oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone()).unwrap();
@@ -294,7 +294,7 @@ fn a_run_claimed_on_another_host_is_unknown() {
         mode: RunMode::None,
         goal: None,
         started: fixture.common.now,
-        owner: oino_kanboard::model::RunOwner::System,
+        owner: oino_kanboard::model::RunOwner::Agent,
     });
     oino_kanboard::board::Board::open(&fixture.layout, fixture.project.clone())
         .unwrap()

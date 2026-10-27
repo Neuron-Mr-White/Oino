@@ -210,7 +210,7 @@ pub(crate) fn namespace() -> Namespace {
                         .description("Strip image references from fetched content."),
                 )
                 .field(
-                    Field::action("cache.clear", "Clear web cache…", "unipi:web-cache-clear")
+                    Field::action("cache.clear", "Clear web cache…", "web-cache-clear")
                         .description("Drop every cached response (with a confirm step)."),
                 ),
         )
@@ -357,7 +357,7 @@ mod tests {
                 .as_array()
                 .and_then(|f| f.last())
                 .map(|f| f["command"].clone()),
-            Some(json!("unipi:web-cache-clear"))
+            Some(json!("web-cache-clear"))
         );
     }
 

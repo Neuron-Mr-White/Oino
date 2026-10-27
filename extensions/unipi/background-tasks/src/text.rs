@@ -1,4 +1,4 @@
-//! Pure text helpers ported from unipi `types.ts` (names, durations, `/unipi:bg` arguments,
+//! Pure text helpers ported from unipi `types.ts` (names, durations, `/bg` arguments,
 //! completion-delivery guidance, snapshot lists, the notification XML).
 
 use crate::snapshot::{Snapshot, Status};
@@ -113,7 +113,7 @@ pub fn task_display_name(
         .unwrap_or_else(|| "Background task".to_owned())
 }
 
-/// Parsed `/unipi:bg` arguments.
+/// Parsed `/bg` arguments.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BgArgs {
     /// `--name`.

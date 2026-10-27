@@ -4,7 +4,7 @@
   "name": "Kanboard",
   "version": "3.0.0",
   "kind": "extension",
-  "description": "A persistent task board per project: /unipi:kanboard (open the board panel, onboard, status, show, doctor), -add, -do budgets and autowork; a write guard on the agent's oino-kanboard calls, a settle monitor that nudges unfinished claims, progress reminders and transcript badges.",
+  "description": "A persistent task board per project: /kanboard (open the board panel, onboard, status, show, doctor), -add, -do budgets and autowork; a write guard on the agent's oino-kanboard calls, a settle monitor that nudges unfinished claims, progress reminders and transcript badges.",
   "license": "MIT",
   "resources": { "skills": ["skills"] },
   "permissions": {

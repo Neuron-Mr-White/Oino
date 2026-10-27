@@ -8,8 +8,8 @@
 //! | `read_subagent` reader for sidekick handoffs | service `subagent-reader.read`, registered with `unipi.subagents` |
 //! | `sidekick-step` entries, `sidekick-completion` messages | entries/messages + renderers |
 //! | lead policy section, edit nudge (once per turn), bash nudge (every 4 non-trivial) | `before_agent_start` section `fusion-lead-policy`; `tool_result` annotations with provenance |
-//! | `/unipi:model` picker, `Alt+Enter` startup default, `/model` autocomplete boost | sequential dialogs ([`Fusion::picker`]); startup pair in the preset; `complete-input` |
-//! | `/unipi:fusion-stats`, preset editor runner | command; hidden command `unipi:fusion-preset` |
+//! | `/fusion` picker, `Alt+Enter` startup default, `/model` autocomplete boost | sequential dialogs ([`Fusion::picker`]); startup pair in the preset; `complete-input` |
+//! | `/fusion-stats`, preset editor runner | command; hidden command `fusion-preset` |
 //! | presets (global + project), `FUSION_STATUS` sticky, wake widget, wait source | [`preset`]; topic `unipi:fusion:status`; widget `fusion-sidekick-wake`; `wait-source` |
 //! | `unipi.fusion.api` | services `fusion.status`, `fusion.set-pair` |
 //! | settings `fusion` (`startup.*`, `default.*`) | namespace |
@@ -57,14 +57,15 @@ use crate::preset::{Active, Pair, Preset, Price};
 pub const EXTENSION_ID: &str = "unipi.fusion";
 /// Settings namespace.
 pub const NAMESPACE: &str = "fusion";
-/// `/unipi:model`.
-pub const MODEL_COMMAND: &str = "unipi:model";
+/// `/fusion`: the model / Fusion pair picker (unipi `/unipi:model`; renamed because the core
+/// `/model` built-in wins).
+pub const MODEL_COMMAND: &str = "fusion";
 /// Hidden preset editor runner.
-pub const PRESET_COMMAND: &str = "unipi:fusion-preset";
+pub const PRESET_COMMAND: &str = "fusion-preset";
 /// Wake widget key.
 pub const WAKE_WIDGET: &str = "fusion-sidekick-wake";
 const SIDEKICK_DESCRIPTION: &str = "Hand off work to your persistent sidekick subagent (one per session; context and shells persist across handoffs; runs on the same machine). block:true (default) waits and returns the report. block:false returns immediately and the report arrives later as a <subagent_completion_notification>. Calling again while a handoff is running injects the message as an interrupt rather than starting a second sidekick.";
-const NOT_ACTIVE: &str = "Fusion is not active — pick a Fusion pair with /unipi:model.";
+const NOT_ACTIVE: &str = "Fusion is not active — pick a Fusion pair with /fusion.";
 const STARTUP_THINKING: &[&str] = &["off", "minimal", "low", "medium", "high", "xhigh"];
 
 struct Handoff {
@@ -223,12 +224,13 @@ fn trim_num(x: f64) -> String {
     s.trim_end_matches('0').trim_end_matches('.').to_owned()
 }
 
-/// The `/model` boost: `/unipi:model` pinned first while typing `/m`, `/mo`, … `/model`.
+/// The `/model` hint: `/fusion` offered while typing `/m`, `/mo`, … `/model`, ranked after the
+/// core `/model` built-in.
 #[must_use]
 pub fn boost_completion(text: &str) -> Option<Value> {
     let t = text.to_ascii_lowercase();
     let ok = ["/m", "/mo", "/mod", "/mode", "/model"].contains(&t.as_str());
-    ok.then(|| json!([{"source": "fusion", "items": [{"value": format!("/{MODEL_COMMAND}"), "label": format!("/{MODEL_COMMAND}"), "description": "Pick a model or a Fusion lead+sidekick pair", "sortTier": -1}]}]))
+    ok.then(|| json!([{"source": "fusion", "items": [{"value": format!("/{MODEL_COMMAND}"), "label": format!("/{MODEL_COMMAND}"), "description": "Pick a model or a Fusion lead+sidekick pair", "sortTier": 1}]}]))
 }
 
 /// unipi `sidekickWakeText`.
@@ -353,8 +355,8 @@ pub fn namespace() -> Namespace {
         .defaults(json!({"default": {"lead": "", "sidekick": ""}, "startup": {"model": ""}}))
         .section(
             Section::new("startup", "Startup")
-                .description("The model Oino opens with. /unipi:model → \"use at startup\" sets the same thing (on the Fusion row it starts in Fusion).")
-                .field(model("startup.model", "Startup model", "Oino default", "The model Oino opens with. /unipi:model \"use at startup\" sets the same thing.").scope(unipi_kit::settings::Scope::Global))
+                .description("The model Oino opens with. /fusion → \"use at startup\" sets the same thing (on the Fusion row it starts in Fusion).")
+                .field(model("startup.model", "Startup model", "Oino default", "The model Oino opens with. /fusion \"use at startup\" sets the same thing.").scope(unipi_kit::settings::Scope::Global))
                 .field(Field::enumeration("startup.thinking", "Startup thinking level", STARTUP_THINKING.iter().map(|s| plain(s)).collect()).scope(unipi_kit::settings::Scope::Global).description("Thinking level the session starts at.")),
         )
         .section(
@@ -1232,7 +1234,7 @@ impl Fusion {
             .map(|i| preset::EFFORT_LEVELS[i].to_owned())
     }
 
-    /// `/unipi:model` (unipi Devin-style picker, as a dialog sequence).
+    /// `/fusion` (unipi Devin-style picker, as a dialog sequence).
     #[allow(
         clippy::too_many_lines,
         reason = "one dialog sequence, as the unipi picker"
@@ -1330,7 +1332,7 @@ impl Fusion {
             json!({"label": "Fusion", "description": "Lead plans and reviews; a persistent sidekick does the hands-on work"}),
         ];
         details.extend(keys.iter().map(|k| json!({"label": k, "description": price_text(p.prices.get(k).or_else(|| models.iter().find(|m| &m.key == k).and_then(|m| m.cost.as_ref())))})));
-        let Some(choice) = ui::dialog(&json!({"method": "select", "title": "/unipi:model — type to search", "options": labels, "optionDetails": details})).await?.get("value").and_then(Value::as_str).map(ToOwned::to_owned) else {
+        let Some(choice) = ui::dialog(&json!({"method": "select", "title": "/fusion — type to search", "options": labels, "optionDetails": details})).await?.get("value").and_then(Value::as_str).map(ToOwned::to_owned) else {
             return Ok(());
         };
         let mut effort_map = p.effort.clone();
@@ -1522,7 +1524,7 @@ impl Fusion {
             .sessions
             .with(sid, |s| (s.active.clone(), s.sidekick.clone()));
         let (Some(Active::Fusion { lead, sidekick, .. }), Some(sk)) = (active, sk) else {
-            return "Fusion is not active — pick a Fusion pair with /unipi:model.".into();
+            return "Fusion is not active — pick a Fusion pair with /fusion.".into();
         };
         let models = Self::models();
         let (p, _) = self.preset();
@@ -1825,7 +1827,7 @@ impl Extension for Fusion {
         cx.command(Command::<Self>::new(MODEL_COMMAND).description("Pick a model or a Fusion lead+sidekick pair (Devin-style picker over your preset)")
             .run(|ext, _a, cx| async move { ext.picker(&cx).await }));
         cx.command(
-            Command::<Self>::new("unipi:fusion-stats")
+            Command::<Self>::new("fusion-stats")
                 .description("Estimated Fusion savings (sidekick tokens priced at lead rates)")
                 .run(|ext, _a, cx| async move { ui::notify(&ext.stats(cx.session_id()), "info") }),
         );
@@ -1941,7 +1943,7 @@ mod tests {
         assert!(boost_completion("/modelx").is_none());
         assert_eq!(
             boost_completion("/model").unwrap()[0]["items"][0]["value"],
-            "/unipi:model"
+            "/fusion"
         );
         assert_eq!(duration(12_000), "12s");
         assert_eq!(duration(184_000), "3m04s");

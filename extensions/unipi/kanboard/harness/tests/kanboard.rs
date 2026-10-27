@@ -192,13 +192,13 @@ async fn registration() {
     assert_eq!(
         commands,
         [
-            ("unipi:kanboard", false),
-            ("unipi:kanboard-add", false),
-            ("unipi:kanboard-do", false),
-            ("unipi:kanboard-autowork", false),
-            ("unipi:kanboard-open", true),
-            ("unipi:kanboard-stop-daemon", true),
-            ("unipi:kanboard-rotate-token", true),
+            ("kanboard", false),
+            ("kanboard-add", false),
+            ("kanboard-do", false),
+            ("kanboard-autowork", false),
+            ("kanboard-open", true),
+            ("kanboard-stop-daemon", true),
+            ("kanboard-rotate-token", true),
         ]
     );
     assert!(reg.tools.is_empty());
@@ -226,14 +226,14 @@ async fn board_flow_guard_and_env() {
     )
     .await;
 
-    env.command(&ext, "unipi:kanboard", "onboard").await;
+    env.command(&ext, "kanboard", "onboard").await;
     assert!(
         env.notices().iter().any(|n| n.contains("registered")),
         "{:?}",
         env.notices()
     );
 
-    env.command(&ext, "unipi:kanboard-add", "-p 4 Fix login\nsteps below")
+    env.command(&ext, "kanboard-add", "-p 4 Fix login\nsteps below")
         .await;
     let added = env
         .notices()
@@ -280,7 +280,7 @@ async fn board_flow_guard_and_env() {
         .is_none());
 
     // -do grants a budget and sends the harness prompt.
-    env.command(&ext, "unipi:kanboard-do", "triage the board")
+    env.command(&ext, "kanboard-do", "triage the board")
         .await;
     let sent = env.writes("sendUserMessage");
     let text = sent[0]["sendUserMessage"].as_str().unwrap();
@@ -306,7 +306,7 @@ async fn board_flow_guard_and_env() {
     assert_eq!(badge["data"]["kind"], "started");
 
     // In-chat board.
-    env.command(&ext, "unipi:kanboard", "show --all").await;
+    env.command(&ext, "kanboard", "show --all").await;
     let shown = env.writes("sendMessage");
     let msg = shown
         .iter()
@@ -325,7 +325,7 @@ async fn board_flow_guard_and_env() {
     assert_eq!(node["t"], "stack");
 
     // Help is display-only and filtered from the context.
-    env.command(&ext, "unipi:kanboard", "").await;
+    env.command(&ext, "kanboard", "").await;
     let filtered = env
         .event(&ext, EventKind::Context, json!({"type": "context", "messages": [{"role": "custom", "customType": "unipi:kanboard-help"}, {"role": "user"}]}))
         .await
@@ -348,7 +348,7 @@ async fn capture_service_and_claims_nudge() {
         .unwrap()
         .to_value();
     assert_eq!(refused["ok"], false);
-    env.command(&ext, "unipi:kanboard", "onboard").await;
+    env.command(&ext, "kanboard", "onboard").await;
     let ok = ext
         .handle_service(
             "kanboard.capture",

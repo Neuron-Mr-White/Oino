@@ -44,7 +44,7 @@ pub struct Run {
     /// Host of the claiming process.
     #[serde(default)]
     pub host: Option<String>,
-    /// `system` (legacy runner claim) or `agent` (`start`).
+    /// `agent` (claimed with `start`).
     #[serde(default)]
     pub owner: Option<String>,
 }

@@ -19,7 +19,7 @@ pub const ACTION_MOVE: &str = "move:";
 pub const ACTION_REFRESH: &str = "refresh";
 /// Action: add a Backlog task.
 pub const ACTION_ADD: &str = "add";
-/// Action: post the board in chat (`/unipi:kanboard show`).
+/// Action: post the board in chat (`/kanboard show`).
 pub const ACTION_SHOW: &str = "show";
 
 /// Board columns, in board order.

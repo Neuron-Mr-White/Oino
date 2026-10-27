@@ -2,18 +2,18 @@
 //!
 //! | unipi | Here |
 //! |---|---|
-//! | `/unipi:settings [search]` (hub in core) | `openSettings{query}` to the frontend hub ([`commands`]) |
-//! | `/unipi:continue`, `/unipi:retry` | hidden `unipi-continue` message with `triggerTurn` ([`commands`]) |
-//! | `/unipi:cleanup`, `/unipi:doctor` | [`maintenance`] (allowlisted own folders; host-based checks) |
-//! | `/unipi:summarize [q]` + bundled `summarize` skill | `/skill:summarize` user message with provenance ([`commands`]) |
-//! | auto-rename (jev gate + one-tool in-memory session) + `unipi:rename-now` | [`rename`]: nested agent (fallback: one `models.complete`) + `session.set-session-name` |
-//! | `/unipi:answer [reply\|questions\|web]` + hint widget | [`answer`]: custom/editor dialogs, loopback `http.listener` form |
+//! | `/unipi:settings [search]` | merged into the core `/settings` hub (core commands win) |
+//! | `/continue`, `/retry` | hidden `unipi-continue` message with `triggerTurn` ([`commands`]) |
+//! | `/cleanup`, `/doctor` | [`maintenance`] (allowlisted own folders; host-based checks) |
+//! | `/summarize [q]` + bundled `summarize` skill | `/skill:summarize` user message with provenance ([`commands`]) |
+//! | auto-rename (jev gate + one-tool in-memory session) + `rename-now` | [`rename`]: nested agent (fallback: one `models.complete`) + `session.set-session-name` |
+//! | `/answer [reply\|questions\|web]` + hint widget | [`answer`]: custom/editor dialogs, loopback `http.listener` form |
 //! | attachments (`onTerminalInput`, paste scan) | [`attach`]: `oino_editor` intents + `input` transform + entry renderer |
 //! | `image_generate`, `image_edit`, `image_recognize` + recognize gating + image model cache | [`image`] |
-//! | `/unipi:move` + move handlers | [`relink`]: sessions, git worktrees, `move.handle` fan-out |
+//! | `/move` + move handlers | [`relink`]: sessions, git worktrees, `move.handle` fan-out |
 //! | render styles, harness panels, delegated panel | [`render`]: tool/message renderers, `utility.render-delegated` |
 //! | settings `utility`, `image` | [`settings`] |
-//! | `/unipi:cron`, browser state, Herdr sync | not ported (unipi-port §3.2, D22) |
+//! | `/cron`, browser state, Herdr sync | not ported (unipi-port §3.2, D22) |
 
 //!
 //! # Errors
@@ -56,15 +56,7 @@ use crate::settings::{IMAGE_NAMESPACE, ImageConfig, NAMESPACE, UtilSettings};
 pub const EXTENSION_ID: &str = "unipi.utility";
 
 /// Commands listed in `MODULE_READY` (unipi `ALL_COMMANDS`).
-pub const COMMANDS: [&str; 7] = [
-    "unipi:continue",
-    "unipi:retry",
-    "unipi:cleanup",
-    "unipi:doctor",
-    "unipi:answer",
-    "unipi:move",
-    "unipi:settings",
-];
+pub const COMMANDS: [&str; 6] = ["continue", "retry", "cleanup", "doctor", "answer", "move"];
 
 /// The extension.
 #[derive(Default)]
@@ -190,33 +182,25 @@ impl Utility {
 
 fn register_commands(cx: &mut Init<Utility>) {
     cx.command(
-        Command::<Utility>::new("unipi:settings")
-            .description("Configure all unipi modules in one panel (global + project scopes); /unipi:settings <search> opens it filtered")
-            .argument_hint("[search]")
-            .run(|_ext, args, _cx| async move { commands::settings(&args) }),
-    );
-    cx.command(
-        Command::<Utility>::new("unipi:continue")
-            .description(
-                "Continue the agent from where it left off, without adding text (/unipi:retry)",
-            )
+        Command::<Utility>::new("continue")
+            .description("Continue the agent from where it left off, without adding text (/retry)")
             .run(|_ext, _args, cx| async move { commands::continue_turn(&cx).await }),
     );
     cx.command(
-        Command::<Utility>::new("unipi:retry")
-            .description("Retry the last turn — alias of /unipi:continue")
+        Command::<Utility>::new("retry")
+            .description("Retry the last turn — alias of /continue")
             .run(|_ext, _args, cx| async move { commands::continue_turn(&cx).await }),
     );
     cx.command(
-        Command::<Utility>::new("unipi:cleanup")
-            .description("Remove stale UniPi temp files and leftovers (preview first)")
+        Command::<Utility>::new("cleanup")
+            .description("Remove stale Oino temp files and leftovers (preview first)")
             .argument_hint("[--dry-run] [--yes]")
             .run(|_ext, args, cx| async move { commands::cleanup(&args, &cx).await }),
     );
     cx.command(
-        Command::<Utility>::new("unipi:doctor")
+        Command::<Utility>::new("doctor")
             .description(
-                "Check UniPi's runtime: folders, config, model registry, Decision Model, skills",
+                "Check Oino's runtime: folders, config, model registry, Decision Model, skills",
             )
             .run(|_ext, _args, cx| async move { commands::doctor(&cx).await }),
     );
@@ -228,7 +212,7 @@ fn register_commands(cx: &mut Init<Utility>) {
             .complete(|_ext, prefix, _cx| async move { answer::complete(&prefix) }),
     );
     cx.command(
-        Command::<Utility>::new("unipi:summarize")
+        Command::<Utility>::new("summarize")
             .description("Summarize this session for you (answer first, then findings, open items, questions); add text to set a focus")
             .argument_hint("[focus]")
             .run(|_ext, args, cx| async move { commands::summarize(&args, &cx).await }),

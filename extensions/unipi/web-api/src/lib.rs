@@ -10,7 +10,7 @@
 //! | cache 1 h in `~/.unipi/config/web-api/cache` | `/cache/web` ([`cache`]) |
 //! | tools without a provider hidden via `setActiveTools` | same, on `session_start` and `before_agent_start` |
 //! | wigolo SDK (AGPL, optional) | the wigolo REST daemon over loopback HTTP |
-//! | hub runner `unipi:web-cache-clear`, info-screen "Web API" group | hidden command; `info-screen.groups` service |
+//! | hub runner `web-cache-clear`, info-screen "Web API" group | hidden command; `info-screen.groups` service |
 
 #![allow(
     clippy::unused_async_trait_impl,
@@ -994,7 +994,7 @@ impl Extension for WebApi {
         });
 
         cx.command(
-            Command::<Self>::new("unipi:web-cache-clear")
+            Command::<Self>::new("web-cache-clear")
                 .description("Clear the web cache")
                 .hidden()
                 .run(|ext, _args, _cx| async move {

@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn subsequence_matching() {
         assert!(fuzzy_match("fx", "fix").matches);
-        assert!(fuzzy_match("wor", "unipi:review-work").matches);
+        assert!(fuzzy_match("wor", "review-work").matches);
         assert!(!fuzzy_match("xyz", "brainstorm").matches);
         assert!(fuzzy_match("", "anything").matches);
         assert!(!fuzzy_match("toolong", "abc").matches);
@@ -171,11 +171,11 @@ mod tests {
 
     #[test]
     fn filter_tokens_all_match_and_sort() {
-        let items = ["unipi:compact-vcc", "compact", "unipi:plan"];
+        let items = ["compact-vcc", "compact", "plan"];
         let out = fuzzy_filter(&items, "compact", |s| s);
-        assert_eq!(out, [&"compact", &"unipi:compact-vcc"]);
-        let out = fuzzy_filter(&items, "un pl", |s| s);
-        assert_eq!(out, [&"unipi:plan"]);
+        assert_eq!(out, [&"compact", &"compact-vcc"]);
+        let out = fuzzy_filter(&items, "pl an", |s| s);
+        assert_eq!(out, [&"plan"]);
         assert_eq!(fuzzy_filter(&items, "  ", |s| s).len(), 3);
     }
 }

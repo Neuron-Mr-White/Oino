@@ -2,9 +2,9 @@
 name: utility
 scope: agent
 description: |
-  What the unipi.utility extension does for the user: the /unipi:settings
-  hub, /unipi:continue (/unipi:retry), /unipi:cleanup, /unipi:doctor,
-  /unipi:answer, /unipi:move, /unipi:summarize, pasted-file attachments and
+  What the unipi.utility extension does for the user: settings
+  pages in the /settings hub, /continue (/retry), /cleanup, /doctor,
+  /answer, /move, /summarize, pasted-file attachments and
   automatic session naming. Its only agent tools are the image tools.
 ---
 
@@ -14,13 +14,13 @@ description: |
 
 | Command | Purpose |
 |---------|---------|
-| `/unipi:settings [search]` | Configure every UniPi module (opens the settings hub, optionally filtered) |
-| `/unipi:continue` / `/unipi:retry` | Take another turn without new text |
-| `/unipi:answer [reply\|questions\|web]` | Answer the questions in your last reply without scrolling |
-| `/unipi:cleanup` | Remove stale UniPi temp files (previews and asks first; `--dry-run`, `--yes`) |
-| `/unipi:doctor` | Check folders, config, the model registry, Decision Model key, skill exposure |
-| `/unipi:move [<old-path>] [--dry-run]` | Re-link sessions, trust, boards and memories after the project folder moved |
-| `/unipi:summarize [focus]` | Summarize the last reply again (runs the `summarize` skill); any text is passed to the skill as the user's question |
+| `/settings` | Core settings hub; every feature's options live there (this extension contributes the Utility and Image pages) |
+| `/continue` / `/retry` | Take another turn without new text |
+| `/answer [reply\|questions\|web]` | Answer the questions in your last reply without scrolling |
+| `/cleanup` | Remove stale Oino temp files (previews and asks first; `--dry-run`, `--yes`) |
+| `/doctor` | Check folders, config, the model registry, Decision Model key, skill exposure |
+| `/move [<old-path>] [--dry-run]` | Re-link sessions, trust, boards and memories after the project folder moved |
+| `/summarize [focus]` | Summarize the last reply again (runs the `summarize` skill); any text is passed to the skill as the user's question |
 
 ## Notes for the agent
 
@@ -30,4 +30,4 @@ description: |
   image content, files as `[File #N: <path>]`.
 - Skills not listed in your catalog may still be installed. If the user names
   a skill, read its SKILL.md or ask them to run `/skill:<name>`.
-- When something UniPi-related looks broken, suggest `/unipi:doctor`.
+- When an Oino feature looks broken, suggest `/doctor`.

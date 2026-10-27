@@ -722,11 +722,7 @@ fn a_remote_bind_requires_the_token() {
     // No token → 401 with the instruction page.
     let response = http(daemon.port, "GET", "/", None).expect("no token");
     assert_eq!(response.status, 401, "{}", response.body);
-    assert!(
-        response.body.contains("unipi:kanboard open"),
-        "{}",
-        response.body
-    );
+    assert!(response.body.contains("kanboard open"), "{}", response.body);
     let response = http(daemon.port, "GET", "/api/projects", None).expect("api without token");
     assert_eq!(response.status, 401);
 

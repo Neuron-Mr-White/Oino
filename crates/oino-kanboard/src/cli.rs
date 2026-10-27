@@ -9,7 +9,7 @@ use crate::model::{ChainGate, Priority, Status};
 #[command(
     name = "oino-kanboard",
     version,
-    about = "unipi kanboard — deferred-work board for a project",
+    about = "Oino kanboard — deferred-work board for a project",
     long_about = "Every write goes through this binary: it validates the task format and transition rules and writes atomically under a per-project lock."
 )]
 /// Command line of `oino-kanboard`.

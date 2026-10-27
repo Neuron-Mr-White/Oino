@@ -4,11 +4,11 @@
 //! |---|---|
 //! | `addAutocompleteProvider` wrapping pi's base provider | guest `complete-input` returning one group that replaces the frontend's slash group ([`provider`]) |
 //! | `COMMAND_REGISTRY`, descriptions, labels, `PACKAGE_COLORS` | [`registry`] (colours → OUS categorical tones) |
-//! | 4-tier cross-group sort | [`sorting`] |
+//! | cross-group tier sort (minus the `unipi:` namespace tiers) | [`sorting`] |
 //! | pi-tui `fuzzyMatch`/`fuzzyFilter` | [`fuzzy`] |
 //! | setting `command-enchantment.autocompleteEnhanced` | [`settings`]; off ⇒ no contribution (pure pass-through) |
 //!
-//! Argument completions (`/unipi:plan <Tab>`) stay with the host's `complete-command`; unipi's
+//! Argument completions (`/plan <Tab>`) stay with the host's `complete-command`; unipi's
 //! `force: false` re-trigger fix is a frontend concern (see deviations).
 
 #![allow(

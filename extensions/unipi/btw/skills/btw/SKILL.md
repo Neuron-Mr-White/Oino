@@ -5,7 +5,7 @@ description: Ask side questions in an inline panel without interrupting the main
 
 # BTW
 
-`/unipi:btw <question>` opens an inline panel and answers a side question from a fresh read-only session seeded with the main session's current context.
+`/btw <question>` opens an inline panel and answers a side question from a fresh read-only session seeded with the main session's current context.
 
 Rules the panel enforces:
 - Read-only tools (`read`, `grep`, `find`, `ls`) — no commands or edits; changes belong in the main conversation.

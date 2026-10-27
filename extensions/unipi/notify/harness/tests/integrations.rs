@@ -278,11 +278,11 @@ async fn notify_dispatch_and_lifecycle() {
     assert_eq!(
         commands,
         [
-            ("unipi:notify-event".to_owned(), false),
-            ("unipi:notify-test".to_owned(), true),
-            ("unipi:notify-set-gotify".to_owned(), true),
-            ("unipi:notify-set-tg".to_owned(), true),
-            ("unipi:notify-set-ntfy".to_owned(), true),
+            ("notify-event".to_owned(), false),
+            ("notify-test".to_owned(), true),
+            ("notify-set-gotify".to_owned(), true),
+            ("notify-set-tg".to_owned(), true),
+            ("notify-set-ntfy".to_owned(), true),
         ]
     );
     assert_eq!(ns, ["notify"]);
@@ -329,14 +329,14 @@ async fn notify_dispatch_and_lifecycle() {
     assert!(devices.iter().any(|d| d.as_str().unwrap_or("").contains("Waiting for your input: Pick a model")), "{devices:?}");
     env.event(&ext, EventKind::UiPromptEnd, json!({"type": "ui_prompt_end"})).await;
 
-    // /unipi:notify-event writes the overlay.
-    env.command(&ext, "unipi:notify-event", "bogus on").await;
+    // /notify-event writes the overlay.
+    env.command(&ext, "notify-event", "bogus on").await;
     assert!(env.fired("notify").last().unwrap()["message"].as_str().unwrap().starts_with("Unknown event \"bogus\""));
-    env.command(&ext, "unipi:notify-event", "input_needed off").await;
+    env.command(&ext, "notify-event", "input_needed off").await;
     assert_eq!(env.fired("notify").last().unwrap()["message"], "notify: input_needed is now off.");
-    env.command(&ext, "unipi:notify-event", "x").await;
-    assert_eq!(env.fired("notify").last().unwrap()["message"], "Usage: /unipi:notify-event <event> <on|off>");
-    let items = ext.complete_command("unipi:notify-event", "input", env.cx(CallKind::Command)).await;
+    env.command(&ext, "notify-event", "x").await;
+    assert_eq!(env.fired("notify").last().unwrap()["message"], "Usage: /notify-event <event> <on|off>");
+    let items = ext.complete_command("notify-event", "input", env.cx(CallKind::Command)).await;
     assert_eq!(items.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(), ["input_needed"]);
 }
 
@@ -365,11 +365,11 @@ async fn mcp_stdio_server_and_tools() {
     assert_eq!(
         commands,
         [
-            ("unipi:mcp-status".to_owned(), false),
-            ("unipi:mcp-settings".to_owned(), true),
-            ("unipi:mcp-add".to_owned(), true),
-            ("unipi:mcp-sync".to_owned(), true),
-            ("unipi:mcp-reload".to_owned(), true),
+            ("mcp-status".to_owned(), false),
+            ("mcp-settings".to_owned(), true),
+            ("mcp-add".to_owned(), true),
+            ("mcp-sync".to_owned(), true),
+            ("mcp-reload".to_owned(), true),
         ]
     );
     assert_eq!(ns, ["mcp"]);
@@ -406,13 +406,13 @@ async fn mcp_stdio_server_and_tools() {
     assert_eq!(r["content"][0]["text"], "MCP tool error from fake: it broke");
     assert_eq!(r["details"]["error"], true);
 
-    env.command(&ext, "unipi:mcp-status", "").await;
+    env.command(&ext, "mcp-status", "").await;
     let status = env.fired("notify").last().unwrap()["message"].as_str().unwrap().to_owned();
     assert!(status.starts_with("MCP Server Status:\n\n● fake — running (3 tools)\n✗ broken — error — "), "{status}");
     assert!(status.contains("○ off — stopped"));
     assert!(status.ends_with("1 active, 1 failed, 3 total tools"));
 
-    env.command(&ext, "unipi:mcp-settings", "").await;
+    env.command(&ext, "mcp-settings", "").await;
     let open = env.details("ui_panel").last().unwrap()["open"].clone();
     assert_eq!(open["panelId"], "unipi.mcp/servers");
     assert!(open["spec"].to_string().contains("Config problems"), "invalid entries are reported");
@@ -426,7 +426,7 @@ async fn mcp_stdio_server_and_tools() {
     assert_eq!(groups["data"]["active"]["value"], "1");
     assert_eq!(groups["data"]["failed"]["detail"], "broken");
 
-    env.command(&ext, "unipi:mcp-reload", "").await;
+    env.command(&ext, "mcp-reload", "").await;
     assert_eq!(env.fired("notify").last().unwrap()["message"], "Reloaded MCP servers: 1 active, 1 failed, 3 tools.");
     assert!(env.details("unregister_tool").len() >= 3, "reload unregisters the old tools");
 
@@ -470,7 +470,7 @@ async fn web_api_smart_fetch_and_search() {
     let (ext, reg) = env.load("web-api", "unipi_web_api.wasm", settings).await;
     let (tools, commands, ns) = names(&reg);
     assert_eq!(tools, ["web_search", "multi_web_content_read", "web_llm_summarize"]);
-    assert_eq!(commands, [("unipi:web-cache-clear".to_owned(), true)]);
+    assert_eq!(commands, [("web-cache-clear".to_owned(), true)]);
     assert_eq!(ns, ["web-api"]);
     assert_eq!(reg.tools[1].prompt_guidelines.len(), 5);
     env.event(&ext, EventKind::SessionStart, json!({"type": "session_start", "reason": "startup"})).await;
@@ -527,7 +527,7 @@ async fn web_api_smart_fetch_and_search() {
 
     // Cache clear (confirm dialog answered yes).
     env.host.queue_dialog_answer(json!({"confirmed": true}));
-    env.command(&ext, "unipi:web-cache-clear", "").await;
+    env.command(&ext, "web-cache-clear", "").await;
     let msg = env.fired("notify").last().unwrap()["message"].as_str().unwrap().to_owned();
     assert!(msg.starts_with("Cache cleared: "), "{msg}");
     assert_eq!(std::fs::read_dir(&cache_dir).unwrap().count(), 0);
@@ -559,7 +559,7 @@ async fn updater_docs_browsers() {
     assert!(tools.is_empty());
     assert_eq!(
         commands,
-        [("unipi:readme".to_owned(), false), ("unipi:changelog".to_owned(), false), ("unipi:update-check".to_owned(), true)]
+        [("readme".to_owned(), false), ("update-check".to_owned(), true)]
     );
     assert_eq!(ns, ["updater"]);
     assert_eq!(reg.services, ["info-screen.groups"]);
@@ -569,9 +569,9 @@ async fn updater_docs_browsers() {
     let state: Value = serde_json::from_slice(&std::fs::read(env.agent.path().join("state/unipi.updater/global/state.json")).unwrap()).unwrap();
     assert!(state["lastRunVersion"].is_string());
 
-    let items = ext.complete_command("unipi:readme", "w", env.cx(CallKind::Command)).await;
+    let items = ext.complete_command("readme", "w", env.cx(CallKind::Command)).await;
     assert_eq!(items.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(), ["workflow"]);
-    env.command(&ext, "unipi:readme", "").await;
+    env.command(&ext, "readme", "").await;
     let open = env.details("ui_panel").last().unwrap()["open"].clone();
     assert_eq!(open["panelId"], "unipi.updater/readme");
     let list = open["spec"].to_string();
@@ -583,15 +583,8 @@ async fn updater_docs_browsers() {
     env.event(&ext, EventKind::OinoUiAction, json!({"type": "oino_ui_action", "panelId": "panel-1", "actionId": "back"})).await;
     assert!(env.details("ui_panel").last().unwrap()["spec"].to_string().contains("\"workflow\""));
 
-    env.command(&ext, "unipi:readme", "workflow").await;
+    env.command(&ext, "readme", "workflow").await;
     assert!(env.details("ui_panel").last().unwrap()["open"]["spec"].to_string().contains("Permission gate."));
-
-    env.command(&ext, "unipi:changelog", "").await;
-    let open = env.details("ui_panel").last().unwrap()["open"].clone();
-    assert_eq!(open["panelId"], "unipi.updater/changelog");
-    assert!(open["spec"].to_string().contains("\"1.0.0\""));
-    env.event(&ext, EventKind::OinoUiAction, json!({"type": "oino_ui_action", "panelId": "panel-3", "actionId": "open", "value": "0"})).await;
-    assert!(env.details("ui_panel").last().unwrap()["spec"].to_string().contains("Everything"));
 
     let group = ext
         .handle_service("info-screen.groups", RawJson::from(json!({})), &ExtensionId::new("unipi.info-screen").unwrap(), env.cx(CallKind::Service))
@@ -610,7 +603,7 @@ async fn app_bridge_control_centre() {
     let (ext, reg) = env.load("app-bridge", "unipi_app_bridge.wasm", json!({})).await;
     let (tools, commands, ns) = names(&reg);
     assert!(tools.is_empty());
-    assert_eq!(commands, [("unipi:app".to_owned(), false)]);
+    assert_eq!(commands, [("app".to_owned(), false)]);
     assert_eq!(ns, ["app-bridge"]);
     assert_eq!(reg.services, ["app-bridge.snapshot", "app-bridge.action"]);
     assert_eq!(reg.shortcuts[0].id, "unipi.app.open");
@@ -618,7 +611,7 @@ async fn app_bridge_control_centre() {
     env.event(&ext, EventKind::SessionStart, json!({"type": "session_start", "reason": "startup"})).await;
     assert!(env.details("ui_panel").is_empty(), "no GPUI frontend attached (rpc only) → no auto-open");
 
-    env.command(&ext, "unipi:app", "modes").await;
+    env.command(&ext, "app", "modes").await;
     let open = env.details("ui_panel").last().unwrap()["open"].clone();
     assert_eq!(open["panelId"], "unipi.app-bridge/control");
     assert_eq!(open["placement"], "sidePane");

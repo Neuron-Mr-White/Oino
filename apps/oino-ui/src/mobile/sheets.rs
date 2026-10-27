@@ -386,7 +386,7 @@ impl MobileShell {
                     .map(|s| (s.text.clone(), s.tone))
                     .collect::<Vec<_>>(),
                 p.model.id.clone(),
-                p.has_command("unipi:kanboard"),
+                p.has_command("kanboard"),
             )
         };
         let act = |f: fn(&mut SessionPane, &mut Context<SessionPane>)| -> RowAction {

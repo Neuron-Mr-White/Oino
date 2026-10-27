@@ -5,7 +5,7 @@ only on the `oino-extension` SDK. Add it with `unipi-kit.workspace = true`.
 
 | Module | Use |
 |---|---|
-| `suite` | `LOAD_ORDER`, `pkg::*` (ids, dirs, npm names, namespaces, batch), `command("x")` → `unipi:x`, `namespace_owner` |
+| `suite` | `LOAD_ORDER`, `pkg::*` (ids, dirs, npm names, namespaces, batch), `command("x")` → `x`, `namespace_owner` |
 | `topics` | every `unipi:*` topic name, `STICKY`, payload structs implementing `Topic` |
 | `bus` | `emit(&payload)` / `emit_raw(topic, &v)` (sticky applied automatically), `get::<T>()`, `subscribe(&[...])`, `Delivery::from_event(&ev)` for `oino_bus`, `route(name)` |
 | `services` | fan-out names (`evidence.contribute`, `compaction-context.provide`, `skill-condition.check`, `move.handle`, `work-tray.tab`, `info-screen.groups`), point names, payload structs |

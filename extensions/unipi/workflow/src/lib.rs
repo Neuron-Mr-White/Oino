@@ -4,10 +4,10 @@
 //! |---|---|
 //! | `tool_call` gate: plan enforcement, then rules → read-only → write/edit → bash (jev in auto) → other | [`Workflow::gate`], [`decide`], [`plan::enforce`], [`bash`] |
 //! | approval prompt (Allow once / Always allow / Deny / Deny with note) | `approval` dialog (`allow_once`, `allow_always`, `reject_once`, `reject_once` + feedback) |
-//! | `/unipi:permission [ask\|auto\|full\|status]`, Alt+M | command + shortcut `unipi.permission.cycle` |
-//! | `/unipi:plan [on\|off\|view\|approve]`, Alt+P, `plan_submit` | command + shortcut `unipi.plan.toggle` + tool |
+//! | `/permission [ask\|auto\|full\|status]`, Alt+M | command + shortcut `unipi.permission.cycle` |
+//! | `/plan [on\|off\|view\|approve]`, Alt+P, `plan_submit` | command + shortcut `unipi.plan.toggle` + tool |
 //! | plan review overlay | `custom` dialog (markdown, side-by-side sections, three buttons) |
-//! | runners `unipi:plan-enter/-exit/-off`, `unipi:permission-clear-rules` | hidden commands |
+//! | runners `plan-enter/-exit/-off`, `permission-clear-rules` | hidden commands |
 //! | `WORKFLOW_STATUS` (sticky), `PLAN_MODE_CHANGED`, `PERMISSION_MODE_CHANGED`, `MODULE_READY` | bus topics |
 //! | `permission` settings | [`settings`] |
 
@@ -464,7 +464,7 @@ impl Workflow {
         }
     }
 
-    /// The approval prompt shared by the tool, `/unipi:plan approve` and the runner.
+    /// The approval prompt shared by the tool, `/plan approve` and the runner.
     async fn approve_plan(&self, cx: &Ctx) -> Approval {
         let sid = cx.session_id().to_owned();
         let file = self.plans.with(&sid, |s| s.plan_file.clone());
@@ -672,7 +672,7 @@ impl Workflow {
         unipi_kit::bus::emit(&ModuleReady {
             name: "@pi-unipi/workflow".into(),
             version: host::info().extension_version,
-            commands: vec!["unipi:plan".into(), "unipi:permission".into()],
+            commands: vec!["plan".into(), "permission".into()],
             tools: vec![PLAN_TOOL.into()],
             load_time_ms: None,
         });
@@ -758,7 +758,7 @@ impl Extension for Workflow {
         });
 
         cx.command(
-            Command::<Self>::new("unipi:permission")
+            Command::<Self>::new("permission")
                 .description("Permission mode — ask · auto (jev-judged) · full")
                 .run(|ext, args, cx| async move {
                     ext.permission_command(&args, &cx.cx);
@@ -779,7 +779,7 @@ impl Extension for Workflow {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:plan")
+            Command::<Self>::new("plan")
                 .description("Plan mode — plan with the user, then approve a plan")
                 .run(|ext, args, cx| async move {
                     ext.plan_command(&args, &cx.cx).await;
@@ -820,7 +820,7 @@ impl Extension for Workflow {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:plan-off")
+            Command::<Self>::new("plan-off")
                 .description("Leave plan mode")
                 .hidden()
                 .run(|ext, _args, cx| async move {
@@ -829,7 +829,7 @@ impl Extension for Workflow {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:plan-enter")
+            Command::<Self>::new("plan-enter")
                 .description("Enter plan mode (runner)")
                 .hidden()
                 .run_value(|ext, _args, cx| async move {
@@ -841,7 +841,7 @@ impl Extension for Workflow {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:plan-exit")
+            Command::<Self>::new("plan-exit")
                 .description("Leave plan mode (runner)")
                 .hidden()
                 .run_value(|ext, _args, cx| async move {

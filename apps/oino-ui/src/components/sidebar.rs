@@ -681,7 +681,7 @@ impl Workspace {
         let count = rows.len();
         let has_board = self
             .active_pane()
-            .is_some_and(|p| p.read(cx).has_command("unipi:kanboard"));
+            .is_some_and(|p| p.read(cx).has_command("kanboard"));
         let board_ready = self
             .active_pane()
             .and_then(|p| {
@@ -1040,7 +1040,7 @@ impl Workspace {
         items.push(a("Split pane", Section::Panels, "panel-right", "split").keys("⌘\\"));
         items.push(a("Review changes", Section::Panels, "file", "review"));
         items.push(a("Files", Section::Panels, "folder-open", "files"));
-        if pane.is_some_and(|p| p.has_command("unipi:kanboard")) {
+        if pane.is_some_and(|p| p.has_command("kanboard")) {
             items.push(a("Board", Section::Panels, "kanban", "board"));
         }
         if let Some(p) = pane {

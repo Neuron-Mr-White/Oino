@@ -20,7 +20,7 @@ pub fn namespace() -> Namespace {
         .section(
             Section::new("autocomplete", "Autocomplete").field(
                 Field::boolean("autocompleteEnhanced", "Enhanced autocomplete")
-                    .description("Fuzzy /unipi:* command suggestions while you type."),
+                    .description("Fuzzy command suggestions with feature tags while you type."),
             ),
         )
 }

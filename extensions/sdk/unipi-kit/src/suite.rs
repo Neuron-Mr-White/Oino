@@ -8,17 +8,8 @@
 /// unipi release the ports track.
 pub const UNIPI_VERSION: &str = "3.0.0";
 
-/// Prefix of every unipi slash command and command runner (`unipi:`).
-pub const COMMAND_PREFIX: &str = "unipi:";
-
 /// Prefix of every unipi extension id (`unipi.`).
 pub const EXTENSION_PREFIX: &str = "unipi.";
-
-/// `unipi:<name>` command name.
-#[must_use]
-pub fn command(name: &str) -> String {
-    format!("{COMMAND_PREFIX}{name}")
-}
 
 /// Port batch (unipi-port §1, §4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -223,7 +214,6 @@ mod tests {
 
     #[test]
     fn lookups() {
-        assert_eq!(command("hint"), "unipi:hint");
         assert_eq!(load_index("unipi.core"), Some(0));
         assert_eq!(load_index("unipi.watchdog"), Some(22));
         assert!(is_unipi("unipi.btw"));

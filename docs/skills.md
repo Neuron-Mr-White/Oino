@@ -19,4 +19,4 @@ Discovery (later entries win on name conflicts, pi precedence):
 
 The bundled `unipi.skill-registry` adds per-skill enable / must-show switches, a skill vault
 and judged exposure (only skills relevant to the prompt are shown in full); configure it with
-`/unipi:skills`.
+`/skills`.

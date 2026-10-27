@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.command-enchantment: package-tagged, tier-sorted /unipi:* slash-command completions"
+description = "unipi.command-enchantment: package-tagged, tier-sorted slash-command completions"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

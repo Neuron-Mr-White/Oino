@@ -12,8 +12,7 @@
     "fs": {
       "paths": [
         { "path": "~/.mempalace", "access": "write", "alias": "mempalace" },
-        { "path": "~/.config/mempalace", "access": "write", "alias": "mempalace-config" },
-        { "path": "~/.unipi/memory", "access": "read", "alias": "legacy-memory" }
+        { "path": "~/.config/mempalace", "access": "write", "alias": "mempalace-config" }
       ]
     },
     "agents": { "spawn": true, "maxDepth": 2 },

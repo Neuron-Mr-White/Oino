@@ -4,7 +4,7 @@
 //! |---|---|---|
 //! | Unicrab hints | `src/hints/*` | [`hints`]: 132-hint catalog, store `/ext-global/hints.json`, startup/what's-new/event hints, derived detectors, widget above the editor |
 //! | start screen | `renderHeaderLines` | `setHeader` with an OUS `responsive` node (≥ 72 / ≥ 40 columns) |
-//! | `/unipi:hint [next\|reset]`, browser | `registerCommand("unipi:hint")` | command + overlay panel with filter |
+//! | `/hint [next\|reset]`, browser | `registerCommand("hint")` | command + overlay panel with filter |
 //! | Alt+H / Alt+Shift+H | `registerShortcut` | shortcuts `unipi.hint.next`, `unipi.hint.prev` |
 //! | work tray | `src/work/tray.ts` | [`tray`]: `editorReplace` panel over `work-tray.tab` services, `emptyArrowDown` intent, `Shift+↓` (`unipi.tray.open`), hint line below the editor, service `core.open-tray` |
 //! | settings | `hints`, `decision-model` | registered namespaces ([`settings`], `unipi_kit::jev`) |
@@ -530,7 +530,7 @@ impl Extension for Core {
         bus::subscribe("unipi:*");
 
         cx.command(
-            Command::<Self>::new(unipi_kit::suite::command("hint"))
+            Command::<Self>::new("hint")
                 .description("Browse and search Unicrab hints, or cycle/reset")
                 .argument_hint("[next|reset]")
                 .run(|ext, args, cx| async move { ext.hint_command(&args, &cx) })

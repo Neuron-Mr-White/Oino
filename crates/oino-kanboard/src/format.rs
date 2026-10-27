@@ -12,9 +12,8 @@ use crate::model::{ActivityEntry, Actor, Priority, Run, RunMode, RunOwner, Statu
 /// Heading of the append-only activity section.
 pub const ACTIVITY_HEADING: &str = "## Activity";
 
-const FRONTMATTER_KEYS: [&str; 12] = [
-    "id", "title", "status", "priority", "order", "deps", "labels", "creator", "strategy", "plan",
-    "created", "updated",
+const FRONTMATTER_KEYS: [&str; 10] = [
+    "id", "title", "status", "priority", "order", "deps", "labels", "creator", "created", "updated",
 ];
 
 /// Render a task to its canonical file text.
@@ -30,12 +29,6 @@ pub fn render(task: &Task) -> String {
     let _ = writeln!(out, "labels: {}", flow_list(&task.labels));
     if let Some(creator) = task.creator {
         let _ = writeln!(out, "creator: {}", creator.as_str());
-    }
-    if let Some(strategy) = task.strategy {
-        let _ = writeln!(out, "strategy: {}", strategy.as_str());
-    }
-    if let Some(plan) = task.plan {
-        let _ = writeln!(out, "plan: {plan}");
     }
     let _ = writeln!(out, "created: {}", iso(task.created));
     let _ = writeln!(out, "updated: {}", iso(task.updated));
@@ -54,11 +47,7 @@ pub fn render(task: &Task) -> String {
                     .map_or_else(|| "null".to_string(), yaml_scalar)
             );
             let _ = writeln!(out, "  started: {}", iso(run.started));
-            // Legacy system claims (pre-`start` files) keep the historical
-            // shape; only agent claims say so.
-            if run.owner == RunOwner::Agent {
-                out.push_str("  owner: agent\n");
-            }
+            let _ = writeln!(out, "  owner: {}", run.owner.as_str());
         }
         None => out.push_str("run:\n"),
     }
@@ -320,40 +309,6 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     let created = parse_date(file, get("created"), "created", &mut problems);
     let updated = parse_date(file, get("updated"), "updated", &mut problems);
 
-    let strategy = match get("strategy") {
-        Some((line, value)) => {
-            if let Ok(s) = value.trim().parse::<crate::model::Strategy>() {
-                Some(s)
-            } else {
-                problems.push(Problem::new(
-                    file,
-                    line,
-                    format!(
-                        "unknown strategy \"{}\" (expected none|goal|ralph|swarm|graph)",
-                        value.trim()
-                    ),
-                ));
-                None
-            }
-        }
-        None => None,
-    };
-    let plan = match get("plan") {
-        Some((line, value)) => {
-            if let Ok(v) = value.trim().parse::<bool>() {
-                Some(v)
-            } else {
-                problems.push(Problem::new(
-                    file,
-                    line,
-                    format!("plan must be true or false, got \"{}\"", value.trim()),
-                ));
-                None
-            }
-        }
-        None => None,
-    };
-
     let run = if run_fields.is_empty() {
         None
     } else {
@@ -370,8 +325,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
         // `validate` can print everything, but callers must treat it as invalid.
         return (
             Some(build(
-                id, title, status, priority, order, deps, labels, creator, created, updated,
-                strategy, plan, run, body, activity,
+                id, title, status, priority, order, deps, labels, creator, created, updated, run,
+                body, activity,
             )),
             problems,
         );
@@ -382,8 +337,8 @@ pub fn parse(file: &str, text: &str) -> (Option<Task>, Vec<Problem>) {
     }
 
     let task = Some(build(
-        id, title, status, priority, order, deps, labels, creator, created, updated, strategy,
-        plan, run, body, activity,
+        id, title, status, priority, order, deps, labels, creator, created, updated, run, body,
+        activity,
     ));
     (task, problems)
 }
@@ -400,8 +355,6 @@ fn build(
     creator: Option<Actor>,
     created: DateTime<Utc>,
     updated: DateTime<Utc>,
-    strategy: Option<crate::model::Strategy>,
-    plan: Option<bool>,
     run: Option<Run>,
     body: String,
     activity: Vec<ActivityEntry>,
@@ -417,8 +370,6 @@ fn build(
         creator,
         created,
         updated,
-        strategy,
-        plan,
         run,
         body,
         activity,
@@ -667,15 +618,14 @@ fn parse_run(
     };
 
     let owner = match get("owner") {
-        None => RunOwner::System,
+        None => RunOwner::Agent,
         Some((line, _, value)) => match value.trim() {
-            "" | "system" => RunOwner::System,
-            "agent" => RunOwner::Agent,
+            "" | "agent" => RunOwner::Agent,
             other => {
                 problems.push(Problem::new(
                     file,
                     *line,
-                    format!("unknown run.owner \"{other}\" (expected system|agent)"),
+                    format!("unknown run.owner \"{other}\" (expected agent)"),
                 ));
                 return None;
             }

@@ -278,7 +278,7 @@ fn settings_schema() -> JsonValue {
             {"id": "ntfy", "title": "ntfy", "fields": [
                 {"key": "ntfy.topic", "type": "string", "label": "Topic", "default": ""},
                 {"key": "ntfy.token", "type": "secret", "label": "Access token", "scope": "global"},
-                {"key": "test", "type": "action", "label": "Send test", "command": "unipi:notify-test"}]}]},
+                {"key": "test", "type": "action", "label": "Send test", "command": "notify-test"}]}]},
         {"namespace": "workflow", "title": "Workflow", "extensionId": "unipi.workflow", "sections": [
             {"id": "mode", "title": "Permissions", "fields": [
                 {"key": "mode", "type": "enum", "label": "Mode here", "options": ["ask", "auto", "full"], "default": "auto"},
@@ -722,8 +722,8 @@ impl Shared {
             Some('#') => json!([{"source": "unipi.command-enchantment", "from": from, "items": [
                 {"value": "#kanboard-todo", "label": "Kanboard TODO summary", "tag": "session", "tone": "c11"}]}]),
             Some('/') => json!([{"source": "commands", "from": 0, "items": [
-                {"value": "/compact", "description": "Compact the context"}, {"value": "/unipi:info", "description": "Session dashboard", "tag": "unipi", "tone": "c4"},
-                {"value": "/unipi:kanboard", "description": "Open the board", "tag": "unipi", "tone": "c4"}, {"value": "/skill:tdd", "description": "TDD skill", "tag": "skill", "tone": "c8"}]}]),
+                {"value": "/compact", "description": "Compact the context"}, {"value": "/info", "description": "Session dashboard", "tag": "info", "tone": "c8"},
+                {"value": "/kanboard", "description": "Open the board", "tag": "kanboard", "tone": "c10"}, {"value": "/skill:tdd", "description": "TDD skill", "tag": "skill", "tone": "c8"}]}]),
             _ => json!([]),
         };
         json!({"groups": groups})
@@ -797,9 +797,9 @@ impl SessionBackend for DemoBackend {
                         shared.emit(
                             json!({"type": "queue_update", "steering": [message], "followUp": []}),
                         );
-                    } else if message.starts_with("/unipi:kanboard") {
+                    } else if message.starts_with("/kanboard") {
                         shared.open_board();
-                    } else if message.starts_with("/unipi:info") {
+                    } else if message.starts_with("/info") {
                         shared.open_info();
                     } else if message.starts_with('/') {
                         shared.ui(
@@ -841,11 +841,10 @@ impl SessionBackend for DemoBackend {
                     {"name": "compact", "description": "Compact the context", "source": "builtin", "sourceInfo": null},
                     {"name": "login", "description": "Log in to a provider", "source": "builtin", "sourceInfo": null},
                     {"name": "model", "description": "Select a model", "source": "builtin", "sourceInfo": null},
-                    {"name": "unipi:info", "description": "Session dashboard", "source": "extension", "sourceInfo": null},
-                    {"name": "unipi:kanboard", "description": "Open the kanboard", "source": "extension", "sourceInfo": null},
-                    {"name": "unipi:permission", "description": "Permission mode — ask · auto · full", "source": "extension", "sourceInfo": null},
-                    {"name": "unipi:plan", "description": "Plan mode", "source": "extension", "sourceInfo": null},
-                    {"name": "unipi:settings", "description": "Open the extension settings hub", "source": "extension", "sourceInfo": null},
+                    {"name": "info", "description": "Session dashboard", "source": "extension", "sourceInfo": null},
+                    {"name": "kanboard", "description": "Open the kanboard", "source": "extension", "sourceInfo": null},
+                    {"name": "permission", "description": "Permission mode — ask · auto · full", "source": "extension", "sourceInfo": null},
+                    {"name": "plan", "description": "Plan mode", "source": "extension", "sourceInfo": null},
                     {"name": "skill:tdd", "description": "Red-green-refactor loop for a feature or bug", "source": "skill", "sourceInfo": null},
                     {"name": "skill:rust-best-practices", "description": "Idiomatic Rust checklist", "source": "skill", "sourceInfo": null}
                 ]})),

@@ -929,7 +929,7 @@ impl Workspace {
             "settings" => self.open_settings(None, window, cx),
             "refresh" => self.refresh_sessions(cx),
             "split" => self.split(window, cx),
-            "check-updates" => self.with_pane(cx, |p, cx| p.run_prompt("/unipi:update", cx)),
+            "check-updates" => self.with_pane(cx, |p, cx| p.run_prompt("/update-check", cx)),
             "frame-overlay" => {
                 perf::toggle_overlay(cx);
                 cx.notify();
@@ -1109,7 +1109,7 @@ impl Workspace {
             .active_pane()
             .is_some_and(|p| p.read(cx).model.ui.panel(kanban::BOARD_PANEL).is_some());
         if !has {
-            self.with_pane(cx, |p, cx| p.run_prompt("/unipi:kanboard", cx));
+            self.with_pane(cx, |p, cx| p.run_prompt("/kanboard", cx));
         }
         self.route = Route::Board;
         cx.notify();

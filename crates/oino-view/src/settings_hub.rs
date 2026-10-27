@@ -354,7 +354,7 @@ mod tests {
                     {"key": "platform", "type": "enum", "label": "Platform", "options": [{"value": "native", "label": "Native"}, "ntfy"]},
                     {"key": "ntfy.token", "type": "secret", "label": "ntfy token", "scope": "global"},
                     {"key": "limit", "type": "number", "label": "Limit", "min": 1, "max": 10},
-                    {"key": "test", "type": "action", "label": "Send test", "command": "unipi:notify-test"},
+                    {"key": "test", "type": "action", "label": "Send test", "command": "notify-test"},
                     {"key": "advanced", "type": "page", "label": "Advanced", "sections": [
                         {"title": "Retry", "fields": [{"key": "retry.count", "type": "number", "label": "Retries", "advanced": true}]}
                     ]}
@@ -399,7 +399,7 @@ mod tests {
             SECRET_MASK
         );
         assert_eq!(fields[1].display(None), "(default)");
-        assert_eq!(fields[4].display(None), "run /unipi:notify-test");
+        assert_eq!(fields[4].display(None), "run /notify-test");
         assert_eq!(
             fields[0].cycle(Some(&json!(false)), false),
             Some(json!(true))

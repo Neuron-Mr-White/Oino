@@ -2,7 +2,7 @@
 //!
 //! Values arrive resolved from the host (`defaults ⊕ global ⊕ project`); [`UtilSettings::from_json`]
 //! and [`ImageConfig::from_json`] are unipi's never-failing normalisers (wrong-typed fields fall
-//! back to defaults, legacy `badge.*` keys map onto `rename.*`).
+//! back to defaults).
 
 use serde_json::{Map, Value, json};
 use unipi_kit::jev;
@@ -82,7 +82,7 @@ pub struct RenameSettings {
     pub model: String,
 }
 
-/// `/unipi:answer` defaults.
+/// `/answer` defaults.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AnswerSettings {
     /// Default method.
@@ -113,7 +113,7 @@ pub struct UtilSettings {
     pub attachments: AttachmentSettings,
     /// Tool rendering.
     pub render: RenderStyle,
-    /// Debug trail to `/logs/rename.log` (replaces `UNIPI_DEBUG_RENAME`).
+    /// Debug trail to `/logs/rename.log`.
     pub debug: bool,
 }
 
@@ -127,31 +127,20 @@ fn obj<'a>(v: &'a Value, key: &str) -> &'a Value {
     v.get(key).filter(|x| x.is_object()).unwrap_or(&Value::Null)
 }
 
-fn bool_or(v: Option<&Value>, legacy: Option<&Value>, d: bool) -> bool {
-    v.and_then(Value::as_bool)
-        .or_else(|| legacy.and_then(Value::as_bool))
-        .unwrap_or(d)
+fn bool_or(v: Option<&Value>, d: bool) -> bool {
+    v.and_then(Value::as_bool).unwrap_or(d)
 }
 
 impl UtilSettings {
-    /// unipi `normalizeSettings`: never fails; legacy `badge.*` maps onto `rename.*` when unset.
+    /// unipi `normalizeSettings`: never fails.
     #[must_use]
     pub fn from_json(raw: &Value) -> Self {
         let p = expand_dotted(raw);
         let rename = obj(&p, "rename");
-        let badge = obj(&p, "badge");
         let answer = obj(&p, "answer");
         let att = obj(&p, "attachments");
         let render = obj(&p, "render");
-        let legacy_model = badge
-            .get("generationModel")
-            .and_then(Value::as_str)
-            .filter(|m| *m != "inherit");
-        let model = rename
-            .get("model")
-            .and_then(Value::as_str)
-            .or(legacy_model)
-            .unwrap_or("");
+        let model = rename.get("model").and_then(Value::as_str).unwrap_or("");
         let port = answer
             .get("port")
             .and_then(Value::as_f64)
@@ -167,7 +156,7 @@ impl UtilSettings {
             });
         Self {
             rename: RenameSettings {
-                auto: bool_or(rename.get("auto"), badge.get("autoGen"), true),
+                auto: bool_or(rename.get("auto"), true),
                 model: if model == "inherit" {
                     String::new()
                 } else {
@@ -180,12 +169,12 @@ impl UtilSettings {
                     .and_then(Value::as_str)
                     .and_then(AnswerMethod::parse)
                     .unwrap_or_default(),
-                hint: bool_or(answer.get("hint"), None, true),
+                hint: bool_or(answer.get("hint"), true),
                 port,
             },
             attachments: AttachmentSettings {
-                enabled: bool_or(att.get("enabled"), None, true),
-                preview: bool_or(att.get("preview"), None, true),
+                enabled: bool_or(att.get("enabled"), true),
+                preview: bool_or(att.get("preview"), true),
             },
             render: render
                 .get("style")
@@ -255,13 +244,13 @@ pub fn namespace(extension_id: &str) -> Namespace {
                         .description("Model for the naming side session; empty uses the session model."),
                 )
                 .field(
-                    Field::action("rename.now", "Rename now", "unipi:rename-now")
+                    Field::action("rename.now", "Rename now", "rename-now")
                         .description("Name the session from the recent requests right away."),
                 ),
         )
         .section(
             Section::new("answer", "Answer")
-                .description("/unipi:answer — answer the last reply's questions without scrolling")
+                .description("/answer — answer the last reply's questions without scrolling")
                 .field(
                     Field::enumeration(
                         "answer.method",
@@ -272,7 +261,7 @@ pub fn namespace(extension_id: &str) -> Namespace {
                             choice("web", "web form", "form in the browser"),
                         ],
                     )
-                    .description("How /unipi:answer collects your answers; the reply|questions|web argument overrides it per use."),
+                    .description("How /answer collects your answers; the reply|questions|web argument overrides it per use."),
                 )
                 .field(Field::boolean("answer.hint", "Questions hint").description(
                     "After a reply that asks questions, show a hint above the editor.",
@@ -446,21 +435,21 @@ impl ImageConfig {
         let keys = obj(&all, "keys");
         Self {
             generate: GenerateSettings {
-                enabled: bool_or(gen_s.get("enabled"), None, true),
+                enabled: bool_or(gen_s.get("enabled"), true),
                 model: s_or(gen_s, "model", DEFAULT_GENERATE_MODEL),
                 output_dir: s_or(gen_s, "outputDir", DEFAULT_OUTPUT_DIR),
-                save_to_disk: bool_or(gen_s.get("saveToDisk"), None, true),
+                save_to_disk: bool_or(gen_s.get("saveToDisk"), true),
                 endpoint: endpoint(gen_s),
             },
             edit: GenerateSettings {
-                enabled: bool_or(edit_s.get("enabled"), None, true),
+                enabled: bool_or(edit_s.get("enabled"), true),
                 model: s_or(edit_s, "model", DEFAULT_EDIT_MODEL),
                 output_dir: String::new(),
                 save_to_disk: true,
                 endpoint: endpoint(edit_s),
             },
             recognize: RecognizeSettings {
-                enabled: bool_or(rec_s.get("enabled"), None, true),
+                enabled: bool_or(rec_s.get("enabled"), true),
                 model: s_or(rec_s, "model", ""),
                 system_prompt: Some(s_or(rec_s, "systemPrompt", DEFAULT_RECOGNIZE_SYSTEM_PROMPT))
                     .filter(|s| !s.trim().is_empty())
@@ -644,19 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_badge_maps_onto_rename() {
-        let s = UtilSettings::from_json(
-            &json!({"badge": {"autoGen": false, "generationModel": "openrouter/x"}}),
-        );
-        assert!(!s.rename.auto);
-        assert_eq!(s.rename.model, "openrouter/x");
-        let inherit = UtilSettings::from_json(&json!({"badge": {"generationModel": "inherit"}}));
-        assert_eq!(inherit.rename.model, "");
-        // An explicit rename value wins over the legacy badge.
-        let both = UtilSettings::from_json(
-            &json!({"rename": {"auto": true}, "badge": {"autoGen": false}}),
-        );
-        assert!(both.rename.auto);
+    fn rename_model_inherit_is_default() {
         assert_eq!(
             UtilSettings::from_json(&json!({"rename": {"model": "inherit"}}))
                 .rename

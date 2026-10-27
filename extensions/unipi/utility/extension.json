@@ -4,7 +4,7 @@
   "name": "Utility",
   "version": "3.0.0",
   "kind": "extension",
-  "description": "The unipi grab-bag: /unipi:settings, /unipi:continue|retry, automatic session naming, /unipi:answer (reply panel, Q/A editor, web form), pasted-file attachments, image_generate/image_edit/image_recognize, simple|regular|advanced tool rendering and harness panels, /unipi:summarize, /unipi:doctor, /unipi:cleanup and /unipi:move.",
+  "description": "The utility grab-bag: Utility and Image settings pages, /continue|retry, automatic session naming, /answer (reply panel, Q/A editor, web form), pasted-file attachments, image_generate/image_edit/image_recognize, simple|regular|advanced tool rendering and harness panels, /summarize, /doctor, /cleanup and /move.",
   "license": "MIT",
   "resources": { "skills": ["skills"] },
   "permissions": {

@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.btw: /unipi:btw side questions in an editor-replacing panel, answered by a read-only nested agent seeded with the current branch"
+description = "unipi.btw: /btw side questions in an editor-replacing panel, answered by a read-only nested agent seeded with the current branch"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

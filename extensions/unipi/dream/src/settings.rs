@@ -98,7 +98,7 @@ pub fn namespace() -> Namespace {
         .section(
             Section::new("dream", "Dream")
                 .description("Background retrospection over past sessions: lessons into memory, skills proposed for approval")
-                .field(Field::boolean("enabled", "Dream in the background").description("Off by default. On: every time Oino opens, start a background dream when enough new sessions piled up. /unipi:dream run works either way."))
+                .field(Field::boolean("enabled", "Dream in the background").description("Off by default. On: every time Oino opens, start a background dream when enough new sessions piled up. /dream run works either way."))
                 .field(Field::number("minSessions", "Min new sessions").description("New struggle sessions required since the last dream before another runs.").with_kind(min(1.0)))
                 .field(Field::number("minGapHours", "Min gap (hours)").description("Minimum hours between two dreams.").with_kind(min(0.0)))
                 .field(Field::string("model", "Dream model").description("Optional provider/model for the dream agent (empty = session default)."))

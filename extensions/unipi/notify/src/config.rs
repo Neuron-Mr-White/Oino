@@ -1,7 +1,7 @@
 //! `notify` settings (unipi `settings.ts`, `ntfy-config.ts`, `types.ts`).
 //!
 //! Values are `defaults ⊕ host settings ⊕ local overlay` (the overlay holds what
-//! `/unipi:notify-event` and the setup wizards write until the host offers a guest settings
+//! `/notify-event` and the setup wizards write until the host offers a guest settings
 //! write, unipi-core R1). Secret fields (`gotify.appToken`, `telegram.botToken`,
 //! `telegram.chatId`, `ntfy.token`) come from the settings value when present, else the
 //! extension's secret store (`notify/<key>`).
@@ -569,12 +569,8 @@ pub(crate) fn namespace() -> Namespace {
                         .description("Turn each event into a notification and pick where it goes."),
                 )
                 .field(
-                    Field::action(
-                        "actions.test",
-                        "Send test notification",
-                        "unipi:notify-test",
-                    )
-                    .description("Sends on every enabled platform."),
+                    Field::action("actions.test", "Send test notification", "notify-test")
+                        .description("Sends on every enabled platform."),
                 ),
         )
         .section(
@@ -594,7 +590,7 @@ pub(crate) fn namespace() -> Namespace {
                             .description("Application token from the Gotify web UI."),
                         number("gotify.priority", "Priority", Some(0.0), Some(10.0), None)
                             .description("Delivery priority (0–10)."),
-                        Field::action("gotify.setup", "Setup wizard…", "unipi:notify-set-gotify")
+                        Field::action("gotify.setup", "Setup wizard…", "notify-set-gotify")
                             .description("Guided setup with a test message."),
                     ],
                 ))
@@ -610,7 +606,7 @@ pub(crate) fn namespace() -> Namespace {
                         Field::secret("telegram.chatId", "Chat ID")
                             .empty_label("unset")
                             .description("Chat the messages are delivered to."),
-                        Field::action("telegram.setup", "Setup wizard…", "unipi:notify-set-tg")
+                        Field::action("telegram.setup", "Setup wizard…", "notify-set-tg")
                             .description(
                                 "Paste the bot token, message the bot, and the chat id is found.",
                             ),
@@ -652,7 +648,7 @@ pub(crate) fn namespace() -> Namespace {
                         .description(
                             "How much of the notification text rides along in the ntfy payload.",
                         ),
-                        Field::action("ntfy.setup", "Setup wizard…", "unipi:notify-set-ntfy")
+                        Field::action("ntfy.setup", "Setup wizard…", "notify-set-ntfy")
                             .description("Guided setup with a test message."),
                     ],
                 )),
@@ -756,10 +752,7 @@ mod tests {
             events_page["sections"][2]["fields"][0]["description"],
             "Send a notification when a run finishes (once per run, after every follow-up and continuation, not per message)."
         );
-        assert_eq!(
-            v["sections"][2]["fields"][1]["command"],
-            "unipi:notify-test"
-        );
+        assert_eq!(v["sections"][2]["fields"][1]["command"], "notify-test");
         let platforms = &v["sections"][3]["fields"];
         assert_eq!(platforms[0]["sections"][0]["fields"][2]["type"], "secret");
         assert_eq!(platforms[2]["sections"][0]["fields"][4]["max"], 5.0);

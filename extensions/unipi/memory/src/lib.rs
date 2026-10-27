@@ -9,8 +9,7 @@
 //! | markdown-only mode | [`search::local_search`] |
 //! | recall reminder (+ wake-up), save pass `side \| reminder \| off` | `before_agent_start`, `agent_end` (side = nested agent) |
 //! | tools `memory_store/search/delete/list`, `global_memory_search/list` | tools (exact names, schemas, texts) |
-//! | `/unipi:memory …`, `-process`, `-consolidate`, `-search`, `global-memory-search`, `-forget`, `global-memory-list` | commands |
-//! | v2→v3 conversion | `/unipi:memory migrate` imports `~/.unipi/memory` (read-only alias) |
+//! | `/memory …`, `-process`, `-consolidate`, `-search`, `global-memory-search`, `-forget`, `global-memory-list` | commands |
 //! | cards, reminders renderers, status `unipi-memory`, info group, move handler, `MEMORY_STORED/DELETED` | renderers, status, services, bus |
 
 #![allow(
@@ -66,7 +65,6 @@ const SAVE_ROLE: &str = "memory-save";
 const ROOT: &str = "/ext-global/memory";
 const MEMPALACE_GUEST: &str = "/mempalace";
 const CONFIG_GUEST: &str = "/mempalace-config";
-const LEGACY_GUEST: &str = "/legacy-memory";
 
 /// The recall reminder text (unipi `buildMemoryRecallReminder`).
 #[must_use]
@@ -242,23 +240,11 @@ fn config_dir() -> Option<PathBuf> {
     preopen_host(CONFIG_GUEST).map(|_| PathBuf::from(CONFIG_GUEST))
 }
 
-fn legacy_dir() -> Option<PathBuf> {
-    preopen_host(LEGACY_GUEST).map(|_| PathBuf::from(LEGACY_GUEST))
-}
-
-/// Guest path for a host path inside the memory root or the legacy root.
+/// Guest path for a host path inside the memory root.
 fn guest_of_host(host: &str) -> Option<String> {
-    for (g, h) in [
-        (ROOT.to_owned(), places().memory_root),
-        (LEGACY_GUEST.to_owned(), preopen_host(LEGACY_GUEST)),
-    ] {
-        if let Some(h) = h
-            && let Some(rest) = host.strip_prefix(&format!("{}/", h.trim_end_matches('/')))
-        {
-            return Some(format!("{g}/{rest}"));
-        }
-    }
-    None
+    let h = places().memory_root?;
+    let rest = host.strip_prefix(&format!("{}/", h.trim_end_matches('/')))?;
+    Some(format!("{ROOT}/{rest}"))
 }
 
 fn now_iso() -> String {
@@ -455,10 +441,7 @@ impl Memory {
             return search::local_search(&root(), query, limit, project);
         };
         let raw = r.search(query, (limit * 3).max(10), project).await;
-        let roots: Vec<String> = [places().memory_root, preopen_host(LEGACY_GUEST)]
-            .into_iter()
-            .flatten()
-            .collect();
+        let roots: Vec<String> = places().memory_root.into_iter().collect();
         search::group_hits(&raw, limit, &roots, &|h| guest_of_host(h))
     }
 
@@ -830,13 +813,13 @@ impl Memory {
             name: "@pi-unipi/memory".into(),
             version: host::info().extension_version,
             commands: [
-                "unipi:memory",
-                "unipi:memory-process",
-                "unipi:memory-consolidate",
-                "unipi:memory-search",
-                "unipi:global-memory-search",
-                "unipi:memory-forget",
-                "unipi:global-memory-list",
+                "memory",
+                "memory-process",
+                "memory-consolidate",
+                "memory-search",
+                "global-memory-search",
+                "memory-forget",
+                "global-memory-list",
             ]
             .map(ToOwned::to_owned)
             .to_vec(),
@@ -868,30 +851,24 @@ impl Memory {
             } else {
                 self.sessions.with(&sid, |s| s.wake_up = Some(None));
             }
-            let migrating = search::needs_migration(&root(), legacy_dir().as_deref());
             if has_ui {
                 let count = Self::list(&project).len();
                 let pend = Journal(&root()).count();
-                let status = if migrating {
-                    "🧠 migrate: /unipi:memory migrate".to_owned()
-                } else {
-                    format!(
-                        "🧠 {count} mem{}",
-                        if pend > 0 {
-                            format!(" +{pend}⧗")
-                        } else {
-                            String::new()
-                        }
-                    )
-                };
+                let status = format!(
+                    "🧠 {count} mem{}",
+                    if pend > 0 {
+                        format!(" +{pend}⧗")
+                    } else {
+                        String::new()
+                    }
+                );
                 let _ = ui::status("unipi-memory", Some(&status));
                 if !self
                     .sessions
                     .with(&sid, |s| std::mem::replace(&mut s.card_done, true))
                 {
                     let wake = self.sessions.with(&sid, |s| s.wake_up.clone().flatten());
-                    let mut card =
-                        json!({"project": project, "count": count, "needsMigrate": migrating});
+                    let mut card = json!({"project": project, "count": count});
                     if let Some(w) = wake {
                         card["wakeUp"] = json!(w);
                     }
@@ -899,35 +876,6 @@ impl Memory {
                         card["issue"] = json!(i);
                     }
                     let _ = session::append_entry(CARD_CUSTOM_TYPE, Some(&card));
-                }
-                if migrating {
-                    let asked = root().join(".v3-migrate-asked");
-                    if asked.exists() {
-                        let _ = ui::notify(
-                            "unipi memories found — run /unipi:memory migrate to import them.",
-                            "info",
-                        );
-                    } else {
-                        let _ = std::fs::create_dir_all(root());
-                        let _ = std::fs::write(&asked, now_iso());
-                        let yes = ui::confirm("Import your unipi memories?", "Memories from ~/.unipi/memory can be imported into Oino's memory and the palace. Nothing in ~/.unipi is changed. You can also do it later with /unipi:memory migrate.").await.unwrap_or(false);
-                        if yes {
-                            let _ = ws::send_user_message(
-                                json!("/unipi:memory migrate").to_string(),
-                                ws::UserMessageOptions {
-                                    deliver_as: None,
-                                    expand_prompt_templates: false,
-                                    provenance: None,
-                                },
-                            )
-                            .await;
-                        } else {
-                            let _ = ui::notify(
-                                "OK — run /unipi:memory migrate whenever you like.",
-                                "info",
-                            );
-                        }
-                    }
                 }
             }
             self.replay().await;
@@ -1213,137 +1161,7 @@ impl Memory {
         if let Some(i) = self.install_issue() {
             lines.push(format!("mode: {i}"));
         }
-        match search::read_import(&root()) {
-            Some(s) => lines.push(format!(
-                "migration: {} {}/{} · {} failed{}",
-                s.phase,
-                s.done,
-                s.total,
-                s.failed_units,
-                if s.errors.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({} errors)", s.errors.len())
-                }
-            )),
-            None if search::needs_migration(&root(), legacy_dir().as_deref()) => {
-                lines.push("migration: needed — run /unipi:memory migrate".into());
-            }
-            None => lines.push("migration: not needed".into()),
-        }
         lines.join("\n")
-    }
-
-    #[allow(clippy::too_many_lines, reason = "plan, confirm, import, file")]
-    async fn migrate(&self, cx: &CommandCtx) {
-        let say = |m: &str, l: &str| {
-            if cx.has_ui() {
-                let _ = ui::notify(m, l);
-            }
-        };
-        let Some(legacy) = legacy_dir() else {
-            return say("Nothing to migrate.", "info");
-        };
-        if !search::needs_migration(&root(), Some(&legacy)) {
-            let st = search::read_import(&root());
-            return say(
-                &if st.as_ref().is_some_and(|s| s.phase == "done") {
-                    format!(
-                        "Nothing to migrate — import finished ({} records).",
-                        st.map_or(0, |s| s.total)
-                    )
-                } else {
-                    "Nothing to migrate.".into()
-                },
-                "info",
-            );
-        }
-        let (n, odd, markers) = search::legacy_inventory(&legacy);
-        let plan = [
-            "Import plan (~/.unipi/memory is only read):".to_owned(),
-            format!("· {n} memory files → Oino's typed layout + mined into the palace"),
-            format!(
-                "· {} project dirs mapped to lowercase names ({}{})",
-                odd.len(),
-                odd.iter().take(5).cloned().collect::<Vec<_>>().join(", "),
-                if odd.len() > 5 { "…" } else { "" }
-            ),
-            if markers.is_empty() {
-                String::new()
-            } else {
-                format!("· legacy markers ignored: {}", markers.join(", "))
-            },
-            format!("· roughly ~{} min", n.div_ceil(300).max(1)),
-            "· memories that already exist in Oino are kept as they are".to_owned(),
-        ]
-        .into_iter()
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-        if cx.has_ui()
-            && !ui::confirm("Migrate memories now?", &plan)
-                .await
-                .unwrap_or(false)
-        {
-            return say("Migration cancelled.", "info");
-        }
-        let mut st = search::ImportState {
-            phase: "importing".into(),
-            ..search::ImportState::default()
-        };
-        search::write_import(&root(), &st);
-        let written = search::import_legacy(&root(), &legacy, &mut st);
-        st.phase = "filing".into();
-        search::write_import(&root(), &st);
-        self.detect().await;
-        for (project, files_written) in &written {
-            files::ensure_mempalace_yaml(&root(), project);
-            if self.palace_mode() {
-                let p = places();
-                let dir = host_of(&files::project_dir(&root(), project));
-                let hosts: Vec<String> = files_written.iter().map(|f| host_of(f)).collect();
-                let r = palace::file_through_daemon(
-                    &p,
-                    true,
-                    self.cfg().auto_start_daemon,
-                    &dir,
-                    &hosts,
-                    project,
-                    60_000,
-                )
-                .await;
-                if !matches!(r.0, Outcome::Filed | Outcome::Queued)
-                    && palace::mine_direct(&p, &dir, project).await.is_err()
-                {
-                    for h in hosts {
-                        Self::journal_enqueue("store", &h, project, "", None);
-                    }
-                }
-            } else {
-                for f in files_written {
-                    Self::journal_enqueue("store", &host_of(f), project, "", None);
-                }
-            }
-        }
-        st.phase = "done".into();
-        search::write_import(&root(), &st);
-        say(
-            &format!(
-                "Memory migration complete — {}/{} records{}.",
-                st.done,
-                st.total,
-                if st.failed_units > 0 {
-                    format!(" · {} failed", st.failed_units)
-                } else {
-                    String::new()
-                }
-            ),
-            if st.failed_units > 0 {
-                "warning"
-            } else {
-                "info"
-            },
-        );
     }
 
     async fn memory_command(&self, args: &str, cx: &CommandCtx) {
@@ -1356,14 +1174,13 @@ impl Memory {
         };
         match sub {
             "status" => say(&self.status_text(&cx.cx).await, "info"),
-            "migrate" => self.migrate(cx).await,
             "recall" | "write" => {
                 let Some(on) = parts.get(1).and_then(|v| match *v {
                     "on" => Some(true),
                     "off" => Some(false),
                     _ => None,
                 }) else {
-                    return say(&format!("Usage: /unipi:memory {sub} on|off"), "warning");
+                    return say(&format!("Usage: /memory {sub} on|off"), "warning");
                 };
                 if sub == "recall" {
                     self.sessions
@@ -1389,7 +1206,7 @@ impl Memory {
                 }
             }
             _ => say(
-                "Usage: /unipi:memory status | migrate | recall on|off | write on|off",
+                "Usage: /memory status | recall on|off | write on|off",
                 "info",
             ),
         }
@@ -1542,23 +1359,6 @@ impl Memory {
         let recall = cfg.recall_at_start && ro != Some(false);
         let write = cfg.write && wo != Some(false);
         let pending = Journal(&root()).count();
-        let conv = search::read_import(&root());
-        let needs = search::needs_migration(&root(), legacy_dir().as_deref());
-        let migrate = match &conv {
-            Some(c) if c.phase != "done" => format!(
-                "{} {}/{}{}",
-                c.phase,
-                c.done,
-                c.total,
-                if c.failed_units > 0 {
-                    format!(" · {} failed", c.failed_units)
-                } else {
-                    String::new()
-                }
-            ),
-            _ if needs => "needed".into(),
-            _ => "—".into(),
-        };
         json!({
             "id": "memory", "name": "Memory", "icon": "🧠", "priority": 60,
             "config": {"showByDefault": true, "stats": [
@@ -1567,16 +1367,14 @@ impl Memory {
                 {"id": "recall", "label": "Recall", "show": true},
                 {"id": "write", "label": "Write", "show": true},
                 {"id": "pending", "label": "Pending Ops", "show": true},
-                {"id": "migrate", "label": "Migration", "show": true},
             ]},
             "data": {
-                "raw": {"value": "", "raw": {"project": project, "projectCount": mems.len(), "total": total, "types": types, "recall": recall, "write": write, "pending": pending, "migrate": if migrate == "—" { Value::Null } else { json!(migrate) }}},
+                "raw": {"value": "", "raw": {"project": project, "projectCount": mems.len(), "total": total, "types": types, "recall": recall, "write": write, "pending": pending}},
                 "projectCount": {"value": mems.len().to_string()},
                 "totalCount": {"value": total.to_string()},
                 "recall": {"value": if recall { "on" } else { "off" }},
                 "write": {"value": if write { "on" } else { "off" }},
                 "pending": {"value": pending.to_string()},
-                "migrate": {"value": migrate},
             },
         })
     }
@@ -1790,14 +1588,7 @@ fn memory_completions(prefix: &str) -> Vec<CompletionItem> {
         }
     }
     [
-        (
-            "status",
-            "backend, daemon, reader, counts, switches, migration",
-        ),
-        (
-            "migrate",
-            "import unipi memories (~/.unipi/memory is only read)",
-        ),
+        ("status", "backend, daemon, reader, counts, switches"),
         (
             "recall on",
             "session-only: put memory in front of the agent",
@@ -1940,9 +1731,6 @@ impl Extension for Memory {
             ];
             if let Some(i) = issue {
                 rows.push(json!({"t": "text", "value": [{"text": i, "tone": "warning"}]}));
-            }
-            if d.get("needsMigrate") == Some(&Value::Bool(true)) {
-                rows.push(json!({"t": "text", "value": [{"text": "unipi memories found — run /unipi:memory migrate", "tone": "warning"}]}));
             }
             if req.get("expanded").and_then(Value::as_bool).unwrap_or(false)
                 && let Some(w) = wake
@@ -2105,38 +1893,38 @@ impl Extension for Memory {
         );
 
         cx.command(
-            Command::<Self>::new("unipi:memory")
-                .description("Memory status and session overrides: /unipi:memory status|recall on|off|write on|off|migrate")
+            Command::<Self>::new("memory")
+                .description("Memory status and session overrides: /memory status|recall on|off|write on|off")
                 .run(|ext, args, cx| async move {
                     ext.memory_command(&args, &cx).await;
                     Ok(())
                 })
                 .complete(|_ext, prefix, _cx| async move { memory_completions(&prefix) }),
         );
-        cx.command(Command::<Self>::new("unipi:memory-process").description("Analyze text and store extracted memories").run(|_ext, args, cx| async move {
+        cx.command(Command::<Self>::new("memory-process").description("Analyze text and store extracted memories").run(|_ext, args, cx| async move {
             if args.trim().is_empty() {
                 if cx.has_ui() {
-                    ui::notify("Usage: /unipi:memory-process <text to analyze>", "info")?;
+                    ui::notify("Usage: /memory-process <text to analyze>", "info")?;
                 }
                 return Ok(());
             }
             if cx.has_ui() {
                 ui::notify("Analyzing text for memories... Use memory_store tool to save.", "info")?;
             }
-            send_harness_user(format!("Analyze the following text and extract any memory-worthy items (user preferences, project decisions, code patterns, conversation summaries). For each item found, use the memory_store tool to save it.\n\nText to analyze:\n{args}"), "Extract memories", "Generated from /unipi:memory-process").await;
+            send_harness_user(format!("Analyze the following text and extract any memory-worthy items (user preferences, project decisions, code patterns, conversation summaries). For each item found, use the memory_store tool to save it.\n\nText to analyze:\n{args}"), "Extract memories", "Generated from /memory-process").await;
             Ok(())
         }));
-        cx.command(Command::<Self>::new("unipi:memory-consolidate").description("Consolidate current session into memory").run(|_ext, _args, cx| async move {
+        cx.command(Command::<Self>::new("memory-consolidate").description("Consolidate current session into memory").run(|_ext, _args, cx| async move {
             if cx.has_ui() {
                 ui::notify("Consolidating session into memory... Use memory_store tool to save insights.", "info")?;
             }
-            send_harness_user("Review the current session and identify any memory-worthy items:\n- User preferences discovered\n- Project decisions made\n- Code patterns learned\n- Important context to remember\n\nFor each item, use the memory_store tool to save it with an appropriate title and type.".into(), "Consolidate session", "Generated from /unipi:memory-consolidate").await;
+            send_harness_user("Review the current session and identify any memory-worthy items:\n- User preferences discovered\n- Project decisions made\n- Code patterns learned\n- Important context to remember\n\nFor each item, use the memory_store tool to save it with an appropriate title and type.".into(), "Consolidate session", "Generated from /memory-consolidate").await;
             Ok(())
         }));
         for (name, desc, global) in [
-            ("unipi:memory-search", "Search project memories", false),
+            ("memory-search", "Search project memories", false),
             (
-                "unipi:global-memory-search",
+                "global-memory-search",
                 "Search memories across all projects",
                 true,
             ),
@@ -2194,13 +1982,13 @@ impl Extension for Memory {
             ));
         }
         cx.command(
-            Command::<Self>::new("unipi:memory-forget")
+            Command::<Self>::new("memory-forget")
                 .description("Delete a memory by title")
                 .run(|ext, args, cx| async move {
                     let title = args.trim().to_owned();
                     if title.is_empty() {
                         if cx.has_ui() {
-                            ui::notify("Usage: /unipi:memory-forget <memory title>", "info")?;
+                            ui::notify("Usage: /memory-forget <memory title>", "info")?;
                         }
                         return Ok(());
                     }
@@ -2227,7 +2015,7 @@ impl Extension for Memory {
                 }),
         );
         cx.command(
-            Command::<Self>::new("unipi:global-memory-list")
+            Command::<Self>::new("global-memory-list")
                 .description("List all memories across all projects")
                 .run(|_ext, _args, cx| async move {
                     let grouped = Memory::all_projects();

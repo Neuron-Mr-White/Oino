@@ -93,7 +93,7 @@ impl Workspace {
         if has_add {
             self.board_action("add", JsonValue::Null, cx);
         } else {
-            self.with_pane(cx, |p, cx| p.set_composer_text("/unipi:kanboard add ", cx));
+            self.with_pane(cx, |p, cx| p.set_composer_text("/kanboard add ", cx));
             self.route = Route::Sessions;
         }
         cx.notify();
@@ -243,7 +243,7 @@ impl Workspace {
         } else {
             self.new_session_in(cwd, window, cx);
         }
-        self.with_pane(cx, |p, cx| p.run_prompt("/unipi:kanboard", cx));
+        self.with_pane(cx, |p, cx| p.run_prompt("/kanboard", cx));
         self.board_ui = BoardUi::default();
         cx.notify();
     }
@@ -507,7 +507,7 @@ impl Workspace {
                 &t,
                 IconName::Kanban,
                 "Opening the board…",
-                Some("Runs /unipi:kanboard in the active session.".into()),
+                Some("Runs /kanboard in the active session.".into()),
                 Vec::new(),
             )
             .into_any_element(),

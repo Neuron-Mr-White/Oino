@@ -24,7 +24,7 @@ are searchable alongside Oino's own — every result carries its source.
 Each memory is one markdown file:
 
 ```
-~/.unipi/memory/<project>/<type>/<id>.md
+~/.oino/state/unipi.memory/global/memory/<project>/<type>/<id>.md
 ```
 
 with YAML frontmatter (`id, title, tags, project, created, updated, type`)
@@ -56,7 +56,7 @@ honestly:
 - `markdown only ⚠` — no daemon reachable; journaled to `.pending.json` and
   replayed when a daemon appears
 
-## Switches (`/unipi:settings` → Memory)
+## Switches (`/settings` → Memory)
 
 | Switch | Off means |
 |--------|-----------|
@@ -67,9 +67,8 @@ honestly:
 | MemPalace auto-update | Skip the daily PyPI check + `uv` upgrade |
 
 `~/.config/mempalace/agent-hooks.json {enabled:false}` mutes both reminders.
-`/unipi:memory status` shows backend/daemon/reader/counts/pending and
-migration progress; `/unipi:memory migrate` converts v2 data after a
-confirmed plan; `recall on|off` / `write on|off` are session-only.
+`/memory status` shows backend/daemon/reader/counts/pending;
+`recall on|off` / `write on|off` are session-only.
 
 ## Naming Convention
 
@@ -88,5 +87,3 @@ specific, <60 chars (`auth_jwt_prefer_refresh_tokens`, not `auth_tokens`).
 - Read max 10 results per search.
 - Update existing memories — the store tool detects exact titles and lists
   similar ones.
-- v2 leftovers are migrated by the user-initiated `/unipi:memory migrate`
-  (backups first); check progress via `/unipi:memory status`.

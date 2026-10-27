@@ -110,7 +110,7 @@ covers unipi ask_user (unipi-port §3.13).
 | `clipboardWrite` | `text` | TUI → OSC 52 |
 | `setShortcuts` | `shortcuts: [{id, keys, description, extensionId}]` | full current list (on change) |
 | `setTheme` | `name` | pi `setTheme`; frontends without themes ignore |
-| `openSettings` | `namespace?`, `query?` | opens the frontend settings hub (§6.6) filtered to a namespace/search (unipi `/unipi:settings`, `/unipi:skills`) |
+| `openSettings` | `namespace?`, `query?` | opens the frontend settings hub (§6.6) filtered to a namespace/search (unipi `/settings`, `/skills`) |
 
 ## 5. Panels (views)
 
@@ -225,7 +225,7 @@ map tones to their theme; no hex colors in OUS. Icons: a small name set (`check`
     { "key": "ntfy.token", "type": "secret", "label": "ntfy token", "scope": "global" },
     { "key": "order", "type": "order", "label": "Order", "items": ["a","b"] },
     { "key": "model", "type": "model", "label": "Model", "filter": {"input": ["image"]} },
-    { "key": "test", "type": "action", "label": "Send test", "command": "unipi:notify-test" },
+    { "key": "test", "type": "action", "label": "Send test", "command": "notify-test" },
     { "key": "advanced", "type": "page", "label": "Advanced", "sections": [ … ] }
   ] } ] }
 ```
