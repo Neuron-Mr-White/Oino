@@ -145,7 +145,7 @@ const PACKAGE_COMMANDS: [&str; 6] = ["install", "remove", "uninstall", "update",
 
 /// Subcommands handled before flag parsing that are not available yet (`auth`, Oino
 /// `serve`/`ext`/`sessions`); owned by other work items.
-const UNAVAILABLE_SUBCOMMANDS: [&str; 4] = ["auth", "mcp", "ext", "sessions"];
+const UNAVAILABLE_SUBCOMMANDS: [&str; 5] = ["auth", "mcp", "serve", "ext", "sessions"];
 
 /// `oino install|remove|uninstall|update|list|config …`; bare `oino update [--check]` is the
 /// self-update (`update <id>…` / `update --extensions` update packages).

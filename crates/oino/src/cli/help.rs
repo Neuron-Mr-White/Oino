@@ -28,6 +28,7 @@ Commands:
   oino config                    Print the settings.json paths
   oino auth <command>            Print credentials or check provider readiness
   oino serve                     Serve sessions to remote clients
+  oino cron <command>            Scheduled, unattended runs: serve/install/list/add/run/… (docs/cron.md)
   oino <command> --help          Show help for install/remove/uninstall/update/list/config/auth
 
 Options:

@@ -17,7 +17,7 @@ use oino_cron::{install, serve};
 use crate::print_stdout;
 
 /// The subcommands.
-const SUBCOMMANDS: [&str; 19] = [
+const SUBCOMMANDS: [&str; 20] = [
     "serve",
     "install",
     "uninstall",
@@ -37,10 +37,20 @@ const SUBCOMMANDS: [&str; 19] = [
     "pause",
     "resume",
     "settings",
+    "test-notify",
 ];
+
+/// `oino cron` with no subcommand, or `--help`/`-h`: print the usage and succeed.
+fn asked_for_help(args: &[String]) -> bool {
+    args.is_empty() || matches!(args.first().map(String::as_str), Some("--help" | "-h"))
+}
 
 /// `oino cron …` entry point: `args` are the words after `cron`.
 pub async fn run(args: &[String]) -> i32 {
+    if asked_for_help(args) {
+        print_stdout(&format!("{}\n", help_error()));
+        return 0;
+    }
     match execute(args).await {
         Ok(()) => 0,
         Err(message) => {
@@ -87,14 +97,14 @@ async fn execute(args: &[String]) -> Result<(), String> {
                     .await
                     .map_err(|e| e.to_string())?
             };
-            render(sub, rest, &value);
+            render(sub, rest, &value, &paths);
             Ok(())
         }
     }
 }
 
 fn help_error() -> String {
-    "usage: oino cron <command>\n\ncommands:\n  serve            run the always-on scheduler (foreground)\n  install          install it as a user service (login-started)\n  uninstall        remove the user service\n  status           scheduler state, next fire per job\n  list             every job\n  show <id>        one job and its recent runs\n  add              add a job (--name, --prompt, --schedule|--at, …)\n  edit <id>        change a job (same flags as add)\n  remove <id>      delete a job and its history\n  enable|disable <id>\n  run <id>         fire a job now\n  stop <id>        kill its running runs\n  runs [<id>] [--limit N]\n  log <run-id>     one run's record and output\n  pause | resume   pause every job / resume\n  settings         show or change scheduler settings\n\nevery command takes --json"
+    "usage: oino cron <command>\n\ncommands:\n  serve            run the always-on scheduler (foreground)\n  install          install it as a user service (login-started)\n  uninstall        remove the user service\n  status           scheduler state, next fire per job\n  list             every job\n  show <id>        one job and its recent runs\n  add              add a job (--name, --prompt, --schedule|--at, …)\n  edit <id>        change a job (same flags as add)\n  remove <id>      delete a job and its history\n  enable|disable <id>\n  run <id>         fire a job now\n  stop <id>        kill its running runs\n  runs [<id>] [--limit N]\n  log <run-id>     one run's record and output\n  pause | resume   pause every job / resume\n  settings         show or change scheduler settings\n  test-notify <id> send a test notification on its channels\n\nevery command takes --json"
     .to_owned()
 }
 
@@ -421,7 +431,7 @@ fn schedule_summary(schedule: &str, tz_input: &str) -> String {
     format!("schedule: {schedule}\nnext: {times}")
 }
 
-fn render(sub: &str, words: &[String], value: &serde_json::Value) {
+fn render(sub: &str, words: &[String], value: &serde_json::Value, paths: &CronPaths) {
     let json = words.iter().any(|w| w == "--json") || words.contains(&"--json=true".to_owned());
     if json {
         print_stdout(&format!(
@@ -457,7 +467,7 @@ fn render(sub: &str, words: &[String], value: &serde_json::Value) {
         "log" => render_log(value),
         "pause" => "Paused: no new runs will start. Running ones finish.".to_owned(),
         "resume" => "Resumed.".to_owned(),
-        "status" => render_status(value),
+        "status" => render_status(value, paths),
         "settings" => render_settings(value),
         _ => serde_json::to_string_pretty(value).unwrap_or_default(),
     };
@@ -579,16 +589,26 @@ fn render_log(value: &serde_json::Value) -> String {
     format!("{header}\n{}", value["log"].as_str().unwrap_or(""))
 }
 
-fn render_status(value: &serde_json::Value) -> String {
-    let mut lines = vec![format!(
-        "{}  concurrency {}",
-        if value["paused"].as_bool().unwrap_or(false) {
-            "paused"
-        } else {
-            "running"
-        },
-        value["concurrency"].as_i64().unwrap_or(0),
-    )];
+fn render_status(value: &serde_json::Value, paths: &CronPaths) -> String {
+    let scheduler = if value["owner"].is_object() {
+        "scheduler running (this request)".to_owned()
+    } else if oino_cron::client::daemon_running(paths) {
+        "scheduler running (daemon)".to_owned()
+    } else {
+        "scheduler not running — start it with `oino cron serve` or `oino cron install`".to_owned()
+    };
+    let mut lines = vec![
+        scheduler,
+        format!(
+            "{}  concurrency {}",
+            if value["paused"].as_bool().unwrap_or(false) {
+                "paused"
+            } else {
+                "not paused"
+            },
+            value["concurrency"].as_i64().unwrap_or(0),
+        ),
+    ];
     for job in value["jobs"].as_array().cloned().unwrap_or_default() {
         lines.push(format!(
             "  {:<20} {}  next {}  {}",

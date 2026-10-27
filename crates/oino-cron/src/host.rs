@@ -124,12 +124,9 @@ impl CronHost for DaemonCronHost {
                     CronControl::RunNow { .. } | CronControl::Stop { .. } => {
                         Err(host_error(&not_running))
                     }
-                    other => {
-                        let _ = other;
-                        call_local(&paths, None, &op, payload)
-                            .await
-                            .or_else(|_| Err(host_error(&not_running)))
-                    }
+                    _ => call_local(&paths, None, &op, payload)
+                        .await
+                        .map_err(|_| host_error(&not_running)),
                 },
             }
         })
