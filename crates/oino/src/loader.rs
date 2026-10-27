@@ -226,7 +226,10 @@ impl CliLoader {
         } else {
             let config = HostConfig::new(context.agent_dir.clone(), context.cwd.clone());
             match WasmRuntime::new(WasmRuntimeOptions::new(config)) {
-                Ok(runtime) => Some(CoreLoader::new(Arc::new(runtime), packages)),
+                Ok(runtime) => {
+                    crate::browser::install(&runtime, &context.agent_dir);
+                    Some(CoreLoader::new(Arc::new(runtime), packages))
+                }
                 Err(error) => {
                     diagnostics.push(Diagnostic::error(format!(
                         "Failed to start the extension host: {error}"

@@ -1,0 +1,21 @@
+[package]
+name = "oino-browser-ext"
+version = "1.0.0-alpha.2"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "oino.browser: browser_* agent tools over the host browser service, skill:browser, prompt line, turn-tail screenshot, /browser (browser-control.md §11)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64.workspace = true
+oino-extension.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

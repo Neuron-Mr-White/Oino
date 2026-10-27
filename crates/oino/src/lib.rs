@@ -35,6 +35,7 @@
     )
 )]
 
+pub mod browser;
 pub mod cli;
 #[cfg(feature = "faux")]
 pub mod faux;

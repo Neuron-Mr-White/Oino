@@ -648,6 +648,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "oino-browser-ext"
+version = "1.0.0-alpha.2"
+dependencies = [
+ "base64",
+ "oino-extension",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "oino-extension"
 version = "1.0.0-alpha.2"
 dependencies = [

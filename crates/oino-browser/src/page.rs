@@ -983,6 +983,41 @@ pub(crate) async fn screenshot_png(
         .map_err(|e| ActionError::new(BrowserErrorCode::ExecutionError, e.to_string()))
 }
 
+/// Viewport JPEG straight from the browser (turn-tail shots: fast, small), falling back to
+/// the compression ladder when it is still too large.
+pub(crate) async fn screenshot_jpeg(
+    cdp: &Cdp,
+    tab: &Tab,
+) -> ActionResult<crate::screenshot::Compressed> {
+    use base64::Engine as _;
+    for quality in [70, 45] {
+        let r = cdp
+            .call_timeout(
+                Some(&tab.session),
+                "Page.captureScreenshot",
+                json!({"format": "jpeg", "quality": quality, "fromSurface": true}),
+                Duration::from_secs(10),
+            )
+            .await?;
+        let data = r["data"].as_str().unwrap_or_default();
+        if data.len() <= crate::screenshot::MAX_B64 {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .map_err(|e| ActionError::new(BrowserErrorCode::ExecutionError, e.to_string()))?;
+            let l = layout(cdp, tab).await.unwrap_or_default();
+            return Ok(crate::screenshot::Compressed {
+                mime: "image/jpeg",
+                data: bytes,
+                width: u32::try_from(px(l.width)).unwrap_or(0),
+                height: u32::try_from(px(l.height)).unwrap_or(0),
+            });
+        }
+    }
+    let png = screenshot_png(cdp, tab, None, false).await?;
+    crate::screenshot::compress(&png)
+        .ok_or_else(|| ActionError::new(BrowserErrorCode::ExecutionError, "encode failed"))
+}
+
 /// Element bounding box in top-level viewport coordinates.
 pub(crate) async fn element_box(
     cdp: &Cdp,

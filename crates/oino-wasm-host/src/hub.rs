@@ -8,6 +8,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
+use oino_browser_protocol::{BrowserResult, BrowserScope};
+use oino_extension_api::browser::{BrowserHost, BrowserRequest};
 use oino_extension_api::ops::{
     ControlOp, ControlReply, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply, PanelOp,
     ProviderHook, ProviderHookReply, SecretOp, SendOptions, SessionQuery, SessionWrite,
@@ -45,6 +47,9 @@ pub struct LocalServices {
     sticky: Mutex<HashMap<String, RawJson>>,
     secrets: SecretStore,
     tasks: Arc<TaskService>,
+    browser: std::sync::RwLock<Option<Arc<dyn BrowserHost>>>,
+    /// Nested agent session → its parent session (browser scope = root conversation).
+    agent_parents: Mutex<HashMap<String, String>>,
 }
 
 impl std::fmt::Debug for LocalServices {
@@ -72,7 +77,48 @@ impl LocalServices {
             sticky: Mutex::new(HashMap::new()),
             secrets: SecretStore::new(agent_dir),
             tasks: Arc::new(TaskService::new(agent_dir)),
+            browser: std::sync::RwLock::new(None),
+            agent_parents: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Installs the process-wide browser service served to extensions with the `browser`
+    /// permission (browser-control.md §8.2); `None` disables it.
+    pub fn set_browser(&self, browser: Option<Arc<dyn BrowserHost>>) {
+        *self
+            .browser
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = browser;
+    }
+
+    /// The browser service, if installed.
+    #[must_use]
+    pub fn browser(&self) -> Option<Arc<dyn BrowserHost>> {
+        self.browser
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Root conversation session of `session` (walks nested-agent parents, §6.1).
+    #[must_use]
+    pub fn root_session(&self, session: &str) -> String {
+        let parents = lock(&self.agent_parents);
+        let mut cur = session.to_owned();
+        for _ in 0..16 {
+            match parents.get(&cur) {
+                Some(p) if *p != cur => cur.clone_from(p),
+                _ => break,
+            }
+        }
+        cur
+    }
+
+    fn browser_scope(&self, cx: &CallContext) -> BrowserScope {
+        BrowserScope::session(
+            self.root_session(&cx.session_id),
+            cx.cwd.display().to_string(),
+        )
     }
 
     /// Service names `id` registered (`registry.register-service` and `init`).
@@ -573,7 +619,52 @@ impl HostServices for Composite {
         cx: &CallContext,
         spec: RawJson,
     ) -> BoxFut<'_, Result<Arc<dyn AgentHandle>, HostError>> {
-        self.inner.agent_spawn(ext, cx, spec)
+        let parent = cx.session_id.clone();
+        let spawn = self.inner.agent_spawn(ext, cx, spec);
+        Box::pin(async move {
+            let handle = spawn.await?;
+            if let Some(hub) = self.hub() {
+                lock(&hub.agent_parents).insert(handle.id(), parent);
+            }
+            Ok(handle)
+        })
+    }
+    fn browser_execute(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        request: RawJson,
+        cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<BrowserResult, HostError>> {
+        let Some(hub) = self.hub() else {
+            return self.inner.browser_execute(ext, cx, request, cancel);
+        };
+        let Some(browser) = hub.browser() else {
+            return Box::pin(async {
+                Ok(BrowserResult::unavailable(
+                    "disabled",
+                    "the in-app browser is not available in this host",
+                ))
+            });
+        };
+        let scope = hub.browser_scope(cx);
+        Box::pin(async move {
+            let request: BrowserRequest = request
+                .decode()
+                .map_err(|e| HostError::InvalidArgument(format!("browser command: {e}")))?;
+            Ok(browser.execute(scope, request, cancel).await)
+        })
+    }
+    fn browser_status(&self, ext: &ExtensionId, cx: &CallContext) -> RawJson {
+        match self.hub().and_then(|h| h.browser().map(|b| (h, b))) {
+            Some((hub, browser)) => {
+                let scope = hub.browser_scope(cx);
+                RawJson::from(
+                    serde_json::to_value(browser.status(Some(&scope))).unwrap_or_default(),
+                )
+            }
+            None => self.inner.browser_status(ext, cx),
+        }
     }
     fn agents_list(&self, cx: &CallContext) -> RawJson {
         self.inner.agents_list(cx)

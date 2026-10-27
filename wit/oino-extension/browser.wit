@@ -1,0 +1,29 @@
+package oino:extension@1.0.0;
+
+/// In-app browser control (browser-control.md §8.3). Needs manifest permission `browser`.
+interface browser {
+    use types.{json, host-error, cancel-token};
+
+    /// An image produced by a command (screenshots).
+    record image {
+        mime-type: string,
+        data: list<u8>,
+        /// Absolute path of the saved original.
+        path: option<string>,
+    }
+
+    /// One command's outcome.
+    record outcome {
+        /// JSON of oino_protocol::browser::BrowserResult without `image`.
+        %result: json,
+        image: option<image>,
+    }
+
+    /// Runs one command (JSON of `BrowserRequest`: a BrowserCommand with `op` plus optional
+    /// `approval: none|once|site`) in the caller's scope. Browser failures come back inside
+    /// `result` (isError + details.error); host-error is only for permission/transport problems.
+    execute: async func(command: json, cancel: option<borrow<cancel-token>>) -> result<outcome, host-error>;
+
+    /// BrowserStatus JSON (enabled, engine, product, stealth, display, profiles, session tabs).
+    status: func() -> json;
+}

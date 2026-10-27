@@ -21,6 +21,7 @@ futures.workspace = true
 notify = "8.2"
 oino-agent = { path = "../oino-agent", optional = true }
 oino-ai = { path = "../oino-ai" }
+oino-browser-protocol = { path = "../oino-browser-protocol" }
 oino-core = { path = "../oino-core", optional = true }
 oino-extension-api = { path = "../oino-extension-api" }
 oino-settings = { path = "../oino-settings" }

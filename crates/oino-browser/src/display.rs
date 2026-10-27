@@ -80,7 +80,16 @@ impl Displays {
         let number = (99..199).find(|n| free(*n)).ok_or("no free X display")?;
         let mut cmd = tokio::process::Command::new(program);
         cmd.arg(format!(":{number}"))
-            .args(["-screen", "0", "1920x1080x24", "-nolisten", "tcp"])
+            // `-terminate`: exit once the last client (the browser) disconnects, so the display
+            // never outlives Oino even when the process dies without running destructors.
+            .args([
+                "-screen",
+                "0",
+                "1920x1080x24",
+                "-nolisten",
+                "tcp",
+                "-terminate",
+            ])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())

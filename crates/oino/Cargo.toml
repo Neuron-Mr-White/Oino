@@ -22,6 +22,7 @@ indexmap.workspace = true
 oino-acp = { path = "../oino-acp" }
 oino-agent = { path = "../oino-agent" }
 oino-ai = { path = "../oino-ai" }
+oino-browser = { path = "../oino-browser" }
 oino-bundle = { path = "../oino-bundle" }
 oino-client = { path = "../oino-client" }
 oino-core = { path = "../oino-core" }

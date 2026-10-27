@@ -20,6 +20,7 @@
 //! | [`kv`] | `kv` | scoped key-value state |
 //! | [`settings`] | `registry` | extension settings reads and writes |
 //! | [`secrets`], [`bus`], [`services`] | same | secrets, pub/sub, inter-extension calls |
+//! | [`browser`] | `browser` | in-app browser commands and status |
 //! | [`host`] | `host-info`, `log` | platform, workspace, env, logging |
 //! | [`provider`] (feature `provider`) | `provider`, `provider-host` | provider components |
 //!
@@ -91,6 +92,7 @@ pub mod bindings {
 }
 
 pub mod agents;
+pub mod browser;
 pub mod bus;
 pub mod command;
 pub mod context;

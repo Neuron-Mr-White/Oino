@@ -12,6 +12,7 @@ world extension {
     import log; import host-info; import registry; import session; import control;
     import models; import ui; import agents; import process; import tasks; import http;
     import fs; import timers; import kv; import secrets; import bus; import services;
+    import browser;
     export guest;
 }
 

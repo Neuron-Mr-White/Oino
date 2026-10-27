@@ -5,6 +5,7 @@
 //!
 //! [`CallContext`]: oino_extension_api::CallContext
 
+mod browser;
 mod core;
 mod io;
 mod runtime;

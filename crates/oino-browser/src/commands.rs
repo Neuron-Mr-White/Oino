@@ -1505,9 +1505,7 @@ async fn screenshot(
 
 async fn turn_shot(cx: &Cx<'_>, turn_id: &str) -> ActionResult<Outcome> {
     let tab = cx.resolve_tab(None)?;
-    let png = page::screenshot_png(&cx.rt.cdp, &tab, None, false).await?;
-    let c = crate::screenshot::compress(&png)
-        .ok_or_else(|| err(BrowserErrorCode::ExecutionError, "encode failed"))?;
+    let c = page::screenshot_jpeg(&cx.rt.cdp, &tab).await?;
     let dir = cx.svc.hub().paths.shots(cx.session());
     let _ = std::fs::create_dir_all(&dir);
     let ext = if c.mime == "image/png" { "png" } else { "jpg" };
