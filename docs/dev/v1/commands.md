@@ -29,7 +29,7 @@ types (e.g. `unipi:kanboard-next`, `unipi:plan-mode`) and settings namespaces ar
 | Old | Collides with | Decision | Result |
 |---|---|---|---|
 | `/unipi:settings [search]` (unipi.utility) | `/settings` | **Merged**: the core `/settings` hub already lists every extension namespace; the utility command and its `openSettings{query}` path are removed. | `/settings` |
-| `/unipi:changelog` (unipi.updater) | `/changelog` | **Merged**: the core `/changelog` shows Oino's changelog; the updater's browser panel is removed (the update overlay still renders the changelog between versions). | `/changelog` |
+| `/unipi:changelog` (unipi.updater) | `/changelog` | **Merged**: the core `/changelog` forwards to a hidden `changelog` runner in `unipi.updater` that renders the entries panel (the update overlay still renders the changelog between versions). | `/changelog` |
 | `/unipi:model` (unipi.fusion) | `/model` | **Renamed**: the model / Fusion lead+sidekick picker is not the core model selector. The `/m…` completion hint now ranks `/fusion` after the core `/model` (was pinned above it). | `/fusion` |
 
 No other ported command collides with a built-in or with another feature command.
@@ -114,6 +114,7 @@ Hidden runners (settings-hub actions and cross-component runners):
 | `unipi:notify-test`, `-set-gotify`, `-set-tg`, `-set-ntfy` | `notify-test`, `notify-set-gotify`, `notify-set-tg`, `notify-set-ntfy` | unipi.notify |
 | `unipi:kanboard-open`, `-stop-daemon`, `-rotate-token` | `kanboard-open`, `kanboard-stop-daemon`, `kanboard-rotate-token` | unipi.kanboard |
 | `unipi:rename-now` | `rename-now` | unipi.utility |
+| `unipi:changelog` | `changelog` | unipi.updater (the core `/changelog` forwards here) |
 | `unipi:update-check` | `update-check` | unipi.updater |
 | `unipi:web-cache-clear` | `web-cache-clear` | unipi.web-api |
 

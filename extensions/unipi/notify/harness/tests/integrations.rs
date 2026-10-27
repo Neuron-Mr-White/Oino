@@ -559,7 +559,12 @@ async fn updater_docs_browsers() {
     assert!(tools.is_empty());
     assert_eq!(
         commands,
-        [("readme".to_owned(), false), ("update-check".to_owned(), true)]
+        [
+            ("readme".to_owned(), false),
+            // hidden runner the core `/changelog` built-in forwards to (commands.md §2)
+            ("changelog".to_owned(), true),
+            ("update-check".to_owned(), true)
+        ]
     );
     assert_eq!(ns, ["updater"]);
     assert_eq!(reg.services, ["info-screen.groups"]);
