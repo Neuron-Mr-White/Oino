@@ -66,11 +66,24 @@ impl StoreData {
 
     /// unipi `recordHintLearned`; `true` when newly learned.
     pub fn record_learned(&mut self, id: &str) -> bool {
-        if self.learned.iter().any(|l| l == id) {
-            return false;
+        self.set_learned(id, true)
+    }
+
+    /// Marks `id` learned or unlearned (the hint browser's toggle); `true` when the state
+    /// changed.
+    pub fn set_learned(&mut self, id: &str, on: bool) -> bool {
+        let has = self.learned.iter().any(|l| l == id);
+        match (on, has) {
+            (true, false) => {
+                self.learned.push(id.to_owned());
+                true
+            }
+            (false, true) => {
+                self.learned.retain(|l| l != id);
+                true
+            }
+            _ => false,
         }
-        self.learned.push(id.to_owned());
-        true
     }
 
     /// unipi `resetHintHistory` (keeps `lastSeenVersion`).
@@ -130,6 +143,10 @@ mod tests {
         assert_eq!(d.counts["a"], Record { count: 2, last: 20 });
         assert!(d.record_learned("a"));
         assert!(!d.record_learned("a"));
+        assert!(d.set_learned("a", false));
+        assert_eq!(d.learned, Vec::<String>::new());
+        assert!(!d.set_learned("a", false));
+        assert!(d.set_learned("a", true));
         d.last_seen_version = Some("v".into());
         d.reset();
         assert!(d.counts.is_empty() && d.learned.is_empty());

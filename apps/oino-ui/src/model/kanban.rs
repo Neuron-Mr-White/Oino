@@ -143,7 +143,8 @@ pub fn recognise(spec: &OusNode) -> Option<Board> {
 /// Lanes shown by default (Backlog hidden, design.md §4.30).
 #[must_use]
 pub fn visible(lane: &Lane, show_backlog: bool) -> bool {
-    show_backlog || lane.id != "backlog"
+    // A Backlog with cards always shows: new tasks land there.
+    show_backlog || lane.id != "backlog" || !lane.cards.is_empty()
 }
 
 /// Cards ready to work (Todo).

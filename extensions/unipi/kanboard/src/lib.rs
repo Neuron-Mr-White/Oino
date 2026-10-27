@@ -1236,7 +1236,13 @@ impl Kanboard {
 
     async fn open_panel(&'static self, cx: &Ctx) {
         let Some((slug, body)) = self.panel_body(cx).await else {
-            notify("kanboard: not set up here — /kanboard onboard", "warning");
+            let project = cx.cwd().file_name().map_or_else(
+                || "This project".to_owned(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            if ui::panel_open(&panel::setup_request(&project)).is_err() {
+                notify("kanboard: not set up here — /kanboard onboard", "warning");
+            }
             return;
         };
         if ui::panel_open(&panel::open_request(&slug, &body)).is_err() {
@@ -1327,6 +1333,11 @@ impl Kanboard {
                 self.refresh_panel(cx).await;
             }
             panel::ACTION_REFRESH => self.refresh_panel(cx).await,
+            panel::ACTION_ONBOARD => {
+                if self.onboard(cx).await.is_some() {
+                    self.open_panel(cx).await;
+                }
+            }
             panel::ACTION_SHOW => self.show(cx, false, None).await,
             panel::ACTION_ADD => {
                 if let Ok(Some(text)) =

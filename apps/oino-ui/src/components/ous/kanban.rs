@@ -11,7 +11,6 @@ use gpui_kit::{
 };
 use oino_ai::JsonValue;
 
-use crate::components::badge::{badge, pill};
 use crate::components::ous::{ActionFn, Ous, render};
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
@@ -42,6 +41,7 @@ fn lane_icon(id: &str) -> IconName {
 }
 
 /// How the board is shown (D9 toolbar state; the side-pane copy uses the defaults).
+#[allow(clippy::struct_excessive_bools, reason = "independent display toggles, not states")]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BoardOptions {
     /// Show the Backlog lane.
@@ -57,6 +57,8 @@ pub struct BoardOptions {
     /// Render the selected task's detail inline under the lanes (side pane); the D9 board
     /// shows it as an overlay instead.
     pub inline_detail: bool,
+    /// Show the dashed "Add task" row under the first lane (the board page).
+    pub add_row: bool,
 }
 
 impl BoardOptions {
@@ -109,41 +111,102 @@ pub fn filtered(board: &Board, opts: &BoardOptions) -> Vec<Lane> {
         .collect()
 }
 
+fn lane_noun(id: &str) -> &'static str {
+    match id {
+        "backlog" => "in the backlog",
+        "todo" => "to do",
+        "in_progress" => "in progress",
+        "blocked" => "blocked",
+        "in_review" => "to review",
+        "done" => "done yet",
+        "cancelled" => "cancelled",
+        _ => "here",
+    }
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "lane head, cards, empty lane, add row"
+)]
 fn lane(
     t: &OinoTheme,
     lane: &Lane,
     select: Option<&str>,
     on_action: &ActionFn,
     cursor: Option<usize>,
+    add: bool,
 ) -> AnyElement {
     let c = lane_color(t, &lane.id);
+    let n = lane.cards.len();
+    let head = format!("{}, {n} task{}", lane.title, if n == 1 { "" } else { "s" }).to_uppercase();
+    let empty = lane.cards.is_empty().then(|| {
+        // A2.17: a dashed card with the lane glyph ("Nothing blocked").
+        div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(space::S2))
+            .h(px(size::LANE * 0.3))
+            .rounded(px(radius::R_CARD))
+            .border_1()
+            .border_dashed()
+            .border_color(t.border())
+            .text_role(t, TextRole::Caption)
+            .text_color(t.fg_subtlest())
+            .child(icon(lane_icon(&lane.id), size::ICON_LG, c))
+            .child(SharedString::from(format!(
+                "Nothing {}",
+                lane_noun(&lane.id)
+            )))
+            .into_any_element()
+    });
+    let add_row = add.then(|| {
+        let cb = Rc::clone(on_action);
+        div()
+            .id(ElementId::Name(format!("lane-add-{}", lane.id).into()))
+            .flex()
+            .items_center()
+            .justify_center()
+            .gap(px(space::S1_5))
+            .h(px(size::BUTTON_SM + space::S1))
+            .rounded(px(radius::R_FULL))
+            .border_1()
+            .border_dashed()
+            .border_color(t.border())
+            .text_role(t, TextRole::Caption)
+            .text_color(t.fg_subtle())
+            .cursor_pointer()
+            .hover(|s| s.bg(t.hover()).text_color(t.fg()))
+            .on_click(move |_: &ClickEvent, _, cx| cb("add", JsonValue::Null, cx))
+            .child(icon(IconName::Plus, size::ICON_SM, t.fg_subtle()))
+            .child("Add task")
+            .into_any_element()
+    });
     div()
         .flex()
         .flex_col()
         .w(px(size::LANE))
         .flex_shrink_0()
-        .gap(px(space::S2))
+        .gap(px(space::S2_5))
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(space::S2))
-                .h(px(size::CONTROL))
-                .px(px(space::S1))
-                .child(icon(lane_icon(&lane.id), size::ICON_MD, c))
+                .gap(px(space::S1_5))
+                .h(px(size::BADGE + space::S1))
+                .text_role(t, TextRole::Sm)
+                .weight_medium()
+                .text_color(t.fg_subtle())
                 .child(
                     div()
-                        .text_role(t, TextRole::Sm)
-                        .weight_medium()
-                        .child(SharedString::from(lane.title.clone())),
+                        .size(px(space::S1_5))
+                        .rounded(px(radius::R_FULL))
+                        .bg(c),
                 )
-                .child(pill(
-                    t,
-                    t.tag(),
-                    t.fg_subtle(),
-                    lane.cards.len().to_string(),
-                )),
+                .child(SharedString::from(head)),
         )
+        .children(empty)
         .children(lane.cards.iter().enumerate().map(|(ci, card)| {
             let focused = cursor == Some(ci);
             let claimed = is_claim(card);
@@ -154,20 +217,20 @@ fn lane(
                 .id(ElementId::Name(format!("card-{}", card.id).into()))
                 .flex()
                 .flex_col()
-                .gap(px(space::S1_5))
+                .gap(px(space::S1))
                 .p(px(space::S3))
                 .rounded(px(radius::R_CARD))
                 .bg(t.card())
                 .border_1()
-                .border_color(if card.selected {
-                    t.border_hover()
+                .border_color(if card.selected || focused {
+                    t.chip_active_border()
                 } else {
                     t.card_border()
                 })
-                .when(card.selected, |el| el.shadow(t.e2()))
-                .when(focused, |el| el.border_2().border_color(t.focus()))
+                .when(card.selected, |el| el.bg(t.hover()))
+                .when(focused, |el| el.border_color(t.focus()))
                 .cursor_pointer()
-                .hover(|s| s.border_color(t.border_hover()))
+                .hover(|s| s.bg(t.hover()).border_color(t.fg_subtlest().opacity(0.55)))
                 .when_some(action, |el, action| {
                     el.on_click(move |_: &ClickEvent, _, cx| {
                         cb(&action, JsonValue::from(id.clone()), cx);
@@ -178,6 +241,7 @@ fn lane(
                         .flex()
                         .items_center()
                         .justify_between()
+                        .gap(px(space::S2))
                         .child(
                             div()
                                 .mono_text(t, TextRole::Xs)
@@ -185,12 +249,14 @@ fn lane(
                                 .child(SharedString::from(card.id.clone())),
                         )
                         .when_some(card.priority.clone(), |el, p| {
-                            el.child(badge(t, card.tone, p))
+                            el.child(crate::components::chip::tag(t, t.tone_fg(card.tone), p))
                         }),
                 )
                 .child(
                     div()
-                        .text_role(t, TextRole::Base)
+                        .text_role(t, TextRole::Prose)
+                        .weight_semibold()
+                        .text_color(t.fg())
                         .line_clamp(2)
                         .child(SharedString::from(card.title.clone())),
                 )
@@ -202,34 +268,96 @@ fn lane(
                     };
                     el.child(
                         div()
-                            .text_role(t, TextRole::Sm)
+                            .text_role(t, TextRole::Caption)
                             .text_color(tone)
+                            .line_clamp(2)
                             .child(SharedString::from(d)),
                     )
                 })
-                // Claimed by an agent: `bot` chip in the working colour (not an error).
+                // Claimed by an agent: a `shell` pill at 14 % ("● agent …").
                 .when(claimed, |el| {
                     el.child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(space::S1))
-                            .h(px(size::BADGE))
-                            .px(px(space::S1_5))
-                            .rounded(px(radius::R_FULL))
-                            .bg(t.progress_surface())
-                            .text_color(t.progress_surface_fg())
-                            .text_role(t, TextRole::Xs)
-                            .child(icon(IconName::Bot, size::ICON_SM, t.progress_surface_fg()))
-                            .child(SharedString::from(
-                                card.detail
-                                    .clone()
-                                    .unwrap_or_default()
-                                    .trim_start_matches("claimed by ")
-                                    .to_owned(),
-                            )),
+                        div().flex().child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(space::S1))
+                                .h(px(size::BADGE))
+                                .px(px(space::S2))
+                                .rounded(px(radius::R_FULL))
+                                .bg(t.brand().opacity(0.14))
+                                .border_1()
+                                .border_color(t.brand().opacity(0.38))
+                                .text_color(t.brand())
+                                .text_role(t, TextRole::Xs)
+                                .weight_medium()
+                                .child(
+                                    div()
+                                        .size(px(space::S1_5))
+                                        .rounded(px(radius::R_FULL))
+                                        .bg(t.brand()),
+                                )
+                                .child(SharedString::from(
+                                    card.detail
+                                        .clone()
+                                        .unwrap_or_default()
+                                        .trim_start_matches("claimed by ")
+                                        .to_owned(),
+                                )),
+                        ),
                     )
                 })
+        }))
+        .children(add_row)
+        .into_any_element()
+}
+
+/// The lane strip (A2.17): one 38 px pill per visible lane with its glyph, name and count;
+/// the pill of the cursor's lane takes the lane colour at 13 %. Clicking moves the cursor.
+pub fn lane_strip(
+    t: &OinoTheme,
+    lanes: &[Lane],
+    active: Option<usize>,
+    key: &str,
+    on_pick: Rc<dyn Fn(usize, &mut Window, &mut App)>,
+) -> AnyElement {
+    div()
+        .id(ElementId::Name(format!("{key}/strip").into()))
+        .flex()
+        .flex_row()
+        .gap(px(space::S2))
+        .overflow_x_scroll()
+        .children(lanes.iter().enumerate().map(|(i, l)| {
+            let c = lane_color(t, &l.id);
+            let on = active == Some(i);
+            let pick = Rc::clone(&on_pick);
+            div()
+                .id(ElementId::NamedInteger(
+                    SharedString::from(format!("{key}/strip")),
+                    u64::try_from(i).unwrap_or(0),
+                ))
+                .flex()
+                .flex_shrink_0()
+                .items_center()
+                .gap(px(space::S1_5))
+                .h(px(size::CHIP))
+                .px(px(space::S3_5))
+                .rounded(px(radius::R_FULL))
+                .bg(if on { c.opacity(0.13) } else { t.chip() })
+                .when(on, |el| el.border_1().border_color(c.opacity(0.45)))
+                .text_role(t, TextRole::Base)
+                .weight_medium()
+                .text_color(if on { t.fg() } else { t.fg_subtle() })
+                .cursor_pointer()
+                .hover(|s| s.bg(t.bubble()))
+                .on_click(move |_: &ClickEvent, w, cx| pick(i, w, cx))
+                .child(icon(lane_icon(&l.id), size::ICON_MD, c))
+                .child(SharedString::from(l.title.clone()))
+                .child(crate::components::chip::count_badge(
+                    t,
+                    l.cards.len(),
+                    false,
+                ))
         }))
         .into_any_element()
 }
@@ -251,7 +379,14 @@ pub fn board(
         .enumerate()
         .map(|(li, l)| {
             let cur = opts.cursor.filter(|(cl, _)| *cl == li).map(|(_, cc)| cc);
-            lane(&t, l, select.as_deref(), &o.on_action, cur)
+            lane(
+                &t,
+                l,
+                select.as_deref(),
+                &o.on_action,
+                cur,
+                li == 0 && opts.add_row,
+            )
         })
         .collect();
     let detail = board
@@ -264,15 +399,20 @@ pub fn board(
         .flex_col()
         .size_full()
         .gap(px(space::S3))
-        .child(
-            div()
-                .text_role(&t, TextRole::Sm)
-                .text_color(t.fg_subtle())
-                .child(SharedString::from(board.header.clone())),
-        )
+        .when(!opts.add_row, |el| {
+            el.child(
+                div()
+                    .text_role(&t, TextRole::Sm)
+                    .text_color(t.fg_subtle())
+                    .child(SharedString::from(board.header.clone())),
+            )
+        })
         .child(
             div()
                 .id(ElementId::Name(format!("{key}/lanes").into()))
+                .flex_1()
+                .min_h_0()
+                .items_start()
                 .flex()
                 .flex_row()
                 .gap(px(space::S3))

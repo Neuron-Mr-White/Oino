@@ -22,7 +22,6 @@ use oino_ai::JsonValue;
 use crate::components::badge::{badge, kbd, tone_dot};
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::{context_ring, segmented, switch};
-use crate::components::tabs::underline_tabs;
 use crate::design::icons::{icon, spinner};
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::ticker::Ticker;
@@ -110,15 +109,31 @@ impl gpui_kit::Global for Drains {}
 #[must_use]
 pub fn rich_text(t: &OinoTheme, rich: &Rich) -> AnyElement {
     let mut row = div().flex().flex_row().flex_wrap().items_baseline();
+    // TUI half-block pixel art (the hint line's mini crab) does not translate to a
+    // proportional font; the GUI has its own glyphs.
+    let pixel_art = |s: &str| {
+        !s.trim().is_empty()
+            && s.chars()
+                .all(|c| matches!(c, '\u{2580}'..='\u{259f}' | ' '))
+    };
+    let mut skip_space = false;
     for span in rich {
+        if pixel_art(&span.text) {
+            skip_space = true;
+            continue;
+        }
+        let text = if skip_space {
+            skip_space = false;
+            span.text.trim_start().to_owned()
+        } else {
+            span.text.clone()
+        };
         let color = if span.dim {
             t.fg_subtle()
         } else {
             t.tone_fg(span.tone)
         };
-        let mut el = div()
-            .text_color(color)
-            .child(SharedString::from(span.text.clone()));
+        let mut el = div().text_color(color).child(SharedString::from(text));
         if span.bold || crate::design::tones::emphasised(span.tone) {
             el = el.font_weight(if span.bold {
                 FontWeight::SEMIBOLD
@@ -192,6 +207,33 @@ pub fn diff_lines(t: &OinoTheme, patch: &str, max: usize) -> AnyElement {
         );
     }
     col.into_any_element()
+}
+
+/// A number for people: integers stay whole (`5778`, `14.1k`, `1M`), fractions keep at most one
+/// decimal; never a raw float (GA-23).
+#[must_use]
+pub fn fmt_num(v: f64) -> String {
+    if !v.is_finite() {
+        return "—".to_owned();
+    }
+    let a = v.abs();
+    let sign = if v < 0.0 { "-" } else { "" };
+    let trim = |s: String| {
+        if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_owned()
+        } else {
+            s
+        }
+    };
+    if a >= 1_000_000.0 {
+        format!("{sign}{}M", trim(format!("{:.1}", a / 1_000_000.0)))
+    } else if a >= 10_000.0 {
+        format!("{sign}{}k", trim(format!("{:.1}", a / 1000.0)))
+    } else if (a - a.round()).abs() < 1e-9 || a >= 100.0 {
+        format!("{sign}{}", a.round())
+    } else {
+        format!("{sign}{}", trim(format!("{a:.2}")))
+    }
 }
 
 fn bar(t: &OinoTheme, ratio: f32, tone: Tone) -> Div {
@@ -290,6 +332,115 @@ fn chart_bars(o: &Ous<'_>, values: &[f64], color_ix: usize, height: f32) -> Div 
                 .rounded(px(radius::R_SM / 2.0))
                 .bg(t.categorical(color_ix))
         }))
+}
+
+/// Height of a column chart's plot area.
+const COLUMN_CHART_H: f32 = 120.0;
+
+/// A vertical column chart (`barChart` with `columns: true` or many bars; unipi's "last 30
+/// days"): toned columns on a baseline, the peak value above its column, and sparse labels
+/// under it (every 7th and the last).
+fn column_chart(t: &OinoTheme, bars: &[crate::model::ous::Bar], key: &str) -> AnyElement {
+    let max = bars.iter().map(|b| b.value).fold(0.0_f64, f64::max);
+    let peak = bars
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| b.value > 0.0)
+        .max_by(|a, b| a.1.value.total_cmp(&b.1.value))
+        .map(|(i, _)| i);
+    let n = bars.len();
+    let tone_of = |i: usize, b: &crate::model::ous::Bar| {
+        if b.tone == Tone::Default {
+            t.categorical(0)
+        } else {
+            t.tone_rail(b.tone)
+        }
+        .opacity(if peak == Some(i) || i + 1 == n {
+            1.0
+        } else {
+            0.85
+        })
+    };
+    let plot = div()
+        .flex()
+        .flex_row()
+        .items_end()
+        .w_full()
+        .h(px(COLUMN_CHART_H))
+        .gap(px(space::HALF))
+        .border_b_1()
+        .border_color(t.border())
+        .children(bars.iter().enumerate().map(|(i, b)| {
+            let r = ratio(b.value, max);
+            div()
+                .id(ElementId::NamedInteger(
+                    SharedString::from(format!("{key}/col")),
+                    u64::try_from(i).unwrap_or(0),
+                ))
+                .flex()
+                .flex_col()
+                .justify_end()
+                .items_center()
+                .flex_1()
+                .min_w(px(space::HALF))
+                .h_full()
+                .tooltip(crate::components::tooltip::tip(
+                    SharedString::from(format!("{} · {}", b.label, fmt_num(b.value))),
+                    None,
+                ))
+                .when(peak == Some(i), |el| {
+                    el.child(
+                        div()
+                            .whitespace_nowrap()
+                            .text_role(t, TextRole::Xs)
+                            .weight_semibold()
+                            .text_color(t.tone_fg(b.tone))
+                            .child(fmt_num(b.value)),
+                    )
+                })
+                .child(
+                    div()
+                        .w_full()
+                        .h(relative((r * 0.86).max(if b.value > 0.0 {
+                            0.03
+                        } else {
+                            0.0
+                        })))
+                        .rounded_t(px(radius::R_KBD / 2.0))
+                        .bg(tone_of(i, b)),
+                )
+        }));
+    let labels = div()
+        .flex()
+        .flex_row()
+        .w_full()
+        .gap(px(space::HALF))
+        .text_role(t, TextRole::Xs)
+        .text_color(t.fg_subtlest())
+        .children(bars.iter().enumerate().map(|(i, b)| {
+            let show = i + 1 == n || (n - 1 - i).is_multiple_of(7) && n - 1 - i >= 7;
+            div()
+                .flex_1()
+                .min_w(px(space::HALF))
+                .flex()
+                .justify_center()
+                .when(show, |el| {
+                    el.child(
+                        div()
+                            .whitespace_nowrap()
+                            .when(i + 1 == n, |el| el.text_color(t.fg()).weight_medium())
+                            .child(SharedString::from(b.label.clone())),
+                    )
+                })
+        }));
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .gap(px(space::S1))
+        .child(plot)
+        .child(labels)
+        .into_any_element()
 }
 
 /// Renders `node`; `key` must be unique among siblings rendered in the same frame.
@@ -515,6 +666,45 @@ pub fn render(
                     .when_some(item.badge.as_ref(), |el, b| {
                         el.child(badge(&t, item.tone, crate::model::ous::plain(b)))
                     })
+                    .when_some(item.action.as_ref(), |el, a| {
+                        // A per-row action pill (GA-31): its click must not select the row.
+                        let cb = Rc::clone(&o.on_action);
+                        let action = a.action_id.clone();
+                        let label = a
+                            .label
+                            .as_ref()
+                            .map(crate::model::ous::plain)
+                            .unwrap_or_default();
+                        el.child(
+                            div()
+                                .id(ElementId::Name(format!("{key}/la/{}", item.id).into()))
+                                .flex_shrink_0()
+                                .px(px(space::S2))
+                                .h(px(size::CONTROL_SM))
+                                .flex()
+                                .items_center()
+                                .rounded(px(radius::R_FULL))
+                                .border_1()
+                                .border_color(if a.tone == Tone::Default {
+                                    t.border()
+                                } else {
+                                    t.tone_rail(a.tone)
+                                })
+                                .text_role(&t, TextRole::Caption)
+                                .text_color(if a.tone == Tone::Default {
+                                    t.fg_subtle()
+                                } else {
+                                    t.tone_fg(a.tone)
+                                })
+                                .cursor_pointer()
+                                .hover(|s| s.bg(t.hover()))
+                                .on_click(move |_: &ClickEvent, _, cx| {
+                                    cx.stop_propagation();
+                                    cb(&action, JsonValue::Null, cx);
+                                })
+                                .child(SharedString::from(label)),
+                        )
+                    })
                     .when_some(action, |el, action| {
                         el.cursor_pointer().hover(|s| s.bg(t.hover())).on_click(
                             move |_: &ClickEvent, _, cx| {
@@ -553,18 +743,21 @@ pub fn render(
                 }
             });
             let titles: Vec<String> = tabs.iter().map(|(_, title, _)| title.clone()).collect();
-            let bar = if titles.len() <= 5 && o.cols >= 60 {
-                let labels: Vec<&str> = titles.iter().map(String::as_str).collect();
-                div().child(segmented(
+            // A2.12: panel tabs are segmented pills (38 track, 32 options) in one row that
+            // scrolls sideways when it does not fit.
+            let labels: Vec<&str> = titles.iter().map(String::as_str).collect();
+            let bar = div()
+                .id(ElementId::Name(format!("{key}/tabs-row").into()))
+                .w_full()
+                .flex()
+                .overflow_x_scroll()
+                .child(segmented(
                     format!("{key}/tabs"),
                     &t,
                     &labels,
                     active_ix,
                     pick,
-                ))
-            } else {
-                underline_tabs(&format!("{key}/tabs"), &t, &titles, active_ix, pick)
-            };
+                ));
             let body = tabs
                 .get(active_ix)
                 .map(|(id, _, body)| render(body, &format!("{key}/{id}"), o, window, cx));
@@ -650,7 +843,46 @@ pub fn render(
             body,
             effect,
         } => {
-            let inner = render(body, &format!("{key}/c"), o, window, cx);
+            // A stat tile (unipi big-digit tiles: a card whose body starts with one bold
+            // value line) draws that value large (A2.3 `Title`).
+            let tile = match body.as_ref() {
+                OusNode::Stack {
+                    horizontal: false,
+                    children,
+                    ..
+                } => match children.first() {
+                    Some(OusNode::Text { value, .. })
+                        if value.len() == 1
+                            && value[0].bold
+                            && value[0].text.chars().count() <= 16 =>
+                    {
+                        Some((value[0].clone(), &children[1..]))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+            let inner = match tile {
+                Some((value, rest)) => {
+                    let mut col = div().flex().flex_col().gap(px(space::HALF)).child(
+                        div()
+                            .text_role(&t, TextRole::Title)
+                            .weight_semibold()
+                            .text_color(t.tone_fg(value.tone))
+                            .child(SharedString::from(value.text)),
+                    );
+                    for (i, child) in rest.iter().enumerate() {
+                        col = col.child(
+                            div()
+                                .text_role(&t, TextRole::Sm)
+                                .text_color(t.fg_subtle())
+                                .child(render(child, &format!("{key}/c{i}"), o, window, cx)),
+                        );
+                    }
+                    col.into_any_element()
+                }
+                None => render(body, &format!("{key}/c"), o, window, cx),
+            };
             let rail_color = rail.map(|r| t.tone_rail(r));
             let shimmer = *effect == Some(Effect::Shimmer) && !t.reduce_motion;
             div()
@@ -750,11 +982,12 @@ pub fn render(
                             .text_color(t.fg_subtle())
                             .child(SharedString::from(label.clone().unwrap_or_default()))
                             .when(effect.is_none(), |el| {
-                                el.child(
-                                    div()
-                                        .mono_text(&t, TextRole::Sm)
-                                        .child(format!("{value} / {max}")),
-                                )
+                                let text = if (*max - 1.0).abs() < f64::EPSILON && *value <= 1.0 {
+                                    format!("{:.0}%", value * 100.0)
+                                } else {
+                                    format!("{} / {}", fmt_num(*value), fmt_num(*max))
+                                };
+                                el.child(div().mono_text(&t, TextRole::Sm).child(text))
                             }),
                     )
                 })
@@ -792,7 +1025,10 @@ pub fn render(
             })
             .child(chart_bars(o, values, 0, size::CONTROL))
             .into_any_element(),
-        OusNode::BarChart { bars } => {
+        OusNode::BarChart { bars, columns } if *columns || bars.len() > 12 => {
+            column_chart(&t, bars, key)
+        }
+        OusNode::BarChart { bars, .. } => {
             let max = bars.iter().map(|b| b.value).fold(0.0_f64, f64::max);
             div()
                 .flex()
@@ -825,7 +1061,7 @@ pub fn render(
                                 .flex()
                                 .justify_end()
                                 .mono_text(&t, TextRole::Sm)
-                                .child(format!("{}", b.value)),
+                                .child(fmt_num(b.value)),
                         )
                 }))
                 .into_any_element()
@@ -858,21 +1094,24 @@ pub fn render(
             .child(spinner(Ticker::frame(cx), size::ICON_MD, t.fg_subtle()))
             .when_some(label.clone(), |el, l| el.child(SharedString::from(l)))
             .into_any_element(),
+        // A labelled divider is a section label (A2.15: 12/500 uppercase dim, left) with the
+        // rule after it; an unlabelled one is a plain rule.
         OusNode::Divider { label } => div()
             .flex()
             .items_center()
             .w_full()
-            .gap(px(space::S2))
-            .child(div().flex_1().h(px(size::HAIRLINE)).bg(t.border()))
+            .gap(px(space::S2_5))
             .when_some(label.clone(), |el, l| {
-                el.child(
+                el.mt(px(space::S2)).child(
                     div()
-                        .text_role(&t, TextRole::Xs)
-                        .text_color(t.fg_subtle())
+                        .flex_shrink_0()
+                        .text_role(&t, TextRole::Sm)
+                        .weight_medium()
+                        .text_color(t.fg_subtlest())
                         .child(SharedString::from(l)),
                 )
-                .child(div().flex_1().h(px(size::HAIRLINE)).bg(t.border()))
             })
+            .child(div().flex_1().h(px(size::HAIRLINE)).bg(t.border()))
             .into_any_element(),
         OusNode::KeyHints { hints } => div()
             .flex()
@@ -1028,14 +1267,19 @@ pub fn render(
             let action = action_id.clone();
             let variant = match (primary, tone) {
                 (true, _) => Variant::Primary,
-                (_, Tone::Error) => Variant::OutlineDanger,
-                _ => Variant::Outline,
+                (_, Tone::Error) => Variant::DangerSoft,
+                _ => Variant::Secondary,
             };
-            Btn::new(ElementId::Name(format!("{key}/btn/{action_id}").into()))
-                .label(SharedString::from(label.clone()))
-                .variant(variant)
-                .size(BtnSize::Default)
-                .on_click(move |_, _, cx| cb(&action, JsonValue::Null, cx))
+            // A pill at its own width (a vertical stack would stretch it), A2.15 sizes.
+            div()
+                .flex()
+                .child(
+                    Btn::new(ElementId::Name(format!("{key}/btn/{action_id}").into()))
+                        .label(SharedString::from(label.clone()))
+                        .variant(variant)
+                        .size(if *primary { BtnSize::Xl } else { BtnSize::Md })
+                        .on_click(move |_, _, cx| cb(&action, JsonValue::Null, cx)),
+                )
                 .into_any_element()
         }
         OusNode::Empty { message } => match message {
@@ -1098,5 +1342,199 @@ pub fn code_block(t: &OinoTheme, value: &str, language: Option<&str>, key: &str)
                         .child(SharedString::from(l.to_owned()))
                 })),
         )
+        .into_any_element()
+}
+
+/// Whether a panel key (`r`, `R`, `1`, `esc`, `enter`, `up`, `ctrl+c`) matches a keystroke.
+/// Single characters compare the typed character, so `r` and `R` differ.
+#[must_use]
+pub fn panel_key_matches(spec: &str, ks: &gpui_kit::Keystroke) -> bool {
+    let spec = spec.trim();
+    let mut chars = spec.chars();
+    if let (Some(c), None) = (chars.next(), chars.next()) {
+        let m = &ks.modifiers;
+        if m.control || m.alt || m.platform {
+            return false;
+        }
+        return ks.key_char.as_deref().map_or_else(
+            || ks.key.eq_ignore_ascii_case(spec) && !(c.is_uppercase() ^ m.shift),
+            |typed| typed == spec,
+        );
+    }
+    let spec = spec.replace("esc", "escape").replace("escapeape", "escape");
+    let spec = if spec == "return" {
+        "enter".to_owned()
+    } else {
+        spec
+    };
+    crate::components::keys::shortcut_matches(&spec, ks)
+}
+
+/// Legend entries of panel keys: runs of digit keys with numbered labels collapse into one
+/// entry (`1–9 page`), labels are lower-case (TUI legend style).
+#[must_use]
+pub fn legend_entries(keys: &[crate::model::ui_state::PanelKey]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut digits: Vec<&crate::model::ui_state::PanelKey> = Vec::new();
+    let is_digit = |k: &crate::model::ui_state::PanelKey| {
+        k.key.len() == 1 && k.key.chars().all(|c| c.is_ascii_digit())
+    };
+    for k in keys {
+        if is_digit(k) {
+            digits.push(k);
+        }
+    }
+    let mut digit_done = false;
+    for k in keys {
+        if is_digit(k) && digits.len() >= 3 {
+            if !digit_done {
+                digit_done = true;
+                let first = digits.first().map_or("", |k| k.key.as_str());
+                let last = digits.last().map_or("", |k| k.key.as_str());
+                let label = k
+                    .label
+                    .trim_end_matches(|c: char| c.is_ascii_digit() || c == ' ')
+                    .to_lowercase();
+                out.push((format!("{first}\u{2013}{last}"), label));
+            }
+            continue;
+        }
+        let key = match k.key.as_str() {
+            "escape" | "esc" => "Esc".to_owned(),
+            "enter" | "return" => "\u{21b5}".to_owned(),
+            "up" => "\u{2191}".to_owned(),
+            "down" => "\u{2193}".to_owned(),
+            "left" => "\u{2190}".to_owned(),
+            "right" => "\u{2192}".to_owned(),
+            other => other.to_owned(),
+        };
+        out.push((key, k.label.to_lowercase()));
+    }
+    out
+}
+
+/// Focus handles of open overlay panels (keys bind while the dialog has focus).
+#[derive(Default)]
+struct PanelFocus(HashMap<String, gpui_kit::FocusHandle>);
+
+impl gpui_kit::Global for PanelFocus {}
+
+/// The focus handle of an open panel; a newly opened panel (each `openPanel`) takes focus so
+/// its keys and Esc work at once.
+pub fn panel_focus(
+    panel: &crate::model::ui_state::Panel,
+    window: &mut Window,
+    cx: &mut App,
+) -> gpui_kit::FocusHandle {
+    let key = format!("{}#{}", panel.id, panel.serial);
+    let found = {
+        let map = &mut cx.default_global::<PanelFocus>().0;
+        if map.len() > 32 {
+            map.clear();
+        }
+        map.get(&key).cloned()
+    };
+    found.unwrap_or_else(|| {
+        let h = cx.focus_handle();
+        window.focus(&h, cx);
+        let map = &mut cx.global_mut::<PanelFocus>().0;
+        map.retain(|k, _| !k.starts_with(&format!("{}#", panel.id)));
+        map.insert(key, h.clone());
+        h
+    })
+}
+
+/// Forgets the focus handle of a closed panel.
+pub fn forget_panel_focus(id: &str, cx: &mut App) {
+    if cx.has_global::<PanelFocus>() {
+        let prefix = format!("{id}#");
+        cx.global_mut::<PanelFocus>()
+            .0
+            .retain(|k, _| !k.starts_with(&prefix));
+    }
+}
+
+/// An overlay panel as a dialog (A2.12): title + ✕ only, the body scrolls, the panel `keys`
+/// are one footer legend (never buttons) and are bound while the dialog has focus; Esc
+/// closes. The dialog focuses itself when it first opens.
+#[allow(clippy::too_many_arguments, reason = "plain layout parameters")]
+pub fn panel_dialog(
+    t: &OinoTheme,
+    panel: &crate::model::ui_state::Panel,
+    width: f32,
+    body: AnyElement,
+    on_action: ActionFn,
+    on_close: crate::components::dialog::OnClose,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let id = panel.id.clone();
+    let focus = panel_focus(panel, window, cx);
+    let legend: Vec<AnyElement> = legend_entries(&panel.keys)
+        .into_iter()
+        .map(|(k, l)| crate::components::kbd::legend(t, k, l).into_any_element())
+        .collect();
+    let has_close = panel
+        .keys
+        .iter()
+        .any(|k| k.label.eq_ignore_ascii_case("close"));
+    let footer = (!legend.is_empty()).then(|| {
+        div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap(px(space::S3_5))
+            .when(!has_close, |el| {
+                el.child(crate::components::kbd::legend(t, "Esc", "close"))
+            })
+            .children(legend)
+            .into_any_element()
+    });
+    let keys = panel.keys.clone();
+    let close_key = Rc::clone(&on_close);
+    let forget_id = id.clone();
+    let on_close: crate::components::dialog::OnClose = Rc::new(move |w, cx| {
+        forget_panel_focus(&forget_id, cx);
+        on_close(w, cx);
+    });
+    let dialog = crate::components::dialog::modal_frame(
+        t,
+        "overlay-panel",
+        SharedString::from(panel.title.clone()),
+        width,
+        body,
+        footer.into_iter().collect(),
+        Rc::clone(&on_close),
+    );
+    let own = focus.clone();
+    let close_id = id;
+    div()
+        .id("overlay-panel-keys")
+        .absolute()
+        .inset_0()
+        .track_focus(&focus)
+        .on_key_down(move |e: &gpui_kit::KeyDownEvent, w, cx| {
+            let ks = &e.keystroke;
+            // Plain keys belong to a focused text field inside the panel.
+            let plain = !(ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform);
+            let typing = plain && !own.is_focused(w) && ks.key.chars().count() == 1;
+            if typing {
+                return;
+            }
+            if let Some(k) = keys.iter().find(|k| panel_key_matches(&k.key, ks)) {
+                if k.action_id == "$close" {
+                    forget_panel_focus(&close_id, cx);
+                    close_key(w, cx);
+                } else {
+                    on_action(&k.action_id, JsonValue::Null, cx);
+                }
+                cx.stop_propagation();
+            } else if ks.key == "escape" {
+                on_close(w, cx);
+                cx.stop_propagation();
+            }
+        })
+        .child(dialog)
         .into_any_element()
 }

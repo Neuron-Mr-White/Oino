@@ -159,6 +159,19 @@ pub struct ListItem {
     pub badge: Option<Rich>,
     /// Tone.
     pub tone: Tone,
+    /// Trailing row pill (`{actionId, label?, tone?}`), e.g. a per-row toggle (GA-31).
+    pub action: Option<ItemAction>,
+}
+
+/// A `list` item's trailing action pill.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemAction {
+    /// Action id fired on click.
+    pub action_id: String,
+    /// Pill label.
+    pub label: Option<Rich>,
+    /// Tone.
+    pub tone: Tone,
 }
 
 /// A tree node.
@@ -309,6 +322,8 @@ pub enum OusNode {
     },
     BarChart {
         bars: Vec<Bar>,
+        /// Vertical columns (time series) instead of labelled rows.
+        columns: bool,
     },
     Area {
         series: Vec<(String, Vec<f64>)>,
@@ -535,6 +550,13 @@ impl OusNode {
                             detail: i.get("detail").map(|v| rich(Some(v))),
                             badge: i.get("badge").map(|v| rich(Some(v))),
                             tone: Tone::of(i.get("tone")),
+                            action: i.get("action").and_then(|a| {
+                                Some(ItemAction {
+                                    action_id: st(a, "actionId")?,
+                                    label: a.get("label").map(|v| rich(Some(v))),
+                                    tone: Tone::of(a.get("tone")),
+                                })
+                            }),
                         })
                     })
                     .collect(),
@@ -612,6 +634,7 @@ impl OusNode {
                         tone: Tone::of(b.get("tone")),
                     })
                     .collect(),
+                columns: flag(value, "columns", false),
             },
             "area" => Self::Area {
                 series: array(value, "series")
@@ -752,7 +775,7 @@ impl OusNode {
             Self::Button { label, .. } => out.push(format!("[ {label} ]")),
             Self::Empty { message } => out.extend(message.clone()),
             Self::Sparkline { label, .. } => out.extend(label.clone()),
-            Self::BarChart { bars } => {
+            Self::BarChart { bars, .. } => {
                 out.extend(bars.iter().map(|b| format!("{}: {}", b.label, b.value)));
             }
             Self::Responsive { variants, fallback } => match variants.first() {
@@ -765,6 +788,82 @@ impl OusNode {
 }
 
 impl OusNode {
+    /// The node without its `keyHints` rows (GUI panels show one legend from the panel
+    /// `keys` instead of TUI hint lines, GA-22). Empty containers left behind are dropped.
+    #[must_use]
+    pub fn without_key_hints(self) -> Self {
+        let strip = |children: Vec<Self>| -> Vec<Self> {
+            children
+                .into_iter()
+                .filter(|c| !matches!(c, Self::KeyHints { .. }))
+                .map(Self::without_key_hints)
+                .collect()
+        };
+        match self {
+            Self::KeyHints { .. } => Self::Empty { message: None },
+            Self::Stack {
+                horizontal,
+                gap,
+                children,
+            } => Self::Stack {
+                horizontal,
+                gap,
+                children: strip(children),
+            },
+            Self::Split {
+                horizontal,
+                children,
+            } => Self::Split {
+                horizontal,
+                children: strip(children),
+            },
+            Self::Tabs {
+                tabs,
+                active,
+                on_change,
+            } => Self::Tabs {
+                tabs: tabs
+                    .into_iter()
+                    .map(|(id, title, body)| (id, title, body.without_key_hints()))
+                    .collect(),
+                active,
+                on_change,
+            },
+            Self::Section {
+                title,
+                body,
+                collapsible,
+                collapsed,
+            } => Self::Section {
+                title,
+                body: Box::new(body.without_key_hints()),
+                collapsible,
+                collapsed,
+            },
+            Self::Card {
+                title,
+                rail,
+                source,
+                body,
+                effect,
+            } => Self::Card {
+                title,
+                rail,
+                source,
+                body: Box::new(body.without_key_hints()),
+                effect,
+            },
+            Self::Responsive { variants, fallback } => Self::Responsive {
+                variants: variants
+                    .into_iter()
+                    .map(|(w, n)| (w, n.without_key_hints()))
+                    .collect(),
+                fallback: Box::new(fallback.without_key_hints()),
+            },
+            other => other,
+        }
+    }
+
     /// Resolves `responsive` nodes for a width of `columns` (≈ px / 8): the first variant
     /// whose `minWidth` fits (variants are ordered widest first), else the fallback.
     #[must_use]
@@ -918,6 +1017,16 @@ mod tests {
         assert!(matches!(node.resolve(50), OusNode::Text { .. }));
         assert!(matches!(node.resolve(10), OusNode::Empty { .. }));
         assert_eq!(node.content_hash(), node.clone().content_hash());
+    }
+
+    #[test]
+    fn key_hint_rows_are_stripped() {
+        let node = OusNode::parse(&json!({"t":"stack","children":[
+            {"t":"tabs","tabs":[{"id":"a","title":"A","body":{"t":"stack","children":[
+                {"t":"text","value":"row"},{"t":"keyHints","hints":[{"keys":"s","label":"stop"}]}]}}]},
+            {"t":"keyHints","hints":[{"keys":"esc","label":"close"}]}]}))
+        .without_key_hints();
+        assert_eq!(node.to_lines(), vec!["row"]);
     }
 
     #[test]

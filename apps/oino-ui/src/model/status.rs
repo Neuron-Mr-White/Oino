@@ -1,9 +1,9 @@
 //! `StatusPanel` model (design.md §4.19): Goal, Progress, Run and Git sections derived from a
 //! session. Until the sticky-topic feed exists (design.md §10 R3) the sources are the
-//! session's own state: long-horizon / ralph statuses (Goal), plan steps of the current turn
-//! (Progress), running tool calls, subagents and the footer process line (Run), and the
-//! footer frame's branch segment (Git). [`StatusModel::ingest_topic`] accepts topic payloads
-//! for when the feed lands.
+//! session's own state: long-horizon / ralph statuses (Goal), the workflow's approved plan
+//! (Progress — never arbitrary assistant lists, GA-10), running tool calls, subagents and
+//! the footer process line (Run), and the footer frame's branch segment (Git).
+//! [`StatusModel::ingest_topic`] accepts topic payloads for when the feed lands.
 
 use oino_ai::JsonValue;
 
@@ -12,8 +12,16 @@ use crate::model::timeline::{self, agent_line, plan_steps};
 use crate::model::tools::ToolKind;
 use crate::model::transcript::{RowKind, ToolStatus};
 
-/// Bytes of an assistant reply scanned for plan steps.
-const PLAN_SCAN: usize = 4096;
+/// Fixed prefix of the workflow's approved-plan handoff user message
+/// (`unipi.workflow` `approve_plan`: "Implement the approved plan below. …"). The plan is
+/// the only Progress source; assistant replies are not (GA-10).
+const APPROVED_PLAN_PREFIX: &str = "Implement the approved plan below.";
+
+/// The plan body of an approved-plan handoff message.
+#[must_use]
+fn approved_plan(text: &str) -> Option<&str> {
+    text.strip_prefix(APPROVED_PLAN_PREFIX).map(str::trim)
+}
 
 /// Kind of a Run row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,26 +135,21 @@ impl StatusModel {
             }
         }
         let rows = session.transcript.rows();
-        // Plan steps: the latest assistant message of the current turn with a list.
-        if let Some(last_user) = rows
-            .iter()
-            .rposition(|r| matches!(r.kind, RowKind::User(_)))
-        {
-            let finished = !session.is_busy();
-            if let Some(steps) = rows[last_user..].iter().find_map(|r| match &r.kind {
-                RowKind::Assistant(a) => {
-                    // Plans sit at the start of a reply; long streams are not rescanned.
-                    let mut end = a.text.len().min(PLAN_SCAN);
-                    while !a.text.is_char_boundary(end) {
-                        end -= 1;
-                    }
-                    let head = &a.text[..end];
-                    let s = plan_steps(head);
-                    (s.len() >= 2).then_some(s)
-                }
-                _ => None,
-            }) {
-                let tools_done = rows[last_user..]
+        // Progress = the workflow's approved plan (the "Implement the approved plan below."
+        // handoff), never an assistant reply: clarifying questions must not become todos
+        // (GA-10). Steps advance with finished tool calls after the handoff; a checklist's
+        // own `- [x]` marks win.
+        if let Some(plan_at) = rows.iter().rposition(|r| match &r.kind {
+            RowKind::User(u) => approved_plan(&u.text).is_some(),
+            _ => false,
+        }) {
+            let plan = match &rows[plan_at].kind {
+                RowKind::User(u) => approved_plan(&u.text).unwrap_or_default(),
+                _ => "",
+            };
+            let steps = plan_steps(plan);
+            if steps.len() >= 2 {
+                let tools_done = rows[plan_at..]
                     .iter()
                     .filter(|r| {
                         matches!(&r.kind, RowKind::Tool(t) if matches!(t.status, ToolStatus::Done | ToolStatus::Error))
@@ -158,8 +161,7 @@ impl StatusModel {
                     .enumerate()
                     .map(|(i, (text, done))| Step {
                         text,
-                        // Without a todo feed, steps advance with finished tool calls.
-                        done: done || finished || i < tools_done.min(n.saturating_sub(1)),
+                        done: done || i < tools_done.min(n.saturating_sub(1)),
                     })
                     .collect();
             }
@@ -327,7 +329,11 @@ mod tests {
         s.apply_all(&[
             ev(json!({"type":"agent_start"})),
             ev(json!({"type":"message_start","message":{"role":"user","content":"go","timestamp":0}})),
-            ev(json!({"type":"message_end","message":assistant("Plan:\n1. Locate\n2. Patch\n3. Verify")})),
+            ev(json!({"type":"message_end","message":assistant("I will now:
+1. Locate
+2. Patch
+3. Verify")})),
+            ev(json!({"type":"message_start","message":{"role":"user","content":"Implement the approved plan below.\n\n# Fix\n## Implementation\n1. Locate\n2. Patch\n3. Verify","timestamp":0}})),
             ev(json!({"type":"tool_execution_start","toolCallId":"t1","toolName":"bash","args":{"command":"cargo test"}})),
             ev(json!({"type":"tool_execution_start","toolCallId":"t2","toolName":"run_subagent","args":{"agent":"explorer","task":"map deps"}})),
             ev(json!({"type":"extension_ui_request","id":"1","method":"setFrame","frameKey":"f","extensionId":"unipi.footer",
@@ -342,6 +348,33 @@ mod tests {
         assert_eq!(m.run[1].kind, RunKind::Agent);
         assert_eq!(m.run[1].label, "explorer: map deps");
         assert_eq!(m.mini(), (Some("0/3".into()), 2, 0));
+    }
+
+    /// GA-10: the model's clarifying questions (or any assistant list) are not plan todos,
+    /// and finished turns do not strike every step through.
+    #[test]
+    fn assistant_questions_are_not_plan_steps() {
+        let mut s = SessionModel::new("s", "/w");
+        s.apply_all(&[
+            ev(json!({"type":"agent_start"})),
+            ev(json!({"type":"message_start","message":{"role":"user","content":"/plan","timestamp":0}})),
+            ev(json!({"type":"message_end","message":assistant("Three questions:
+1. Which DB?
+2. Which port?
+3. Any budget?")})),
+        ]);
+        let m = StatusModel::from_session(&s);
+        assert!(m.steps.is_empty(), "questions must not become Progress");
+        s.apply_all(&[
+            ev(json!({"type":"message_start","message":{"role":"user","content":"Implement the approved plan below.\n\n- [x] pick the DB\n- [ ] wire the port","timestamp":0}})),
+            ev(json!({"type":"message_end","message":assistant("done")})),
+        ]);
+        let m = StatusModel::from_session(&s);
+        assert_eq!(
+            m.progress(),
+            (1, 2),
+            "checklist marks advance, the rest waits"
+        );
     }
 
     #[test]

@@ -9,8 +9,8 @@ use unipi_kit::ous;
 use crate::render::claim_order;
 use crate::shapes::Task;
 
-/// Panel id (scoped by the host as `unipi.kanboard/board`).
-pub const PANEL_ID: &str = "board";
+/// Panel id, scoped by extension like the other unipi panels (frontends find the board by it).
+pub const PANEL_ID: &str = "unipi.kanboard/board";
 /// Action: a task was selected (`value` = task id).
 pub const ACTION_SELECT: &str = "select";
 /// Action prefix: move the selected task (`move:<status>`).
@@ -180,6 +180,28 @@ pub fn open_request(slug: &str, body: &Value) -> Value {
         "title": format!("Kanboard · {slug}"),
         "spec": body,
         "keys": keys(),
+        "focus": true,
+        "closeOnEscape": true,
+    })
+}
+
+/// Action: register this project with the board (the setup panel's button).
+pub const ACTION_ONBOARD: &str = "onboard";
+
+/// The board panel shown before the project is registered (GUI frontends): one line and a
+/// "Set up the board" button instead of a warning toast and no panel.
+#[must_use]
+pub fn setup_request(project: &str) -> Value {
+    json!({
+        "panelId": PANEL_ID,
+        "placement": "sidePane",
+        "title": "Kanboard",
+        "spec": {"t": "stack", "direction": "vertical", "gap": 3, "children": [
+            {"t": "empty", "message": format!("{project} has no board yet")},
+            {"t": "text", "value": [ous::span("Set it up to plan tasks here, then add them from the board or with /kanboard-add.", Some("muted"))]},
+            {"t": "button", "label": "Set up the board", "actionId": ACTION_ONBOARD, "primary": true}
+        ]},
+        "keys": [{"key": "o", "actionId": ACTION_ONBOARD, "label": "set up"}],
         "focus": true,
         "closeOnEscape": true,
     })

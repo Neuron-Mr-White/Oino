@@ -142,6 +142,8 @@ pub struct Panel {
     pub keys: Vec<PanelKey>,
     /// Close on Escape.
     pub close_on_escape: bool,
+    /// Bumped on every `openPanel` (a reopened panel takes focus again).
+    pub serial: u64,
 }
 
 /// An extension shortcut (`setShortcuts`).
@@ -222,6 +224,7 @@ pub struct UiState {
     footer_segments: IndexMap<String, Vec<Segment>>,
     panels: IndexMap<String, Panel>,
     dialogs: VecDeque<Dialog>,
+    panel_serial: u64,
     /// Session title override (`setTitle`).
     pub title: Option<String>,
     /// Working message shown while streaming.
@@ -254,7 +257,12 @@ fn segments(value: Option<&JsonValue>) -> Vec<Segment> {
                 spans: seg
                     .get("spans")
                     .filter(|s| s.is_array())
-                    .map(|s| crate::model::ous::rich(Some(s))),
+                    .map(|s| crate::model::ous::rich(Some(s)))
+                    .or_else(|| {
+                        (seg.get("effect").and_then(JsonValue::as_str) == Some("rainbow"))
+                            .then(|| wordmark(seg.get("text")?.as_str()?))
+                            .flatten()
+                    }),
                 command: seg
                     .get("command")
                     .and_then(JsonValue::as_str)
@@ -276,6 +284,64 @@ fn segments(value: Option<&JsonValue>) -> Vec<Segment> {
             })
         })
         .collect()
+}
+
+/// The wordmark letters (A2.11): white, cyan, green, yellow, red, repeating — the GUI form of
+/// the footer brand's `rainbow` effect.
+fn wordmark(text: &str) -> Option<crate::model::ous::Rich> {
+    const TONES: [Tone; 5] = [
+        Tone::Default,
+        Tone::Info,
+        Tone::Success,
+        Tone::Warning,
+        Tone::Error,
+    ];
+    let mut i = 0;
+    let spans: crate::model::ous::Rich = text
+        .chars()
+        .map(|c| {
+            let tone = if c.is_alphanumeric() {
+                let t = TONES[i % TONES.len()];
+                i += 1;
+                t
+            } else {
+                Tone::Muted
+            };
+            crate::model::ous::Span {
+                text: c.to_string(),
+                tone,
+                bold: true,
+                ..crate::model::ous::Span::default()
+            }
+        })
+        .collect();
+    (!spans.is_empty()).then_some(spans)
+}
+
+/// Whether a panel title is really a TUI key hint (`←→ tabs · esc close`).
+fn hint_title(title: &str) -> bool {
+    let t = title.to_lowercase();
+    t.contains("esc close") || t.starts_with('\u{2190}') || t.starts_with('\u{2194}')
+}
+
+/// The GUI form of a panel (GA-22): composer-slot and overlay panels draw one legend from
+/// their `keys` (plus Esc), so TUI `keyHints` rows in the spec go; a title that is only a
+/// key hint becomes a readable title.
+fn gui_panel(mut panel: Panel) -> Panel {
+    if matches!(
+        panel.placement,
+        PanelPlacement::EditorReplace | PanelPlacement::Overlay | PanelPlacement::Fullscreen
+    ) {
+        panel.spec = panel.spec.without_key_hints();
+    }
+    if hint_title(&panel.title) {
+        panel.title = if panel.id.ends_with("/tray") {
+            "Work tray".to_owned()
+        } else {
+            String::new()
+        };
+    }
+    panel
 }
 
 fn panel_keys(value: Option<&JsonValue>) -> Vec<PanelKey> {
@@ -562,6 +628,12 @@ impl UiState {
                 if request.method == "updatePanel" && existing.is_none() {
                     return None;
                 }
+                let serial = if request.method == "openPanel" {
+                    self.panel_serial += 1;
+                    self.panel_serial
+                } else {
+                    existing.as_ref().map_or(0, |e| e.serial)
+                };
                 let panel = Panel {
                     id: id.clone(),
                     title: s(request, "title")
@@ -594,7 +666,9 @@ impl UiState {
                         .get("closeOnEscape")
                         .and_then(JsonValue::as_bool)
                         .unwrap_or_else(|| existing.as_ref().is_none_or(|e| e.close_on_escape)),
+                    serial,
                 };
+                let panel = gui_panel(panel);
                 self.panels.insert(id.clone(), panel);
                 (request.method == "openPanel"
                     && p.get("focus").and_then(JsonValue::as_bool) == Some(true))
@@ -680,6 +754,17 @@ mod tests {
             v["id"] = json!("r");
         }
         serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn tray_panels_get_a_title_and_one_legend() {
+        let mut ui = UiState::new();
+        ui.apply(&req(json!({"method":"openPanel","panelId":"unipi.core/tray","placement":"editorReplace",
+            "title":"\u{2190}\u{2192} tabs \u{b7} esc close",
+            "spec":{"t":"stack","children":[{"t":"text","value":"x"},{"t":"keyHints","hints":[{"keys":"esc","label":"close"}]}]}})));
+        let panel = ui.panel("unipi.core/tray").unwrap();
+        assert_eq!(panel.title, "Work tray");
+        assert_eq!(panel.spec.to_lines(), vec!["x"]);
     }
 
     #[test]

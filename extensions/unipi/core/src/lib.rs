@@ -329,6 +329,22 @@ impl Core {
                 }
                 self.hints(cx, |s, e| s.show(e, &id, true));
             }
+            // GA-31: the row pill toggles the hint's learned mark.
+            learned if learned.starts_with(render::LEARN_ACTION) => {
+                let id = &learned[render::LEARN_ACTION.len()..];
+                self.hints(cx, |_, e| {
+                    let on = !e.store.learned.iter().any(|l| l == id);
+                    e.store.set_learned(id, on);
+                    e.dirty = true;
+                });
+                let query = self.sessions.with(cx.session_id(), |s| {
+                    s.browser
+                        .as_ref()
+                        .map(|(_, q)| q.clone())
+                        .unwrap_or_default()
+                });
+                self.open_browser(cx, &query)?;
+            }
             _ => {}
         }
         Ok(())

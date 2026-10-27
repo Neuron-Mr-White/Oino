@@ -18,6 +18,8 @@ pub const WIDGET_KEY: &str = "unipi-hints";
 pub const HEADER_KEY: &str = "unipi.core/header";
 /// Hint browser panel name.
 pub const BROWSER_PANEL: &str = "unipi.core/hints";
+/// Action prefix of a row's learned toggle (GA-31).
+pub const LEARN_ACTION: &str = "learn:";
 /// Default lore line.
 pub const DEFAULT_LORE: &str = "Unicrab walks sideways so it can read your diffs from both ends.";
 
@@ -270,7 +272,8 @@ pub fn filter<'a>(hints: &'a [Hint], query: &str) -> Vec<&'a Hint> {
         .collect()
 }
 
-/// Hint browser panel (`openPanel` spec): filter input, one section per category, Enter shows.
+/// Hint browser panel (`openPanel` spec): filter input, one section per category, Enter shows,
+/// each row's pill toggles learned (GA-31).
 #[must_use]
 pub fn browser_spec(hints: &[Hint], store: &StoreData, query: &str) -> Value {
     let matching = filter(hints, query);
@@ -288,7 +291,18 @@ pub fn browser_spec(hints: &[Hint], store: &StoreData, query: &str) -> Value {
                     "seen" => "muted",
                     _ => "default",
                 };
-                json!({"id": h.id, "label": h.text, "badge": st, "tone": tone})
+                let learned = st == "learned";
+                json!({
+                    "id": h.id,
+                    "label": h.text,
+                    "badge": st,
+                    "tone": tone,
+                    "action": {
+                        "actionId": format!("{LEARN_ACTION}{}", h.id),
+                        "label": if learned { "✓ learned" } else { "mark learned" },
+                        "tone": if learned { "success" } else { "default" },
+                    },
+                })
             })
             .collect();
         if items.is_empty() {
@@ -425,6 +439,12 @@ mod tests {
         assert_eq!(items[0]["badge"], "seen");
         assert_eq!(items[1]["badge"], "learned");
         assert_eq!(items[2]["badge"], "unseen");
+        // The learned toggle (GA-31): each row's pill fires `learn:<id>`.
+        assert_eq!(
+            items[1]["action"],
+            json!({"actionId": "learn:cmd.hint", "label": "✓ learned", "tone": "success"})
+        );
+        assert_eq!(items[2]["action"]["actionId"], "learn:cmd.answer");
         assert_eq!(
             filter(&hints, "KANBOARD").len(),
             filter(&hints, "kanboard").len()

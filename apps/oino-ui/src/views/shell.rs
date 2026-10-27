@@ -1344,7 +1344,7 @@ impl AppShell {
             .active_pane()
             .is_some_and(|p| p.read(cx).model.ui.panel(kanban::BOARD_PANEL).is_some());
         if !has {
-            self.with_pane(cx, |p, cx| p.run_prompt("/kanboard", cx));
+            self.ensure_board(cx);
         }
         self.settings_view = None;
         self.route = Route::Board;

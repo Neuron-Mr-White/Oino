@@ -51,6 +51,8 @@ enum View {
     Instructions(CheckResult, String),
     Readmes(Vec<Readme>),
     Readme(Vec<Readme>),
+    /// The changelog browser (entries; the open entry is the panel title).
+    Changelog(Vec<Entry>),
 }
 
 #[derive(Default)]
@@ -421,9 +423,49 @@ impl Updater {
                 )?;
                 set(Some(View::Readmes(list)));
             }
+            (View::Changelog(entries), "open") => {
+                if let Some(i) = value.parse::<usize>().ok().filter(|i| *i < entries.len()) {
+                    let title = format!("Changelog — {}", entries[i].version);
+                    ui::panel_update(
+                        &panel,
+                        &json!({"spec": view::doc_spec(&entries[i].body), "title": title}),
+                    )?;
+                    set(Some(View::Changelog(entries)));
+                }
+            }
+            (View::Changelog(entries), "back") => {
+                ui::panel_update(
+                    &panel,
+                    &json!({"spec": view::changelog_list_spec(&entries), "title": "Changelog"}),
+                )?;
+                set(Some(View::Changelog(entries)));
+            }
             _ => {}
         }
         Ok(())
+    }
+
+    /// The `/changelog` hidden runner (GA-19): version list from the bundled/remote
+    /// changelog, entry detail on Enter.
+    async fn changelog_command(&'static self, cx: &Ctx) {
+        if !cx.has_ui() {
+            return;
+        }
+        let mut entries = bundled_changelog();
+        if entries.is_empty() {
+            let current = host::info().oino_version;
+            entries = remote_changelog(&current)
+                .await
+                .map(|t| changelog::parse(&t))
+                .unwrap_or_default();
+        }
+        let spec = view::changelog_list_spec(&entries);
+        let Ok(id) = ui::panel_open(&view::browser_panel("changelog", "Changelog", &spec)) else {
+            return;
+        };
+        self.sessions.with(cx.session_id(), |s| {
+            s.panels.insert(id, View::Changelog(entries));
+        });
     }
 
     fn arm_timer(&self) {
@@ -489,6 +531,15 @@ impl Extension for Updater {
                         .filter(|r| r.name.starts_with(&p))
                         .map(|r| item(r.name))
                         .collect()
+                }),
+        );
+        cx.command(
+            Command::<Self>::new("changelog")
+                .description("Browse Oino's changelog")
+                .hidden()
+                .run(|ext, _args, cx| async move {
+                    ext.changelog_command(&cx.cx).await;
+                    Ok(())
                 }),
         );
         cx.command(

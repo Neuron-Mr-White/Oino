@@ -195,8 +195,10 @@ impl ProcessService {
         let (exit_tx, exit_rx) = watch::channel(None);
         let (kill_tx, kill_rx) = oneshot::channel::<()>();
         let timeout = spec.timeout;
+        let detached = spec.detached;
         tokio::spawn(async move {
             let mut kill_rx = kill_rx;
+            let mut kill_open = true;
             let deadline = async {
                 match timeout {
                     Some(t) => tokio::time::sleep(t).await,
@@ -213,9 +215,13 @@ impl ProcessService {
                         kill_tree(pid, group);
                         let _ = child.start_kill();
                     }
-                    _ = &mut kill_rx => {
-                        let _ = child.start_kill();
-                        kill_rx = oneshot::channel().1;
+                    asked = &mut kill_rx, if kill_open => {
+                        // An explicit kill, or the guest dropped its handle: a detached child
+                        // (a daemon) outlives its handle; any other child dies with it.
+                        if asked.is_ok() || !detached {
+                            let _ = child.start_kill();
+                        }
+                        kill_open = false;
                     }
                 }
             };

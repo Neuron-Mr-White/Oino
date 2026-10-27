@@ -11,9 +11,7 @@ use gpui_kit::{
     ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
     canvas, div, list, px,
 };
-use oino_ai::JsonValue;
 
-use crate::components::button::{Btn, BtnSize};
 use crate::components::interaction::InteractionView;
 use crate::components::ous::{self, Ous};
 use crate::components::unicrab::unicrab;
@@ -501,20 +499,6 @@ impl SessionPane {
         let t = OinoTheme::get(cx);
         let id = panel.id.clone();
         let on_action = self.action_fn(&id, cx);
-        let toolbar: Vec<AnyElement> = panel
-            .keys
-            .iter()
-            .map(|k| {
-                let a = Rc::clone(&on_action);
-                let action = k.action_id.clone();
-                Btn::new(ElementId::Name(format!("ov-key-{}", k.action_id).into()))
-                    .label(SharedString::from(k.label.clone()))
-                    .kbd(SharedString::from(k.key.clone()))
-                    .size(BtnSize::Sm)
-                    .on_click(move |_, _, cx| a(&action, JsonValue::Null, cx))
-                    .into_any_element()
-            })
-            .collect();
         let saved = self.width;
         self.width = px(size::DIALOG_LG);
         let body = self.render_panel_body(&id, true, window, cx);
@@ -526,19 +510,19 @@ impl SessionPane {
         } else {
             size::DIALOG_LG
         };
-        // A2.12 dialog look. gui-fix-unipi U3 replaces this with `ous::panel_dialog`
-        // (panel `keys` become one footer legend, never buttons).
-        Some(crate::components::dialog::modal_with_toolbar(
+        // A2.12 dialog look (gui-fix-unipi U3): panel `keys` are one footer legend and are
+        // bound while the dialog has focus — never a row of buttons (GA-22, GA-23).
+        Some(ous::panel_dialog(
             &t,
-            "overlay-panel",
-            SharedString::from(panel.title.clone()),
+            &panel,
             width,
-            toolbar,
             body,
-            Vec::new(),
+            on_action,
             Rc::new(move |_, cx: &mut App| {
                 let _ = entity.update(cx, |p, cx| p.close_panel(&close_id, cx));
             }),
+            window,
+            cx,
         ))
     }
 

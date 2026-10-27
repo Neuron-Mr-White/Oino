@@ -160,6 +160,31 @@ pub(crate) fn doc_spec(markdown: &str) -> Value {
     ]})
 }
 
+/// Changelog version list (unipi `renderChangelogOverlay`; the `/changelog` hidden runner).
+pub(crate) fn changelog_list_spec(entries: &[crate::changelog::Entry]) -> Value {
+    if entries.is_empty() {
+        return json!({"t": "empty", "message": "No changelog found yet — check from Settings → About once online."});
+    }
+    let items: Vec<Value> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let count: usize = e.sections.iter().map(|(_, items)| items.len()).sum();
+            let sections: Vec<&str> = e.sections.iter().map(|(s, _)| s.as_str()).collect();
+            json!({
+                "id": i.to_string(),
+                "label": e.version,
+                "detail": if e.date.is_empty() { sections.join(", ") } else { format!("{} · {}", e.date, sections.join(", ")) },
+                "badge": count.to_string(),
+            })
+        })
+        .collect();
+    json!({"t": "stack", "direction": "vertical", "children": [
+        {"t": "list", "items": items, "selectable": "open"},
+        {"t": "keyHints", "hints": [{"keys": "enter", "label": "open"}, {"keys": "q", "label": "close"}]},
+    ]})
+}
+
 /// Browser panel shell.
 pub(crate) fn browser_panel(id: &str, title: &str, spec: &Value) -> Value {
     json!({
@@ -255,6 +280,28 @@ mod tests {
         assert!(s.contains("\"markdown\"") && s.contains("1.1.0"));
         let empty = update_panel(&r, "");
         assert!(empty["spec"].to_string().contains("No changelog"));
+    }
+
+    /// GA-19: the hidden `/changelog` runner's version list.
+    #[test]
+    fn changelog_list_shape() {
+        let e = crate::changelog::Entry {
+            version: "1.1.0".into(),
+            date: "2026-10-27".into(),
+            sections: vec![("Added".into(), vec!["x".into()])],
+            body: "## 1.1.0".into(),
+        };
+        let spec = changelog_list_spec(&[e]);
+        assert!(
+            spec.to_string().contains("\"selectable\":\"open\"")
+                && spec.to_string().contains("1.1.0")
+        );
+        let empty = changelog_list_spec(&[]);
+        assert!(
+            empty["message"]
+                .as_str()
+                .is_some_and(|m| m.contains("No changelog"))
+        );
     }
 
     #[test]

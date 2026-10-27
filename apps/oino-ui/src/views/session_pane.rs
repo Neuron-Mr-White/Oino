@@ -1537,7 +1537,9 @@ impl SessionPane {
                 self.toast("Reloaded the session state", cx);
             }
             Builtin::Changelog => {
-                if self.has_command("changelog") {
+                // The updater serves /changelog as a hidden runner (commands.md §2); its visible
+                // /readme marks the extension loaded, so the forward finds the runner (GA-19).
+                if self.has_command("changelog") || self.has_command("readme") {
                     self.send(
                         PiCommand::Prompt {
                             message: "/changelog".into(),
