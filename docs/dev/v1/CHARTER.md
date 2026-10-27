@@ -79,6 +79,12 @@ processes you start (kill by PID only) and large temp files afterwards.
 | `desmondgiam` | macOS (Intel x86_64, 8 threads, 8 GB RAM, cargo + Xcode) | `ssh mac` (user desmondgiam) | disk ~93% full (~16 GB free): reuse `~/oino-release`, `cargo clean` large targets you created, never fill the disk; may be asleep, skip if unreachable |
 | `ti` | Ubuntu | `ssh ti@ti` (Tailscale SSH, user `ti`) | Tailscale may demand a browser check (owner must approve); if it does, skip and report |
 
+**Owner's PC (this machine) is the owner's workstation (owner direction 2026-10-27):** never
+use its display (`DISPLAY=:0`, Xwayland auth, `xdotool`, GNOME/CloakBrowser windows), never
+open windows or steal focus there. GUI testing runs on `ti` (preferred) or headless on a
+private Xvfb (`Xvfb :<free>` / `xvfb-run -a`, lavapipe) — on this PC only when `ti` is unreachable,
+with `nice -n 10`, `cargo -j 4`, and one app instance. Builds/tests here: `nice -n 10`, `-j 4`.
+
 Credentials: only from `/home/oi/Projects/Neuron/credentials/` (same as
 `/home/oi/Projects/Personal/credentials/`): `pem/white` (SSH key), `mac/sudo.pass`,
 `ti/sudo.pass`, `coffee/windows.env`. Read them at use time (e.g. `sudo -S < file` piped over
