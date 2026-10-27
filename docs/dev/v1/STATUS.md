@@ -1,8 +1,9 @@
-# Oino v1.0.0-alpha.2 — status
+# Oino v1.0.0-alpha.3 — status
 
-Date: 2026-10-27 · branch `v1-alpha` · work id `integration-2` (follow-up round: core-agents,
-core-settings, frontend-cmds, providers-more, unipi-utility, design-spec / design-desktop(-fix) /
-design-mobile, release-builds).
+Date: 2026-10-28 · branch `v1-alpha` · round 3 (`round3-integration`: gui-qa + gui-qa-fix,
+stability, browser-impl, unipi-native + commands, cron, mempalace-rs, cross-platform smoke;
+on top of round 2 `integration-2`: core-agents, core-settings, frontend-cmds, providers-more,
+unipi-utility, design-spec / design-desktop(-fix) / design-mobile, release-builds).
 Parity targets: `@earendil-works/pi-coding-agent` **1.4.0**, unipi **3.0.0**, ZCode design
 ([design.md](design.md)).
 Legend: ✅ done · 🟡 partial · ❌ missing · ⛔ diverges by design. Settled deviations are folded
@@ -19,6 +20,173 @@ All run locally with `TMPDIR=$PWD/target/tmp`; components rebuilt with rustc 1.9
 | `apps/` (GPUI) | ✅ | ✅ | ✅ 83 | — |
 
 `cargo xtask layering` and `cargo deny` (quality §1, §6) do not exist yet.
+
+## 1b. Round 3 summary (work id `round3-integration`, 2026-10-28, `v1-alpha`)
+
+Round 3 closed the desktop QA defects, the stability/soak work, browser control, the command
+rename + `unipi-migrate` skill, cron (Oino-native), the mempalace-rs integration and the
+cross-platform smoke. Parity targets unchanged: pi 1.4.0, unipi 3.0.0, ZCode design.
+Version: **1.0.0-alpha.3**.
+
+### 1b.1 unipi 3.0.0 in the desktop app (incl. cron)
+
+Every unipi surface (design.md §7) reaches exactly one primary rendering; the desktop now
+renders each one natively or through the shared OUS/docked-card machinery. "Live" = exercised
+in the round-3 / round-4 QA runs on the release binary (private Xvfb + lavapipe) or by the
+round-3 harness scripts; "code" = unit/e2e tests only this round.
+
+| Package | Desktop surface | Status | Evidence |
+|---|---|---|---|
+| core | hint strip (`alt+h`), hints overlay, welcome hero / slim header card, work tray (`↓`, `/subagents`) | ✅ live | GA-5, GA-16, GA-21, GA-22, GA-31 |
+| info-screen | `/info` dashboard dialog (tabs, stat tiles, meters, `1–9` pages, `r` refresh) | ✅ live | GA-23 |
+| footer | glance frame under the composer + stats strip (`/footer off` keeps the mode chip) | ✅ live | GA-25, GA-26 |
+| workflow | approval card (keyboard + focus, >4 min alive), plan review card, `/permission`, `alt+m`/`alt+p`, Permissions page | ✅ live | GA-16, GA-27, GA-30, GA-33, QA-1 |
+| ask-user | question card, tool rows, OS notification | 🟡 code | forms render (GA-7); a live `form` turn was not re-driven (budget) |
+| long-horizon | `/goal` continuation, `/ralph` `/swarm` `/graph`, visualise dialog, StatusPanel goal row | 🟡 code | `/goal-start` e2e + smoke; graph runs not e2e-tested |
+| memory | recall/save cards, badge rows, forget/consolidate dialogs, `memory_*` tools | 🟡 code | MemPalace verified with both implementations ([§1b.5](#1b5-mempalace-rs-the-rust-port)); `/memory` in the desktop not driven this round |
+| dream | report card with proposals, tray tab, StatusPanel Run row | 🟡 code | nested-agent dream e2e with resume; Accept/Reject buttons not clicked live |
+| skill-registry | `/skills` → Settings hub "Skills" page, vault discovery | ✅ live | GA-31 (`/hint`), skills page |
+| subagents | `run_subagent` rows, `/subagents` tray tab, `/agents` dialog | 🟡 code | GA-21 tray; live child timeline still open (GA-15 / GA-44 feed exists) |
+| background-tasks | `/bg`, tasks tray tab (`sleep 30 · 4s · 0B`), Stop all / Dismiss, completion card | ✅ live | GA-14, GA-21, GA-22 |
+| btw | `/btw` side-chat panel, session message count unchanged | ✅ live | smoke (`/btw …` in the panel) |
+| web-api | `web_search` / read tool rows, confirm dialogs | ✅ live | tool rows in the round-2/3 runs |
+| notify | wizards (`form`/`select`), secret fields, toasts, OS notifications | ✅ live | kanboard-onboard dialog (GA-24), notify settings |
+| kanboard | native Board page, `/kanboard open` side pane, New-task dialog, claims badge | ✅ live | GA-17, GA-20, QA-5; `65-unipi-board-newtask.png` |
+| mcp | `/mcp-status` panel, `<server>__<tool>` rows, add/settings flows | 🟡 code | stdio + HTTP e2e; `mcp.json` not readable (R1), ACP `mcpServers` not forwarded (R3) |
+| command-enchantment | completion menu with package colour tags, one COMMANDS group | ✅ live | GA-2, GA-4 |
+| compactor | `/compact*`, `/session-recall`, SummaryCard | 🟡 code | commands + tests; LLM summary still lacks pi's previous-summary parameter (R1) |
+| updater | `/readme`, `/changelog` (GitHub release notes fallback), update badge | ✅ live | GA-19, QA-4 |
+| **cron** (Oino-native) | **Automations page** (sidebar nav, job rows with each job's own last run, run history, add/edit/enable/disable/run/pause) | ✅ live | `66-automations.png`; `scripts/round3/cron-e2e.sh --real` → PASS (every-minute job 3 runs + sessions, `at:` job, pause/resume, missed-run catch-up, install/uninstall in a scratch HOME, one real `oino/deepseek/deepseek-flash` run) |
+| input-shortcuts | composer editor intents, `setShortcuts` → shell interceptor | ✅ live | GA-16, QA-1 repro 4 |
+| fusion | `/fusion` picker, sidekick AgentRow, wake widget | 🟡 code | sidekick e2e + live handoff; startup model not persisted to core settings (R4) |
+| watchdog | stuck detection, session caps, `/bg-detach`, `setStatus` chip | 🟡 code | `bash-detach` e2e; process stats Linux-only |
+| app-bridge | `/app` control-centre side tab | ✅ live | GA-18 |
+
+Count: 12 ✅ live, 11 🟡 code, 0 ❌. "🟡 code" means gates green and the surface renders, but
+the round-3 QA budget did not re-drive that turn live; the gaps are itemised in
+[gui-qa.md](gui-qa.md) "Coverage gaps".
+
+### 1b.2 Stability / soak ([stability.md](stability.md))
+
+Seven root causes fixed (GPUI background-executor panic on editor events, extension install
+on the foreground executor, panes never dropped → RSS/fd/thread growth, no shutdown at quit,
+file-tree walk on the render thread, unbounded `ous::Drains`, soak-driver double lease).
+Diagnostics: panic hook writes `~/.oino/logs/desktop-crash-*.log` and aborts after logging on
+main/worker threads; a watchdog writes `desktop-stall-*.log` after 2 s of UI silence.
+
+30-minute faux soaks on the release binary, one instance, own Xvfb :120 + lavapipe:
+
+| Run | Steps | RSS start→end (max) MB | Slope 2nd half | Threads | fds | Frame max/p99 ms | Verdict |
+|---|---|---|---|---|---|---|---|
+| before fixes (`--max-panes 1000`) | ≈2560 | 5→1731 | **19.9 MB/min** | 276→333 | **500→842** | 195/18.7 | FAIL |
+| after fixes, run 2 | 2564 | 4→1030 (1072) | −3.4 MB/min | 225→226 | 405→396 | 112/34.4 | PASS |
+| demo backend | 2552 | 6→316 (360) | −1.8 MB/min | 184→182 | 73→61 | 92/15.9 | PASS |
+| post gui-qa-fix round 4 (final) | 2566 | 10→1120 (1120) | **2.80 MB/min** | 230→232 | 424→416 | 64.0/43.6 | **PASS** |
+
+Limits: RSS slope < 8 MB/min, thread growth < 16, fd growth < 64, 4 GB abort, 0 crash/stall
+logs — all met. The ~1.1 GB faux plateau is the wasmtime `Services` footprint of ~30 bundled
+components × 8 live panes, flat once the pane cap is reached. Soak script:
+`apps/oino-desktop/scripts/soak.sh --minutes 30 --backend demo|faux [--out DIR]`.
+
+### 1b.3 Browser control ([browser-control.md](browser-control.md))
+
+| WP | Status | What landed |
+|---|---|---|
+| WP1 contracts | ✅ | `crates/oino-browser-protocol`, `BrowserHost` + manifest permission, WIT `browser` |
+| WP2 `oino-browser` | ✅ | in-house CDP client (unix pipe / loopback ws), engine detection (CloakBrowser → Chrome/Chromium/Edge/Brave → Playwright), hidden Xvfb display, AX snapshot with stable refs, trusted input, dialogs/popups/downloads, screenshot ladder, screencast, residency LRU, default-deny site permissions; real-Chromium test `crates/oino-browser/tests/real_browser.rs` |
+| WP3 host wiring | ✅ | wasm-host import, `LocalServices::set_browser`, nested-agent scope walk, `OINO_BROWSER=off\|ephemeral\|headless\|window` |
+| WP4 `oino.browser` | ✅ | 19 `browser_*` tools, approval dialog, prompt section, turn-tail screenshot, `/browser`, `skill:browser` (replaces unipi's agent-browser skill) |
+| WP5 desktop | 🟡 | side-pane screencast tab with agent/user tabs, take-over strip, dialog + handoff cards, mouse/wheel/key/clipboard; IME, file drag-drop, site-permissions popover, Fit-to-pane and a Settings page are open |
+| WP6 mobile / WP7 TUI / WP8 integration | ❌ | next rounds |
+
+Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a local fixture page,
+clicked twice, read `clicked 2`; the desktop app (Xvfb + lavapipe) showed the agent's tab,
+frames `clicked 1`, user clicks/typing reached the page; no browser or Xvfb process left
+afterwards. QA-2 fix: launch is bounded (10 s handshake, 90 s launch) and a wedged engine
+returns `backend_unavailable{launch_failed}`.
+
+### 1b.4 Commands: rename + `unipi-migrate` ([commands.md](commands.md))
+
+Feature commands carry no `unipi:` prefix and no aliases (40 names, registry test asserts no
+collision with built-ins). `/unipi:settings` and `/unipi:changelog` merged into the core
+`/settings` and `/changelog`; `/unipi:model` renamed `/fusion`; hidden runners keep plain names
+(`goal-start`, `mcp-sync`, …). The bundled opt-in skill **`unipi-migrate`**
+(`extensions/unipi/core/skills/unipi-migrate/`, user doc
+[docs/migrate-from-unipi.md](../../migrate-from-unipi.md)) rewrites `/unipi:*` in prompts,
+skills, subagent profiles, ralph files and `AGENTS.md`/`CLAUDE.md` from
+`references/commands.tsv` + `references/state-map.md`; session history is not rewritten.
+Fixture check: `scripts/unipi-migrate-fixture.sh`.
+
+### 1b.5 mempalace-rs, the Rust port
+
+Upstream ([mempalace-rs](file:///home/oi/Projects/Personal/llm/mempalace-rs) branch
+`oino-parity` @ `d18684d`, `docs/PARITY-REPORT.md` + `docs/SWITCH-GUIDE.md`): **99.7% parity**
+(1,194 of 1,198 compared items) on palace copies — CLI help 63/63, CLI commands 152/152 equal,
+wake-up 89/89, MCP read tools 220/220, writes + knowledge graph 34/34, MCP protocol 61/61,
+search 297/300 identical ranking (Python vs Python: 296/300), mining 100%, cross-compat 100%,
+daemon HTTP 15/15, oino/pi caller contract 28/28. Both implementations share the palace,
+`~/.mempalace/daemon/<key>/endpoint.json` and the MCP tool surface.
+
+Perf (same palace, copies): CLI search cold 1.04 s/332 MB → 0.21 s/222 MB; wake-up 0.79 → 0.03 s;
+status 0.71 → 0.06 s; warm MCP reader startup 528 → 2 ms, search p50 58 → 40 ms, CPU per 100
+searches 101 → 11.5 s, 152 → 4 threads; 2 h soak: daemon RSS 344→2,048 MB (Python) vs
+278→331 MB (Rust), slope +238/+49 MB/h vs −38/−9 MB/h, daemon CPU 6,550 s vs 1,579 s.
+
+Oino integration (this round, `96137f5`): `unipi.memory` has a **`mempalaceBin`** setting
+(binary **or** folder; empty = `PATH`). The extension probes the candidates with `--version`
+(`MemPalace 3.11.0 (rs …)` ⇒ Rust), expands `~/` through the granted `~/.mempalace` preopen,
+takes `mempalace-mcp` from the same folder and **falls back to `PATH`** (Python) when the
+configured path is stale; the daily `uv`/PyPI auto-update is skipped for the Rust port and for
+an explicit path. `/memory` prints the resolved binary. Verified by
+`scripts/round3/memory-mempalace-e2e.sh` — four cases on palace copies (Rust on `PATH`,
+Python on `PATH`, `mempalaceBin: "~/mp-bin"`, stale path → Python fallback): backend line
+`(rust)`/`(python)`, `memory_store` filed through the daemon job, `memory_search` found the
+note through the warm reader, `memory_delete` filed, drawer gone from the copy, live
+`mempalace.service` MainPID unchanged → **RESULT: PASS**.
+
+Still on Python by design: `audit`/`migrate`/`compress`/`repair`/`serve`/`task`/`artifact`
+and friends, `mempalace-light-mcp`, the 8 coordination tools, BM25 fallback on a diverged
+index and the stop/session-end/precompact hook saves. The switch itself is the owner's action
+(`scripts/switch/switch-to-rs.sh --apply` in mempalace-rs; rollback
+`rollback-to-py.sh --apply`); turn the oino toggle *MemPalace auto-update* off first
+(Settings → unipi.memory) and restart oino/pi afterwards so the warm readers respawn.
+
+### 1b.6 Cross-platform smoke (one host at a time, `-j 4`, `cargo xtask remote-build`)
+
+| Host | Build | `oino --version` | faux print | `oino cron status` | Desktop `--demo` 20 s |
+|---|---|---|---|---|---|
+| `ti` (Ubuntu) | — | — | — | — | — (skipped: SSH printed "Tailscale SSH requires an additional check") |
+| `coffee` (Windows) | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| `desmondgiam` (macOS) | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+
+### 1b.7 Open harness gaps (round 3)
+
+1. **Pointer injection**: XTEST does not apply modifier state on the QA Xvfb and the app
+   selects no core pointer events, so mouse-only surfaces (board FAB, `+` launcher, settings
+   switches, browser take-over, mascot toggle) are keyboard- or config-verified only.
+2. **Screen reading** is a vision model (OCR) on Xvfb screenshots; colours are pixel probes.
+   No accessibility-tree read-back for the GPUI shell.
+3. **Windows**: screenshots need an unlocked console session on `coffee`; verification is
+   "process alive after 20 s" plus the build's own smoke.txt.
+4. **macOS**: no Screen Recording grant over SSH and the display may be asleep → "alive after
+   20 s", no screenshot; `ulimit -n 4096` is required before smoke runs (known issue 10).
+5. **GPU path**: soak/perf frame numbers are lavapipe; the `:0` GPU soak with
+   `SOAK_MAX_FRAME_MS` has not been run (owner's workstation rule).
+6. **Real providers** are not soaked (faux shares the code path except the HTTP component).
+7. **Embedded browser** is not part of the soak: WebKitGTK cannot embed on Xvfb without a
+   session bus.
+8. **Cron** e2e runs in a scratch HOME; `systemd --user` is usually absent in a headless
+   shell, so `install` is verified by the unit file, not by a running service.
+9. **`ti`** is unreachable without the owner approving a Tailscale browser check.
+10. **Release signing** (Windows/macOS) and CI release assembly are still manual.
+
+### 1b.8 Next round: ZCode parity
+
+ZCode parity ([design.md](design.md) §8, 54 rows) is the next round: 44 ✅ · 8 🟡 · 1 ⛔ ·
+1 n/a on desktop (perf row 🟡). Priorities: core subagent/agent feed wiring (GA-15/44),
+turn undo/rewind buttons on the core file checkpoints, queue-edit wiring, StatusPanel +
+topics feed, attachments from pasted images, 4-pane p99 under the 10 ms budget, mobile tablet
+layout, exit animations. `apps/oino-desktop/DESIGN-STATUS.md` is the row-by-row source.
 
 ## 2. End-to-end smoke (release `oino` 1.0.0-alpha.2, temp agent dir, bundle of 33 packages)
 
@@ -91,7 +259,7 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | utility | 🟡 | settings, auto-rename (verified live), `/answer`, attachments, image tools, `/move`, doctor ✅; render styles for built-in tools need core `tools.override` / `render` for built-ins (U1–U2); trust.json move (U5) |
 | workflow (permissions, plan mode) | ✅ | mode and rules in the settings files |
 | long-horizon | ✅ | goal continuation through the arbiter verified (e2e + smoke); graph runs not e2e-tested |
-| memory | 🟡 | markdown memories, tools, recall, side-save ✅; MemPalace untested against a real install |
+| memory | ✅ | markdown memories, tools, recall, side-save ✅; MemPalace verified against **both** implementations (Python 3.11.0 and mempalace-rs) on palace copies; `mempalaceBin` selects a binary or folder with a `PATH` (Python) fallback — [§1b.5](#1b5-mempalace-rs-the-rust-port) |
 | dream | ✅ | nested-agent dream runs with resume (e2e) |
 | skill-registry | ✅ | |
 | info-screen | ✅ | dashboard panel + actions verified in the smoke |
@@ -143,6 +311,9 @@ Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mo
 
 ## 5b. Browser control ([browser-control.md](browser-control.md), work id `browser-impl`)
 
+Round-3 outcome in brief: [§1b.3](#1b3-browser-control-browser-controlmd); the work-package
+detail follows.
+
 | WP | Status | Notes |
 |---|---|---|
 | WP1 contracts | ✅ | `crates/oino-browser-protocol` (commands, results, status, view events, input, frontend requests); `oino-extension-api::browser::BrowserHost`, `HostServices::browser_execute/status`, manifest permission `browser`; WIT `browser` (`execute`, `status`). `ClientEvent::Browser` / `_oino/browser_*` RPC ❌ (frontends use `BrowserHost` in-process) |
@@ -173,16 +344,27 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
     limit of SSH / `nohup` shells every bundled component fails to init (`os error 24`). Works
     with `ulimit -n 4096` (§7).
 11. **Desktop perf**: four streaming panes do not reliably meet the 10 ms p99 budget.
-12. **Release artifacts** in §7 are 1.0.0-alpha.1 (`52d3120`); alpha.2 has not been rebuilt on the
-    build hosts. Nothing is signed, tagged or published.
+12. **Release artifacts** in §7 are 1.0.0-alpha.3, built locally and (smoke only) on `coffee`
+    and `desmondgiam`; the host build outputs stay on the hosts in `~/oino-release`. Nothing is
+    signed, tagged or published.
 13. **Desktop GUI QA**: the round-3 defects QA-1…QA-7 and GA-45 are fixed and live-verified
     ([gui-qa.md](gui-qa.md) Resolution; commits `d94a75f`…`1e1242c`); the 30-min faux soak passes
     (2.80 MB/min, [stability.md](stability.md)). GA-12 (unipi splash UTC-hour greeting) stays
-    open until `host-info` grows the R3 local-offset field.
+    open until `host-info` grows the R3 local-offset field. Mouse-only surfaces and the
+    real-provider path are still keyboard/config-verified only (§1b.7).
 14. **`--session-id`** only opens an existing session; pi creates one that does not exist
     (modes.md deviation #13, core `SessionSource` has no explicit id). Cron works around it by
     passing `--session <agent>/sessions/--<cwd>--/<ts>_<run id>.jsonl` for every run, so the run
     id is the file-name id, not the header id.
+15. **MemPalace**: the Rust port is 99.7% parity but **not switched** (owner action, §1b.5);
+    maintenance commands, `mempalace-light-mcp`, the coordination tools and the hook saves stay
+    on Python. The Rust daemon sits at 260–360 MB under load (above the 250 MB idle target, flat),
+    and bulk mines take ~1.5× the wall time at the default 4 embedding threads
+    (`embedding_threads` / `MEMPALACE_EMBEDDING_THREADS`). Turn *MemPalace auto-update* off in
+    both callers before switching, or `uv tool upgrade` silently restores Python.
+16. **`ti`** printed "Tailscale SSH requires an additional check" this round, so the Linux
+    GUI/desktop smoke ran locally on a private Xvfb (charter order); the owner has to approve
+    the Tailscale check for `ti` to be usable again.
 
 ### 6.1 gui-audit area E (core-gui-gaps)
 
@@ -276,6 +458,11 @@ Problems found:
 
 ## 8. Next steps
 
+0. **ZCode parity round** (design.md §8; `apps/oino-desktop/DESIGN-STATUS.md`): agent/subagent
+   timeline on the `_oino/agents` feed, TurnFooter undo + UserBubble rewind on the core file
+   checkpoints, queue-edit GUI wiring, StatusPanel + `_oino/topics`, pasted-image attachments,
+   model-menu submenus, palette history chips, 4-pane p99 under 10 ms, mobile tablet layout,
+   exit animations / run-label shimmer, i18n + Windows/macOS rendering checks.
 1. **core-runtime**: `agents.agent.set-ui-policy` + depth on `call-context`; `tools.override`
    render-only registration and guest `render` for built-in tools (utility render styles);
    `summarize-default` with a previous summary. (Bash detach, file checkpoints, single-item
