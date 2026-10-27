@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::UNIX_EPOCH;
 
 use futures::future::BoxFuture;
@@ -163,7 +163,9 @@ struct Inner {
     bundle: Bundle,
     workspaces: tokio::sync::Mutex<HashMap<PathBuf, Arc<Workspace>>>,
     infos: Mutex<Vec<ExtensionInfo>>,
-    runtimes: Mutex<Vec<Arc<AgentSessionRuntime>>>,
+    /// Live session runtimes (weak: a released pane drops its runtime; strong references
+    /// here kept every session ever opened alive, with its extension state).
+    runtimes: Mutex<Vec<Weak<AgentSessionRuntime>>>,
 }
 
 /// The in-process host.
@@ -317,7 +319,11 @@ impl Inner {
         context.bind(&session);
         let file = session.session_file();
         let runtime = Arc::new(runtime);
-        lock(&self.runtimes).push(Arc::clone(&runtime));
+        {
+            let mut runtimes = lock(&self.runtimes);
+            runtimes.retain(|r| r.strong_count() > 0);
+            runtimes.push(Arc::downgrade(&runtime));
+        }
         Ok(OpenedSession {
             backend: Arc::new(InProcessBackend::new(runtime)),
             cwd: cwd.display().to_string(),
@@ -440,6 +446,16 @@ impl SessionHost for EmbeddedHost {
 
     fn extensions_dir(&self) -> Option<PathBuf> {
         Some(self.inner.agent_dir.join("extensions"))
+    }
+
+    fn shutdown(&self) -> BoxFuture<'static, ()> {
+        let live: Vec<Arc<AgentSessionRuntime>> = lock(&self.inner.runtimes)
+            .drain(..)
+            .filter_map(|r| r.upgrade())
+            .collect();
+        Box::pin(async move {
+            futures::future::join_all(live.iter().map(|r| r.dispose())).await;
+        })
     }
 }
 

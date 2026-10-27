@@ -627,7 +627,12 @@ impl Shared {
     async fn stream_forever(&self) {
         let start = assistant(&json!([]), "stop", &usage(0, 0));
         self.emit(json!({"type": "message_start", "message": start}));
-        let text = LOREM.repeat(400);
+        // `OINO_DESKTOP_DEMO_STREAM_REPEAT`: reply length in LOREM paragraphs (default 400).
+        let repeat = std::env::var("OINO_DESKTOP_DEMO_STREAM_REPEAT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(400);
+        let text = LOREM.repeat(repeat);
         let _ = self.stream_text(&[], "", &text, 4, 8).await;
         self.finish(false);
     }
@@ -802,6 +807,9 @@ impl SessionBackend for DemoBackend {
                             json!({"message": format!("Ran {message}")}),
                             "unipi.core",
                         );
+                    } else if message.starts_with("stream") {
+                        // Soak driver: a long streamed reply (`OINO_DESKTOP_SOAK`).
+                        tokio::spawn(Arc::clone(&shared).scenario(message, Scene::Stream));
                     } else {
                         tokio::spawn(Arc::clone(&shared).scenario(message, Scene::Run));
                     }

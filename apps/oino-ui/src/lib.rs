@@ -29,6 +29,7 @@
 //! | [`model::coalesce`] | per-frame event coalescing |
 //! | [`host`] | [`host::SessionHost`] contract implemented by the app shell |
 //! | `rt` (feature `views`) | tokio ↔ GPUI bridge (`Tokio::spawn` → `gpui::Task`) |
+//! | [`stability`] | crash-log panic hook, UI-thread watchdog, activity breadcrumbs |
 //! | `views` (feature `views`) | GPUI views |
 //! | `mobile` (feature `mobile`) | phone shell: stacked screens, bottom sheets, safe areas |
 
@@ -56,5 +57,6 @@ pub mod model;
 pub mod platform;
 #[cfg(feature = "views")]
 pub mod rt;
+pub mod stability;
 #[cfg(feature = "views")]
 pub mod views;

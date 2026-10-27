@@ -359,6 +359,12 @@ pub trait SessionHost: Send + Sync + 'static {
     fn extensions_dir(&self) -> Option<PathBuf> {
         None
     }
+
+    /// Shuts every live session down (`session_shutdown{reason:"quit"}`, child processes
+    /// reaped); called once when the app quits. Runs on the tokio runtime.
+    fn shutdown(&self) -> BoxFuture<'static, ()> {
+        Box::pin(async {})
+    }
 }
 
 #[cfg(test)]

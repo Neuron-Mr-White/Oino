@@ -342,7 +342,7 @@ pub struct SessionPane {
     pub terminals: Vec<TerminalTab>,
     #[cfg(feature = "terminal")]
     pub(crate) next_terminal: u64,
-    editor_task: Option<Task<()>>,
+    editor_task: Option<Task<Result<(), tokio::task::JoinError>>>,
     _pump: Task<()>,
     _subscriptions: Vec<Subscription>,
 }
@@ -573,6 +573,7 @@ impl SessionPane {
     }
 
     fn apply_batch(&mut self, batch: &[ClientEvent], cx: &mut Context<Self>) {
+        let _activity = crate::stability::activity("pane apply_batch");
         let before = (self.live(), self.model.title(), self.model.id.clone());
         let was_busy = self.model.is_busy();
         let applied = self.model.apply_all(batch);
@@ -838,6 +839,7 @@ impl SessionPane {
     }
 
     fn loaded(&mut self, loaded: Loaded, cx: &mut Context<Self>) {
+        let _activity = crate::stability::activity("pane load history");
         if let Some(state) = &loaded.state {
             if let Some(model) = state
                 .get("model")
@@ -965,9 +967,13 @@ impl SessionPane {
         };
         let backend = Arc::clone(&self.backend);
         let report = text.clone();
-        self.editor_task = Some(cx.spawn(async move |_, cx| {
+        // Backend futures need the tokio runtime (the in-process core `tokio::spawn`s): never
+        // poll them on a GPUI executor. A panic there killed a GPUI worker thread, and the
+        // main thread then panicked polling the dead task (`Task polled after completion`).
+        // Dropping the task (next keystroke) aborts the debounce and the call.
+        self.editor_task = Some(Tokio::spawn(cx, async move {
             if intent.is_none() {
-                cx.background_executor().timer(EDITOR_DEBOUNCE).await;
+                tokio::time::sleep(EDITOR_DEBOUNCE).await;
             }
             let event = EditorEvent {
                 event_id: format!("e{}", Instant::now().elapsed().as_nanos()),
@@ -975,10 +981,7 @@ impl SessionPane {
                 text: report,
                 token_id: None,
             };
-            let _ = cx
-                .background_executor()
-                .spawn(async move { backend.editor_event(event).await })
-                .await;
+            let _ = backend.editor_event(event).await;
         }));
         // Completions.
         let Some((prefix, from)) = composer::trigger(&text, cursor) else {

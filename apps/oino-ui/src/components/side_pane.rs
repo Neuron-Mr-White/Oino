@@ -41,6 +41,28 @@ pub struct FileTree {
     expanded: Vec<PathBuf>,
     /// Open file and its first lines.
     pub open: Option<(PathBuf, String)>,
+    /// Rows of the last walk and when it ran: the tab renders every frame, and walking the
+    /// tree each time put `read_dir` syscalls on the UI thread per frame.
+    cache: std::cell::RefCell<Option<(std::time::Instant, Vec<(PathBuf, bool, usize)>)>>,
+}
+
+/// How long a directory walk of the Files tab is reused.
+const TREE_TTL: std::time::Duration = std::time::Duration::from_secs(2);
+/// Bytes read for the code viewer (the first [`VIEW_LINES`] lines of large files).
+const VIEW_BYTES: u64 = 512 * 1024;
+
+/// The first `max_lines` lines of `path`, reading at most `max_bytes` (lossy UTF-8).
+///
+/// # Errors
+/// The file cannot be opened or read.
+pub fn read_head(path: &Path, max_bytes: u64, max_lines: usize) -> std::io::Result<String> {
+    use std::io::Read as _;
+    let mut buf = Vec::new();
+    std::fs::File::open(path)?
+        .take(max_bytes)
+        .read_to_end(&mut buf)?;
+    let text = String::from_utf8_lossy(&buf);
+    Ok(text.lines().take(max_lines).collect::<Vec<_>>().join("\n"))
 }
 
 impl FileTree {
@@ -51,6 +73,7 @@ impl FileTree {
             root: PathBuf::from(cwd),
             expanded: Vec::new(),
             open: None,
+            cache: std::cell::RefCell::default(),
         }
     }
 
@@ -72,8 +95,17 @@ impl FileTree {
     }
 
     fn rows(&self) -> Vec<(PathBuf, bool, usize)> {
+        if let Ok(cache) = self.cache.try_borrow()
+            && let Some((at, rows)) = cache.as_ref()
+            && at.elapsed() < TREE_TTL
+        {
+            return rows.clone();
+        }
         let mut out = Vec::new();
         self.walk(&self.root, 0, &mut out);
+        if let Ok(mut cache) = self.cache.try_borrow_mut() {
+            *cache = Some((std::time::Instant::now(), out.clone()));
+        }
         out
     }
 
@@ -91,6 +123,7 @@ impl FileTree {
     }
 
     fn toggle(&mut self, path: PathBuf, is_dir: bool) {
+        *self.cache.get_mut() = None;
         if is_dir {
             if let Some(i) = self.expanded.iter().position(|p| *p == path) {
                 self.expanded.remove(i);
@@ -98,9 +131,9 @@ impl FileTree {
                 self.expanded.push(path);
             }
         } else {
-            let text =
-                std::fs::read_to_string(&path).unwrap_or_else(|e| format!("Cannot read: {e}"));
-            let head: String = text.lines().take(VIEW_LINES).collect::<Vec<_>>().join("\n");
+            // Bounded: a multi-GB log must not be read whole on the UI thread.
+            let head = read_head(&path, VIEW_BYTES, VIEW_LINES)
+                .unwrap_or_else(|e| format!("Cannot read: {e}"));
             self.open = Some((path, head));
         }
     }

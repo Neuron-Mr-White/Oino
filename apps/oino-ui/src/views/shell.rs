@@ -75,7 +75,30 @@ enum Drag {
 pub(crate) struct Pane {
     pub(crate) key: u64,
     pub(crate) entity: Entity<SessionPane>,
+    /// Focus order stamp (least recently used hidden idle panes are released first).
+    last_used: u64,
     _subscription: Subscription,
+}
+
+/// Open session panes kept alive (visible, running or waiting ones never count against it).
+/// Every in-process pane holds a core session with its extension state, so hidden idle panes
+/// beyond this are shut down; their sessions reopen from the sidebar.
+pub const MAX_LIVE_PANES: usize = 8;
+
+/// The panes to release so at most `max` stay: hidden (`!visible`), idle ones, least recently
+/// used first.
+#[must_use]
+pub fn panes_to_release(panes: &[(u64, u64, bool, bool)], max: usize) -> Vec<u64> {
+    let excess = panes.len().saturating_sub(max);
+    let mut idle: Vec<&(u64, u64, bool, bool)> = panes
+        .iter()
+        .filter(|(_, _, visible, idle)| !visible && *idle)
+        .collect();
+    idle.sort_by_key(|(_, used, _, _)| *used);
+    idle.into_iter()
+        .take(excess)
+        .map(|(key, ..)| *key)
+        .collect()
 }
 
 /// The window root view.
@@ -92,6 +115,8 @@ pub struct Workspace {
     pub(crate) layout: Vec<u64>,
     pub(crate) focused: Option<u64>,
     next_key: u64,
+    /// Focus stamps of [`Pane::last_used`].
+    use_counter: u64,
     pub(crate) route: Route,
     pub(crate) sidebar_open: bool,
     pub(crate) side_open: bool,
@@ -102,8 +127,8 @@ pub struct Workspace {
     drag: Option<Drag>,
     pub(crate) sidebar_view: SidebarView,
     pub(crate) sidebar_menu: Option<String>,
-    palette: Option<(Entity<PaletteView>, Subscription)>,
-    settings_view: Option<(Entity<SettingsView>, Subscription)>,
+    pub(crate) palette: Option<(Entity<PaletteView>, Subscription)>,
+    pub(crate) settings_view: Option<(Entity<SettingsView>, Subscription)>,
     pub(crate) extensions: Vec<ExtensionInfo>,
     toasts: Toasts,
     toast_task: Option<Task<()>>,
@@ -191,6 +216,7 @@ impl Workspace {
             layout: Vec::new(),
             focused: None,
             next_key: 0,
+            use_counter: 0,
             route: if onboarding {
                 Route::Onboarding
             } else {
@@ -249,6 +275,9 @@ impl Workspace {
             .min(4);
         if panes > 1 {
             ws.pending_panes = panes - 1;
+        }
+        if let Some(config) = crate::views::soak::SoakConfig::get(cx) {
+            crate::views::soak::start(config, window, cx);
         }
         if let Ok(open) = std::env::var("OINO_DESKTOP_OPEN") {
             cx.spawn_in(window, async move |this, cx| {
@@ -489,9 +518,11 @@ impl Workspace {
         self.panes.push(Pane {
             key,
             entity,
+            last_used: 0,
             _subscription: subscription,
         });
         self.activate(key, window, cx);
+        self.release_idle_panes(cx);
         self.sync_open_sessions(cx);
         self.run_pending_side(window, cx);
         if self.pending_panes > 0 {
@@ -528,8 +559,58 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Shuts down hidden idle panes beyond [`MAX_LIVE_PANES`] (least recently used first).
+    pub(crate) fn release_idle_panes(&mut self, cx: &mut Context<Self>) {
+        let facts: Vec<(u64, u64, bool, bool)> = self
+            .panes
+            .iter()
+            .map(|p| {
+                let visible = self.layout.contains(&p.key) || self.focused == Some(p.key);
+                let idle = p.entity.read(cx).live() == LiveStatus::Idle;
+                (p.key, p.last_used, visible, idle)
+            })
+            .collect();
+        // `OINO_DESKTOP_MAX_PANES` overrides the cap (soak comparisons).
+        let max = std::env::var("OINO_DESKTOP_MAX_PANES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(MAX_LIVE_PANES);
+        for key in panes_to_release(&facts, max) {
+            self.drop_pane(key, cx);
+        }
+    }
+
+    /// Removes pane `key` entirely and shuts its session down (session deleted, or released
+    /// by [`Self::release_idle_panes`]). The session stays listed when it has a file.
+    pub(crate) fn drop_pane(&mut self, key: u64, cx: &mut Context<Self>) {
+        let Some(at) = self.panes.iter().position(|p| p.key == key) else {
+            return;
+        };
+        let pane = self.panes.remove(at);
+        self.layout.retain(|k| *k != key);
+        if self.focused == Some(key) {
+            self.focused = self.layout.first().copied();
+        }
+        let backend = Arc::clone(pane.entity.read(cx).backend());
+        let id = pane.entity.read(cx).model.id.clone();
+        if pane.entity.read(cx).model.file.is_none() {
+            self.sessions.remove(&id);
+        } else {
+            self.sessions.set_live(&id, LiveStatus::Idle);
+        }
+        drop(pane);
+        tracing::debug!(session = %id, "released a session pane");
+        Tokio::detach(cx, async move { backend.shutdown().await });
+        cx.notify();
+    }
+
     pub(crate) fn focus_pane(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
         self.focused = Some(key);
+        self.use_counter += 1;
+        let stamp = self.use_counter;
+        if let Some(p) = self.panes.iter_mut().find(|p| p.key == key) {
+            p.last_used = stamp;
+        }
         for pane in &self.panes {
             let focused = pane.key == key;
             pane.entity.update(cx, |p, cx| p.set_focused(focused, cx));
@@ -1293,6 +1374,7 @@ impl Focusable for Workspace {
 impl Render for Workspace {
     #[allow(clippy::too_many_lines, reason = "root layout and action wiring")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _activity = crate::stability::activity("workspace render");
         perf::begin(cx);
         let t = OinoTheme::get(cx);
         self.window_width = window.viewport_size().width;
@@ -1489,5 +1571,26 @@ impl Render for Workspace {
             .child(toasts)
             .children(perf::overlay(cx))
             .child(perf::end_marker())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::panes_to_release;
+
+    #[test]
+    fn releases_hidden_idle_panes_least_recently_used_first() {
+        // (key, last_used, visible, idle)
+        let panes = [
+            (0, 5, false, true),
+            (1, 1, false, true),
+            (2, 0, true, true),
+            (3, 2, false, false),
+            (4, 3, false, true),
+        ];
+        assert_eq!(panes_to_release(&panes, 3), vec![1, 4]);
+        assert_eq!(panes_to_release(&panes, 5), Vec::<u64>::new());
+        // Visible or running panes are never released, even over the cap.
+        assert_eq!(panes_to_release(&panes, 0), vec![1, 4, 0]);
     }
 }

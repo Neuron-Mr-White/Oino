@@ -19,6 +19,7 @@ use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
 use crate::model::ous::Tone;
+use crate::rt::Tokio;
 use crate::views::shell::Workspace;
 
 impl Workspace {
@@ -58,7 +59,15 @@ impl Workspace {
             let Some(path) = picked.pop() else {
                 return;
             };
-            let result = host.install_extension(path).await;
+            // On the tokio runtime: the host's future uses `spawn_blocking`, which panics on
+            // the GPUI main thread.
+            let task = this.update(cx, |_, cx| Tokio::spawn(cx, host.install_extension(path)));
+            let Ok(task) = task else {
+                return;
+            };
+            let result = task
+                .await
+                .unwrap_or_else(|e| Err(crate::host::HostError::Io(e.to_string())));
             let _ = this.update(cx, |ws, cx| {
                 match result {
                     Ok(id) => ws.toast(

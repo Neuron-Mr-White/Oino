@@ -125,14 +125,19 @@ impl Workspace {
             )),
             action: "Delete".into(),
             run: Rc::new(move |ws, window, cx| {
-                // Close a pane that shows it first.
+                // Stop a session that is open first (its pane would keep writing the file).
                 if let Some(key) = ws
                     .panes
                     .iter()
                     .find(|p| p.entity.read(cx).model.id == id)
                     .map(|p| p.key)
                 {
-                    ws.close_pane(key, window, cx);
+                    ws.drop_pane(key, cx);
+                    if ws.layout.is_empty() {
+                        ws.new_session(window, cx);
+                    } else if let Some(first) = ws.focused {
+                        ws.focus_pane(first, window, cx);
+                    }
                 }
                 match std::fs::remove_file(&path) {
                     Ok(()) => {

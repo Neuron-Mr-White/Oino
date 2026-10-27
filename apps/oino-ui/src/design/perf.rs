@@ -30,6 +30,7 @@ pub struct FrameStats {
     total: u64,
     dropped: u64,
     over_120hz: u64,
+    run_max: f32,
     hist: [u32; HIST_BUCKETS],
 }
 
@@ -42,6 +43,7 @@ impl Default for FrameStats {
             total: 0,
             dropped: 0,
             over_120hz: 0,
+            run_max: 0.0,
             hist: [0; HIST_BUCKETS],
         }
     }
@@ -72,6 +74,7 @@ impl FrameStats {
         self.next = (self.next + 1) % WINDOW;
         self.len = (self.len + 1).min(WINDOW);
         self.total += 1;
+        self.run_max = self.run_max.max(ms);
         if ms > BUDGET_60HZ_MS {
             self.dropped += 1;
         }
@@ -110,6 +113,12 @@ impl FrameStats {
             }
         }
         HIST_MAX_MS
+    }
+
+    /// Slowest frame since start (ms).
+    #[must_use]
+    pub fn run_max(&self) -> f32 {
+        self.run_max
     }
 
     /// Frames over the 120 Hz budget since start.

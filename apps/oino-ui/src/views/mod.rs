@@ -6,6 +6,7 @@
 //! | [`session_pane`] | one session: state, pump, commands |
 //! | [`settings_page`] | D8 Settings + extension settings hub |
 //! | `board`, `extensions_page`, `onboarding` | D9, D12, D13 (`impl Workspace`) |
+//! | [`soak`] | soak driver (`OINO_DESKTOP_SOAK`) |
 
 #![allow(
     clippy::too_many_lines,
@@ -25,6 +26,7 @@ pub mod onboarding;
 pub mod session_pane;
 pub mod settings_page;
 pub mod shell;
+pub mod soak;
 
 use gpui_kit::{App, KeyBinding};
 
