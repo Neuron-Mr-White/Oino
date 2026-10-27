@@ -163,6 +163,20 @@ pub fn start(config: SoakConfig, window: &mut Window, cx: &mut Context<Workspace
             if alive.is_err() || done {
                 break;
             }
+            if action(n) == Action::Type {
+                // Outside the workspace update: dispatching a key draws the window, which
+                // renders the workspace (a double lease inside `update_in`).
+                let typed = cx.update(|window, cx| {
+                    for key in ["s", "o", "a", "k", "space", "/", "backspace"] {
+                        if let Ok(k) = gpui_kit::Keystroke::parse(key) {
+                            window.dispatch_keystroke(k, cx);
+                        }
+                    }
+                });
+                if typed.is_err() {
+                    break;
+                }
+            }
             if report {
                 last_report = Instant::now();
             }
@@ -219,14 +233,10 @@ impl Workspace {
                 });
             }
             Action::Type => {
+                // Focus here; the keys follow outside this update (`start`).
                 if let Some(p) = self.active_pane().cloned() {
-                    SessionPane::focus(&p, window, cx);
-                    for key in ["s", "o", "a", "k", "space", "/", "backspace"] {
-                        if let Ok(k) = gpui_kit::Keystroke::parse(key) {
-                            window.dispatch_keystroke(k, cx);
-                        }
-                    }
                     p.update(cx, |p, cx| p.set_composer_text("", cx));
+                    SessionPane::focus(&p, window, cx);
                 }
             }
             Action::Files => self.open_surface("side:files", window, cx),
