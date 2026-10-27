@@ -11,15 +11,20 @@ into the appendix of each spec; open items per work item stay in [deviations/](d
 
 ## 1. Gates (this commit)
 
-All run locally with `TMPDIR=$PWD/target/tmp`; components rebuilt with rustc 1.99.0.
+All run locally with `TMPDIR=$PWD/target/tmp`, `nice -n 10`, `-j 4`; components rebuilt with
+rustc 1.99.1. Script: `scripts/round3/gates.sh` (log `target/gate-round3.log`).
 
 | Workspace | fmt | clippy `-D warnings` (pedantic) | tests | other |
 |---|---|---|---|---|
-| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ 699 passed (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components) | ✅ rustdoc `-D warnings`; ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh`; all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
-| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ 664 native (4 ignored); ✅ 7 wasm-host harness suites (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
-| `apps/` (GPUI) | ✅ | ✅ | ✅ 83 | — |
+| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ **816 passed** (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components) | ✅ rustdoc `-D warnings` (`RUSTDOCFLAGS`); ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh` (source install + faux prompt); all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
+| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ **678 native** (4 ignored); ✅ 7 wasm-host harness suites, **36 passed** (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
+| `apps/` (GPUI) | ✅ | ✅ | ✅ **120 passed** | — |
 
-`cargo xtask layering` and `cargo deny` (quality §1, §6) do not exist yet.
+Red gates found and fixed this round: the doc gate (`cargo doc … -- -D warnings` no longer
+passes trailing args on cargo 1.99 → `RUSTDOCFLAGS`), three rustdoc links/HTML tags in
+`oino-cron`, and the notify harness's updater command assertion (the updater's hidden
+`changelog` runner added by `7525d3d` was missing). `cargo xtask layering` and `cargo deny`
+(quality §1, §6) still do not exist.
 
 ## 1b. Round 3 summary (work id `round3-integration`, 2026-10-28, `v1-alpha`)
 
@@ -189,6 +194,12 @@ topics feed, attachments from pasted images, 4-pane p99 under the 10 ms budget, 
 layout, exit animations. `apps/oino-desktop/DESIGN-STATUS.md` is the row-by-row source.
 
 ## 2. End-to-end smoke (release `oino` 1.0.0-alpha.2, temp agent dir, bundle of 33 packages)
+
+Re-checked on **1.0.0-alpha.3** (2026-10-28, local release build): `oino --version`,
+`oino-kanboard --version`, `oino-desktop --version` → `1.0.0-alpha.3`; faux print run →
+`Hello from faux.`; `oino cron status` → "scheduler not running …"; `oino-desktop --demo` on a
+private Xvfb :98 + lavapipe stayed up 20 s with a rendered screenshot (110 KB). The table below
+is the round-2 record and stays valid.
 
 | Area | Result | How |
 |---|---|---|
