@@ -26,6 +26,7 @@ oino-browser = { path = "../oino-browser" }
 oino-bundle = { path = "../oino-bundle" }
 oino-client = { path = "../oino-client" }
 oino-core = { path = "../oino-core" }
+oino-cron = { path = "../oino-cron" }
 oino-extension-api = { path = "../oino-extension-api" }
 oino-models = { path = "../oino-models" }
 oino-rpc = { path = "../oino-rpc" }

@@ -16,6 +16,7 @@
 //! | [`cli::list_models`] | `list-models.ts` | `--list-models` table |
 //! | [`cli::packages`] | `package-manager.ts` | `install`/`remove`/`update`/`list`/`config` |
 //! | [`cli::self_update`] | — | `oino update [--check]` from the release manifest |
+//! | [`cli::cron`] | docs/cron.md | `oino cron …` (serve/install/list/add/run/…) |
 //! | [`startup`] | `main.ts` `createRuntime` | services, session selection, model/tool options |
 //! | [`loader`] | resource loader `-e` | bundled, installed and `-e` packages, `builtin:` components |
 //! | [`modes::print`] | `print-mode.ts` | text and JSON output |
@@ -144,7 +145,7 @@ const PACKAGE_COMMANDS: [&str; 6] = ["install", "remove", "uninstall", "update",
 
 /// Subcommands handled before flag parsing that are not available yet (`auth`, Oino
 /// `serve`/`ext`/`sessions`); owned by other work items.
-const UNAVAILABLE_SUBCOMMANDS: [&str; 5] = ["auth", "mcp", "serve", "ext", "sessions"];
+const UNAVAILABLE_SUBCOMMANDS: [&str; 4] = ["auth", "mcp", "ext", "sessions"];
 
 /// `oino install|remove|uninstall|update|list|config …`; bare `oino update [--check]` is the
 /// self-update (`update <id>…` / `update --extensions` update packages).
@@ -179,6 +180,9 @@ pub async fn run(command_line: Vec<String>) -> i32 {
         .filter(|c| PACKAGE_COMMANDS.contains(&c.as_str()))
     {
         return package_command(command, &command_line[1..]).await;
+    }
+    if command_line.first().is_some_and(|c| c == "cron") {
+        return cli::cron::run(&command_line[1..]).await;
     }
     if let Some(command) = command_line
         .first()

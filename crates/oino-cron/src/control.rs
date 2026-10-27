@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::model::{CronSettings, Job, MissedPolicy, NotifySpec, OverlapPolicy, RunStatus};
+use crate::model::{CronSettings, Job, MissedPolicy, NotifySpec, OverlapPolicy, Run, RunStatus};
 use crate::paths::CronPaths;
 use crate::schedule::{self, Schedule};
 use crate::scheduler::{Scheduler, job_json, run_json, slugify, unique_id, validate_job};
@@ -83,6 +83,11 @@ pub enum CronControl {
     SettingsGet,
     /// Patch the scheduler settings ([`SettingsPatch`]).
     SettingsSet(SettingsPatch),
+    /// Send one real test notification on `id`'s channels (or the user's default set).
+    TestNotify {
+        /// Job id.
+        id: String,
+    },
     /// Resolve a schedule as typed (plain language or machine form) and preview the next
     /// fires.
     Parse {
@@ -597,6 +602,44 @@ pub async fn handle_control(
             apply_settings_patch(&mut settings, patch).map_err(crate::error::CronError::control)?;
             store::save_settings(paths, &settings)?;
             Ok(serde_json::to_value(settings).unwrap_or_else(|_| json!({})))
+        }
+        CronControl::TestNotify { id } => {
+            let jobs = store::load_jobs(paths)?;
+            let job = jobs
+                .iter()
+                .find(|j| j.id == id)
+                .ok_or_else(|| not_found(&format!("no job {id:?}")))?;
+            let settings = store::load_settings(paths)?;
+            let channels = crate::notify::Channels::load(paths, &settings);
+            let selected = crate::notify::resolve_channels(job, &channels.default_channels());
+            if selected.is_empty() {
+                return Err(crate::error::CronError::control(
+                    "no notify channels configured for this job (and none of the user's channels are enabled)",
+                ));
+            }
+            let now = dt_now(scheduler);
+            let stamp = now.timestamp_millis().max(0).cast_unsigned();
+            let test_run = Run {
+                id: format!("test-{stamp}"),
+                job_id: job.id.clone(),
+                status: RunStatus::Ok,
+                fired_at: stamp,
+                started_at: Some(stamp),
+                ended_at: Some(stamp),
+                exit_code: Some(0),
+                summary: Some(
+                    "This is a test notification from `oino cron test-notify`.".to_owned(),
+                ),
+                reason: None,
+                session_path: None,
+                cost_usd: None,
+                missed: false,
+                pid: None,
+                notify_errors: Vec::new(),
+            };
+            // Bypass the events filter (a test always sends) by dispatching directly.
+            let errors = crate::notify::dispatch_forced(job, &test_run, &channels).await;
+            Ok(json!({ "id": id, "channels": selected, "errors": errors }))
         }
         CronControl::Parse {
             schedule,

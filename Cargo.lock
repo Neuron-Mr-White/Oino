@@ -2453,6 +2453,7 @@ dependencies = [
  "oino-bundle",
  "oino-client",
  "oino-core",
+ "oino-cron",
  "oino-extension-api",
  "oino-models",
  "oino-rpc",

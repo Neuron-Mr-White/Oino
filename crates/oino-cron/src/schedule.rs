@@ -303,6 +303,12 @@ pub fn next_fires(
     out
 }
 
+/// `Utc::now()` (re-exported so callers without a chrono dependency get one call site).
+#[must_use]
+pub fn now() -> DateTime<Utc> {
+    Utc::now()
+}
+
 /// Resolves a job's `tz` field. Empty/`"local"`/`"system"` means the system zone.
 ///
 /// # Errors

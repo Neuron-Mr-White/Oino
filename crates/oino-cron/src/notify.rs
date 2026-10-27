@@ -298,6 +298,30 @@ fn client() -> Result<reqwest::Client, String> {
         .map_err(|e| format!("http client: {e}"))
 }
 
+/// Like [`dispatch`] but ignores the events filter: a test notification always sends on
+/// every selected channel, whatever `notify.events` says.
+pub async fn dispatch_forced(job: &Job, run: &Run, channels: &Channels) -> Vec<String> {
+    let enabled = channels.default_channels();
+    let selected = resolve_channels(job, &enabled)
+        .into_iter()
+        .filter(|c| enabled.contains(c) || job.notify.is_some())
+        .collect::<Vec<_>>();
+    let (title, body) = build_message(job, run);
+    let mut errors = Vec::new();
+    for channel in &selected {
+        let result = match channel.as_str() {
+            "ntfy" => send_ntfy(&channels.ntfy, &title, &body).await,
+            "gotify" => send_gotify(&channels.gotify, &title, &body).await,
+            "telegram" => send_telegram(&channels.telegram, &title, &body).await,
+            other => Err(format!("unknown notify channel {other:?}")),
+        };
+        if let Err(error) = result {
+            errors.push(format!("{channel}: {error}"));
+        }
+    }
+    errors
+}
+
 async fn send_ntfy(conn: &NtfyConnection, title: &str, body: &str) -> Result<(), String> {
     let Some(server) = conn.server_url.as_deref().filter(|s| !s.is_empty()) else {
         return Err("no ntfy server configured".to_owned());
