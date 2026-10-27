@@ -139,6 +139,34 @@ fn bundled_changelog() -> Vec<Entry> {
         .unwrap_or_default()
 }
 
+/// Release notes as changelog entries (QA-4): the repository carries no `CHANGELOG.md`, so
+/// when neither the bundled docs nor the tagged/branch file has one, the GitHub releases'
+/// notes are the changelog. Newest first, drafts skipped, empty bodies kept (the version
+/// and date still list).
+async fn release_notes_changelog() -> Vec<Entry> {
+    let releases = match github_json("/releases?per_page=50").await {
+        Ok(v) => serde_json::from_value::<Vec<channel::Release>>(v)
+            .map_err(|e| e.to_string())
+            .unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    releases
+        .into_iter()
+        .filter(|r| !r.draft && !r.tag_name.is_empty())
+        .map(|r| Entry {
+            version: r.tag_name.trim_start_matches('v').to_owned(),
+            date: r
+                .published_at
+                .as_deref()
+                .and_then(|s| s.get(..10))
+                .unwrap_or_default()
+                .to_owned(),
+            sections: Vec::new(),
+            body: r.body.unwrap_or_default(),
+        })
+        .collect()
+}
+
 /// unipi `loadUpdateChangelog` + the release notes as a last resort.
 async fn update_changelog(current: &str, latest: &str, release: Option<&Release>) -> String {
     let remote = remote_changelog(latest)
@@ -458,6 +486,11 @@ impl Updater {
                 .await
                 .map(|t| changelog::parse(&t))
                 .unwrap_or_default();
+        }
+        // QA-4: no CHANGELOG.md exists in the repository or the bundle; the releases' notes
+        // are the changelog so the panel has content while online.
+        if entries.is_empty() {
+            entries = release_notes_changelog().await;
         }
         let spec = view::changelog_list_spec(&entries);
         let Ok(id) = ui::panel_open(&view::browser_panel("changelog", "Changelog", &spec)) else {

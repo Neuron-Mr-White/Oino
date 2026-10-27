@@ -212,7 +212,7 @@ pub fn expand_dotted(v: &Value) -> Value {
 #[must_use]
 pub fn defaults() -> Value {
     json!({
-        "rename": {"auto": true, "model": "", "herdrSync": true},
+        "rename": {"auto": true, "model": ""},
         "answer": {"method": "reply", "hint": true, "port": 0},
         "attachments": {"enabled": true, "preview": true},
         "render": {"style": "simple"},

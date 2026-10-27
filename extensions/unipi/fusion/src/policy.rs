@@ -190,7 +190,6 @@ fn trivial_segment(segment: &str, vars: &mut HashMap<String, String>) -> bool {
             .any(|a| a.starts_with("-i") || a.starts_with("--in-place")),
         "awk" => !args.join(" ").contains("system("),
         "git" => args.first().is_some_and(|a| GIT_READONLY.contains(a)),
-        "tmux" => args.first() == Some(&"capture-pane"),
         "npm" => args
             .first()
             .is_some_and(|a| matches!(*a, "view" | "whoami" | "ls")),

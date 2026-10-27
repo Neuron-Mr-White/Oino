@@ -60,6 +60,9 @@ pub(crate) struct Release {
     /// Release page.
     #[serde(default)]
     pub html_url: String,
+    /// `2026-10-27T…` (QA-4: release-notes changelog dates).
+    #[serde(default)]
+    pub published_at: Option<String>,
 }
 
 impl Release {

@@ -41,7 +41,10 @@ fn lane_icon(id: &str) -> IconName {
 }
 
 /// How the board is shown (D9 toolbar state; the side-pane copy uses the defaults).
-#[allow(clippy::struct_excessive_bools, reason = "independent display toggles, not states")]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent display toggles, not states"
+)]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BoardOptions {
     /// Show the Backlog lane.
