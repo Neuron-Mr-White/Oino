@@ -1,9 +1,14 @@
-//! The window root (design.md §3.1): independent frames — sidebar, conversation panes (split
-//! ≤ 4), side frame, bottom frame — with 4 px resize gaps; routes for Settings, Board,
-//! Extensions and onboarding; command palette, toasts, modals and the frame-time overlay.
+//! The window root (design.md A2.1 L1–L2, A2.8): flush columns on `bg` separated by 1 px
+//! `line_soft` rules — the 224 px nav sidebar, then for Sessions the session list column
+//! (400, resizable 280–560) and the detail (one visible session, its side pane and bottom
+//! frame) — and the Board, Extensions, Settings and onboarding pages. Command palette,
+//! switch sheet (Ctrl+O), toasts, result cards, dialogs and the frame-time overlay.
 //!
-//! "Closing a pane ≠ stopping a session": sessions keep running in hidden panes.
+//! One session is visible at a time. Other open sessions keep running in the background
+//! (warm sessions); hidden idle ones beyond [`MAX_WARM_SESSIONS`] shut down and reopen from
+//! the list. There are no split panes (A2.18).
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,15 +16,16 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement as _, PathPromptOptions, Pixels, Render, SharedString, Styled as _,
-    Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext as _, ClickEvent, ClipboardItem, Context, Entity, FocusHandle,
+    Focusable, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement as _, PathPromptOptions, Pixels, Render, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Subscription, Task, Window, div,
+    linear_color_stop, linear_gradient, px,
 };
 
 use crate::components::header::HeaderState;
 use crate::components::palette::{PaletteEvent, PaletteView};
-use crate::components::toast::{ToastKind, Toasts, stack};
+use crate::components::toast::{ToastKind, Toasts, is_long, stack};
 use crate::design::brand::CrabState;
 use crate::design::perf;
 use crate::design::theme::{self, OinoTheme, TextExt as _};
@@ -34,15 +40,16 @@ use crate::rt::Tokio;
 use crate::views::session_pane::{BottomTab, PaneEvent, PaneMenu, SessionPane, SideTab};
 use crate::views::settings_page::{SettingsEvent, SettingsSection, SettingsView};
 use crate::views::{
-    Abort, CloseFind, CommandPalette, FindInConversation, FocusComposer, NewSession, OpenFolder,
-    OpenSettings, PickModel, PickThinking, SplitPane, ToggleBottom, ToggleFrameOverlay,
-    ToggleSidePane, ToggleSidebar, ToggleStatusPanel, ToggleTheme, TreeView,
+    Abort, CloseFind, CommandPalette, FindInConversation, FocusComposer, GoBoard, GoExtensions,
+    GoSessions, NewSession, OpenFolder, OpenSettings, PickModel, PickThinking, SwitchSession,
+    ToggleBottom, ToggleFrameOverlay, ToggleSidePane, ToggleSidebar, ToggleStatusPanel,
+    ToggleTheme, TreeView,
 };
 
-/// Main-area routes.
+/// Main-area routes (the sidebar nav).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Route {
-    /// Session panes.
+    /// Session list and the visible session.
     Sessions,
     /// Settings page.
     Settings,
@@ -54,43 +61,35 @@ pub enum Route {
     Onboarding,
 }
 
-/// Sidebar list mode (design.md §4.7 `ViewSwitcher`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SidebarView {
-    /// Grouped by workspace.
-    #[default]
-    Group,
-    /// Flat by time.
-    Recent,
-}
-
-/// Which frame edge is being dragged.
+/// Which splitter is being dragged.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Drag {
-    Sidebar,
+    List,
     Side,
     Bottom,
 }
 
-pub(crate) struct Pane {
+/// One open (live) session: its view, focus stamp and event subscription.
+pub(crate) struct LiveSession {
     pub(crate) key: u64,
     pub(crate) entity: Entity<SessionPane>,
-    /// Focus order stamp (least recently used hidden idle panes are released first).
+    /// Focus order stamp (least recently used hidden idle sessions are released first).
     last_used: u64,
     _subscription: Subscription,
+    _topics: Option<Task<()>>,
 }
 
-/// Open session panes kept alive (visible, running or waiting ones never count against it).
-/// Every in-process pane holds a core session with its extension state, so hidden idle panes
-/// beyond this are shut down; their sessions reopen from the sidebar.
-pub const MAX_LIVE_PANES: usize = 8;
+/// Open sessions kept warm (the visible one and running / waiting ones never count against
+/// it). Every in-process session holds a core session with its extension state, so hidden
+/// idle sessions beyond this are shut down; they reopen from the list.
+pub const MAX_WARM_SESSIONS: usize = 8;
 
-/// The panes to release so at most `max` stay: hidden (`!visible`), idle ones, least recently
-/// used first.
+/// The sessions to release so at most `max` stay: hidden (`!visible`), idle ones, least
+/// recently used first. Facts are `(key, last_used, visible, idle)`.
 #[must_use]
-pub fn panes_to_release(panes: &[(u64, u64, bool, bool)], max: usize) -> Vec<u64> {
-    let excess = panes.len().saturating_sub(max);
-    let mut idle: Vec<&(u64, u64, bool, bool)> = panes
+pub fn sessions_to_release(sessions: &[(u64, u64, bool, bool)], max: usize) -> Vec<u64> {
+    let excess = sessions.len().saturating_sub(max);
+    let mut idle: Vec<&(u64, u64, bool, bool)> = sessions
         .iter()
         .filter(|(_, _, visible, idle)| !visible && *idle)
         .collect();
@@ -101,53 +100,75 @@ pub fn panes_to_release(panes: &[(u64, u64, bool, bool)], max: usize) -> Vec<u64
         .collect()
 }
 
+/// Bus topics every session subscribes to (frontend-api.md §2): workflow mode chip, status,
+/// bg tasks, kanboard, fusion, footer, and core git.
+pub const TOPICS: [&str; 2] = ["unipi:*", "oino:git"];
+
+/// The switch sheet (Ctrl+O, A2.8): a filter field and the session rows.
+pub(crate) struct SwitchSheet {
+    pub(crate) input: Entity<gpui_kit::component::input::InputState>,
+    pub(crate) cursor: usize,
+    pub(crate) _subscription: Subscription,
+}
+
 /// The window root view.
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "independent frame visibility flags"
+    reason = "independent column visibility flags"
 )]
-pub struct Workspace {
+pub struct AppShell {
     pub(crate) host: Arc<dyn SessionHost>,
     pub(crate) settings: AppSettings,
     pub(crate) sessions: SessionList,
-    pub(crate) panes: Vec<Pane>,
-    /// Visible panes (split, ≤ 4), left to right.
-    pub(crate) layout: Vec<u64>,
+    /// Open sessions (one visible, the others warm in the background).
+    pub(crate) panes: Vec<LiveSession>,
+    /// The visible session.
     pub(crate) focused: Option<u64>,
+    /// The detail column shows [`Self::focused`] (Back / Esc closes it to the placeholder).
+    pub(crate) detail_open: bool,
     next_key: u64,
-    /// Focus stamps of [`Pane::last_used`].
+    /// Focus stamps of [`LiveSession::last_used`].
     use_counter: u64,
     pub(crate) route: Route,
     pub(crate) sidebar_open: bool,
+    /// The session list column (Ctrl+B folds it before the sidebar).
+    pub(crate) list_open: bool,
     pub(crate) side_open: bool,
     pub(crate) bottom_open: bool,
-    pub(crate) sidebar_width: Pixels,
+    pub(crate) list_width: Pixels,
     side_width: Pixels,
     bottom_height: Pixels,
     drag: Option<Drag>,
-    pub(crate) sidebar_view: SidebarView,
     pub(crate) sidebar_menu: Option<String>,
     pub(crate) palette: Option<(Entity<PaletteView>, Subscription)>,
+    pub(crate) switch: Option<SwitchSheet>,
     pub(crate) settings_view: Option<(Entity<SettingsView>, Subscription)>,
     pub(crate) extensions: Vec<ExtensionInfo>,
     toasts: Toasts,
     toast_task: Option<Task<()>>,
+    /// A multi-line notify shown as a result card (GA-24): `(title, body)`.
+    pub(crate) result_card: Option<(SharedString, SharedString)>,
     pub(crate) opening: bool,
     pub(crate) history: (Vec<String>, usize),
     pub(crate) window_width: Pixels,
     pub(crate) update_available: Option<String>,
-    pending_panes: usize,
-    /// A sidebar action waiting for its session to open (rename / fork).
+    /// A list action waiting for its session to open (rename / fork).
     pub(crate) pending_side: Option<(String, SideAction)>,
-    /// Workspace-group `⋯` menu open for this cwd.
+    /// Project section `⋯` menu open for this cwd.
     pub(crate) group_menu: Option<String>,
+    /// Extensions page row `⋮` menu open for this id.
+    pub(crate) ext_menu: Option<String>,
+    /// Sections showing every session (others show [`SECTION_ROWS`]).
+    pub(crate) list_expanded: HashSet<String>,
+    /// The needs-you drawer (header crab / strip ▾) is open.
+    pub(crate) needs_drawer: bool,
     /// A destructive action waiting for confirmation.
     pub(crate) confirm: Option<Confirm>,
     /// Keyboard focus of the session list and its cursor row.
     pub(crate) sidebar_focus: FocusHandle,
     pub(crate) sidebar_cursor: Option<usize>,
     pub(crate) sidebar_kb: bool,
-    /// Press state of the sidebar top-row drag region.
+    /// Press state of the sidebar brand-row drag region.
     pub(crate) drag_armed: Rc<std::cell::Cell<bool>>,
     /// Extensions page README dialog `(title, markdown)`.
     pub(crate) ext_readme: Option<(String, String)>,
@@ -156,13 +177,21 @@ pub struct Workspace {
     /// The mascot window (opt-in) and its bubble.
     pub(crate) mascot: Option<gpui_kit::WindowHandle<crate::views::mascot::MascotView>>,
     pub(crate) mascot_bubble: Option<(String, Instant)>,
+    /// Extension shortcut collisions already explained once (`ctrl+b` while typing).
+    shortcut_notes: HashSet<String>,
     /// The side frame was laid out this frame (browser visibility).
     side_shown: bool,
     focus: FocusHandle,
     _subscriptions: Vec<Subscription>,
 }
 
-/// A sidebar action applied once its session is open.
+/// Former name of [`AppShell`] (kept so batches landing in parallel compile; A2.18 renames).
+pub type Workspace = AppShell;
+
+/// Rows a project section shows before "Show all".
+pub const SECTION_ROWS: usize = 6;
+
+/// A list action applied once its session is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SideAction {
     /// Start the header rename.
@@ -177,7 +206,7 @@ pub(crate) struct Confirm {
     pub title: SharedString,
     pub body: SharedString,
     pub action: SharedString,
-    pub run: Rc<dyn Fn(&mut Workspace, &mut Window, &mut Context<Workspace>)>,
+    pub run: Rc<dyn Fn(&mut AppShell, &mut Window, &mut Context<AppShell>)>,
 }
 
 pub(crate) fn now_ms() -> i64 {
@@ -188,33 +217,43 @@ pub(crate) fn now_ms() -> i64 {
         .unwrap_or_default()
 }
 
-impl Workspace {
-    /// The root view; lists sessions and opens a new session in the default directory.
+impl AppShell {
+    /// The root view; lists sessions and reopens the last session (GA-11), else starts one in
+    /// the default directory.
     pub fn new(host: Arc<dyn SessionHost>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let settings = host.app_settings();
         theme::install(&settings, Some(window), cx);
         let probe = cx.default_global::<perf::FrameProbe>();
         probe.log = std::env::var("OINO_FRAME_LOG").is_ok_and(|v| v == "1");
         probe.overlay = std::env::var("OINO_FRAME_OVERLAY").is_ok_and(|v| v == "1");
-        let subscriptions =
-            vec![
-                cx.observe_window_appearance(window, |this: &mut Self, window, cx| {
-                    if this.settings.theme == ThemePref::System {
-                        theme::install(&this.settings, Some(window), cx);
-                        cx.notify();
-                    }
-                }),
-            ];
-        // D13 onboarding (`OINO_DESKTOP_ONBOARDING=1`, also with the demo backend). It used to
-        // vanish because the first session's `activate` reset the route (fixed there).
+        let shell = cx.entity().downgrade();
+        let main_window = window.window_handle();
+        let subscriptions = vec![
+            cx.observe_window_appearance(window, |this: &mut Self, window, cx| {
+                if this.settings.theme == ThemePref::System {
+                    theme::install(&this.settings, Some(window), cx);
+                    cx.notify();
+                }
+            }),
+            // Extension shortcuts (`setShortcuts`, GA-16): matched before key bindings and
+            // the composer, so `alt+p`, `shift+down`… reach the extension.
+            cx.intercept_keystrokes(move |event, window, cx| {
+                if window.window_handle() != main_window {
+                    return;
+                }
+                let _ = shell.update(cx, |this, cx| this.on_keystroke(event, window, cx));
+            }),
+        ];
+        // D13 onboarding (`OINO_DESKTOP_ONBOARDING=1`, also with the demo backend).
         let onboarding = std::env::var("OINO_DESKTOP_ONBOARDING").is_ok_and(|v| v == "1");
+        let list_width = px(f32::from(settings.list_width).clamp(size::LIST_MIN, size::LIST_MAX));
         let mut ws = Self {
             host,
             settings,
             sessions: SessionList::new(),
             panes: Vec::new(),
-            layout: Vec::new(),
             focused: None,
+            detail_open: true,
             next_key: 0,
             use_counter: 0,
             route: if onboarding {
@@ -223,26 +262,30 @@ impl Workspace {
                 Route::Sessions
             },
             sidebar_open: true,
+            list_open: true,
             side_open: false,
             bottom_open: false,
-            sidebar_width: px(size::SIDEBAR),
+            list_width,
             side_width: px(size::SIDE_PANE),
             bottom_height: px(size::BOTTOM),
             drag: None,
-            sidebar_view: SidebarView::Group,
             sidebar_menu: None,
             palette: None,
+            switch: None,
             settings_view: None,
             extensions: Vec::new(),
             toasts: Toasts::default(),
             toast_task: None,
+            result_card: None,
             opening: false,
             history: (Vec::new(), 0),
             window_width: window.viewport_size().width,
             update_available: None,
-            pending_panes: 0,
             pending_side: None,
             group_menu: None,
+            ext_menu: None,
+            list_expanded: HashSet::new(),
+            needs_drawer: false,
             confirm: None,
             sidebar_focus: cx.focus_handle(),
             sidebar_cursor: None,
@@ -252,6 +295,7 @@ impl Workspace {
             ext_readme: None,
             mascot: None,
             mascot_bubble: None,
+            shortcut_notes: HashSet::new(),
             side_shown: false,
             focus: cx.focus_handle(),
             _subscriptions: subscriptions,
@@ -265,17 +309,7 @@ impl Workspace {
             let _ = this.update(cx, Self::sync_mascot);
         })
         .detach();
-        let cwd = ws.host.info().default_cwd;
-        ws.open(OpenRequest::New { cwd: cwd.clone() }, window, cx);
-        // Demo / screenshot hooks: extra split panes and an initial surface.
-        let panes = std::env::var("OINO_DESKTOP_PANES")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or(1)
-            .min(4);
-        if panes > 1 {
-            ws.pending_panes = panes - 1;
-        }
+        ws.open(ws.startup_request(), window, cx);
         if let Some(config) = crate::views::soak::SoakConfig::get(cx) {
             crate::views::soak::start(config, window, cx);
         }
@@ -291,15 +325,64 @@ impl Workspace {
         ws
     }
 
-    /// Opens a named surface (`palette`, `settings[:section]`, `board`, `extensions`, `side`).
+    /// The first session: the last one shown when its file still exists (GA-11), else a new
+    /// session in the default folder.
+    fn startup_request(&self) -> OpenRequest {
+        let fresh =
+            std::env::var("OINO_DESKTOP_NEW").is_ok_and(|v| v == "1") || !self.settings.reopen_last;
+        if !fresh
+            && let Some(path) = self.settings.last_session.as_ref().map(PathBuf::from)
+            && path.is_file()
+        {
+            let cwd = self
+                .settings
+                .last_session_cwd
+                .clone()
+                .map_or_else(|| self.host.info().default_cwd, PathBuf::from);
+            return OpenRequest::Resume { path, cwd };
+        }
+        OpenRequest::New {
+            cwd: self.default_cwd(),
+        }
+    }
+
+    /// Folder new sessions start in: Settings → General, else the host default.
+    pub(crate) fn default_cwd(&self) -> PathBuf {
+        self.settings
+            .default_cwd
+            .as_ref()
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+            .unwrap_or_else(|| self.host.info().default_cwd)
+    }
+
+    /// Opens a named surface (`palette`, `settings[:section]`, `board`, `extensions`, `side`,
+    /// `switch`, …; screenshot and evidence hooks, design.md §10.1 P9).
     pub fn open_surface(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
         match name.split_once(':').unwrap_or((name, "")) {
             ("palette", q) => self.open_palette(q, window, cx),
+            ("switch", _) => self.open_switch(window, cx),
             ("settings", ns) => self.open_settings((!ns.is_empty()).then_some(ns), window, cx),
             ("board", _) => self.open_board(window, cx),
             ("extensions", _) => self.run_app_action("extensions", window, cx),
             ("model", _) => self.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
-            // Screenshot / evidence hooks (design.md §10.1 P9).
+            ("needs", _) => {
+                self.needs_drawer = true;
+                cx.notify();
+            }
+            ("placeholder", _) => {
+                self.detail_open = false;
+                cx.notify();
+            }
+            ("result", _) => {
+                self.show_result(
+                    "Memory status".into(),
+                    "migration: needed — run /memory repair\nrecords: 128 (12 pinned)\nlast \
+                     dream: 2h ago\nindex: 4.1 MB, healthy\nsidecar: running (pid 4123)"
+                        .into(),
+                    cx,
+                );
+            }
             ("bottom", tab) => {
                 self.bottom_open = true;
                 let tab = tab.to_owned();
@@ -449,7 +532,7 @@ impl Workspace {
         .detach();
     }
 
-    /// Open panes are always listed (new sessions have no file until the first message).
+    /// Open sessions are always listed (new sessions have no file until the first message).
     fn sync_open_sessions(&mut self, cx: &App) {
         for pane in &self.panes {
             let p = pane.entity.read(cx);
@@ -463,7 +546,11 @@ impl Workspace {
                 modified_ms: existing.map_or_else(now_ms, |e| e.modified_ms),
                 message_count: model.transcript.len(),
             });
-            self.sessions.set_live(&model.id, p.live());
+            let live = p.live();
+            // Done-unseen stays until the session is opened (A2.9).
+            if !(live == LiveStatus::Idle && self.sessions.live(&model.id) == LiveStatus::Unread) {
+                self.sessions.set_live(&model.id, live);
+            }
         }
     }
 
@@ -473,6 +560,12 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // The Sessions screen shows at request time (a session that finishes opening later
+        // never pulls the user off another page; onboarding stays up at first run).
+        if self.route != Route::Onboarding {
+            self.route = Route::Sessions;
+            self.settings_view = None;
+        }
         if let OpenRequest::Resume { path, .. } = &request {
             let path = path.display().to_string();
             if let Some(key) = self
@@ -515,39 +608,49 @@ impl Workspace {
             cx.subscribe_in(&entity, window, move |this, pane, event, window, cx| {
                 this.on_pane_event(key, pane, event, window, cx);
             });
-        self.panes.push(Pane {
+        let topics = Some(Self::subscribe_topics(&entity, cx));
+        self.panes.push(LiveSession {
             key,
             entity,
             last_used: 0,
             _subscription: subscription,
+            _topics: topics,
         });
         self.activate(key, window, cx);
         self.release_idle_panes(cx);
         self.sync_open_sessions(cx);
         self.run_pending_side(window, cx);
-        if self.pending_panes > 0 {
-            self.pending_panes -= 1;
-            self.split(window, cx);
-        }
     }
 
-    /// Shows pane `key` (replacing the focused slot of the layout) and focuses it.
+    /// Subscribes the session to [`TOPICS`] (`_oino/topics`) and stores the sticky snapshot;
+    /// later publishes arrive as `OinoEvent::Topic` through the pump. The subscription moves
+    /// to replacement sessions in core, so this runs once per backend.
+    fn subscribe_topics(pane: &Entity<SessionPane>, cx: &mut Context<Self>) -> Task<()> {
+        use oino_client::FrontendApi as _;
+        let backend = Arc::clone(pane.read(cx).backend());
+        let task = Tokio::spawn(cx, async move { backend.topics(&TOPICS, &[]).await });
+        let pane = pane.downgrade();
+        cx.spawn(async move |_, cx| {
+            let Ok(Ok(values)) = task.await else {
+                return;
+            };
+            let _ = pane.update(cx, |p, cx| {
+                let mut changed = false;
+                for v in values {
+                    changed |= p.model.set_topic(&v.topic, v.data);
+                }
+                if changed {
+                    cx.notify();
+                }
+            });
+        })
+    }
+
+    /// Shows session `key` in the detail column and focuses it.
     pub(crate) fn activate(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
         perf::mark(cx, "session switch");
-        if !self.layout.contains(&key) {
-            match self
-                .focused
-                .and_then(|f| self.layout.iter().position(|k| *k == f))
-            {
-                Some(slot) => self.layout[slot] = key,
-                None => self.layout.push(key),
-            }
-        }
+        self.detail_open = true;
         self.focus_pane(key, window, cx);
-        // First-run onboarding stays up while the first session opens behind it.
-        if self.route != Route::Onboarding {
-            self.route = Route::Sessions;
-        }
         if let Some(id) = self.pane_by_key(key).map(|p| p.read(cx).model.id.clone()) {
             let (stack, at) = &mut self.history;
             stack.truncate(*at + usize::from(!stack.is_empty()));
@@ -556,16 +659,34 @@ impl Workspace {
             }
             *at = stack.len().saturating_sub(1);
         }
+        self.remember_last(cx);
         cx.notify();
     }
 
-    /// Shuts down hidden idle panes beyond [`MAX_LIVE_PANES`] (least recently used first).
+    /// Persists the visible session as the one to reopen at startup (GA-11).
+    fn remember_last(&mut self, cx: &App) {
+        let Some((file, cwd)) = self
+            .active_pane()
+            .map(|p| p.read(cx))
+            .and_then(|p| p.model.file.clone().map(|f| (f, p.model.cwd.clone())))
+        else {
+            return;
+        };
+        if self.settings.last_session.as_deref() != Some(file.as_str()) {
+            self.settings.last_session = Some(file);
+            self.settings.last_session_cwd = Some(cwd);
+            self.host.save_app_settings(&self.settings);
+        }
+    }
+
+    /// Shuts down hidden idle sessions beyond [`MAX_WARM_SESSIONS`] (least recently used
+    /// first).
     pub(crate) fn release_idle_panes(&mut self, cx: &mut Context<Self>) {
         let facts: Vec<(u64, u64, bool, bool)> = self
             .panes
             .iter()
             .map(|p| {
-                let visible = self.layout.contains(&p.key) || self.focused == Some(p.key);
+                let visible = self.focused == Some(p.key);
                 let idle = p.entity.read(cx).live() == LiveStatus::Idle;
                 (p.key, p.last_used, visible, idle)
             })
@@ -574,22 +695,22 @@ impl Workspace {
         let max = std::env::var("OINO_DESKTOP_MAX_PANES")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(MAX_LIVE_PANES);
-        for key in panes_to_release(&facts, max) {
+            .unwrap_or(MAX_WARM_SESSIONS);
+        for key in sessions_to_release(&facts, max) {
             self.drop_pane(key, cx);
         }
     }
 
-    /// Removes pane `key` entirely and shuts its session down (session deleted, or released
-    /// by [`Self::release_idle_panes`]). The session stays listed when it has a file.
+    /// Removes session `key` entirely and shuts it down (session deleted, released by
+    /// [`Self::release_idle_panes`], or `ctx.shutdown()`). It stays listed when it has a file.
     pub(crate) fn drop_pane(&mut self, key: u64, cx: &mut Context<Self>) {
         let Some(at) = self.panes.iter().position(|p| p.key == key) else {
             return;
         };
         let pane = self.panes.remove(at);
-        self.layout.retain(|k| *k != key);
         if self.focused == Some(key) {
-            self.focused = self.layout.first().copied();
+            self.focused = None;
+            self.detail_open = false;
         }
         let backend = Arc::clone(pane.entity.read(cx).backend());
         let id = pane.entity.read(cx).model.id.clone();
@@ -599,7 +720,7 @@ impl Workspace {
             self.sessions.set_live(&id, LiveStatus::Idle);
         }
         drop(pane);
-        tracing::debug!(session = %id, "released a session pane");
+        tracing::debug!(session = %id, "released a session");
         Tokio::detach(cx, async move { backend.shutdown().await });
         cx.notify();
     }
@@ -624,6 +745,22 @@ impl Workspace {
         }
     }
 
+    /// Shows the next open session (soak driver: background sessions stream while another
+    /// is visible).
+    pub(crate) fn cycle_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let at = self
+            .focused
+            .and_then(|f| self.panes.iter().position(|p| p.key == f))
+            .unwrap_or(0);
+        if let Some(next) = self
+            .panes
+            .get((at + 1) % self.panes.len().max(1))
+            .map(|p| p.key)
+        {
+            self.activate(next, window, cx);
+        }
+    }
+
     fn on_pane_event(
         &mut self,
         key: u64,
@@ -637,7 +774,7 @@ impl Workspace {
                 let id = pane.read(cx).model.id.clone();
                 let status = if *status == LiveStatus::Idle
                     && self.sessions.live(&id) == LiveStatus::Running
-                    && self.focused != Some(key)
+                    && (self.focused != Some(key) || !self.detail_open)
                 {
                     LiveStatus::Unread
                 } else {
@@ -686,7 +823,20 @@ impl Workspace {
                 cx.notify();
             }
             PaneEvent::Changed => {
+                if pane.read(cx).model.shutdown_requested && !pane.read(cx).model.is_busy() {
+                    // `ctx.shutdown()` (frontend-api.md §8): close this session, or the app
+                    // when it was the only one.
+                    if self.panes.len() <= 1 {
+                        cx.quit();
+                        return;
+                    }
+                    self.drop_pane(key, cx);
+                    return;
+                }
                 self.sync_open_sessions(cx);
+                if self.focused == Some(key) {
+                    self.remember_last(cx);
+                }
                 cx.notify();
             }
             PaneEvent::PickModel => pane.update(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
@@ -701,15 +851,20 @@ impl Workspace {
                 cx.notify();
             }
             PaneEvent::Focused => self.focus_pane(key, window, cx),
-            PaneEvent::ToggleSidebar => {
-                self.sidebar_open = !self.sidebar_open;
-                cx.notify();
-            }
+            PaneEvent::ToggleSidebar => self.run_app_action("toggle-sidebar", window, cx),
             PaneEvent::ToggleSide => {
                 self.side_open = !self.side_open;
                 cx.notify();
             }
-            PaneEvent::ClosePane => self.close_pane(key, window, cx),
+            // The detail header's back button: close the detail (the session keeps running).
+            PaneEvent::ClosePane => {
+                if self.list_fits(window) || !self.sidebar_open {
+                    self.detail_open = false;
+                } else {
+                    self.open_switch(window, cx);
+                }
+                cx.notify();
+            }
             PaneEvent::ToggleBottom => {
                 self.bottom_open = !self.bottom_open;
                 cx.notify();
@@ -765,6 +920,17 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Opens a multi-line status report as a result card dialog (GA-24).
+    pub(crate) fn show_result(
+        &mut self,
+        title: SharedString,
+        body: SharedString,
+        cx: &mut Context<Self>,
+    ) {
+        self.result_card = Some((title, body));
+        cx.notify();
+    }
+
     fn perform(&mut self, effect: UiEffect, window: &mut Window, cx: &mut Context<Self>) {
         match effect {
             UiEffect::Notify { message, kind } => {
@@ -776,7 +942,22 @@ impl Workspace {
                 if message.contains("update") && message.contains("available") {
                     self.update_available = Some(message.clone());
                 }
-                self.toast(kind, None, message, cx);
+                if is_long(&message) {
+                    let mut lines = message.lines();
+                    let first = lines.next().unwrap_or_default().trim().to_owned();
+                    // A short first line ending with ':' is the report's title.
+                    let (title, body) = if first.len() <= 60 && message.lines().count() > 1 {
+                        (
+                            first.trim_end_matches(':').to_owned(),
+                            lines.collect::<Vec<_>>().join("\n"),
+                        )
+                    } else {
+                        ("Details".to_owned(), message.clone())
+                    };
+                    self.show_result(title.into(), body.into(), cx);
+                } else {
+                    self.toast(kind, None, message, cx);
+                }
             }
             UiEffect::OsNotify { title, body } => {
                 // Native notification when the window is not in front (or no integration);
@@ -809,7 +990,7 @@ impl Workspace {
         }
     }
 
-    /// Applies a settings change everywhere (theme, panes, persistence).
+    /// Applies a settings change everywhere (theme, sessions, persistence).
     pub(crate) fn update_settings(
         &mut self,
         f: impl FnOnce(&mut AppSettings),
@@ -837,6 +1018,57 @@ impl Workspace {
         }
     }
 
+    // ── keys ────────────────────────────────────────────────────────────────
+
+    /// Extension shortcuts (GA-16, frontend-api.md §9). A keystroke matching a `setShortcuts`
+    /// entry of the visible session invokes it. A key the app also binds (`ctrl+b`…) goes to
+    /// the extension only while the composer has focus, with a one-time note.
+    fn on_keystroke(
+        &mut self,
+        event: &gpui_kit::KeystrokeEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.palette.is_some() || self.switch.is_some() || self.route != Route::Sessions {
+            return;
+        }
+        let Some(pane) = self.active_pane().cloned() else {
+            return;
+        };
+        let ks = &event.keystroke;
+        let hit = pane
+            .read(cx)
+            .model
+            .ui
+            .shortcuts
+            .iter()
+            .find(|s| crate::components::keys::shortcut_matches(&s.keys, ks))
+            .map(|s| (s.id.clone(), s.keys.clone(), s.description.clone()));
+        let Some((id, keys, description)) = hit else {
+            return;
+        };
+        if crate::components::keys::app_reserved(ks) {
+            let typing = Focusable::focus_handle(pane.read(cx), cx).is_focused(window);
+            if !typing {
+                return;
+            }
+            if self.shortcut_notes.insert(keys.clone()) {
+                let shown = crate::components::badge::platform_keys(&keys);
+                self.toast(
+                    ToastKind::Info,
+                    None,
+                    format!(
+                        "{shown} runs “{description}” while you type; outside the composer it \
+                         is the app shortcut"
+                    ),
+                    cx,
+                );
+            }
+        }
+        pane.update(cx, |p, cx| p.invoke_shortcut(&id, cx));
+        cx.stop_propagation();
+    }
+
     // ── navigation ──────────────────────────────────────────────────────────
 
     pub(crate) fn open_palette(
@@ -846,6 +1078,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         perf::mark(cx, "palette open");
+        self.switch = None;
         let items = self.palette_items(cx);
         let history = self.settings.palette_history.clone();
         let view = cx.new(|cx| PaletteView::new(items, history, query, window, cx));
@@ -899,14 +1132,24 @@ impl Workspace {
         match id {
             "new-session" => self.new_session(window, cx),
             "open-folder" => self.open_folder(window, cx),
+            "switch" => self.open_switch(window, cx),
             "abort" => self.with_pane(cx, SessionPane::abort),
             "compact" => self.with_pane(cx, SessionPane::compact),
             "fork" => self.with_pane(cx, SessionPane::fork_session),
             "tree" => self.with_pane(cx, |p, cx| p.open_side(SideTab::Tree, cx)),
             "review" => self.with_pane(cx, |p, cx| p.open_side(SideTab::Review, cx)),
             "files" => self.with_pane(cx, |p, cx| p.open_side(SideTab::Files, cx)),
+            "model" => self.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
+            // Ctrl+B: fold the list column first, then the sidebar; open both again.
             "toggle-sidebar" => {
-                self.sidebar_open = !self.sidebar_open;
+                if self.route == Route::Sessions && self.list_open && self.sidebar_open {
+                    self.list_open = false;
+                } else if self.sidebar_open {
+                    self.sidebar_open = false;
+                } else {
+                    self.sidebar_open = true;
+                    self.list_open = true;
+                }
                 cx.notify();
             }
             "toggle-side" => {
@@ -917,9 +1160,19 @@ impl Workspace {
                 self.bottom_open = !self.bottom_open;
                 cx.notify();
             }
+            "sessions" => {
+                self.route = Route::Sessions;
+                self.settings_view = None;
+                self.detail_open |= self.focused.is_some();
+                if let Some(p) = self.active_pane().cloned() {
+                    SessionPane::focus(&p, window, cx);
+                }
+                cx.notify();
+            }
             "board" => self.open_board(window, cx),
             "extensions" => {
                 self.route = Route::Extensions;
+                self.settings_view = None;
                 self.load_extensions(cx);
                 cx.notify();
             }
@@ -927,8 +1180,8 @@ impl Workspace {
             "theme-dark" => self.update_settings(|s| s.theme = ThemePref::Dark, window, cx),
             "theme-system" => self.update_settings(|s| s.theme = ThemePref::System, window, cx),
             "settings" => self.open_settings(None, window, cx),
+            "shortcuts" => self.open_settings(Some("shortcuts"), window, cx),
             "refresh" => self.refresh_sessions(cx),
-            "split" => self.split(window, cx),
             "check-updates" => self.with_pane(cx, |p, cx| p.run_prompt("/update-check", cx)),
             "frame-overlay" => {
                 perf::toggle_overlay(cx);
@@ -939,12 +1192,18 @@ impl Workspace {
     }
 
     pub(crate) fn open_session(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch = None;
+        self.needs_drawer = false;
         if let Some(key) = self
             .panes
             .iter()
             .find(|p| p.entity.read(cx).model.id == id)
             .map(|p| p.key)
         {
+            if self.route != Route::Onboarding {
+                self.route = Route::Sessions;
+                self.settings_view = None;
+            }
             self.activate(key, window, cx);
             return;
         }
@@ -964,7 +1223,7 @@ impl Workspace {
 
     pub(crate) fn new_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let cwd = self.active_pane().map_or_else(
-            || self.host.info().default_cwd,
+            || self.default_cwd(),
             |p| PathBuf::from(p.read(cx).model.cwd.clone()),
         );
         self.open(OpenRequest::New { cwd }, window, cx);
@@ -983,31 +1242,6 @@ impl Workspace {
             window,
             cx,
         );
-    }
-
-    /// ⌘\: a new pane next to the focused one (≤ 4).
-    pub(crate) fn split(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.layout.len() >= 4 {
-            self.toast(ToastKind::Info, None, "At most four panes", cx);
-            return;
-        }
-        // A free slot: the new pane is appended instead of replacing the focused one.
-        self.focused = None;
-        self.new_session(window, cx);
-    }
-
-    /// Closes pane `key` from the layout (its session keeps running).
-    pub(crate) fn close_pane(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
-        if self.layout.len() <= 1 {
-            return;
-        }
-        self.layout.retain(|k| *k != key);
-        if self.focused == Some(key)
-            && let Some(first) = self.layout.first().copied()
-        {
-            self.focus_pane(first, window, cx);
-        }
-        cx.notify();
     }
 
     pub(crate) fn open_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1050,8 +1284,14 @@ impl Workspace {
     ) {
         let section = match namespace {
             Some("models") => SettingsSection::Models,
+            Some("shortcuts") => SettingsSection::Shortcuts,
+            Some("appearance") => SettingsSection::Appearance,
+            Some("sessions") => SettingsSection::Sessions,
+            Some("permissions") => SettingsSection::Permissions,
+            Some("about") => SettingsSection::About,
+            Some("unicrab") => SettingsSection::Unicrab,
+            Some("general") | None => SettingsSection::General,
             Some(ns) => SettingsSection::Extension(ns.to_owned()),
-            None => SettingsSection::Appearance,
         };
         let backend = self.active_pane().map(|p| Arc::clone(p.read(cx).backend()));
         let models = self
@@ -1077,12 +1317,7 @@ impl Workspace {
             window,
             |this, _, event: &SettingsEvent, window, cx| match event {
                 SettingsEvent::Back => {
-                    this.route = Route::Sessions;
-                    this.settings_view = None;
-                    if let Some(pane) = this.active_pane().cloned() {
-                        SessionPane::focus(&pane, window, cx);
-                    }
-                    cx.notify();
+                    this.run_app_action("sessions", window, cx);
                 }
                 SettingsEvent::Changed(settings) => {
                     let settings = settings.clone();
@@ -1111,52 +1346,28 @@ impl Workspace {
         if !has {
             self.with_pane(cx, |p, cx| p.run_prompt("/kanboard", cx));
         }
+        self.settings_view = None;
         self.route = Route::Board;
         cx.notify();
     }
 
-    pub(crate) fn history_step(&mut self, dir: isize, window: &mut Window, cx: &mut Context<Self>) {
-        let (stack, at) = &self.history;
-        let Some(next) = at.checked_add_signed(dir).filter(|n| *n < stack.len()) else {
-            return;
-        };
-        let id = stack[next].clone();
-        self.history.1 = next;
-        if let Some(key) = self
-            .panes
-            .iter()
-            .find(|p| p.entity.read(cx).model.id == id)
-            .map(|p| p.key)
-        {
-            self.layout.retain(|k| *k != key);
-            self.focus_pane(key, window, cx);
-            if let Some(slot) = self.layout.first_mut() {
-                *slot = key;
-            } else {
-                self.layout.push(key);
-            }
-            cx.notify();
-        }
-    }
-
     // ── rendering ───────────────────────────────────────────────────────────
 
-    fn frame(&self, t: &OinoTheme) -> gpui_kit::Div {
-        div()
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .bg(t.frame())
-            .border_1()
-            .border_color(t.border())
-            .rounded(px(if cfg!(target_os = "windows") {
-                radius::R_MD
-            } else {
-                radius::R_XL
-            }))
+    /// Whether the list column fits next to the detail (A2.8: < 900 px without the side
+    /// pane, < 1180 px with it, the list folds away).
+    pub(crate) fn list_fits(&self, window: &Window) -> bool {
+        let width = f32::from(window.viewport_size().width);
+        let need = if self.side_open {
+            breakpoint::LIST_WITH_SIDE
+        } else {
+            breakpoint::LIST
+        };
+        width >= need
     }
 
-    fn handle(
+    /// A flush splitter: an 8 px hit area with a 1 px `line_soft` rule (2 px `resize_handle`
+    /// while dragged or hovered).
+    fn splitter(
         &self,
         t: &OinoTheme,
         drag: Drag,
@@ -1164,30 +1375,42 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let active = self.drag == Some(drag);
-        let line = div()
-            .when(vertical, |el| el.w(px(space::HALF)).h_full())
-            .when(!vertical, |el| el.h(px(space::HALF)).w_full())
-            .rounded(px(radius::R_FULL))
-            .when(active, |el| el.bg(t.resize_handle()));
+        let line = if active {
+            t.resize_handle()
+        } else {
+            t.line_soft()
+        };
+        let rule = div()
+            .absolute()
+            .when(vertical, |el| {
+                el.top_0()
+                    .bottom_0()
+                    .left(px((size::SPLITTER - size::HAIRLINE) / 2.0))
+                    .w(px(if active { space::HALF } else { size::HAIRLINE }))
+            })
+            .when(!vertical, |el| {
+                el.left_0()
+                    .right_0()
+                    .top(px((size::SPLITTER - size::HAIRLINE) / 2.0))
+                    .h(px(if active { space::HALF } else { size::HAIRLINE }))
+            })
+            .bg(line);
         div()
-            .id(SharedString::from(format!("handle-{drag:?}")))
-            .flex()
-            .items_center()
-            .justify_center()
+            .id(SharedString::from(format!("splitter-{drag:?}")))
+            .relative()
             .flex_shrink_0()
             .when(vertical, |el| {
-                el.w(px(size::FRAME_GAP))
+                el.w(px(size::SPLITTER))
+                    .mx(-px((size::SPLITTER - size::HAIRLINE) / 2.0))
                     .h_full()
-                    .py(px(radius::R_XL))
                     .cursor_col_resize()
             })
             .when(!vertical, |el| {
-                el.h(px(size::FRAME_GAP))
+                el.h(px(size::SPLITTER))
+                    .my(-px((size::SPLITTER - size::HAIRLINE) / 2.0))
                     .w_full()
-                    .px(px(radius::R_XL))
                     .cursor_row_resize()
             })
-            .hover(|s| s.bg(gpui_kit::transparent_black()))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _: &MouseDownEvent, _, cx| {
@@ -1195,7 +1418,17 @@ impl Workspace {
                     cx.notify();
                 }),
             )
-            .child(line)
+            .on_click(cx.listener(move |this, e: &ClickEvent, window, cx| {
+                // Double-click resets the list column width.
+                if drag == Drag::List && e.click_count() == 2 {
+                    this.list_width = px(size::LIST);
+                    this.settings.list_width = 400;
+                    this.host.save_app_settings(&this.settings);
+                    let _ = window;
+                    cx.notify();
+                }
+            }))
+            .child(rule)
             .into_any_element()
     }
 
@@ -1205,8 +1438,14 @@ impl Workspace {
         };
         let vp = window.viewport_size();
         match drag {
-            Drag::Sidebar => {
-                self.sidebar_width = e.position.x.clamp(px(size::SIDEBAR), vp.width * 0.5);
+            Drag::List => {
+                let left = if self.sidebar_open {
+                    px(size::SIDEBAR)
+                } else {
+                    px(space::S0)
+                };
+                self.list_width =
+                    (e.position.x - left).clamp(px(size::LIST_MIN), px(size::LIST_MAX));
             }
             Drag::Side => {
                 let w = vp.width - e.position.x;
@@ -1220,102 +1459,120 @@ impl Workspace {
         cx.notify();
     }
 
-    #[allow(clippy::too_many_lines, reason = "the frame layout")]
-    fn render_sessions(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let t = OinoTheme::get(cx);
-        let width = window.viewport_size().width;
-        let narrow = width < px(breakpoint::NARROW);
-        let sidebar_visible = self.sidebar_open && !narrow;
-        let mut row = div().flex().flex_row().flex_1().min_w_0().h_full();
-        let layout = self.layout.clone();
-        let multi = layout.len() > 1;
-        let csd = crate::components::window_chrome::client_decorated(window);
-        let maximized = window.is_maximized();
-        let side_fits = width
-            - self.side_width
-            - if sidebar_visible {
-                self.sidebar_width
-            } else {
-                px(space::S0)
-            }
-            >= px(size::CONVERSATION_MIN);
-        let side_visible = self.side_open && side_fits && !narrow;
-        let last = layout.len().saturating_sub(1);
-        for (i, key) in layout.iter().enumerate() {
-            let Some(pane) = self.pane_by_key(*key).cloned() else {
-                continue;
-            };
-            let focused = self.focused == Some(*key);
-            let state = HeaderState {
-                sidebar_collapsed: !sidebar_visible,
-                side_open: self.side_open,
-                bottom_open: self.bottom_open,
-                primary: i == 0 || focused,
-                closable: multi,
-                controls: csd && !side_visible && i == last,
-                controls_side: csd && side_visible && focused,
-                maximized,
-                drag: csd,
-            };
-            pane.update(cx, |p, _| p.header_state = state);
-            if i > 0 {
-                row = row.child(div().w(px(size::FRAME_GAP)).flex_shrink_0());
-            }
-            let k = *key;
-            row = row.child(
-                self.frame(&t)
-                    .id(SharedString::from(format!("pane-{k}")))
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .when(multi && focused, |el| el.border_color(t.border_hover()))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, _: &MouseDownEvent, window, cx| {
-                            if this.focused != Some(k) {
-                                this.focus_pane(k, window, cx);
-                                cx.notify();
-                            }
-                        }),
-                    )
-                    // Cached: a pane re-renders only when it was notified (streaming in
-                    // one pane does not rebuild the others, design.md §2.11).
-                    .child(
-                        pane.clone()
-                            .cached(gpui_kit::StyleRefinement::default().size_full()),
-                    ),
-            );
-        }
-        if layout.is_empty() {
-            row = row.child(
-                self.frame(&t)
-                    .flex_1()
+    /// The detail placeholder (A2.8 / A2.14): `message-square` tile 52, "No session open".
+    fn render_placeholder(&self, t: &OinoTheme) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .items_center()
+            .justify_center()
+            .gap(px(space::S2_5))
+            .child(
+                div()
+                    .flex()
                     .items_center()
                     .justify_center()
-                    .text_role(&t, TextRole::Base)
+                    .size(px(size::PLACEHOLDER_TILE))
+                    .rounded(px(radius::R_FLOAT))
+                    .bg(t.chip())
+                    .child(crate::design::icons::icon(
+                        gpui_kit::assets::IconName::MessageSquare,
+                        size::ICON_LG,
+                        t.fg_subtle(),
+                    )),
+            )
+            .child(
+                div()
+                    .text_role(t, TextRole::Lg)
+                    .weight_semibold()
                     .text_color(t.fg_subtle())
                     .child(if self.opening {
                         "Starting session…"
                     } else {
-                        "No session"
+                        "No session open"
                     }),
-            );
-        }
-        let side = self
-            .side_open
-            .then(|| self.active_pane().cloned())
-            .flatten()
-            .map(|pane| {
-                pane.update(cx, |p, cx| {
-                    if !p.side.is_open() {
-                        p.side.open(SideTab::Review);
-                    }
-                    p.render_side(window, cx)
-                })
-            });
-        let bottom = self
-            .bottom_open
-            .then(|| self.active_pane().cloned())
+            )
+            .child(
+                div()
+                    .max_w(px(size::EMPTY_BODY - space::S5))
+                    .text_center()
+                    .text_role(t, TextRole::Caption)
+                    .text_color(t.fg_subtlest())
+                    .child(
+                        "Pick a session on the left. It keeps running while you look at the \
+                         others.",
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// The Sessions screen: list column | detail (session + side pane, bottom frame).
+    #[allow(clippy::too_many_lines, reason = "the column layout")]
+    fn render_sessions(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let t = OinoTheme::get(cx);
+        let width = window.viewport_size().width;
+        let narrow = width < px(breakpoint::NARROW);
+        let csd = crate::components::window_chrome::client_decorated(window);
+        let maximized = window.is_maximized();
+        let list_visible = self.list_open && self.list_fits(window);
+        let used = if self.sidebar_open && !narrow {
+            px(size::SIDEBAR)
+        } else {
+            px(space::S0)
+        } + if list_visible {
+            self.list_width
+        } else {
+            px(space::S0)
+        };
+        let side_fits = width - self.side_width - used >= px(size::CONVERSATION_MIN);
+        let side_visible = self.side_open && side_fits && !narrow && self.detail_open;
+        let pane = self.active_pane().cloned().filter(|_| self.detail_open);
+        let needs = self.sessions.needs_you().len();
+        let detail: AnyElement = match pane.clone() {
+            Some(pane) => {
+                let state = HeaderState {
+                    sidebar_collapsed: !self.sidebar_open || narrow,
+                    side_open: self.side_open,
+                    bottom_open: self.bottom_open,
+                    primary: true,
+                    list_folded: !list_visible,
+                    needs,
+                    controls: csd && !side_visible,
+                    controls_side: csd && side_visible,
+                    maximized,
+                    drag: csd,
+                };
+                pane.update(cx, |p, _| p.header_state = state);
+                // Cached: the session re-renders only when it was notified (streaming in a
+                // background session never rebuilds the visible one, design.md §2.11).
+                div()
+                    .id("detail")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(
+                        pane.clone()
+                            .cached(gpui_kit::StyleRefinement::default().size_full()),
+                    )
+                    .into_any_element()
+            }
+            None => self.render_placeholder(&t),
+        };
+        let side = side_visible.then(|| pane.clone()).flatten().map(|pane| {
+            pane.update(cx, |p, cx| {
+                if !p.side.is_open() {
+                    p.side.open(SideTab::Review);
+                }
+                p.render_side(window, cx)
+            })
+        });
+        let bottom = (self.bottom_open && self.detail_open)
+            .then(|| pane.clone())
             .flatten()
             .map(|pane| pane.update(cx, |p, cx| p.render_bottom(window, cx)));
         let center = div()
@@ -1324,91 +1581,150 @@ impl Workspace {
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(row)
+            .child(div().flex().flex_1().min_h_0().child(detail))
             .when_some(bottom, |el, b| {
-                el.child(self.handle(&t, Drag::Bottom, false, cx)).child(
-                    self.frame(&t)
+                el.child(self.splitter(&t, Drag::Bottom, false, cx)).child(
+                    div()
+                        .flex()
+                        .flex_col()
                         .h(self.bottom_height)
                         .flex_shrink_0()
+                        .bg(t.card())
                         .child(b),
                 )
             });
-        self.side_shown = side.is_some() && (side_fits || narrow);
+        self.side_shown = side.is_some();
+        let list = list_visible.then(|| self.render_list(window, cx));
         div()
             .flex()
             .flex_row()
             .size_full()
+            .when_some(list, |el, l| {
+                el.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .w(self.list_width)
+                        .flex_shrink_0()
+                        .h_full()
+                        .child(l),
+                )
+                .child(self.splitter(&t, Drag::List, true, cx))
+            })
             .child(center)
-            .when_some(side.filter(|_| side_fits || narrow), |el, s| {
-                if narrow {
-                    el.child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .bottom_0()
-                            .right_0()
-                            .w(px(size::SIDE_PANE_MIN + space::S10))
-                            .p(px(size::WINDOW_INSET))
-                            .child(self.frame(&t).size_full().shadow(t.e2()).child(s)),
-                    )
-                } else {
-                    el.child(self.handle(&t, Drag::Side, true, cx)).child(
-                        self.frame(&t)
-                            .w(self.side_width)
-                            .flex_shrink_0()
-                            .h_full()
-                            .child(s),
-                    )
-                }
+            .when_some(side, |el, s| {
+                el.child(self.splitter(&t, Drag::Side, true, cx)).child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .w(self.side_width)
+                        .flex_shrink_0()
+                        .h_full()
+                        .child(s),
+                )
             })
             .into_any_element()
     }
+
+    /// The result card dialog (GA-24).
+    fn render_result(&self, t: &OinoTheme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (title, body) = self.result_card.clone()?;
+        let e = cx.entity().downgrade();
+        let close: crate::components::dialog::OnClose = Rc::new(move |_, cx: &mut App| {
+            let _ = e.update(cx, |ws, cx| {
+                ws.result_card = None;
+                cx.notify();
+            });
+        });
+        let copy = body.clone();
+        let done = Rc::clone(&close);
+        Some(crate::components::dialog::modal_frame(
+            t,
+            "result-card",
+            title,
+            size::DIALOG_MD,
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(space::S1))
+                .children(body.lines().map(|line| {
+                    div()
+                        .text_role(t, TextRole::Base)
+                        .text_color(t.fg_subtle())
+                        .child(SharedString::from(line.to_owned()))
+                }))
+                .into_any_element(),
+            vec![
+                crate::components::button::Btn::new("result-copy")
+                    .label("Copy")
+                    .icon(gpui_kit::assets::IconName::Copy)
+                    .variant(crate::components::button::Variant::Secondary)
+                    .size(crate::components::button::BtnSize::Xl)
+                    .on_click(move |_, _, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
+                    })
+                    .into_any_element(),
+                crate::components::button::Btn::new("result-ok")
+                    .label("Done")
+                    .variant(crate::components::button::Variant::Primary)
+                    .size(crate::components::button::BtnSize::Xl)
+                    .on_click(move |_, w, cx| done(w, cx))
+                    .into_any_element(),
+            ],
+            close,
+        ))
+    }
 }
 
-impl Focusable for Workspace {
+impl Focusable for AppShell {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
     }
 }
 
-impl Render for Workspace {
+impl Render for AppShell {
     #[allow(clippy::too_many_lines, reason = "root layout and action wiring")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let _activity = crate::stability::activity("workspace render");
+        let _activity = crate::stability::activity("shell render");
         perf::begin(cx);
         let t = OinoTheme::get(cx);
         self.window_width = window.viewport_size().width;
         let narrow = self.window_width < px(breakpoint::NARROW);
-        let sidebar = (self.sidebar_open
-            && !narrow
-            && !matches!(self.route, Route::Onboarding | Route::Settings))
-        .then(|| self.render_sidebar(window, cx));
+        let sidebar = (self.sidebar_open && !narrow && self.route != Route::Onboarding)
+            .then(|| self.render_sidebar(window, cx));
         let main: AnyElement = match self.route {
             Route::Sessions => self.render_sessions(window, cx),
             Route::Settings => match &self.settings_view {
-                Some((view, _)) => self
-                    .frame(&t)
+                Some((view, _)) => div()
+                    .flex()
+                    .flex_col()
                     .size_full()
                     .child(view.clone())
                     .into_any_element(),
                 None => self.render_sessions(window, cx),
             },
             Route::Board => self.render_board(window, cx),
-            Route::Extensions => self.render_extensions(cx),
+            Route::Extensions => self.render_extensions(window, cx),
             Route::Onboarding => self.render_onboarding(window, cx),
         };
         let modal = self
             .active_pane()
             .cloned()
+            .filter(|_| self.route == Route::Sessions)
             .and_then(|p| p.update(cx, |p, cx| p.render_modal(window, cx)));
         let confirm = self
             .render_confirm(&t, cx)
+            .or_else(|| self.render_result(&t, cx))
             .or_else(|| self.render_readme(&t, cx));
-        // Native browser views cover GPUI content in their bounds: show only the active
-        // pane's, and only while nothing is drawn over the side pane.
+        let switch = self.render_switch(&t, cx);
+        // Native browser views cover GPUI content in their bounds: show only the visible
+        // session's, and only while nothing is drawn over the side pane.
         let covered = self.palette.is_some()
+            || self.switch.is_some()
             || self.confirm.is_some()
+            || self.result_card.is_some()
             || self.ext_readme.is_some()
+            || self.needs_drawer
             || modal.is_some()
             || self.route != Route::Sessions
             || !self.side_open
@@ -1439,18 +1755,33 @@ impl Render for Workspace {
                 let _ = e.update(cx, |ws, _| ws.toasts.hovered = id);
             })
         };
-        let toasts = stack(&t, &self.toasts, on_dismiss, on_hover);
-        let inset = if cfg!(target_os = "windows") {
-            size::WINDOW_INSET_WINDOWS
-        } else {
-            size::WINDOW_INSET
+        let on_more: Rc<dyn Fn(u64, &mut Window, &mut App)> = {
+            let e = cx.entity().downgrade();
+            Rc::new(move |id, _, cx| {
+                let _ = e.update(cx, |ws, cx| {
+                    if let Some(toast) = ws.toasts.get(id).cloned() {
+                        ws.toasts.dismiss(id);
+                        let title = toast.title.unwrap_or_else(|| "Details".into());
+                        ws.show_result(title, toast.message, cx);
+                    }
+                });
+            })
         };
-        let frames = div()
+        let toasts = stack(&t, &self.toasts, on_dismiss, on_hover, on_more);
+        let csd = crate::components::window_chrome::client_decorated(window);
+        let floating = csd && crate::components::window_chrome::floating(window);
+        // Window controls on pages and the placeholder (a session's detail header or side
+        // pane carries them otherwise).
+        let controls_overlay = csd
+            && match self.route {
+                Route::Sessions => !(self.detail_open && self.focused.is_some()),
+                Route::Settings => self.settings_view.is_none(),
+                Route::Extensions => false,
+                Route::Board | Route::Onboarding => true,
+            };
+        let columns = div()
             .absolute()
-            .top(px(inset))
-            .left(px(inset))
-            .right(px(inset))
-            .bottom(px(inset))
+            .inset_0()
             .flex()
             .flex_row()
             .children(sidebar.map(|s| {
@@ -1458,20 +1789,19 @@ impl Render for Workspace {
                     .flex()
                     .flex_row()
                     .h_full()
-                    .child(
-                        div()
-                            .w(self.sidebar_width)
-                            .h_full()
-                            .flex_shrink_0()
-                            .child(s),
-                    )
-                    .child(self.handle(&t, Drag::Sidebar, true, cx))
+                    .flex_shrink_0()
+                    .child(div().w(px(size::SIDEBAR)).h_full().bg(t.sidebar()).child(s))
+                    .child(div().w(px(size::HAIRLINE)).h_full().bg(t.line_soft()))
             }))
-            .child(div().flex_1().min_w_0().h_full().child(main));
-        // Client-side chrome (Linux / Windows): resize edges, and on Linux a 16 px shell
-        // radius while the window floats (design.md §3.1).
-        let csd = crate::components::window_chrome::client_decorated(window);
-        let floating = csd && crate::components::window_chrome::floating(window);
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(main),
+            );
         // The client inset is owned by gpui-kit's `Root` (`window_border`), which sets it to
         // its shadow size on every frame and draws the resize band. Setting it here as well made
         // the two fight each frame: the X11 frame extents flipped between 0 and the shadow size,
@@ -1497,13 +1827,36 @@ impl Render for Workspace {
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _: &MouseUpEvent, _, cx| {
-                    if this.drag.take().is_some() {
+                    if let Some(drag) = this.drag.take() {
+                        if drag == Drag::List {
+                            let w = f32::from(this.list_width);
+                            #[allow(
+                                clippy::cast_possible_truncation,
+                                clippy::cast_sign_loss,
+                                reason = "clamped to 280–560"
+                            )]
+                            let w = w.round() as u16;
+                            this.settings.list_width = w;
+                            this.host.save_app_settings(&this.settings);
+                        }
                         cx.notify();
                     }
                 }),
             )
             .on_action(cx.listener(|this, _: &NewSession, window, cx| this.new_session(window, cx)))
             .on_action(cx.listener(|this, _: &OpenFolder, window, cx| this.open_folder(window, cx)))
+            .on_action(cx.listener(|this, _: &SwitchSession, window, cx| {
+                this.open_switch(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GoSessions, window, cx| {
+                this.run_app_action("sessions", window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GoBoard, window, cx| {
+                this.open_board(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GoExtensions, window, cx| {
+                this.run_app_action("extensions", window, cx);
+            }))
             .on_action(cx.listener(|this, _: &ToggleSidebar, window, cx| {
                 this.run_app_action("toggle-sidebar", window, cx);
             }))
@@ -1517,7 +1870,11 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &CommandPalette, window, cx| {
                 this.open_palette("", window, cx);
             }))
-            .on_action(cx.listener(|this, _: &PickModel, _, cx| {
+            .on_action(cx.listener(|this, _: &PickModel, window, cx| {
+                // GA-34: from any focus in the session, not only the composer chip.
+                if this.route != Route::Sessions {
+                    this.run_app_action("sessions", window, cx);
+                }
                 this.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx));
             }))
             .on_action(cx.listener(|this, _: &PickThinking, _, cx| {
@@ -1534,7 +1891,6 @@ impl Render for Workspace {
                 };
                 this.update_settings(|s| s.theme = next, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &SplitPane, window, cx| this.split(window, cx)))
             .on_action(cx.listener(|this, _: &TreeView, window, cx| {
                 this.run_app_action("tree", window, cx);
             }))
@@ -1561,9 +1917,36 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ToggleFrameOverlay, window, cx| {
                 this.run_app_action("frame-overlay", window, cx);
             }))
-            .child(frames)
+            // The unipi desktop glow: a 520 px top-left shell tint (A2.2 `glow`).
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size(px(size::GLOW))
+                    .bg(linear_gradient(
+                        135.,
+                        linear_color_stop(t.glow(), 0.),
+                        linear_color_stop(t.glow().opacity(0.), 1.),
+                    )),
+            )
+            .child(columns)
+            .when(controls_overlay, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .top(px(space::S2))
+                        .right(px(space::S2))
+                        .child(crate::components::window_chrome::window_controls(
+                            &t,
+                            window.is_maximized(),
+                        )),
+                )
+            })
+            .children(self.render_needs_drawer(&t, cx))
             .children(modal)
             .children(confirm)
+            .children(switch)
             .children(edges)
             .when_some(self.palette.as_ref().map(|(p, _)| p.clone()), |el, p| {
                 el.child(p)
@@ -1576,21 +1959,21 @@ impl Render for Workspace {
 
 #[cfg(test)]
 mod tests {
-    use super::panes_to_release;
+    use super::sessions_to_release;
 
     #[test]
-    fn releases_hidden_idle_panes_least_recently_used_first() {
+    fn releases_hidden_idle_sessions_least_recently_used_first() {
         // (key, last_used, visible, idle)
-        let panes = [
+        let sessions = [
             (0, 5, false, true),
             (1, 1, false, true),
             (2, 0, true, true),
             (3, 2, false, false),
             (4, 3, false, true),
         ];
-        assert_eq!(panes_to_release(&panes, 3), vec![1, 4]);
-        assert_eq!(panes_to_release(&panes, 5), Vec::<u64>::new());
-        // Visible or running panes are never released, even over the cap.
-        assert_eq!(panes_to_release(&panes, 0), vec![1, 4, 0]);
+        assert_eq!(sessions_to_release(&sessions, 3), vec![1, 4]);
+        assert_eq!(sessions_to_release(&sessions, 5), Vec::<u64>::new());
+        // Visible or running sessions are never released, even over the cap.
+        assert_eq!(sessions_to_release(&sessions, 0), vec![1, 4, 0]);
     }
 }

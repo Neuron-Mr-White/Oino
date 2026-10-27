@@ -86,9 +86,18 @@ pub struct SessionModel {
     pub extension_errors: Vec<String>,
     /// Active tool names.
     pub active_tools: Vec<String>,
+    /// Last value of each subscribed bus topic (`_oino/topics`, `OinoEvent::Topic`), at most
+    /// [`MAX_TOPICS`] (oldest dropped). Mode chip, status, Tasks tab and footer git read it.
+    pub topics: Vec<(String, serde_json::Value)>,
+    /// Open nested agents of the session tree (`_oino/agents`, `OinoEvent::AgentsChanged`).
+    pub agents: Vec<oino_core::agents::AgentInfo>,
+    /// An extension called `ctx.shutdown()` (`OinoEvent::ShutdownRequested`).
+    pub shutdown_requested: bool,
 }
 
 const MAX_ERRORS: usize = 50;
+/// Topic values kept per session.
+pub const MAX_TOPICS: usize = 64;
 
 impl SessionModel {
     /// A fresh model for session `id` in `cwd`.
@@ -110,7 +119,32 @@ impl SessionModel {
             usage: UsageTotals::default(),
             extension_errors: Vec::new(),
             active_tools: Vec::new(),
+            topics: Vec::new(),
+            agents: Vec::new(),
+            shutdown_requested: false,
         }
+    }
+
+    /// The last value of bus topic `name`.
+    #[must_use]
+    pub fn topic(&self, name: &str) -> Option<&serde_json::Value> {
+        self.topics.iter().find(|(t, _)| t == name).map(|(_, v)| v)
+    }
+
+    /// Stores a topic value (bounded; a value that did not change reports `false`).
+    pub fn set_topic(&mut self, name: &str, data: serde_json::Value) -> bool {
+        if let Some(slot) = self.topics.iter_mut().find(|(t, _)| t == name) {
+            if slot.1 == data {
+                return false;
+            }
+            slot.1 = data;
+            return true;
+        }
+        if self.topics.len() >= MAX_TOPICS {
+            self.topics.remove(0);
+        }
+        self.topics.push((name.to_owned(), data));
+        true
     }
 
     /// Whether an agent run (or compaction / retry) is active.
@@ -312,7 +346,19 @@ impl SessionModel {
                     ));
                     applied.reload = true;
                 }
-                OinoEvent::CommandsChanged => {}
+                // Child timelines are consumed by the Agent tab (gui-fix-panes P3).
+                OinoEvent::CommandsChanged | OinoEvent::AgentEvent { .. } => {}
+                OinoEvent::Topic { topic, data, .. } => {
+                    applied.chrome |= self.set_topic(topic, data.clone());
+                }
+                OinoEvent::AgentsChanged { agents } => {
+                    self.agents.clone_from(agents);
+                    applied.chrome = true;
+                }
+                OinoEvent::ShutdownRequested => {
+                    self.shutdown_requested = true;
+                    applied.chrome = true;
+                }
             },
         }
         applied

@@ -30,18 +30,9 @@ pub fn platform_keys(keys: &str) -> String {
     out
 }
 
-/// A key hint chip (`Xs` mono on `tag`).
+/// A key hint chip (A2.15 `Kbd`; see [`crate::components::kbd`]).
 pub fn kbd(t: &OinoTheme, keys: impl Into<SharedString>) -> Div {
-    let keys: SharedString = keys.into();
-    let keys = SharedString::from(platform_keys(&keys));
-    div()
-        .flex_shrink_0()
-        .px(px(space::S1))
-        .rounded(px(radius::R_SM))
-        .bg(t.tag())
-        .text_color(t.fg_subtle())
-        .mono_text(t, TextRole::Xs)
-        .child(keys)
+    crate::components::kbd::kbd(t, keys)
 }
 
 #[cfg(test)]
@@ -109,7 +100,7 @@ pub fn capsule(kind: Capsule, cx: &mut App) -> Div {
     let t = OinoTheme::get(cx);
     let (bg, fg, label) = match kind {
         Capsule::Running => (t.progress_surface(), t.progress_surface_fg(), "Working"),
-        Capsule::Waiting => (t.waiting_surface(), t.waiting_fg(), "Needs you"),
+        Capsule::Waiting => (t.attention_surface(), t.attention_fg(), "Needs you"),
         Capsule::Error => (t.danger_surface(), t.danger_surface_fg(), "Error"),
         Capsule::Compacting => (t.progress_surface(), t.progress_surface_fg(), "Compacting"),
         Capsule::Retrying => (t.progress_surface(), t.progress_surface_fg(), "Retrying"),
@@ -166,15 +157,10 @@ pub fn dot(t: &OinoTheme, kind: DotKind) -> Div {
         .bg(c)
 }
 
-/// A section label: uppercase muted 12/500 (unipi §1.6 `.section-label`, A1.2). Callers
-/// write sentence case; the label uppercases it.
+/// A section label: uppercase dim 12/500 (A2.15; see [`crate::components::section_label`]).
+/// Callers write sentence case; the label uppercases it.
 pub fn section_label(t: &OinoTheme, text: impl Into<SharedString>) -> Div {
-    let text: SharedString = text.into();
-    div()
-        .text_color(t.fg_subtle())
-        .text_role(t, TextRole::Sm)
-        .weight_medium()
-        .child(SharedString::from(text.to_uppercase()))
+    crate::components::section_label::label(t, text)
 }
 
 /// A muted metadata text (`Sm` `fg_subtle`).

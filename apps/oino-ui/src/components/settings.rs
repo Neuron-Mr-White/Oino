@@ -1,57 +1,78 @@
-//! Settings parts (design.md §4.29): page title, section title, bordered `R_XL` groups and
-//! `SettingRow`s (label, description, control on the right, min height 48).
+//! Settings parts (design.md A2.16): page title, section labels, grouped cards (radius 16,
+//! inset dividers at 58) and `SettingRow`s (min 56, padding 12 16, optional 28 icon tile,
+//! label 15/500, description 12.5 dim, control on the right).
 
+use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
 };
 
+use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
 
 /// The page title (`Display`/600).
 pub fn page_title(t: &OinoTheme, text: impl Into<SharedString>) -> Div {
     div()
-        .pb(px(space::S6))
+        .pb(px(space::S4))
         .text_role(t, TextRole::Display)
         .weight_semibold()
         .text_color(t.fg())
         .child(text.into())
 }
 
-/// A section title (`Lg`/500).
+/// A section title: an uppercase section label (A2.15) above a grouped card.
 pub fn section_title(t: &OinoTheme, text: impl Into<SharedString>) -> Div {
-    div()
-        .pt(px(space::S4))
-        .pb(px(space::S2))
-        .text_role(t, TextRole::Lg)
-        .weight_medium()
-        .text_color(t.fg())
-        .child(text.into())
+    crate::components::section_label::section_row(t, text, false, None)
 }
 
-/// A bordered group of rows.
+/// A grouped card of rows (radius 16, `card` fill, inset dividers).
 #[must_use]
 pub fn group(t: &OinoTheme, rows: Vec<AnyElement>) -> Div {
-    let n = rows.len();
-    div()
-        .flex()
-        .flex_col()
-        .w_full()
-        .px(px(space::S4))
-        .rounded(px(radius::R_CARD))
-        .border_1()
-        .border_color(t.border())
-        .children(rows.into_iter().enumerate().map(move |(i, r)| {
-            div()
-                .when(i + 1 < n, |el| el.border_b_1().border_color(t.border()))
-                .child(r)
-        }))
+    crate::components::card::grouped(t, rows, size::ROW_DIVIDER_INSET)
 }
 
-/// One row: label (+ modified dot), description, control.
+/// One row without an icon tile: label (+ modified dot), description, control.
 pub fn row(
     t: &OinoTheme,
+    label: impl Into<SharedString>,
+    description: Option<SharedString>,
+    modified: bool,
+    control: AnyElement,
+) -> AnyElement {
+    row_with(t, None, label, description, modified, control)
+}
+
+/// One row with a 28 px icon tile (radius 8, surface-2, icon 16 muted).
+pub fn row_icon(
+    t: &OinoTheme,
+    glyph: IconName,
+    label: impl Into<SharedString>,
+    description: Option<SharedString>,
+    modified: bool,
+    control: AnyElement,
+) -> AnyElement {
+    row_with(t, Some(glyph), label, description, modified, control)
+}
+
+/// The 28 px settings icon tile.
+#[must_use]
+pub fn tile(t: &OinoTheme, glyph: IconName) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_center()
+        .flex_shrink_0()
+        .size(px(size::SETTING_TILE))
+        .rounded(px(radius::R_TILE_SM))
+        .bg(t.chip())
+        .child(icon(glyph, size::ICON, t.fg_subtle()))
+}
+
+fn row_with(
+    t: &OinoTheme,
+    glyph: Option<IconName>,
     label: impl Into<SharedString>,
     description: Option<SharedString>,
     modified: bool,
@@ -61,9 +82,11 @@ pub fn row(
         .flex()
         .flex_row()
         .items_center()
-        .gap(px(space::S4))
+        .gap(px(space::S3_5))
         .min_h(px(size::SETTING_ROW))
-        .py(px(space::S2))
+        .py(px(space::S3))
+        .px(px(space::S4))
+        .when_some(glyph, |el, g| el.child(tile(t, g)))
         .child(
             div()
                 .flex()
@@ -76,7 +99,8 @@ pub fn row(
                         .flex()
                         .items_center()
                         .gap(px(space::S1_5))
-                        .text_role(t, TextRole::Base)
+                        .text_role(t, TextRole::Prose)
+                        .line_height(t.text(TextRole::Base).1)
                         .weight_medium()
                         .text_color(t.fg())
                         .child(label.into())
@@ -93,7 +117,7 @@ pub fn row(
                     el.child(
                         div()
                             .text_role(t, TextRole::Sm)
-                            .text_color(t.fg_subtle())
+                            .text_color(t.fg_subtlest())
                             .child(d),
                     )
                 }),

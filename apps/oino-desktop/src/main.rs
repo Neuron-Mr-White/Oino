@@ -44,7 +44,7 @@ use gpui_kit::{
 };
 use oino_ui::host::SessionHost;
 use oino_ui::rt::Tokio;
-use oino_ui::views::{self, Quit, Workspace};
+use oino_ui::views::{self, AppShell, Quit};
 
 struct Args {
     demo: bool,
@@ -176,6 +176,17 @@ fn os_notify(title: String, body: String) {
     }
 }
 
+/// The mascot opened and the app kept running for 15 s: clear the startup guard.
+fn clear_mascot_guard_later(dir: PathBuf, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        cx.background_executor()
+            .timer(std::time::Duration::from_secs(15))
+            .await;
+        prefs::clear_mascot_guard(&dir);
+    })
+    .detach();
+}
+
 fn main() -> anyhow::Result<()> {
     let process_start = std::time::Instant::now();
     let args = parse_args()?;
@@ -192,6 +203,10 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("starting the tokio runtime")?;
     let cwd = default_cwd(args.cwd);
+    if !args.demo {
+        prefs::guard_mascot(&agent_dir);
+    }
+    let guard_dir = agent_dir.clone();
     // The in-app browser (browser-control.md §3): one service for every session; browsers
     // start on first use and are stopped at quit.
     let browser_service = (!args.demo)
@@ -222,8 +237,9 @@ fn main() -> anyhow::Result<()> {
         .run(move |cx: &mut App| {
             let host = app_host;
             heartbeat(beat, cx);
+            clear_mascot_guard_later(guard_dir, cx);
             if let Some(secs) = soak {
-                // Read by `Workspace::new` (`oino_ui::views::soak`).
+                // Read by `AppShell::new` (`oino_ui::views::soak`).
                 cx.set_global(views::soak::Requested(secs));
             }
             {
@@ -257,7 +273,7 @@ fn main() -> anyhow::Result<()> {
             let options = window_options(cx);
             let host = Arc::clone(&host);
             let opened = gpui_kit::open_window(options, cx, move |window, cx| {
-                cx.new(|cx| Workspace::new(host, window, cx))
+                cx.new(|cx| AppShell::new(host, window, cx))
             });
             match opened {
                 // Closing the main window quits even while the mascot window is open (the

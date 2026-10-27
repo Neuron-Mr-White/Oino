@@ -230,7 +230,11 @@ fn add_auto_discovered(
             add_resource(target, path, meta, enabled);
         }
     };
-    let user_agents_skills = home.map(|home| home.join(".agents").join("skills"));
+    // GA-38: a custom agent dir (`OINO_AGENT_DIR`) is an isolated profile: the user-wide
+    // `~/.agents/skills` is not discovered implicitly (list it in `skills` to opt in).
+    let user_agents_skills = home
+        .filter(|home| !agent_dir_overridden(input.agent_dir, home))
+        .map(|home| home.join(".agents").join("skills"));
     let project_agents_dirs: Vec<PathBuf> = if input.project_trusted {
         ancestor_agents_skill_dirs(input.cwd)
             .into_iter()
@@ -318,6 +322,19 @@ fn find_git_repo_root(start: &Path) -> Option<PathBuf> {
         .ancestors()
         .find(|dir| dir.join(".git").exists())
         .map(Path::to_path_buf)
+}
+
+/// Whether `OINO_AGENT_DIR` points the agent dir somewhere other than `~/.oino` (scratch
+/// profiles, tests, the desktop audit). Such profiles skip the implicit `~/.agents/skills`.
+fn agent_dir_overridden(agent_dir: &Path, home: &Path) -> bool {
+    let env = std::env::var_os(oino_settings::paths::env::OINO_AGENT_DIR);
+    overridden_by(env.as_deref(), agent_dir, home)
+}
+
+/// [`agent_dir_overridden`] for an explicit `OINO_AGENT_DIR` value.
+fn overridden_by(env: Option<&std::ffi::OsStr>, agent_dir: &Path, home: &Path) -> bool {
+    env.is_some_and(|v| !v.is_empty())
+        && canonicalize_or_self(agent_dir) != canonicalize_or_self(&home.join(".oino"))
 }
 
 /// pi `collectAncestorAgentsSkillDirs`: `.agents/skills` from cwd up to the repo root (or the
@@ -684,6 +701,21 @@ mod tests {
             "c/d"
         );
         assert_eq!(relative_posix(Path::new("/a/b"), Path::new("/a/x")), "../x");
+    }
+
+    #[test]
+    fn scratch_agent_dirs_skip_user_agents_skills() {
+        use std::ffi::OsStr;
+        let home = Path::new("/nonexistent-home");
+        let scratch = Path::new("/tmp/oino-scratch-agent");
+        assert!(overridden_by(Some(OsStr::new("/tmp/x")), scratch, home));
+        assert!(!overridden_by(None, scratch, home));
+        assert!(!overridden_by(Some(OsStr::new("")), scratch, home));
+        assert!(!overridden_by(
+            Some(OsStr::new("~/.oino")),
+            &home.join(".oino"),
+            home
+        ));
     }
 
     #[test]

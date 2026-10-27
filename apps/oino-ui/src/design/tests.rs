@@ -33,6 +33,25 @@ fn check(p: &Palette, name: &str) {
         let ratio = contrast(fg, bg);
         assert!(ratio >= 4.5, "{name}: {pair} surface = {ratio:.2}");
     }
+    // A2.2 surfaces: bubble, sheet, chip; needs-you strip; diff text on diff fills.
+    for (pair, fg, surface) in [
+        ("fg on bubble", p.fg, p.bubble),
+        ("fg_subtle on sheet", p.fg_subtle, p.sheet),
+        ("fg on chip", p.fg, p.chip),
+        ("attention", p.attention_fg, p.attention_surface),
+        ("diff added", p.diff_added_fg, p.diff_added_bg),
+        ("diff removed", p.diff_removed_fg, p.diff_removed_bg),
+        ("strong on window", p.fg_strong, p.window),
+        ("link on card", p.link, p.card),
+    ] {
+        let bg = over(over(surface, frame), p.window);
+        let ratio = contrast(fg, bg);
+        assert!(ratio >= 4.5, "{name}: {pair} = {ratio:.2}");
+    }
+    // The selected row tint keeps body text readable.
+    let selected = over(p.selected, over(p.card, p.window));
+    let ratio = contrast(p.fg, selected);
+    assert!(ratio >= 4.5, "{name}: fg on selected = {ratio:.2}");
     // A1.2 fixes the pair: `face #181818` on `shell #F03018` (4.35:1). Primary labels are
     // medium-weight UI text; the floor is 4.3 so a palette drift still fails.
     let primary = contrast(p.primary_fg, p.primary);

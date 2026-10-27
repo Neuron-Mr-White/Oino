@@ -1,5 +1,6 @@
-//! `Dialog` (design.md §4.24): centred modal over a scrim, `popover` bg, `R_2XL`, E2; header
-//! title `Lg`/500 + close; footer actions primary first, then Cancel.
+//! `Dialog` (design.md A2.12): centred over a 45 % scrim, `sheet` (surface-1) fill, radius 16,
+//! dialog elevation; header title 20/26/600 (padding 14 20 10) + ✕ 34; the body scrolls
+//! inside min(80 %, 760) (GA-7); sticky footer with right-aligned actions, primary last.
 
 use std::rc::Rc;
 
@@ -11,9 +12,12 @@ use gpui_kit::{
     px, relative,
 };
 
-use crate::components::button::Btn;
+use crate::components::button::{Btn, BtnSize};
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
+
+/// Dialog enter duration.
+const MOTION_MS: u64 = crate::design::tokens::motion::DIALOG_MS;
 
 /// Close callback.
 pub type OnClose = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -61,73 +65,92 @@ pub fn modal_with_toolbar(
                 cx.stop_propagation();
             }
         })
-        .child(crate::design::motion::enter(
-            t,
-            ElementId::Name(format!("{id}-enter").into()),
+        .child(
             div()
-                .id(ElementId::Name(id.into()))
                 .flex()
                 .flex_col()
-                .w(px(width))
-                .max_w(relative(0.94))
+                .justify_center()
+                .h(relative(size::DIALOG_MAX_FRACTION))
                 .max_h(px(size::DIALOG_MAX_H))
-                .rounded(px(radius::R_2XL))
-                .bg(t.popover())
-                .border_1()
-                .border_color(t.popover_border())
-                .shadow(t.e2())
-                .text_color(t.fg())
-                .font_family(t.ui_font())
-                .on_click(|_: &ClickEvent, _, cx| cx.stop_propagation())
-                .child(
+                .max_w(relative(0.94))
+                .child(crate::design::motion::enter_ms(
+                    t,
+                    ElementId::Name(format!("{id}-enter").into()),
                     div()
+                        .id(ElementId::Name(id.into()))
                         .flex()
-                        .items_center()
-                        .gap(px(space::S2))
-                        .px(px(space::S5))
-                        .pt(px(space::S4))
-                        .pb(px(space::S2))
+                        .flex_col()
+                        .w(px(width))
+                        .max_w_full()
+                        .max_h_full()
+                        .rounded(px(radius::R_FLOAT))
+                        .bg(t.sheet())
+                        .border_1()
+                        .border_color(t.border())
+                        .shadow(t.e_dialog())
+                        .text_color(t.fg())
+                        .font_family(t.ui_font())
+                        .on_click(|_: &ClickEvent, _, cx| cx.stop_propagation())
                         .child(
                             div()
-                                .flex_1()
-                                .min_w_0()
-                                .truncate()
-                                .text_role(t, TextRole::Lg)
-                                .weight_medium()
-                                .child(title),
+                                .flex()
+                                .flex_shrink_0()
+                                .items_center()
+                                .gap(px(space::S2))
+                                .pl(px(space::S5))
+                                .pr(px(space::S3))
+                                .pt(px(space::S3_5))
+                                .pb(px(space::S2_5))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
+                                        .text_role(t, TextRole::Title)
+                                        .weight_semibold()
+                                        .child(title),
+                                )
+                                .children(toolbar)
+                                .child(
+                                    Btn::icon_only(
+                                        ElementId::Name(format!("{id}-x").into()),
+                                        IconName::X,
+                                        "Close",
+                                    )
+                                    .size(BtnSize::Md)
+                                    .on_click(move |_, w, cx| on_close(w, cx)),
+                                ),
                         )
-                        .children(toolbar)
                         .child(
-                            Btn::icon_only(
-                                ElementId::Name(format!("{id}-x").into()),
-                                IconName::X,
-                                "Close",
+                            div()
+                                .id(ElementId::Name(format!("{id}-body").into()))
+                                .flex_1()
+                                .min_h_0()
+                                .overflow_y_scroll()
+                                .px(px(space::S5))
+                                .pb(px(space::S5))
+                                .child(body),
+                        )
+                        .when(!actions.is_empty(), |el| {
+                            el.child(
+                                div()
+                                    .flex()
+                                    .flex_row()
+                                    .flex_shrink_0()
+                                    .justify_end()
+                                    .gap(px(space::S2))
+                                    .px(px(space::S5))
+                                    .pt(px(space::S3))
+                                    .pb(px(space::S5))
+                                    .border_t_1()
+                                    .border_color(t.line_soft())
+                                    .children(actions.into_iter().map(|a| {
+                                        div().min_w(px(size::DIALOG_ACTION_MIN)).flex().child(a)
+                                    })),
                             )
-                            .on_click(move |_, w, cx| on_close(w, cx)),
-                        ),
-                )
-                .child(
-                    div()
-                        .id(ElementId::Name(format!("{id}-body").into()))
-                        .flex_1()
-                        .min_h_0()
-                        .overflow_y_scroll()
-                        .px(px(space::S5))
-                        .pb(px(space::S5))
-                        .child(body),
-                )
-                .when(!actions.is_empty(), |el| {
-                    el.child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .justify_end()
-                            .gap(px(space::S2))
-                            .px(px(space::S5))
-                            .pb(px(space::S4))
-                            .children(actions),
-                    )
-                }),
-        ))
+                        }),
+                    MOTION_MS,
+                )),
+        )
         .into_any_element()
 }

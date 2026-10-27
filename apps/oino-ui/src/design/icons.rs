@@ -121,6 +121,14 @@ gpui_kit::assets::icon_assets!(
         RotateCw,
         AppWindow,
         Clipboard,
+        MessageSquare,
+        Shield,
+        Palette,
+        EllipsisVertical,
+        ALargeSmall,
+        Wrench,
+        Maximize,
+        CornerDownRight,
     ]
 );
 

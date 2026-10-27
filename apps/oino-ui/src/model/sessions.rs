@@ -46,15 +46,42 @@ pub struct SessionEntry {
     pub pinned: bool,
 }
 
-/// Sessions of one workspace.
+/// Sessions of one project (working directory), shown as a list-column section (A2.8).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkspaceGroup {
+pub struct ProjectGroup {
     /// Working directory.
     pub cwd: String,
     /// Short label (last path component).
     pub label: String,
     /// Sessions, most recent first.
     pub sessions: Vec<SessionEntry>,
+}
+
+/// Former name of [`ProjectGroup`] (kept for the mobile shell until `gui-fix-mobile`).
+pub type WorkspaceGroup = ProjectGroup;
+
+impl LiveStatus {
+    /// Attention-first order (A2.8): needs you, working, done-unseen, then the rest.
+    #[must_use]
+    pub const fn rank(self) -> u8 {
+        match self {
+            Self::Attention => 0,
+            Self::Running => 1,
+            Self::Unread => 2,
+            Self::Idle => 3,
+        }
+    }
+
+    /// The state word of a row (A2.2 state colours: colour + icon + word).
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Attention => "Needs you",
+            Self::Running => "Working",
+            Self::Unread => "Done",
+            Self::Idle => "Idle",
+        }
+    }
 }
 
 /// The session list model.
@@ -72,6 +99,12 @@ pub struct SessionList {
 /// Last path component of `cwd` (`~` for an empty path).
 #[must_use]
 pub fn workspace_label(cwd: &str) -> String {
+    project_label(cwd)
+}
+
+/// The project name of `cwd`: its last path component (`~` for an empty path).
+#[must_use]
+pub fn project_label(cwd: &str) -> String {
     let trimmed = cwd.trim_end_matches(['/', '\\']);
     trimmed
         .rsplit(['/', '\\'])
@@ -234,10 +267,48 @@ impl SessionList {
         out
     }
 
+    /// Project sections attention-first (A2.8): sessions inside a section by state rank then
+    /// recency; sections by their best state, then recency (or by name when sorted by name).
+    #[must_use]
+    pub fn sections(&self) -> Vec<ProjectGroup> {
+        let mut groups = self.groups();
+        for g in &mut groups {
+            g.sessions
+                .sort_by_key(|e| (e.status.rank(), std::cmp::Reverse(e.summary.modified_ms)));
+        }
+        if !self.by_name {
+            // `groups` is already most-recent-first; a stable sort keeps that within a rank.
+            groups.sort_by_key(|g| g.sessions.first().map_or(u8::MAX, |e| e.status.rank()));
+        }
+        groups
+    }
+
+    /// Sessions waiting for the user, most recent first.
+    #[must_use]
+    pub fn needs_you(&self) -> Vec<SessionEntry> {
+        let mut out: Vec<SessionEntry> = self
+            .all
+            .iter()
+            .filter(|s| self.live(&s.id) == LiveStatus::Attention)
+            .map(|s| self.entry(s))
+            .collect();
+        out.sort_by_key(|e| std::cmp::Reverse(e.summary.modified_ms));
+        out
+    }
+
+    /// Number of sessions in `status`.
+    #[must_use]
+    pub fn count(&self, status: LiveStatus) -> usize {
+        self.all
+            .iter()
+            .filter(|s| self.live(&s.id) == status)
+            .count()
+    }
+
     /// Workspace groups ordered by their most recent session.
     #[must_use]
-    pub fn groups(&self) -> Vec<WorkspaceGroup> {
-        let mut groups: Vec<WorkspaceGroup> = Vec::new();
+    pub fn groups(&self) -> Vec<ProjectGroup> {
+        let mut groups: Vec<ProjectGroup> = Vec::new();
         let mut sorted: Vec<&SessionSummary> = self
             .all
             .iter()
@@ -248,7 +319,7 @@ impl SessionList {
             let entry = self.entry(s);
             match groups.iter_mut().find(|g| g.cwd == s.cwd) {
                 Some(group) => group.sessions.push(entry),
-                None => groups.push(WorkspaceGroup {
+                None => groups.push(ProjectGroup {
                     cwd: s.cwd.clone(),
                     label: workspace_label(&s.cwd),
                     sessions: vec![entry],
@@ -334,6 +405,26 @@ mod tests {
         assert_eq!(list.len(), 2);
         list.toggle_group("/w");
         assert!(list.is_collapsed("/w"));
+    }
+
+    #[test]
+    fn sections_are_attention_first() {
+        let mut list = SessionList::new();
+        list.set_sessions(vec![
+            summary("a", "/p/one", "new idle", 9),
+            summary("b", "/p/one", "old waiting", 1),
+            summary("c", "/p/two", "working", 5),
+            summary("d", "/p/three", "idle", 7),
+        ]);
+        list.set_live("b", LiveStatus::Attention);
+        list.set_live("c", LiveStatus::Running);
+        let sections = list.sections();
+        let labels: Vec<&str> = sections.iter().map(|g| g.label.as_str()).collect();
+        assert_eq!(labels, vec!["one", "two", "three"]);
+        assert_eq!(sections[0].sessions[0].summary.id, "b");
+        assert_eq!(list.needs_you().len(), 1);
+        assert_eq!(list.count(LiveStatus::Running), 1);
+        assert_eq!(LiveStatus::Unread.word(), "Done");
     }
 
     #[test]

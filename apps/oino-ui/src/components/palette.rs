@@ -1,4 +1,8 @@
-//! `CommandPalette` (design.md §4.25): scopes, prefixes, sections, history, virtualised rows.
+//! `CommandPalette` (design.md A2.17): 620 wide at 14 % from the top, `sheet` fill, radius 16,
+//! palette elevation; a 52 px search row (⌕, 16 px input, `Esc`), scope chips, section-label
+//! groups, 40 px rows (radius 10, icon 18 + label 14 + kbd chips; the active row is
+//! `selected` + `selected_border_strong`), history, and the footer legend
+//! `↑ ↓ move · ↵ run · Esc close`. Prefixes `>` `#` `@` stay.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -73,6 +77,8 @@ fn icon_of(stem: &str) -> IconName {
         "brain" => IconName::Brain,
         "refresh-cw" => IconName::RefreshCw,
         "smartphone" => IconName::Smartphone,
+        "message-square" => IconName::MessageSquare,
+        "sparkles" => IconName::Sparkles,
         _ => IconName::ChevronRight,
     }
 }
@@ -218,26 +224,27 @@ impl Render for PaletteView {
                                 .id(ix)
                                 .flex()
                                 .items_end()
-                                .h(px(size::CONTROL_LG))
-                                .px(px(space::S2))
-                                .pb(px(space::S1))
-                                .text_role(&t, TextRole::Xs)
-                                .weight_medium()
-                                .text_color(t.fg_subtlest())
-                                .child(SharedString::new_static(label).to_uppercase())
+                                .h(px(size::PALETTE_ROW))
+                                .px(px(space::S2_5))
+                                .pb(px(space::S1_5))
+                                .child(crate::components::section_label::label(&t, *label))
                                 .into_any_element(),
                             Row::More(_, n) => div()
                                 .id(ix)
                                 .w_full()
                                 .flex()
                                 .items_center()
-                                .h(px(size::CONTROL_LG))
-                                .px(px(space::S2))
-                                .rounded(px(radius::R_MD))
+                                .h(px(size::PALETTE_ROW))
+                                .px(px(space::S2_5))
+                                .rounded(px(radius::R_ROW))
                                 .cursor_pointer()
-                                .when(selected, |el| el.bg(t.menu_hover()))
+                                .when(selected, |el| {
+                                    el.bg(t.selected())
+                                        .border_1()
+                                        .border_color(t.selected_border_strong())
+                                })
                                 .text_role(&t, TextRole::Sm)
-                                .text_color(t.fg_subtle())
+                                .text_color(t.gold())
                                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                                     this.selected = ix;
                                     this.pick(cx);
@@ -268,18 +275,26 @@ impl Render for PaletteView {
                                     .w_full()
                                     .flex()
                                     .items_center()
-                                    .gap(px(space::S2))
-                                    .h(px(size::CONTROL_LG))
-                                    .px(px(space::S2))
-                                    .rounded(px(radius::R_MD))
+                                    .gap(px(space::S2_5))
+                                    .h(px(size::PALETTE_ROW))
+                                    .px(px(space::S2_5))
+                                    .rounded(px(radius::R_ROW))
                                     .cursor_pointer()
-                                    .when(selected, |el| el.bg(t.menu_hover()))
-                                    .hover(|s| s.bg(t.menu_hover()))
+                                    .when(selected, |el| {
+                                        el.bg(t.selected())
+                                            .border_1()
+                                            .border_color(t.selected_border_strong())
+                                    })
+                                    .when(!selected, |el| el.hover(|s| s.bg(t.hover())))
                                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                                         this.selected = ix;
                                         this.pick(cx);
                                     }))
-                                    .child(icon(icon_of(item.icon), size::ICON, t.fg_subtle()))
+                                    .child(icon(
+                                        icon_of(item.icon),
+                                        size::ICON_LG - 2.0,
+                                        t.fg_subtle(),
+                                    ))
                                     .child(
                                         div()
                                             .flex_shrink_0()
@@ -312,7 +327,11 @@ impl Render for PaletteView {
                     .collect::<Vec<_>>()
             }),
         )
-        .h(px(size::PALETTE_MAX_H - size::INPUT * 3.0));
+        .h(px(size::PALETTE_MAX_H
+            - size::PALETTE_INPUT
+            - size::CHIP
+            - size::PALETTE_ROW
+            - space::S6));
         let history: Vec<String> = self.history.iter().take(3).cloned().collect();
         let more = self.history.len().saturating_sub(3);
         let _ = needle;
@@ -322,7 +341,7 @@ impl Render for PaletteView {
             .inset_0()
             .flex()
             .justify_center()
-            .pt(px(size::PALETTE_TOP))
+            .pt(gpui_kit::relative(size::PALETTE_TOP_FRACTION))
             .bg(t.scrim())
             .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(PaletteEvent::Dismiss)))
             .child(
@@ -331,14 +350,16 @@ impl Render for PaletteView {
                     .flex()
                     .flex_col()
                     .w(px(size::PALETTE))
+                    .max_w(gpui_kit::relative(0.94))
                     .max_h(px(size::PALETTE_MAX_H))
-                    .p(px(space::S2))
-                    .gap(px(space::S2))
-                    .rounded(px(radius::R_2XL))
-                    .bg(t.popover())
+                    .pb(px(space::S1_5))
+                    .gap(px(space::S1_5))
+                    .rounded(px(radius::R_FLOAT))
+                    .bg(t.sheet())
                     .border_1()
-                    .border_color(t.popover_border())
-                    .shadow(t.e2())
+                    .border_color(t.border())
+                    .shadow(t.e_palette())
+                    .overflow_hidden()
                     .text_color(t.fg())
                     .font_family(t.ui_font())
                     .on_click(|_: &ClickEvent, _, cx| cx.stop_propagation())
@@ -347,9 +368,13 @@ impl Render for PaletteView {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(space::S2))
-                            .px(px(space::S2))
-                            .child(icon(IconName::Search, size::ICON, t.fg_subtle()))
+                            .gap(px(space::S2_5))
+                            .h(px(size::PALETTE_INPUT))
+                            .px(px(space::S4))
+                            .border_b_1()
+                            .border_color(t.line_soft())
+                            .text_role(&t, TextRole::Lg)
+                            .child(icon(IconName::Search, size::ICON_LG, t.fg_subtle()))
                             .child(
                                 div()
                                     .flex_1()
@@ -357,7 +382,7 @@ impl Render for PaletteView {
                             )
                             .child(kbd(&t, "esc")),
                     )
-                    .child(div().px(px(space::S1)).child(tabs))
+                    .child(div().px(px(space::S3)).child(tabs))
                     .when(!history.is_empty() && query.is_empty(), |el| {
                         el.child(
                             div()
@@ -399,11 +424,25 @@ impl Render for PaletteView {
                             .p(px(space::S4))
                             .text_role(&t, TextRole::Base)
                             .text_color(t.fg_subtle())
-                            .child("No matches")
+                            .child("Nothing matches. Try a shorter word or another scope (Tab).")
                             .into_any_element()
                     } else {
-                        rows.into_any_element()
-                    }),
+                        div().px(px(space::S1_5)).child(rows).into_any_element()
+                    })
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(space::S4))
+                            .pt(px(space::S2))
+                            .px(px(space::S4))
+                            .border_t_1()
+                            .border_color(t.line_soft())
+                            .child(crate::components::kbd::legend(&t, "↑↓", "move"))
+                            .child(crate::components::kbd::legend(&t, "↵", "run"))
+                            .child(crate::components::kbd::legend(&t, "Tab", "scope"))
+                            .child(crate::components::kbd::legend(&t, "esc", "close")),
+                    ),
             )
     }
 }

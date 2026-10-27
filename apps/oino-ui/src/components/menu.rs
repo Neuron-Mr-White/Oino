@@ -131,20 +131,21 @@ impl MenuEntry {
     }
 }
 
-/// The menu shell: `menu` bg, 1 px border, `R_LG`, padding 4, E2.
+/// The menu shell (A2.12 anchored menu): `menu` (surface-2), radius 16, padding 6, menu
+/// elevation.
 #[must_use]
 pub fn shell(t: &OinoTheme, width: f32) -> Div {
     div()
         .flex()
         .flex_col()
         .w(px(width))
-        .p(px(space::S1))
+        .p(px(space::S1_5))
         .gap(px(space::HALF))
-        .rounded(px(radius::R_DIALOG))
+        .rounded(px(radius::R_FLOAT))
         .bg(t.menu())
         .border_1()
-        .border_color(t.popover_border())
-        .shadow(t.e2())
+        .border_color(t.border())
+        .shadow(t.e_menu())
         .text_color(t.fg())
         .font_family(t.ui_font())
 }
@@ -365,10 +366,8 @@ fn row(id: &SharedString, i: usize, t: &OinoTheme, entry: MenuEntry) -> AnyEleme
             .items_center()
             .gap(px(space::S2))
             .h(px(size::CONTROL))
-            .px(px(space::S2))
-            .text_color(t.fg_subtle())
-            .text_role(t, TextRole::Sm)
-            .child(text)
+            .px(px(space::S2_5))
+            .child(crate::components::section_label::label(t, text))
             .when_some(badge, |el, b| {
                 el.child(super::badge::pill(t, t.tag(), t.fg_subtle(), b))
             })
@@ -390,9 +389,9 @@ fn row(id: &SharedString, i: usize, t: &OinoTheme, entry: MenuEntry) -> AnyEleme
                 .flex()
                 .items_center()
                 .gap(px(space::S2))
-                .min_h(px(size::CONTROL_LG))
-                .px(px(space::S2))
-                .rounded(px(radius::R_MD))
+                .min_h(px(size::MENU_ROW))
+                .px(px(space::S2_5))
+                .rounded(px(radius::R_ROW))
                 .text_color(fg)
                 .text_role(t, TextRole::Base)
                 .when(active, |el| el.bg(t.menu_hover()))

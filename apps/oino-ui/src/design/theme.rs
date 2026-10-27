@@ -170,6 +170,27 @@ impl OinoTheme {
         harness,
         harness_surface,
         thinking,
+        sidebar,
+        selection,
+        sheet,
+        chip,
+        bubble,
+        line_soft,
+        row_divider,
+        fg_strong,
+        list_marker,
+        link,
+        selected_border,
+        selected_border_strong,
+        chip_active,
+        chip_active_border,
+        attention_surface,
+        attention_border,
+        attention_fg,
+        scrollbar_thumb,
+        scrollbar_thumb_hover,
+        diff_added_fg,
+        diff_removed_fg,
     );
 
     /// ANSI color `i` (0–15).
@@ -257,6 +278,52 @@ impl OinoTheme {
         } else {
             tokens::E3.0
         })]
+    }
+
+    fn pick(&self, layer: (ShadowLayer, ShadowLayer)) -> Vec<BoxShadow> {
+        vec![Self::shadow(if self.dark { layer.0 } else { layer.1 })]
+    }
+
+    /// Dialog elevation (A2.4 `0 24 80`).
+    #[must_use]
+    pub fn e_dialog(&self) -> Vec<BoxShadow> {
+        self.pick(tokens::elevation::DIALOG)
+    }
+
+    /// Palette elevation (A2.4 `0 30 90`).
+    #[must_use]
+    pub fn e_palette(&self) -> Vec<BoxShadow> {
+        self.pick(tokens::elevation::PALETTE)
+    }
+
+    /// Menu / popover elevation (A2.4 `0 12 32`).
+    #[must_use]
+    pub fn e_menu(&self) -> Vec<BoxShadow> {
+        self.pick(tokens::elevation::MENU)
+    }
+
+    /// Composer elevation (A2.4 `0 -8 30`).
+    #[must_use]
+    pub fn e_composer(&self) -> Vec<BoxShadow> {
+        self.pick(tokens::elevation::COMPOSER)
+    }
+
+    /// Jump-to-latest / FAB elevation (A2.4 `0 6 20`).
+    #[must_use]
+    pub fn e_fab(&self) -> Vec<BoxShadow> {
+        self.pick(tokens::elevation::FAB)
+    }
+
+    /// Toast / mascot bubble elevation (A2.4 `0 8 26`).
+    #[must_use]
+    pub fn e_toast(&self) -> Vec<BoxShadow> {
+        self.pick(tokens::elevation::TOAST)
+    }
+
+    /// A tint of `c` at `alpha` (mode chips: 13 % bg, 45 % border; A2.2).
+    #[must_use]
+    pub fn tint(c: Hsla, alpha: f32) -> Hsla {
+        c.opacity(alpha)
     }
 
     /// Touch density is active (Oino Mobile).
@@ -433,6 +500,7 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     k.secondary_hover = c(p.border_hover);
     k.secondary_active = c(p.border_hover);
     k.border = c(p.border);
+    // Fields have no border at rest; focus draws the shell ring (A2.5 / L11).
     k.input = c(p.input_border);
     k.ring = c(p.input_border_focus);
     k.primary = primary;
@@ -450,10 +518,10 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     k.list = c(p.frame);
     k.list_hover = c(p.hover);
     k.list_active = c(p.selected);
-    k.list_active_border = gpui_kit::transparent_black();
+    k.list_active_border = c(p.selected_border);
     k.list_even = c(p.frame);
     k.list_head = c(p.frame);
-    k.sidebar = c(p.window);
+    k.sidebar = c(p.sidebar);
     k.sidebar_foreground = c(p.fg);
     k.sidebar_accent = c(p.selected);
     k.sidebar_accent_foreground = c(p.fg);
@@ -479,16 +547,16 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
     k.status_bar = c(p.window);
     k.status_bar_border = c(p.border);
     k.scrollbar = gpui_kit::transparent_black();
-    k.scrollbar_thumb = c(p.border);
-    k.scrollbar_thumb_hover = c(p.border_hover);
+    k.scrollbar_thumb = c(p.scrollbar_thumb);
+    k.scrollbar_thumb_hover = c(p.scrollbar_thumb_hover);
     k.selection = c(p.selection);
     k.caret = c(if t.dark { p.cream } else { p.fg });
     k.overlay = c(p.scrim);
-    k.link = c(p.info);
+    k.link = c(p.link);
     k.link_hover = c(p.info_surface_fg);
     k.link_active = c(p.info_surface_fg);
     k.switch = c(p.secondary);
-    k.switch_thumb = c(p.fg_inverse);
+    k.switch_thumb = c(p.fg_subtle);
     k.table = c(p.frame);
     k.table_head = c(p.frame);
     k.table_head_foreground = c(p.fg_subtle);

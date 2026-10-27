@@ -609,11 +609,17 @@ impl UiState {
                     .filter_map(|sc| {
                         Some(Shortcut {
                             id: sc.get("id")?.as_str()?.to_owned(),
-                            keys: sc
-                                .get("keys")
-                                .and_then(JsonValue::as_str)
-                                .unwrap_or_default()
-                                .to_owned(),
+                            // Core sends `keys` as a list of pi key ids (GA-43); a single
+                            // string is accepted too. Several keys are joined with `,`.
+                            keys: match sc.get("keys") {
+                                Some(JsonValue::Array(keys)) => keys
+                                    .iter()
+                                    .filter_map(JsonValue::as_str)
+                                    .collect::<Vec<_>>()
+                                    .join(","),
+                                Some(JsonValue::String(k)) => k.clone(),
+                                _ => String::new(),
+                            },
                             description: sc
                                 .get("description")
                                 .and_then(JsonValue::as_str)
@@ -793,6 +799,8 @@ mod tests {
         assert_eq!(ui.working_message, None);
         ui.apply(&req(json!({"method":"setShortcuts","shortcuts":[{"id":"x.go","keys":"alt+g","description":"Go"}]})));
         assert_eq!(ui.shortcuts[0].keys, "alt+g");
+        ui.apply(&req(json!({"method":"setShortcuts","shortcuts":[{"id":"x.go","keys":["alt+g","ctrl+g"],"description":"Go"}]})));
+        assert_eq!(ui.shortcuts[0].keys, "alt+g,ctrl+g");
     }
 
     #[test]

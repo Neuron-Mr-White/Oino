@@ -278,13 +278,12 @@ impl Workspace {
                     self.with_pane(cx, |p, cx| p.open_side(SideTab::Review, cx));
                 }
             }
+            // One visible session, up to three more streaming in the background (A2.18).
             Action::Split => {
-                if self.layout.len() >= 4 {
-                    if let Some(last) = self.layout.last().copied() {
-                        self.close_pane(last, window, cx);
-                    }
+                if self.panes.len() >= 4 {
+                    self.cycle_session(window, cx);
                 } else {
-                    self.split(window, cx);
+                    self.new_session(window, cx);
                 }
             }
             Action::CloseBottom => {

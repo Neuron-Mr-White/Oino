@@ -26,7 +26,7 @@ impl Render for TipView {
             .max_w(px(size::TOAST))
             .py(px(space::S1_5))
             .px(px(space::S2))
-            .rounded(px(radius::R_LG))
+            .rounded(px(radius::R_ROW))
             .bg(t.tooltip())
             .border_1()
             .border_color(t.popover_border())

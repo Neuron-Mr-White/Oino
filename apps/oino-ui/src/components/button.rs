@@ -1,4 +1,7 @@
-//! `Button` and `IconButton` (design.md §4.1–§4.2).
+//! `Button` and `IconButton` (design.md §4.1–§4.2 as amended by A2.15): every button is a
+//! pill. Primary `shell`/`face` (one per view), secondary surface-3, ghost transparent
+//! `fg_subtle` (hover surface-2 + `fg`), danger soft (`danger_surface` + `danger`), and
+//! destructive confirms in `deep` with an icon.
 
 use std::rc::Rc;
 
@@ -12,7 +15,7 @@ use gpui_kit::{
 
 use crate::components::tooltip::tip;
 use crate::design::icons::{icon, spinner};
-use crate::design::theme::{OinoTheme, TextExt as _};
+use crate::design::theme::{OinoTheme, TextExt};
 use crate::design::{TextRole, radius, size, space};
 
 /// Visual variant.
@@ -27,8 +30,10 @@ pub enum Variant {
     /// Transparent, hover fill.
     #[default]
     Ghost,
-    /// `danger` fill, white text.
+    /// Destructive confirm: `deep` fill, white text (always icon + word).
     Danger,
+    /// Soft danger: `danger_surface` fill, `danger` text (A2.15 danger button).
+    DangerSoft,
     /// Ghost with `danger_surface_fg` text.
     GhostDanger,
     /// Outline with `danger_surface_fg` text.
@@ -51,6 +56,10 @@ pub enum BtnSize {
     Lg,
     /// 44 (touch targets, design.md §6).
     Touch,
+    /// 34: `BUTTON_SM` toolbars and inline actions (A2.15).
+    Md,
+    /// 44: `BUTTON` dialog footers, empty states, page CTAs (A2.15).
+    Xl,
 }
 
 impl BtnSize {
@@ -61,6 +70,8 @@ impl BtnSize {
             Self::Default => size::CONTROL,
             Self::Lg => size::CONTROL_LG,
             Self::Touch => crate::design::tokens::touch::TARGET,
+            Self::Md => size::BUTTON_SM,
+            Self::Xl => size::BUTTON,
         }
     }
 
@@ -71,6 +82,8 @@ impl BtnSize {
             Self::Default => 10.0,
             Self::Lg => space::S3,
             Self::Touch => space::S4,
+            Self::Md => space::S3_5,
+            Self::Xl => space::S5,
         }
     }
 }
@@ -260,7 +273,7 @@ impl RenderOnce for Btn {
                 None,
                 Some(t.primary_hover()),
             ),
-            Variant::Secondary => (Some(t.secondary()), t.fg(), None, Some(t.border_hover())),
+            Variant::Secondary => (Some(t.secondary()), t.fg(), None, Some(t.border())),
             Variant::Outline => (None, t.fg(), Some(t.border()), Some(t.hover())),
             Variant::OutlineDanger => (
                 None,
@@ -268,7 +281,13 @@ impl RenderOnce for Btn {
                 Some(t.border()),
                 Some(t.danger_surface()),
             ),
-            Variant::Ghost => (None, t.fg(), None, Some(t.hover())),
+            Variant::Ghost => (None, t.fg_subtle(), None, Some(t.hover())),
+            Variant::DangerSoft => (
+                Some(t.danger_surface()),
+                t.danger(),
+                None,
+                Some(t.danger_surface().opacity(1.0)),
+            ),
             Variant::GhostDanger => (None, t.danger_surface_fg(), None, Some(t.danger_surface())),
             // Destructive = unipi `deep` with a white label (always icon + word).
             Variant::Danger => (
@@ -285,7 +304,7 @@ impl RenderOnce for Btn {
             self.color.unwrap_or(fg)
         };
         let bg = if self.disabled && matches!(self.variant, Variant::Primary) {
-            Some(t.secondary())
+            Some(t.primary().opacity(0.35))
         } else if self.selected {
             Some(t.selected())
         } else {
@@ -320,11 +339,20 @@ impl RenderOnce for Btn {
                 &t,
                 if h <= size::CONTROL_XS {
                     TextRole::Sm
+                } else if h >= size::BUTTON {
+                    TextRole::Prose
                 } else {
                     TextRole::Base
                 },
             )
-            .weight_medium()
+            .when(
+                h >= size::BUTTON || self.variant == Variant::Primary,
+                TextExt::weight_semibold,
+            )
+            .when(
+                h < size::BUTTON && self.variant != Variant::Primary,
+                TextExt::weight_medium,
+            )
             .when(self.square, |el| el.w(px(h)))
             .when(!self.square, |el| el.px(px(self.size.pad())))
             .when(self.full, gpui_kit::Styled::w_full)
@@ -358,7 +386,14 @@ impl RenderOnce for Btn {
                         .border_color(t.focus())
                 })
                 .cursor_pointer()
-                .when_some(hover, |el, h| el.hover(move |s| s.bg(h)));
+                .when_some(hover, |el, h| {
+                    let ghost = matches!(self.variant, Variant::Ghost) && self.color.is_none();
+                    let strong = t.fg();
+                    el.hover(move |s| {
+                        let s = s.bg(h);
+                        if ghost { s.text_color(strong) } else { s }
+                    })
+                });
             if let Some(f) = on_click {
                 el = el.on_click(move |e, w, cx| f(e, w, cx));
             }

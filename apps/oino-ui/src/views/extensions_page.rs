@@ -1,6 +1,7 @@
-//! D12 Extensions (design.md §5.11): name, id, version, kind, state (error tooltip) and a
-//! permission summary per package; Enable / Disable, Settings, Readme per row; Install from
-//! file… and Open extensions folder in the header.
+//! D12 Extensions (design.md A2.17): `PageHeader` "Extensions" (meta "32 loaded · 1 failed",
+//! tools Open folder, Install from file…, crab) and one grouped card per kind (Providers /
+//! unipi / User). Rows 64: icon tile, name 15/500 + id mono 12, version, state capsule,
+//! enable switch, `⋮` menu (Settings, Readme, Reveal folder).
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -11,18 +12,43 @@ use gpui_kit::{
 
 use gpui_kit::component::text::TextView;
 
-use crate::components::badge::{badge, section_label};
 use crate::components::button::{Btn, BtnSize, Variant};
-use crate::components::settings::page_title;
+use crate::components::menu::{MenuEntry, Placement, menu, popover};
+use crate::components::page_header::{PageHeader, header_crab};
 use crate::components::toast::ToastKind;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
-use crate::model::ous::Tone;
+use crate::host::ExtensionInfo;
 use crate::rt::Tokio;
-use crate::views::shell::Workspace;
+use crate::views::shell::AppShell;
 
-impl Workspace {
+impl AppShell {
+    /// Readme of `ext` (GA-19): its package README when the folder has one, else the
+    /// updater's README panel (`/readme <package>`), which also knows bundled packages. The
+    /// file is read on tokio, never in render.
+    fn open_readme(&mut self, ext: &ExtensionInfo, cx: &mut Context<Self>) {
+        let info = ext.clone();
+        let task = Tokio::spawn(cx, async move { info.readme() });
+        let package = ext.id.trim_start_matches("unipi.").to_owned();
+        let id = ext.id.clone();
+        cx.spawn(async move |this, cx| {
+            let text = task.await.ok().flatten();
+            let _ = this.update(cx, |ws, cx| {
+                if let Some(text) = text {
+                    ws.ext_readme = Some((id, text));
+                } else {
+                    // The README panel opens in the visible session.
+                    ws.with_pane(cx, |p, cx| p.run_prompt(&format!("/readme {package}"), cx));
+                    ws.route = crate::views::shell::Route::Sessions;
+                    ws.detail_open = ws.focused.is_some();
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn toggle_extension(&mut self, id: &str, enable: bool, cx: &mut Context<Self>) {
         match self.host.set_extension_enabled(id, enable) {
             Ok(()) => {
@@ -116,8 +142,205 @@ impl Workspace {
         ))
     }
 
+    /// One 64 px extension row.
+    fn render_extension_row(
+        &self,
+        i: usize,
+        e: &ExtensionInfo,
+        t: &OinoTheme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let glyph = if e.kind == "provider" {
+            IconName::Plug
+        } else if e.id.starts_with("unipi.") {
+            IconName::Blocks
+        } else {
+            IconName::Box
+        };
+        let ns = e.id.trim_start_matches("unipi.").to_owned();
+        let id = e.id.clone();
+        let enabled = e.enabled;
+        let name = if e.name.is_empty() {
+            e.id.clone()
+        } else {
+            e.name.clone()
+        };
+        let state = match (&e.error, e.enabled) {
+            (Some(err), _) => div()
+                .id(("ext-err", i))
+                .tooltip(crate::components::tooltip::tip(
+                    SharedString::from(err.clone()),
+                    None,
+                ))
+                .child(crate::components::chip::status(t, t.danger(), "Failed"))
+                .into_any_element(),
+            (None, false) => {
+                crate::components::chip::status(t, t.fg_subtlest(), "Off").into_any_element()
+            }
+            (None, true) => {
+                crate::components::chip::status(t, t.success(), "Loaded").into_any_element()
+            }
+        };
+        let menu_open = self.ext_menu.as_deref() == Some(e.id.as_str());
+        let ext = e.clone();
+        let root = e.root.clone();
+        let weak = cx.entity().downgrade();
+        let more = popover(
+            Btn::icon_only(("ext-more", i), IconName::EllipsisVertical, "More")
+                .size(BtnSize::Md)
+                .on_click(cx.listener({
+                    let id = id.clone();
+                    move |this, _, _, cx| {
+                        this.ext_menu = Some(id.clone());
+                        cx.notify();
+                    }
+                })),
+            menu_open,
+            Placement::BelowEnd,
+            || {
+                let (w1, w2, w3) = (weak.clone(), weak.clone(), weak.clone());
+                let ns = ns.clone();
+                let ext = ext.clone();
+                let root = root.clone();
+                let no_root = root.is_none();
+                menu(
+                    "ext-menu",
+                    t,
+                    size::MENU_MIN,
+                    vec![
+                        MenuEntry::item("Settings", move |window, cx| {
+                            let ns = ns.clone();
+                            let _ = w1.update(cx, |ws, cx| {
+                                ws.ext_menu = None;
+                                ws.open_settings(Some(&ns), window, cx);
+                            });
+                        })
+                        .icon(IconName::Settings),
+                        MenuEntry::item("Readme", move |_, cx| {
+                            let ext = ext.clone();
+                            let _ = w2.update(cx, |ws, cx| {
+                                ws.ext_menu = None;
+                                ws.open_readme(&ext, cx);
+                            });
+                        })
+                        .icon(IconName::BookOpen),
+                        MenuEntry::item("Reveal folder", move |_, cx| {
+                            if let Some(r) = &root {
+                                cx.reveal_path(r);
+                            }
+                            let _ = w3.update(cx, |ws, cx| {
+                                ws.ext_menu = None;
+                                cx.notify();
+                            });
+                        })
+                        .icon(IconName::FolderSearch)
+                        .disabled(no_root),
+                    ],
+                )
+                .into_any_element()
+            },
+            {
+                let e = cx.entity().downgrade();
+                move |_: &mut gpui_kit::Window, cx: &mut gpui_kit::App| {
+                    let _ = e.update(cx, |ws, cx| {
+                        ws.ext_menu = None;
+                        cx.notify();
+                    });
+                }
+            },
+        );
+        let detail = if e.description.is_empty() {
+            e.id.clone()
+        } else {
+            format!("{} · {}", e.id, e.description)
+        };
+        div()
+            .id(("ext-row", i))
+            .flex()
+            .items_center()
+            .gap(px(space::S3))
+            .min_h(px(size::ROW))
+            .py(px(space::S2))
+            .px(px(space::S3_5))
+            .hover(|s| s.bg(t.hover()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .flex_shrink_0()
+                    .size(px(size::TILE_ROW))
+                    .rounded(px(radius::R_ROW))
+                    .bg(t.chip())
+                    .child(icon(glyph, size::ICON, t.fg_subtle())),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(space::HALF))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(space::S2))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_role(t, TextRole::Prose)
+                                    .line_height(t.text(TextRole::Base).1)
+                                    .weight_medium()
+                                    .child(SharedString::from(name)),
+                            )
+                            .when(e.bundled, |el| {
+                                el.child(
+                                    div()
+                                        .text_role(t, TextRole::Xs)
+                                        .text_color(t.fg_subtlest())
+                                        .child("bundled"),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .mono_text(t, TextRole::Sm)
+                            .text_color(t.fg_subtlest())
+                            .child(SharedString::from(detail)),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .mono_text(t, TextRole::Sm)
+                    .text_color(t.fg_subtle())
+                    .child(SharedString::from(e.version.clone())),
+            )
+            .child(state)
+            .child(crate::components::controls::switch(
+                ("ext-toggle", i),
+                t,
+                enabled,
+                {
+                    let weak = cx.entity().downgrade();
+                    move |on, _, cx| {
+                        let id = id.clone();
+                        let _ = weak.update(cx, |this, cx| this.toggle_extension(&id, on, cx));
+                    }
+                },
+            ))
+            .child(more)
+            .into_any_element()
+    }
+
     /// The extensions page.
-    pub(crate) fn render_extensions(&mut self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_extensions(
+        &mut self,
+        window: &mut gpui_kit::Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let t = OinoTheme::get(cx);
         let failed = self.extensions.iter().filter(|e| e.error.is_some()).count();
         let disabled = self.extensions.iter().filter(|e| !e.enabled).count();
@@ -126,228 +349,115 @@ impl Workspace {
             .iter()
             .filter(|e| e.error.is_none() && e.enabled)
             .count();
-        let col = |w: f32| div().w(px(w)).flex_shrink_0().flex().items_center();
-        let header = div()
-            .flex()
-            .items_center()
-            .gap(px(space::S3))
-            .h(px(size::CONTROL_LG))
-            .px(px(space::S3))
-            .border_b_1()
-            .border_color(t.border())
-            .child(col(size::SIDEBAR).child(section_label(&t, "Extension")))
-            .child(col(size::SIDEBAR / 3.0).child(section_label(&t, "Version")))
-            .child(col(size::SIDEBAR / 3.0).child(section_label(&t, "Kind")))
-            .child(col(size::SIDEBAR / 2.5).child(section_label(&t, "State")))
-            .child(div().flex_1().child(section_label(&t, "Permissions")));
-        let rows: Vec<AnyElement> = self
-            .extensions
-            .iter()
-            .enumerate()
-            .map(|(i, e)| {
-                let (glyph, kind) = if e.kind == "provider" {
-                    (IconName::Plug, "provider")
-                } else if e.id.starts_with("unipi.") {
-                    (IconName::Blocks, "unipi")
-                } else {
-                    (IconName::Box, "user")
-                };
-                let ns = e.id.trim_start_matches("unipi.").to_owned();
-                let id = e.id.clone();
-                let enabled = e.enabled;
-                let readme = e.readme().map(|r| (e.id.clone(), r));
-                let name = if e.name.is_empty() {
-                    e.id.clone()
-                } else {
-                    e.name.clone()
-                };
-                let state = match (&e.error, e.enabled) {
-                    (Some(err), _) => div()
-                        .id(("ext-err", i))
-                        .tooltip(crate::components::tooltip::tip(
-                            SharedString::from(err.clone()),
-                            None,
-                        ))
-                        .child(badge(&t, Tone::Error, "Failed"))
-                        .into_any_element(),
-                    (None, false) => badge(&t, Tone::Muted, "Disabled").into_any_element(),
-                    (None, true) => badge(&t, Tone::Success, "Loaded").into_any_element(),
-                };
-                div()
-                    .id(("ext-row", i))
-                    .flex()
-                    .items_center()
-                    .gap(px(space::S3))
-                    .min_h(px(size::SETTING_ROW))
-                    .py(px(space::S2))
-                    .px(px(space::S3))
-                    .border_b_1()
-                    .border_color(t.border())
-                    .hover(|s| s.bg(t.hover()))
-                    .child(
-                        col(size::SIDEBAR)
-                            .gap(px(space::S2))
-                            .child(icon(glyph, size::ICON, t.fg_subtle()))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .min_w_0()
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .text_role(&t, TextRole::Base)
-                                            .weight_medium()
-                                            .child(SharedString::from(name)),
-                                    )
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .mono_text(&t, TextRole::Xs)
-                                            .text_color(t.fg_subtle())
-                                            .child(SharedString::from(e.id.clone())),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        col(size::SIDEBAR / 3.0)
-                            .mono_text(&t, TextRole::Sm)
-                            .text_color(t.fg_subtle())
-                            .child(SharedString::from(e.version.clone())),
-                    )
-                    .child(col(size::SIDEBAR / 3.0).child(badge(&t, Tone::Muted, kind)))
-                    .child(
-                        col(size::SIDEBAR / 2.5)
-                            .gap(px(space::S1))
-                            .child(state)
-                            .when(e.bundled, |el| {
-                                el.child(badge(&t, Tone::Default, "bundled"))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_role(&t, TextRole::Sm)
-                            .text_color(t.fg_subtle())
-                            .child(SharedString::from(if e.permissions.is_empty() {
-                                "—".to_owned()
-                            } else {
-                                e.permissions.join(" · ")
-                            })),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(space::S1))
-                            .flex_shrink_0()
-                            .child(
-                                Btn::new(("ext-toggle", i))
-                                    .label(if enabled { "Disable" } else { "Enable" })
-                                    .icon(IconName::Power)
-                                    .size(BtnSize::Sm)
-                                    .variant(Variant::Outline)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.toggle_extension(&id, !enabled, cx);
-                                    })),
-                            )
-                            .child(
-                                Btn::icon_only(("ext-settings", i), IconName::Settings, "Settings")
-                                    .size(BtnSize::Sm)
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.open_settings(Some(&ns), window, cx);
-                                    })),
-                            )
-                            .child(
-                                Btn::icon_only(("ext-readme", i), IconName::BookOpen, "Readme")
-                                    .size(BtnSize::Sm)
-                                    .disabled(readme.is_none())
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.ext_readme.clone_from(&readme);
-                                        cx.notify();
-                                    })),
-                            ),
-                    )
-                    .into_any_element()
-            })
-            .collect();
+        let mut meta = vec![format!("{loaded} loaded")];
+        if failed > 0 {
+            meta.push(format!("{failed} failed"));
+        }
+        if disabled > 0 {
+            meta.push(format!("{disabled} off"));
+        }
         let folder = self.host.extensions_dir();
+        let crab = self.crab(cx);
+        let needs = self.sessions.needs_you().len();
+        let header = PageHeader::new("Extensions")
+            .meta(meta.join(" · "))
+            .tool(
+                Btn::new("ext-folder")
+                    .label("Open folder")
+                    .icon(IconName::FolderOpen)
+                    .size(BtnSize::Md)
+                    .disabled(folder.is_none())
+                    .on_click(move |_, _, cx| {
+                        if let Some(f) = &folder {
+                            let _ = std::fs::create_dir_all(f);
+                            cx.open_with_system(f);
+                        }
+                    }),
+            )
+            .tool(
+                Btn::new("ext-install")
+                    .label("Install from file…")
+                    .icon(IconName::Download)
+                    .size(BtnSize::Md)
+                    .variant(Variant::Secondary)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.install_from_file(cx);
+                    })),
+            )
+            .tool(header_crab(crab, needs, cx))
+            .window_controls(window, &t)
+            .render(&t);
+        let kinds: [(&str, fn(&ExtensionInfo) -> bool); 3] = [
+            ("Providers", |e| e.kind == "provider"),
+            ("unipi", |e| {
+                e.kind != "provider" && e.id.starts_with("unipi.")
+            }),
+            ("User", |e| {
+                e.kind != "provider" && !e.id.starts_with("unipi.")
+            }),
+        ];
+        let exts = self.extensions.clone();
+        let mut sections: Vec<AnyElement> = Vec::new();
+        let mut i = 0usize;
+        for (title, pick) in kinds {
+            let list: Vec<&ExtensionInfo> = exts.iter().filter(|e| pick(e)).collect();
+            if list.is_empty() {
+                continue;
+            }
+            let n = list.len();
+            let rows: Vec<AnyElement> = list
+                .into_iter()
+                .map(|e| {
+                    let r = self.render_extension_row(i, e, &t, cx);
+                    i += 1;
+                    r
+                })
+                .collect();
+            sections.push(
+                crate::components::section_label::section_row(
+                    &t,
+                    title,
+                    sections.is_empty(),
+                    Some(crate::components::section_label::count(&t, n)),
+                )
+                .into_any_element(),
+            );
+            sections.push(
+                crate::components::card::grouped(&t, rows, size::ROW_DIVIDER_INSET)
+                    .into_any_element(),
+            );
+        }
+        if sections.is_empty() {
+            sections.push(
+                crate::components::empty::empty_state(
+                    &t,
+                    IconName::Blocks,
+                    "No extensions",
+                    Some("Install one from a folder with an extension.json.".into()),
+                    Vec::new(),
+                )
+                .into_any_element(),
+            );
+        }
         div()
             .flex()
             .flex_col()
             .size_full()
-            .bg(t.frame())
-            .border_1()
-            .border_color(t.border())
-            .rounded(px(radius::R_CARD))
-            .overflow_hidden()
+            .child(header)
             .child(
                 div()
                     .id("ext-page")
                     .flex_1()
+                    .min_h_0()
                     .overflow_y_scroll()
-                    .px(px(space::S8))
-                    .py(px(space::S8))
+                    .px(px(size::PAGE_GUTTER))
+                    .pb(px(space::S8))
                     .child(
                         div()
                             .flex()
                             .flex_col()
-                            .max_w(px(size::DIALOG_LG + space::S12 * 6.0))
-                            .mx_auto()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(space::S2))
-                                    .child(page_title(&t, "Extensions"))
-                                    .child(div().flex_1())
-                                    .child(
-                                        Btn::new("ext-folder")
-                                            .label("Open extensions folder")
-                                            .icon(IconName::FolderOpen)
-                                            .size(BtnSize::Sm)
-                                            .variant(Variant::Ghost)
-                                            .disabled(folder.is_none())
-                                            .on_click(move |_, _, cx| {
-                                                if let Some(f) = &folder {
-                                                    let _ = std::fs::create_dir_all(f);
-                                                    cx.open_with_system(f);
-                                                }
-                                            }),
-                                    )
-                                    .child(
-                                        Btn::new("ext-install")
-                                            .label("Install from file…")
-                                            .icon(IconName::Download)
-                                            .size(BtnSize::Sm)
-                                            .variant(Variant::Outline)
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.install_from_file(cx);
-                                            })),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .pb(px(space::S3))
-                                    .text_role(&t, TextRole::Sm)
-                                    .text_color(t.fg_subtle())
-                                    .child(format!(
-                                        "{loaded} loaded · {failed} failed · {disabled} disabled"
-                                    )),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .rounded(px(radius::R_CARD))
-                                    .border_1()
-                                    .border_color(t.border())
-                                    .overflow_hidden()
-                                    .child(header)
-                                    .children(rows),
-                            ),
+                            .max_w(px(size::SETTINGS_CONTENT + size::SETTINGS_NAV))
+                            .children(sections),
                     ),
             )
             .into_any_element()

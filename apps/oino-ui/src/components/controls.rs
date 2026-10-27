@@ -13,13 +13,13 @@ use gpui_kit::{
 use oino_ai::ThinkingLevel;
 
 use crate::design::icons::icon;
-use crate::design::theme::{OinoTheme, TextExt as _};
-use crate::design::{TextRole, radius, size, space};
+use crate::design::theme::OinoTheme;
+use crate::design::{radius, size, space};
 
 /// Click callback carrying the chosen index.
 pub type OnPick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
-/// A segmented control (2–5 choices), height 28.
+/// A segmented control (2–5 choices): the A2.15 38 px track with 32 px pill options.
 pub fn segmented(
     id: impl Into<SharedString>,
     t: &OinoTheme,
@@ -27,46 +27,18 @@ pub fn segmented(
     active: usize,
     on_pick: OnPick,
 ) -> Div {
-    let id: SharedString = id.into();
-    div()
-        .flex()
-        .flex_row()
-        .flex_shrink_0()
-        .p(px(space::HALF))
-        .gap(px(space::HALF))
-        .h(px(size::CONTROL))
-        .rounded(px(radius::R_BUTTON))
-        .bg(t.surface())
-        .children(labels.iter().enumerate().map(|(i, label)| {
-            let pick = Rc::clone(&on_pick);
-            let selected = i == active;
-            div()
-                .id(ElementId::Name(format!("{id}-{i}").into()))
-                .flex()
-                .items_center()
-                .px(px(space::S2))
-                .rounded(px(radius::R_BUTTON))
-                .cursor_pointer()
-                .text_role(t, TextRole::Sm)
-                .weight_medium()
-                .text_color(if selected { t.fg() } else { t.fg_subtle() })
-                .when(selected, |el| {
-                    el.bg(t.tab_active()).border_1().border_color(t.border())
-                })
-                .when(!selected, |el| el.hover(|s| s.bg(t.hover())))
-                .on_click(move |_: &ClickEvent, w, cx| pick(i, w, cx))
-                .child(SharedString::from((*label).to_owned()))
-        }))
+    crate::components::chip::segmented(t, id, labels, active, on_pick)
 }
 
-/// A 28 × 16 switch.
+/// A 44 × 26 switch (A2.16): on = `shell` with a cream knob, off = surface-3 with a muted
+/// knob.
 pub fn switch(
     id: impl Into<ElementId>,
     t: &OinoTheme,
     on: bool,
     on_toggle: impl Fn(bool, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    let (w, h) = size::SWITCH;
+    let (w, h) = size::SWITCH_LG;
     let knob = h - space::S1;
     div()
         .id(id.into())
@@ -89,7 +61,7 @@ pub fn switch(
                 }))
                 .size(px(knob))
                 .rounded(px(radius::R_FULL))
-                .bg(if on { t.primary_fg() } else { t.fg_subtle() }),
+                .bg(if on { t.cream() } else { t.fg_subtle() }),
         )
 }
 

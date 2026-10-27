@@ -1,6 +1,9 @@
-//! `Toast` (design.md §4.23): bottom-right stack of at most 3, `toast` bg, `R_2XL`, E3;
-//! auto-dismiss 4 s info / 6 s warning, sticky errors; hover pauses (the owner skips expiry
-//! while hovered).
+//! `Toast` (design.md A2.12): bottom-centre stack of at most 3, max 420 wide, `sheet` fill,
+//! radius 16, toast elevation, padding 10 14; icon in tone, message up to 3 lines with
+//! "More" (opens the full text as a result card, GA-24), at most one action pill.
+//! Auto-dismiss 4 s info / 6 s warning, sticky errors; hover pauses (the owner skips expiry
+//! while hovered). Messages longer than [`is_long`] skip the toast and open the result card
+//! directly.
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -112,6 +115,12 @@ impl Toasts {
         self.items.iter().any(|t| t.kind.ttl().is_some())
     }
 
+    /// The toast `id`.
+    #[must_use]
+    pub fn get(&self, id: u64) -> Option<&Toast> {
+        self.items.iter().find(|t| t.id == id)
+    }
+
     /// Visible toasts (newest last, at most 3).
     #[must_use]
     pub fn visible(&self) -> &[Toast] {
@@ -120,19 +129,32 @@ impl Toasts {
     }
 }
 
-/// Renders the stack; `on_dismiss(id)` closes one.
+/// Lines a toast shows before "More".
+pub const TOAST_LINES: usize = 3;
+
+/// A notify text that does not fit a toast (multi-line status reports, GA-24): more than
+/// [`TOAST_LINES`] lines or about three lines of characters.
+#[must_use]
+pub fn is_long(text: &str) -> bool {
+    text.lines().count() > TOAST_LINES || text.chars().count() > 180
+}
+
+/// Renders the stack; `on_dismiss(id)` closes one, `on_more(id)` opens its full text.
 pub fn stack(
     t: &OinoTheme,
     toasts: &Toasts,
     on_dismiss: Rc<dyn Fn(u64, &mut Window, &mut App)>,
     on_hover: Rc<dyn Fn(Option<u64>, &mut Window, &mut App)>,
+    on_more: Rc<dyn Fn(u64, &mut Window, &mut App)>,
 ) -> Div {
     div()
         .absolute()
-        .bottom(px(space::S4))
-        .right(px(space::S4))
+        .bottom(px(space::S6))
+        .left_0()
+        .right_0()
         .flex()
         .flex_col()
+        .items_center()
         .gap(px(space::S2))
         .children(toasts.visible().iter().map(|toast| {
             let (glyph, c) = match toast.kind {
@@ -144,22 +166,26 @@ pub fn stack(
             let id = toast.id;
             let dismiss = Rc::clone(&on_dismiss);
             let hover = Rc::clone(&on_hover);
+            let more = Rc::clone(&on_more);
+            let clipped =
+                toast.message.lines().count() > TOAST_LINES || toast.message.chars().count() > 120;
             crate::design::motion::enter(
                 t,
                 ElementId::Name(format!("toast-in-{id}").into()),
                 div()
                     .id(ElementId::Name(format!("toast-{id}").into()))
-                    .w(px(size::TOAST))
+                    .max_w(px(size::TOAST_MAX))
+                    .min_w(px(size::TOAST * 0.6))
                     .flex()
                     .items_start()
-                    .gap(px(space::S3))
-                    .py(px(space::S3))
-                    .px(px(space::S4))
-                    .rounded(px(radius::R_2XL))
-                    .bg(t.toast())
+                    .gap(px(space::S2_5))
+                    .py(px(space::S2_5))
+                    .px(px(space::S3_5))
+                    .rounded(px(radius::R_FLOAT))
+                    .bg(t.sheet())
                     .border_1()
-                    .border_color(t.popover_border())
-                    .shadow(t.e3())
+                    .border_color(t.border())
+                    .shadow(t.e_toast())
                     .on_hover(move |h: &bool, w, cx| hover(h.then_some(id), w, cx))
                     .child(div().pt(px(space::HALF)).child(icon(glyph, size::ICON, c)))
                     .child(
@@ -174,14 +200,40 @@ pub fn stack(
                             .when_some(toast.title.clone(), |el, title| {
                                 el.child(div().weight_medium().child(title))
                             })
-                            .child(div().line_clamp(2).child(toast.message.clone()))
-                            .when_some(toast.action.clone(), |el, (label, f)| {
+                            .child(
+                                div()
+                                    .line_clamp(TOAST_LINES)
+                                    .text_color(t.fg_subtle())
+                                    .when(toast.title.is_none(), |el| el.text_color(t.fg()))
+                                    .child(toast.message.clone()),
+                            )
+                            .when(clipped || toast.action.is_some(), |el| {
                                 el.child(
-                                    Btn::new(ElementId::Name(format!("toast-act-{id}").into()))
-                                        .label(label)
-                                        .variant(Variant::Link)
-                                        .size(BtnSize::Xs)
-                                        .on_click(move |_, w, cx| f(w, cx)),
+                                    div()
+                                        .flex()
+                                        .gap(px(space::S1_5))
+                                        .when(clipped, |el| {
+                                            el.child(
+                                                Btn::new(ElementId::Name(
+                                                    format!("toast-more-{id}").into(),
+                                                ))
+                                                .label("More")
+                                                .variant(Variant::Secondary)
+                                                .size(BtnSize::Sm)
+                                                .on_click(move |_, w, cx| more(id, w, cx)),
+                                            )
+                                        })
+                                        .when_some(toast.action.clone(), |el, (label, f)| {
+                                            el.child(
+                                                Btn::new(ElementId::Name(
+                                                    format!("toast-act-{id}").into(),
+                                                ))
+                                                .label(label)
+                                                .variant(Variant::Secondary)
+                                                .size(BtnSize::Sm)
+                                                .on_click(move |_, w, cx| f(w, cx)),
+                                            )
+                                        }),
                                 )
                             }),
                     )
@@ -189,7 +241,7 @@ pub fn stack(
                         div()
                             .id(ElementId::Name(format!("toast-x-{id}").into()))
                             .cursor_pointer()
-                            .rounded(px(radius::R_SM))
+                            .rounded(px(radius::R_FULL))
                             .hover(|s| s.bg(t.hover()))
                             .on_click(move |_: &ClickEvent, w, cx| dismiss(id, w, cx))
                             .child(icon(IconName::X, size::ICON_MD, t.fg_subtle())),

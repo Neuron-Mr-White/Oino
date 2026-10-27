@@ -3,15 +3,91 @@
 //! | Where | Keys |
 //! |---|---|
 //! | Timeline (focus it with ⌘↑ from the composer or a click) | ↑/↓ or k/j move the row cursor, Home/End, ⌘↑/⌘↓ previous/next prompt, Enter/Space expand, `c` copy, `o` open in the side pane, Esc / `i` back to the composer |
-//! | Side tabs (anywhere in the pane) | ⌘1–⌘9 pick a tab, Ctrl+Tab / Ctrl+Shift+Tab cycle, ⌘W close |
+//! | Side tabs (anywhere in the session) | ⌘4–⌘9 pick a tab (⌘1–⌘3 are the sidebar nav), Ctrl+Tab / Ctrl+Shift+Tab cycle, ⌘W close |
+//! | Extension shortcuts (`setShortcuts`, GA-16) | matched by the shell's keystroke interceptor ([`shortcut_matches`]); keys the app binds go to the extension only while the composer has focus ([`app_reserved`]) |
 //! | Review / Diff (side pane focused) | n/p or ]/[ next/previous file |
 
-use gpui_kit::{ClipboardItem, Context, KeyDownEvent, Window};
+use gpui_kit::{ClipboardItem, Context, KeyDownEvent, Keystroke, Window};
 
 use crate::components::secondary;
 use crate::model::tools;
 use crate::model::transcript::RowKind;
 use crate::views::session_pane::{PaneEvent, SessionPane, SideTab};
+
+/// Normalised key name of a pi / unipi key spec part (`esc` → `escape`, `return` →
+/// `enter`, `pgup` → `pageup`, …).
+fn key_name(part: &str) -> String {
+    let lower = part.to_ascii_lowercase();
+    match lower.as_str() {
+        "esc" => "escape".into(),
+        "return" => "enter".into(),
+        "pgup" => "pageup".into(),
+        "pgdn" | "pgdown" => "pagedown".into(),
+        "del" => "delete".into(),
+        "bs" => "backspace".into(),
+        "spacebar" => "space".into(),
+        _ => lower,
+    }
+}
+
+/// Whether `ks` matches an extension shortcut spec (`alt+p`, `shift+down`, `ctrl+alt+c`,
+/// `ctrl+shift+p`; pi key syntax, `-` accepted as separator too). Modifiers must match
+/// exactly; `cmd` / `super` / `meta` mean the platform key.
+#[must_use]
+pub fn shortcut_matches(spec: &str, ks: &Keystroke) -> bool {
+    spec.split(',').any(|one| key_matches(one, ks))
+}
+
+fn key_matches(spec: &str, ks: &Keystroke) -> bool {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return false;
+    }
+    let parts: Vec<&str> = if spec.contains('+') {
+        spec.split('+').collect()
+    } else {
+        spec.split('-').collect()
+    };
+    let Some((key, mods)) = parts.split_last() else {
+        return false;
+    };
+    let (mut ctrl, mut alt, mut shift, mut platform) = (false, false, false, false);
+    for m in mods {
+        match m.trim().to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => ctrl = true,
+            "alt" | "option" | "opt" => alt = true,
+            "shift" => shift = true,
+            "cmd" | "super" | "meta" | "win" => platform = true,
+            _ => return false,
+        }
+    }
+    let m = &ks.modifiers;
+    if m.control != ctrl || m.alt != alt || m.platform != platform {
+        return false;
+    }
+    let key = key_name(key.trim());
+    let pressed = ks.key.to_ascii_lowercase();
+    // A shifted letter may arrive as its upper-case key char; the shift flag decides.
+    m.shift == shift && pressed == key
+}
+
+/// Whether the app binds `ks` itself (sidebar, palette, side pane…): an extension shortcut on
+/// such a key wins only while the user is typing in the composer (A2.20 S3).
+#[must_use]
+pub fn app_reserved(ks: &Keystroke) -> bool {
+    let m = &ks.modifiers;
+    let primary = if cfg!(target_os = "macos") {
+        m.platform
+    } else {
+        m.control
+    };
+    primary
+        && !m.alt
+        && matches!(
+            ks.key.as_str(),
+            "n" | "o" | "b" | "j" | "`" | "." | "k" | "m" | "," | "f" | "l" | "q" | "1" | "2" | "3"
+        )
+}
 
 /// Next index from `from` by `dir`, clamped to `0..n`.
 #[must_use]
@@ -268,7 +344,30 @@ fn row_text(pane: &SessionPane, ix: usize) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::step;
+    use super::{app_reserved, shortcut_matches, step};
+    use gpui_kit::Keystroke;
+
+    fn ks(text: &'static str) -> Keystroke {
+        Keystroke::parse(text).unwrap()
+    }
+
+    #[test]
+    fn extension_shortcut_specs_match_keystrokes() {
+        assert!(shortcut_matches("alt+p", &ks("alt-p")));
+        assert!(shortcut_matches("shift+down", &ks("shift-down")));
+        assert!(shortcut_matches("ctrl+alt+c", &ks("ctrl-alt-c")));
+        assert!(shortcut_matches("Ctrl+B", &ks("ctrl-b")));
+        assert!(shortcut_matches("esc", &ks("escape")));
+        assert!(!shortcut_matches("alt+p", &ks("p")));
+        assert!(!shortcut_matches("alt+p", &ks("ctrl-alt-p")));
+        assert!(!shortcut_matches("ctrl+b", &ks("ctrl-shift-b")));
+        assert!(!shortcut_matches("", &ks("a")));
+        assert!(shortcut_matches("alt+g,ctrl+g", &ks("ctrl-g")));
+        if !cfg!(target_os = "macos") {
+            assert!(app_reserved(&ks("ctrl-b")));
+            assert!(!app_reserved(&ks("alt-p")));
+        }
+    }
 
     #[test]
     fn cursor_steps_clamp() {

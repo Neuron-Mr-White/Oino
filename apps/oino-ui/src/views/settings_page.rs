@@ -1,9 +1,14 @@
-//! D8 Settings (design.md §5.7): full main-area page with its own nav, App preferences,
-//! Models & Providers (sign-in over `_oino/auth_providers|login|logout|set_api_key`), keyboard
-//! shortcuts, and the extension settings hub over `_oino/get_settings_schema` /
-//! `get_extension_settings` / `set_extension_setting` (schema fields per ui-protocol §6.6).
+//! D8 Settings (design.md A2.16): `PageHeader` "Settings" with a search tool (⌘F), then a
+//! 200 px section nav and the content (max 760): each section is a section label with an
+//! icon over a grouped card of rows (icon tile 28, label 15/500, description, control).
+//! General and Sessions edit core settings over `_oino/get_settings` / `set_setting`
+//! (GA-37); Models & Providers signs in over `_oino/auth_providers|login|logout`; Keyboard
+//! shortcuts lists app and extension shortcuts (GA-16); the extension settings hub runs over
+//! `_oino/get_settings_schema` / `get_extension_settings` / `set_extension_setting`
+//! (ui-protocol §6.6); Permissions is the `unipi.workflow` hub namespace (GA-33).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -28,7 +33,9 @@ use crate::components::badge::{badge, kbd};
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::{segmented, switch};
 use crate::components::empty::empty_state;
-use crate::components::settings::{group, page_title, row, section_title};
+use crate::components::page_header::PageHeader;
+use crate::components::section_label::with_icon;
+use crate::components::settings::{group, row, row_icon};
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
 use crate::host::{
@@ -50,16 +57,33 @@ pub enum SettingsSection {
     Models,
     /// Sessions.
     Sessions,
-    /// Permissions (workflow rules live in the hub namespace `workflow`).
+    /// Permissions (the hub namespace of extension `unipi.workflow`).
     Permissions,
     /// Keyboard shortcuts.
     Shortcuts,
     /// Extension settings namespace.
     Extension(String),
-    /// Remote access.
-    Remote,
+    /// Unicrab (mascot window, crab size).
+    Unicrab,
     /// About & updates.
     About,
+}
+
+impl SettingsSection {
+    /// Nav label and icon.
+    fn label(&self) -> (&'static str, IconName) {
+        match self {
+            Self::General => ("General", IconName::SlidersHorizontal),
+            Self::Appearance => ("Appearance", IconName::Palette),
+            Self::Unicrab => ("Unicrab", IconName::Sparkles),
+            Self::Models => ("Models & providers", IconName::Plug),
+            Self::Sessions => ("Sessions", IconName::MessageSquare),
+            Self::Permissions => ("Permissions", IconName::Shield),
+            Self::Shortcuts => ("Keyboard shortcuts", IconName::Keyboard),
+            Self::Extension(_) => ("Extension", IconName::Blocks),
+            Self::About => ("About & updates", IconName::Info),
+        }
+    }
 }
 
 /// Emitted to the workspace.
@@ -76,6 +100,9 @@ pub enum SettingsEvent {
     /// Open the Extensions page (D12).
     OpenExtensions,
 }
+
+/// Thinking levels of Settings → General (`defaultThinkingLevel`).
+const LEVELS: [&str; 4] = ["off", "low", "medium", "high"];
 
 /// A `−  n  +` stepper for small integer ranges (font sizes).
 fn stepper(
@@ -141,6 +168,10 @@ pub struct SettingsView {
     search: Entity<InputState>,
     /// Provider whose "Log out" waits for confirmation (app-convention: important actions).
     confirm_logout: Option<String>,
+    /// Merged core settings (`_oino/get_settings`).
+    core: JsonValue,
+    /// The default-model menu is open.
+    model_menu: bool,
     focus: gpui_kit::FocusHandle,
     _subscription: Subscription,
 }
@@ -189,11 +220,14 @@ impl SettingsView {
             inputs: HashMap::new(),
             search,
             confirm_logout: None,
+            core: JsonValue::Null,
+            model_menu: false,
             focus: cx.focus_handle(),
             _subscription: sub,
         };
         view.load_schema(cx);
         view.load_providers(cx);
+        view.load_core(cx);
         if let SettingsSection::Extension(ns) = view.section.clone() {
             view.load_values(&ns, cx);
         }
@@ -215,6 +249,65 @@ impl SettingsView {
             }
         })
         .detach();
+    }
+
+    fn load_core(&self, cx: &mut Context<Self>) {
+        let Some(backend) = self.backend.clone() else {
+            return;
+        };
+        let task = Tokio::spawn(cx, async move { backend.settings().await });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(core)) = task.await {
+                let _ = this.update(cx, |v, cx| {
+                    v.core = core;
+                    v.inputs.retain(|k, _| !k.starts_with("core/"));
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// The core setting at dotted `key`.
+    fn core_at(&self, key: &str) -> Option<&JsonValue> {
+        key.split('.').try_fold(&self.core, |v, part| v.get(part))
+    }
+
+    /// Writes core setting `key` (global scope) and reloads.
+    fn set_core(&mut self, key: &str, value: Option<JsonValue>, cx: &mut Context<Self>) {
+        let Some(backend) = self.backend.clone() else {
+            cx.emit(SettingsEvent::Toast("Open a session to change this".into()));
+            return;
+        };
+        let key = key.to_owned();
+        let task = Tokio::spawn(cx, async move {
+            backend
+                .set_setting(&key, value, SettingsScope::Global)
+                .await
+        });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |v, cx| match result {
+                Ok(Ok(())) => {
+                    cx.emit(SettingsEvent::Toast(
+                        "Saved · applies to new sessions".into(),
+                    ));
+                    v.load_core(cx);
+                }
+                Ok(Err(e)) => cx.emit(SettingsEvent::Toast(e.to_string())),
+                Err(e) => cx.emit(SettingsEvent::Toast(e.to_string())),
+            });
+        })
+        .detach();
+    }
+
+    /// The hub namespace of the workflow extension (GA-33: matched by extension id, the
+    /// namespace itself is named after the page).
+    fn permissions_ns(&self) -> Option<String> {
+        self.namespaces
+            .iter()
+            .find(|n| n.extension_id == "unipi.workflow" || n.namespace == "workflow")
+            .map(|n| n.namespace.clone())
     }
 
     fn load_providers(&self, cx: &mut Context<Self>) {
@@ -266,6 +359,11 @@ impl SettingsView {
         if let SettingsSection::Extension(ns) = &section {
             self.load_values(ns, cx);
         }
+        if section == SettingsSection::Permissions
+            && let Some(ns) = self.permissions_ns()
+        {
+            self.load_values(&ns, cx);
+        }
         self.section = section;
         cx.notify();
     }
@@ -275,17 +373,19 @@ impl SettingsView {
         let mut out = vec![
             SettingsSection::General,
             SettingsSection::Appearance,
+            SettingsSection::Unicrab,
             SettingsSection::Models,
             SettingsSection::Sessions,
             SettingsSection::Permissions,
             SettingsSection::Shortcuts,
         ];
+        let permissions = self.permissions_ns();
         out.extend(
             self.namespaces
                 .iter()
+                .filter(|n| Some(&n.namespace) != permissions.as_ref())
                 .map(|n| SettingsSection::Extension(n.namespace.clone())),
         );
-        out.push(SettingsSection::Remote);
         out.push(SettingsSection::About);
         out
     }
@@ -409,6 +509,7 @@ impl SettingsView {
     fn nav(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
         let item = |id: ElementId,
                     label: SharedString,
+                    glyph: Option<IconName>,
                     section: SettingsSection,
                     active: bool,
                     cx: &mut Context<Self>| {
@@ -416,89 +517,64 @@ impl SettingsView {
                 .id(id)
                 .flex()
                 .items_center()
-                .h(px(size::CONTROL_LG))
-                .px(px(space::S2))
-                .rounded(px(radius::R_LG))
+                .gap(px(space::S2_5))
+                .h(px(size::NAV_ITEM))
+                .px(px(space::S2_5))
+                .rounded(px(radius::R_ROW))
                 .cursor_pointer()
                 .text_role(t, TextRole::Base)
+                .weight_medium()
                 .text_color(if active { t.fg() } else { t.fg_subtle() })
-                .when(active, |el| el.bg(t.selected()))
-                .hover(|s| s.bg(t.hover()))
+                .when(active, |el| {
+                    el.bg(t.selected())
+                        .border_1()
+                        .border_color(t.selected_border())
+                })
+                .when(!active, |el| el.hover(|s| s.bg(t.hover())))
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                     this.set_section(section.clone(), cx);
                 }))
-                .child(label)
+                .when_some(glyph, |el, g| {
+                    el.child(crate::design::icons::icon(
+                        g,
+                        size::ICON,
+                        if active { t.fg() } else { t.fg_subtlest() },
+                    ))
+                })
+                .child(div().flex_1().min_w_0().truncate().child(label))
                 .into_any_element()
         };
         let s = &self.section;
-        let fixed = [
-            ("set-general", "General", SettingsSection::General),
-            ("set-appearance", "Appearance", SettingsSection::Appearance),
-            ("set-models", "Models & Providers", SettingsSection::Models),
-            ("set-sessions", "Sessions", SettingsSection::Sessions),
-            (
-                "set-permissions",
-                "Permissions",
-                SettingsSection::Permissions,
-            ),
-            (
-                "set-shortcuts",
-                "Keyboard shortcuts",
-                SettingsSection::Shortcuts,
-            ),
-        ];
-        let mut rows: Vec<AnyElement> = fixed
-            .into_iter()
-            .map(|(id, label, section)| {
-                let active = *s == section;
-                item(
-                    ElementId::Name(id.into()),
-                    label.into(),
-                    section,
-                    active,
-                    cx,
-                )
-            })
-            .collect();
-        rows.push(
-            div()
-                .id("set-extensions")
-                .flex()
-                .items_center()
-                .gap(px(space::S2))
-                .h(px(size::CONTROL_LG))
-                .px(px(space::S2))
-                .rounded(px(radius::R_LG))
-                .cursor_pointer()
-                .text_role(t, TextRole::Base)
-                .text_color(t.fg_subtle())
-                .hover(|s| s.bg(t.hover()))
-                .on_click(
-                    cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(SettingsEvent::OpenExtensions)),
-                )
-                .child(div().flex_1().child("Extensions"))
-                .child(crate::design::icons::icon(
-                    IconName::ChevronRight,
-                    size::ICON_SM,
-                    t.fg_subtlest(),
-                ))
-                .into_any_element(),
-        );
-        rows.push(
-            div()
-                .pt(px(space::S4))
-                .pb(px(space::S1))
-                .px(px(space::S2))
-                .text_role(t, TextRole::Xs)
-                .weight_medium()
-                .text_color(t.fg_subtlest())
-                .child("EXTENSION SETTINGS")
-                .into_any_element(),
-        );
         let query = self.search.read(cx).value().to_lowercase();
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for (i, section) in [
+            SettingsSection::General,
+            SettingsSection::Appearance,
+            SettingsSection::Unicrab,
+            SettingsSection::Models,
+            SettingsSection::Sessions,
+            SettingsSection::Permissions,
+            SettingsSection::Shortcuts,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let (label, glyph) = section.label();
+            let active = *s == section;
+            rows.push(item(
+                ElementId::NamedInteger("set-core".into(), i as u64),
+                label.into(),
+                Some(glyph),
+                section,
+                active,
+                cx,
+            ));
+        }
+        let permissions = self.permissions_ns();
         let namespaces: Vec<HubNamespace> = self
             .namespaces
             .iter()
+            .filter(|n| Some(&n.namespace) != permissions.as_ref())
             .filter(|n| {
                 query.is_empty()
                     || n.title.to_lowercase().contains(&query)
@@ -506,10 +582,21 @@ impl SettingsView {
             })
             .cloned()
             .collect();
+        rows.push(
+            div()
+                .px(px(space::S2_5))
+                .child(crate::components::section_label::section_row(
+                    t,
+                    "Extension settings",
+                    false,
+                    None,
+                ))
+                .into_any_element(),
+        );
         if namespaces.is_empty() {
             rows.push(
                 div()
-                    .px(px(space::S2))
+                    .px(px(space::S2_5))
                     .text_role(t, TextRole::Sm)
                     .text_color(t.fg_subtlest())
                     .child(if self.backend.is_some() {
@@ -525,22 +612,42 @@ impl SettingsView {
             rows.push(item(
                 ElementId::NamedInteger("set-ns".into(), i as u64),
                 SharedString::from(ns.title.clone()),
+                None,
                 SettingsSection::Extension(ns.namespace.clone()),
                 active,
                 cx,
             ));
         }
+        rows.push(
+            div()
+                .id("set-extensions")
+                .flex()
+                .items_center()
+                .gap(px(space::S2))
+                .h(px(size::NAV_ITEM))
+                .px(px(space::S2_5))
+                .rounded(px(radius::R_ROW))
+                .cursor_pointer()
+                .text_role(t, TextRole::Base)
+                .text_color(t.fg_subtle())
+                .hover(|s| s.bg(t.hover()))
+                .on_click(
+                    cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(SettingsEvent::OpenExtensions)),
+                )
+                .child(div().flex_1().child("Manage extensions"))
+                .child(crate::design::icons::icon(
+                    IconName::ChevronRight,
+                    size::ICON_SM,
+                    t.fg_subtlest(),
+                ))
+                .into_any_element(),
+        );
         rows.push(div().h(px(space::S4)).into_any_element());
-        rows.push(item(
-            ElementId::Name("set-remote".into()),
-            "Remote access".into(),
-            SettingsSection::Remote,
-            *s == SettingsSection::Remote,
-            cx,
-        ));
+        let (about, about_icon) = SettingsSection::About.label();
         rows.push(item(
             ElementId::Name("set-about".into()),
-            "About & updates".into(),
+            about.into(),
+            Some(about_icon),
             SettingsSection::About,
             *s == SettingsSection::About,
             cx,
@@ -552,20 +659,415 @@ impl SettingsView {
             .w(px(size::SETTINGS_NAV))
             .flex_shrink_0()
             .h_full()
-            .p(px(space::S2))
+            .pl(px(size::PAGE_GUTTER - space::S2_5))
+            .pb(px(space::S4))
             .gap(px(space::HALF))
             .overflow_y_scroll()
-            .border_r_1()
-            .border_color(t.border())
-            .child(
-                Btn::new("settings-back")
-                    .label("Back to sessions")
-                    .icon(IconName::ArrowLeft)
-                    .full()
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(SettingsEvent::Back))),
-            )
-            .child(div().py(px(space::S2)).child(Input::new(&self.search)))
             .children(rows)
+            .into_any_element()
+    }
+
+    /// A section head: section label with an icon (A2.16).
+    fn head(t: &OinoTheme, section: &SettingsSection, first: bool) -> AnyElement {
+        let (label, glyph) = section.label();
+        with_icon(t, glyph, label, first).into_any_element()
+    }
+
+    /// Settings → General (GA-37): default model and thinking, default folder, startup.
+    fn general(
+        &mut self,
+        t: &OinoTheme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let provider = self
+            .core_at("defaultProvider")
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned);
+        let model = self
+            .core_at("defaultModel")
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned);
+        let current = match (&provider, &model) {
+            (Some(p), Some(m)) => self
+                .models
+                .iter()
+                .find(|x| x.provider == *p && x.id == *m)
+                .map_or_else(
+                    || format!("{p}/{m}"),
+                    |x| {
+                        if x.name.is_empty() {
+                            x.id.clone()
+                        } else {
+                            x.name.clone()
+                        }
+                    },
+                ),
+            (None, Some(m)) => m.clone(),
+            _ => "Router default".to_owned(),
+        };
+        let e = cx.entity().downgrade();
+        let picker = crate::components::menu::popover(
+            Btn::new("set-default-model")
+                .label(SharedString::from(current))
+                .trailing(IconName::ChevronDown)
+                .variant(Variant::Secondary)
+                .size(BtnSize::Md)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.model_menu = !this.model_menu;
+                    cx.notify();
+                })),
+            self.model_menu,
+            crate::components::menu::Placement::BelowEnd,
+            || {
+                let entries = self
+                    .models
+                    .iter()
+                    .take(40)
+                    .map(|m| {
+                        let (p, id) = (m.provider.clone(), m.id.clone());
+                        let e = e.clone();
+                        let checked = provider.as_deref() == Some(m.provider.as_str())
+                            && model.as_deref() == Some(m.id.as_str());
+                        crate::components::menu::MenuEntry::item(
+                            SharedString::from(if m.name.is_empty() {
+                                m.id.clone()
+                            } else {
+                                m.name.clone()
+                            }),
+                            move |_, cx| {
+                                let (p, id) = (p.clone(), id.clone());
+                                let _ = e.update(cx, |v, cx| {
+                                    v.model_menu = false;
+                                    v.set_core("defaultProvider", Some(JsonValue::String(p)), cx);
+                                    v.set_core("defaultModel", Some(JsonValue::String(id)), cx);
+                                });
+                            },
+                        )
+                        .detail(SharedString::from(m.provider.clone()))
+                        .checked(checked)
+                    })
+                    .collect();
+                crate::components::menu::menu("default-model-menu", t, size::MODEL_MENU, entries)
+                    .max_h(size::DIALOG_MD)
+                    .into_any_element()
+            },
+            {
+                let e = cx.entity().downgrade();
+                move |_: &mut Window, cx: &mut App| {
+                    let _ = e.update(cx, |v, cx| {
+                        v.model_menu = false;
+                        cx.notify();
+                    });
+                }
+            },
+        );
+        let level = self
+            .core_at("defaultThinkingLevel")
+            .and_then(JsonValue::as_str)
+            .unwrap_or("off")
+            .to_owned();
+        let level_ix = LEVELS.iter().position(|l| *l == level).unwrap_or(0);
+        let e2 = cx.entity().downgrade();
+        let thinking = segmented(
+            "set-default-thinking",
+            t,
+            &["Off", "Low", "Medium", "High"],
+            level_ix,
+            Rc::new(move |i, _, cx| {
+                let _ = e2.update(cx, |v, cx| {
+                    v.set_core(
+                        "defaultThinkingLevel",
+                        Some(JsonValue::String(LEVELS[i].to_owned())),
+                        cx,
+                    );
+                });
+            }),
+        );
+        let folder = self
+            .settings
+            .default_cwd
+            .clone()
+            .unwrap_or_else(|| self.info.default_cwd.display().to_string());
+        let folder_input = self.input_for(
+            "app/default-cwd",
+            &folder,
+            false,
+            |this, text, cx| {
+                let text = text.trim().to_owned();
+                this.change(|s| s.default_cwd = (!text.is_empty()).then_some(text), cx);
+                cx.emit(SettingsEvent::Toast("Default folder saved".into()));
+            },
+            window,
+            cx,
+        );
+        let e3 = cx.entity().downgrade();
+        let reopen = switch(
+            "set-reopen",
+            t,
+            self.settings.reopen_last,
+            move |on, _, cx| {
+                let _ = e3.update(cx, |v, cx| v.change(|s| s.reopen_last = on, cx));
+            },
+        );
+        let rows = vec![
+            row_icon(
+                t,
+                IconName::Sparkles,
+                "Default model",
+                Some("New sessions start with this model.".into()),
+                model.is_some(),
+                picker.into_any_element(),
+            ),
+            row_icon(
+                t,
+                IconName::Brain,
+                "Default thinking",
+                None,
+                level != "off",
+                thinking.into_any_element(),
+            ),
+            row_icon(
+                t,
+                IconName::FolderOpen,
+                "Default folder",
+                Some("Where new sessions start. Press Enter to save.".into()),
+                self.settings.default_cwd.is_some(),
+                div()
+                    .w(px(size::SIDEBAR + space::S10))
+                    .child(Input::new(&folder_input))
+                    .into_any_element(),
+            ),
+            row_icon(
+                t,
+                IconName::RotateCcw,
+                "Reopen the last session",
+                Some("At startup, instead of a new empty session.".into()),
+                !self.settings.reopen_last,
+                reopen.into_any_element(),
+            ),
+        ];
+        div()
+            .flex()
+            .flex_col()
+            .child(Self::head(t, &SettingsSection::General, true))
+            .child(group(t, rows))
+            .into_any_element()
+    }
+
+    /// Settings → Sessions (GA-37): session folder, queue delivery, compaction, retry.
+    fn sessions_page(
+        &mut self,
+        t: &OinoTheme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let dir = self
+            .core_at("sessionDir")
+            .and_then(JsonValue::as_str)
+            .map(str::to_owned);
+        let shown = dir
+            .clone()
+            .unwrap_or_else(|| self.info.agent_dir.join("sessions").display().to_string());
+        let dir_input = self.input_for(
+            "core/sessionDir",
+            &shown,
+            false,
+            |this, text, cx| {
+                let text = text.trim().to_owned();
+                this.set_core(
+                    "sessionDir",
+                    (!text.is_empty()).then_some(JsonValue::String(text)),
+                    cx,
+                );
+            },
+            window,
+            cx,
+        );
+        let queue = |key: &'static str, this: &Self| {
+            let all = this.core_at(key).and_then(JsonValue::as_str) == Some("all");
+            let e = cx.entity().downgrade();
+            segmented(
+                format!("set-{key}"),
+                t,
+                &["One at a time", "All at once"],
+                usize::from(all),
+                Rc::new(move |i, _, cx| {
+                    let _ = e.update(cx, |v, cx| {
+                        v.set_core(
+                            key,
+                            Some(JsonValue::String(
+                                if i == 1 { "all" } else { "one-at-a-time" }.into(),
+                            )),
+                            cx,
+                        );
+                    });
+                }),
+            )
+            .into_any_element()
+        };
+        let flag = |key: &'static str, id: &'static str, this: &Self| {
+            let on = this
+                .core_at(key)
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(true);
+            let e = cx.entity().downgrade();
+            switch(id, t, on, move |v, _, cx| {
+                let _ = e.update(cx, |this, cx| {
+                    this.set_core(key, Some(JsonValue::Bool(v)), cx);
+                });
+            })
+            .into_any_element()
+        };
+        let reveal = PathBuf::from(&shown);
+        let rows = vec![
+            row_icon(
+                t,
+                IconName::FolderOpen,
+                "Session folder",
+                Some("Where session files are written. Press Enter to save.".into()),
+                dir.is_some(),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(space::S1))
+                    .child(div().w(px(size::SIDEBAR)).child(Input::new(&dir_input)))
+                    .child(
+                        Btn::icon_only("set-reveal-sessions", IconName::FolderSearch, "Reveal")
+                            .on_click(move |_, _, cx| cx.reveal_path(&reveal)),
+                    )
+                    .into_any_element(),
+            ),
+            row_icon(
+                t,
+                IconName::CornerDownRight,
+                "Steering messages",
+                Some("How messages typed during a run are delivered.".into()),
+                self.core_at("steeringMode").is_some(),
+                queue("steeringMode", self),
+            ),
+            row_icon(
+                t,
+                IconName::ListTree,
+                "Follow-ups",
+                Some("How queued follow-ups are delivered after a run.".into()),
+                self.core_at("followUpMode").is_some(),
+                queue("followUpMode", self),
+            ),
+            row_icon(
+                t,
+                IconName::Archive,
+                "Auto-compact",
+                Some("Summarise old turns when the context fills up.".into()),
+                self.core_at("compaction.enabled").is_some(),
+                flag("compaction.enabled", "set-compaction", self),
+            ),
+            row_icon(
+                t,
+                IconName::RefreshCw,
+                "Retry on errors",
+                Some("Retry provider errors such as rate limits.".into()),
+                self.core_at("retry.enabled").is_some(),
+                flag("retry.enabled", "set-retry", self),
+            ),
+        ];
+        div()
+            .flex()
+            .flex_col()
+            .child(Self::head(t, &SettingsSection::Sessions, true))
+            .child(group(t, rows))
+            .into_any_element()
+    }
+
+    /// Settings → About & updates (GA-37): version, Check for updates, licences, a lore line.
+    fn about(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
+        let value = |text: String| {
+            div()
+                .text_role(t, TextRole::Sm)
+                .text_color(t.fg_subtle())
+                .max_w(px(size::SIDE_PANE_MIN))
+                .truncate()
+                .child(SharedString::from(text))
+                .into_any_element()
+        };
+        let rows = vec![
+            row_icon(
+                t,
+                IconName::Info,
+                SharedString::from(format!("Oino {}", self.info.version)),
+                Some(SharedString::from(format!(
+                    "Backend: {}",
+                    self.info.backend
+                ))),
+                false,
+                Btn::new("about-check")
+                    .label("Check for updates")
+                    .icon(IconName::CircleArrowDown)
+                    .variant(Variant::Primary)
+                    .size(BtnSize::Md)
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.emit(SettingsEvent::Command("/update-check".into()));
+                        cx.emit(SettingsEvent::Toast("Checking for updates…".into()));
+                    }))
+                    .into_any_element(),
+            ),
+            row_icon(
+                t,
+                IconName::BookOpen,
+                "Readme and changelog",
+                Some("Package READMEs, including Oino's own.".into()),
+                false,
+                Btn::new("about-readme")
+                    .label("Open")
+                    .variant(Variant::Secondary)
+                    .size(BtnSize::Md)
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.emit(SettingsEvent::Command("/readme".into()));
+                        cx.emit(SettingsEvent::Back);
+                    }))
+                    .into_any_element(),
+            ),
+            row_icon(
+                t,
+                IconName::FolderOpen,
+                "Agent folder",
+                None,
+                false,
+                value(self.info.agent_dir.display().to_string()),
+            ),
+            row_icon(
+                t,
+                IconName::Blocks,
+                "Extensions",
+                None,
+                false,
+                value(self.extensions.len().to_string()),
+            ),
+            row_icon(
+                t,
+                IconName::FileText,
+                "Licences",
+                Some(
+                    "Lucide (ISC), Inter (OFL 1.1), JetBrains Mono (OFL 1.1), gpui-kit \
+                     (Apache-2.0)"
+                        .into(),
+                ),
+                false,
+                div().into_any_element(),
+            ),
+        ];
+        div()
+            .flex()
+            .flex_col()
+            .child(Self::head(t, &SettingsSection::About, true))
+            .child(group(t, rows))
+            .child(
+                div()
+                    .pt(px(space::S5))
+                    .text_role(t, TextRole::Caption)
+                    .text_color(t.fg_subtlest())
+                    .child("Unicrab walks sideways so it can read your diffs from both ends."),
+            )
             .into_any_element()
     }
 
@@ -585,8 +1087,9 @@ impl SettingsView {
             ThemePref::Dark => 2,
         };
         let rows = vec![
-            row(
+            row_icon(
                 t,
+                IconName::Palette,
                 "Theme",
                 Some("Follows the system appearance by default.".into()),
                 s.theme != ThemePref::System,
@@ -601,8 +1104,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::ALargeSmall,
                 "Interface size",
                 Some("UI text size in px (12–18).".into()),
                 s.ui_font_size != 14,
@@ -613,11 +1117,12 @@ impl SettingsView {
                     })
                 }),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::Code,
                 "Code font size",
                 Some("Code, diffs, logs and the terminal (10–20).".into()),
-                s.code_font_size != 13,
+                s.code_font_size != 12,
                 stepper("set-code-size", t, s.code_font_size, (10, 20), {
                     let e = e.clone();
                     Rc::new(move |v, cx: &mut App| {
@@ -625,8 +1130,9 @@ impl SettingsView {
                     })
                 }),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::PanelLeft,
                 "Sidebar density",
                 None,
                 s.sidebar_compact,
@@ -639,8 +1145,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::Zap,
                 "Reduce motion",
                 None,
                 s.reduce_motion != ReduceMotion::FollowOs,
@@ -660,8 +1167,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::Wrench,
                 "Tool rows",
                 Some("How much of each tool call the timeline shows.".into()),
                 s.tool_density != ToolDensity::Simple,
@@ -684,8 +1192,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::Brain,
                 "Thinking blocks",
                 None,
                 s.thinking_blocks != ThinkingBlocks::Collapsed,
@@ -708,8 +1217,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::PanelRight,
                 "Status panel",
                 None,
                 s.status_panel != StatusPanelMode::Auto,
@@ -733,23 +1243,43 @@ impl SettingsView {
                 .into_any_element(),
             ),
         ];
+        div()
+            .flex()
+            .flex_col()
+            .child(Self::head(t, &SettingsSection::Appearance, true))
+            .child(group(t, rows))
+            .into_any_element()
+    }
+
+    /// Settings → Unicrab (A2.13): mascot window, crab size; native Wayland on Linux.
+    fn unicrab(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
+        let s = self.settings.clone();
+        let e = cx.entity().downgrade();
+        let pick = |f: fn(&mut AppSettings, usize)| {
+            let e = e.clone();
+            Rc::new(move |i: usize, _: &mut Window, cx: &mut App| {
+                let _ = e.update(cx, |v, cx| v.change(|s| f(s, i), cx));
+            }) as Rc<dyn Fn(usize, &mut Window, &mut App)>
+        };
         let toggle = |f: fn(&mut AppSettings, bool)| {
             let e = e.clone();
             move |on: bool, _: &mut Window, cx: &mut App| {
                 let _ = e.update(cx, |v, cx| v.change(|s| f(s, on), cx));
             }
         };
-        let mut unicrab_rows = vec![
-            row(
+        let mut rows = vec![
+            row_icon(
                 t,
+                IconName::AppWindow,
                 "Mascot window",
-                Some("A floating Unicrab above other windows: it shows the overall state and pops a bubble when a session needs you or finishes.".into()),
+                Some("A floating Unicrab above other windows. It shows the overall state and pops a bubble when a session needs you or finishes.".into()),
                 s.mascot_window,
                 switch("set-mascot", t, s.mascot_window, toggle(|s, on| s.mascot_window = on))
                     .into_any_element(),
             ),
-            row(
+            row_icon(
                 t,
+                IconName::Maximize,
                 "Crab size",
                 None,
                 s.mascot_size != 96,
@@ -768,10 +1298,11 @@ impl SettingsView {
             ),
         ];
         if cfg!(target_os = "linux") {
-            unicrab_rows.push(row(
+            rows.push(row_icon(
                 t,
+                IconName::Monitor,
                 "Native Wayland",
-                Some("Run on Wayland instead of XWayland. Disables the embedded browser (WebKitGTK embeds into X11 windows only). Takes effect after a restart.".into()),
+                Some("Run on Wayland instead of XWayland. Turns off the embedded browser (WebKitGTK embeds into X11 windows only). Takes effect after a restart.".into()),
                 s.native_wayland,
                 switch("set-wayland", t, s.native_wayland, toggle(|s, on| s.native_wayland = on))
                     .into_any_element(),
@@ -780,10 +1311,8 @@ impl SettingsView {
         div()
             .flex()
             .flex_col()
-            .child(page_title(t, "Appearance"))
+            .child(Self::head(t, &SettingsSection::Unicrab, true))
             .child(group(t, rows))
-            .child(section_title(t, "Unicrab and window"))
-            .child(group(t, unicrab_rows))
             .into_any_element()
     }
 
@@ -900,8 +1429,7 @@ impl SettingsView {
         div()
             .flex()
             .flex_col()
-            .child(page_title(t, "Models & Providers"))
-            .child(section_title(t, "Providers"))
+            .child(Self::head(t, &SettingsSection::Models, true))
             .child(if providers.is_empty() {
                 empty_state(
                     t,
@@ -914,51 +1442,88 @@ impl SettingsView {
             } else {
                 group(t, providers).into_any_element()
             })
-            .child(section_title(t, "Available models"))
+            .child(crate::components::section_label::section_row(
+                t,
+                "Available models",
+                false,
+                Some(crate::components::section_label::count(
+                    t,
+                    self.models.len(),
+                )),
+            ))
             .child(group(t, models))
             .into_any_element()
     }
 
+    /// Settings → Keyboard shortcuts: app keys, then extension shortcuts (`setShortcuts`,
+    /// GA-16) with their action id.
     fn shortcuts_page(&self, t: &OinoTheme) -> AnyElement {
         let app = [
-            ("⌘K", "Command center"),
+            ("⌘K", "Search and commands"),
+            ("⌘O", "Switch session"),
             ("⌘N", "New session"),
-            ("⌘O", "New session in folder"),
+            ("⌘⇧O", "New session in folder"),
+            ("⌘1", "Sessions"),
+            ("⌘2", "Board"),
+            ("⌘3", "Extensions"),
+            ("⌘,", "Settings"),
             ("⌘M", "Model menu"),
             ("⌘⇧M", "Thinking menu"),
-            ("⌘B", "Toggle sidebar"),
-            ("⌘J", "Toggle side pane"),
-            ("⌘`", "Toggle bottom frame"),
-            ("⌘\\", "Split pane"),
+            ("⌘B", "Fold the session list, then the sidebar"),
+            ("⌘J", "Side pane"),
+            ("⌘`", "Terminal"),
             ("⌘F", "Find in conversation"),
             ("⌘L", "Focus composer"),
-            ("⌘.", "Abort run (Esc in an empty composer)"),
+            ("⌘.", "Stop the run (Esc in an empty composer)"),
             ("⌘⇧T", "Session tree"),
             ("⌘⇧S", "Status panel"),
-            ("⌘,", "Settings"),
             ("Enter", "Send · steer while running"),
             ("Alt+Enter", "Queue a follow-up"),
             ("Shift+Enter", "New line"),
             ("Ctrl+Alt+Shift+F", "Frame-time overlay"),
         ];
-        let mut rows: Vec<AnyElement> = app
+        let rows: Vec<AnyElement> = app
             .iter()
             .map(|(k, d)| row(t, *d, None, false, kbd(t, *k).into_any_element()))
             .collect();
-        rows.extend(self.shortcuts.iter().map(|s| {
-            row(
-                t,
-                SharedString::from(s.description.clone()),
-                Some(SharedString::from(s.id.clone())),
-                false,
-                kbd(t, s.keys.clone()).into_any_element(),
-            )
-        }));
+        let ext: Vec<AnyElement> = self
+            .shortcuts
+            .iter()
+            .map(|s| {
+                row(
+                    t,
+                    SharedString::from(s.description.clone()),
+                    Some(SharedString::from(s.id.clone())),
+                    false,
+                    kbd(t, crate::components::sidebar::pi_keys(&s.keys)).into_any_element(),
+                )
+            })
+            .collect();
+        let n = ext.len();
         div()
             .flex()
             .flex_col()
-            .child(page_title(t, "Keyboard shortcuts"))
+            .child(Self::head(t, &SettingsSection::Shortcuts, true))
             .child(group(t, rows))
+            .child(crate::components::section_label::section_row(
+                t,
+                "Extensions",
+                false,
+                Some(crate::components::section_label::count(t, n)),
+            ))
+            .child(if ext.is_empty() {
+                div()
+                    .text_role(t, TextRole::Caption)
+                    .text_color(t.fg_subtlest())
+                    .child(if self.backend.is_some() {
+                        "No extension shortcuts in this session."
+                    } else {
+                        "Open a session to list extension shortcuts."
+                    })
+                    .into_any_element()
+            } else {
+                group(t, ext).into_any_element()
+            })
             .into_any_element()
     }
 
@@ -1171,7 +1736,8 @@ impl SettingsView {
                     .flex()
                     .items_center()
                     .justify_between()
-                    .child(page_title(t, title))
+                    .pb(px(space::S2_5))
+                    .child(with_icon(t, IconName::Blocks, title, true))
                     .child(scope),
             )
             .when(sections.is_empty(), |el| {
@@ -1188,41 +1754,15 @@ impl SettingsView {
                     .flex()
                     .flex_col()
                     .when(!title.is_empty(), |el| {
-                        el.child(section_title(t, SharedString::from(title)))
+                        el.child(crate::components::section_label::section_row(
+                            t,
+                            SharedString::from(title),
+                            false,
+                            None,
+                        ))
                     })
                     .child(group(t, rows))
             }))
-            .into_any_element()
-    }
-
-    fn simple_page(
-        &self,
-        t: &OinoTheme,
-        title: &'static str,
-        rows: Vec<(&'static str, String)>,
-    ) -> AnyElement {
-        div()
-            .flex()
-            .flex_col()
-            .child(page_title(t, title))
-            .child(group(
-                t,
-                rows.into_iter()
-                    .map(|(l, v)| {
-                        row(
-                            t,
-                            l,
-                            None,
-                            false,
-                            div()
-                                .text_role(t, TextRole::Sm)
-                                .text_color(t.fg_subtle())
-                                .child(SharedString::from(v))
-                                .into_any_element(),
-                        )
-                    })
-                    .collect(),
-            ))
             .into_any_element()
     }
 }
@@ -1232,59 +1772,77 @@ impl Render for SettingsView {
         let t = OinoTheme::get(cx);
         let nav = self.nav(&t, cx);
         let body = match self.section.clone() {
+            SettingsSection::General => self.general(&t, window, cx),
             SettingsSection::Appearance => self.appearance(&t, cx),
+            SettingsSection::Unicrab => self.unicrab(&t, cx),
             SettingsSection::Models => self.models_page(&t, cx),
             SettingsSection::Shortcuts => self.shortcuts_page(&t),
             SettingsSection::Extension(ns) => self.hub(&ns, &t, window, cx),
-            SettingsSection::General => self.simple_page(&t, "General", vec![
-                ("Default folder", self.info.default_cwd.display().to_string()),
-                ("Recent folders", self.settings.recent_cwds.len().to_string()),
-                ("Language", "English".into()),
-                ("Telemetry", "None".into()),
-            ]),
-            SettingsSection::Sessions => self.simple_page(&t, "Sessions", vec![
-                ("Session directory", self.info.agent_dir.join("sessions").display().to_string()),
-                ("Keep warm", "30 s after the last view closes".into()),
-            ]),
-            SettingsSection::Permissions => {
-                if self.namespaces.iter().any(|n| n.namespace == "workflow") {
-                    self.hub("workflow", &t, window, cx)
-                } else {
-                    self.simple_page(&t, "Permissions", vec![("Workflow", "unipi.workflow is not loaded".into())])
-                }
-            }
-            SettingsSection::Remote => self.simple_page(&t, "Remote access", vec![("Serve", "Not available in v1.0.0-alpha.2 (`oino serve` pending)".into())]),
-            SettingsSection::About => self.simple_page(&t, "About & updates", vec![
-                ("Version", format!("Oino Desktop {}", self.info.version)),
-                ("Backend", self.info.backend.clone()),
-                ("Agent dir", self.info.agent_dir.display().to_string()),
-                ("Extensions", self.extensions.len().to_string()),
-                ("Licenses", "Lucide (ISC), Inter (OFL 1.1), JetBrains Mono (OFL 1.1), gpui-kit (Apache-2.0)".into()),
-            ]),
+            SettingsSection::Sessions => self.sessions_page(&t, window, cx),
+            SettingsSection::Permissions => match self.permissions_ns() {
+                Some(ns) => self.hub(&ns, &t, window, cx),
+                None => div()
+                    .flex()
+                    .flex_col()
+                    .child(Self::head(&t, &SettingsSection::Permissions, true))
+                    .child(empty_state(
+                        &t,
+                        IconName::Shield,
+                        if self.backend.is_some() {
+                            "Workflow is off"
+                        } else {
+                            "Open a session"
+                        },
+                        Some(if self.backend.is_some() {
+                            "Turn on the unipi.workflow extension to set permission modes and rules."
+                                .into()
+                        } else {
+                            "Permissions are read from the session's extensions.".into()
+                        }),
+                        Vec::new(),
+                    ))
+                    .into_any_element(),
+            },
+            SettingsSection::About => self.about(&t, cx),
         };
+        let header = PageHeader::new("Settings")
+            .tool(
+                div()
+                    .w(px(size::SIDEBAR))
+                    .child(Input::new(&self.search).prefix(crate::design::icons::icon(
+                        IconName::Search,
+                        size::ICON,
+                        t.fg_subtlest(),
+                    ))),
+            )
+            .window_controls(window, &t)
+            .render(&t);
         div()
             .id("settings-page")
             .flex()
-            .flex_row()
+            .flex_col()
             .size_full()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key))
-            .child(nav)
+            .child(header)
             .child(
-                div()
-                    .id("settings-content")
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_y_scroll()
-                    .px(px(space::S8))
-                    .py(px(space::S8))
-                    .child(
-                        div()
-                            .max_w(px(size::SETTINGS_CONTENT))
-                            .mx_auto()
-                            .child(body),
-                    ),
+                div().flex().flex_row().flex_1().min_h_0().child(nav).child(
+                    div()
+                        .id("settings-content")
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .overflow_y_scroll()
+                        .px(px(size::PAGE_GUTTER + space::S2))
+                        .pb(px(space::S8))
+                        .child(
+                            div()
+                                .max_w(px(size::SETTINGS_CONTENT))
+                                .flex()
+                                .flex_col()
+                                .child(body),
+                        ),
+                ),
             )
     }
 }

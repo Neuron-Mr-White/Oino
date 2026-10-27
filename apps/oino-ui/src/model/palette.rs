@@ -34,13 +34,13 @@ pub enum Kind {
 pub enum Section {
     /// Files changed in the session.
     RecentChanges,
-    /// Recent sessions.
+    /// Sessions (attention-first).
     RecentSessions,
-    /// New session, open folder, settings.
+    /// "Go to": Sessions, Board, Extensions, Settings, switch sheet (A2.17).
     Suggested,
-    /// Compact, fork, tree, abort.
+    /// "Session": new, model, compact, fork, tree, stop.
     Chat,
-    /// Sidebar, side pane, bottom frame, board.
+    /// "View": sidebar, side pane, terminal, review, files.
     Panels,
     /// Extension slash commands and shortcuts.
     Extensions,
@@ -54,10 +54,10 @@ impl Section {
     pub const fn label(self) -> &'static str {
         match self {
             Self::RecentChanges => "Recent changes",
-            Self::RecentSessions => "Recent sessions",
-            Self::Suggested => "Suggested",
-            Self::Chat => "Chat",
-            Self::Panels => "Panels",
+            Self::RecentSessions => "Sessions",
+            Self::Suggested => "Go to",
+            Self::Chat => "Session",
+            Self::Panels => "View",
             Self::Extensions => "Extensions",
             Self::App => "App",
         }
@@ -456,7 +456,7 @@ mod tests {
         let r = rows(&items, "", Scope::All);
         assert_eq!(r[0], Row::Header("Recent changes"));
         assert_eq!(r[1], Row::Item(6));
-        assert_eq!(r[2], Row::Header("Recent sessions"));
+        assert_eq!(r[2], Row::Header("Sessions"));
         assert_eq!(
             r.iter()
                 .filter(|x| matches!(x, Row::Item(i) if items[*i].kind == Kind::Session))

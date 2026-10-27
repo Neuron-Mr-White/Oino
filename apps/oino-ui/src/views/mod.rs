@@ -2,10 +2,10 @@
 //!
 //! | Module | Screen |
 //! |---|---|
-//! | [`shell`] | D1–D7 frames, routes, palette, toasts ([`Workspace`]) |
+//! | [`shell`] | A2 desktop shell: sidebar, session list, detail, routes, palette ([`AppShell`]) |
 //! | [`session_pane`] | one session: state, pump, commands |
 //! | [`settings_page`] | D8 Settings + extension settings hub |
-//! | `board`, `extensions_page`, `onboarding` | D9, D12, D13 (`impl Workspace`) |
+//! | `board`, `extensions_page`, `onboarding` | D9, D12, D13 (`impl AppShell`) |
 //! | [`soak`] | soak driver (`OINO_DESKTOP_SOAK`) |
 
 #![allow(
@@ -30,15 +30,23 @@ pub mod soak;
 
 use gpui_kit::{App, KeyBinding};
 
-pub use shell::Workspace;
+pub use shell::{AppShell, Workspace};
 
 gpui_kit::actions!(
     oino,
     [
-        /// New session in the current workspace.
+        /// New session in the current project.
         NewSession,
         /// New session in a chosen folder.
         OpenFolder,
+        /// The switch sheet (sessions, attention-first).
+        SwitchSession,
+        /// Sessions screen.
+        GoSessions,
+        /// Board screen.
+        GoBoard,
+        /// Extensions screen.
+        GoExtensions,
         /// Show/hide the sidebar.
         ToggleSidebar,
         /// Show/hide the side pane.
@@ -57,8 +65,6 @@ gpui_kit::actions!(
         OpenSettings,
         /// Toggle light/dark.
         ToggleTheme,
-        /// Split the conversation frame.
-        SplitPane,
         /// Session tree in the side pane.
         TreeView,
         /// Find in the conversation.
@@ -106,7 +112,11 @@ pub fn primary_mod() -> &'static str {
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new(primary!("n"), NewSession, None),
-        KeyBinding::new(primary!("o"), OpenFolder, None),
+        KeyBinding::new(primary!("o"), SwitchSession, None),
+        KeyBinding::new(primary!("shift-o"), OpenFolder, None),
+        KeyBinding::new(primary!("1"), GoSessions, None),
+        KeyBinding::new(primary!("2"), GoBoard, None),
+        KeyBinding::new(primary!("3"), GoExtensions, None),
         KeyBinding::new(primary!("b"), ToggleSidebar, None),
         KeyBinding::new(primary!("j"), ToggleSidePane, None),
         KeyBinding::new(primary!("`"), ToggleBottom, None),
@@ -116,7 +126,6 @@ pub fn init(cx: &mut App) {
         KeyBinding::new(primary!("m"), PickModel, None),
         KeyBinding::new(primary!("shift-m"), PickThinking, None),
         KeyBinding::new(primary!(","), OpenSettings, None),
-        KeyBinding::new(primary!("\\"), SplitPane, None),
         KeyBinding::new(primary!("shift-t"), TreeView, None),
         KeyBinding::new(primary!("f"), FindInConversation, None),
         KeyBinding::new(primary!("l"), FocusComposer, None),

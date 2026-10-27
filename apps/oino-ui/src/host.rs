@@ -267,6 +267,17 @@ pub struct AppSettings {
     pub mascot_size: u8,
     /// Sidebar row density: compact rows when `true`.
     pub sidebar_compact: bool,
+    /// Session list column width in px (A2.8: 280–560, default 400).
+    pub list_width: u16,
+    /// The session file shown last; reopened at startup instead of a new empty session
+    /// (GA-11).
+    pub last_session: Option<String>,
+    /// The working directory of [`Self::last_session`].
+    pub last_session_cwd: Option<String>,
+    /// Folder new sessions start in (Settings → General); `None` = the host default.
+    pub default_cwd: Option<String>,
+    /// Reopen the last session at startup (GA-11; Settings → General → Startup).
+    pub reopen_last: bool,
 }
 
 impl Default for AppSettings {
@@ -278,7 +289,7 @@ impl Default for AppSettings {
             expand_tools: false,
             recent_cwds: Vec::new(),
             ui_font_size: 14,
-            code_font_size: 13,
+            code_font_size: 12,
             reduce_motion: ReduceMotion::FollowOs,
             status_panel: StatusPanelMode::Auto,
             tool_density: ToolDensity::Simple,
@@ -289,6 +300,11 @@ impl Default for AppSettings {
             mascot_window: false,
             mascot_size: 96,
             sidebar_compact: false,
+            list_width: 400,
+            last_session: None,
+            last_session_cwd: None,
+            default_cwd: None,
+            reopen_last: true,
         }
     }
 }

@@ -4,7 +4,9 @@
 //! A tick notifies only the views that asked: elements rendered inside a [`Ticker::scoped`]
 //! view (session panes, the mascot) register that view; anything else registers the root
 //! view ([`Ticker::set_root`]). It never refreshes whole windows, which would re-render every
-//! cached split pane at once (the §2.11 4-pane frame budget).
+//! cached session view at once (the §2.11 frame budget: one visible session plus three
+//! streaming in the background). Idle states draw frame 0 and ask for nothing, so the ticker
+//! task ends one tick after the last animation (idle CPU ≈ 0, GA-46 input).
 
 use std::cell::Cell;
 use std::time::Duration;
@@ -33,7 +35,7 @@ pub struct Ticker {
     next_slot: u32,
 }
 
-/// Sub-ticks per spinner frame: views are spread over them so split panes do not all
+/// Sub-ticks per spinner frame: views are spread over them so animating views do not all
 /// re-render in the same frame (each still animates at 12 fps).
 const SLOTS: u32 = 4;
 
