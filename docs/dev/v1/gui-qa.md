@@ -262,3 +262,50 @@ Not re-run (QA changed no code); last full gates green on `7525d3d` per the
 - Long-horizon flows (goal/ralph/swarm/graph), notify/web/image tools: model or external
   budget, as in round 2.
 - Light theme, onboarding flow, Windows/macOS hosts, `:0` GPU path.
+
+## Resolution (round 4, work id `gui-qa-fix`, `v1-alpha` @ d94a75f…1e1242c)
+
+Date: 2026-10-28. Every P0/P1 from round 3 is fixed; QA-3…QA-7 and GA-45 too. QA-1's four
+repros, QA-2's two paths, QA-3's reload, QA-4, QA-5, QA-6 and GA-45 were re-verified live on a
+private `Xvfb :97` (keyboard-only, XTEST; per the new CHARTER rule the owner's display `:0` is
+never used for QA). GA-12 stays open as agreed (needs the R3 WIT `local-offset-minutes`).
+
+| Id | Fix (commit) | Live verification |
+|---|---|---|
+| QA-1 (P1) | `d94a75f` — every overlay/page owns and returns keyboard focus: `SessionPane::restore_focus` (card → editor panel → composer; answering a docked card now restores focus instead of leaving a dead handle), app-level modals self-focus (`dialog::{owned_focus, modal_owned}`, scrim-tracked) and restore focus on every close path (`AppShell::refocus_after_overlay`), `AppShell::repair_focus` re-homes an orphaned focus handle each render, the Board page focuses itself on route change, board dialogs return focus. Also `list_fits` now computes from actual column widths (A2.8) so a `sidePane` panel is never silently hidden — the session list folds instead (root cause of QA-5). | repro 1: `1`/`3` resolve the ask-mode approval card, typing lands in the composer afterwards (was dead); repro 2: `/info` + `q`/Esc closes and typing lands (`xy`); repro 3: result card Esc closes at once, typing lands (`qq`); repro 4: Ctrl+2 to Board, Ctrl+K palette opens from Board, `c` New-task dialog, Esc/l board keys live |
+| QA-2 (P1) | `8e11a29` — browser launch is bounded: `connect_ws` 10 s handshake deadline, the per-process `launching` mutex wait and `BrowserProcess::launch` + the `ProfileRt` CDP handshake are wrapped in a 90 s `LAUNCH_TIMEOUT`; a wedged engine returns `backend_unavailable{launch_failed}` (browser-control §5.5) and the process group is killed | healthy: `browser_navigate` to example.com completes in 3.1 s (CloakBrowser, side pane shows the page, turn done); broken engine (`engine: path` → a binary that never speaks CDP): the tool errors within ~30 s per attempt (`backend_unavailable: browser connection closed`), turn completes — no eternal spinner |
+| QA-3 (P2) | `b3d6d32` — a tool call whose result never arrived loads as an error ("Not executed"), never `Done`; `file_changes` (and so "Changes this turn") only counts applied results. Unit test added | killed the app with the ask-mode approval unanswered → restart: no "Changes this turn" card, no orphan card, composer usable |
+| QA-4 (P2) | `f5802ed` — `/changelog` falls back to the GitHub releases' notes when neither bundle nor repo carry a `CHANGELOG.md` (`Release.published_at` added; updater wasm rebuilt) | `/changelog` lists 0.1.3 / 0.1.2 / 0.1.1 / 0.0.1-alpha.1 (was "No changelog found yet") |
+| QA-5 (P2) | `d94a75f` (layout) — `openPanel{sidePane}` worked all along (probes: `focus_panel` + `ShowSide` fired); the side pane was **rendered away** because `list_fits` used breakpoints that contradict `CONVERSATION_MIN`: at 1400–1544 px the list stayed and the pane did not fit. `list_fits` now folds the list when the chat would drop below `CONVERSATION_MIN` | `/kanboard open` opens the side pane ("Kanboard · oino-gq2-repo-84…"), the list column folds away; `/app` control-centre panel likewise |
+| QA-6 (P2) | no code needed — `/doctor` reports fine in a clean session; round 3's "never reports" was a QA-1 cascade (busy-gated by the unanswered approval) | `/doctor` → collapsed "Unipi response · Diagnostics" card; JSONL holds the full report: 10 healthy, 0 error |
+| QA-7 (P2) | `f5802ed` — `tmux capture-pane` allow rule (fusion) and `rename.herdrSync` default (utility) deleted; `grep -rniE 'herdr\|tmux' extensions/` only matches "dropped by design" docs | code grep |
+| GA-45 | `1e1242c` — `embedded.rs` passes `ExtensionMode::Desktop` and registers the `oino-desktop` frontend | `/doctor` reports `Mode Desktop; frontends: desktop, oino-desktop` |
+
+Remaining: **GA-12** (unipi splash UTC-hour greeting — blocked on the R3 WIT field, owner
+decision), plus the round-3 coverage gaps that are budget/mouse-bound (subagent live timeline,
+fusion picker, ask-user form, long-horizon flows).
+
+### Soak after the fixes (30 min, faux) — PASS
+
+`apps/oino-desktop/scripts/soak.sh --minutes 30 --backend faux --out apps/target/tmp/gq2-soak`
+(own Xvfb :120 + lavapipe, one instance, 4 GB abort armed).
+
+| Metric | Value | Limit |
+|---|---|---|
+| driver steps | 2566 | — |
+| RSS start → end (max) MB | 10 → 1120 (1120) | 4096 abort |
+| RSS slope 2nd half | **2.80 MB/min** | < 8 |
+| threads q1 max → end | 230 → 232 | growth < 16 |
+| fds q1 max → end | 424 → 416 | growth < 64 |
+| frame run_max / p99 ms | 64.0 / 43.6 (lavapipe) | report only |
+| crash / stall logs | 0 / 0 | 0 |
+| exit | 0 | 0 |
+
+### Gates (touched workspaces, `nice -n 10` per the new CHARTER rule)
+
+- `apps/`: `cargo fmt --all --check` ✅, `clippy -p oino-ui -p oino-desktop --all-targets
+  -D warnings -W clippy::pedantic` ✅ 0 findings, `cargo test` ✅ 111 passed
+  (incl. the new `resultless_tool_calls_load_as_errors_and_never_count_as_changes`).
+- root `crates/oino-browser`: clippy ✅, tests ✅ 15 passed.
+- `extensions/`: fmt + clippy + tests for `unipi-updater`, `unipi-fusion`, `unipi-utility` ✅
+  (130 passed); wasm rebuilt (`cargo xtask wasm -p …`, 3 components into `extensions/dist`).

@@ -99,11 +99,11 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | ask-user | ✅ | forms unavailable over ACP |
 | mcp | 🟡 | stdio + HTTP ✅; pi `mcp.json` not readable (R1); ACP `mcpServers` not forwarded (R3) |
 | notify | ✅ | wizards and secrets in settings |
-| kanboard | ✅ | CLI/daemon, panel, desktop native board, monitor nudges through the arbiter (smoke); TUI renders the board panel generically |
+| kanboard | ✅ | CLI/daemon, panel, desktop native board, monitor nudges through the arbiter (smoke); TUI renders the board panel generically; `/kanboard open` opens the side pane at any window width ([gui-qa-fix] QA-5) |
 | command-enchantment | ✅ | TUI and desktop merge `complete-input` |
 | compactor | ✅ | `llm` method lacks pi's previous-summary parameter (R1) |
 | footer | ✅ | |
-| updater | ✅ | never installs (by design) |
+| updater | ✅ | never installs (by design); `/changelog` falls back to GitHub release notes when no `CHANGELOG.md` exists ([gui-qa-fix] QA-4) |
 | input-shortcuts | ✅ | TUI and desktop send editor intents; no composer-history push (Q2) |
 | fusion | ✅ | sidekick handoff verified (e2e + live); startup model not persisted to core settings (R4) |
 | watchdog | 🟡 | stuck detection + session caps + kill / background via `bash-detach` ✅; process stats Linux-only |
@@ -171,6 +171,10 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
 11. **Desktop perf**: four streaming panes do not reliably meet the 10 ms p99 budget.
 12. **Release artifacts** in §7 are 1.0.0-alpha.1 (`52d3120`); alpha.2 has not been rebuilt on the
     build hosts. Nothing is signed, tagged or published.
+13. **Desktop GUI QA**: the round-3 defects QA-1…QA-7 and GA-45 are fixed and live-verified
+    ([gui-qa.md](gui-qa.md) Resolution; commits `d94a75f`…`1e1242c`); the 30-min faux soak passes
+    (2.80 MB/min, [stability.md](stability.md)). GA-12 (unipi splash UTC-hour greeting) stays
+    open until `host-info` grows the R3 local-offset field.
 
 ### 6.1 gui-audit area E (core-gui-gaps)
 
@@ -181,7 +185,7 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
 | GA-42 | ✅ | handler deadlines pause while a dialog is open; dead handlers' dialogs are withdrawn | C2: drop cards on `extension_ui_dismiss` |
 | GA-43 | ✅ | core fires retained `setShortcuts` | S3 / GA-16: bind keys, palette, settings page |
 | GA-44 | ✅ | `_oino/agents`, `agents_changed`, `agent_event`, `_oino/agent_messages` | P3 / GA-15: Agent tab timeline |
-| GA-45 | 🟡 | `ExtensionMode::Desktop` / `Mobile`; `host-info.frontends` from mode + `_oino/hello` | K7: `embedded.rs` must pass `ExtensionMode::Desktop` and send `_oino/hello` (apps/) |
+| GA-45 | ✅ | `ExtensionMode::Desktop` / `Mobile`; `host-info.frontends` from mode + `_oino/hello` | none — `embedded.rs` passes `Desktop` and registers `oino-desktop` ([gui-qa-fix] `1e1242c`, verified via `/doctor`) |
 | GA-46 | ❌ | — | K6: idle cost (GPUI refresh loop, thread pools) |
 
 ## 7. Release builds (1.0.0-alpha.1 artifacts, 2026-10-27, `v1-alpha` @ 52d3120, not tagged or published)

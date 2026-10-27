@@ -69,6 +69,8 @@ fixture, so WASM, tools and sessions on disk are all exercised, at no network co
 | faux, fixes (cap 8), run 1 | 2559 | 10→1229 | 7.2 MB/min | 225→260¹ | 400→386 | 120 / 18.0 | FAIL (threads) |
 | faux, fixes + Drains bound, run 2 | 2564 | 4→1030 (1072) | **−3.4 MB/min** | 225→226 | 405→396 | 112 / 34.4 | **PASS** |
 | demo, fixes | 2552 | 6→316 (360) | −1.8 MB/min | 184→182 | 73→61 | 92 / 15.9 | **PASS** |
+| faux, post gui-qa-fix ([gui-qa] round 4) | 2567 | 10→1100 | 1.19 MB/min | 231→230 | 424→416 | 55.6 / 40.2 | **PASS** |
+| faux, post [gui-qa-fix] round 4 (QA-1/2/3/4/5/7 + GA-45 fixes) | 2566 | 10→1120 | **2.80 MB/min** | 230→232 | 424→416 | 64.0 / 43.6 | **PASS** |
 
 ¹ Run 1 gained about 30 threads in one step at t≈1515 s and kept them to the end. The same
 workload in run 2, with a per-minute thread census (`oino-core` threads by wait channel), stayed
