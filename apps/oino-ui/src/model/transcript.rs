@@ -408,6 +408,10 @@ impl Transcript {
         for message in messages {
             self.push_message(message, false);
         }
+        // QA-3: history has no run events, so tool calls that never got a result (the app
+        // quit before the tool ran, e.g. an approval that was never answered) must be
+        // settled here, not counted as successful edits in the turn summary.
+        let _ = self.settle_preparing();
         RowChange::Reset
     }
 
@@ -456,7 +460,7 @@ impl Transcript {
                     self.streaming = Some(self.rows.len() - 1);
                 }
                 changes.push(change);
-                changes.extend(self.sync_tool_calls(assistant, !streaming));
+                changes.extend(self.sync_tool_calls(assistant));
             }
             AgentMessage::ToolResult(result) => {
                 let tool_result = AgentToolResult {
@@ -529,7 +533,7 @@ impl Transcript {
 
     /// Creates tool rows for tool calls in an assistant message (streaming preview) and
     /// refreshes their arguments while they are still preparing.
-    fn sync_tool_calls(&mut self, message: &AssistantMessage, settled: bool) -> Vec<RowChange> {
+    fn sync_tool_calls(&mut self, message: &AssistantMessage) -> Vec<RowChange> {
         let mut changes = Vec::new();
         for block in &message.content {
             let AssistantContent::ToolCall(call) = block else {
@@ -544,16 +548,14 @@ impl Transcript {
                     changes.push(self.touch(at));
                 }
             } else {
-                let status = if settled {
-                    ToolStatus::Done
-                } else {
-                    ToolStatus::Preparing
-                };
+                // Always starts as Preparing: a result event (live) or `settle_preparing`
+                // (history load, QA-3) decides the final state. Marking a result-less call
+                // `Done` here made the turn summary claim edits that never happened.
                 let row = ToolRow::new(
                     call.id.clone(),
                     call.name.clone(),
                     call.arguments.clone(),
-                    status,
+                    ToolStatus::Preparing,
                 );
                 changes.push(self.push(call.id.clone(), RowKind::Tool(Box::new(row))));
             }
@@ -589,7 +591,7 @@ impl Transcript {
                     row.thinking = thinking;
                     changes.push(self.touch(at));
                 }
-                changes.extend(self.sync_tool_calls(assistant, false));
+                changes.extend(self.sync_tool_calls(assistant));
                 changes
             }
             AgentSessionEvent::MessageEnd { message } => {
@@ -607,7 +609,7 @@ impl Transcript {
                     row.error = assistant_error(assistant);
                 }
                 let mut changes = vec![self.touch(at)];
-                changes.extend(self.sync_tool_calls(assistant, false));
+                changes.extend(self.sync_tool_calls(assistant));
                 changes
             }
             AgentSessionEvent::ToolExecutionStart {
@@ -979,5 +981,27 @@ mod tests {
         };
         assert!(tool.output.len() <= MAX_TOOL_OUTPUT);
         assert!(tool.output.ends_with("END"));
+    }
+
+    /// QA-3: a tool call whose result never arrived (the app quit before the tool ran, e.g.
+    /// an unanswered approval) loads as an error, and the turn summary must not count it as
+    /// an applied change.
+    #[test]
+    fn resultless_tool_calls_load_as_errors_and_never_count_as_changes() {
+        let mut t = Transcript::new();
+        let messages = vec![
+            msg(json!({"role":"user","content":[{"type":"text","text":"write it"}],"timestamp":0})),
+            assistant(
+                json!([{"type":"toolCall","id":"w1","name":"write","arguments":{"path":"qa-note2.md","content":"hi\n"}}]),
+                "toolUse",
+            ),
+        ];
+        assert_eq!(t.load(&messages), RowChange::Reset);
+        let RowKind::Tool(tool) = &t.get("w1").unwrap().kind else {
+            panic!()
+        };
+        assert_eq!(tool.status, ToolStatus::Error);
+        assert!(!tool.output.is_empty());
+        assert!(crate::model::timeline::file_changes(t.rows()).is_empty());
     }
 }
