@@ -434,7 +434,7 @@ universal build needs ~6 GB more than the 17 GB free on that host).
 | x86_64-apple-darwin (`mac`) | `oino` | 74.0 MiB |
 | | `oino-kanboard` | 4.8 MiB |
 | | `oino-desktop` | 100.7 MiB |
-| | `Oino.app` (ad-hoc signed, not notarized) | ~177 MiB |
+| | `Oino.app` (ad-hoc signed, not notarized) | 102 MiB |
 | | `Oino_1.0.0-alpha.3_x64.dmg` | 44.6 MiB |
 
 Smoke results (see §1b.6 and `target/release-artifacts/<target>/smoke.txt`): Linux ✅ (print,
