@@ -29,6 +29,7 @@ notify-rust = "4.18"
 # Root workspace crates.
 oino-agent = { path = "../crates/oino-agent" }
 oino-ai = { path = "../crates/oino-ai" }
+oino-browser = { path = "../crates/oino-browser" }
 oino-bundle = { path = "../crates/oino-bundle" }
 oino-client = { path = "../crates/oino-client" }
 oino-core = { path = "../crates/oino-core" }

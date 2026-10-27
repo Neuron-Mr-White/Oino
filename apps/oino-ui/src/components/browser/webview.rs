@@ -1,11 +1,12 @@
-//! Embedded browser (design.md A1.4): the side pane's **Browser** tab over `gpui-webview`
-//! (Wry: `WKWebView` on macOS, `WebView2` on Windows, `WebKitGTK` on Linux X11/XWayland).
+//! Fallback **Web view** (browser-control.md B5; design.md A1.4) used only when browser control
+//! is unavailable: `gpui-webview` (Wry: `WKWebView` on macOS, `WebView2` on Windows, `WebKitGTK`
+//! on Linux X11/XWayland).
 //!
 //! URL bar, back / forward / reload, open externally, devtools in debug builds. Links from the
 //! transcript, `openUrl` from extensions, terminal ⌘-clicks and the `localhost:*` preview chip
 //! all land here. Without composition support the native view covers GPUI content in its
 //! bounds, so the workspace hides it whenever an overlay (palette, dialog, other route) is up
-//! ([`BrowserView::set_shown`]).
+//! ([`WebBrowser::set_shown`]).
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -81,8 +82,8 @@ pub fn local_urls(text: &str) -> Vec<String> {
     out
 }
 
-/// One browser tab.
-pub struct BrowserView {
+/// One fallback web view tab.
+pub struct WebBrowser {
     url: String,
     title: String,
     input: Entity<InputState>,
@@ -93,9 +94,9 @@ pub struct BrowserView {
     loads: Option<Task<()>>,
 }
 
-impl EventEmitter<BrowserEvent> for BrowserView {}
+impl EventEmitter<BrowserEvent> for WebBrowser {}
 
-impl BrowserView {
+impl WebBrowser {
     /// A browser that loads `url` when first shown.
     pub fn new(url: &str, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let url = normalise_url(url);
@@ -225,7 +226,7 @@ impl BrowserView {
     }
 }
 
-impl Render for BrowserView {
+impl Render for WebBrowser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = OinoTheme::get(cx);
         if self.web.is_none() && self.error.is_none() && self.shown {

@@ -17,6 +17,7 @@ futures.workspace = true
 indexmap.workspace = true
 gpui-kit.workspace = true
 oino-ai.workspace = true
+oino-browser.workspace = true
 oino-bundle.workspace = true
 oino-client.workspace = true
 oino-core.workspace = true

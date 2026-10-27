@@ -414,7 +414,13 @@ impl SessionPane {
                 (None, url) => {
                     let url = url.unwrap_or_else(|| "about:blank".to_owned());
                     let view = gpui_kit::AppContext::new(cx, |cx| {
-                        crate::components::browser::BrowserView::new(&url, window, cx)
+                        crate::components::browser::BrowserView::for_session(
+                            &self.model.id,
+                            &self.model.cwd,
+                            &url,
+                            window,
+                            cx,
+                        )
                     });
                     cx.subscribe(
                         &view,

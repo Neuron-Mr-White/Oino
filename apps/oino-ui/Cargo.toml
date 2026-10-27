@@ -14,7 +14,7 @@ views = ["dep:gpui-kit"]
 ## Touch layouts for Oino Mobile (`oino_ui::mobile`, owned by gpui-mobile).
 mobile = ["views"]
 ## Side-pane Browser tab (gpui-webview; desktop only, X11/XWayland on Linux).
-browser = ["views", "dep:gpui-webview", "dep:wry"]
+browser = ["views", "dep:gpui-webview", "dep:wry", "dep:image"]
 ## Bottom-frame Terminal tab (alacritty_terminal + the platform PTY; desktop only).
 terminal = ["views", "dep:alacritty_terminal"]
 
@@ -29,6 +29,8 @@ oino-agent.workspace = true
 oino-ai.workspace = true
 oino-client = { workspace = true }
 oino-core.workspace = true
+oino-extension-api.workspace = true
+image = { version = "0.25", default-features = false, features = ["jpeg"], optional = true }
 oino-session.workspace = true
 oino-view.workspace = true
 serde.workspace = true

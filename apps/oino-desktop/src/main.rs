@@ -192,12 +192,22 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("starting the tokio runtime")?;
     let cwd = default_cwd(args.cwd);
+    // The in-app browser (browser-control.md §3): one service for every session; browsers
+    // start on first use and are stopped at quit.
+    let browser_service = (!args.demo)
+        .then(|| oino_browser::BrowserOptions::for_agent_dir(&agent_dir))
+        .filter(|o| o.settings.enabled)
+        .map(oino_browser::BrowserService::new);
     let host: Arc<dyn SessionHost> = if args.demo {
         Arc::new(demo::DemoHost::new(agent_dir, cwd))
     } else {
         // Bundled resources are extracted inside the runtime (blocking I/O off the UI path).
         let _guard = runtime.enter();
-        Arc::new(embedded::EmbeddedHost::new(agent_dir, cwd))
+        Arc::new(embedded::EmbeddedHost::with_browser(
+            agent_dir,
+            cwd,
+            browser_service.clone(),
+        ))
     };
     let handle = runtime.handle().clone();
     let (app, browser) = platform(&host.app_settings());
@@ -207,6 +217,7 @@ fn main() -> anyhow::Result<()> {
     let app_quitting = Arc::clone(&quitting);
     let beat = watchdog.clone();
     let soak = args.soak;
+    let app_browser = browser_service.clone();
     app.with_assets(oino_ui::design::icons::OinoAssets)
         .run(move |cx: &mut App| {
             let host = app_host;
@@ -234,7 +245,13 @@ fn main() -> anyhow::Result<()> {
             cx.default_global::<oino_ui::design::perf::FrameProbe>()
                 .process_start = Some(process_start);
             oino_ui::platform::OsNotifier::install(cx, Arc::new(os_notify));
-            cx.set_global(oino_ui::platform::BrowserSupport(browser));
+            let screencast = app_browser.as_ref().is_some_and(|b| {
+                oino_extension_api::browser::BrowserHost::status(b, None).available
+            });
+            if let Some(b) = app_browser {
+                oino_ui::components::browser::hub::BrowserHub::install(cx, Arc::new(b));
+            }
+            cx.set_global(oino_ui::platform::BrowserSupport(browser || screencast));
             views::init(cx);
             cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
             let options = window_options(cx);
@@ -272,6 +289,13 @@ fn main() -> anyhow::Result<()> {
         };
         if tokio::time::timeout(QUIT_GRACE, shutdown).await.is_err() {
             tracing::warn!("sessions did not shut down within the quit grace period");
+        }
+        if let Some(b) = &browser_service
+            && tokio::time::timeout(QUIT_GRACE, b.shutdown())
+                .await
+                .is_err()
+        {
+            tracing::warn!("the browser did not stop within the quit grace period");
         }
     });
     // A blocking task stuck in I/O must not hang the exit.

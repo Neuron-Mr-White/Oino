@@ -166,6 +166,8 @@ struct Inner {
     /// Live session runtimes (weak: a released pane drops its runtime; strong references
     /// here kept every session ever opened alive, with its extension state).
     runtimes: Mutex<Vec<Weak<AgentSessionRuntime>>>,
+    /// Process-wide browser service served to `oino.browser` (browser-control.md §3).
+    browser: Option<oino_browser::BrowserService>,
 }
 
 /// The in-process host.
@@ -177,7 +179,17 @@ pub(crate) struct EmbeddedHost {
 impl EmbeddedHost {
     /// A host over `agent_dir`; new sessions start in `default_cwd`.
     #[must_use]
+    #[cfg(test)]
     pub(crate) fn new(agent_dir: PathBuf, default_cwd: PathBuf) -> Self {
+        Self::with_browser(agent_dir, default_cwd, None)
+    }
+
+    /// A host whose extension runtimes get `browser` (the in-app browser service).
+    pub(crate) fn with_browser(
+        agent_dir: PathBuf,
+        default_cwd: PathBuf,
+        browser: Option<oino_browser::BrowserService>,
+    ) -> Self {
         let bundle = load_bundle(&agent_dir);
         tracing::info!(count = bundle.packages.len(), "bundled extensions");
         Self {
@@ -188,6 +200,7 @@ impl EmbeddedHost {
                 bundle,
                 workspaces: tokio::sync::Mutex::new(HashMap::new()),
                 runtimes: Mutex::new(Vec::new()),
+                browser,
             }),
         }
     }
@@ -204,6 +217,11 @@ impl Inner {
             cwd,
         )))
         .map_err(|e| HostError::Session(format!("wasm runtime: {e}")))?;
+        if let (Some(hub), Some(browser)) = (runtime.local_services(), &self.browser) {
+            hub.set_browser(Some(
+                Arc::new(browser.clone()) as Arc<dyn oino_extension_api::browser::BrowserHost>
+            ));
+        }
         let runtime = Arc::new(runtime);
         let (global, _) =
             oino_wasm_host::packages::discover(&[self.agent_dir.join("extensions")], false);

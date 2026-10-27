@@ -1398,6 +1398,8 @@ impl SessionPane {
     /// overlay covers the side pane).
     pub fn sync_browser(&mut self, shown: bool, cx: &mut Context<Self>) {
         #[cfg(feature = "browser")]
+        crate::components::browser::hub::watch(self, cx);
+        #[cfg(feature = "browser")]
         if let Some(b) = &self.browser {
             let shown = shown && self.side.current() == Some(&SideTab::Browser);
             b.update(cx, |b, cx| b.set_shown(shown, cx));
