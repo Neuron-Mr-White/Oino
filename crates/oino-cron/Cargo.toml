@@ -19,6 +19,7 @@ dirs.workspace = true
 fs4.workspace = true
 iana-time-zone.workspace = true
 nix = { workspace = true, optional = true }
+oino-extension-api = { path = "../oino-extension-api" }
 reqwest = { workspace = true, default-features = false }
 serde.workspace = true
 serde_json.workspace = true

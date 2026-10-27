@@ -87,6 +87,7 @@ packages! {
     FUSION = "unipi.fusion", "fusion", "@pi-unipi/fusion", ["fusion"], B2;
     WATCHDOG = "unipi.watchdog", "watchdog", "@pi-unipi/watchdog", ["watchdog"], B2;
     APP_BRIDGE = "unipi.app-bridge", "app-bridge", "@pi-unipi/app-bridge", ["app-bridge"], B1;
+    CRON = "unipi.cron", "cron", "Oino-native (unipi-port §3.24)", ["cron"], B2;
 }
 
 /// unipi packages that are deliberately not ported (D22, unipi-port §1). `app-bridge` was
@@ -159,6 +160,7 @@ mod tests {
                 "fusion",
                 "watchdog",
                 "app-bridge",
+                "cron",
             ]
         );
         assert!(
@@ -209,7 +211,11 @@ mod tests {
             assert!(namespace_owner(ns).is_some(), "{ns}");
         }
         assert_eq!(namespace_owner("hints").map(|p| p.id), Some("unipi.core"));
-        assert!(namespace_owner("cron").is_none());
+        assert_eq!(
+            namespace_owner("cron").map(|p| p.id),
+            Some("unipi.cron"),
+            "the Oino-native scheduler owns the cron namespace"
+        );
     }
 
     #[test]
@@ -218,7 +224,8 @@ mod tests {
         assert_eq!(load_index("unipi.watchdog"), Some(22));
         assert!(is_unipi("unipi.btw"));
         assert!(is_unipi("unipi.app-bridge"));
-        assert!(!is_unipi("unipi.cron"));
+        assert!(is_unipi("unipi.cron"));
+        assert_eq!(load_index("unipi.cron"), Some(24));
         assert_eq!(by_id("unipi.fusion").map(|p| p.batch), Some(Batch::B2));
     }
 }

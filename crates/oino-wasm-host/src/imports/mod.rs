@@ -7,6 +7,7 @@
 
 mod browser;
 mod core;
+mod cron;
 mod io;
 mod runtime;
 mod session;

@@ -23,6 +23,7 @@ oino-agent = { path = "../oino-agent", optional = true }
 oino-ai = { path = "../oino-ai" }
 oino-browser-protocol = { path = "../oino-browser-protocol" }
 oino-core = { path = "../oino-core", optional = true }
+oino-cron = { path = "../oino-cron" }
 oino-extension-api = { path = "../oino-extension-api" }
 oino-settings = { path = "../oino-settings" }
 reqwest.workspace = true

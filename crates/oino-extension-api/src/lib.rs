@@ -20,6 +20,7 @@
 //! | [`runtime`] | — | [`ExtensionRuntime`], [`ExtensionInstance`], [`ProviderInstance`], [`HostServices`], [`AgentHandle`] |
 //! | [`manifest`] | — | `extension.json`, [`manifest::Permissions`], package validation |
 //! | [`browser`] | `browser` | [`browser::BrowserHost`], [`browser::BrowserRequest`], wire types |
+//! | [`cron`] | `cron` | [`cron::CronHost`] (daemon client or embedded scheduler) |
 //! | `testing` (feature) | — | `RecordingHostServices`, `FakeExtensionRuntime` |
 
 #![forbid(unsafe_code)]
@@ -34,6 +35,7 @@
 )]
 
 pub mod browser;
+pub mod cron;
 pub mod guest;
 pub mod json;
 pub mod manifest;

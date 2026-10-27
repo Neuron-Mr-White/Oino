@@ -593,6 +593,20 @@ pub trait HostServices: Send + Sync {
         }))
     }
 
+    // ── cron ──
+    /// `cron.call`: one scheduler op (unipi-port §3.24) in the caller's scope. The hub
+    /// overrides this with the installed [`crate::cron::CronHost`] (or the daemon client)
+    /// before it reaches the inner host.
+    fn cron_call(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        op: &str,
+        payload: RawJson,
+    ) -> BoxFut<'_, Result<RawJson, HostError>> {
+        Box::pin(async { unsupported!("cron") })
+    }
+
     // ── host-produced events ──
     /// Delivers an event produced by the runtime host itself (timers, process exits, tasks).
     fn deliver_event(

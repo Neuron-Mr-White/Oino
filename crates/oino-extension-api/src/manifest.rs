@@ -228,6 +228,8 @@ pub struct Permissions {
     pub services: ServicesPermission,
     /// `browser.*`: control the in-app browser (browser-control.md §8.4).
     pub browser: bool,
+    /// `cron.*`: control the scheduled-runs scheduler (unipi-port §3.24).
+    pub cron: bool,
 }
 
 impl Default for Permissions {
@@ -251,6 +253,7 @@ impl Default for Permissions {
             edit_externally: false,
             services: ServicesPermission::default(),
             browser: false,
+            cron: false,
         }
     }
 }

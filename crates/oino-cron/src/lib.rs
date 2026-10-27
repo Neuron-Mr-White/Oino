@@ -24,6 +24,7 @@
 //! | [`scheduler`] | the ticking owner: due fires, overlap, concurrency, run lifecycle |
 //! | [`control`] | [`control::CronControl`]: every operation, handled with or without a live scheduler |
 //! | [`exec`] | running one fire as a headless `oino -p` child process |
+//! | [`host`] | WIT `cron` capability adapters: daemon client, embedded scheduler |
 //! | [`notify`] | per-job run notifications (ntfy / gotify / telegram) |
 //! | [`client`] | the daemon's TCP control client ([`client::ControlClient`]) |
 //! | [`serve`] | the always-on daemon: owner lock, tick loop, control socket |
@@ -44,6 +45,7 @@ pub mod client;
 pub mod control;
 pub mod error;
 pub mod exec;
+pub mod host;
 pub mod install;
 pub mod model;
 pub mod notify;

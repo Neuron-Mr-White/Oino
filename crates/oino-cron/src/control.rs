@@ -290,8 +290,8 @@ pub fn add_job(
         schedule: resolved,
         tz,
         cwd,
-        model: new.model,
-        thinking: new.thinking,
+        model: new.model.filter(|m| !m.is_empty()),
+        thinking: new.thinking.filter(|t| !t.is_empty()),
         enabled: new.enabled.unwrap_or(true),
         time_limit_s: new
             .time_limit_s
@@ -329,10 +329,10 @@ pub fn edit_job(job: &mut Job, patch: EditJob, now_ms: u64) -> Result<(), String
         job.cwd = v;
     }
     if let Some(v) = patch.model {
-        job.model = v;
+        job.model = v.filter(|m| !m.is_empty());
     }
     if let Some(v) = patch.thinking {
-        job.thinking = v;
+        job.thinking = v.filter(|t| !t.is_empty());
     }
     if let Some(v) = patch.enabled {
         job.enabled = v;

@@ -1,0 +1,11 @@
+{
+  "apiVersion": "oino.extension/1",
+  "id": "unipi.cron",
+  "name": "Cron",
+  "version": "3.0.0",
+  "kind": "extension",
+  "description": "Scheduled, unattended Oino runs: /cron (list, show, runs, run, stop, enable, disable, pause, resume, status, add, edit, remove) with job-id completions, agent tools (cron_list, cron_add, cron_update, cron_remove, cron_run), scheduler settings in the hub and the bundled cron skill. Needs the always-on scheduler (oino cron serve or oino cron install).",
+  "license": "MIT",
+  "resources": { "skills": ["skills"] },
+  "permissions": { "cron": true }
+}

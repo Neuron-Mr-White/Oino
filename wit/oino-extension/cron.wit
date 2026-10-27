@@ -1,0 +1,16 @@
+package oino:extension@1.0.0;
+
+/// Scheduled-run (cron) scheduler control (docs/dev/v1/unipi-port.md §3.24). Needs manifest
+/// permission `cron`.
+interface cron {
+    use types.{json, host-error};
+
+    /// Runs one scheduler op. `op` is one of `list`, `show`, `add`, `edit`, `remove`,
+    /// `enable`, `disable`, `run`, `stop`, `runs`, `log`, `pause`, `resume`, `status`,
+    /// `settings-get`, `settings-set`, `test-notify`, `parse`; `payload` holds the request's
+    /// fields (e.g. `{"id": "digest"}` for `show`). The reply is the op's JSON payload
+    /// (jobs, runs, the stored job, previews …) as documented in `oino_cron::control`.
+    /// `denied` when the extension lacks the `cron` permission; `failed` carries the
+    /// scheduler's user-facing error message.
+    call: async func(op: string, payload: json) -> result<json, host-error>;
+}

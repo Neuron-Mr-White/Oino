@@ -50,6 +50,7 @@ const UNIPI_LOAD_ORDER: &[&str] = &[
     "ask-user",
     "mcp",
     "notify",
+    "cron",
     "kanboard",
     "command-enchantment",
     "compactor",

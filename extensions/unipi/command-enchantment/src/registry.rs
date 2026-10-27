@@ -23,11 +23,12 @@ pub const PACKAGE_ORDER: &[&str] = &[
     "subagents",
     "background-tasks",
     "fusion",
+    "cron",
 ];
 
-/// Command name → package (unipi `COMMAND_REGISTRY` without the `unipi:` prefix; `/cron`
-/// dropped, D22; `/settings` and `/changelog` merged into the core built-ins; the Fusion model
-/// picker is `/fusion`).
+/// Command name → package (unipi `COMMAND_REGISTRY` without the `unipi:` prefix; `/cron` is
+/// the Oino-native scheduler (`unipi.cron`, unipi-port §3.24); `/settings` and `/changelog`
+/// merged into the core built-ins; the Fusion model picker is `/fusion`).
 pub const COMMAND_REGISTRY: &[(&str, &str)] = &[
     ("plan", "workflow"),
     ("permission", "workflow"),
@@ -70,6 +71,7 @@ pub const COMMAND_REGISTRY: &[(&str, &str)] = &[
     ("compact-doctor", "compact"),
     ("compact-help", "compact"),
     ("notify-event", "notify"),
+    ("cron", "cron"),
     ("kanboard", "kanboard"),
     ("kanboard-add", "kanboard"),
     ("kanboard-do", "kanboard"),
@@ -80,6 +82,10 @@ pub const COMMAND_REGISTRY: &[(&str, &str)] = &[
 
 /// Short descriptions used when the host's command list lacks one (unipi `COMMAND_DESCRIPTIONS`).
 pub const COMMAND_DESCRIPTIONS: &[(&str, &str)] = &[
+    (
+        "cron",
+        "Scheduled, unattended Oino runs — jobs, run history, pause/resume (see skill:cron)",
+    ),
     (
         "plan",
         "Plan mode — investigate read-only, then approve a plan",
@@ -231,6 +237,7 @@ pub const PACKAGE_LABELS: &[(&str, &str)] = &[
     ("web-api", "web-api"),
     ("compact", "compact"),
     ("notify", "notify"),
+    ("cron", "cron"),
     ("kanboard", "kanboard"),
     ("footer", "footer"),
     ("updater", "updater"),
@@ -256,6 +263,7 @@ pub const PACKAGE_TONES: &[(&str, &str)] = &[
     ("web-api", "c4"),
     ("compact", "default"),
     ("notify", "c9"),
+    ("cron", "c10"),
     ("kanboard", "c10"),
     ("footer", "c11"),
     ("updater", "c3"),
@@ -375,7 +383,6 @@ mod tests {
         registry.sort_unstable();
         described.sort_unstable();
         assert_eq!(registry, described);
-        assert!(!registry.contains(&"cron"), "cron is dropped (D22)");
         // Core built-ins always win: no ported command shadows one.
         for (name, _, _) in BUILTIN_COMMANDS {
             assert!(!registry.contains(name), "{name} collides with a built-in");

@@ -1,0 +1,21 @@
+[package]
+name = "unipi-cron"
+version = "3.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "unipi.cron: scheduled, unattended Oino runs (/cron, agent tools, scheduler settings) over the host cron capability"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oino-extension.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unipi-kit.workspace = true
+
+[lints]
+workspace = true
