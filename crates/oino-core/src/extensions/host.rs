@@ -317,9 +317,31 @@ pub enum HostOp {
     EditorText,
     /// `models.credential-for`: `{provider, headers, baseUrl?}` for a provider, or `null`.
     CredentialFor(String),
+    /// `bus.publish` mirror: records sticky topics and feeds subscribed frontends
+    /// (`_oino/topics`). Served by the host router, independent of any session.
+    BusPublish {
+        /// Topic.
+        topic: String,
+        /// Payload.
+        data: JsonValue,
+        /// Sticky.
+        sticky: bool,
+    },
+    /// `bus.get` (hosts without their own bus): last sticky value or `null`.
+    BusGet(String),
+    /// `control.running-bash`: `[{toolCallId, command, startedAt, pid?}]` of the session.
+    RunningBash,
+    /// `host-info.get` frontends: `["desktop", "rpc", …]` attached to the session.
+    GetFrontends,
 }
 
 impl HostOp {
+    /// Bus operations, served by the host router independent of any session.
+    #[must_use]
+    pub fn is_bus_op(&self) -> bool {
+        matches!(self, Self::BusPublish { .. } | Self::BusGet(_))
+    }
+
     /// Operations served by the settings registry, independent of any session.
     #[must_use]
     pub fn is_settings_op(&self) -> bool {
@@ -389,6 +411,23 @@ pub trait HostApi: Send + Sync {
         Box::pin(async {
             Err(HostError::Failed(
                 "models.stream is not supported by this host".into(),
+            ))
+        })
+    }
+
+    /// `control.bash-detach` / `tasks.adopt-bash`: detaches the running `bash` call
+    /// `tool_call_id` of the session of `cx` into background task `task_id`.
+    fn detach_bash<'a>(
+        &'a self,
+        _extension: &'a str,
+        _cx: &'a CallContext,
+        _tool_call_id: &'a str,
+        _task_id: &'a str,
+        _reason: &'a str,
+    ) -> BoxFuture<'a, Result<crate::session::DetachedBash, HostError>> {
+        Box::pin(async {
+            Err(HostError::Failed(
+                "bash detach is not supported by this host".into(),
             ))
         })
     }

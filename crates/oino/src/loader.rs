@@ -273,6 +273,15 @@ impl ExtensionLoader for CliLoader {
         host: Arc<dyn HostApi>,
         project_trusted: bool,
     ) -> BoxFuture<'_, Vec<Arc<dyn ExtensionInstance>>> {
+        self.load_enabled(host, project_trusted, &[])
+    }
+
+    fn load_enabled<'a>(
+        &'a self,
+        host: Arc<dyn HostApi>,
+        project_trusted: bool,
+        disabled: &'a [String],
+    ) -> BoxFuture<'a, Vec<Arc<dyn ExtensionInstance>>> {
         Box::pin(async move {
             let mut instances: Vec<Arc<dyn ExtensionInstance>> = self
                 .builtins
@@ -280,7 +289,7 @@ impl ExtensionLoader for CliLoader {
                 .map(|builtin| builtin.instantiate(&host))
                 .collect();
             if let Some(wasm) = &self.wasm {
-                instances.extend(wasm.load(host, project_trusted).await);
+                instances.extend(wasm.load_enabled(host, project_trusted, disabled).await);
             }
             instances
         })

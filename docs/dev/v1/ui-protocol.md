@@ -48,6 +48,10 @@ pub enum UiResponse { Value{id, value: serde_json::Value}, Confirmed{id, confirm
 - Timeouts are agent-side (pi): on expiry the dialog resolves with its default (`select`/
   `input`/`editor` → `undefined`, `confirm` → `false`, Oino dialogs → cancelled) and a dismiss
   is broadcast. Extension cancel tokens cancel dialogs the same way.
+- A dialog only has the timeout its request declares: extension handler deadlines pause while
+  the handler's extension has a dialog open (GA-42). When the waiting handler is dropped or
+  times out anyway, its dialogs are withdrawn with `extension_ui_dismiss{reason:"cancelled"}`
+  (no orphan cards).
 - No UI attached (`hasUI == false`: print/json modes, children with `UiPolicy::None`): dialogs
   resolve immediately as cancelled/default; fire-and-forget requests are dropped.
 - `ui_prompt_start`/`ui_prompt_end` extension events wrap every dialog (runtime §7.2).
@@ -108,7 +112,7 @@ covers unipi ask_user (unipi-port §3.13).
 | `osNotify` | `title`, `body`, `urgency: low\|normal\|critical`, `actionUrl?` | frontend uses OS notification; TUI → OSC 777/9 or `notify-send` via host |
 | `openUrl` | `url` | |
 | `clipboardWrite` | `text` | TUI → OSC 52 |
-| `setShortcuts` | `shortcuts: [{id, keys, description, extensionId}]` | full current list (on change) |
+| `setShortcuts` | `shortcuts: [{id, keys, description, extensionId}]` | full current list (on change); emitted by core from the shortcut registry after `session_start` and on every (un)registration, retained |
 | `setTheme` | `name` | pi `setTheme`; frontends without themes ignore |
 | `openSettings` | `namespace?`, `query?` | opens the frontend settings hub (§6.6) filtered to a namespace/search (unipi `/settings`, `/skills`) |
 

@@ -1,7 +1,7 @@
 //! Client events on the wire (pi `json-event.ts` + RPC event filtering, modes.md §2.2/§3.1).
 
 use oino_ai::{JsonObject, JsonValue};
-use oino_core::events::{AgentSessionEvent, ClientEvent};
+use oino_core::events::{AgentSessionEvent, ClientEvent, OinoEvent};
 use oino_core::ui::is_dialog;
 
 /// pi dialog methods (`rpc-extension-ui.md`).
@@ -111,10 +111,24 @@ pub fn rpc_event(event: &ClientEvent, oino: bool) -> WireEvent {
             WireEvent::Line(value)
         }
         ClientEvent::Oino(_) if !oino => WireEvent::Drop,
+        ClientEvent::Oino(OinoEvent::AgentEvent { agent_id, event }) => {
+            WireEvent::Line(agent_event_json(agent_id, event))
+        }
         ClientEvent::Oino(event) => {
             WireEvent::Line(serde_json::to_value(event).unwrap_or(JsonValue::Null))
         }
     }
+}
+
+/// `agent_event` with the nested session event in wire form (`message_update` deltas only,
+/// like top-level events).
+#[must_use]
+pub fn agent_event_json(agent_id: &str, event: &ClientEvent) -> JsonValue {
+    let inner = match event {
+        ClientEvent::Session(event) => session_event_json(event),
+        other => serde_json::to_value(other).unwrap_or(JsonValue::Null),
+    };
+    serde_json::json!({"type": "agent_event", "agentId": agent_id, "event": inner})
 }
 
 #[cfg(test)]
@@ -188,6 +202,57 @@ mod tests {
         assert_eq!(
             rpc_event(&dismiss, true),
             WireEvent::Line(json!({"type":"commands_changed"}))
+        );
+    }
+
+    #[test]
+    fn nested_agent_events_travel_as_deltas_and_decode_back() {
+        let start = ClientEvent::Oino(OinoEvent::AgentEvent {
+            agent_id: "child".into(),
+            event: Box::new(ClientEvent::Session(AgentSessionEvent::MessageStart {
+                message: AgentMessage::Assistant(AssistantMessage::empty("faux", "faux", "m", 1)),
+            })),
+        });
+        let update = ClientEvent::Oino(OinoEvent::AgentEvent {
+            agent_id: "child".into(),
+            event: Box::new(ClientEvent::Session(AgentSessionEvent::MessageUpdate {
+                message: AgentMessage::Assistant(partial()),
+                assistant_message_event: AssistantMessageEvent::ToolcallStart {
+                    content_index: 0,
+                    partial: partial(),
+                },
+            })),
+        });
+        let WireEvent::Line(wire) = rpc_event(&update, true) else {
+            panic!("dropped");
+        };
+        assert_eq!(wire["type"], "agent_event");
+        assert_eq!(wire["agentId"], "child");
+        assert!(wire["event"].get("message").is_none());
+        assert_eq!(rpc_event(&update, false), WireEvent::Drop);
+        let mut decoder = crate::backend::EventDecoder::default();
+        let WireEvent::Line(first) = rpc_event(&start, true) else {
+            panic!("dropped");
+        };
+        assert!(decoder.decode(first).is_some());
+        let Some(ClientEvent::Oino(OinoEvent::AgentEvent { agent_id, event })) =
+            decoder.decode(wire)
+        else {
+            panic!("not decoded");
+        };
+        assert_eq!(agent_id, "child");
+        let ClientEvent::Session(AgentSessionEvent::MessageUpdate {
+            message: AgentMessage::Assistant(rebuilt),
+            ..
+        }) = *event
+        else {
+            panic!("not a message update");
+        };
+        assert_eq!(rebuilt.content.len(), 1);
+        let shutdown = ClientEvent::Oino(OinoEvent::ShutdownRequested);
+        assert_eq!(
+            rpc_event(&shutdown, true),
+            WireEvent::Line(json!({"type": "shutdown_requested"}))
         );
     }
 }

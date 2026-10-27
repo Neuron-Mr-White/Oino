@@ -254,6 +254,7 @@ pub struct ExtensionRunner {
     errors: Arc<dyn ErrorSink>,
     flag_values: Arc<Mutex<IndexMap<String, JsonValue>>>,
     stale: Arc<Mutex<Option<String>>>,
+    dialogs: Option<crate::ui::UiBridge>,
 }
 
 impl std::fmt::Debug for ExtensionRunner {
@@ -283,7 +284,16 @@ impl ExtensionRunner {
             errors,
             flag_values: Arc::new(Mutex::new(flag_values)),
             stale: Arc::new(Mutex::new(None)),
+            dialogs: None,
         }
+    }
+
+    /// Pauses handler deadlines while the handler's extension has a dialog open on `ui`,
+    /// and withdraws its dialogs when a handler times out (GA-42).
+    #[must_use]
+    pub fn with_dialogs(mut self, ui: crate::ui::UiBridge) -> Self {
+        self.dialogs = Some(ui);
+        self
     }
 
     /// The extension set.
@@ -355,13 +365,24 @@ impl ExtensionRunner {
             |d| d.min(MAX_MANIFEST_DEADLINE).max(deadline_for(kind)),
         );
         let call = extension.instance.on_event(kind, payload, self.cx.clone());
-        match tokio::time::timeout(deadline, call).await {
-            Ok(result) => result,
-            Err(_) => Err(ExtensionCallError::new(format!(
-                "Extension handler for {kind} timed out after {}ms",
-                deadline.as_millis()
-            ))),
+        let id = extension.instance.id();
+        let waiting = || {
+            self.dialogs
+                .as_ref()
+                .is_some_and(|ui| ui.pending_for(id) > 0)
+        };
+        if let Some(result) =
+            crate::extensions::deadline::with_deadline(call, deadline, waiting).await
+        {
+            return result;
         }
+        if let Some(ui) = &self.dialogs {
+            ui.cancel_for(id);
+        }
+        Err(ExtensionCallError::new(format!(
+            "Extension handler for {kind} timed out after {}ms",
+            deadline.as_millis()
+        )))
     }
 
     fn report(&self, extension: &LoadedExtension, kind: &str, error: &ExtensionCallError) {

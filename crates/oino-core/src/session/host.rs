@@ -50,6 +50,10 @@ impl AgentSession {
             op,
             HostOp::RegisterCommand(_) | HostOp::UnregisterCommand(_)
         );
+        let shortcuts_changed = matches!(
+            op,
+            HostOp::RegisterShortcut(_) | HostOp::UnregisterShortcut(_)
+        );
         let result = match op {
             HostOp::Subscribe(kinds) => {
                 let loaded = loaded
@@ -274,6 +278,16 @@ impl AgentSession {
             HostOp::GetSessionStats => to_json(self.session_stats()),
             HostOp::EditorText => Ok(json!(self.editor_text())),
             HostOp::CredentialFor(provider) => self.credential_for(&provider).await,
+            HostOp::RunningBash => to_json(self.running_bash().await),
+            HostOp::GetFrontends => Ok(json!(self.frontends())),
+            op @ (HostOp::BusPublish { .. } | HostOp::BusGet(_)) => {
+                let router = self
+                    .inner
+                    .agents
+                    .router()
+                    .ok_or_else(|| HostError::Failed("the bus is not available".into()))?;
+                router.bus_call(extension, op)
+            }
             HostOp::ModelComplete {
                 model,
                 context,
@@ -475,6 +489,9 @@ impl AgentSession {
         }
         if commands_changed {
             self.inner.hub.publish(OinoEvent::CommandsChanged);
+        }
+        if shortcuts_changed {
+            self.publish_shortcuts();
         }
         result
     }

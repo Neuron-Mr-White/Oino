@@ -6,11 +6,14 @@
 
 use oino_agent::QueueMode;
 use oino_ai::{ImageContent, JsonObject, JsonValue, Model, ThinkingLevel};
+pub use oino_core::agents::{AgentInfo, AgentRunState};
 use oino_core::extensions::settings::SettingsLayer;
 pub use oino_core::session::{
-    AuthProviderInfo, CompletionEntry, CompletionGroup, EditorEvent, EditorIntent,
+    AuthProviderInfo, Checkpoint, CheckpointFile, CompletionEntry, CompletionGroup, EditorEvent,
+    EditorIntent, ExtensionInfo, QueueEdit, QueueKind, RewindFailure, RewindResult, RunningBash,
 };
 use oino_core::session::{NavigateTreeOptions, StreamingBehavior};
+pub use oino_core::topics::TopicValue;
 pub use oino_settings::SettingsScope;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
@@ -416,6 +419,80 @@ pub enum OinoCommand {
         /// Key.
         key: String,
     },
+    /// Sticky topic feed: changes the subscription → `{topics: [TopicValue], patterns}`;
+    /// matching publishes then arrive as `topic` events.
+    #[serde(rename = "_oino/topics")]
+    Topics {
+        /// Patterns to add (exact, `prefix*`, `*`).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        subscribe: Vec<String>,
+        /// Patterns to remove.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        unsubscribe: Vec<String>,
+    },
+    /// Last sticky value of one topic → `{data | null, publisher?}`.
+    #[serde(rename = "_oino/bus_get")]
+    BusGet {
+        /// Topic.
+        topic: String,
+    },
+    /// Nested agents of the session tree → `{agents: [AgentInfo], follow}`; `follow` turns
+    /// live `agent_event` forwarding on or off.
+    #[serde(rename = "_oino/agents")]
+    Agents {
+        /// Forward child events.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        follow: Option<bool>,
+    },
+    /// Transcript of one nested agent → `{messages}`.
+    #[serde(rename = "_oino/agent_messages", rename_all = "camelCase")]
+    AgentMessages {
+        /// Agent id.
+        agent_id: String,
+    },
+    /// Aborts the current run of one nested agent.
+    #[serde(rename = "_oino/agent_abort", rename_all = "camelCase")]
+    AgentAbort {
+        /// Agent id.
+        agent_id: String,
+    },
+    /// One single-item queue edit (`{op: remove|edit|move|sendNow, queue, …}`).
+    #[serde(rename = "_oino/queue_edit")]
+    QueueEdit(QueueEdit),
+    /// File checkpoints → `{checkpoints: [Checkpoint]}`.
+    #[serde(rename = "_oino/checkpoints")]
+    Checkpoints,
+    /// Rewind to before a user message: restore files and/or fork the conversation →
+    /// `RewindResult`.
+    #[serde(rename = "_oino/rewind", rename_all = "camelCase")]
+    Rewind {
+        /// User message entry.
+        entry_id: String,
+        /// Restore the files changed since (default true).
+        #[serde(default = "yes")]
+        files: bool,
+        /// Fork the conversation before the message (default true).
+        #[serde(default = "yes")]
+        conversation: bool,
+    },
+    /// Running foreground `bash` calls → `{calls: [RunningBash]}`.
+    #[serde(rename = "_oino/running_bash")]
+    RunningBash,
+    /// Extensions → `{extensions: [ExtensionInfo]}`.
+    #[serde(rename = "_oino/extensions")]
+    Extensions,
+    /// Enable or disable an extension (`disabledExtensions`; applies to new sessions).
+    #[serde(rename = "_oino/set_extension_enabled")]
+    SetExtensionEnabled {
+        /// Extension id.
+        id: String,
+        /// Enabled.
+        enabled: bool,
+    },
+}
+
+const fn yes() -> bool {
+    true
 }
 
 const fn protocol_version() -> u32 {
@@ -423,7 +500,7 @@ const fn protocol_version() -> u32 {
 }
 
 /// Oino command types implemented by [`OinoCommand`].
-pub const OINO_COMMAND_TYPES: [&str; 23] = [
+pub const OINO_COMMAND_TYPES: [&str; 34] = [
     "_oino/hello",
     "_oino/ui_snapshot",
     "_oino/navigate_tree",
@@ -447,6 +524,17 @@ pub const OINO_COMMAND_TYPES: [&str; 23] = [
     "_oino/login",
     "_oino/logout",
     "_oino/set_api_key",
+    "_oino/topics",
+    "_oino/bus_get",
+    "_oino/agents",
+    "_oino/agent_messages",
+    "_oino/agent_abort",
+    "_oino/queue_edit",
+    "_oino/checkpoints",
+    "_oino/rewind",
+    "_oino/running_bash",
+    "_oino/extensions",
+    "_oino/set_extension_enabled",
 ];
 
 /// Any command a backend accepts.
@@ -529,6 +617,17 @@ impl OinoCommand {
             Self::Login { .. } => "_oino/login",
             Self::Logout { .. } => "_oino/logout",
             Self::SetApiKey { .. } => "_oino/set_api_key",
+            Self::Topics { .. } => "_oino/topics",
+            Self::BusGet { .. } => "_oino/bus_get",
+            Self::Agents { .. } => "_oino/agents",
+            Self::AgentMessages { .. } => "_oino/agent_messages",
+            Self::AgentAbort { .. } => "_oino/agent_abort",
+            Self::QueueEdit(_) => "_oino/queue_edit",
+            Self::Checkpoints => "_oino/checkpoints",
+            Self::Rewind { .. } => "_oino/rewind",
+            Self::RunningBash => "_oino/running_bash",
+            Self::Extensions => "_oino/extensions",
+            Self::SetExtensionEnabled { .. } => "_oino/set_extension_enabled",
         }
     }
 }

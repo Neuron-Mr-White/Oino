@@ -51,6 +51,8 @@ fn api_cx(cx: &ca::CallContext) -> CallContext {
             ca::ExtensionMode::Json => Mode::Json,
             ca::ExtensionMode::Print => Mode::Print,
             ca::ExtensionMode::Acp => Mode::Acp,
+            ca::ExtensionMode::Desktop => Mode::Desktop,
+            ca::ExtensionMode::Mobile => Mode::Mobile,
         },
         has_ui: cx.has_ui,
         cwd: cx.cwd.clone(),
@@ -71,7 +73,9 @@ fn core_cx(cx: &CallContext) -> ca::CallContext {
     ca::CallContext {
         session_id: cx.session_id.clone(),
         mode: match cx.mode {
-            Mode::Tui | Mode::Desktop | Mode::Mobile => ca::ExtensionMode::Tui,
+            Mode::Tui => ca::ExtensionMode::Tui,
+            Mode::Desktop => ca::ExtensionMode::Desktop,
+            Mode::Mobile => ca::ExtensionMode::Mobile,
             Mode::Rpc => ca::ExtensionMode::Rpc,
             Mode::Json => ca::ExtensionMode::Json,
             Mode::Print => ca::ExtensionMode::Print,
@@ -406,6 +410,7 @@ fn control_op(op: ControlOp, cx: &CallContext) -> Result<(HostOp, ReplyShape), H
             (HostOp::SwitchSession(PathBuf::from(path)), cancelled_reply)
         }
         ControlOp::Reload => (HostOp::Reload, |_| ControlReply::Unit),
+        ControlOp::RunningBash => (HostOp::RunningBash, json_reply),
         _ => return Err(HostError::unsupported(&format!("control.{name}"))),
     })
 }
@@ -677,6 +682,81 @@ impl HostServices for CoreHost {
         let ext = ExtensionId::new("oino.host").ok();
         ext.and_then(|ext| self.call_sync(&ext, cx, HostOp::ListAgents).ok())
             .map_or_else(|| RawJson::from(json!([])), RawJson::from)
+    }
+
+    /// Detaches a running `bash` call of the calling session (core's detach registry).
+    fn take_bash(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        tool_call_id: &str,
+        task_id: &str,
+        reason: &str,
+    ) -> BoxFut<'_, Result<oino_extension_api::DetachedBash, HostError>> {
+        let (ext, cx) = (ext.clone(), core_cx(cx));
+        let (tool_call_id, task_id, reason) = (
+            tool_call_id.to_owned(),
+            task_id.to_owned(),
+            reason.to_owned(),
+        );
+        Box::pin(async move {
+            let d = self
+                .api
+                .detach_bash(ext.as_str(), &cx, &tool_call_id, &task_id, &reason)
+                .await
+                .map_err(host_error)?;
+            Ok(oino_extension_api::DetachedBash {
+                command: d.command,
+                pid: d.pid,
+                output_so_far: d.output_so_far,
+                full_output_path: d.full_output_path,
+                output: d.output,
+                exit: d.exit,
+                kill: d.kill,
+            })
+        })
+    }
+
+    /// Mirrors bus publishes into core's topic feed (`_oino/topics`).
+    fn bus_publish(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        topic: &str,
+        data: RawJson,
+        sticky: bool,
+    ) {
+        let _ = self.call_sync(
+            ext,
+            cx,
+            HostOp::BusPublish {
+                topic: topic.to_owned(),
+                data: data.to_value(),
+                sticky,
+            },
+        );
+    }
+
+    fn bus_get(&self, cx: &CallContext, topic: &str) -> Option<RawJson> {
+        let ext = ExtensionId::new("oino.host").ok()?;
+        self.call_sync(&ext, cx, HostOp::BusGet(topic.to_owned()))
+            .ok()
+            .filter(|v| !v.is_null())
+            .map(RawJson::from)
+    }
+
+    /// Attached frontends come from the session (mode + `_oino/hello` clients, GA-45).
+    fn host_context(&self, cx: &CallContext) -> oino_extension_api::ops::HostContextInfo {
+        let frontends = ExtensionId::new("oino.host")
+            .ok()
+            .and_then(|ext| self.call_sync(&ext, cx, HostOp::GetFrontends).ok())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_default();
+        oino_extension_api::ops::HostContextInfo {
+            frontends,
+            frontend_focused: true,
+            workspace: None,
+        }
     }
 
     /// `models.complete`, `models.stream`, `models.summarize-default` and
@@ -1460,11 +1540,25 @@ impl ExtensionLoader for CoreLoader {
         host: Arc<dyn HostApi>,
         project_trusted: bool,
     ) -> BoxFuture<'_, Vec<Arc<dyn ca::ExtensionInstance>>> {
+        self.load_enabled(host, project_trusted, &[])
+    }
+
+    /// Packages listed in `disabledExtensions` are not instantiated at all.
+    fn load_enabled<'a>(
+        &'a self,
+        host: Arc<dyn HostApi>,
+        project_trusted: bool,
+        disabled: &'a [String],
+    ) -> BoxFuture<'a, Vec<Arc<dyn ca::ExtensionInstance>>> {
         Box::pin(async move {
             let core_host = Arc::new(CoreHost::new(host));
             let mut out: Vec<Arc<dyn ca::ExtensionInstance>> = Vec::new();
             for sourced in &self.packages {
                 if sourced.project && !project_trusted {
+                    continue;
+                }
+                let id = sourced.package.manifest.id.to_string();
+                if disabled.contains(&id) {
                     continue;
                 }
                 let path = sourced.package.root.as_ref().map_or_else(

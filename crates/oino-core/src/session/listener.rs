@@ -61,6 +61,15 @@ impl AgentSession {
         {
             self.dequeue_delivered(&user_text(message));
         }
+        match event {
+            AgentEvent::ToolExecutionStart {
+                tool_call_id,
+                tool_name,
+                args,
+            } => self.note_tool_start(tool_call_id, tool_name, args),
+            AgentEvent::ToolExecutionEnd { tool_call_id, .. } => self.note_tool_end(tool_call_id),
+            _ => {}
+        }
 
         let nested = match event {
             AgentEvent::MessageStart {

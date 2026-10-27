@@ -11,7 +11,7 @@ use futures::stream::BoxStream;
 use oino_ai::JsonValue;
 use oino_core::events::{ClientEvent, OinoEvent, ReplaceReason};
 use oino_core::runtime::{AgentSessionRuntime, ForkPosition};
-use oino_core::session::{AgentSession, CycleDirection, InputSource, PromptOptions};
+use oino_core::session::{AgentSession, CycleDirection, InputSource, PromptOptions, RewindResult};
 use oino_core::ui::UiResponse;
 use oino_session::EntryId;
 use serde::Serialize;
@@ -40,7 +40,15 @@ impl Default for ServerInfo {
 }
 
 /// A [`SessionBackend`] over a live runtime in this process.
+///
+/// Runtime-agnostic (GA-40): commands awaited from a non-tokio executor (GPUI) run on the
+/// tokio runtime the backend was created on.
 pub struct InProcessBackend {
+    shared: Arc<Shared>,
+    handle: Option<tokio::runtime::Handle>,
+}
+
+struct Shared {
     runtime: Arc<AgentSessionRuntime>,
     server: ServerInfo,
     closed: AtomicBool,
@@ -50,7 +58,7 @@ pub struct InProcessBackend {
 impl std::fmt::Debug for InProcessBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InProcessBackend")
-            .field("server", &self.server)
+            .field("server", &self.shared.server)
             .finish_non_exhaustive()
     }
 }
@@ -65,6 +73,15 @@ fn failed(error: impl std::fmt::Display) -> ClientError {
     ClientError::Command(error.to_string())
 }
 
+fn find_agent(
+    session: &AgentSession,
+    agent_id: &str,
+) -> Result<Arc<oino_core::agents::ChildAgent>, ClientError> {
+    session
+        .find_agent(agent_id)
+        .ok_or_else(|| ClientError::Command(format!("Unknown agent: {agent_id}")))
+}
+
 impl InProcessBackend {
     /// Wraps `runtime`.
     #[must_use]
@@ -72,23 +89,53 @@ impl InProcessBackend {
         Self::with_server_info(runtime, ServerInfo::default())
     }
 
-    /// Wraps `runtime`, reporting `server` from `_oino/hello`.
+    /// Wraps `runtime`, reporting `server` from `_oino/hello`. Commands awaited outside a
+    /// tokio runtime run on the runtime current here (or the session's own runtime).
     #[must_use]
     pub fn with_server_info(runtime: Arc<AgentSessionRuntime>, server: ServerInfo) -> Self {
+        let handle = tokio::runtime::Handle::try_current()
+            .ok()
+            .or_else(|| runtime.session().runtime_handle());
         Self {
-            runtime,
-            server,
-            closed: AtomicBool::new(false),
-            followers: Followers::default(),
+            shared: Arc::new(Shared {
+                runtime,
+                server,
+                closed: AtomicBool::new(false),
+                followers: Followers::default(),
+            }),
+            handle,
         }
     }
 
     /// The runtime.
     #[must_use]
     pub fn runtime(&self) -> &Arc<AgentSessionRuntime> {
-        &self.runtime
+        &self.shared.runtime
     }
 
+    /// pi `get_state`.
+    #[must_use]
+    pub fn state(&self) -> RpcSessionState {
+        self.shared.state()
+    }
+
+    /// Runs `task` here when already on a tokio runtime, else on the backend's runtime.
+    fn on_runtime<T: Send + 'static>(
+        &self,
+        task: impl Future<Output = T> + Send + 'static,
+        closed: T,
+    ) -> BoxFuture<'static, T> {
+        match (tokio::runtime::Handle::try_current(), &self.handle) {
+            (Err(_), Some(handle)) => {
+                let join = handle.spawn(task);
+                Box::pin(async move { join.await.unwrap_or(closed) })
+            }
+            _ => Box::pin(task),
+        }
+    }
+}
+
+impl Shared {
     fn session(&self) -> AgentSession {
         self.runtime.session()
     }
@@ -119,9 +166,7 @@ impl InProcessBackend {
             .rebind(|| self.runtime.session().subscribe(), &announce);
     }
 
-    /// pi `get_state`.
-    #[must_use]
-    pub fn state(&self) -> RpcSessionState {
+    fn state(&self) -> RpcSessionState {
         let session = self.session();
         let auto_compaction_enabled = session.with_settings(|s| s.settings().compaction_enabled());
         RpcSessionState {
@@ -375,11 +420,14 @@ impl InProcessBackend {
     async fn oino(&self, command: OinoCommand) -> Result<RpcResponseData, ClientError> {
         let session = self.session();
         match command {
-            OinoCommand::Hello { .. } => data(json!({
-                "server": {"name": self.server.name, "version": self.server.version},
-                "protocol": 1,
-                "sessionId": session.session_id(),
-            })),
+            OinoCommand::Hello { client, .. } => {
+                session.register_frontend(&client.name);
+                data(json!({
+                    "server": {"name": self.server.name, "version": self.server.version},
+                    "protocol": 1,
+                    "sessionId": session.session_id(),
+                }))
+            }
             OinoCommand::UiSnapshot => data(json!({ "requests": session.ui().snapshot() })),
             OinoCommand::NavigateTree { target_id, options } => {
                 let result = session
@@ -412,8 +460,109 @@ impl InProcessBackend {
                 data(json!({ "path": path.display().to_string() }))
             }
             OinoCommand::GetContextUsage => data(session.context_usage()),
+            command @ (OinoCommand::Topics { .. }
+            | OinoCommand::BusGet { .. }
+            | OinoCommand::Agents { .. }
+            | OinoCommand::AgentMessages { .. }
+            | OinoCommand::AgentAbort { .. }
+            | OinoCommand::QueueEdit(_)
+            | OinoCommand::Checkpoints
+            | OinoCommand::Rewind { .. }
+            | OinoCommand::RunningBash
+            | OinoCommand::Extensions
+            | OinoCommand::SetExtensionEnabled { .. }) => self.gui(&session, command).await,
             command => self.frontend(&session, command).await,
         }
+    }
+
+    /// GUI feeds and controls (gui-audit area E): topics, agents, queue edits, checkpoints,
+    /// running bash calls, extensions.
+    async fn gui(
+        &self,
+        session: &AgentSession,
+        command: OinoCommand,
+    ) -> Result<RpcResponseData, ClientError> {
+        match command {
+            OinoCommand::Topics {
+                subscribe,
+                unsubscribe,
+            } => {
+                let topics = session.subscribe_topics(&subscribe, &unsubscribe).await;
+                data(json!({ "topics": topics, "patterns": session.topic_patterns() }))
+            }
+            OinoCommand::BusGet { topic } => Ok(Some(session.bus_get(&topic).map_or_else(
+                || json!({ "data": null }),
+                |v| json!({ "data": v.data, "publisher": v.publisher }),
+            ))),
+            OinoCommand::Agents { follow } => {
+                if let Some(follow) = follow {
+                    session.follow_agents(follow);
+                }
+                data(json!({ "agents": session.agent_tree(), "follow": session.follows_agents() }))
+            }
+            OinoCommand::AgentMessages { agent_id } => {
+                let agent = find_agent(session, &agent_id)?;
+                data(json!({ "messages": agent.messages() }))
+            }
+            OinoCommand::AgentAbort { agent_id } => {
+                find_agent(session, &agent_id)?.abort();
+                Ok(None)
+            }
+            OinoCommand::QueueEdit(edit) => {
+                session.edit_queue(edit).await.map_err(failed)?;
+                Ok(None)
+            }
+            OinoCommand::Checkpoints => data(json!({ "checkpoints": session.checkpoints() })),
+            OinoCommand::Rewind {
+                entry_id,
+                files,
+                conversation,
+            } => self.rewind(session, &entry_id, files, conversation).await,
+            OinoCommand::RunningBash => data(json!({ "calls": session.running_bash().await })),
+            OinoCommand::Extensions => data(json!({ "extensions": session.extension_infos() })),
+            OinoCommand::SetExtensionEnabled { id, enabled } => {
+                session
+                    .set_extension_enabled(&id, enabled)
+                    .map_err(failed)?;
+                Ok(None)
+            }
+            other => Err(ClientError::Protocol(format!(
+                "{} is not a GUI command",
+                other.kind()
+            ))),
+        }
+    }
+
+    /// `_oino/rewind`: files first (checkpoints at and after the entry), then the
+    /// conversation fork before the entry (pi `fork`).
+    async fn rewind(
+        &self,
+        session: &AgentSession,
+        entry_id: &str,
+        files: bool,
+        conversation: bool,
+    ) -> Result<RpcResponseData, ClientError> {
+        if session.is_streaming() {
+            return Err(ClientError::Command(
+                "Cannot rewind while the agent is running".to_owned(),
+            ));
+        }
+        let mut result = if files && (session.has_checkpoint(entry_id) || !conversation) {
+            session.rewind_files(entry_id).map_err(failed)?
+        } else {
+            RewindResult::default()
+        };
+        if conversation {
+            let forked = self
+                .runtime
+                .fork(&EntryId::new(entry_id), ForkPosition::Before)
+                .await
+                .map_err(failed)?;
+            self.rebind(ReplaceReason::Fork, forked.cancelled);
+            result.cancelled = forked.cancelled;
+            result.text = forked.selected_text;
+        }
+        data(result)
     }
 
     /// The frontend command surface (`_oino/*` completions, actions, settings, auth).
@@ -490,6 +639,17 @@ impl InProcessBackend {
                 Ok(None)
             }
             OinoCommand::Hello { .. }
+            | OinoCommand::Topics { .. }
+            | OinoCommand::BusGet { .. }
+            | OinoCommand::Agents { .. }
+            | OinoCommand::AgentMessages { .. }
+            | OinoCommand::AgentAbort { .. }
+            | OinoCommand::QueueEdit(_)
+            | OinoCommand::Checkpoints
+            | OinoCommand::Rewind { .. }
+            | OinoCommand::RunningBash
+            | OinoCommand::Extensions
+            | OinoCommand::SetExtensionEnabled { .. }
             | OinoCommand::UiSnapshot
             | OinoCommand::NavigateTree { .. }
             | OinoCommand::SetLabel { .. }
@@ -573,7 +733,7 @@ impl InProcessBackend {
 
 impl SessionBackend for InProcessBackend {
     fn send(&self, command: RpcCommand) -> BoxFuture<'_, Result<RpcResponseData, ClientError>> {
-        Box::pin(self.dispatch(None, command))
+        self.send_with_id(None, command)
     }
 
     fn send_with_id(
@@ -581,29 +741,55 @@ impl SessionBackend for InProcessBackend {
         request_id: Option<String>,
         command: RpcCommand,
     ) -> BoxFuture<'_, Result<RpcResponseData, ClientError>> {
-        Box::pin(self.dispatch(request_id, command))
+        let shared = Arc::clone(&self.shared);
+        self.on_runtime(
+            async move { shared.dispatch(request_id, command).await },
+            Err(ClientError::Closed),
+        )
     }
 
     /// Events of the current session; streams follow session replacements made through
     /// this backend and end after [`SessionBackend::shutdown`].
     fn events(&self) -> BoxStream<'static, ClientEvent> {
-        self.followers.stream(self.session().subscribe()).boxed()
+        self.shared
+            .followers
+            .stream(self.shared.session().subscribe())
+            .boxed()
     }
 
     fn ui_respond(&self, response: UiResponse) {
-        self.session().ui().respond(response);
+        self.shared.session().ui().respond(response);
     }
 
     fn session_id(&self) -> String {
-        self.session().session_id()
+        self.shared.session().session_id()
     }
 
     fn shutdown(&self) -> BoxFuture<'_, ()> {
-        Box::pin(async move {
-            if !self.closed.swap(true, Ordering::AcqRel) {
-                self.runtime.dispose().await;
-                self.followers.close();
-            }
-        })
+        let shared = Arc::clone(&self.shared);
+        self.on_runtime(
+            async move {
+                if !shared.closed.swap(true, Ordering::AcqRel) {
+                    shared.runtime.dispose().await;
+                    shared.followers.close();
+                }
+            },
+            (),
+        )
+    }
+
+    /// Resolves once an extension called `ctx.shutdown()` and the session is idle.
+    fn shutdown_requested(&self) -> BoxFuture<'static, ()> {
+        let runtime = Arc::clone(&self.shared.runtime);
+        self.on_runtime(
+            async move {
+                let mut requested = runtime.shutdown_requested();
+                if requested.wait_for(|on| *on).await.is_err() {
+                    return std::future::pending().await;
+                }
+                runtime.session().wait_for_idle().await;
+            },
+            (),
+        )
     }
 }

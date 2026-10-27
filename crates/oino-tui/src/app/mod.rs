@@ -705,7 +705,12 @@ impl App {
                     NoticeLevel::Warning,
                     format!("Display fell behind; {dropped} events were dropped"),
                 ),
-                OinoEvent::ToolsChanged { .. } => {}
+                // Topic / agent feeds are GUI surfaces; shutdown is handled by the mode loop.
+                OinoEvent::ToolsChanged { .. }
+                | OinoEvent::Topic { .. }
+                | OinoEvent::AgentsChanged { .. }
+                | OinoEvent::AgentEvent { .. }
+                | OinoEvent::ShutdownRequested => {}
             },
         }
     }

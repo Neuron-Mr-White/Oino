@@ -132,6 +132,32 @@ fn exit_of(status: std::process::ExitStatus, timed_out: bool) -> Exit {
     }
 }
 
+/// A bare program name not found on `PATH` falls back to the directory of the running
+/// executable, where installs and app bundles ship companion binaries such as
+/// `oino-kanboard` (GA-41). Anything else is returned unchanged.
+pub(crate) fn resolve_program(command: &str) -> PathBuf {
+    let bare = PathBuf::from(command);
+    if command.is_empty() || bare.components().count() != 1 {
+        return bare;
+    }
+    let names: Vec<String> = if cfg!(windows) && bare.extension().is_none() {
+        vec![format!("{command}.exe"), command.to_owned()]
+    } else {
+        vec![command.to_owned()]
+    };
+    let on_path = std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|dir| names.iter().any(|n| dir.join(n).is_file()))
+    });
+    if on_path {
+        return bare;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .and_then(|dir| names.iter().map(|n| dir.join(n)).find(|p| p.is_file()))
+        .unwrap_or(bare)
+}
+
 /// Tracks non-detached children so they die with the extension.
 #[derive(Default)]
 pub(crate) struct ProcessService {
@@ -141,7 +167,7 @@ pub(crate) struct ProcessService {
 impl ProcessService {
     /// Spawns `spec`; `log` is the extension log file (for `inherit-log`).
     pub(crate) fn spawn(&self, spec: &Spawn) -> Result<Arc<ChildHandle>, HostError> {
-        let mut cmd = Command::new(&spec.command);
+        let mut cmd = Command::new(resolve_program(&spec.command));
         cmd.args(&spec.args).current_dir(&spec.cwd);
         if spec.clear_env {
             cmd.env_clear();
@@ -350,7 +376,7 @@ pub(crate) async fn exec(
     env: &[(String, String)],
     timeout: Option<Duration>,
 ) -> Result<ExecOutput, HostError> {
-    let mut cmd = Command::new(command);
+    let mut cmd = Command::new(resolve_program(command));
     cmd.args(args)
         .current_dir(cwd)
         .envs(env.iter().map(|(k, v)| (k, v)))
@@ -510,6 +536,20 @@ mod tests {
             detached: false,
             timeout: None,
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bare_names_fall_back_to_the_executable_dir() {
+        assert_eq!(resolve_program("/bin/sh"), PathBuf::from("/bin/sh"));
+        assert_eq!(resolve_program("sh"), PathBuf::from("sh"));
+        let exe = std::env::current_exe().unwrap();
+        let name = exe.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(resolve_program(&name), exe);
+        assert_eq!(
+            resolve_program("no-such-program-xyz"),
+            PathBuf::from("no-such-program-xyz")
+        );
     }
 
     #[cfg(unix)]

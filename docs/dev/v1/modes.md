@@ -137,18 +137,29 @@ client opts in with `_oino/hello`.
 | `_oino/get_settings` / `_oino/set_setting` | `{key?}` / `{key, value, scope}` | core settings (frontend keys included) |
 | `_oino/get_keybindings` | — | parsed `keybindings.json` |
 | `_oino/get_themes` | — | `{themes: [{name, path}]}` |
-| `_oino/bus_get` | `{topic}` | `{data | null}` |
+| `_oino/bus_get` | `{topic}` | `{data | null, publisher?}` |
+| `_oino/topics` | `{subscribe?: [pattern], unsubscribe?: [pattern]}` | `{topics: [{topic, data, sticky, publisher}], patterns}`; matching publishes then arrive as `topic` events ([frontend-api.md](frontend-api.md) §2) |
 | `_oino/navigate_tree` | `{targetId, summarize?, customInstructions?, replaceInstructions?, label?}` | `NavigateTreeResult` |
 | `_oino/set_label` | `{entryId, label?}` | — |
 | `_oino/import_jsonl` | `{path}` | `{cancelled}` |
 | `_oino/export_jsonl` | `{outputPath?}` | `{path}` |
 | `_oino/list_sessions` | `{scope: cwd\|all, cwd?}` | `{sessions: [SessionInfo]}` |
-| `_oino/extensions` | — | `[{id, name, version, kind, enabled, source, permissions, error?}]` |
-| `_oino/set_extension_enabled` | `{id, enabled}` | — (takes effect after reload) |
+| `_oino/extensions` | — | `{extensions: [{id, kind, enabled, loaded, path?}]}` (implemented subset) |
+| `_oino/set_extension_enabled` | `{id, enabled}` | — (writes `disabledExtensions`; new sessions / workspaces) |
 | `_oino/login` / `_oino/logout` | `{provider}` | runs provider OAuth via UI dialogs / clears auth |
 | `_oino/set_api_key` | `{provider, key}` | stores in auth.json |
 | `_oino/get_context_usage` | — | `ContextUsage` |
-| `_oino/agents` | — | nested agents of the session (runtime §12) |
+| `_oino/agents` | `{follow?: bool}` | `{agents: [AgentInfo], follow}`; events `agents_changed`, `agent_event` (runtime §12) |
+| `_oino/agent_messages` / `_oino/agent_abort` | `{agentId}` | `{messages}` / — |
+| `_oino/queue_edit` | `{op: remove\|edit\|move\|sendNow, queue: steering\|followUp, index \| from+to, text?}` | — (`queue_update` follows) |
+| `_oino/checkpoints` | — | `{checkpoints: [{entryId, createdAt, files: [{path, existed}]}]}` |
+| `_oino/rewind` | `{entryId, files?: true, conversation?: true}` | `{restored, deleted, failed?, text?, cancelled}` |
+| `_oino/running_bash` | — | `{calls: [{toolCallId, command, startedAt, pid?}]}` |
+
+The GUI additions (topics, agents, queue edits, checkpoints, running bash, extensions,
+`shutdown_requested`) with Rust signatures and event shapes: [frontend-api.md](frontend-api.md).
+Every mode exits with 0 once an extension called `ctx.shutdown()` and the session is idle
+(RPC, TUI, print / JSON; ACP leaves the lifecycle to its client).
 
 Implemented additions and differences (`_oino/get_shortcuts`, `_oino/service_call`,
 `_oino/auth_providers`, `shortcutId`, completion `from`): [deviations/frontend-cmds.md](deviations/frontend-cmds.md).

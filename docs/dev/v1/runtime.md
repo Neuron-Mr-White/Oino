@@ -311,6 +311,10 @@ activity. `abort()` cancels the run, waits for idle, discards nothing from queue
 | `tools_changed` | `active: string[]` | Oino |
 | `commands_changed` | — | Oino; clients refetch `get_commands` |
 | `lagged` | `dropped: u64` | Oino (architecture §4.2) |
+| `topic` | `topic`, `data`, `sticky`, `publisher` | Oino; bus publishes matching the session's `_oino/topics` subscription (§7.5) |
+| `agents_changed` | `agents: [AgentInfo]` | Oino; the nested-agent tree changed (§12) |
+| `agent_event` | `agentId`, `event: ClientEvent` | Oino; child events while a frontend follows the tree (§12) |
+| `shutdown_requested` | — | Oino; an extension called `ctx.shutdown()`, frontends exit once idle |
 
 ## 7. Extension runner (`oino-core::extensions`)
 
@@ -323,6 +327,9 @@ project arrays combined) → `-e/--extension` (repeatable, `builtin:<id>` allowe
 disables all `kind:"extension"` discovery except explicit `-e`. Duplicate ids: first wins,
 diagnostic. Load order = discovery order (pi semantics; there is no priority field). Bundled
 components load providers first, then unipi components in the umbrella order (unipi-port §1).
+
+`disabledExtensions` (merged settings) removes packages before they are instantiated
+(`ExtensionLoader::load_enabled`; loaders without it are filtered before `init`).
 
 Each component: `ExtensionRuntime::load` → `init(InitInput)` → `Registration` (tools,
 commands, shortcuts, flags, event subscriptions, providers, virtual models, renderers,
@@ -445,7 +452,15 @@ from a command or shortcut context it runs inline and returns the command's resu
 cleared on `session_shutdown`. Delivery to subscribers is via `oino_bus` events, async, in
 publish order per topic, errors isolated. pi `pi.events` maps to the same bus (topics without
 `unipi:` prefix). Frontends may read sticky topics through `_oino/bus_get` (modes §4) — used
-for footer/status integrations.
+for footer/status integrations. The WASM host serves the bus and mirrors every publish into
+core (`HostOp::BusPublish` → `HostRouter`, `oino_core::topics::TopicStore`, per services);
+sessions forward matches of their `_oino/topics` patterns as `topic` events, and core adds the
+sticky `oino:git` topic (`{branch, head, dirty, changed, ahead, behind}`, refreshed after each
+`agent_settled`) ([frontend-api.md](frontend-api.md) §2).
+
+Handler deadlines (pi 30 s and manifest limits) pause while the handler's extension has a
+dialog open; a handler that still times out has its dialogs withdrawn (GA-42,
+`extensions::deadline`).
 
 ### 7.6 Turn arbiter (D9)
 
@@ -722,6 +737,12 @@ sessions have the arbiter disabled and `is_child = true`, `child_role` visible t
 `[label] `); `AutoDeny` answers dialogs with cancel and returns `note` as the reason to
 `approval` dialogs.
 
+Frontend view (`_oino/agents`, [frontend-api.md](frontend-api.md) §3): `AgentSession::agent_tree`
+lists the open agents of a subtree as `AgentInfo {id, parentId?, label, owner, role?, state,
+depth, sessionFile?}`; tree changes publish `agents_changed` on the root session; while a
+frontend follows the tree (`follow_agents`) every child client event is also published on the
+root session as `agent_event{agentId, event}`.
+
 ## 13. Models, auth, virtual models (`oino-models`)
 
 - **Registry** merges: provider registrations from provider components (`list-models` per
@@ -761,6 +782,17 @@ sessions have the arbiter disabled and `is_child = true`, `child_role` visible t
   `CacheTracker` logic may be reused re-typed.
 - `session_stats` (pi shape, all entries incl. compacted history and `usage` entries) and
   `context_usage` (pi; `null` tokens right after compaction).
+- Bash detach (Oino, C11): every shell call registers in the session's `BashDetachRegistry`
+  (bound by `SessionToolContext::bind`); `control.running-bash` lists the running calls with
+  their pid; `control.bash-detach` / `tasks.adopt-bash` make the call return at once with
+  `[Detached to background task <id>: <reason>]` and hand the process to the host task service
+  (`HostApi::detach_bash` → `HostServices::take_bash` → `TaskService::adopt`).
+- File checkpoints (Oino): before a built-in `write` / `edit` the target file is snapshotted
+  once per checkpoint (keyed by the run's user message entry; `<agentDir>/checkpoints/<id>/`
+  for persisted sessions, memory otherwise, ≤ 100 checkpoints, files ≤ 16 MiB);
+  `_oino/rewind` restores files at/after a user message and forks before it.
+- Single-item queue edits (Oino): `AgentSession::edit_queue` (remove, edit, move, send-now)
+  keeps the queued texts and the agent's queued messages in step.
 - Export: `export_html` renders the current branch from session entries (pi
   `session-export.ts` structure: header, messages, tool calls, collapsed thinking, embedded CSS,
   no external assets), default path `<cwd>/oino-session-<sessionId8>.html`; `export_jsonl`
@@ -785,7 +817,8 @@ requested permissions for confirmation (interactive) or requires `--yes` (non-in
    options are returned.
 3. Additional client events (§6.2) and `_oino/*` RPC commands (modes §4).
 4. Host features: command echo, arbiter, bus, services, nested agents, bash detach,
-   provenance, extension settings registry.
+   provenance, extension settings registry, frontend topic / agent feeds, file checkpoints,
+   single-item queue edits, dialog-aware handler deadlines.
 5. `-ne` keeps provider components (D15).
 6. No MCP in core; `mcp_servers_change` never emitted by core.
 7. No `/share`, `/bug`, telemetry, `enableInstallTelemetry`, `codemode`, `tool_search`.

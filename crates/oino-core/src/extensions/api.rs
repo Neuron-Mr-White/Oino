@@ -42,6 +42,10 @@ pub enum ExtensionMode {
     Print,
     /// ACP adapter.
     Acp,
+    /// The GPUI desktop app (in-process backend).
+    Desktop,
+    /// The GPUI mobile app (in-process backend).
+    Mobile,
 }
 
 /// What kind of guest call is being served (runtime §7.3).

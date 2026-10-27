@@ -20,6 +20,15 @@ pub(crate) struct DetachRequest {
     pub(crate) reply: oneshot::Sender<DetachedProcess>,
 }
 
+/// What a running call is asked for.
+#[derive(Debug)]
+pub(crate) enum CallMessage {
+    /// Hand the process over.
+    Detach(DetachRequest),
+    /// Report the process id.
+    Pid(oneshot::Sender<Option<u32>>),
+}
+
 /// A process taken over from a detached `bash` call.
 #[derive(Debug)]
 pub struct DetachedProcess {
@@ -34,7 +43,7 @@ pub struct DetachedProcess {
 /// Running shell calls by tool-call id. Cheap to clone; clones share the registry.
 #[derive(Clone, Debug, Default)]
 pub struct BashDetachRegistry {
-    calls: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<DetachRequest>>>>,
+    calls: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<CallMessage>>>>,
 }
 
 /// Removes the registration when the call ends.
@@ -52,14 +61,14 @@ impl Drop for Registration {
 impl BashDetachRegistry {
     fn lock(
         &self,
-    ) -> std::sync::MutexGuard<'_, HashMap<String, mpsc::UnboundedSender<DetachRequest>>> {
+    ) -> std::sync::MutexGuard<'_, HashMap<String, mpsc::UnboundedSender<CallMessage>>> {
         self.calls.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub(crate) fn register(
         &self,
         tool_call_id: &str,
-    ) -> (Registration, mpsc::UnboundedReceiver<DetachRequest>) {
+    ) -> (Registration, mpsc::UnboundedReceiver<CallMessage>) {
         let (tx, rx) = mpsc::unbounded_channel();
         self.lock().insert(tool_call_id.to_owned(), tx);
         (
@@ -88,12 +97,27 @@ impl BashDetachRegistry {
         let sender = self.lock().get(tool_call_id).cloned()?;
         let (reply, response) = oneshot::channel();
         sender
-            .send(DetachRequest {
+            .send(CallMessage::Detach(DetachRequest {
                 task_id: task_id.into(),
                 reason: reason.into(),
                 reply,
-            })
+            }))
             .ok()?;
         response.await.ok()
+    }
+
+    /// Process id of the running call `tool_call_id` (`None` when it is not running or the
+    /// process id is unknown).
+    pub async fn pid(&self, tool_call_id: &str) -> Option<u32> {
+        let sender = self.lock().get(tool_call_id).cloned()?;
+        let (reply, response) = oneshot::channel();
+        sender.send(CallMessage::Pid(reply)).ok()?;
+        response.await.ok().flatten()
+    }
+
+    /// Tool-call ids of the running calls.
+    #[must_use]
+    pub fn running(&self) -> Vec<String> {
+        self.lock().keys().cloned().collect()
     }
 }

@@ -422,6 +422,43 @@ pub enum OinoEvent {
         /// Number of dropped events.
         dropped: u64,
     },
+    /// A bus topic the frontend subscribed to (`_oino/topics`) was published.
+    Topic {
+        /// Topic name.
+        topic: String,
+        /// Payload.
+        data: serde_json::Value,
+        /// Published sticky.
+        sticky: bool,
+        /// Publishing extension (`oino.core` for core topics).
+        publisher: String,
+    },
+    /// The nested agents of the session tree changed (spawned, closed, state).
+    AgentsChanged {
+        /// Every open agent of the tree (`_oino/agents` shape).
+        agents: Vec<crate::agents::AgentInfo>,
+    },
+    /// A client event of a nested agent (only while `_oino/agents{follow: true}`).
+    #[serde(rename_all = "camelCase")]
+    AgentEvent {
+        /// Agent id (the child session id).
+        agent_id: String,
+        /// The child's event.
+        event: Box<ClientEvent>,
+    },
+    /// An extension called `ctx.shutdown()`; the frontend exits once the session is idle.
+    ShutdownRequested,
+}
+
+impl From<crate::topics::TopicValue> for OinoEvent {
+    fn from(value: crate::topics::TopicValue) -> Self {
+        Self::Topic {
+            topic: value.topic,
+            data: value.data,
+            sticky: value.sticky,
+            publisher: value.publisher,
+        }
+    }
 }
 
 /// Every event a client receives, in one ordered stream.

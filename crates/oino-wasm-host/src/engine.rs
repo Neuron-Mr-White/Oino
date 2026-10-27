@@ -219,6 +219,7 @@ impl WasmRuntime {
                 cwd: config.cwd.clone(),
                 ..CallContext::default()
             }),
+            dialogs_open: std::sync::atomic::AtomicUsize::new(0),
             id: id.clone(),
             bundled: package.bundled,
             host,

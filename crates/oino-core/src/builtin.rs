@@ -3,8 +3,8 @@
 use std::sync::{Arc, OnceLock, Weak};
 
 use oino_tools::{
-    ImageOptions, ModelImageInfo, SessionEnv, ShellOptions, ToolConfig, ToolContext,
-    builtin_tool_infos, builtin_tools,
+    BashDetachRegistry, ImageOptions, ModelImageInfo, SessionEnv, ShellOptions, ToolConfig,
+    ToolContext, builtin_tool_infos, builtin_tools,
 };
 
 use crate::session::{AgentSession, Inner, ToolEntry};
@@ -13,6 +13,8 @@ use crate::session::{AgentSession, Inner, ToolEntry};
 #[derive(Default)]
 pub struct SessionToolContext {
     session: OnceLock<Weak<Inner>>,
+    /// Detach registry shared by the session's shell tools (`control.bash-detach`).
+    bash_detach: BashDetachRegistry,
 }
 
 impl std::fmt::Debug for SessionToolContext {
@@ -25,6 +27,7 @@ impl SessionToolContext {
     /// Binds the context to its session (once).
     pub fn bind(&self, session: &AgentSession) {
         let _ = self.session.set(Arc::downgrade(&session.inner));
+        session.bind_bash_detach(self.bash_detach.clone());
     }
 
     fn session(&self) -> Option<AgentSession> {
@@ -68,6 +71,7 @@ pub fn builtin_tool_entries(
     context: Arc<SessionToolContext>,
 ) -> Vec<ToolEntry> {
     let mut config = ToolConfig::new(cwd.display().to_string(), agent_dir.display().to_string());
+    config.bash_detach = context.bash_detach.clone();
     config.context = context;
     config.images = ImageOptions {
         auto_resize: settings.image_settings().auto_resize,

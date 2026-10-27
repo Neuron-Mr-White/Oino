@@ -27,11 +27,38 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[derive(Debug, Default)]
 pub struct EventDecoder {
     assembler: Option<PartialAssembler>,
+    /// Decoders of nested agents (`agent_event`), by agent id.
+    agents: std::collections::HashMap<String, EventDecoder>,
 }
 
 impl EventDecoder {
     /// Decodes one wire record; `None` for records that are not client events.
-    pub fn decode(&mut self, value: JsonValue) -> Option<ClientEvent> {
+    pub fn decode(&mut self, mut value: JsonValue) -> Option<ClientEvent> {
+        if value.get("type").and_then(JsonValue::as_str) == Some("agent_event") {
+            let agent_id = value.get("agentId")?.as_str()?.to_owned();
+            let inner = value.get_mut("event").map(JsonValue::take)?;
+            let event = self
+                .agents
+                .entry(agent_id.clone())
+                .or_default()
+                .decode(inner)?;
+            return Some(ClientEvent::Oino(OinoEvent::AgentEvent {
+                agent_id,
+                event: Box::new(event),
+            }));
+        }
+        if let Some(JsonValue::Array(agents)) = value
+            .get("type")
+            .and_then(JsonValue::as_str)
+            .filter(|t| *t == "agents_changed")
+            .and_then(|_| value.get("agents"))
+        {
+            let open: Vec<&str> = agents
+                .iter()
+                .filter_map(|a| a.get("id").and_then(JsonValue::as_str))
+                .collect();
+            self.agents.retain(|id, _| open.contains(&id.as_str()));
+        }
         if value.get("type").and_then(JsonValue::as_str) == Some("message_update") {
             let event: ProviderEvent =
                 serde_json::from_value(value.get("assistantMessageEvent")?.clone()).ok()?;
@@ -170,6 +197,19 @@ impl SessionBackend for RpcBackend {
     fn shutdown(&self) -> BoxFuture<'_, ()> {
         Box::pin(async move {
             let _ = self.client.close().await;
+        })
+    }
+
+    /// Resolves on the server's `shutdown_requested` event.
+    fn shutdown_requested(&self) -> BoxFuture<'static, ()> {
+        let mut events = self.client.events();
+        Box::pin(async move {
+            while let Some(event) = events.next().await {
+                if event.get("type").and_then(JsonValue::as_str) == Some("shutdown_requested") {
+                    return;
+                }
+            }
+            std::future::pending::<()>().await;
         })
     }
 }

@@ -248,7 +248,8 @@ impl RpcServer {
     }
 
     /// Serves commands from `input` and writes replies/events to `output` until `input`
-    /// ends, then shuts the backend down (pi: stdin end ⇒ orderly shutdown, exit 0).
+    /// ends or an extension requested shutdown and the session is idle, then shuts the
+    /// backend down (pi: stdin end ⇒ orderly shutdown, exit 0).
     ///
     /// # Errors
     ///
@@ -279,8 +280,10 @@ impl RpcServer {
         });
         let mut reader = LineReader::new(input);
         let mut pending: FuturesUnordered<Pending> = FuturesUnordered::new();
+        let mut shutdown = self.backend.shutdown_requested();
         let result = loop {
             tokio::select! {
+                () = &mut shutdown => break Ok(()),
                 line = reader.next_line() => match line {
                     Ok(Some(line)) => {
                         let mut handler: Pending = Box::pin(Arc::clone(&shared).handle_line(line));

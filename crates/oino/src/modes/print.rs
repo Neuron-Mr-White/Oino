@@ -140,6 +140,15 @@ fn text_result(messages: &[AgentMessage]) -> (String, Option<String>, i32) {
     (out, None, 0)
 }
 
+/// Resolves once an extension called `ctx.shutdown()` and the session is idle.
+async fn shutdown_requested(runtime: &AgentSessionRuntime) {
+    let mut requested = runtime.shutdown_requested();
+    if requested.wait_for(|on| *on).await.is_err() {
+        return std::future::pending().await;
+    }
+    runtime.session().wait_for_idle().await;
+}
+
 /// Runs print/JSON mode; returns the exit code.
 pub async fn run(runtime: Arc<AgentSessionRuntime>, output: PrintOutput, input: PrintInput) -> i32 {
     let mut stdout = tokio::io::stdout();
@@ -157,6 +166,7 @@ pub async fn run(runtime: Arc<AgentSessionRuntime>, output: PrintOutput, input: 
     let forwarder = tokio::spawn(forward(runtime.subscribe(), output, settled));
     let outcome = tokio::select! {
         result = prompts(&runtime, input, settled_rx) => Ok(result),
+        () = shutdown_requested(&runtime) => Ok(Ok(())),
         signal = signals::next() => Err(signal),
     };
     let code = match outcome {

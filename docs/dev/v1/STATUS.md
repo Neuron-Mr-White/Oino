@@ -52,7 +52,7 @@ components (`unipi_settings.rs`); both ran in the gates.
 | Session v3, `SessionManager`, tree, labels, context edits, legacy migration | ✅ | goldens `session-context`, `legacy-migration` |
 | Compaction, branch summaries, split turns, file tracking | ✅ | golden `compaction` |
 | Built-in tools `read write edit bash grep find ls` (+`powershell`) | ✅ | Windows paths untested; image bytes differ from Photon |
-| Bash detach / background adoption (`control.bash-detach`, `running-bash`) | ❌ | next: wire the session's `BashDetachRegistry` to the task service |
+| Bash detach / background adoption (`control.bash-detach`, `running-bash`, `tasks.adopt-bash`) | ✅ | core-gui-gaps: session registry → `HostServices::take_bash` → host `TaskService::adopt` ([frontend-api.md](frontend-api.md) §6) |
 | Resources: AGENTS.md / SYSTEM.md / APPEND_SYSTEM.md, skills, prompt templates, trust | ✅ | |
 | Themes | 🟡 | custom theme files discovered, only built-in themes rendered |
 | System prompt (sections, docs section, D13) | ✅ | docs root = bundled `oino.docs` |
@@ -63,11 +63,11 @@ components (`unipi_settings.rs`); both ran in the gates.
 | OAuth `/login` `/logout` | 🟡 | flows for Anthropic, Copilot, Codex, ChatGPT implemented and fixture-tested; never run against live accounts |
 | CLI flags and help | ✅ | |
 | Print / JSON modes | ✅ | goldens `print`, `json-mode` |
-| RPC mode + extension UI sub-protocol | ✅ | golden `rpc`; no mode exits on `ctx.shutdown()` yet (🟡) |
-| `_oino/*` frontend commands | ✅ | completions, ui_action, editor_event, shortcuts, settings, service_call, auth — in-process and RPC (`FrontendApi`) |
+| RPC mode + extension UI sub-protocol | ✅ | golden `rpc`; RPC / TUI / print exit on `ctx.shutdown()` once idle (`shutdown_requested`); ACP leaves it to the client |
+| `_oino/*` frontend commands | ✅ | completions, ui_action, editor_event, shortcuts, settings, service_call, auth, topics, bus_get, agents, queue_edit, checkpoints / rewind, running_bash, extensions — in-process (runtime-agnostic) and RPC (`FrontendApi`, [frontend-api.md](frontend-api.md)) |
 | Interactive TUI | 🟡 | full chrome, dialogs, panels with buttons, settings hub, completions, editor intents, `/login`, regular mode ✅; inline images ❌; core settings still via `LocalHost` |
 | Package manager + `oino update` | ✅ | dir / archive / https / `git+https`; self-update from `release-manifest.json`; `oino auth`, `ext`, `sessions`, `mcp` ❌ |
-| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI, settings r/w, `models.complete/stream/credential-for`, nested agents, turn arbiter, `control.*` ✅; provider hooks routing, `models.classify/generate-image`, bash detach, `set-ui-policy` ❌ |
+| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI, settings r/w, `models.complete/stream/credential-for`, nested agents, turn arbiter, `control.*`, bash detach, `disabledExtensions`, dialog-aware deadlines ✅; provider hooks routing, `models.classify/generate-image`, `set-ui-policy` ❌ |
 | ACP (Zed etc.) | ✅ | protocol v1, permissions, elicitation, client fs/terminal, `--model`; refusals, `mcpServers` forwarding ❌; Zed not tried by hand |
 | `oino serve`, `--remote`, multi-client | ❌ | specified (modes §5); blocks mobile/desktop remote attach |
 | `/share`, `/bug`, pi telemetry, pi-mcp, codemode | ⛔ | out of scope (charter; MCP is `unipi.mcp`) |
@@ -93,7 +93,7 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | skill-registry | ✅ | |
 | info-screen | ✅ | dashboard panel + actions verified in the smoke |
 | subagents | ✅ | foreground/background/read verified (e2e + live); UI policy fixed at spawn (R2) |
-| background-tasks | 🟡 | tasks, tray, notifications ✅; adopting a running bash call ❌ (bash detach); notification `deliverAs: followUp` (R1) |
+| background-tasks | 🟡 | tasks, tray, notifications, adopting a running bash call (`tasks.adopt-bash`) ✅; notification `deliverAs: followUp` (R1) |
 | btw | ✅ | verified in the smoke |
 | web-api | ✅ | no TLS fingerprinting (`impersonated: false`) |
 | ask-user | ✅ | forms unavailable over ACP |
@@ -106,7 +106,7 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | updater | ✅ | never installs (by design) |
 | input-shortcuts | ✅ | TUI and desktop send editor intents; no composer-history push (Q2) |
 | fusion | ✅ | sidekick handoff verified (e2e + live); startup model not persisted to core settings (R4) |
-| watchdog | 🟡 | stuck detection + session caps ✅; kill action needs bash detach; process stats Linux-only |
+| watchdog | 🟡 | stuck detection + session caps + kill / background via `bash-detach` ✅; process stats Linux-only |
 | app-bridge | ✅ | control-centre panel; `_oino/service_call` exists, no native GPUI consumer yet |
 
 ## 5. Parity matrix — ZCode design (design.md §8, desktop + mobile)
@@ -122,13 +122,13 @@ Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mo
 | Motion (6) | 🟡 | 🟡 | exit animations, run-label shimmer |
 | Frames, sidebar, header, welcome (7–13) | ✅ | ✅ (M1/M2 app bars, sections, swipe rows) | tablet layout on mobile ❌ |
 | Timeline, tool rows, diffs, bash, thinking (14–22, 26) | ✅ | ✅ (touch rows) | "Thought for Ns" timing |
-| Subagent rows (23) | 🟡 | 🟡 | live child timeline needs `_oino/agents` |
-| Turn undo / rewind (24–25) | 🟡 | 🟡 | core file checkpoints (buttons hidden) |
+| Subagent rows (23) | 🟡 | 🟡 | core `_oino/agents` feed ✅ (core-gui-gaps); GUI wiring open |
+| Turn undo / rewind (24–25) | 🟡 | 🟡 | core file checkpoints + `_oino/rewind` ✅ (core-gui-gaps); GUI buttons open |
 | Composer, model menu, context ring, mentions, history (27–30, 32, 34) | ✅ | ✅ | model-menu submenus / pinned group |
 | Attachments (31) | 🟡 | 🟡 | pasted images not converted |
-| Queue (33) | 🟡 | 🟡 | single-item remove / send-now / reorder need core commands |
+| Queue (33) | 🟡 | 🟡 | core `_oino/queue_edit` (remove / send-now / move / edit) ✅; GUI wiring open |
 | Permission, guard, elicitation, plan, waiting badge (35–39) | ✅ | ✅ (docked + sheet promotion) | — |
-| Status panel (40) | 🟡 | 🟡 | sticky-topic feed `_oino/topics`; StatusPanel keys |
+| Status panel (40) | 🟡 | 🟡 | core `_oino/topics` feed (+ `oino:git`) ✅; StatusPanel wiring and keys open |
 | Side pane, browser, PTY terminal (41–43) | ✅ | ✅ browser (Custom Tabs / SFSafariViewController); terminal ❌ on mobile | — |
 | Command center, modifiers, settings + hub, toasts, split panes, board (44–49) | ✅ | ✅ (search, stacked settings + hub, lane pager) | palette history chips |
 | Performance (52) | 🟡 | 🟡 | desktop 4-pane run p99 9.3–14.9 ms vs 10 ms; mobile 120 Hz not measured |
@@ -139,10 +139,9 @@ Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mo
 
 ## 6. Known issues
 
-1. **Bash detach** is not wired (`control.bash-detach`, `running-bash`, `tasks.adopt-bash`):
-   watchdog cannot kill a stuck bash call, background-tasks cannot adopt one.
-2. **Shutdown**: `ctx.shutdown()` sets `AgentSessionRuntime::shutdown_requested()`, but no
-   mode exits on it yet.
+1. **Bash detach** is wired (core-gui-gaps); needs the WASM host's task service
+   (`LocalServices`), so hosts without it report `unsupported`.
+2. **Shutdown**: RPC, TUI and print / JSON exit once idle; ACP does not (client lifecycle).
 3. **Nested agents**: `UiPolicy` is fixed at spawn (no `set-ui-policy`), child depth is not on
    `call-context`, `oino_agent` events reach only the spawning extension.
 4. **Remote**: `oino serve` / `--remote` do not exist, so mobile remote attach and a remote TUI
@@ -159,6 +158,18 @@ Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mo
 11. **Desktop perf**: four streaming panes do not reliably meet the 10 ms p99 budget.
 12. **Release artifacts** in §7 are 1.0.0-alpha.1 (`52d3120`); alpha.2 has not been rebuilt on the
     build hosts. Nothing is signed, tagged or published.
+
+### 6.1 gui-audit area E (core-gui-gaps)
+
+| Id | Status | Core / backend side ([frontend-api.md](frontend-api.md)) | GUI side still open |
+|---|---|---|---|
+| GA-40 | ✅ | `InProcessBackend` runs commands on its tokio runtime when awaited elsewhere; session background work uses the stored `Handle` | C1: drop the `Tokio::spawn` workaround if wanted |
+| GA-41 | 🟡 | host finds bare programs next to the running executable | K3: packaging must ship `oino-kanboard` beside `oino-desktop` (apps/) |
+| GA-42 | ✅ | handler deadlines pause while a dialog is open; dead handlers' dialogs are withdrawn | C2: drop cards on `extension_ui_dismiss` |
+| GA-43 | ✅ | core fires retained `setShortcuts` | S3 / GA-16: bind keys, palette, settings page |
+| GA-44 | ✅ | `_oino/agents`, `agents_changed`, `agent_event`, `_oino/agent_messages` | P3 / GA-15: Agent tab timeline |
+| GA-45 | 🟡 | `ExtensionMode::Desktop` / `Mobile`; `host-info.frontends` from mode + `_oino/hello` | K7: `embedded.rs` must pass `ExtensionMode::Desktop` and send `_oino/hello` (apps/) |
+| GA-46 | ❌ | — | K6: idle cost (GPUI refresh loop, thread pools) |
 
 ## 7. Release builds (1.0.0-alpha.1 artifacts, 2026-10-27, `v1-alpha` @ 52d3120, not tagged or published)
 
@@ -240,14 +251,13 @@ Problems found:
 
 ## 8. Next steps
 
-1. **core-runtime**: bash detach → task service (unblocks watchdog kill, background-tasks
-   adopt); `agents.agent.set-ui-policy` + depth on `call-context`; `tools.override` render-only
-   registration and guest `render` for built-in tools (utility render styles);
-   `summarize-default` with a previous summary; file checkpoints (desktop undo / rewind);
-   single-item queue commands; `disabledExtensions` in the core loader.
-2. **modes**: exit on `shutdown_requested()` once idle (print / RPC / TUI / ACP); `oino serve` +
-   `--remote` (TCP+TLS, pairing) with `_oino/list_sessions`, `_oino/get_keybindings`,
-   `_oino/render`, `_oino/topics`, `_oino/agents`; TUI core settings through `_oino/set_setting`.
+1. **core-runtime**: `agents.agent.set-ui-policy` + depth on `call-context`; `tools.override`
+   render-only registration and guest `render` for built-in tools (utility render styles);
+   `summarize-default` with a previous summary. (Bash detach, file checkpoints, single-item
+   queue commands, `disabledExtensions`, topic / agent feeds landed in core-gui-gaps.)
+2. **modes**: `oino serve` + `--remote` (TCP+TLS, pairing) with `_oino/list_sessions`,
+   `_oino/get_keybindings`, `_oino/render`; TUI core settings through `_oino/set_setting`;
+   ACP exit on `shutdown_requested`.
 3. **release**: raise `RLIMIT_NOFILE` at `oino` startup (macOS); rebuild alpha.2 with
    `cargo xtask remote-build {local,coffee,mac}`; iOS simulator build; signing / notarisation;
    tag so CI assembles the GitHub release.

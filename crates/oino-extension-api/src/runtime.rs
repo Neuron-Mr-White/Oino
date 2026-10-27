@@ -27,6 +27,33 @@ use crate::types::{CallContext, ExtensionError, ExtensionId, HostError};
 /// Boxed future alias used across the contract.
 pub type BoxFut<'a, T> = BoxFuture<'a, T>;
 
+/// A process taken over from a detached `bash` tool call ([`HostServices::take_bash`]).
+pub struct DetachedBash {
+    /// The command line.
+    pub command: String,
+    /// OS process id, when known.
+    pub pid: Option<u32>,
+    /// Output the tool call returned before the detach marker.
+    pub output_so_far: String,
+    /// Temp file with the complete output so far (when the call truncated it).
+    pub full_output_path: Option<String>,
+    /// Further output chunks (stdout and stderr interleaved); ends with the process.
+    pub output: BoxStream<'static, Vec<u8>>,
+    /// Resolves with the exit code once the process ended (`None` when killed by a signal).
+    pub exit: BoxFuture<'static, Option<i32>>,
+    /// Cancel to kill the process tree.
+    pub kill: CancellationToken,
+}
+
+impl std::fmt::Debug for DetachedBash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DetachedBash")
+            .field("command", &self.command)
+            .field("pid", &self.pid)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Component bytes or a path to them.
 #[derive(Clone, Debug)]
 pub enum ComponentSource {
@@ -459,6 +486,22 @@ pub trait HostServices: Send + Sync {
     /// `agents.list`.
     fn agents_list(&self, cx: &CallContext) -> RawJson {
         RawJson::from_json_value(&serde_json::Value::Array(Vec::new()))
+    }
+
+    // ── bash detach ──
+    /// Takes the running foreground `bash` call `tool_call_id` of the calling session away
+    /// from its tool call (which returns at once with a detach marker naming `task_id`) and
+    /// hands the process over; the background-task service adopts it
+    /// (`control.bash-detach`, `tasks.adopt-bash`).
+    fn take_bash(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        tool_call_id: &str,
+        task_id: &str,
+        reason: &str,
+    ) -> BoxFut<'_, Result<DetachedBash, HostError>> {
+        Box::pin(async { unsupported!("bash detach") })
     }
 
     // ── tasks ──

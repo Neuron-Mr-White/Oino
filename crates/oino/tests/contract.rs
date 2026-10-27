@@ -335,3 +335,110 @@ async fn frontend_api_is_the_same_in_process_and_over_rpc() {
     assert!(!local_observed.consumed);
     assert_eq!(local_observed, remote_observed);
 }
+
+/// GUI commands (gui-audit area E) observed through `FrontendApi`, backend-independent.
+#[derive(Debug, PartialEq)]
+struct GuiObserved {
+    git_topic: Vec<String>,
+    agents: usize,
+    follow: bool,
+    queue: serde_json::Value,
+    queue_error: ClientError,
+    checkpoints: usize,
+    rewind_error: ClientError,
+    running: usize,
+    extensions: Vec<(String, bool)>,
+    bus: Option<serde_json::Value>,
+}
+
+async fn gui_scenario(backend: Arc<dyn SessionBackend>) -> GuiObserved {
+    use oino_client::FrontendApi;
+    use oino_client::protocol::QueueKind;
+    let git_topic = backend
+        .topics(&["oino:git"], &[])
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|t| t.topic)
+        .collect();
+    let tree = backend.agents(Some(true)).await.unwrap();
+    for text in ["a", "b", "c"] {
+        backend
+            .send(
+                PiCommand::FollowUp {
+                    message: text.into(),
+                    images: Vec::new(),
+                }
+                .into(),
+            )
+            .await
+            .unwrap();
+    }
+    backend.queue_move(QueueKind::FollowUp, 2, 0).await.unwrap();
+    backend.queue_remove(QueueKind::FollowUp, 1).await.unwrap();
+    backend
+        .queue_set_text(QueueKind::FollowUp, 1, "B")
+        .await
+        .unwrap();
+    let queue_error = backend
+        .queue_send_now(QueueKind::Steering, 4)
+        .await
+        .unwrap_err();
+    let queue = backend
+        .send(PiCommand::ClearQueue.into())
+        .await
+        .unwrap()
+        .unwrap();
+    let observed = GuiObserved {
+        git_topic,
+        agents: tree.agents.len(),
+        follow: tree.follow,
+        queue,
+        queue_error,
+        checkpoints: backend.checkpoints().await.unwrap().len(),
+        rewind_error: backend
+            .rewind(
+                "nope",
+                oino_client::RewindOptions {
+                    files: true,
+                    conversation: false,
+                },
+            )
+            .await
+            .unwrap_err(),
+        running: backend.running_bash().await.unwrap().len(),
+        extensions: backend
+            .extensions()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.id, e.enabled))
+            .collect(),
+        bus: backend.bus_get("unipi:bg:tasks").await.unwrap(),
+    };
+    backend.shutdown().await;
+    observed
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gui_commands_are_the_same_in_process_and_over_rpc() {
+    let local = Sandbox::new();
+    let remote = Sandbox::new();
+    let local_observed = gui_scenario(in_process(&local).await).await;
+    let remote_observed = gui_scenario(over_rpc(&remote).await).await;
+    assert_eq!(local_observed.git_topic, ["oino:git"]);
+    assert_eq!(
+        local_observed.queue,
+        json!({"steering": [], "followUp": ["c", "B"]})
+    );
+    assert_eq!(
+        local_observed.queue_error,
+        ClientError::Command("Queue index 4 out of range (0 queued)".into())
+    );
+    assert_eq!(
+        local_observed.rewind_error,
+        ClientError::Command("No file checkpoint for entry nope".into())
+    );
+    assert!(local_observed.follow);
+    assert_eq!(local_observed, remote_observed);
+}

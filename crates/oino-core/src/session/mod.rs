@@ -7,7 +7,9 @@
 
 mod bash;
 mod boundary;
+pub mod checkpoints;
 mod compaction_flow;
+mod feeds;
 mod frontend;
 mod hooks;
 mod host;
@@ -15,6 +17,7 @@ mod listener;
 mod model;
 mod nested;
 mod prompt;
+mod queue;
 mod retry;
 mod stats;
 mod tools;
@@ -44,6 +47,8 @@ use crate::hub::{EventHub, EventStream};
 use crate::ui::{UiBridge, UiOutput, UiSink};
 
 pub use bash::BashResult;
+pub use checkpoints::{Checkpoint, CheckpointFile, RewindFailure, RewindResult};
+pub use feeds::{DetachedBash, ExtensionInfo, RunningBash};
 pub use frontend::{
     AuthProviderInfo, CompletionEntry, CompletionGroup, EditorEvent, EditorIntent, FRONTEND_CALLER,
     FrontendError,
@@ -52,6 +57,7 @@ pub use host::SlashCommandInfo;
 pub(crate) use model::branch_refs as model_branch_refs;
 pub use model::{CycleDirection, CycleModelResult};
 pub use prompt::{InputSource, PromptDisposition, PromptOptions, StreamingBehavior};
+pub use queue::{QueueEdit, QueueKind};
 pub use stats::{ContextUsage, SessionStats, TokenTotals};
 pub use tools::{BUILTIN_PATH_PREFIX, ToolEntry, ToolInfo, ToolSource};
 pub use tree::{ForkMessage, NavigateTreeOptions, NavigateTreeResult};
@@ -235,6 +241,8 @@ pub(crate) struct Inner {
     pub(crate) runtime: std::sync::OnceLock<std::sync::Weak<crate::runtime::RuntimeCore>>,
     /// Composer text last reported through `editor_event` (`ui.editor-text`).
     pub(crate) editor_text: Mutex<String>,
+    /// Topics, frontends, running bash calls, checkpoints, runtime handle.
+    pub(crate) frontend: feeds::FrontendState,
 }
 
 /// One live session. Cheap to clone.
@@ -290,13 +298,14 @@ impl AgentSession {
             child_role: config.child.as_ref().and_then(|c| c.link.role.clone()),
             call_kind: CallKind::Event,
         };
+        let ui = UiBridge::new(has_ui, session_id.clone(), Arc::new(HubUi(hub.clone())));
         let runner = ExtensionRunner::new(
             Arc::clone(&config.extensions),
             cx,
             Arc::new(HubErrors(hub.clone())),
             config.flag_values.clone(),
-        );
-        let ui = UiBridge::new(has_ui, session_id.clone(), Arc::new(HubUi(hub.clone())));
+        )
+        .with_dialogs(ui.clone());
         let context = config.manager.build_session_context();
         let settings = lock(&config.settings).snapshot();
         let session_stream = Arc::new(hooks::SessionStream {
@@ -358,6 +367,7 @@ impl AgentSession {
             arbiter: Mutex::new(boundary::ArbiterState::default()),
             runtime: std::sync::OnceLock::new(),
             editor_text: Mutex::new(String::new()),
+            frontend: feeds::FrontendState::new(),
         });
         let _ = session_stream.inner.set(Arc::downgrade(&inner));
         let session = Self { inner };
@@ -391,6 +401,9 @@ impl AgentSession {
             "startup"
         };
         self.extend_resources_from_extensions(discover_reason).await;
+        if !runner.shortcuts().is_empty() {
+            self.publish_shortcuts();
+        }
     }
 
     /// Package resources (manifest `resources` of every loaded extension, pi package

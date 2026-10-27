@@ -2366,13 +2366,16 @@ name = "oino-client"
 version = "1.0.0-alpha.2"
 dependencies = [
  "futures",
+ "indexmap 2.14.0",
  "oino-agent",
  "oino-ai",
  "oino-core",
+ "oino-models",
  "oino-session",
  "oino-settings",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
 ]

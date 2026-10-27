@@ -490,6 +490,21 @@ impl Agent {
         lock(&self.inner.follow_up).messages.push(message);
     }
 
+    /// Edits the steering (`steering = true`) or follow-up queue in place, atomically with
+    /// respect to draining (single-item queue edits).
+    pub fn update_queue<R>(
+        &self,
+        steering: bool,
+        edit: impl FnOnce(&mut Vec<AgentMessage>) -> R,
+    ) -> R {
+        let queue = if steering {
+            &self.inner.steering
+        } else {
+            &self.inner.follow_up
+        };
+        edit(&mut lock(queue).messages)
+    }
+
     /// Clears the steering queue.
     pub fn clear_steering_queue(&self) {
         lock(&self.inner.steering).messages.clear();

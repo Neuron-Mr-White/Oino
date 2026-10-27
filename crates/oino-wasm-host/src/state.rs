@@ -67,6 +67,8 @@ pub(crate) struct ExtShared {
     pub(crate) http_grants: HttpGrants,
     /// Context of the most recent call (fallback for imports made outside a known task).
     pub(crate) last_cx: Mutex<CallContext>,
+    /// `ui.dialog` calls waiting for the user; handler deadlines pause meanwhile (GA-42).
+    pub(crate) dialogs_open: std::sync::atomic::AtomicUsize,
 }
 
 impl ExtShared {

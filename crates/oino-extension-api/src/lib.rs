@@ -47,8 +47,8 @@ pub use json::RawJson;
 pub use manifest::{ExtensionKind, Manifest};
 pub use registry::{EventKind, Registration};
 pub use runtime::{
-    AgentHandle, BoxFut, ComponentSource, ExtensionInstance, ExtensionRuntime, HostServices,
-    LoadedPackage, ProviderEventStream, ProviderInstance,
+    AgentHandle, BoxFut, ComponentSource, DetachedBash, ExtensionInstance, ExtensionRuntime,
+    HostServices, LoadedPackage, ProviderEventStream, ProviderInstance,
 };
 pub use tokio_util::sync::CancellationToken;
 pub use types::{CallContext, CallKind, ExtensionError, ExtensionId, HostError, LogLevel, Mode};

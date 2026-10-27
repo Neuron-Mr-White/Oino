@@ -8,6 +8,7 @@
 //! | [`spec`] | [`AgentSpec`] and its policies (camelCase JSON) |
 //! | [`ChildAgent`] | handle: prompt, steer, follow-up, abort, events, usage, close |
 //! | `AgentsState` | per-session bookkeeping: depth, children, tree-wide limits, host router |
+//! | [`AgentInfo`] | frontend view of the tree (`_oino/agents`, `agents_changed`, `agent_event`) |
 //!
 //! Limits: depth ≤ the parent's allowance (child default 2, hard cap 4); concurrent open
 //! children per root ≤ `extensionSettings.subagents.maxConcurrent` (default 8, hard cap 16);
@@ -15,14 +16,17 @@
 //! `child:<label>`. The turn arbiter is disabled in children.
 
 mod child;
+mod feed;
 pub mod spec;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use oino_agent::StreamFn;
 
 pub use child::ChildAgent;
+pub use feed::{AgentInfo, AgentRunState};
+pub(crate) use feed::{changes_state, forward_to_root};
 pub use spec::{
     AgentSpec, ExtensionPolicy, Persistence, Seed, SystemPromptSpec, ToolPolicy, UiPolicy,
 };
@@ -35,6 +39,8 @@ use crate::session::{Inner, lock};
 #[derive(Debug, Default)]
 pub(crate) struct Tree {
     live: AtomicUsize,
+    /// A frontend follows the tree: child events go to the root hub (`agent_event`).
+    pub(crate) follow: AtomicBool,
 }
 
 impl Tree {

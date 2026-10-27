@@ -82,6 +82,25 @@ impl Queue {
                     ..
                 }),
             ) => a == b,
+            (
+                ClientEvent::Oino(OinoEvent::AgentEvent {
+                    agent_id: a,
+                    event: first,
+                }),
+                ClientEvent::Oino(OinoEvent::AgentEvent {
+                    agent_id: b,
+                    event: second,
+                }),
+            ) => {
+                a == b
+                    && matches!(
+                        (&**first, &**second),
+                        (
+                            ClientEvent::Session(AgentSessionEvent::MessageUpdate { .. }),
+                            ClientEvent::Session(AgentSessionEvent::MessageUpdate { .. })
+                        )
+                    )
+            }
             _ => false,
         };
         if replace {

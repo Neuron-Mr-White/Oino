@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use super::detach::DetachRequest;
+use super::detach::{CallMessage, DetachRequest};
 use super::shell::{CommandTransport, resolve_powershell_config, resolve_shell_config};
 use crate::env::{ExecutionEnv, SpawnRequest, SpawnedProcess, path_exists};
 use crate::js::number_to_string;
@@ -101,7 +101,7 @@ pub(crate) async fn exec(
     request: ExecRequest<'_>,
     sink: &mut (dyn OutputSink + Send),
     cancel: &CancellationToken,
-    detach: Option<&mut mpsc::UnboundedReceiver<DetachRequest>>,
+    detach: Option<&mut mpsc::UnboundedReceiver<CallMessage>>,
 ) -> Result<ExecEnd, ExecError> {
     let timeout = resolve_timeout(request.timeout).map_err(ExecError::Failed)?;
     if cancel.is_cancelled() {
@@ -144,7 +144,7 @@ async fn wait(
     cancel: &CancellationToken,
     timeout: Option<Duration>,
     timeout_seconds: Option<f64>,
-    mut detach: Option<&mut mpsc::UnboundedReceiver<DetachRequest>>,
+    mut detach: Option<&mut mpsc::UnboundedReceiver<CallMessage>>,
 ) -> Result<ExecEnd, ExecError> {
     let timeout_at = timeout.map(|timeout| Instant::now() + timeout);
     let (mut aborted, mut timed_out) = (false, false);
@@ -186,7 +186,10 @@ async fn wait(
             },
             request = recv_detach(&mut detach), if detach.is_some() && exit.is_none() && !aborted && !timed_out => {
                 match request {
-                    Some(request) => return Ok(ExecEnd::Detached(request, process)),
+                    Some(CallMessage::Detach(request)) => return Ok(ExecEnd::Detached(request, process)),
+                    Some(CallMessage::Pid(reply)) => {
+                        let _ = reply.send(process.control.pid());
+                    }
                     None => detach = None,
                 }
             },
@@ -208,8 +211,8 @@ async fn wait(
 }
 
 async fn recv_detach(
-    detach: &mut Option<&mut mpsc::UnboundedReceiver<DetachRequest>>,
-) -> Option<DetachRequest> {
+    detach: &mut Option<&mut mpsc::UnboundedReceiver<CallMessage>>,
+) -> Option<CallMessage> {
     match detach {
         Some(receiver) => receiver.recv().await,
         None => std::future::pending().await,

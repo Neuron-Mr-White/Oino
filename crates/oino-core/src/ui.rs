@@ -280,6 +280,13 @@ impl UiBridge {
             .pending
             .insert(id.clone(), (tx, request.clone()));
         self.sink.publish(UiOutput::Request(request));
+        // Withdraws the dialog when the waiting handler is dropped (handler deadline, abort):
+        // no orphan cards (GA-42).
+        let mut guard = Withdraw {
+            bridge: self,
+            id: id.clone(),
+            armed: true,
+        };
         let cancelled = async {
             match &cancel {
                 Some(token) => token.cancelled().await,
@@ -297,12 +304,47 @@ impl UiBridge {
             () = expired => (UiAnswer::Cancelled, Some(DismissReason::Timeout)),
             () = cancelled => (UiAnswer::Cancelled, Some(DismissReason::Cancelled)),
         };
+        guard.armed = false;
         if let Some(reason) = reason
             && lock(&self.state).pending.remove(&id).is_some()
         {
             self.sink.publish(UiOutput::Dismiss { id, reason });
         }
         answer
+    }
+
+    /// Open dialogs raised by `extension` (handler deadlines pause while one is open).
+    #[must_use]
+    pub fn pending_for(&self, extension: &str) -> usize {
+        lock(&self.state)
+            .pending
+            .values()
+            .filter(|(_, request)| request.extension_id.as_deref() == Some(extension))
+            .count()
+    }
+
+    /// Cancels the open dialogs of `extension` (its handler died).
+    pub fn cancel_for(&self, extension: &str) {
+        let ids: Vec<String> = lock(&self.state)
+            .pending
+            .iter()
+            .filter(|(_, (_, request))| request.extension_id.as_deref() == Some(extension))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            self.withdraw(&id);
+        }
+    }
+
+    fn withdraw(&self, id: &str) {
+        let pending = lock(&self.state).pending.remove(id);
+        if let Some((tx, _)) = pending {
+            let _ = tx.send(UiAnswer::Cancelled);
+            self.sink.publish(UiOutput::Dismiss {
+                id: id.to_owned(),
+                reason: DismissReason::Cancelled,
+            });
+        }
     }
 
     /// Delivers a frontend answer; the first answer wins, later ones are ignored.
@@ -350,6 +392,21 @@ impl UiBridge {
                 id,
                 reason: DismissReason::Cancelled,
             });
+        }
+    }
+}
+
+/// Withdraws a dialog whose waiter was dropped.
+struct Withdraw<'a> {
+    bridge: &'a UiBridge,
+    id: String,
+    armed: bool,
+}
+
+impl Drop for Withdraw<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.bridge.withdraw(&self.id);
         }
     }
 }
@@ -454,6 +511,49 @@ mod tests {
         });
         assert_eq!(dialog.await.unwrap(), UiAnswer::Confirmed(true));
         assert_eq!(lock(&sink.0).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn dropped_waiters_and_dead_handlers_withdraw_dialogs() {
+        let sink = Arc::new(Recorder::default());
+        let bridge = UiBridge::new(true, "s", sink.clone());
+        let waiting = {
+            let bridge = bridge.clone();
+            tokio::spawn(async move {
+                bridge
+                    .dialog(Some("wf"), "select", params(json!({"title": "t"})), None)
+                    .await
+            })
+        };
+        while bridge.pending_for("wf") == 0 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(bridge.pending_for("other"), 0);
+        waiting.abort();
+        let _ = waiting.await;
+        assert_eq!(bridge.pending_for("wf"), 0);
+        assert_eq!(bridge.snapshot().len(), 0);
+        assert!(matches!(
+            lock(&sink.0).last(),
+            Some(UiOutput::Dismiss {
+                reason: DismissReason::Cancelled,
+                ..
+            })
+        ));
+        let second = {
+            let bridge = bridge.clone();
+            tokio::spawn(async move {
+                bridge
+                    .dialog(Some("wf"), "confirm", params(json!({"title": "t"})), None)
+                    .await
+            })
+        };
+        while bridge.pending_for("wf") == 0 {
+            tokio::task::yield_now().await;
+        }
+        bridge.cancel_for("wf");
+        assert_eq!(second.await.unwrap(), UiAnswer::Cancelled);
+        assert_eq!(bridge.snapshot().len(), 0);
     }
 
     #[tokio::test]

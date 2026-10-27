@@ -765,6 +765,7 @@ impl AgentSession {
         self.emit(AgentSessionEvent::AgentSettled { aborted });
         lock(&self.inner.book).emitting_settled = false;
         self.set_idle_if_idle();
+        self.refresh_git_topic_if_followed();
     }
 }
 

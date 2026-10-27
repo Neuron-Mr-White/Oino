@@ -300,6 +300,33 @@ impl WasmInstance {
     }
 }
 
+/// `fut` with `deadline`, paused while `waiting()` (a dialog is open); after the dialog
+/// closes the handler gets a fresh deadline (GA-42). `None` when it expired.
+async fn pausable_timeout<T>(
+    fut: impl Future<Output = T>,
+    deadline: Duration,
+    waiting: impl Fn() -> bool,
+) -> Option<T> {
+    const RECHECK: Duration = Duration::from_millis(200);
+    let mut fut = std::pin::pin!(fut);
+    loop {
+        if let Ok(value) = tokio::time::timeout(deadline, &mut fut).await {
+            return Some(value);
+        }
+        if !waiting() {
+            return None;
+        }
+        loop {
+            if let Ok(value) = tokio::time::timeout(RECHECK, &mut fut).await {
+                return Some(value);
+            }
+            if !waiting() {
+                break;
+            }
+        }
+    }
+}
+
 fn init_input(input: &InitInput) -> wg::InitInput {
     wg::InitInput {
         manifest: input.manifest.as_str().to_owned(),
@@ -395,12 +422,15 @@ impl ExtensionInstance for WasmInstance {
                     invoke(acc, f, params, Some(&cx)).await.map(|(r,)| r)
                 })
             });
-            let r = tokio::time::timeout(deadline, fut).await.map_err(|_| {
-                self.err(
-                    &call_name,
-                    format!("handler timed out after {} ms", deadline.as_millis()),
-                )
-            })??;
+            let open = &self.shared.dialogs_open;
+            let r = pausable_timeout(fut, deadline, || open.load(Ordering::SeqCst) > 0)
+                .await
+                .ok_or_else(|| {
+                    self.err(
+                        &call_name,
+                        format!("handler timed out after {} ms", deadline.as_millis()),
+                    )
+                })??;
             match r {
                 Ok(result) => Ok(result.map(convert::json_lossy)),
                 Err(message) => Err(self.err(&call_name, message)),

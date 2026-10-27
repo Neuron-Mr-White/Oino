@@ -61,7 +61,17 @@ impl BeforeToolCall for SessionHooks {
     ) -> BoxFuture<'a, Result<Option<BeforeToolCallResult>, HookError>> {
         Box::pin(async move {
             let session = self.session()?;
-            session.before_tool_call(cx.tool_call, cx.args, None).await
+            let result = session
+                .before_tool_call(cx.tool_call, cx.args, None)
+                .await?;
+            if !result.as_ref().is_some_and(|r| r.block) {
+                let args = result
+                    .as_ref()
+                    .and_then(|r| r.input.as_ref())
+                    .unwrap_or(cx.args);
+                session.checkpoint_tool_call(&cx.tool_call.name, args);
+            }
+            Ok(result)
         })
     }
 }

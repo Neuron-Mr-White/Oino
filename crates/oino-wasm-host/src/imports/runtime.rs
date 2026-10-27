@@ -189,6 +189,22 @@ async fn device(
     ext.host.ui_device(&ext.id, &cx, op).await
 }
 
+/// Counts an open `ui.dialog` for the handler deadline (decrements on drop).
+struct DialogOpen<'a>(&'a std::sync::atomic::AtomicUsize);
+
+impl<'a> DialogOpen<'a> {
+    fn new(counter: &'a std::sync::atomic::AtomicUsize) -> Self {
+        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Self(counter)
+    }
+}
+
+impl Drop for DialogOpen<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 impl wu::Host for HostState {}
 
 impl<T: Send> wu::HostWithStore<T> for HostState {
@@ -200,11 +216,13 @@ impl<T: Send> wu::HostWithStore<T> for HostState {
         let (ext, cx) = current_async(accessor);
         let cancel = token(accessor, cancel)?;
         let r = match ui_allowed(&ext).and_then(|()| json(request)) {
-            Ok(request) => ext
-                .host
-                .ui_dialog(&ext.id, &cx, request, cancel)
-                .await
-                .map(|j| out(&j)),
+            Ok(request) => {
+                let _open = DialogOpen::new(&ext.dialogs_open);
+                ext.host
+                    .ui_dialog(&ext.id, &cx, request, cancel)
+                    .await
+                    .map(|j| out(&j))
+            }
             Err(e) => Err(e),
         };
         Ok(convert::wit(r))

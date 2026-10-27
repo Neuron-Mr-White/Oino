@@ -12,7 +12,9 @@ use serde::de::DeserializeOwned;
 
 use crate::backend::{ClientError, SessionBackend};
 use crate::protocol::{
-    AuthProviderInfo, CompletionGroup, EditorEvent, OinoCommand, RpcResponseData, SettingsScope,
+    AgentInfo, AuthProviderInfo, Checkpoint, CompletionGroup, EditorEvent, ExtensionInfo,
+    OinoCommand, QueueEdit, QueueKind, RewindResult, RpcResponseData, RunningBash, SettingsScope,
+    TopicValue,
 };
 
 /// An extension shortcut (`_oino/get_shortcuts`).
@@ -30,6 +32,38 @@ pub struct ShortcutInfo {
     /// Owning extension.
     #[serde(default)]
     pub extension_id: String,
+}
+
+/// What `_oino/rewind` restores.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RewindOptions {
+    /// Restore the files changed at and after the message.
+    pub files: bool,
+    /// Fork the conversation before the message (pi `fork`).
+    pub conversation: bool,
+}
+
+impl Default for RewindOptions {
+    fn default() -> Self {
+        Self {
+            files: true,
+            conversation: true,
+        }
+    }
+}
+
+/// `_oino/agents` reply.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct AgentTree {
+    /// Open agents, parents before children.
+    pub agents: Vec<AgentInfo>,
+    /// Live `agent_event` forwarding is on.
+    pub follow: bool,
+}
+
+fn whole<T: DeserializeOwned>(data: RpcResponseData) -> Result<T, ClientError> {
+    serde_json::from_value(data.unwrap_or(JsonValue::Null))
+        .map_err(|e| ClientError::Protocol(e.to_string()))
 }
 
 fn field<T: DeserializeOwned>(data: RpcResponseData, name: &str) -> Result<T, ClientError> {
@@ -100,6 +134,69 @@ pub trait FrontendApi {
     fn logout(&self, provider: &str) -> BoxFuture<'_, Result<(), ClientError>>;
     /// `_oino/set_api_key`.
     fn set_api_key(&self, provider: &str, key: &str) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/topics`: changes the subscription; returns the sticky values it now matches.
+    fn topics(
+        &self,
+        subscribe: &[&str],
+        unsubscribe: &[&str],
+    ) -> BoxFuture<'_, Result<Vec<TopicValue>, ClientError>>;
+    /// `_oino/bus_get`: last sticky value of `topic`.
+    fn bus_get(&self, topic: &str) -> BoxFuture<'_, Result<Option<JsonValue>, ClientError>>;
+    /// `_oino/agents`: the nested-agent tree; `follow` toggles `agent_event` forwarding.
+    fn agents(&self, follow: Option<bool>) -> BoxFuture<'_, Result<AgentTree, ClientError>>;
+    /// `_oino/agent_messages`: transcript of one nested agent.
+    fn agent_messages(
+        &self,
+        agent_id: &str,
+    ) -> BoxFuture<'_, Result<Vec<oino_ai::AgentMessage>, ClientError>>;
+    /// `_oino/agent_abort`.
+    fn agent_abort(&self, agent_id: &str) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/queue_edit`.
+    fn queue_edit(&self, edit: QueueEdit) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/queue_edit{op: remove}`.
+    fn queue_remove(
+        &self,
+        queue: QueueKind,
+        index: usize,
+    ) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/queue_edit{op: sendNow}`.
+    fn queue_send_now(
+        &self,
+        queue: QueueKind,
+        index: usize,
+    ) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/queue_edit{op: move}`.
+    fn queue_move(
+        &self,
+        queue: QueueKind,
+        from: usize,
+        to: usize,
+    ) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/queue_edit{op: edit}`.
+    fn queue_set_text(
+        &self,
+        queue: QueueKind,
+        index: usize,
+        text: &str,
+    ) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/checkpoints`.
+    fn checkpoints(&self) -> BoxFuture<'_, Result<Vec<Checkpoint>, ClientError>>;
+    /// `_oino/rewind`.
+    fn rewind(
+        &self,
+        entry_id: &str,
+        options: RewindOptions,
+    ) -> BoxFuture<'_, Result<RewindResult, ClientError>>;
+    /// `_oino/running_bash`.
+    fn running_bash(&self) -> BoxFuture<'_, Result<Vec<RunningBash>, ClientError>>;
+    /// `_oino/extensions`.
+    fn extensions(&self) -> BoxFuture<'_, Result<Vec<ExtensionInfo>, ClientError>>;
+    /// `_oino/set_extension_enabled`.
+    fn set_extension_enabled(
+        &self,
+        id: &str,
+        enabled: bool,
+    ) -> BoxFuture<'_, Result<(), ClientError>>;
 }
 
 impl<B: SessionBackend + ?Sized> FrontendApi for B {
@@ -253,6 +350,141 @@ impl<B: SessionBackend + ?Sized> FrontendApi for B {
         let command = OinoCommand::SetApiKey {
             provider: provider.to_owned(),
             key: key.to_owned(),
+        };
+        self.send(command.into()).map(|r| r.map(drop)).boxed()
+    }
+
+    fn topics(
+        &self,
+        subscribe: &[&str],
+        unsubscribe: &[&str],
+    ) -> BoxFuture<'_, Result<Vec<TopicValue>, ClientError>> {
+        let command = OinoCommand::Topics {
+            subscribe: subscribe.iter().map(|s| (*s).to_owned()).collect(),
+            unsubscribe: unsubscribe.iter().map(|s| (*s).to_owned()).collect(),
+        };
+        self.send(command.into())
+            .map(|r| field(r?, "topics"))
+            .boxed()
+    }
+
+    fn bus_get(&self, topic: &str) -> BoxFuture<'_, Result<Option<JsonValue>, ClientError>> {
+        let command = OinoCommand::BusGet {
+            topic: topic.to_owned(),
+        };
+        self.send(command.into())
+            .map(|r| field::<JsonValue>(r?, "data").map(|v| (!v.is_null()).then_some(v)))
+            .boxed()
+    }
+
+    fn agents(&self, follow: Option<bool>) -> BoxFuture<'_, Result<AgentTree, ClientError>> {
+        self.send(OinoCommand::Agents { follow }.into())
+            .map(|r| whole(r?))
+            .boxed()
+    }
+
+    fn agent_messages(
+        &self,
+        agent_id: &str,
+    ) -> BoxFuture<'_, Result<Vec<oino_ai::AgentMessage>, ClientError>> {
+        let command = OinoCommand::AgentMessages {
+            agent_id: agent_id.to_owned(),
+        };
+        self.send(command.into())
+            .map(|r| field(r?, "messages"))
+            .boxed()
+    }
+
+    fn agent_abort(&self, agent_id: &str) -> BoxFuture<'_, Result<(), ClientError>> {
+        let command = OinoCommand::AgentAbort {
+            agent_id: agent_id.to_owned(),
+        };
+        self.send(command.into()).map(|r| r.map(drop)).boxed()
+    }
+
+    fn queue_edit(&self, edit: QueueEdit) -> BoxFuture<'_, Result<(), ClientError>> {
+        self.send(OinoCommand::QueueEdit(edit).into())
+            .map(|r| r.map(drop))
+            .boxed()
+    }
+
+    fn queue_remove(
+        &self,
+        queue: QueueKind,
+        index: usize,
+    ) -> BoxFuture<'_, Result<(), ClientError>> {
+        self.queue_edit(QueueEdit::Remove { queue, index })
+    }
+
+    fn queue_send_now(
+        &self,
+        queue: QueueKind,
+        index: usize,
+    ) -> BoxFuture<'_, Result<(), ClientError>> {
+        self.queue_edit(QueueEdit::SendNow { queue, index })
+    }
+
+    fn queue_move(
+        &self,
+        queue: QueueKind,
+        from: usize,
+        to: usize,
+    ) -> BoxFuture<'_, Result<(), ClientError>> {
+        self.queue_edit(QueueEdit::Move { queue, from, to })
+    }
+
+    fn queue_set_text(
+        &self,
+        queue: QueueKind,
+        index: usize,
+        text: &str,
+    ) -> BoxFuture<'_, Result<(), ClientError>> {
+        self.queue_edit(QueueEdit::Edit {
+            queue,
+            index,
+            text: text.to_owned(),
+        })
+    }
+
+    fn checkpoints(&self) -> BoxFuture<'_, Result<Vec<Checkpoint>, ClientError>> {
+        self.send(OinoCommand::Checkpoints.into())
+            .map(|r| field(r?, "checkpoints"))
+            .boxed()
+    }
+
+    fn rewind(
+        &self,
+        entry_id: &str,
+        options: RewindOptions,
+    ) -> BoxFuture<'_, Result<RewindResult, ClientError>> {
+        let command = OinoCommand::Rewind {
+            entry_id: entry_id.to_owned(),
+            files: options.files,
+            conversation: options.conversation,
+        };
+        self.send(command.into()).map(|r| whole(r?)).boxed()
+    }
+
+    fn running_bash(&self) -> BoxFuture<'_, Result<Vec<RunningBash>, ClientError>> {
+        self.send(OinoCommand::RunningBash.into())
+            .map(|r| field(r?, "calls"))
+            .boxed()
+    }
+
+    fn extensions(&self) -> BoxFuture<'_, Result<Vec<ExtensionInfo>, ClientError>> {
+        self.send(OinoCommand::Extensions.into())
+            .map(|r| field(r?, "extensions"))
+            .boxed()
+    }
+
+    fn set_extension_enabled(
+        &self,
+        id: &str,
+        enabled: bool,
+    ) -> BoxFuture<'_, Result<(), ClientError>> {
+        let command = OinoCommand::SetExtensionEnabled {
+            id: id.to_owned(),
+            enabled,
         };
         self.send(command.into()).map(|r| r.map(drop)).boxed()
     }

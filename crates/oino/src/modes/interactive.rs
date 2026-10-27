@@ -9,7 +9,8 @@ use oino_tui::host::LocalHost;
 use crate::modes::signals;
 use crate::startup::{Environment, Started};
 
-/// Runs the terminal UI until the user exits (0), the UI fails (1) or a signal arrives.
+/// Runs the terminal UI until the user exits (0), an extension calls `ctx.shutdown()` and the
+/// session is idle (0), the UI fails (1) or a signal arrives.
 pub async fn run(started: Started, env: &Environment, options: TuiOptions) -> i32 {
     let backend = Arc::new(InProcessBackend::new(started.runtime));
     let host = Arc::new(LocalHost::new(
@@ -23,7 +24,9 @@ pub async fn run(started: Started, env: &Environment, options: TuiOptions) -> i3
         host,
         options,
     );
+    let shutdown = backend.shutdown_requested();
     let code = tokio::select! {
+        () = shutdown => 0,
         result = ui => match result {
             Ok(()) => 0,
             Err(error) => {

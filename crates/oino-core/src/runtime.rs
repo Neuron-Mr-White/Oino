@@ -130,6 +130,10 @@ pub struct AgentSessionRuntime {
     core: Arc<RuntimeCore>,
 }
 
+fn old_session(current: &Mutex<Current>) -> AgentSession {
+    lock(current).session.clone()
+}
+
 /// Shared state of an [`AgentSessionRuntime`].
 pub(crate) struct RuntimeCore {
     services: Arc<Services>,
@@ -549,7 +553,9 @@ impl RuntimeCore {
 
     /// `ctx.shutdown()`.
     pub(crate) fn request_shutdown(&self) {
-        self.shutdown.send_replace(true);
+        if !self.shutdown.send_replace(true) {
+            self.session().hub().publish(OinoEvent::ShutdownRequested);
+        }
     }
 
     async fn before_switch(&self, reason: &str, target: Option<&Path>) -> bool {
@@ -599,6 +605,12 @@ impl RuntimeCore {
         )
         .await
         .map_err(op_error)?;
+        next.session
+            .inherit_frontend_state(&old_session(&self.current));
+        if reason == "fork" {
+            next.session
+                .inherit_checkpoints(&old_session(&self.current));
+        }
         let old = std::mem::replace(&mut *lock(&self.current), next);
         old.forward.abort();
         Ok(())

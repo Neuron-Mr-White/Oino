@@ -97,9 +97,26 @@ pub struct TaskInfo {
 /// Called when a task finishes.
 pub(crate) type OnFinish = Arc<dyn Fn(TaskInfo) + Send + Sync>;
 
+/// How a running task is killed.
+enum Killer {
+    /// A process the service spawned.
+    Child(Arc<crate::process::ChildHandle>),
+    /// A detached `bash` call the service adopted.
+    Adopted(tokio_util::sync::CancellationToken),
+}
+
+impl Killer {
+    fn kill(&self) {
+        match self {
+            Self::Child(child) => child.kill(),
+            Self::Adopted(token) => token.cancel(),
+        }
+    }
+}
+
 struct Entry {
     info: TaskInfo,
-    child: Option<Arc<crate::process::ChildHandle>>,
+    child: Option<Killer>,
 }
 
 /// Tasks of every session in this process.
@@ -152,18 +169,8 @@ impl TaskService {
         spec: TaskSpec,
         on_finish: OnFinish,
     ) -> Result<String, HostError> {
-        let id = {
-            let mut next = lock(&self.next);
-            *next += 1;
-            format!("t{:x}{:04x}", crate::timers::now_ms() & 0xffff_ffff, *next)
-        };
-        let dir = self
-            .agent_dir
-            .join("tmp")
-            .join("tasks")
-            .join(format!("{}-{id}", session8(session_id)));
-        std::fs::create_dir_all(&dir).map_err(|e| HostError::io(&e))?;
-        let output = dir.join("output.log");
+        let id = self.next_id();
+        let output = self.output_path(session_id, &id)?;
         let (shell, flag) = if cfg!(windows) {
             ("cmd", "/C")
         } else {
@@ -203,7 +210,7 @@ impl TaskService {
             id.clone(),
             Entry {
                 info,
-                child: Some(Arc::clone(&child)),
+                child: Some(Killer::Child(Arc::clone(&child))),
             },
         );
         let this = Arc::clone(self);
@@ -231,6 +238,106 @@ impl TaskService {
             }
         });
         Ok(id)
+    }
+
+    /// A fresh task id.
+    #[must_use]
+    pub fn next_id(&self) -> String {
+        let mut next = lock(&self.next);
+        *next += 1;
+        format!("t{:x}{:04x}", crate::timers::now_ms() & 0xffff_ffff, *next)
+    }
+
+    fn output_path(&self, session_id: &str, id: &str) -> Result<PathBuf, HostError> {
+        let dir = self
+            .agent_dir
+            .join("tmp")
+            .join("tasks")
+            .join(format!("{}-{id}", session8(session_id)));
+        std::fs::create_dir_all(&dir).map_err(|e| HostError::io(&e))?;
+        Ok(dir.join("output.log"))
+    }
+
+    /// Adopts a detached `bash` call as task `id` of `owner`: the output so far starts the
+    /// log, further output is appended, completion is reported like a started task.
+    ///
+    /// # Errors
+    ///
+    /// The log file cannot be created.
+    pub fn adopt(
+        self: &Arc<Self>,
+        id: &str,
+        owner: &ExtensionId,
+        session_id: &str,
+        detached: oino_extension_api::DetachedBash,
+        on_finish: OnFinish,
+    ) -> Result<(), HostError> {
+        use std::io::Write as _;
+        let output = self.output_path(session_id, id)?;
+        let mut file = std::fs::File::create(&output).map_err(|e| HostError::io(&e))?;
+        let _ = file.write_all(detached.output_so_far.as_bytes());
+        let _ = file.write_all(b"\n");
+        let spec = TaskSpec {
+            name: format!(
+                "bash: {}",
+                detached.command.lines().next().unwrap_or_default()
+            ),
+            command: detached.command.clone(),
+            is_agent: false,
+            description: detached
+                .full_output_path
+                .as_ref()
+                .map(|p| format!("adopted bash call (full output so far: {p})")),
+            timeout_seconds: None,
+            notify_on_completion: true,
+            trigger_on_completion: true,
+            max_output_bytes: None,
+        };
+        let info = TaskInfo {
+            id: id.to_owned(),
+            owner: owner.to_string(),
+            session_id: session_id.to_owned(),
+            spec,
+            state: TaskState::Running,
+            exit_code: None,
+            error: None,
+            output_path: output.to_string_lossy().into_owned(),
+            started_at: crate::timers::now_ms(),
+            finished_at: None,
+            pid: detached.pid.unwrap_or_default(),
+        };
+        lock(&self.tasks).insert(
+            id.to_owned(),
+            Entry {
+                info,
+                child: Some(Killer::Adopted(detached.kill.clone())),
+            },
+        );
+        let this = Arc::clone(self);
+        let task_id = id.to_owned();
+        let mut chunks = detached.output;
+        let exit = detached.exit;
+        tokio::spawn(async move {
+            use futures::StreamExt as _;
+            let pump = async move {
+                while let Some(chunk) = chunks.next().await {
+                    let _ = file.write_all(&chunk);
+                }
+            };
+            let pump = tokio::spawn(pump);
+            let code = exit.await;
+            // Descendants may keep the pipes open; stop reading shortly after the exit.
+            let _ = tokio::time::timeout(Duration::from_secs(2), pump).await;
+            let exit = crate::process::Exit {
+                code,
+                signal: None,
+                timed_out: false,
+            };
+            if let Some(info) = this.finish(&task_id, exit, None) {
+                on_finish(info);
+            }
+        });
+        Ok(())
     }
 
     fn finish(
@@ -339,9 +446,9 @@ impl TaskService {
         let entry = tasks
             .get_mut(id)
             .ok_or_else(|| HostError::NotFound(format!("task {id}")))?;
-        if let Some(child) = &entry.child {
+        if let Some(killer) = &entry.child {
             entry.info.state = TaskState::Killed;
-            child.kill();
+            killer.kill();
         }
         Ok(())
     }
@@ -455,5 +562,53 @@ mod tests {
             .unwrap();
         assert_eq!(info.state, TaskState::Failed);
         assert!(info.error.unwrap().contains("output exceeded"));
+    }
+
+    #[tokio::test]
+    async fn adopts_a_detached_bash_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let svc = Arc::new(TaskService::new(dir.path()));
+        let owner = ExtensionId::new("t").unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let (chunks, output) = futures::channel::mpsc::unbounded::<Vec<u8>>();
+        let kill = tokio_util::sync::CancellationToken::new();
+        let killed = kill.clone();
+        let detached = oino_extension_api::DetachedBash {
+            command: "sleep 99".into(),
+            pid: Some(42),
+            output_so_far: "before".into(),
+            full_output_path: None,
+            output: Box::pin(output),
+            exit: Box::pin(async move {
+                killed.cancelled().await;
+                None
+            }),
+            kill,
+        };
+        let id = svc.next_id();
+        svc.adopt(
+            &id,
+            &owner,
+            "s",
+            detached,
+            Arc::new(move |i| {
+                let _ = tx.send(i);
+            }),
+        )
+        .unwrap();
+        chunks.unbounded_send(b"after\n".to_vec()).unwrap();
+        drop(chunks);
+        let info = svc.get(&id).unwrap();
+        assert_eq!((info.state, info.pid), (TaskState::Running, 42));
+        assert_eq!(info.spec.name, "bash: sleep 99");
+        assert_eq!(svc.running("s"), 1);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        svc.kill(&id).unwrap();
+        let info = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(info.state, TaskState::Killed);
+        assert_eq!(svc.logs(&id, 100, false).unwrap(), "before\nafter\n");
     }
 }

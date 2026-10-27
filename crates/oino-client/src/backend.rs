@@ -53,4 +53,11 @@ pub trait SessionBackend: Send + Sync {
     /// Orderly shutdown (`session_shutdown{reason:"quit"}`); later commands fail with
     /// [`ClientError::Closed`].
     fn shutdown(&self) -> BoxFuture<'_, ()>;
+
+    /// Resolves once an extension asked the frontend to exit (`ctx.shutdown()`, event
+    /// `shutdown_requested`) and the session is idle; frontends then shut down and exit.
+    /// Never resolves by default.
+    fn shutdown_requested(&self) -> BoxFuture<'static, ()> {
+        Box::pin(futures::future::pending())
+    }
 }

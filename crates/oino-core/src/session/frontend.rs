@@ -388,7 +388,7 @@ impl AgentSession {
             payload["value"] = value;
         }
         let cx = runner.call_context().with_kind(CallKind::Command);
-        tokio::spawn(async move {
+        self.spawn_task(async move {
             if let Err(error) = extension
                 .instance
                 .on_event("oino_ui_action", payload, cx)
@@ -416,12 +416,33 @@ impl AgentSession {
             .ok_or_else(|| FrontendError::NotFound(format!("Unknown shortcut: {id}")))?;
         let cx = runner.call_context().with_kind(CallKind::Shortcut);
         let id = id.to_owned();
-        tokio::spawn(async move {
+        self.spawn_task(async move {
             if let Err(error) = extension.instance.run_shortcut(&id, cx).await {
                 runner.emit_error(&extension.instance.path(), "shortcut", error.message);
             }
         });
         Ok(())
+    }
+
+    /// Fires `setShortcuts` (ui-protocol §4) with every extension shortcut, so frontends bind
+    /// the keys (GA-43). Retained for late frontends.
+    pub(crate) fn publish_shortcuts(&self) {
+        let shortcuts: Vec<JsonValue> = self
+            .runner()
+            .shortcuts()
+            .into_iter()
+            .map(|(extension, spec)| {
+                json!({
+                    "id": spec.id,
+                    "keys": spec.default_keys,
+                    "description": spec.description,
+                    "extensionId": extension,
+                })
+            })
+            .collect();
+        let mut params = oino_ai::JsonObject::new();
+        params.insert("shortcuts".into(), JsonValue::Array(shortcuts));
+        self.inner.ui.fire(None, "setShortcuts", params);
     }
 
     /// Records the composer text and delivers `oino_editor` to subscribed extensions.
@@ -444,7 +465,7 @@ impl AgentSession {
             return false;
         }
         if !event.intent.consumable() {
-            tokio::spawn(async move {
+            self.spawn_task(async move {
                 runner.emit(payload).await;
             });
             return false;

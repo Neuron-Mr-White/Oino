@@ -246,7 +246,7 @@ impl LocalServices {
                 Ok(to_json(json!(id)))
             }
             TaskOp::AdoptBash { .. } => Err(HostError::unsupported(
-                "tasks.adopt-bash (needs core bash detach)",
+                "tasks.adopt-bash without a core host",
             )),
             TaskOp::List => Ok(to_json(
                 serde_json::to_value(self.tasks.list(&cx.session_id)).unwrap_or_default(),
@@ -271,6 +271,36 @@ impl LocalServices {
                 Ok(RawJson::null())
             }
         }
+    }
+
+    /// Detaches the running `bash` call `tool_call_id` (through the core host `inner`) and
+    /// adopts the process as a background task of `ext` (`control.bash-detach`,
+    /// `tasks.adopt-bash`). Returns the task id.
+    async fn adopt_bash(
+        self: &Arc<Self>,
+        inner: &Arc<dyn HostServices>,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        tool_call_id: &str,
+        reason: &str,
+    ) -> Result<String, HostError> {
+        let task_id = self.tasks.next_id();
+        let detached = inner
+            .take_bash(ext, cx, tool_call_id, &task_id, reason)
+            .await?;
+        let hub = Arc::downgrade(self);
+        self.tasks.adopt(
+            &task_id,
+            ext,
+            &cx.session_id,
+            detached,
+            Arc::new(move |info| {
+                if let Some(hub) = hub.upgrade() {
+                    hub.task_finished(info);
+                }
+            }),
+        )?;
+        Ok(task_id)
     }
 
     fn task_finished(self: Arc<Self>, info: TaskInfo) {
@@ -329,6 +359,17 @@ impl LocalServices {
                     .await;
             }
         });
+    }
+}
+
+/// Runs `fut` from synchronous host code (multi-thread runtime: in place; otherwise on a
+/// helper executor).
+fn block_on_runtime<T>(fut: impl Future<Output = T>) -> T {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(|| handle.block_on(fut))
+        }
+        _ => futures::executor::block_on(fut),
     }
 }
 
@@ -466,7 +507,23 @@ impl HostServices for Composite {
         cx: &CallContext,
         op: ControlOp,
     ) -> BoxFut<'_, Result<ControlReply, HostError>> {
-        self.inner.control(ext, cx, op)
+        match (op, self.hub()) {
+            (
+                ControlOp::BashDetach {
+                    tool_call_id,
+                    reason,
+                },
+                Some(hub),
+            ) => {
+                let (ext, cx) = (ext.clone(), cx.clone());
+                Box::pin(async move {
+                    hub.adopt_bash(&self.inner, &ext, &cx, &tool_call_id, &reason)
+                        .await
+                        .map(ControlReply::String)
+                })
+            }
+            (op, _) => self.inner.control(ext, cx, op),
+        }
     }
     fn tool_progress(&self, cx: &CallContext, tool_call_id: &str, partial: RawJson) {
         self.inner.tool_progress(cx, tool_call_id, partial);
@@ -528,10 +585,10 @@ impl HostServices for Composite {
                     tool_call_id,
                     reason,
                 },
-                _,
+                Some(hub),
             ) => {
-                let _ = (tool_call_id, reason);
-                self.inner.tasks(ext, cx, op)
+                let adopt = hub.adopt_bash(&self.inner, ext, cx, tool_call_id, reason);
+                block_on_runtime(adopt).map(|id| RawJson::from(json!(id)))
             }
             (_, Some(hub)) => hub.tasks_op(ext, cx, op),
             (_, None) => self.inner.tasks(ext, cx, op),
@@ -545,10 +602,11 @@ impl HostServices for Composite {
         data: RawJson,
         sticky: bool,
     ) {
-        match self.hub() {
-            Some(hub) => hub.publish(ext, &cx.session_id, topic, &data, sticky),
-            None => self.inner.bus_publish(ext, cx, topic, data, sticky),
+        if let Some(hub) = self.hub() {
+            hub.publish(ext, &cx.session_id, topic, &data, sticky);
         }
+        // Core mirrors publishes into the frontend topic feed (`_oino/topics`).
+        self.inner.bus_publish(ext, cx, topic, data, sticky);
     }
     fn bus_subscribe(&self, ext: &ExtensionId, cx: &CallContext, pattern: &str, on: bool) {
         match self.hub() {
@@ -639,7 +697,98 @@ impl HostServices for Composite {
 
 #[cfg(test)]
 mod tests {
-    use super::topic_matches;
+    use super::*;
+
+    /// A core stand-in that hands over one detached `bash` call.
+    struct DetachingCore;
+
+    impl HostServices for DetachingCore {
+        fn take_bash(
+            &self,
+            _ext: &ExtensionId,
+            _cx: &CallContext,
+            tool_call_id: &str,
+            _task_id: &str,
+            reason: &str,
+        ) -> BoxFut<'_, Result<oino_extension_api::DetachedBash, HostError>> {
+            let known = tool_call_id == "b1";
+            let reason = reason.to_owned();
+            Box::pin(async move {
+                if !known {
+                    return Err(HostError::Failed("No running bash call".into()));
+                }
+                let kill = CancellationToken::new();
+                let killed = kill.clone();
+                Ok(oino_extension_api::DetachedBash {
+                    command: format!("sleep 30 # {reason}"),
+                    pid: Some(7),
+                    output_so_far: "so far".into(),
+                    full_output_path: None,
+                    output: Box::pin(futures::stream::empty()),
+                    exit: Box::pin(async move {
+                        killed.cancelled().await;
+                        None
+                    }),
+                    kill,
+                })
+            })
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bash_detach_and_adopt_become_host_tasks() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = Arc::new(LocalServices::new(dir.path()));
+        let ext = ExtensionId::new("unipi.watchdog").unwrap();
+        let host = hub.wrap(&ext, Arc::new(DetachingCore));
+        let cx = CallContext {
+            session_id: "s1".into(),
+            ..CallContext::default()
+        };
+        let reply = host
+            .control(
+                &ext,
+                &cx,
+                ControlOp::BashDetach {
+                    tool_call_id: "b1".into(),
+                    reason: "stuck".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let ControlReply::String(task) = reply else {
+            panic!("task id expected");
+        };
+        let info = hub.tasks().get(&task).unwrap();
+        assert_eq!(info.pid, 7);
+        assert_eq!(info.owner, "unipi.watchdog");
+        assert!(info.spec.command.contains("stuck"));
+        assert_eq!(hub.tasks().running("s1"), 1);
+        hub.tasks().kill(&task).unwrap();
+        let missing = host
+            .control(
+                &ext,
+                &cx,
+                ControlOp::BashDetach {
+                    tool_call_id: "zz".into(),
+                    reason: "x".into(),
+                },
+            )
+            .await;
+        assert!(missing.is_err());
+        let adopted = host
+            .tasks(
+                &ext,
+                &cx,
+                TaskOp::AdoptBash {
+                    tool_call_id: "b1".into(),
+                    reason: "bg".into(),
+                },
+            )
+            .unwrap();
+        let id = adopted.to_value().as_str().unwrap().to_owned();
+        assert!(hub.tasks().get(&id).is_some());
+    }
 
     #[test]
     fn topics() {

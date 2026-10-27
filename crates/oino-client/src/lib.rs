@@ -13,7 +13,7 @@
 //! |---|---|---|
 //! | [`protocol`] | `rpc-types.ts` | [`RpcCommand`] ([`PiCommand`], [`OinoCommand`]), [`RpcRequest`], [`RpcResponse`], [`RpcSessionState`] |
 //! | [`backend`] | — | [`SessionBackend`], [`ClientError`] |
-//! | [`frontend`] | — | [`FrontendApi`]: typed `_oino/*` frontend commands (completions, panel actions, shortcuts, editor intents, settings, services, sign-in) for every backend |
+//! | [`frontend`] | — | [`FrontendApi`]: typed `_oino/*` frontend commands (completions, panel actions, shortcuts, editor intents, settings, services, sign-in, topics, agents, queue edits, checkpoints / rewind, running bash, extensions) for every backend |
 //! | [`in_process`] (feature `in-process`) | `rpc-mode.ts` `handleCommand` | [`InProcessBackend`] over `AgentSessionRuntime` |
 //! | [`fake`] | — | [`fake::FakeBackend`]: scripted events and replies |
 //!
@@ -42,7 +42,7 @@ pub mod protocol;
 pub use backend::{ClientError, SessionBackend};
 #[cfg(feature = "in-process")]
 pub use follow::FollowStream;
-pub use frontend::{FrontendApi, ShortcutInfo};
+pub use frontend::{AgentTree, FrontendApi, RewindOptions, ShortcutInfo};
 #[cfg(feature = "in-process")]
 pub use in_process::{InProcessBackend, ServerInfo};
 pub use protocol::{

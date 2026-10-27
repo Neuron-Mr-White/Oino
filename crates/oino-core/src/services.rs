@@ -32,6 +32,19 @@ pub trait ExtensionLoader: Send + Sync {
         host: Arc<dyn HostApi>,
         project_trusted: bool,
     ) -> BoxFuture<'_, Vec<Arc<dyn ExtensionInstance>>>;
+
+    /// [`ExtensionLoader::load`] without the extensions listed in `disabledExtensions`.
+    /// Loaders that can skip packages before instantiating them override this; the default
+    /// loads everything and [`Services::create`] drops the disabled instances before `init`.
+    fn load_enabled<'a>(
+        &'a self,
+        host: Arc<dyn HostApi>,
+        project_trusted: bool,
+        disabled: &'a [String],
+    ) -> BoxFuture<'a, Vec<Arc<dyn ExtensionInstance>>> {
+        let _ = disabled;
+        self.load(host, project_trusted)
+    }
 }
 
 /// A loader with a fixed instance list.
@@ -140,6 +153,7 @@ pub struct HostRouter {
     models: OnceLock<ModelRegistry>,
     settings: OnceLock<Arc<ExtensionSettings>>,
     base_cx: OnceLock<CallContext>,
+    topics: crate::topics::TopicStore,
 }
 
 /// Kind of the event announcing a settings write to the owning extension.
@@ -276,6 +290,56 @@ impl HostRouter {
         }
     }
 
+    /// The sticky topic store (`_oino/topics`).
+    #[must_use]
+    pub fn topics(&self) -> &crate::topics::TopicStore {
+        &self.topics
+    }
+
+    /// Live root sessions.
+    fn root_sessions(&self) -> Vec<AgentSession> {
+        lock(&self.sessions)
+            .values()
+            .filter_map(Weak::upgrade)
+            .filter(|inner| inner.agents.link.is_none())
+            .map(AgentSession::from_inner)
+            .collect()
+    }
+
+    /// Records a topic and offers it to every root session's frontend feed.
+    pub fn publish_topic(&self, publisher: &str, topic: &str, data: JsonValue, sticky: bool) {
+        if let Some(value) = self.topics.publish(publisher, topic, data, sticky) {
+            for session in self.root_sessions() {
+                session.offer_topic(&value);
+            }
+        }
+    }
+
+    /// Serves [`HostOp::is_bus_op`] operations for `extension`.
+    ///
+    /// # Errors
+    ///
+    /// [`HostError::Invalid`] for other operations.
+    pub fn bus_call(&self, extension: &str, op: HostOp) -> Result<JsonValue, HostError> {
+        match op {
+            HostOp::BusPublish {
+                topic,
+                data,
+                sticky,
+            } => {
+                self.publish_topic(extension, &topic, data, sticky);
+                Ok(JsonValue::Null)
+            }
+            HostOp::BusGet(topic) => Ok(self
+                .topics
+                .get(&topic)
+                .map_or(JsonValue::Null, |value| value.data)),
+            other => Err(HostError::Invalid(format!(
+                "not a bus operation: {other:?}"
+            ))),
+        }
+    }
+
     /// Id of a live root session (event context for host-produced events).
     fn any_root_session(&self) -> Option<String> {
         let sessions = lock(&self.sessions);
@@ -336,6 +400,9 @@ impl HostApi for HostRouter {
             if op.is_settings_op() {
                 return self.settings_call(extension, op);
             }
+            if op.is_bus_op() {
+                return self.bus_call(extension, op);
+            }
             match self.session(&cx.session_id) {
                 Some(session) => session.host_call(extension, cx, op).await,
                 None => self.without_session(extension, op),
@@ -354,6 +421,22 @@ impl HostApi for HostRouter {
                 HostError::StaleContext(crate::extensions::runner::STALE_CONTEXT_MESSAGE.into())
             })?;
             session.model_stream(request).await
+        })
+    }
+
+    fn detach_bash<'a>(
+        &'a self,
+        _extension: &'a str,
+        cx: &'a CallContext,
+        tool_call_id: &'a str,
+        task_id: &'a str,
+        reason: &'a str,
+    ) -> BoxFuture<'a, Result<crate::session::DetachedBash, HostError>> {
+        Box::pin(async move {
+            let session = self.session(&cx.session_id).ok_or_else(|| {
+                HostError::StaleContext(crate::extensions::runner::STALE_CONTEXT_MESSAGE.into())
+            })?;
+            session.detach_bash(tool_call_id, task_id, reason).await
         })
     }
 
@@ -488,10 +571,14 @@ impl Services {
         let host = Arc::new(HostRouter::default());
         let _ = host.models.set(models.clone());
         let _ = host.settings.set(Arc::clone(&extension_settings));
-        let instances = options
+        let disabled = lock(&settings).settings().disabled_extensions();
+        let instances: Vec<Arc<dyn ExtensionInstance>> = options
             .loader
-            .load(Arc::clone(&host) as Arc<dyn HostApi>, trusted)
-            .await;
+            .load_enabled(Arc::clone(&host) as Arc<dyn HostApi>, trusted, &disabled)
+            .await
+            .into_iter()
+            .filter(|instance| !disabled.iter().any(|id| id == instance.id()))
+            .collect();
         let cx = CallContext {
             session_id: String::new(),
             mode: options.mode,

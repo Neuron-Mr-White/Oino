@@ -251,6 +251,7 @@ impl ChildAgent {
         }
         if let Some(parent) = self.parent.upgrade() {
             parent.agents.remove_child(&self.id);
+            AgentSession::from_inner(parent).publish_agents_changed();
         }
         self.tree.release();
     }
@@ -424,6 +425,7 @@ impl AgentSession {
             forward: Mutex::new(Some(forward)),
         });
         lock(&agents.children).push(Arc::clone(&handle));
+        self.publish_agents_changed();
         Ok(handle)
     }
 
@@ -572,6 +574,10 @@ async fn forward_child_events(
         let Some(parent) = parent.upgrade().map(AgentSession::from_inner) else {
             return;
         };
+        super::forward_to_root(&parent.inner, &agent_id, &event);
+        if super::changes_state(&event) {
+            parent.publish_agents_changed();
+        }
         if let ClientEvent::Session(AgentSessionEvent::MessageEnd {
             message: AgentMessage::Assistant(message),
         }) = &event
