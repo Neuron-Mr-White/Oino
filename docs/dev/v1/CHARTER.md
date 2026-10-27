@@ -66,6 +66,19 @@ Every commit on `v1-alpha` must keep these green for the crates it touches:
 - Small modules, explicit ownership, enums over stringly flags, no dead code.
 - Follow the `rust-best-practices` skill (`/home/oi/.agents/skills/rust-best-practices/SKILL.md`).
 
+## Test hosts (tailnet)
+
+The owner allows testing on these hosts. They run other services: never stop, restart,
+reconfigure or starve them. Keep jobs bounded (`cargo build -j 4` remote, nice/low priority,
+one build at a time per host), work only under a dedicated dir (e.g. `~/oino-test`), clean up
+processes you start (kill by PID only) and large temp files afterwards.
+
+| Host | OS | Access | Notes |
+|---|---|---|---|
+| `coffee` | Windows (tiny11, 16 threads, ~8 GB RAM) | `ssh coffee` (PowerShell) | unstable under heavy load; console session may be locked (no screenshots) |
+| `desmondgiam` | macOS (Intel x86_64, cargo + Xcode) | `ssh mac` (user desmondgiam) | may be offline/asleep; skip if unreachable |
+| `ti` | Ubuntu | `ssh ti` (Tailscale SSH) | needs the owner to approve a Tailscale SSH check in the browser; if it asks for a check, skip it and report |
+
 ## Working rules for agents
 
 - Work only in the paths your task assigns; other agents work concurrently in the same
