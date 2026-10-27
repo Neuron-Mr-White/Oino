@@ -160,9 +160,14 @@ index and the stop/session-end/precompact hook saves. The switch itself is the o
 
 | Host | Build | `oino --version` | faux print | `oino cron status` | Desktop `--demo` 20 s |
 |---|---|---|---|---|---|
-| `ti` (Ubuntu) | — | — | — | — | — (skipped: SSH printed "Tailscale SSH requires an additional check") |
-| `coffee` (Windows) | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-| `desmondgiam` (macOS) | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| `ti` (Ubuntu) | — | — | — | — | **skipped**: SSH printed "Tailscale SSH requires an additional check" (owner must approve); the Linux desktop demo ran locally on a private Xvfb instead |
+| `coffee` (Windows, 16 threads, 380 GB free) | ✅ 21 min, commit `5d5d06f` (CLI + NSIS desktop); artifacts fetched | ✅ `1.0.0-alpha.3` (also kanboard, desktop) | ✅ `Hello from faux.` (35 bundled packages) | ✅ "scheduler not running … not paused concurrency 2" | 🟡 alive after 20 s in the console session through a scheduled task; `desktop-demo.png` is the locked console (no visual check) |
+| `desmondgiam` (macOS 15.6.1, 8 threads, 13 GB free after cleanup) | ✅ 39 min, commit `f934b81` (first attempt aborted in `build.sh` — bash 3.2 empty-array bug, fixed in `f934b81`), .app + hdiutil/cargo-packager `.dmg`; artifacts fetched | ✅ `1.0.0-alpha.3` (also kanboard, desktop, `.app` binary) | ✅ `Hello from faux.` (35 bundled packages) | ✅ "scheduler not running … not paused concurrency 2" | ✅ alive after 20 s **and** a rendered screenshot (`desktop-demo.png`, 8.9 MiB) |
+
+Both hosts: smoke.txt (in `target/release-artifacts/<target>/` and on the host), SHA256SUMS,
+build-info.txt, then the scratch `%TEMP%\oino-*` dirs (coffee) and the packaging `dist/` plus temp
+staging (mac) removed; `~/oino-release` is kept for reuse (it grew ~4 GB from the rebuild).
+`ti` remains the preferred GUI host once its Tailscale check is approved.
 
 ### 1b.7 Open harness gaps (round 3)
 
@@ -389,83 +394,58 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
 | GA-45 | ✅ | `ExtensionMode::Desktop` / `Mobile`; `host-info.frontends` from mode + `_oino/hello` | none — `embedded.rs` passes `Desktop` and registers `oino-desktop` ([gui-qa-fix] `1e1242c`, verified via `/doctor`) |
 | GA-46 | ❌ | — | K6: idle cost (GPUI refresh loop, thread pools) |
 
-## 7. Release builds (1.0.0-alpha.1 artifacts, 2026-10-27, `v1-alpha` @ 52d3120, not tagged or published)
+## 7. Release builds (1.0.0-alpha.3, 2026-10-27/28, `v1-alpha` @ `f934b81`, not tagged or published)
 
-The builds are run with `cargo xtask remote-build <host|local> [--jobs n] [--timeout-mins n] [-- <build-host.sh args>]`
-(`xtask/src/remote.rs`). The tool works in three steps:
+Local builds (this machine, `nice -n 10`, `-j 4`):
 
-1. **Sync.** It sends `HEAD` to the host as a `git bundle` (incremental when the host already
-   has an ancestor commit) and checks it out detached in `~/oino-release`. It also sends a
-   tarball of the local `extensions/dist`, because the build hosts have no wasm toolchain.
-2. **Build.** It runs `scripts/release/build-host.sh` on the host, detached (`nohup` on Unix,
-   WMI `Win32_Process.Create` → Git Bash on Windows), so a dropped SSH session cannot kill it.
-   It polls once a minute, bounded by `--timeout-mins`, and kills the job when that is reached.
-3. **Fetch.** It copies the artifacts into `target/release-artifacts/<target>/` and the build
-   log into `target/release-artifacts/logs/<host>.log`.
+```
+TMPDIR=$PWD/target/tmp cargo build --release -p oino -p oino-kanboard
+cd apps && TMPDIR=../target/tmp cargo build --release -p oino-desktop
+```
 
-`build-host.sh` checks `cargo xtask checksums`, then builds the `oino` / `oino-kanboard`
-release binaries and runs `apps/oino-desktop/scripts/build.sh --release --no-wasm`. With
-`--android` it also builds the mobile APK. It then runs smoke tests and writes `smoke.txt`,
-`SHA256SUMS` and `build-info.txt` into each target directory.
+Host builds use `cargo xtask remote-build <host> [--os …] [--jobs 4] [--timeout-mins n] [-- <build-host.sh args>]`
+(`xtask/src/remote.rs`):
 
-The commands that produced these artifacts:
+1. **Sync.** `HEAD` goes to the host as a `git bundle` (incremental) into `~/oino-release`
+   (detached checkout), plus a tarball of `extensions/dist` (the hosts have no wasm toolchain).
+2. **Build.** `scripts/release/build-host.sh` runs detached (`nohup` on Unix, WMI
+   `Win32_Process.Create` → Git Bash on Windows) and is polled once a minute, bounded by
+   `--timeout-mins`.
+3. **Fetch.** `~/oino-release/target/release-artifacts/*` → `target/release-artifacts/<target>/`,
+   build log → `target/release-artifacts/logs/<host>.log`.
 
-- `cargo xtask remote-build local -- --android --serial <device>`
-- `cargo xtask remote-build coffee -- --formats nsis`
-- `cargo xtask remote-build mac -- --universal --formats app,dmg`
+`build-host.sh` checks `cargo xtask checksums`, builds `oino` / `oino-kanboard`, runs
+`apps/oino-desktop/scripts/build.sh --release --no-wasm`, and writes `smoke.txt`, `SHA256SUMS`
+and `build-info.txt` per target.
+
+Commands used: `cargo xtask remote-build coffee --os windows --jobs 4 -- --formats nsis`;
+`cargo xtask remote-build mac --os macos --jobs 4 -- --formats app,dmg` (thin x86_64 — a
+universal build needs ~6 GB more than the 17 GB free on that host).
 
 | Target | Artifact | Size |
 |---|---|---|
-| x86_64-unknown-linux-gnu (local) | `oino` | 75.0 MiB |
+| x86_64-unknown-linux-gnu (local) | `oino` | 83.5 MiB |
 | | `oino-kanboard` | 5.6 MiB |
-| | `oino-desktop` | 127.1 MiB |
-| | `oino-desktop-1.0.0-alpha.1-linux-x86_64.tar.gz` | 72.4 MiB |
-| | `oino-desktop_1.0.0-alpha.1_amd64.deb` | 44.5 MiB |
-| | `oino-desktop_1.0.0-alpha.1_x86_64.AppImage` | 112.1 MiB |
-| x86_64-pc-windows-msvc (coffee) | `oino.exe` | 59.1 MiB |
+| | `oino-desktop` | 139.1 MiB |
+| x86_64-pc-windows-msvc (`coffee`) | `oino.exe` | 66.4 MiB |
 | | `oino-kanboard.exe` | 4.2 MiB |
-| | `oino-desktop.exe` | 82.5 MiB |
-| | `oino-desktop_1.0.0-alpha.1_x64-setup.exe` (NSIS, per-user) | 26.6 MiB |
-| universal-apple-darwin (mac, Intel host, aarch64 cross-compiled + `lipo`) | `oino` | 129.7 MiB |
-| | `oino-kanboard` | 9.4 MiB |
-| | `oino-desktop` | 176.1 MiB |
-| | `Oino.app` (ad-hoc signed, not notarized) | 177 MiB |
-| | `Oino_1.0.0-alpha.1_universal.dmg` | 77.1 MiB |
-| x86_64-apple-darwin (mac) | `oino` | 66.9 MiB |
+| | `oino-desktop.exe` | 93.0 MiB |
+| | `oino-desktop_1.0.0-alpha.3_x64-setup.exe` (NSIS, per-user) | 28.8 MiB |
+| x86_64-apple-darwin (`mac`) | `oino` | 74.0 MiB |
 | | `oino-kanboard` | 4.8 MiB |
-| aarch64-linux-android (local) | `oino-mobile-1.0.0-alpha.1-release.apk` (signed with the debug key) | 39.4 MiB |
+| | `oino-desktop` | 100.7 MiB |
+| | `Oino.app` (ad-hoc signed, not notarized) | ~177 MiB |
+| | `Oino_1.0.0-alpha.3_x64.dmg` | 44.6 MiB |
 
-The smoke test results are in `target/release-artifacts/<target>/smoke.txt`.
+Smoke results (see §1b.6 and `target/release-artifacts/<target>/smoke.txt`): Linux ✅ (print,
+`cron status`, desktop `--demo` 20 s on Xvfb :98 + lavapipe with a screenshot); Windows ✅ CLI /
+🟡 desktop alive but the console is locked; macOS ✅ CLI and desktop rendering (screenshot).
 
-| Target | `--version` (oino, kanboard, desktop) | faux print run¹ | Desktop `--demo` | Packages |
-|---|---|---|---|---|
-| Linux | ✅ ✅ ✅ | ✅ | ✅ Xvfb + lavapipe screenshot (welcome screen renders) | ✅ AppImage `--version`; ✅ deb metadata |
-| Windows | ✅ ✅ ✅ | ✅ | 🟡 alive after 20 s in the console session²; screenshot shows the lock screen | ✅ NSIS silent install → installed `--version` → silent uninstall |
-| macOS | ✅ ✅ ✅ (universal and x86_64; `lipo`: x86_64 arm64) | ✅ with `ulimit -n 4096` (❌ at 256, known issue 10) | 🟡 alive after 20 s; no screenshot (no Screen Recording grant over SSH; display asleep) | ✅ `.app` binary `--version`; ✅ `hdiutil verify`; ✅ `codesign -dv` ad-hoc universal |
-| Android | — | — | ✅ installed and launched on a 25028RN03A (Android 15); `android-launch.png` shows Sessions | ✅ `unzip -t` |
-
-¹ The print run uses `-e extensions/dist/oino.fixture.provider-faux --model faux/faux-1 -p hi`
-with a temporary agent dir and the full bundle (33 packages unpacked), and expects
-`Hello from faux.`.
-
-² `scripts/release/desktop-shot.ps1` starts the app through a one-time scheduled task in the
-interactive session.
-
-Problems found:
-
-1. **macOS EMFILE** (known issue 10). This is a product bug, not a build problem.
-2. **create-dmg.** cargo-packager's `create-dmg` controls Finder through AppleScript, which
-   times out over SSH (-1712). `build-host.sh` falls back to `hdiutil create -format UDZO`;
-   the resulting `.dmg` has no window layout or background.
-3. **Universal naming.** cargo-packager names the `.dmg` `_x64` even for universal builds, so
-   the fallback names it `_universal`.
-4. **Toolchains.** No build host has a wasm toolchain, so `extensions/dist` is shipped from
-   the local machine. The mac's default toolchain is 1.97.1, but rust-toolchain.toml selects
-   1.99.0.
-5. **Signing.** None. Windows and macOS installers will trigger SmartScreen and Gatekeeper
-   warnings. The Android release APK is signed with the debug key (`build.gradle`).
-6. **Windows screenshots.** The screenshot needs an unlocked console session on coffee. A
-   rendering check needs either an unlocked session or an in-app self-capture hook.
+Problems found: the macOS **desktop** build aborted in `apps/oino-desktop/scripts/build.sh`
+(`target_args[@]: unbound variable` — macOS `/bin/bash` 3.2 with `set -u`), fixed with the
+`${arr[@]+"${arr[@]}"}` idiom used by the mobile script. Still open: no signing/notarisation
+(Windows SmartScreen, macOS Gatekeeper), no Android build this round, `create-dmg` still needs
+Finder over a GUI session (this run succeeded; the `hdiutil` fallback stays for SSH).
 
 ## 8. Next steps
 
