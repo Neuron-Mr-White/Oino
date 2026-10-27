@@ -66,9 +66,13 @@ build_target() { # $1 = optional target triple
   local target_args=()
   [[ -n "${1:-}" ]] && target_args=(--target "$1")
   log "building oino-desktop ${1:-host} ($profile)"
-  (cd "$apps" && cargo build -j "$jobs" -p oino-desktop "${cargo_profile[@]}" "${target_args[@]}")
+  # bash 3.2 (macOS /bin/bash) + `set -u` aborts on an empty array expansion, so both
+  # arrays use the ${arr[@]+"${arr[@]}"} idiom (same as apps/oino-mobile/scripts/build.sh).
+  (cd "$apps" && cargo build -j "$jobs" -p oino-desktop \
+    ${cargo_profile[@]+"${cargo_profile[@]}"} ${target_args[@]+"${target_args[@]}"})
   log "building oino CLI ${1:-host} ($profile)"
-  (cd "$root" && cargo build -j "$jobs" -p oino "${cargo_profile[@]}" "${target_args[@]}")
+  (cd "$root" && cargo build -j "$jobs" -p oino \
+    ${cargo_profile[@]+"${cargo_profile[@]}"} ${target_args[@]+"${target_args[@]}"})
 }
 
 if [[ $os == macos && $universal == 1 ]]; then
@@ -113,7 +117,8 @@ fi
 
 if command -v cargo-packager >/dev/null 2>&1; then
   log "packaging ($formats) with cargo-packager"
-  (cd "$apps/oino-desktop" && cargo packager "${cargo_profile[@]}" --formats "$formats" --out-dir "$dist")
+  (cd "$apps/oino-desktop" && cargo packager \
+    ${cargo_profile[@]+"${cargo_profile[@]}"} --formats "$formats" --out-dir "$dist")
 else
   log "cargo-packager not installed: skipping $formats (cargo install cargo-packager --locked)"
 fi
