@@ -272,7 +272,7 @@ impl Inner {
             docs_root: oino_bundle::DOCS
                 .extract(&self.agent_dir)
                 .unwrap_or_else(|_| self.agent_dir.clone()),
-            mode: ExtensionMode::Rpc,
+            mode: ExtensionMode::Desktop,
             has_ui: true,
             flags: ResourceFlags::default(),
             extension_flag_values: IndexMap::new(),
@@ -342,6 +342,9 @@ impl Inner {
             runtimes.retain(|r| r.strong_count() > 0);
             runtimes.push(Arc::downgrade(&runtime));
         }
+        // GA-45 / frontend-api §10: the desktop registers as a frontend so `host-info` and
+        // `/doctor` report `desktop` plus this client name.
+        session.register_frontend("oino-desktop");
         Ok(OpenedSession {
             backend: Arc::new(InProcessBackend::new(runtime)),
             cwd: cwd.display().to_string(),
