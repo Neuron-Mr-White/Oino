@@ -1,13 +1,17 @@
-//! `FrameTabBar` (design.md §4.5): side and bottom frame tabs (height 36, icon 14 + title,
-//! close on hover/active, active `tab_active`).
+//! Frame tab strips (design.md A2.20 P1 / P5): side-pane and bottom-frame tabs as chip pills
+//! (surface-2, active `chip_active` + its border, close ✕ on hover or when active), on a flush
+//! strip with a `line_soft` bottom rule. The side pane shows the strip only when more than
+//! one tab is open (its `DetailHeader`-style header names the tab); the bottom frame always
+//! shows it (terminal tabs, not sessions).
 
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement as _,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+    px,
 };
 
 use crate::design::icons::icon;
@@ -30,7 +34,32 @@ pub struct TabSpec {
 /// Tab callback with the tab index.
 pub type OnTab = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
-/// The tab bar; `trailing` holds the launcher / frame close buttons.
+/// Strip density.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StripSize {
+    /// Side pane: 38 px chip pills (A2.15 `CHIP`).
+    Chip,
+    /// Bottom frame: a 38 px strip with 30 px pills.
+    Compact,
+}
+
+impl StripSize {
+    fn pill(self) -> f32 {
+        match self {
+            Self::Chip => size::CHIP,
+            Self::Compact => size::MODE_CHIP,
+        }
+    }
+
+    fn strip(self) -> f32 {
+        match self {
+            Self::Chip => size::CHIP + space::S3,
+            Self::Compact => size::CHIP,
+        }
+    }
+}
+
+/// The pill strip; `trailing` holds the launcher / frame buttons.
 pub fn frame_tab_bar(
     id: &str,
     t: &OinoTheme,
@@ -40,72 +69,127 @@ pub fn frame_tab_bar(
     on_close: OnTab,
     trailing: Vec<AnyElement>,
 ) -> Div {
+    tab_strip(
+        id,
+        t,
+        StripSize::Chip,
+        tabs,
+        active,
+        on_select,
+        on_close,
+        trailing,
+    )
+}
+
+/// The pill strip at `density`.
+#[allow(clippy::too_many_arguments, reason = "strip parts")]
+pub fn tab_strip(
+    id: &str,
+    t: &OinoTheme,
+    density: StripSize,
+    tabs: &[TabSpec],
+    active: usize,
+    on_select: OnTab,
+    on_close: OnTab,
+    trailing: Vec<AnyElement>,
+) -> Div {
+    let pill = density.pill();
     div()
         .flex()
         .flex_row()
         .items_center()
         .flex_shrink_0()
-        .h(px(size::TAB_BAR))
-        .px(px(space::S1))
-        .gap(px(space::HALF))
+        .h(px(density.strip()))
+        .px(px(space::S2))
+        .gap(px(space::S1))
         .border_b_1()
-        .border_color(t.border())
+        .border_color(t.line_soft())
         .child(
             div()
+                .id(ElementId::Name(format!("{id}-strip").into()))
                 .flex()
                 .flex_row()
+                .items_center()
                 .flex_1()
                 .min_w_0()
-                .gap(px(space::HALF))
-                .overflow_hidden()
+                .gap(px(space::S1_5))
+                .overflow_x_scroll()
                 .children(tabs.iter().enumerate().map(|(i, tab)| {
-                    let selected = i == active;
-                    let select = Rc::clone(&on_select);
-                    let close = Rc::clone(&on_close);
-                    let fg = if selected { t.fg() } else { t.fg_subtle() };
-                    div()
-                        .id(ElementId::Name(format!("{id}-tab-{}", tab.key).into()))
-                        .group(SharedString::from(format!("{id}-g-{}", tab.key)))
-                        .flex()
-                        .items_center()
-                        .flex_shrink_0()
-                        .min_w(px(size::CONTROL_LG * 2.0))
-                        .gap(px(space::S1_5))
-                        .h(px(size::CONTROL))
-                        .px(px(space::S2))
-                        .rounded(px(radius::R_MD))
-                        .cursor_pointer()
-                        .text_color(fg)
-                        .text_role(t, TextRole::Sm)
-                        .weight_medium()
-                        .when(selected, |el| {
-                            el.bg(t.tab_active()).border_1().border_color(t.border())
-                        })
-                        .when(!selected, |el| el.hover(|s| s.bg(t.hover())))
-                        .on_click(move |_: &ClickEvent, w, cx| select(i, w, cx))
-                        .child(icon(tab.icon, size::ICON_MD, fg))
-                        .child(
-                            div()
-                                .truncate()
-                                .max_w(px(size::SIDEBAR / 1.5))
-                                .child(tab.title.clone()),
-                        )
-                        .when(tab.closable, |el| {
-                            el.child(
-                                div()
-                                    .id(ElementId::Name(format!("{id}-close-{}", tab.key).into()))
-                                    .rounded(px(radius::R_SM))
-                                    .hover(|s| s.bg(t.hover()))
-                                    .on_click(move |_: &ClickEvent, w, cx| {
-                                        cx.stop_propagation();
-                                        close(i, w, cx);
-                                    })
-                                    .child(icon(IconName::X, size::ICON_SM, t.fg_subtle())),
-                            )
-                        })
+                    pill_tab(id, t, tab, i, i == active, pill, &on_select, &on_close)
                 })),
         )
         .children(trailing)
+}
+
+#[allow(clippy::too_many_arguments, reason = "pill parts")]
+fn pill_tab(
+    id: &str,
+    t: &OinoTheme,
+    tab: &TabSpec,
+    i: usize,
+    selected: bool,
+    pill: f32,
+    on_select: &OnTab,
+    on_close: &OnTab,
+) -> AnyElement {
+    let select = Rc::clone(on_select);
+    let close = Rc::clone(on_close);
+    let fg = if selected { t.fg() } else { t.fg_subtle() };
+    let group = SharedString::from(format!("{id}-g-{}", tab.key));
+    div()
+        .id(ElementId::Name(format!("{id}-tab-{}", tab.key).into()))
+        .group(group.clone())
+        .flex()
+        .items_center()
+        .flex_shrink_0()
+        .gap(px(space::S1_5))
+        .h(px(pill))
+        .pl(px(space::S3))
+        .pr(px(if tab.closable { space::S1_5 } else { space::S3 }))
+        .rounded(px(radius::R_FULL))
+        .cursor_pointer()
+        .text_color(fg)
+        .text_role(t, TextRole::Sm)
+        .weight_medium()
+        .bg(if selected { t.chip_active() } else { t.chip() })
+        .border_1()
+        .border_color(if selected {
+            t.chip_active_border()
+        } else {
+            t.chip()
+        })
+        .when(!selected, |el| {
+            el.hover(|s| s.bg(t.bubble()).text_color(t.fg()))
+        })
+        .on_click(move |_: &ClickEvent, w, cx| select(i, w, cx))
+        .child(icon(tab.icon, size::ICON_MD, fg))
+        .child(
+            div()
+                .truncate()
+                .max_w(px(size::SIDEBAR * 0.75))
+                .child(tab.title.clone()),
+        )
+        .when(tab.closable, |el| {
+            el.child(
+                div()
+                    .id(ElementId::Name(format!("{id}-close-{}", tab.key).into()))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(size::CONTROL_XS))
+                    .rounded(px(radius::R_FULL))
+                    .when(!selected, |el| {
+                        el.invisible().group_hover(group, gpui_kit::Styled::visible)
+                    })
+                    .hover(|s| s.bg(t.bubble()))
+                    .on_click(move |_: &ClickEvent, w, cx| {
+                        cx.stop_propagation();
+                        close(i, w, cx);
+                    })
+                    .child(icon(IconName::X, size::ICON_SM, t.fg_subtle())),
+            )
+        })
+        .into_any_element()
 }
 
 /// An underline tab strip for OUS `tabs` when they do not fit a segmented control.
@@ -121,7 +205,7 @@ pub fn underline_tabs(
         .flex_row()
         .gap(px(space::S4))
         .border_b_1()
-        .border_color(t.border())
+        .border_color(t.line_soft())
         .children(titles.iter().enumerate().map(|(i, title)| {
             let select = Rc::clone(&on_select);
             let selected = i == active;

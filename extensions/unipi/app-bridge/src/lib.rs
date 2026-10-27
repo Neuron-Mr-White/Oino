@@ -230,8 +230,10 @@ impl AppBridge {
             .collect()
     }
 
-    /// Builds and shows (or updates) the panel.
-    async fn render(&self, cx: &Ctx, open: bool) -> Result<()> {
+    /// Builds and shows (or updates) the panel. `focus` (the `/app` command and its
+    /// shortcut) re-sends `openPanel` with `focus: true`, so a GPUI frontend reveals the
+    /// side-pane tab even when the panel was auto-opened in the background (GA-18).
+    async fn render(&self, cx: &Ctx, open: bool, focus: bool) -> Result<()> {
         if !cx.has_ui() {
             return Ok(());
         }
@@ -282,10 +284,12 @@ impl AppBridge {
         ];
         let spec = view::panel_spec(&active, bodies);
         self.sessions.with(sid, |s| s.tabs.clone_from(&tabs));
-        if let Some(id) = panel {
+        if let Some(id) = panel.filter(|_| !focus) {
             ui::panel_update(&id, &json!({"spec": spec}))?;
         } else {
-            let id = ui::panel_open(&view::open_request(&spec))?;
+            let mut request = view::open_request(&spec);
+            request["focus"] = json!(focus);
+            let id = ui::panel_open(&request)?;
             self.sessions.with(sid, |s| s.panel = Some(id));
         }
         Ok(())
@@ -453,7 +457,7 @@ impl AppBridge {
                 }
             },
         }
-        self.render(cx, false).await
+        self.render(cx, false, false).await
     }
 
     async fn answer_btw(&self, cx: &Ctx) {
@@ -462,7 +466,7 @@ impl AppBridge {
         if questions.is_empty() {
             return;
         }
-        let _ = self.render(cx, false).await;
+        let _ = self.render(cx, false, false).await;
         for q in questions {
             let a = match services::call(
                 Some("unipi.btw"),
@@ -483,7 +487,7 @@ impl AppBridge {
                 }
             });
         }
-        let _ = self.render(cx, false).await;
+        let _ = self.render(cx, false, false).await;
     }
 
     async fn snapshot(&self) -> Value {
@@ -526,7 +530,7 @@ impl Extension for AppBridge {
             if ext.settings.get(NAMESPACE).bool("autoOpen", true)
                 && gpui_attached(&host::info().frontends)
             {
-                ext.render(&cx, true).await?;
+                ext.render(&cx, true, false).await?;
             }
             Ok(())
         });
@@ -560,7 +564,7 @@ impl Extension for AppBridge {
             if id == timer_id(cx.session_id()) {
                 ext.sessions
                     .with(cx.session_id(), |s| s.refresh_armed = false);
-                let _ = ext.render(&cx, false).await;
+                let _ = ext.render(&cx, false, false).await;
             } else if id.starts_with("app-bridge.btw:") {
                 ext.answer_btw(&cx).await;
             }
@@ -593,7 +597,7 @@ impl Extension for AppBridge {
                         ext.sessions
                             .with(cx.session_id(), |s| tab.clone_into(&mut s.active));
                     }
-                    ext.render(&cx.cx, true).await
+                    ext.render(&cx.cx, true, true).await
                 })
                 .complete(|_ext, prefix, _cx| async move {
                     TABS.iter()
@@ -605,7 +609,7 @@ impl Extension for AppBridge {
         cx.shortcut(
             Shortcut::<Self>::new("unipi.app.open", &[])
                 .description("Open the session control centre")
-                .run(|ext, cx| async move { ext.render(&cx.cx, true).await }),
+                .run(|ext, cx| async move { ext.render(&cx.cx, true, true).await }),
         );
         cx.service(SNAPSHOT_SERVICE, |ext, _p, _caller, _cx| async move {
             Ok(ext.snapshot().await)

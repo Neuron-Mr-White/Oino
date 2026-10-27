@@ -507,7 +507,7 @@ impl ScreencastView {
                     .px(px(space::S2))
                     .py(px(space::HALF))
                     .rounded(px(crate::design::radius::R_MD))
-                    .max_w(px(180.))
+                    .max_w(px(size::SIDEBAR * 0.8))
                     .when(active, |el| el.bg(t.selected()))
                     .hover(|el| el.bg(t.hover()))
                     .cursor_pointer()
@@ -629,7 +629,7 @@ impl ScreencastView {
                 .border_b_1()
                 .border_color(t.border())
                 .text_role(t, TextRole::Sm)
-                .child(div().size(px(8.)).rounded_full().bg(dot))
+                .child(div().size(px(space::S2)).rounded_full().bg(dot))
                 .child(div().flex_1().child(text))
                 .child(
                     Btn::new(if on { "br-takeover" } else { "br-giveback" })
@@ -827,7 +827,7 @@ impl ScreencastView {
             )
             .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| v.on_move(e, cx)))
             .on_scroll(cx.listener(|v, e: &ScrollEvent, _, cx| {
-                let d = e.delta.pixel_delta(px(16.));
+                let d = e.delta.pixel_delta(px(space::S4));
                 let Some((x, y)) = v.page_point(e.position) else {
                     return;
                 };
