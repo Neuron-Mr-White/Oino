@@ -76,7 +76,7 @@ processes you start (kill by PID only) and large temp files afterwards.
 | Host | OS | Access | Notes |
 |---|---|---|---|
 | `coffee` | Windows (tiny11, 16 threads, ~8 GB RAM) | `ssh coffee` (PowerShell) | unstable under heavy load; console session may be locked (no screenshots) |
-| `desmondgiam` | macOS (Intel x86_64, cargo + Xcode) | `ssh mac` (user desmondgiam) | may be offline/asleep; skip if unreachable |
+| `desmondgiam` | macOS (Intel x86_64, 8 threads, 8 GB RAM, cargo + Xcode) | `ssh mac` (user desmondgiam) | disk ~93% full (~16 GB free): reuse `~/oino-release`, `cargo clean` large targets you created, never fill the disk; may be asleep, skip if unreachable |
 | `ti` | Ubuntu | `ssh ti@ti` (Tailscale SSH, user `ti`) | Tailscale may demand a browser check (owner must approve); if it does, skip and report |
 
 Credentials: only from `/home/oi/Projects/Neuron/credentials/` (same as
