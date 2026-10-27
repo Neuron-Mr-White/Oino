@@ -77,7 +77,12 @@ processes you start (kill by PID only) and large temp files afterwards.
 |---|---|---|---|
 | `coffee` | Windows (tiny11, 16 threads, ~8 GB RAM) | `ssh coffee` (PowerShell) | unstable under heavy load; console session may be locked (no screenshots) |
 | `desmondgiam` | macOS (Intel x86_64, cargo + Xcode) | `ssh mac` (user desmondgiam) | may be offline/asleep; skip if unreachable |
-| `ti` | Ubuntu | `ssh ti` (Tailscale SSH) | needs the owner to approve a Tailscale SSH check in the browser; if it asks for a check, skip it and report |
+| `ti` | Ubuntu | `ssh ti@ti` (Tailscale SSH, user `ti`) | Tailscale may demand a browser check (owner must approve); if it does, skip and report |
+
+Credentials: only from `/home/oi/Projects/Neuron/credentials/` (same as
+`/home/oi/Projects/Personal/credentials/`): `pem/white` (SSH key), `mac/sudo.pass`,
+`ti/sudo.pass`, `coffee/windows.env`. Read them at use time (e.g. `sudo -S < file` piped over
+SSH); never print, copy into the repo, commit, log or store them in memory/docs.
 
 ## Working rules for agents
 
