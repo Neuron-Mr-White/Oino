@@ -20,6 +20,9 @@ Two parity targets, one rule each:
 
 ### Amendment A1 (owner direction, 2026-10-27) — overrides anything below that conflicts
 
+> A1.3 (ZCode owns layout and details) is withdrawn for look and layout by **Amendment A2**
+> (unipi look and feel, no multiplexer concepts). Read A2 first.
+
 1. **Priority: unipi first, ZCode second.** When the two disagree, unipi wins.
 2. **unipi owns theming and features.** The palette, brand and state language come from
    `/home/oi/Projects/Personal/archived/unipi/unipi-app/DESIGN.md` §1.1–§1.6, not from Zai:
@@ -69,6 +72,791 @@ Reference images (small PNGs, 800 px wide) live in [design/ref/](design/ref/):
 | `zcode-workspace-dark.png` | ZCode workspace (sidebar nav, grouped sessions, header chips, one-line tool rows, floating Progress status panel) — zcode.z.ai social card |
 | `oino-current-approval.png` | Oino Desktop today (`--demo`): modal approval over the transcript |
 | `oino-current-done.png` | Oino Desktop today: finished run, info-screen panel in the side pane |
+
+### Amendment A2 (owner direction, 2026-10-27) — unipi look and feel; overrides A1 and §1–§10 where they conflict
+
+Owner direction (binding):
+
+1. **The desktop app looks and feels close to UNIPI first.** ZCode parity comes later, and only
+   where it doesn't change the unipi look. A1.3 ("ZCode owns UX, layout and the tiny details")
+   is **withdrawn for look and layout**. ZCode keeps only behaviour that has no unipi
+   counterpart: query rail, find bar, inline diff, model menu structure and turn file
+   footer. These are restyled with the A2 tokens.
+2. **Oino Desktop is a fully native, single-machine app.** It has **no herdr, tmux, workspace,
+   pane or multiplexer concepts**. A session is one Oino agent conversation running in this
+   process. Pairing a phone or another PC is the only remote idea, and it is **later** (§A2.18).
+3. Sources (in order): `archived/unipi/unipi-app/DESIGN.md` §1.1–§1.6 and §3.4, §3.6, §3.9,
+   §5.8; the real UI code `unipi-app/apps/mobile/src/{ui.css,style.css,components/shell/shell.css,
+   screens/chat.css,components/mascot.css,components/*,screens/*,mascotWindow.tsx,lore.ts}`;
+   milestone captures `unipi-app/docs/m5…m9`; TUI shots `archived/unipi/docs/assets/screenshots/`.
+   CSS numbers below are measured from that code. Where unipi has no rule, A1 and §2–§6 still
+   apply.
+
+#### A2.0 Reference shots — [design/ref/unipi/](design/ref/unipi/)
+
+The `live-*` shots were captured on 2026-10-27 from the real unipi web UI. It ran under
+`vite` (port 1488) with the repo's own mocked Tauri runtime (`docs/m7/capture-shell.py`, plus
+playwright and chromium in headless mode). The other shots are copies of unipi's milestone
+captures. All files are ≤ 1000 px wide and use a 128-colour PNG palette.
+
+| File | Shows |
+|---|---|
+| `live-desktop-sessions-needs-you.png` | Desktop shell: 224 px sidebar (brand, search, nav), page header (title 30/36, tools, header crab), amber **needs-you strip**, section labels, cards, grouped rows |
+| `live-desktop-chat-list.png` | list \| detail: grouped session rows (icon tile, state word, cwd), compact pane placeholder |
+| `live-desktop-chat-open.png` | **Chat view**: 56 px detail header with session strip, harness cards (Memory), user bubble, folded "Ran commands · 2 steps" line, prose, code block, turn end, "Changes this turn", **composer** |
+| `live-desktop-palette.png` | Command palette (620 wide, 16 radius, section labels, 40 px rows, shell-tinted selection, kbd chips, footer legend) |
+| `live-desktop-settings.png` | Settings: section nav column, section label with icon, grouped card rows with icon tile + switch |
+| `live-phone-sessions.png`, `live-phone-chat.png` | Phone: header without lead row, bottom nav, phone chat with the strip band and composer |
+| `m7-desktop-board.png`, `m7-desktop-board-task.png` | Board: project title picker, toolbar pills, lane pill strip, lane headers with about text, cards, dashed empty lane, Add task, FAB |
+| `m7-desktop-dialog-sheet.png`, `m7-desktop-anchored-menu.png` | Sheet → centred dialog (560, 16 radius, sticky footer), anchored menu at a card |
+| `m7-desktop-browser-pane.png` | Browser side pane right of the chat |
+| `m8-desktop-header-crab*.png`, `m8-desktop-needs-you-drawer.png`, `m8-desktop-settings-unicrab.png` | Header crab (idle / needs-you badge), needs-you drawer, Unicrab settings |
+| `m8-mascot-window-bubble.png`, `m8-unicrab-states.png`, `m8-phone-floating-crab-bubble.png` | Mascot window with bubble, the six crab states, phone floating crab |
+| `m6-phone-dialog-card.png` | Interaction card that takes over the composer slot (eyebrow, countdown, numbered options, own-answer row, Send) |
+| `m6-phone-chat-welcome-empty.png`, `m6-phone-header-strip.png`, `m6-phone-control-centre.png`, `m6-phone-queue-strip.png` | Empty session, header + strip, control centre (model/fusion), queue strip |
+| `m5-desktop-mode-chip.png`, `m5-desktop-mode-popover.png` | Working-mode chip (tinted, live count) and its anchored popover |
+| `tui-glance-footer.png`, `tui-info-usage.png`, `tui-unicrab-start.png` | TUI references: glance frame + stats strip, info dashboard, start header |
+
+The Oino side of the comparison is in `docs/dev/v1/gui-audit/04-welcome.png` and
+`09-run-tools.png`.
+
+#### A2.1 Key look decisions (what changes vs today)
+
+| # | Decision | Replaces |
+|---|---|---|
+| L1 | **Flush panes, no floating frames.** Window bg `bg #0A0908`; sidebar, list column, chat and side pane are flush columns separated by 1 px `line_soft` rules. No 4 px gaps, no frame radius, no frame borders | §3.1 independent frames, §2.6 frame `R_XL` |
+| L2 | **Unipi desktop shell**: a 224 px nav sidebar (brand crab + "Oino", search field, nav items). Sessions is a **list \| detail** screen (session list column 400, then the chat). There is no session tree in the sidebar | §4.7 sidebar groups/view switcher, §3.1 layout |
+| L3 | **One page header** for Sessions, Board, Extensions and Settings: a 44 px lead/tools row, then title 30/36/600, then a 13 px meta line. **One detail header** (56 px) on top of every detail view (chat, task, review, browser, file) | §4.8 WorkspaceHeader |
+| L4 | Pills everywhere: buttons, chips, toolbar capsules, send. Cards use radius 16, dialogs/menus/palette 16, phone sheets 24 (top corners), inputs 12, rows 10 | §2.6 nesting rule, §4.1 sizes |
+| L5 | **Chat = deepseek-harness look** (unipi §3.4): a right user bubble (radius 20, `surface-3`), assistant prose with no bubble (15/24), one **folded line per turn** for thinking and tools, harness cards collapsed to one line, turn end "Done in 1s · $0.001", and a "Changes this turn" card | §4.9 timeline rows (row list kept, look replaced) |
+| L6 | **Composer = one surface-2 shell, radius 26.** It holds the placeholder "Message Oino, / commands, @ files". The toolbar capsule is: attach circle 34 · mode chip · model chip (with context ring) · send 38 shell circle. Interaction cards **take the composer slot** (they replace the composer and keep the draft) | §4.11, §4.12–4.15 "dock above" |
+| L7 | **Needs-you everywhere = Unicrab.** These all show it: the header crab in every page header's tools, the amber needs-you strip on Sessions, state words in rows, the window title "● Oino", the opt-in mascot window, and the floating crab on the phone (re-added; §6.11 "dropped" is overridden) | §4.28 glyph-only, §6.11 |
+| L8 | **Empty states = crab or icon tile + one line.** A lore line appears only where there is nothing to do. The pixel Unicrab is drawn only in mascot moments (empty states, splash, header crab, mascot). The big Unicrab start header is **not** pinned above sessions (GA-5) | §4.28, §5.1 hero |
+| L9 | Section labels: 12/500, uppercase, `text-dim`, written in sentence case in the source (it is uppercased in code, never typed in caps) | §4.4 group label, palette sections |
+| L10 | No ZCode floating status panel by default. Long-horizon/plan/run state shows as the **working-mode chip** in the chat header and a "Progress" sheet. The floating StatusPanel stays as an opt-in (Settings → Appearance → Status panel: Off (default) / Mini / Expanded) | §4.19 default Auto |
+| L11 | Focus: 2 px `shell` outline offset 2 on keyboard focus; inputs get a 1.5 px inset `shell` ring that follows the radius; a dialog with no autofocus field focuses itself (no ring on open) | §2.6 calm border-step focus |
+| L12 | Wording: unipi's. **PC** is the one noun for a machine. "click / right-click". Never "pane", "workspace", "tab" (for a session), "attach", "multiplexer" | — |
+
+#### A2.2 Palette (Oino Dark = unipi; replaces the A1.2 field values that differ)
+
+The CSS custom properties (`style.css @theme`, `ui.css`) map to `design::tokens::Palette`
+fields. Values are `0xRRGGBBAA`. **Bold** marks a change from today's `tokens.rs` DARK.
+
+| unipi CSS | Value | `Palette` field(s) |
+|---|---|---|
+| `--color-bg` | `#0A0908` | **`window` = `0x0A0908FF`**, `frame`, `header`, `tab_active` |
+| shell desktop bg glow `radial-gradient(circle at 0 0, shell 5 %, transparent 520px)` | — | `glow = 0xF030180D`. GPUI has no radial gradient: draw a 520 × 520 top-left quad with `linear_gradient(135°, glow → transparent)`. Never fill with a solid tint |
+| `--color-surface-1` `#141211` | | `card`, `tab`, palette and dialog bg (**new `sheet = 0x141211FF`**), tool body, harness card hover |
+| sidebar `rgb(20 18 17 / 72%)` | | **`sidebar = 0x141211B8`** (over `window`) |
+| `--color-surface-2` `#1C1917` | | `input` (composer, fields), `popover`, `menu`, **`hover = 0x1C1917FF`** (row hover is opaque surface-2, not 5 % white), **`chip = 0x1C1917FF`** (new) |
+| `--color-surface-3` `#26211F` | | `secondary` (secondary button), `tag` (inline code bg, kbd), **`bubble = 0x26211FFF`** (new), `menu_hover`, dialog option rows |
+| `--color-line` `#2E2825` | | `border`, `card_border`, `input_border`, `popover_border` |
+| `rgb(46 40 37 / 70%)` | | **`line_soft = 0x2E2825B3`** (new): sidebar right rule, detail header bottom rule, pane splits |
+| `rgb(46 40 37 / 60%)` | | **`row_divider = 0x2E282599`** (new): inset rules between rows in grouped cards (inset left 58 / 14) |
+| `--color-text` `#F5EFE6` / `--md-strong-color #FFF8EC` | | `fg`; **`fg_strong = 0xFFF8ECFF`** (new; markdown bold at weight 680→`SEMIBOLD`) |
+| `--color-text-muted` `#A39A90` | | `fg_subtle`, `thinking` |
+| `--color-text-dim` `#6E655D` | | `fg_subtlest` |
+| `--color-shell` / `shell-hi` | `#F03018` / `#F01818` | `primary`, `primary_hover`, `brand`, `focus`, `input_border_focus` |
+| `--color-face` `#181818` | | `primary_fg`, `fg_inverse` |
+| `--color-claw` `#F07818` | | `working`; interaction card accent (eyebrow, selected option ring); markdown list markers (**new `list_marker`**); `$` prompt in bash |
+| `--color-amber` `#F0A818` | | `amber`: badges, counters, **needs-you strip** text/border, queue kind tag |
+| `--color-gold` `#F0C030` | | `gold`: selection marks, "Show all" links, goal mode tint; `selection` = gold at 25 % |
+| `--color-cream` `#F0F0A8` | | `cream`: caret, inline code text (`--md-code-fg`), mascot eyes |
+| `--color-deep` `#C00018` | | `deep`: destructive buttons with icon + label |
+| `wm-cyan` `#28BEF0` | | `info`, links (**`link`** new), file nodes, transport/"web" badges, graph mode tint, In Review lane |
+| `wm-green` `#5AD25A` | | `success`, done/online dots, context ring fill, ralph tint, `diff_added` |
+| `wm-yellow` `#FAC828` | | `warning` |
+| `wm-red` `#F03C32` | | `danger` (error **colour**, never a primary button), `diff_removed` |
+| selected nav/list row `rgb(240 48 24 / 13%)` + inset `/22%` | | **`selected = 0xF0301821`**, **`selected_border = 0xF0301838`** (new) |
+| palette active row `/14%` + inset `/25%` | | `selected` / **`selected_border_strong = 0xF0301840`** |
+| active chip `/14%` + inset `/38%` | | **`chip_active = 0xF0301824`, `chip_active_border = 0xF0301861`** (new) |
+| needs-you strip (amber 8 % bg, amber 60 % border) | | **`attention_surface = 0xF0A81814`, `attention_border = 0xF0A81899`, `attention_fg = amber`** (new); replaces `waiting_surface`/`waiting_fg` for strips and capsules |
+| danger button `rgb(240 60 50 / 16%)` | | `danger_surface = 0xF03C3229` |
+| scrim (sheet 50 %, palette 45 %) | | **`scrim = 0x00000073`** |
+| scrollbar thumb `rgb(110 101 93 / 45%)`, hover 75 % | | **`scrollbar_thumb = 0x6E655D73`, `scrollbar_thumb_hover = 0x6E655DBF`** (gpui-kit `scrollbar_thumb*`) |
+| diff bg `rgb(90 210 90 / 10%)`, `rgb(240 60 50 / 11%)`; fg `#b5e8b5` / `#f3b3ad` | | `diff_added_bg = 0x5AD25A1A`, `diff_removed_bg = 0xF03C321C`, **`diff_added_fg = 0xB5E8B5FF`, `diff_removed_fg = 0xF3B3ADFF`** (new) |
+| error text in rows `#f6a39d` | | `danger_surface_fg = 0xF6A39DFF` |
+
+State colours (unipi §1.3; every place a session or agent state shows uses **colour + icon + word**):
+needs you = `shell` + pulsing dot + crab "!" eyes · working = `claw` + spinner · done (unseen)
+= `success` + check · idle = `fg_subtle` + circle · error = `danger` + x · offline =
+`fg_subtlest` + cloud-off. A row's state word is drawn in that colour (13 px).
+
+Mode tints (chips, popovers, list badges): working modes goal `gold`, ralph `success`, swarm
+violet `0xC678DDFF`, graph `info`. Permission modes: Ask before changes = `fg_subtle`, Plan =
+`gold`, Auto = `claw`, Full access = `danger`. A tinted chip uses the tint at 13 % for the
+bg, 45 % for the 1 px border, and full tint for the text and icon.
+
+Oino Light stays derived (A1.2). Each new field gets a light value built the same way
+(surfaces `#FAF7F2 / #F2EDE6 / #E9E2D9`, line `#DDD4C9`, text `#2A2420`, same shell primary).
+Light is a second priority: it must not block A2 work.
+
+#### A2.3 Typography (CSS px → `TextRole`; `ui_font_size` default 14)
+
+GPUI has no letter-spacing. Section labels therefore use uppercase + weight 500 + `fg_subtlest`
+and leave tracking out. Do not fake tracking by inserting spaces.
+
+| unipi use (CSS) | size/line/weight | `TextRole` (offset from `ui`) |
+|---|---|---|
+| page title `.large-title` | 30/36/600 | `Display` (ui+16 / ui+22) — unchanged |
+| dialog / sheet title, empty-state title | 20/26/600 | **new `Title`** (ui+6 / ui+12, 600) |
+| markdown h1 | 18/23/650→600 | `Xl` (ui+4 / ui+9) |
+| detail header title, markdown h2–h4, compact empty title | 16/21–23/600 | `Lg` (ui+2 / ui+7, 600 in headers) |
+| chat prose, user bubble, palette input | 15/24 (bubble 15/22) | **new `Prose`** (ui+1 / ui+10) |
+| body, nav item, rows, buttons-sm, palette row | 14/20 (buttons 15/600) | `Base` (ui / ui+6) |
+| tool/fold line, settings description | 13.5/20, 13/18 | `Caption` (ui−1 / ui+4) |
+| meta, detail sub-line, session strip, section label, tool subject (mono), code in tool | 12/16 | `Sm` (ui−2 / ui+2) |
+| turn end, kbd, counters, mono stats | 11–11.5/15–16 | `Xs` → **ui−3 / ui+1** (was ui−4) |
+
+Fonts: Inter for UI and JetBrains Mono for mono stay. Mono sizes are tool subject 12, tool
+output 11.5/17, and code blocks 13/20. `code_font_size` default **12** (desktop) applies to
+tool bodies and diffs, and code blocks are `code_font_size + 1`. Weights: 400 body, 500
+labels/rows/nav, 600 titles and buttons. 650 (brand word "Oino" 17, markdown headings)
+renders as `SEMIBOLD`.
+
+#### A2.4 Spacing, sizes, radii, elevation → `tokens.rs`
+
+| unipi | Value | Rust token |
+|---|---|---|
+| `--page-gutter` | 20 desktop / 16 phone | **`size::PAGE_GUTTER = 20.0`**, `touch::GUTTER = 16.0` (was 12) |
+| `--page-head-bar` | 44 | **`size::PAGE_HEAD_BAR = 44.0`** (replaces `HEADER` 44 semantics) |
+| page head padding | 10 top / 16 bottom desktop (phone 6/14) | `PAGE_HEAD_PAD = (10.0, 16.0)` |
+| `--detail-head-h` | 56; padding 0 12 0 8; back 40; gap 4 | **`size::DETAIL_HEAD = 56.0`**, `ICON_BUTTON_LG = 40.0` |
+| sidebar | 224, padding 14 10 12, gap 6 | **`size::SIDEBAR = 224.0`** (fixed; ⌘B hides it) |
+| brand row | 40 high, crab 26, word 17/650 | `BRAND_ROW = 40.0`, `CRAB_BRAND = 26.0` |
+| sidebar search | 36 high, radius 10, padding 0 8 0 10, margin-bottom 10 | `SEARCH = 36.0`, `R_ROW = 10.0` |
+| nav item | 38 high, padding 0 10, gap 11, radius 10, 2 px apart | **`NAV_ITEM = 38.0`** (was 32) |
+| list column (`DEFAULT_LIST_WIDTH`) | 400, min 280, max 560, splitter 8 hit / 2 line | **`LIST = 400.0`, `LIST_MIN = 280.0`, `LIST_MAX = 560.0`** |
+| list row (grouped card) | min 64 (desktop 56 when narrowed), padding 8 14, icon tile 36 radius 10 | **`ROW = 64.0`, `ROW_COMPACT = 56.0`, `TILE_ROW = 36.0`** |
+| `--chip-h` | 38 (segmented options 32) | **`CHIP = 38.0`, `SEGMENT_OPTION = 32.0`** |
+| `--btn-h` / `.btn-sm` | 44 / 34; padding 0 20 / 0 14 | **`BUTTON = 44.0`, `BUTTON_SM = 34.0`** (replace CONTROL 28 as default) |
+| icon button (ghost) | 40 round in headers, 32 in rows/bars | `ICON_BUTTON_LG = 40.0`, `ICON_BUTTON = 32.0` |
+| kbd | min 20 × 20, padding 0 5, radius 5, 11/500 | `KBD = 20.0`, `R_KBD = 5.0` |
+| chat column | max 940, padding 28 (prose ≤ 76ch ≈ 680) | **`READING = 940.0`, `READING_PAD = 28.0`, `PROSE_MAX = 680.0`** |
+| chat column gap | 10 between rows; 14 top / 18 bottom | `S2_5 = 10.0` (allowed spacing value) |
+| user bubble | max min(76ch, 80 %), padding 9 15, radius 20 | `BUBBLE = 0.8` (fraction), **`R_BUBBLE = 20.0`** |
+| composer shell | radius 26, padding 8 8 8 0, row padding-left 10; bottom area padding 0 24 14, max 884 | **`R_COMPOSER = 26.0`, `COMPOSER_MAX = 884.0`** |
+| send / attach | 38 circle / 34 circle; send chevron 22×38 | **`SEND = 38.0`, `ATTACH = 34.0`** |
+| mode chip | 30 high, padding 0 10 0 8, gap 5 | `MODE_CHIP = 30.0` |
+| context ring | 18, stroke 2.5 | `RING = 18.0`, `RING_STROKE = 2.5` |
+| fold / tool row | min 32, padding 3 4, gap 7, radius 10, icon 18 | **`TOOL_ROW = 32.0`** (was 24) |
+| fold body | margin 2 0 6 12, padding-left 10, 1 px left rule, max 420 | `FOLD_INDENT = 12.0`, `DETAIL_MAX = 420.0` |
+| tool body | radius 12, output max 240, padding 8 12 | `R_TOOL = 12.0`, `TOOL_OUT_MAX = 240.0` |
+| harness card | radius 14, padding 8 12, body max 320 | `R_HARNESS = 14.0` |
+| interaction card | radius 24, padding 12 14, max min(64 %, 560); option row min 46 radius 14; number tile 22 radius 7 | **`R_DIALOG_CARD = 24.0`, `OPTION_ROW = 46.0`, `R_OPTION = 14.0`** |
+| queue strip | radius 16 16 0 0, max 152, rows 30 icon buttons | `QUEUE_MAX = 152.0` |
+| jump to latest | 38 circle, surface-3 | `JUMP = 38.0` |
+| dialog (desktop sheet) | 560 × max min(80 %, 760), radius 16, padding-bottom 20, title 20/26 padded 0 20 10 | **`DIALOG_MD = 560.0`, `DIALOG_MAX_H = 760.0`**, `DIALOG_LG = 760.0` (shortcuts, info) |
+| palette | 620 wide, top 14 %, max-h 64 %, input 52 (16 px), rows 40 radius 10, list padding 6, footer 12 px | **`PALETTE = 620.0`, `PALETTE_TOP = 0.14`, `PALETTE_INPUT = 52.0`, `PALETTE_ROW = 40.0`** |
+| menu (anchored) | radius 16, rows 40 radius 10 | `MENU_ROW = 40.0` |
+| settings | nav 200 wide (rows 38), content max 760, group radius 16, row min 56, icon tile 28 radius 8 | **`SETTINGS_NAV = 200.0`, `SETTINGS_CONTENT = 760.0`, `SETTING_ROW = 56.0`** |
+| empty state | top 64; crab 88 / icon tile 56 radius 16; gap 10; body max 340; compact crab 56 / tile 44 radius 14 / button 38 | `EMPTY_TOP = 64.0`, `CRAB = (16, 56, 88, 128)`, `EMPTY_TILE = 56.0` |
+| pane placeholder | tile 52 radius 16, title 16/600 muted, hint 13/19 dim, max 320 | `PLACEHOLDER_TILE = 52.0` |
+| board | lane 280 gap 12; card padding 12 radius 16; lane pill 38; FAB 52 radius 16 | `LANE = 280.0`, `FAB = 52.0` |
+| header crab | 28 + badge 16 (amber, `Xs` 600) | `CRAB_HEADER = 28.0` |
+| mascot window | crab 72 / 96 / 128 (default 96), bubble max 260 radius 16 | `MASCOT = (72, 96, 128)` |
+| phone floating crab | 56, half-transparent after 3 s | `touch::CRAB_FLOAT = 56.0` |
+| phone app bar / bottom nav | header 44 lead + title row; bottom nav 8 12 padding, 12 px labels | `touch::APP_BAR = 52.0` stays, `touch::BOTTOM_NAV = 60.0` |
+
+**Radii** (`radius` module): `R_ROW = 10` (nav, palette rows, tool rows, search, small
+tiles), `R_INPUT = 12`, `R_OPTION/R_HARNESS = 14`, `R_CARD = R_FLOAT = 16` (cards, grouped
+lists, dialogs, menus, palette, toasts, settings groups, tiles 52–56), `R_BUBBLE = 20`,
+`R_DIALOG_CARD = 24`, `R_SHEET = 24` (phone, top only), `R_COMPOSER = 26`, `R_FULL` (buttons,
+chips, capsules, send, avatars, badges, dots). **Delete the ZCode nesting rule and
+`R_SM/MD/LG/XL` from view code.** They remain only for `R_KBD = 5`, inline code 6, the number
+tile 7 and the settings icon tile 8.
+
+**Spacing**: 4 px grid plus unipi's 6/10/14 half steps (`S1_5 = 6`, `S2_5 = 10`,
+`S3_5 = 14`). The no-literal guard test (§9.3) stays.
+
+**Elevation** (`E*` tuples, dark): composer `0 -8 30 #00000066` + inset line; dialog
+`0 24 80 #00000099` + inset line; palette `0 30 90 #000000A6` + inset line; menu/popover
+`0 12 32 #00000080`; jump/FAB `0 6 20 #00000080`; toast and mascot bubble `0 8 26 #00000080`.
+Cards and rows use no shadow. They are separated by `surface-1` on `bg` plus an inset 1 px
+`line`.
+
+#### A2.5 Motion, scrollbars, focus, hover
+
+- **Motion** (unipi §1.4: 150–200 ms ease-out; the Unicrab is the only looping animation):
+  - Colour and hover transitions run at `FAST = 120 ms` for nav and rows and `NORMAL = 180 ms`
+    for buttons.
+  - Dialogs fade in with a scale from 0.97 to 1 over **160 ms**.
+  - The palette enters over **140 ms**, scaling from 0.98 with `cubic-bezier(.2,.8,.2,1)`.
+  - Detail views slide in 16 px with a fade over 180 ms (`pane-in`).
+  - Fold chevrons rotate 90° over 160 ms.
+  - The dot pulse runs at 1.2 s.
+  - The live fold line shimmers in a 1.6 s sweep.
+  - Phone sheets use a spring with drag.
+  - Reduce motion holds every animation on frame 0, and the crab neither blinks nor hops.
+- **Scrollbars**:
+  - 10 px track, transparent. The thumb is a pill inset 2 px, so it shows 6 px, in
+    `scrollbar_thumb` (hover `_hover`).
+  - The scrollbar is always visible while content scrolls, with no overlay fade.
+  - Terminal, lane strip and chip rows hide their bar.
+  - Horizontal chip rows fade at the right edge (28 px gradient mask, drawn as an overlay
+    quad).
+- **Focus**: as in L11. The focus ring is 2 px `focus`, outset 2, and follows the
+  element's radius.
+- **Hover** (desktop only): any row or button gets `hover` (surface-2). Secondary buttons
+  and chips go to surface-3. Primary goes to `shell_hi`. Ghost and danger buttons go to
+  surface-2 with `fg`. Board cards go to surface-2 plus an inset 1 px border at 55 % dim.
+  There is **no press-scale on desktop**.
+
+#### A2.6 Page header pattern (`components/page_header.rs`, new)
+
+Every top-level screen (Sessions, Board, Extensions, Settings) uses one `PageHeader`:
+
+```text
+x = sidebar + 20 ──────────────────────────────────────────────────────────────┐
+│ [lead: back / project chip]                       [tools: ghost 40 …] [crab] │ 44 px (always on desktop)
+│ Title (Display 30/36/600, ellipsis)  [title slot: count badge / picker ▾]    │ min 36, margin-top 4
+│ meta line 13/18 fg_subtle  (e.g. "4 sessions · 1 working")                   │ min 18
+└───────────────────────────────────────────────── padding 10 20 16 ─────────┘
+```
+
+The title always sits at the same x and y on every screen. **Tools end with the header crab**
+(A2.13). There is no PC chip, because Oino runs on one machine. Board uses the lead slot for
+the project avatar tile and makes the title the project picker (▾).
+
+#### A2.7 Detail header (`components/header.rs` → `DetailHeader`)
+
+```text
+┌ 56 px, padding 0 12 0 8, 1px bottom line_soft ──────────────────────────────────────────────┐
+│ [‹ 40] Session title (Lg 16/600)        [session strip pill: Single · model · ctx 1% · $0.00] [mode chip] [⋮ 40] [🌐 40] [▭ 40] │
+│        ● project · branch  (Sm 12, fg_subtlest; dot = state colour)                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Back** closes the detail (Esc does the same). With the list column visible it stays as
+  the keyboard-free close.
+- **Title**: click to rename. A click on the sub-line or the title opens the **switch sheet**
+  (A2.8).
+- **Session strip**: the footer `setFooter` summary, compressed. It is a 32 px ghost pill
+  (12 px `fg_subtlest`) with a max width of 46 %. Clicking it opens the control centre
+  sheet: model and thinking, context, cost, and the full stats strip. This replaces the
+  meta-row stats overflow (GA-26).
+- **Working-mode chip**: shown only while a goal, ralph, swarm or graph is active or parked.
+  It shows `Goal 45 %` / `Ralph 5/12` / `Graph 3/7` with a tint and a pulse while running.
+  Click opens an anchored popover with what the mode does, live state with a bar, Show
+  progress, and Switch mode.
+- **⋮ menu**: Rename, Fork, Tree, Compact now, Export HTML, Copy session id, Reveal file,
+  Delete…
+- **Right icons**: 🌐 browser side pane (Ctrl+Shift+B), ▭ terminal/bottom, and review
+  (`git-compare`) when the turn changed files.
+- The same header is used, with its own actions, for the task page, review, file viewer and
+  browser.
+
+#### A2.8 Sidebar, list column and switch sheet
+
+- **Sidebar** (224 px, `sidebar` fill, right rule `line_soft`):
+  - **Brand row**: Unicrab 26 (static glyph in the aggregate state colour) + "Oino" 17/650.
+    An update badge pill (cyan 12 % tint, "Update") sits at the right when the updater has
+    a release.
+  - **Search field**: ⌕ "Search" `Kbd Ctrl K`. It opens the palette.
+  - **Nav**, each with an icon (16) and a label:
+    - Sessions (`message-square`, Ctrl+1)
+    - Board (`kanban`, Ctrl+2; hidden without kanboard)
+    - Extensions (`blocks`, Ctrl+3)
+    - Settings (`settings`, Ctrl+,)
+  - The shortcut hint `Kbd` on each nav item fades in only on hover or when the sidebar has
+    focus.
+  - Bottom: nothing but optional build info. The model label and crab move to the
+    header/composer.
+- **List column** (Sessions screen, 400 px, resizable 280–560, double-click resets, width
+  remembered):
+  - Page header "Sessions", meta "N sessions · 2 need you".
+  - Tools: refresh, `+` new session (Ctrl+N), then the crab.
+  - The **needs-you strip** (A2.9) comes next.
+  - Then one **section per project** (cwd): a section label with the project basename, a
+    right aside with the count, and `+` to start a new session in this project.
+  - Then a grouped card (`card`, radius 16, inset line) of **session rows**:
+    - 64 px: a 36 icon tile with the Oino mark and a 6 px state dot at its bottom-right.
+    - Title 15/500.
+    - Sub-line: the state word in the state colour, then a relative time or cwd in
+      `fg_subtlest`.
+    - A trailing chevron.
+    - Rows have inset dividers.
+    - The open session row gets `selected` + a 3 px `shell` left bar.
+    - Right-click opens an anchored menu: Open, Rename, Pin, Fork, Copy id, Reveal file,
+      Delete….
+  - Section order is attention-first: needs-you > working > done-unseen > recent.
+- **Folding**:
+  - The list column folds away when list + chat + side pane do not fit (< 1180 px with the
+    side pane, < 900 px without).
+  - Ctrl+B also folds the list column (then the sidebar).
+  - With the list folded, the detail header's title opens the switch sheet.
+- **Switch sheet** (unipi §3.6, Ctrl+O, or a click on the detail header title):
+  - A 560 dialog with a filter field and the same rows, attention-first, grouped by project.
+  - Each row shows its state chip and, as optional sub-text, model · ctx.
+  - Enter opens; Esc closes.
+- **Not used**: workspace/session trees and nested tabs or panes.
+- **No-session placeholder** (detail empty): the compact pane placeholder: `message-square`
+  tile 52, "No session open", hint "Pick a session on the left. It keeps running while you
+  look at the others."
+
+#### A2.9 Sessions home and the needs-you strip
+
+- **Needs-you strip**:
+  - Full list width, min 56, radius 16.
+  - `attention_surface` fill, 1 px `attention_border`, padding 0 16.
+  - Contents: the Unicrab 28 in the needs-you pose, then "2 sessions need you"
+    (15/500 `amber`). With one item it shows the title instead.
+  - Click opens the first waiting session. The ▾ opens the needs-you drawer, an anchored
+    popover listing each waiting item (title, what it waits for: "Approve: bash cargo test",
+    "3 questions", "Plan review") with inline Open.
+  - The strip is hidden when nothing waits.
+- **Done-unseen**: rows carry a `success` dot and the word "Done" until they are opened.
+- **Empty list**:
+  - The EmptyState shows the crab 88, "No sessions yet", "Start one and Oino gets to work in
+    this folder." and the primary button "New session".
+  - No lore here, because there is something to do.
+
+#### A2.10 Chat view (detail)
+
+Column: max 940, padding 28; prose ≤ 680; rows gap 10.
+
+| Row | Look |
+|---|---|
+| **User bubble** | Right-aligned. `bubble` (surface-3), radius 20, padding 9 15, `Prose` 15/22, max 80 %, selectable. Starting with a `/command` makes the command a chip at the start. Hover action bar (top-right, −14 px): a pill `surface-2` with 28 px round buttons (Copy, Edit & resend, Fork, Rewind files) |
+| **Assistant prose** | No bubble. 15/24 `fg`; paragraphs 10 apart; lists indent 22 with `list_marker` (claw) bullets; h1 18, h2–h4 16, 600; blockquote 3 px `line` rail + muted; links `link`; strong `fg_strong`. Inline code: `tag` bg, `cream` text, mono 12, radius 6. Code block: surface-1, radius 12, inset line; head row surface-2 with language `Sm` dim at left and "Copy" at right |
+| **Fold line** (thinking + tools of one turn) | One line, min 32. Icon 18 `fg_subtlest`, title 13.5/500 `fg_subtle` ("Ran commands", "Read files, edited files"), `·` detail `fg_subtlest` ("2 steps", "1m 3s"), chevron at the far right. Live: the latest action ("Reading files · src/x.ts") with the 1.6 s shimmer. Open: body indent 12 + 10 with a 1 px `line` left rule, max 420, holding one-line tool rows |
+| **Tool row** | Min 32, radius 10. Icon 18 · name 13.5/500 `fg` · 3 px dot separator · subject mono 12 `fg_subtlest` (error first line in `danger_surface_fg`, sans 13) · stat mono 11.5 (`+7` green, `−3` red, `3.4s`). Opens a tool body: surface-1, radius 12, inset line. Bash body: `$` in claw + command mono 12, rule, output 11.5/17 muted, max 240. Diff: `diff_*_bg/_fg`. IN/OUT: a 34 px label column (10.5 uppercase dim) |
+| **Thinking** | Inside the fold: one line with the latest finished paragraph (italic off, `fg_subtle`); click opens the text |
+| **Harness card** (memory, bg-task done, kanboard, notify, dream, subagent/sidekick completion, plan-mode reminder) | Collapsed by default to one line. Radius 14, transparent, inset 1 px `line` at 75 %, padding 8 12. Head: icon (claw) + source 600 `fg` + title `fg_subtle` 13 + chevron. Open body 13 muted, max 320, OUS or markdown. Replaces ProvenanceCard and fixes GA-6 |
+| **Turn end** | `Done in 1s · $0.001` 11.5 `fg_subtlest` tabular, padding 0 4. "Stopped" shows as an amber 11 px chip on surface-2 |
+| **Changes this turn** | Card surface-1, radius 14, inset line. Head "Changes this turn · 1 file" 12/600 + total `+7 −3`. File rows mono 12 with stats, 👁 review and ↗ open. Clipped to about 2.5 rows with a fade; "Show all" (gold pill) opens the review pane |
+| **Error** | Inline row: `danger` x + message in `danger_surface_fg` + Retry pill. Not a banner card |
+| **Agent row** | Fold-line style, with `bot` (or `users`) in `claw`, the agent name 500, the task and elapsed time. Click opens the Agent tab in the side pane |
+| **Jump to latest** | 38 circle surface-3, bottom-right 16 px above the composer, shadow |
+| **Find** | ZCode FindBar restyled: 40 high, `sheet` bg, radius 16 |
+
+The query rail (§4.10) stays, with bars in `fg_subtlest` and the current one in `shell`. The
+**start header** (info-screen splash, `setHeader`) shows only in an empty session (A2.17).
+In a non-empty session it is one collapsed harness card ("Unicrab · Oino 1.0 · 23
+extensions") at the top. It is never pinned (GA-5).
+
+#### A2.11 Composer and toolbar capsule
+
+```text
+ [queue strip: radius 16 16 0 0, surface-1, rows 13 px with kind tag (Steer amber / Queue gold) + ↑ ✎ ✕ 30px]
+┌ composer shell: input (surface-2), R 26, padding 8 8 8 0, inset 1px line 80 %, shadow composer ───────────┐
+│ [glance top segments: UNIPI wordmark · Regular Mode · ⎇ branch …            auto]  (Sm, fg_subtlest)         │ ← setFrame top, only when present
+│  Message Oino, / commands, @ files                                (Prose 15, 1–12 lines)                 │
+│  [⊕ 34] [mode chip 30 ▾] [◔ 1 %  DeepSeek Flash  low ▾ (chip 30)]  …            [↑ send 38][⌄ 22]          │ ← toolbar capsule
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  glance bottom: setFrame bottom segments left · stats strip (setFooter) centred, toned, 11.5 tabular         ← ≤ 1 line, drops by priority
+```
+
+- **Shell**: the bottom area has padding 0 24 14, max width 884, centred. The editor has no
+  inner border.
+- **Placeholder**: "Message Oino, / commands, @ files" (`fg_subtlest`). While a run is in
+  progress it reads "Steer Oino…".
+- **Attach**: a 34 circle, surface-3, `paperclip`. Its menu is Files…, Image from
+  clipboard.
+- **Mode chip**: the workflow permission mode, tinted per A2.2. Its menu lists the modes.
+  It reads the `unipi:workflow:status` topic, never footer segments (GA-25).
+- **Model chip**:
+  - A 30 pill on surface-1 holding the context ring (18, stroke 2.5, `success` → `warning`
+    ≥ 80 % → `danger` ≥ 95 %), the context %, the model name (12/500) and the thinking level
+    (`fg_subtlest`).
+  - A click opens the **control centre** dialog/sheet. It holds the model list,
+    thinking-level segments, the fusion lead/sidekick, context and compaction.
+  - Ctrl+M opens it too.
+- **Send / stop**:
+  - **Send** is a 38 circle in `shell` with an `arrow-up` in `face`. It is disabled at 35 %
+    mix with surface-2.
+  - While a run is in progress and the editor is empty it becomes **stop** (`square`).
+  - The ⌄ chevron (22 × 38) opens the Steer / Queue choice, which is also Ctrl+Enter.
+  - A pick shows as the send-choice bar: a pill, surface-1, with an inset claw border at
+    40 % and S / Q pills.
+- **Toolbar capsule geometry** (shared with phone; unipi Moshi proportions): items 30–38
+  high, 6–8 gap, 8 inner padding, all pill-shaped. When the shell is under 520 px the model
+  name drops first, then the thinking label, then the mode label (icon only).
+- **Glance frame**: the footer `setFrame` top/bottom segments and the `setFooter` strip
+  render **inside or right under the shell**, as in the TUI shot (`tui-glance-footer.png`).
+  - The "UNIPI" brand uses the wordmark letters (white, cyan, green, yellow, red).
+  - Segments are separated by 1 px `line` dividers.
+  - Numbers keep their tones (cyan counts, amber times, green cache).
+  - It is never wider than the shell and drops by `priority`, never wrapping (GA-26).
+- **Completion menu**:
+  - Shape: a `sheet` popover, radius 16, 360 wide, anchored above the caret, rows 40,
+    radius 10, at most 8 visible.
+  - Sections use **section labels**.
+  - Package tags are colour pills (`categorical` 13 % bg + 45 % border, `Xs`).
+  - **One group per source**: enchanted groups replace the base group (GA-4).
+- **Interaction card in the composer slot**:
+  - It replaces the shell until it resolves, and the draft is kept.
+  - Shape: radius 24, surface-2, inset 1 px `claw` at 45 %, shadow composer, padding 12 14,
+    max min(64 % of frame, 560), then it scrolls.
+  - **Head**: an eyebrow icon and label in `claw` (12/600, e.g. "Approve", "Plan", "2
+    questions"), then "1 of 3" `fg_subtlest`, the countdown pill (surface-3, 12/600
+    tabular; only when the extension set one), and ✕ (34 round).
+  - **Body**:
+    - The question in 16/22/550 (`MEDIUM`).
+    - The message in 14/20 muted.
+    - Options: rows min 46, radius 14, surface-3, a number tile (22, radius 7, surface-1),
+      the label 15/500 and a description 13 dim.
+    - The selected option gets an inset 1.5 `claw` ring + claw 10 % fill.
+    - "Type your own answer" row: a ✎ tile with a field (radius 14, surface-1, inset 1.5
+      claw ring when focused).
+  - **Footer**: ‹ › page buttons (36 round), then right-aligned buttons that are 40-high
+    pills 15/600. The primary is `shell`/`face`, the ghost is surface-3. Approvals map
+    allow-once → primary, always → secondary, reject → danger pill.
+  - The danger strip and keys (1–9, Enter, Esc, Tab) are as in §4.12–§4.15.
+  - The dialog never auto-times out on the frontend (GA-30).
+
+#### A2.12 Cards, sheets, dialogs, menus, toasts
+
+- **Card** (`components/card.rs`, new): `card`, radius 16, inset 1 px `line`, padding 12–16.
+  A **grouped list** is a card whose rows have inset dividers.
+- **Dialog** (desktop rendering of every unipi sheet):
+  - Centred, 560 wide (760 for large: shortcuts, info dashboard, hints), max
+    min(80 %, 760).
+  - `sheet` (surface-1) fill, radius 16, dialog elevation, scrim 45 %.
+  - Header: title 20/26/600 with padding 14 20 10 and ✕ 34 at the right. Body padding 0 20.
+  - **Sticky footer** with right-aligned actions (`dialog-actions`: gap 8, min width 96
+    each), primary last on the right. This follows the unipi order and overrides §4.24
+    "primary first".
+  - Dialogs never exceed the window, and the body scrolls (GA-7).
+  - Entry is a fade with a scale from 0.97 over 160 ms.
+- **Phone sheet**: bottom, `R_SHEET` 24 on the top corners, a 36 × 4 handle, swipe down to
+  dismiss, capped to the visual viewport. **Pickers drill in instead of stacking sheets.**
+- **Anchored menu**: `menu` (surface-2), radius 16, padding 6, rows 40 radius 10 (icon 16 +
+  label 14 + trailing kbd or check), hover surface-3. It opens at the trigger or the
+  pointer (right-click), and never shifts the layout.
+- **Overlay panels** (info dashboard, hints, MCP, readme/changelog, agents, model picker):
+  - They use the dialog look, header = title + ✕ only.
+  - Panel `keys` are **not** buttons. They show as one footer legend line (`Kbd` + label
+    12 dim, as in the palette footer) and are bound while the dialog has focus (GA-22,
+    GA-23).
+  - Panel tabs are segmented pills (`CHIP` 38, options 32). The active option is surface-3.
+- **Toast**:
+  - Bottom-centre of the detail on desktop (phone: above the composer/FAB, never over it).
+  - Max width 420, `sheet` fill, radius 16, toast elevation, padding 10 14.
+  - Icon in tone, message 14 (up to 3 lines; "More" expands), at most one action pill
+    (Undo / Open).
+  - Multi-line `notify` (status reports) opens as a **result card dialog** instead of
+    clipping (GA-24).
+
+#### A2.13 Mascot, header crab and Unicrab
+
+- **States and priority** follow unipi §1.5.1 exactly: needs-you > done > working > offline
+  > sleep (5 min idle) > idle.
+- **Rig**:
+  - Port unipi's sprite + animation tables as data: `unicrab.sprite.json` (24 × 20 cells,
+    11 colours) and `unicrab.anim.json` (frameMs, whole-cell `[dx,dy]` per track `all`,
+    `torso`, claws, legs, `zzz`, eye masks, blink, opacity).
+  - Store them as Rust consts in `design/brand.rs`, generated once by a script from the
+    JSON with the source path noted. A1.2 already allows unipi's palette and brand.
+  - Renderers move parts and never redraw them. Use whole device pixels per cell. Random
+    blink. Animation runs only at ≥ 28 px, and reduce motion holds frame 0.
+- **Header crab** (28) sits at the end of every page header's tools and in the detail
+  header on narrow windows.
+  - Badge: amber, `Xs` 600, with the needs-you count.
+  - Click opens the needs-you drawer, an anchored popover with rows for waiting and
+    done-unseen items, Open per row, and "Mark all read".
+  - **The window title becomes "● Oino" while something needs you.**
+- **Mascot window** (opt-in, Settings → Unicrab → Mascot window; tray item):
+  - The window is transparent, frameless, shadowless and always-on-top, bottom-right of the
+    primary monitor. It shows only the crab (72/96/128, default 96) plus the fade bubble.
+  - Bubble: surface-2, radius 16 with the corner nearest the crab at 4, head 11/700 `claw`
+    (session title), text 14/1.3 clamped to 3 lines, 6 s fade-in, hold and fade-out, one at
+    a time, unread only.
+  - Clicking the crab brings Oino to the front and opens the drawer. Clicking a bubble opens
+    that session. Dragging moves the window.
+  - It reads its state from a snapshot passed in. It never leases the shell entity (GA-32).
+- **Phone floating crab**:
+  - 56 px, draggable, snaps to the nearest side, half-transparent after 3 s unless
+    something needs you. It has the same bubble.
+  - Tap opens the needs-you drawer. Long-press opens quick actions (Needs you, Sessions,
+    Mark all read, Hide the crab).
+  - Settings → Unicrab → Floating crab turns it off.
+- **Unicrab settings section**: mascot window on/off, crab size (Small/Medium/Large
+  segmented), floating crab (phone), and bubble detail (Summary / Minimal).
+
+#### A2.14 Empty states and lore
+
+- **`EmptyState`** (`components/empty.rs`):
+  - Shape: top offset 64, gap 10, centred. Either the crab 88 (pixel, state pose) or an
+    icon tile 56 (radius 16, surface-2, `fg_subtle` icon 24).
+  - Text: title 20/26/600, body 14/21 muted with a max width of 340, actions (gap 8, pills
+    44).
+  - `compact` variant (list columns, detail placeholders, panels): crab 56 or tile 44
+    (radius 14), title 16/22, body 13/19, buttons 38.
+  - `tone=error`: the crab is greyscaled (85 %) and dimmed (75 %).
+- **Lore lines** appear only where there is genuinely nothing to do, and never the same line
+  under every state. Rotate through `design/lore.rs`, a copy of unipi `lore.ts` (6 lines, e.g.
+  "Unicrab walks sideways so it can read your diffs from both ends."). Oino may add lines.
+  - **Yes**: needs-you drawer empty ("Unicrab is watching the tide. Nothing needs you."),
+    board lane Done empty, Settings → About, mascot bubble when idle-clicked, splash.
+  - **No**: Sessions empty, Board with no projects, errors, search no-results (these say
+    what to do next).
+- **Fixed copy**:
+
+  | Where | Title | Body | Actions |
+  |---|---|---|---|
+  | No session open | "No session open" | "Pick a session on the left. It keeps running while you look at the others." | — |
+  | New empty session | "New session" (sparkles icon in `claw`) | "Say what you need, or pick up where you left off." | — |
+  | Board without kanboard | "Board is off" | "Turn on the kanboard extension to plan work here." | "Open Extensions" |
+  | Lane filtered empty | — | "No tasks here match the filter" | "Clear filters" |
+  | Tasks tab | "No background tasks" | — | — |
+
+#### A2.15 Section labels, buttons, chips
+
+- **Section label** (`components/section_label.rs`, new): `Sm` 12/16, 500, uppercase,
+  `fg_subtlest`. Margins are 18 0 10, or 4 0 10 when first. `section_row` puts an aside on
+  the right (count / link, 12 dim tabular). Section labels are used by the palette groups,
+  the completion menu, settings sections (with a 14 icon), lanes ("Todo, 3 tasks"), session
+  project groups, shortcut groups and status sections.
+- **Buttons** (`components/button.rs`): all pill-shaped.
+  - Primary `shell`/`face` 600; hover `shell_hi`. **One per view.** Never `danger` red for a
+    primary.
+  - Secondary surface-3/`fg` 500.
+  - Ghost: transparent, `fg_subtle`; hover surface-2 + `fg`.
+  - Danger: `danger_surface` + `danger`. Destructive confirms use `deep` with an icon.
+  - Sizes: `BUTTON` 44 (dialog footers, empty states, page CTAs, padding 0 20, 15/600),
+    `BUTTON_SM` 34 (toolbars, inline, padding 0 14, 13.5/500), icon buttons 40 / 32 / 28
+    round.
+  - Loading keeps the width and swaps the icon for a spinner.
+- **Chips** (`components/chip.rs`, new):
+  - **Tool chip / pill** (toolbars): 38 high, padding 0 14, surface-2, 14/500, gap 6, with
+    an invisible hit-slop of 3 px. Active state: `chip_active` + inset `chip_active_border`.
+  - **Segmented**: a 38 track on surface-2. Options are 32 pills and the active one is
+    surface-3.
+  - **Count badge**: 16–18 high, amber or surface-3, `Xs` 600 tabular.
+  - **Status capsule** (state colour 13 % + word): 22 high.
+  - **Package/tag pill**: tone 13 % + 45 % border.
+  - **Kbd**: 20, radius 5, surface-3, inset line + bottom shadow, 11/500.
+
+#### A2.16 Settings layout
+
+- `PageHeader` "Settings" with a search tool (Ctrl+F). Below it are two columns:
+  - **Section nav**: 200 px, rows 38 radius 10, 14/500 `fg_subtle`, active `selected` with
+    `fg`.
+  - **Content**: max 760, with sections stacked.
+- **Each section**: a section label with an icon (e.g. 🔔 DESKTOP) and then a grouped card.
+- **Rows**:
+  - Min 56, padding 12 16, an icon tile 28 (radius 8, surface-2, icon 16 muted), the label
+    15/500, the description 12.5 dim, the control at the right.
+  - Rows have inset dividers starting at 58 px.
+- **Controls**:
+  - **Switch**: 44 × 26, on = `shell` with a cream knob, off = surface-3 with a muted knob.
+  - Select = anchored menu trigger (chip look).
+  - Text fields: 40 high, radius 12, surface-2, inset 1.5 shell ring on focus.
+  - "Add …" rows: an icon tile with a shell 12 % tint and the label in `fg`.
+  - Danger zone: a ghost danger pill.
+- **Nav order**:
+  - General (default model, default folder, startup)
+  - Appearance (theme, sizes, reduce motion, status panel, tool rows)
+  - Unicrab
+  - Models & providers
+  - Sessions
+  - Permissions
+  - Keyboard shortcuts (app + extension, GA-16)
+  - Extensions settings (a hub section label per namespace)
+  - About & updates (version, Check for updates, changelog, licences, crab lore)
+- **Remote access is removed from the nav until A2.18 lands.**
+- **Scope**: the hub keeps the Global | Project scope segmented chip in the section head.
+
+#### A2.17 Board, welcome, palette, extensions, onboarding
+
+- **Board** (`m7-desktop-board.png`):
+  - **Header**: `PageHeader` with lead = project avatar tile (28, radius 8, first letter,
+    shell 14 % tint), title = project name + ▾ (picker), meta "5 tasks · ● 1 running"
+    (`shell` dot). Tools: search, ⋮ (Refresh, Review queue, Blocked, Summarize board, Board
+    settings, Archive project), crab.
+  - **Toolbar pills**: Board | List segmented (icons), Filter, Display.
+  - **Lane strip**: pills 38 with status glyph + name + count badge. The active pill takes
+    the lane colour at 13 %. The strip fades at the right edge.
+  - **Lanes**: 280 wide, gap 12. Head: section label "Todo, 3 tasks", about text 12/16 dim
+    (2 lines), ⋮ lane menu.
+  - **Cards**: `card` radius 16, padding 12; id mono 11 dim; title 15/600 (2 lines); excerpt
+    13 dim; agent chip (a `shell` pill at 14 % "● agent 1h 51m"); priority and dependency
+    tags; blocked reason in `danger_surface_fg`. Hover is surface-2 + border.
+  - **Empty lane**: a dashed 1 px `line` card, radius 16, with the lane glyph + "Nothing
+    blocked".
+  - **Add task**: a dashed pill row "+ Add task".
+  - **FAB**: 52, radius 16, `shell`, `plus` in `face`, bottom-right 24/24, opens New task
+    (dialog).
+  - **Detail**: the task page opens in the detail column with a `DetailHeader`.
+  - **Keys**: the kanboard keys (C, /, J/K, Enter, B/L, R/X, ?).
+  - It runs `/unipi:kanboard open`, not the bare `/kanboard` (GA-17).
+- **Welcome** (empty session):
+  - Centred in the chat column. The info-screen splash (setHeader) is drawn as an
+    **EmptyState with the crab 88 + one-line build info** ("Oino 1.0 · 23 extensions ·
+    DeepSeek Flash"). The drain meter is a 2 px bar under it.
+  - The greeting title 20/26 is local-time aware (GA-12 fixes the UTC hour).
+  - The composer comes next, then the hint line (12 dim, `lightbulb` + ‹ ›), then up to 3
+    suggestion cards (card radius 16, padding 14, icon + 15/500 title + 2-line 13 dim body).
+  - The ZCode Display greeting and the 128 px pixel art are **dropped**: the crab is drawn
+    once, never as two crabs (GA-5).
+- **Palette** (`live-desktop-palette.png`):
+  - 620 wide, top 14 %, `sheet` fill, radius 16, palette elevation.
+  - Search row: 52 high, ⌕ + 16 px input + `Esc` kbd, bottom rule.
+  - Groups use section labels: Go to, Session, Board, Extensions (commands + **extension
+    shortcuts**, GA-16), App.
+  - Rows: 40, radius 10, icon 18 muted + label 14 + right kbd chips. The active row is
+    `selected` + `selected_border_strong`.
+  - Footer legend: `↑ ↓ move · ↵ run · Esc close`.
+  - Prefixes `>` `#` `@` stay.
+- **Extensions page**:
+  - `PageHeader` "Extensions", meta "32 loaded · 1 failed", tools "Install from file…".
+  - A grouped card per kind (Providers / unipi / User). Rows 64: icon tile, name 15/500 +
+    id mono 12 dim, the version, a state capsule (Loaded success / Failed danger / Off),
+    a switch, and a ⋮ menu (Settings, Readme, Reveal folder).
+- **Onboarding**: a full-window centred card column (max 560) with the crab 88, "Welcome to
+  Oino" 30/36, and the steps as a grouped card with numbered rows. Buttons are pills.
+
+#### A2.18 What to remove (herdr / tmux / multiplexer concepts)
+
+| Remove | Where today | Instead |
+|---|---|---|
+| Split panes (≤ 4), `layout: Vec<u64>`, ⌘\ "Split pane", "Open in new pane", ⌘Enter "open in new pane", "Run in new pane" palette rows | `views/shell.rs` (`split`, `layout`, `Pane`), `components/sidebar.rs:605,1040`, `components/keys.rs`, `model/palette.rs` | One visible session. Background sessions keep running (in-process agents) and are switched, never tiled |
+| `Workspace` (root view type name), `Pane`, `MAX_LIVE_PANES` and "pane" wording | `views/shell.rs:75-140`, `views/{mod,board,mascot,soak,extensions_page,onboarding,session_pane}.rs`, `mobile/sheets.rs`, `model/sessions.rs` | Rename to `AppShell`, `LiveSession`, `MAX_WARM_SESSIONS` (same release rule: hidden idle sessions beyond 8 shut down and reopen from the list) |
+| `SidebarView { Group, Recent }` view switcher, workspace groups, "New session in folder" wording | `views/shell.rs:57`, `components/sidebar.rs` | Project **sections** in the list column (A2.8), each with a `+` for "New session in <project>" |
+| ZCode independent frames, frame gaps, `WINDOW_INSET`, `FRAME_GAP` | `views/shell.rs`, `design/tokens.rs` | Flush columns (L1) |
+| Perf budget "4 sessions streaming in split panes" | §2.11, `views/soak.rs`, `scripts/perf.sh` | "1 visible + 3 background sessions streaming" at the same budget |
+| Remote access settings page, palette "Remote access", desktop serve/QR pairing | `views/settings_page.rs` (`SettingsSection::Remote`), palette | **Later** (post-v1): "Pair a phone" / "Add a PC" (unipi wording) when `oino serve` lands; hidden until then |
+| Mobile "Pair a desktop" wording | `mobile/hosts.rs` | Keep M10 behind a "later" flag; wording becomes "PCs" / "Pair a PC" / "No PC paired yet · Add a PC" |
+| `skill:herdr` in the slash menu (from `~/.agents/skills`) | `crates/oino-resources/src/discovery.rs:48` (GA-38) | Load user skills only from Oino's configured skill dirs; the scratch agent dir must not pick up `~/.agents/skills` |
+| `tmux capture-pane` allow rule, `rename.herdrSync` default | `extensions/unipi/fusion/src/policy.rs:193`, `extensions/unipi/utility/src/settings.rs:226` | Delete (dead in a native app) — request to the extensions owner, not a GUI batch |
+| §8 rows 7 (frames) and 48 (split panes) | this doc | Row 7 → **Adapt** (unipi flush panes); row 48 → **Diverge** (owner: no multiplexer) |
+
+Never call a session a "pane", "tab", "window" or "workspace". The bottom frame keeps
+**terminal** tabs (PTYs are terminals, not sessions).
+
+#### A2.19 Mobile, where it differs
+
+- **Header**: the phone page header has no lead row. Tools sit on the title row, and 52 px
+  is kept free at the top-right for the floating crab. Gutter 16.
+- **Navigation**: a bottom nav (surface-1, top `line`, labels 12, active `shell`) with
+  Sessions · Board · Settings. Search is a header tool.
+- **Chat header**: 52 px (back, title 16/600 + sub-line, ⋮, crab space). The session strip is
+  a centred band below the header (11.5 dim, bottom rule at 40 %), not a pill.
+- **Rows**: 64. Swipe left on a row for Pin / Delete. Long-press for the anchored menu.
+- **Dialogs**: every dialog is a bottom sheet (radius 24 top, handle). Interaction cards
+  take the composer slot as on desktop. Option rows are 46, and buttons are 40–44 pills.
+- **Floating crab**: 56 (A2.13) replaces the app-bar glyph.
+- **Toolbar capsule**: the composer toolbar uses the capsule proportions (keys 34, gaps 6,
+  inner padding 8). There is no terminal key capsule (Oino mobile has no terminal).
+- **Toasts**: they sit above the composer or FAB.
+
+#### A2.20 Per-file work plan (fix batches)
+
+Rules for all batches:
+- **Branch and gates**: commit on `v1-alpha` with the batch id prefix. Apps gates are
+  `cargo fmt`, `clippy -D warnings -W clippy::pedantic`, `cargo test` in `apps/`, `-j 2`, and
+  `TMPDIR=$PWD/target/tmp`.
+- **File ownership**: each file belongs to exactly one batch (listed). Another batch that
+  needs a change there asks the owner, or lands a minimal hunk with the owner named in the
+  commit body.
+- **First landing**: `gui-fix-shell` lands **S0 tokens + primitives first**: A2.2–A2.5 in
+  `design/*`, plus `button`, `chip`, `card`, `section_label`, `kbd`, `page_header`,
+  `DetailHeader` and dialog. Others build on them.
+- **What can start at once**: the crash and freeze fixes (GA-1/40, GA-30/42, GA-32) start
+  immediately in every batch, because they need no tokens.
+- **Mobile**: `apps/oino-ui/src/mobile/**` is not in these batches (follow-up
+  `gui-fix-mobile` per A2.19). Shared component changes must keep it compiling.
+- **Screenshots**: refresh `docs/dev/v1/design/shots/desktop/*` for every visual change, and
+  compare side by side with `design/ref/unipi/*`.
+
+**gui-fix-conversation**: conversation, timeline, composer, interaction.
+
+Files owned:
+- `apps/oino-ui/src/components/{conversation.rs, composer.rs, dock.rs, query_rail.rs, timeline/{mod,user,tool,cards}.rs, interaction/{mod,approval,question,plan,dock_dialog}.rs}`
+- `apps/oino-ui/src/views/session_pane.rs`
+- `apps/oino-ui/src/model/{composer,timeline,transcript,tools,interaction,dialog,coalesce}.rs`
+- core: `crates/oino-core/src/session/frontend.rs`, `crates/oino-core/src/extensions/runner.rs`
+- wasm host: `crates/oino-wasm-host/src/instance.rs`
+- extension: `extensions/unipi/workflow` (active-tools restore only)
+
+GA ids (17): **GA-1, GA-40** (P0 crash), **GA-30, GA-42** (P0 orphan approvals), GA-2, GA-3,
+GA-4, GA-5, GA-6, GA-7, GA-21, GA-25, GA-27, GA-28, GA-29, GA-8, GA-9.
+
+| Step | Files | Change |
+|---|---|---|
+| C1 crash | `views/session_pane.rs:966-981` (`on_text_changed`) → spawn on the stored tokio `Handle` (`rt.rs`); `crates/oino-core/src/session/frontend.rs:447` bare `tokio::spawn` → the session's runtime handle | GA-1, GA-40; add a test that runs `editor_event` from a non-tokio thread |
+| C2 interactions never time out | `crates/oino-wasm-host/src/instance.rs:401` (no deadline while a handler awaits a UI dialog; deadline paused per dialog), `crates/oino-core/src/extensions/runner.rs:361` (on handler death send `extension_ui_dismiss{reason:"cancelled"}`), `model/dialog.rs` (drop cards on dismiss; queue "1 of N") | GA-30, GA-42 |
+| C3 input integrity | `views/session_pane.rs` (`pending_text` / `set_value` race after `/`; completion refresh must not overwrite typed keys), `model/composer.rs:42` `intent()` dispatches pi built-ins `/new /compact /model /resume /name /fork /tree /copy /export /reload …` locally; ↓ on empty editor → `emptyArrowDown` editor event → tray panel, `/unipi:subagents` opens the tray tab | GA-2, GA-3, GA-21 |
+| C4 composer look | `components/composer.rs` (A2.11 shell R 26, placeholder, attach circle, mode chip from `unipi:workflow:status` topic, model chip with ring → control centre, send/stop circle + chevron Steer/Queue, glance frame slot rendering `setFrame`/`setFooter` provided by `meta_row.rs`), completion menu (one group per source, enchanted replaces base, colour tags) | GA-4, GA-25 (glance slot shared with GA-26) |
+| C5 timeline look | `components/timeline/{user,tool,cards,mod}.rs`, `model/{timeline,tools,transcript}.rs` (A2.10: bubble, prose tokens, **fold line per turn** model, tool row 32, tool body, harness card collapsed by default for memory/bg notification/plan-mode reminder/kanboard tables via OUS `table`, turn end, Changes this turn card, inline error row, remove gutter glyph artifact) | GA-6, GA-8, GA-9 (dedupe "Compaction failed:", no "Switch model" for non-model errors) |
+| C6 header slot | `components/conversation.rs` (start header only in empty sessions, rendered as EmptyState crab 88 + build line; collapsed harness card otherwise; welcome per A2.17) | GA-5 |
+| C7 interaction cards | `components/interaction/*` (A2.11 card in composer slot, radius 24, options 46, stable layout: feedback field reserved at first paint, no height jump; dialogs scroll inside max height), `components/dock.rs` (queue strip, run-state line) | GA-7, GA-27, GA-29 (row labels "· None" → model/provider; list scroll fade) |
+| C8 plan-mode tools | `extensions/unipi/workflow` (restore `ask_user`, `bg_*` when leaving plan mode) | GA-28 |
+
+**gui-fix-panes**: side pane, browser host shell only, terminal, diff, log.
+
+Files owned:
+- `apps/oino-ui/src/components/{side_pane.rs, browser.rs (host chrome only, not the webview crate), terminal.rs, log_view.rs, tabs.rs}`
+- the diff viewer inside `side_pane.rs`
+- `crates/oino-modes` `_oino/agents` feed (GA-44)
+
+GA ids (5): GA-13, GA-14, GA-15, GA-18, GA-44.
+
+| Step | Files | Change |
+|---|---|---|
+| P1 look | `tabs.rs`, `side_pane.rs` | Side pane = flush right column (rule `line_soft`), default 440, min 320. `DetailHeader` (56) per tab content instead of a ZCode tab bar for Browser/Review/Agent; tab strip only when > 1 tab: 38 px pills (chip look), close ✕ on hover; launcher `+` → anchored menu (Review, Files, Plan, Tree, Browser, Terminal, extension panels) |
+| P2 routing | `side_pane.rs:152` (`openPanel sidePane` for `unipi.app-bridge/control`), `side_pane.rs:338-345` (`+` opens the launcher) | GA-18, GA-13 |
+| P3 tasks + agents | `side_pane.rs` Tasks tab reads the `unipi:bg:tasks` topic (rows: name, command mono 12, status capsule, elapsed, logs/kill pills; empty state per A2.14); Agent tab = read-only child timeline using the conversation batch's timeline components once `_oino/agents` lands | GA-14, GA-15, GA-44 |
+| P4 browser host | `browser.rs` | `DetailHeader`-style URL row (40 high pill field, back/forward/reload/open-externally 32 round), agent-driving strip "Agent is using the browser · Take over" (`attention_surface`), localhost chip in the chat (`m7-desktop-browser-pane.png`) |
+| P5 terminal / diff / log | `terminal.rs`, `log_view.rs`, diff in `side_pane.rs` | Terminal bg surface-1, tab strip 38 (term tabs, not sessions), ANSI from tokens; diff with `diff_*_bg/_fg`, file card radius 16; log view mono 11.5/17, thin scrollbars A2.5 |
+
+**gui-fix-unipi**: OUS, board/kanban, tray, footer/meta row, status panel, Unicrab/mascot,
+unipi pages.
+
+Files owned:
+- `apps/oino-ui/src/components/{ous/{mod,kanban}.rs, meta_row.rs, status_panel.rs, unicrab.rs, empty.rs}`
+- `apps/oino-ui/src/views/{board.rs, mascot.rs}`
+- `apps/oino-ui/src/model/{ous.rs, kanban.rs, status.rs, ui_state.rs}`
+- `apps/oino-ui/src/design/brand.rs` and the new `design/lore.rs`
+- extensions: `extensions/unipi/{info-screen, updater, memory, kanboard}` (only the parts
+  named here)
+
+GA ids (12): **GA-17** (P0 board), **GA-19a** (P0 readme/changelog content), **GA-32** (P0
+mascot crash), GA-20, GA-22, GA-23, GA-26, GA-43, GA-10, GA-12, GA-31, GA-39.
+
+| Step | Files | Change |
+|---|---|---|
+| U1 mascot crash | `views/mascot.rs` (render from a `MascotSnapshot` passed in; never read `Workspace`/`AppShell` inside its update), plus a request to shell: `sync_mascot` defers `MascotView::open` with `cx.defer` | GA-32 |
+| U2 board | `views/board.rs:96,246` (`/unipi:kanboard open`, New task → native New task dialog or `/unipi:kanboard-add`), `components/ous/kanban.rs` (A2.17 board look: lanes, cards, lane strip, dashed empty, FAB) — needs GA-41 (shell) for the binary | GA-17, GA-20 |
+| U3 OUS panels | `components/ous/mod.rs` (dialog look per A2.12; panel `keys` → footer legend + key bindings, never buttons; title vs footer hint drawn once; Esc closes/back; `meter` values formatted (no raw floats); `barChart`/`sparkline` drawn; tabs as segmented pills), `model/ous.rs` | GA-22, GA-23 |
+| U4 tray | `model/ui_state.rs` (editorReplace panel lifecycle), `ous/mod.rs` tray rendering in the composer slot (radius 26 shell, segmented tabs, rows 56) | GA-22 (tray part) |
+| U5 footer glance | `components/meta_row.rs` (A2.11 glance frame: top/bottom segments with 1 px dividers, wordmark brand, toned numbers, priority dropping, never wraps; session strip summary for `DetailHeader`) | GA-26 |
+| U6 shortcuts state | `model/ui_state.rs:603` keep `setShortcuts` per extension, expose a table to shell's key dispatcher | GA-43 |
+| U7 status | `components/status_panel.rs`, `model/status.rs` (plan todos only from workflow plan, not assistant questions; working-mode chip + Progress sheet per L10; status panel opt-in) | GA-10 |
+| U8 Unicrab + empty | `design/brand.rs` (sprite + anim tables from unipi JSON), `components/unicrab.rs` (rig, states, header crab 28 with badge, needs-you drawer), `components/empty.rs` (A2.14), new `design/lore.rs` | L7, L8 |
+| U9 extension content | `extensions/unipi/updater` (bundled README/CHANGELOG paths vs `oino_bundle::DOCS`), `extensions/unipi/info-screen` (local hour greeting, usage index), `extensions/unipi/memory` (import prompt once, not per session), hint browser "learned" toggle | GA-19a, GA-12, GA-39, GA-31 |
+
+**gui-fix-shell**: shell, sidebar, header, palette, settings, extensions, onboarding,
+theme/tokens.
+
+Files owned:
+- `apps/oino-ui/src/views/{shell.rs, mod.rs, settings_page.rs, extensions_page.rs, onboarding.rs, soak.rs}`
+- `apps/oino-ui/src/components/{sidebar.rs, header.rs, window_chrome.rs, palette.rs, keys.rs, menu.rs, dialog.rs, toast.rs, button.rs, badge.rs, controls.rs, tooltip.rs, settings.rs, model_menu.rs, mod.rs}` and the new `components/{page_header,chip,card,section_label,kbd}.rs`
+- `apps/oino-ui/src/design/{tokens,theme,type_scale,motion,icons,ticker,tones,tests,syntax,perf,mod}.rs`
+- `apps/oino-ui/src/{host.rs, platform.rs, lib.rs}`
+- `apps/oino-ui/src/model/{palette,session,sessions}.rs`
+- all of `apps/oino-desktop/src/*`
+- `crates/oino-resources/src/discovery.rs`
+
+GA ids (13): **GA-16** (P0 shortcuts dead), **GA-19b** (Extensions Readme button), GA-35,
+GA-36, GA-11, GA-24, GA-33, GA-34, GA-37, GA-38, GA-41, GA-45, GA-46.
+
+| Step | Files | Change |
+|---|---|---|
+| S0 tokens + primitives | `design/tokens.rs` (A2.2 palette fields + values, A2.4 sizes/radii/elevation, A2.5 motion), `design/type_scale.rs` (`Title`, `Prose`, `Xs` ui−3), `design/theme.rs` (gpui-kit derivation incl. scrollbar thumb, focus off), `design/tests.rs` (contrast for new pairs; guard), new `components/{chip,card,section_label,kbd,page_header}.rs`, `button.rs` (A2.15), `dialog.rs` (A2.12), `menu.rs` (radius 16, rows 40), `toast.rs` (A2.12 + multi-line result card) | GA-36, GA-24 |
+| S1 no multiplexer | `views/shell.rs` (delete split/layout/`Pane`; rename `Workspace` → `AppShell`, `MAX_LIVE_PANES` → `MAX_WARM_SESSIONS`; flush columns L1; list column 400 resizable; switch sheet Ctrl+O; startup reopens the last session instead of creating an empty one), `components/sidebar.rs` (A2.8 nav sidebar 224 + list column with project sections and needs-you strip; drop ViewSwitcher and "Open in new pane"), `views/mod.rs` keymap, `model/sessions.rs` | GA-35, GA-11 |
+| S2 headers | `components/header.rs` → `DetailHeader` (A2.7), `window_chrome.rs` (client decorations over the flush layout; title "● Oino" on needs-you) | L3 |
+| S3 keys + palette | `components/keys.rs` (bind extension `setShortcuts` from GA-43 table; Ctrl+M control centre; resolve `ctrl+b` collision: sidebar = Ctrl+B only when the composer is not focused, else extension wins with a toast once), `components/palette.rs`, `model/palette.rs` (A2.17 palette; Extensions group lists shortcuts), Settings → Keyboard shortcuts lists them | GA-16, GA-34 |
+| S4 settings + extensions | `views/settings_page.rs` (A2.16 layout; Permissions finds namespace by extension id `unipi.workflow` not `workflow` (1249-1254); General/Sessions editable; About with Check for updates; Remote hidden), `views/extensions_page.rs` (A2.17 rows; Readme button opens the updater readme panel :92), `views/onboarding.rs` | GA-33, GA-37, GA-19b |
+| S5 desktop host | `apps/oino-desktop/src/embedded.rs` (find `oino-kanboard` next to the executable / bundle dir / PATH; report `ExtensionMode` desktop + frontend `gpui` to host-info), `main.rs`, `prefs.rs` (guard: a failing mascot open resets `mascotWindow` instead of crash-looping), packaging scripts bundle `oino-kanboard` | GA-41, GA-45 |
+| S6 skills discovery | `crates/oino-resources/src/discovery.rs:48` (no implicit `~/.agents/skills` when an agent dir is set) | GA-38 |
+| S7 perf | `design/ticker.rs`, `views/soak.rs`, `design/perf.rs` (no 8 ms refresh while idle; one ticker; thread count audit; soak = 1 visible + 3 background streaming) | GA-46 |
+
+Order across batches: start C1, C2, U1 and S0 at once. Then run S1/S2 with C4/C5/C7 and
+U2/U3/U5. P1–P5 and U8 come next, followed by S3/S4. Re-run the GUI audit (`gui-audit`)
+after all four batches land, and close the GA ids in `gui-audit.md`.
+
 
 ---
 
@@ -1330,7 +2118,7 @@ Status column: **Match** = same behaviour; **Adapt** = same intent, Oino-specifi
 | 4 | Spacing / radius nesting | 4 px grid; xl→lg→md→sm; 2xl exceptions | same rules and exceptions (§2.5–2.6) | Match |
 | 5 | Icons | Lucide, stroke 1.5 | Lucide via gpui-kit assets, stroke 1.5 | Match |
 | 6 | Motion | 100–300 ms, low drama, hidden-window pause | 120/180/280 ms, reduce motion, ticker stops when idle | Match |
-| 7 | Workspace frames | sidebar + independent conversation / terminal / side frames, 4 px gaps, xl radius | §3.1 | Match |
+| 7 | Workspace frames | sidebar + independent conversation / terminal / side frames, 4 px gaps, xl radius | flush unipi columns (A2 L1) | Adapt |
 | 8 | Sidebar width | 264 default/min, ≤ 50 % | same | Match |
 | 9 | Sidebar nav order | New Task → Search → Automations → Plugins → view switcher | New session → Search → Board → Extensions → view switcher | Adapt (Automations → Board) |
 | 10 | Workspace groups, counts, pinned, unread dots | yes | §4.7 | Match |
@@ -1371,7 +2159,7 @@ Status column: **Match** = same behaviour; **Adapt** = same intent, Oino-specifi
 | 45 | Platform primary modifier | Cmd on Apple, Ctrl elsewhere, never both | same | Match |
 | 46 | Settings | full page, nav, forms in bordered groups | §5.7 + extension hub | Match |
 | 47 | Toasts | bottom stack, rounded-2xl, blur | bottom-right, `R_2XL`, 95 % opaque (no blur in GPUI) | Adapt |
-| 48 | Split panes | ≤ 4 panes, close ≠ stop | ⌘\ split ≤ 4 | Match |
+| 48 | Split panes | ≤ 4 panes, close ≠ stop | none: one visible session, others keep running (A2.18) | Diverge |
 | 49 | Automations / scheduled tasks | main view | Board (kanboard autowork) instead; cron not ported (D22) | Adapt |
 | 50 | Bots (Feishu), coding-plan purchase, rewards, share links, whiteboard, office previews, CUA | product features | not built (out of Oino scope) | Diverge |
 | 51 | Mobile remote | single column, drawers instead of side tabs, QR pairing | §6 (drawers, sheets, M10 pairing) | Match |
@@ -1379,8 +2167,9 @@ Status column: **Match** = same behaviour; **Adapt** = same intent, Oino-specifi
 | 53 | i18n | zh/en | English only in v1; layouts tolerate +40 % text length | Adapt |
 | 54 | Window chrome | per-OS controls, Linux 16 px shell radius | client decorations, per-OS insets (§3.1) | Match |
 
-Summary (after A1): 54 items — **45 Match, 8 Adapt, 1 Diverge** (ZCode-only product features
-such as bots, coding-plan purchase, share links and CUA).
+Summary (after A2): 54 items — **43 Match, 9 Adapt, 2 Diverge** (row 50: ZCode-only product
+features such as bots, coding-plan purchase, share links and CUA; row 48: split panes, owner
+decision A2).
 
 ---
 
