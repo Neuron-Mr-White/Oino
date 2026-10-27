@@ -52,7 +52,8 @@ pub struct BoardUi {
     /// Toolbar state.
     pub opts: BoardOptions,
     search: Option<Entity<InputState>>,
-    focus: Option<FocusHandle>,
+    /// The board page's keyboard focus (public: the shell focuses it on route change, QA-1).
+    pub focus: Option<FocusHandle>,
     /// Open menu.
     pub menu: Option<BoardMenu>,
     /// Task id whose detail overlay is shown.
@@ -134,6 +135,13 @@ impl Workspace {
         let (title, body) = self.board_ui.new_task.clone()?;
         let e = cx.entity().downgrade();
         let e2 = e.clone();
+        // QA-1: closing the dialog returns focus to the board (the title input's handle
+        // would otherwise die with the dialog and leave the page keyboard-dead).
+        let refocus = |ws: &mut Self, w: &mut Window, cx: &mut Context<Self>| {
+            if let Some(f) = &ws.board_ui.focus {
+                w.focus(f, cx);
+            }
+        };
         let fields = div()
             .flex()
             .flex_col()
@@ -158,9 +166,10 @@ impl Workspace {
                     .label("Cancel")
                     .variant(Variant::Secondary)
                     .size(BtnSize::Xl)
-                    .on_click(move |_, _, cx| {
+                    .on_click(move |_, w, cx| {
                         let _ = e.update(cx, |ws, cx| {
                             ws.board_ui.new_task = None;
+                            refocus(ws, w, cx);
                             cx.notify();
                         });
                     })
@@ -176,9 +185,12 @@ impl Workspace {
             ],
             {
                 let e = cx.entity().downgrade();
-                Rc::new(move |_, cx: &mut App| {
+                Rc::new(move |w, cx: &mut App| {
                     let _ = e.update(cx, |ws, cx| {
                         ws.board_ui.new_task = None;
+                        if let Some(f) = ws.board_ui.focus.clone() {
+                            w.focus(&f, cx);
+                        }
                         cx.notify();
                     });
                 })
@@ -192,6 +204,9 @@ impl Workspace {
             match e.keystroke.key.as_str() {
                 "escape" => {
                     self.board_ui.new_task = None;
+                    if let Some(f) = self.board_ui.focus.clone() {
+                        window.focus(&f, cx);
+                    }
                     cx.notify();
                     cx.stop_propagation();
                 }

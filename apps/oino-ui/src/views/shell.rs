@@ -1339,7 +1339,7 @@ impl AppShell {
         cx.notify();
     }
 
-    pub(crate) fn open_board(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn open_board(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let has = self
             .active_pane()
             .is_some_and(|p| p.read(cx).model.ui.panel(kanban::BOARD_PANEL).is_some());
@@ -1348,21 +1348,98 @@ impl AppShell {
         }
         self.settings_view = None;
         self.route = Route::Board;
+        // QA-1 repro 4: the board page takes the keyboard when it is shown (the composer
+        // handle of the sessions page is not in this tree, so without this every key was
+        // dead on the board).
+        let focus = self
+            .board_ui
+            .focus
+            .get_or_insert_with(|| cx.focus_handle())
+            .clone();
+        window.focus(&focus, cx);
         cx.notify();
+    }
+
+    /// An app-level overlay (result card, confirm, readme) closed (QA-1): return focus to
+    /// the visible route's surface instead of leaving it on the removed dialog.
+    pub(crate) fn refocus_after_overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette.is_some()
+            || self.switch.is_some()
+            || self.confirm.is_some()
+            || self.result_card.is_some()
+            || self.ext_readme.is_some()
+        {
+            return; // another overlay stays on top and holds focus
+        }
+        if self.route == Route::Sessions
+            && let Some(pane) = self.active_pane().cloned()
+        {
+            pane.update(cx, |p, cx| p.restore_focus(window, cx));
+        } else {
+            self.repair_focus(window, cx);
+        }
+        cx.notify();
+    }
+
+    /// QA-1 safety net: when no live element of this window holds focus (an overlay or page
+    /// closed without restoring it), keystrokes and actions land nowhere. Every render,
+    /// move focus back to the visible route's surface. While a surface owns focus it is
+    /// contained in the rendered frame, so this is a no-op in the healthy case.
+    fn repair_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette.is_some() || self.switch.is_some() {
+            return; // their input is in-tree and holds focus
+        }
+        if self.focus.contains_focused(window, cx) {
+            return;
+        }
+        match self.route {
+            Route::Sessions => {
+                if let Some(pane) = self.active_pane().cloned() {
+                    pane.update(cx, |p, cx| p.restore_focus(window, cx));
+                } else {
+                    window.focus(&self.sidebar_focus, cx);
+                }
+            }
+            Route::Board => {
+                let focus = self
+                    .board_ui
+                    .focus
+                    .get_or_insert_with(|| cx.focus_handle())
+                    .clone();
+                window.focus(&focus, cx);
+            }
+            Route::Settings => {
+                if let Some((view, _)) = &self.settings_view {
+                    let handle = Focusable::focus_handle(view.read(cx), cx);
+                    window.focus(&handle, cx);
+                } else {
+                    window.focus(&self.focus, cx);
+                }
+            }
+            Route::Extensions | Route::Onboarding => {
+                window.focus(&self.focus, cx);
+            }
+        }
     }
 
     // ── rendering ───────────────────────────────────────────────────────────
 
-    /// Whether the list column fits next to the detail (A2.8: < 900 px without the side
-    /// pane, < 1180 px with it, the list folds away).
+    /// Whether the list column fits next to the detail (A2.8: the list folds away when
+    /// list + chat + side pane do not fit — the chat keeps `CONVERSATION_MIN`, so a
+    /// `sidePane` panel is never silently hidden by the list column; QA-5).
     pub(crate) fn list_fits(&self, window: &Window) -> bool {
         let width = f32::from(window.viewport_size().width);
-        let need = if self.side_open {
-            breakpoint::LIST_WITH_SIDE
+        let sidebar = if self.sidebar_open && width >= breakpoint::NARROW {
+            size::SIDEBAR
         } else {
-            breakpoint::LIST
+            0.0
         };
-        width >= need
+        let side = if self.side_open {
+            f32::from(self.side_width)
+        } else {
+            0.0
+        };
+        width - sidebar - side - f32::from(self.list_width) >= size::CONVERSATION_MIN
     }
 
     /// A flush splitter: an 8 px hit area with a 1 px `line_soft` rule (2 px `resize_handle`
@@ -1626,19 +1703,26 @@ impl AppShell {
             .into_any_element()
     }
 
-    /// The result card dialog (GA-24).
-    fn render_result(&self, t: &OinoTheme, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// The result card dialog (GA-24). It owns the keyboard while open and returns focus on
+    /// close (QA-1 repro 3: the card used to need `Tab Tab Return` before Esc acted).
+    fn render_result(
+        &self,
+        t: &OinoTheme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
         let (title, body) = self.result_card.clone()?;
         let e = cx.entity().downgrade();
-        let close: crate::components::dialog::OnClose = Rc::new(move |_, cx: &mut App| {
+        let restore: Rc<dyn Fn(&mut Window, &mut App)> = Rc::new(move |w, cx| {
             let _ = e.update(cx, |ws, cx| {
                 ws.result_card = None;
-                cx.notify();
+                ws.refocus_after_overlay(w, cx);
             });
         });
+        let focus = crate::components::dialog::owned_focus("result-card", window, cx);
         let copy = body.clone();
-        let done = Rc::clone(&close);
-        Some(crate::components::dialog::modal_frame(
+        let done = Rc::clone(&restore);
+        Some(crate::components::dialog::modal_owned(
             t,
             "result-card",
             title,
@@ -1671,7 +1755,8 @@ impl AppShell {
                     .on_click(move |_, w, cx| done(w, cx))
                     .into_any_element(),
             ],
-            close,
+            &focus,
+            restore,
         ))
     }
 }
@@ -1687,6 +1772,7 @@ impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _activity = crate::stability::activity("shell render");
         perf::begin(cx);
+        self.repair_focus(window, cx);
         let t = OinoTheme::get(cx);
         self.window_width = window.viewport_size().width;
         let narrow = self.window_width < px(breakpoint::NARROW);
@@ -1713,9 +1799,9 @@ impl Render for AppShell {
             .filter(|_| self.route == Route::Sessions)
             .and_then(|p| p.update(cx, |p, cx| p.render_modal(window, cx)));
         let confirm = self
-            .render_confirm(&t, cx)
-            .or_else(|| self.render_result(&t, cx))
-            .or_else(|| self.render_readme(&t, cx));
+            .render_confirm(&t, window, cx)
+            .or_else(|| self.render_result(&t, window, cx))
+            .or_else(|| self.render_readme(&t, window, cx));
         let switch = self.render_switch(&t, cx);
         // Native browser views cover GPUI content in their bounds: show only the visible
         // session's, and only while nothing is drawn over the side pane.

@@ -512,14 +512,19 @@ impl SessionPane {
         };
         // A2.12 dialog look (gui-fix-unipi U3): panel `keys` are one footer legend and are
         // bound while the dialog has focus — never a row of buttons (GA-22, GA-23).
+        // QA-1: closing the panel must return focus to the pane, not leave it on the dead
+        // panel handle (every later keystroke would land nowhere).
         Some(ous::panel_dialog(
             &t,
             &panel,
             width,
             body,
             on_action,
-            Rc::new(move |_, cx: &mut App| {
-                let _ = entity.update(cx, |p, cx| p.close_panel(&close_id, cx));
+            Rc::new(move |w, cx: &mut App| {
+                let _ = entity.update(cx, |p, cx| {
+                    p.close_panel(&close_id, cx);
+                    p.restore_focus(w, cx);
+                });
             }),
             window,
             cx,

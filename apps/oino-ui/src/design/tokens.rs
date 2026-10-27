@@ -812,10 +812,6 @@ pub mod breakpoint {
     pub const MEDIUM: f32 = 864.0;
     /// Side pane auto-collapse threshold.
     pub const NARROW: f32 = 720.0;
-    /// The session list column folds away below this width (A2.8).
-    pub const LIST: f32 = 900.0;
-    /// … or below this width while the side pane is open.
-    pub const LIST_WITH_SIDE: f32 = 1180.0;
 }
 
 /// Motion durations in milliseconds (design.md §2.10).

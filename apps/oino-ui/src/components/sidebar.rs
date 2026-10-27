@@ -169,26 +169,30 @@ impl AppShell {
         });
     }
 
-    /// The confirmation dialog, when one is pending.
+    /// The confirmation dialog, when one is pending. It owns the keyboard while open and
+    /// returns focus on close (QA-1).
     pub(crate) fn render_confirm(
         &self,
         t: &OinoTheme,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let c = self.confirm.clone()?;
         let e = cx.entity().downgrade();
         let run = Rc::clone(&c.run);
-        let close: crate::components::dialog::OnClose = {
+        let restore: crate::components::dialog::OnClose = {
             let e = e.clone();
-            Rc::new(move |_, cx: &mut App| {
+            Rc::new(move |w, cx| {
                 let _ = e.update(cx, |ws, cx| {
                     ws.confirm = None;
+                    ws.refocus_after_overlay(w, cx);
                     cx.notify();
                 });
             })
         };
-        let cancel = Rc::clone(&close);
-        Some(crate::components::dialog::modal_frame(
+        let cancel = Rc::clone(&restore);
+        let focus = crate::components::dialog::owned_focus("confirm", window, cx);
+        Some(crate::components::dialog::modal_owned(
             t,
             "confirm",
             c.title.clone(),
@@ -215,12 +219,14 @@ impl AppShell {
                         let _ = e.update(cx, |ws, cx| {
                             ws.confirm = None;
                             run(ws, window, cx);
+                            ws.refocus_after_overlay(window, cx);
                             cx.notify();
                         });
                     })
                     .into_any_element(),
             ],
-            close,
+            &focus,
+            restore,
         ))
     }
 

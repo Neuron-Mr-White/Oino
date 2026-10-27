@@ -1831,6 +1831,33 @@ impl SessionPane {
         composer.update(cx, |s, cx| s.focus(window, cx));
     }
 
+    /// Returns keyboard focus to the pane's active surface after an overlay closed (QA-1):
+    /// a docked interaction card, an `editorReplace` panel in the composer slot, else the
+    /// composer. Without this the removed overlay keeps a dead focus handle and every
+    /// keystroke lands nowhere.
+    pub(crate) fn restore_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(card) = self
+            .interaction
+            .as_ref()
+            .filter(|v| !v.read(cx).is_modal())
+            .cloned()
+        {
+            card.update(cx, |v, cx| v.focus_card(window, cx));
+            return;
+        }
+        if self
+            .model
+            .ui
+            .panels()
+            .any(|p| p.placement == PanelPlacement::EditorReplace)
+        {
+            window.focus(&self.panel_focus.0, cx);
+            return;
+        }
+        let composer = self.composer.clone();
+        composer.update(cx, |s, cx| s.focus(window, cx));
+    }
+
     /// Composer key handling (history, completions, abort, work tray).
     pub(crate) fn on_composer_key(
         &mut self,
@@ -1957,7 +1984,8 @@ impl SessionPane {
 
     fn respond(&mut self, response: UiResponse, cx: &mut Context<Self>) {
         self.model.ui.dismiss(&response.id);
-        self.interaction = None;
+        // The card stays until the next render: `sync_interaction` drops it and restores
+        // focus, so answering the last card never leaves a dead focus handle (QA-1).
         self.backend.ui_respond(response);
         cx.emit(PaneEvent::Live(self.live()));
         cx.notify();
@@ -1996,8 +2024,7 @@ impl SessionPane {
             }
             None if self.interaction.is_some() => {
                 self.interaction = None;
-                let composer = self.composer.clone();
-                composer.update(cx, |s, cx| s.focus(window, cx));
+                self.restore_focus(window, cx);
             }
             _ => {
                 if let Some(view) = &self.interaction {

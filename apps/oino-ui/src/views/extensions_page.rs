@@ -115,15 +115,26 @@ impl AppShell {
         .detach();
     }
 
-    /// The README dialog (Readme row action).
+    /// The README dialog (Readme row action). It owns the keyboard while open and returns
+    /// focus on close (QA-1).
     pub(crate) fn render_readme(
         &self,
         t: &OinoTheme,
+        window: &mut gpui_kit::Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let (title, text) = self.ext_readme.clone()?;
         let e = cx.entity().downgrade();
-        Some(crate::components::dialog::modal_frame(
+        let restore: std::rc::Rc<dyn Fn(&mut gpui_kit::Window, &mut gpui_kit::App)> =
+            std::rc::Rc::new(move |w, cx| {
+                let _ = e.update(cx, |ws, cx| {
+                    ws.ext_readme = None;
+                    ws.refocus_after_overlay(w, cx);
+                    cx.notify();
+                });
+            });
+        let focus = crate::components::dialog::owned_focus("ext-readme", window, cx);
+        Some(crate::components::dialog::modal_owned(
             t,
             "ext-readme",
             SharedString::from(title),
@@ -133,12 +144,8 @@ impl AppShell {
                 .child(TextView::markdown("ext-readme-md", text).selectable(true))
                 .into_any_element(),
             Vec::new(),
-            std::rc::Rc::new(move |_, cx: &mut gpui_kit::App| {
-                let _ = e.update(cx, |ws, cx| {
-                    ws.ext_readme = None;
-                    cx.notify();
-                });
-            }),
+            &focus,
+            restore,
         ))
     }
 

@@ -2,14 +2,15 @@
 //! dialog elevation; header title 20/26/600 (padding 14 20 10) + ✕ 34; the body scrolls
 //! inside min(80 %, 760) (GA-7); sticky footer with right-aligned actions, primary last.
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement, KeyDownEvent,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    px, relative,
+    AnyElement, App, ClickEvent, ElementId, FocusHandle, InteractiveElement as _, IntoElement,
+    KeyDownEvent, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
+    Window, div, px, relative,
 };
 
 use crate::components::button::{Btn, BtnSize};
@@ -21,6 +22,71 @@ const MOTION_MS: u64 = crate::design::tokens::motion::DIALOG_MS;
 
 /// Close callback.
 pub type OnClose = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// Focus handles of app-level modals (result card, confirm, readme; QA-1).
+#[derive(Default)]
+struct OwnedFocus(HashMap<&'static str, FocusHandle>);
+
+impl gpui_kit::Global for OwnedFocus {}
+
+/// The focus handle of the app-level modal `id`. A newly shown modal focuses itself (a
+/// dialog with no autofocus field focuses itself, A2 L11), so Esc and its buttons act at
+/// once instead of requiring a click first (QA-1 repro 3).
+pub fn owned_focus(id: &'static str, window: &mut Window, cx: &mut App) -> FocusHandle {
+    let existing = cx.default_global::<OwnedFocus>().0.get(id).cloned();
+    let handle = if let Some(h) = existing {
+        h
+    } else {
+        let h = cx.focus_handle();
+        cx.global_mut::<OwnedFocus>().0.insert(id, h.clone());
+        h
+    };
+    if !handle.contains_focused(window, cx) {
+        window.focus(&handle, cx);
+    }
+    handle
+}
+
+/// Forgets the focus handle of a closed app-level modal.
+pub fn forget_owned_focus(id: &'static str, cx: &mut App) {
+    if cx.has_global::<OwnedFocus>() {
+        cx.global_mut::<OwnedFocus>().0.remove(id);
+    }
+}
+
+/// [`modal_frame`] for an app-level modal that owns the keyboard while it is open (QA-1):
+/// the frame tracks `focus` (see [`owned_focus`]) and every close path runs `restore` to put
+/// focus back on a live surface instead of the removed dialog.
+#[allow(clippy::too_many_arguments, reason = "plain layout parameters")]
+pub fn modal_owned(
+    t: &OinoTheme,
+    id: &'static str,
+    title: SharedString,
+    width: f32,
+    body: AnyElement,
+    actions: Vec<AnyElement>,
+    focus: &FocusHandle,
+    restore: Rc<dyn Fn(&mut Window, &mut App)>,
+) -> AnyElement {
+    let close_id = id;
+    let on_close: OnClose = Rc::new(move |w, cx| {
+        forget_owned_focus(close_id, cx);
+        restore(w, cx);
+    });
+    // The scrim itself tracks the handle: the focused element must be the scrim (or inside
+    // it) for its Esc handler and buttons to receive keys (QA-1).
+    modal_with_toolbar_focused(
+        t,
+        id,
+        title,
+        width,
+        Vec::new(),
+        body,
+        actions,
+        on_close,
+        Some(focus.clone()),
+    )
+}
 
 /// A modal dialog of `width` with `body` and right-aligned `actions`.
 pub fn modal_frame(
@@ -35,7 +101,9 @@ pub fn modal_frame(
     modal_with_toolbar(t, id, title, width, Vec::new(), body, actions, on_close)
 }
 
-/// A modal with header toolbar buttons (panel keys) next to the close button.
+/// A modal with header toolbar buttons (panel keys) next to the close button. `focus`
+/// tracks the scrim so the dialog can own the keyboard (QA-1); `None` for modals that
+/// focus a field of their own.
 #[allow(clippy::too_many_arguments, reason = "plain layout parameters")]
 pub fn modal_with_toolbar(
     t: &OinoTheme,
@@ -46,6 +114,22 @@ pub fn modal_with_toolbar(
     body: AnyElement,
     actions: Vec<AnyElement>,
     on_close: OnClose,
+) -> AnyElement {
+    modal_with_toolbar_focused(t, id, title, width, toolbar, body, actions, on_close, None)
+}
+
+/// [`modal_with_toolbar`] with the scrim focus handle (see [`modal_owned`]).
+#[allow(clippy::too_many_arguments, reason = "plain layout parameters")]
+pub fn modal_with_toolbar_focused(
+    t: &OinoTheme,
+    id: &'static str,
+    title: SharedString,
+    width: f32,
+    toolbar: Vec<AnyElement>,
+    body: AnyElement,
+    actions: Vec<AnyElement>,
+    on_close: OnClose,
+    focus: Option<FocusHandle>,
 ) -> AnyElement {
     let close_key = Rc::clone(&on_close);
     let close_scrim = Rc::clone(&on_close);
@@ -58,6 +142,7 @@ pub fn modal_with_toolbar(
         .justify_center()
         .bg(t.scrim())
         .occlude()
+        .when_some(focus, |el, f| el.track_focus(&f))
         .on_click(move |_: &ClickEvent, w, cx| close_scrim(w, cx))
         .on_key_down(move |e: &KeyDownEvent, w, cx| {
             if e.keystroke.key == "escape" {
