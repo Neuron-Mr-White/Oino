@@ -573,6 +573,26 @@ pub trait HostServices: Send + Sync {
         HostContextInfo::default()
     }
 
+    // ── browser ──
+    /// `browser.execute`: one browser command (JSON of
+    /// [`crate::browser::BrowserRequest`]) in the caller's scope. Browser failures are
+    /// results with `isError`; `Err` is only for permission / transport problems.
+    fn browser_execute(
+        &self,
+        ext: &ExtensionId,
+        cx: &CallContext,
+        request: RawJson,
+        cancel: CancellationToken,
+    ) -> BoxFut<'_, Result<oino_browser_protocol::BrowserResult, HostError>> {
+        Box::pin(async { unsupported!("browser") })
+    }
+    /// `browser.status` (JSON of `BrowserStatus`; disabled when no browser host).
+    fn browser_status(&self, ext: &ExtensionId, cx: &CallContext) -> RawJson {
+        RawJson::from_json_value(&serde_json::json!({
+            "enabled": false, "available": false, "reason": "disabled", "stealth": false, "display": "headless"
+        }))
+    }
+
     // ── host-produced events ──
     /// Delivers an event produced by the runtime host itself (timers, process exits, tasks).
     fn deliver_event(

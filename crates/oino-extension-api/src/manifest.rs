@@ -226,6 +226,8 @@ pub struct Permissions {
     pub edit_externally: bool,
     /// `services.call`.
     pub services: ServicesPermission,
+    /// `browser.*`: control the in-app browser (browser-control.md §8.4).
+    pub browser: bool,
 }
 
 impl Default for Permissions {
@@ -248,6 +250,7 @@ impl Default for Permissions {
             clipboard: ClipboardPermission::default(),
             edit_externally: false,
             services: ServicesPermission::default(),
+            browser: false,
         }
     }
 }

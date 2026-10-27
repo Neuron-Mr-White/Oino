@@ -19,6 +19,7 @@
 //! | [`ops`] | `session`, `control`, `models`, `ui`, `tasks`, `secrets`, `provider-host` | one enum variant per WIT function |
 //! | [`runtime`] | — | [`ExtensionRuntime`], [`ExtensionInstance`], [`ProviderInstance`], [`HostServices`], [`AgentHandle`] |
 //! | [`manifest`] | — | `extension.json`, [`manifest::Permissions`], package validation |
+//! | [`browser`] | `browser` | [`browser::BrowserHost`], [`browser::BrowserRequest`], wire types |
 //! | `testing` (feature) | — | `RecordingHostServices`, `FakeExtensionRuntime` |
 
 #![forbid(unsafe_code)]
@@ -32,6 +33,7 @@
     )
 )]
 
+pub mod browser;
 pub mod guest;
 pub mod json;
 pub mod manifest;

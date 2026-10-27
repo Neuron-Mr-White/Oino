@@ -1,0 +1,16 @@
+[package]
+name = "oino-browser-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Browser-control wire types shared by oino-browser, hosts, frontends and the oino.browser guest (browser-control.md §8.1)"
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[lints]
+workspace = true
