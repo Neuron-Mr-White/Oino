@@ -8,10 +8,10 @@
 //! | `/unipi:cron` window onto `unipi-host cron` | [`args`]: `/cron` subcommands + `add`/`edit`/`remove`, job-id completions |
 //! | `unipi-host cron` CLI | the `oino cron` CLI (crates/oino) — the same ops over the same store |
 //! | app cron UI | the desktop Automations page (apps/oino-ui) |
+//! | skill `cron` | bundled skill, Oino wording |
 //!
 //! `export_extension!` is gated on `target_arch = "wasm32"` (native `cdylib` links fail on
 //! the `:`-qualified export symbols, unipi-core deviation 11).
-//! | skill `cron` | bundled skill, Oino wording |
 
 #![cfg_attr(
     test,
@@ -41,12 +41,11 @@ use oino_extension::cron;
 use oino_extension::prelude::*;
 use unipi_kit::settings::Store;
 
-use crate::args::{SUBCOMMANDS, split_cron_args};
+use crate::args::split_cron_args;
 use crate::settings::NAMESPACE;
 
 /// The bundled skill's name.
 pub const CRON_SKILL: &str = "cron";
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Job-id completion cache (refreshed at most every 5 s, like unipi's).
 struct IdsCache {
@@ -127,7 +126,6 @@ impl Extension for Cron {
         });
         register_commands(cx);
         tools::register(cx);
-        let _ = VERSION;
         Ok(())
     }
 }
@@ -168,7 +166,6 @@ pub(crate) fn help_text() -> String {
         .iter()
         .cloned(),
     );
-    let _ = SUBCOMMANDS.len();
     lines.join("\n")
 }
 
@@ -178,6 +175,7 @@ oino_extension::export_extension!(Cron);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::args::SUBCOMMANDS;
 
     #[test]
     fn help_lists_the_subcommands() {

@@ -5,9 +5,6 @@
 use oino_extension::command::CompletionItem;
 use oino_extension::ui;
 use oino_extension::{context, host};
-
-#[allow(unused_imports, reason = "used by the completion items below")]
-use oino_extension::command::item;
 use serde_json::{Value, json};
 
 use crate::Cron;
@@ -61,7 +58,7 @@ pub fn parse_key_values(words: &[String]) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut iter = words.iter().peekable();
     while let Some(word) = iter.next() {
-        let Some((key, mut value)) = word.split_once('=') else {
+        let Some((key, value)) = word.split_once('=') else {
             continue;
         };
         if let Some(quoted) = value.strip_prefix('"') {
@@ -76,8 +73,6 @@ pub fn parse_key_values(words: &[String]) -> Vec<(String, String)> {
                     None => break,
                 }
             }
-            value = "";
-            let _ = value;
             let collected = collected.strip_suffix('"').unwrap_or(&collected);
             if !key.is_empty() && !collected.is_empty() {
                 out.push((key.to_owned(), collected.to_owned()));
@@ -149,10 +144,9 @@ fn op_of(sub: &str) -> &'static str {
 }
 
 /// `/cron <sub> <rest…>` dispatch; `sub` empty = the overview.
-pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], cx: &context::Ctx) {
+pub async fn run_subcommand(ext: &'static Cron, sub: &str, rest: &[String], _cx: &context::Ctx) {
     let notify = |message: &str, kind: &str| {
         let _ = ui::notify(message, kind);
-        let _ = cx;
     };
     if sub.is_empty() {
         let status = ext.op("status", json!({})).await;

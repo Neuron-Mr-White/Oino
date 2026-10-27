@@ -1409,6 +1409,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "unipi-cron"
+version = "3.0.0"
+dependencies = [
+ "oino-extension",
+ "serde",
+ "serde_json",
+ "unipi-kit",
+]
+
+[[package]]
 name = "unipi-dream"
 version = "3.0.0"
 dependencies = [
