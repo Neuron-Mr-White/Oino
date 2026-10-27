@@ -19,6 +19,10 @@ sha2 = "0.10"
 crossterm = "0.28"
 dirs = "5"
 proptest = "1"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+croner = "4"
+iana-time-zone = "0.1"
 pulldown-cmark = "0.12"
 ratatui = "0.29"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }

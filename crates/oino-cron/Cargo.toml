@@ -1,0 +1,35 @@
+[package]
+name = "oino-cron"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The Oino cron scheduler: scheduled, unattended headless Oino runs (job model, storage, ticking, execution, notifications, daemon and service install)"
+
+[lib]
+name = "oino_cron"
+path = "src/lib.rs"
+
+[dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
+croner.workspace = true
+dirs.workspace = true
+fs4.workspace = true
+iana-time-zone.workspace = true
+nix = { workspace = true, optional = true }
+reqwest = { workspace = true, default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
