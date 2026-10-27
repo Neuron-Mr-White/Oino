@@ -234,7 +234,7 @@ pub struct RunSpec {
 ///
 /// # Errors
 /// Never returns `Err` for a run-level failure — those are [`Outcome`]s; only log-write
-/// failures bubble up as [`CronError`].
+/// failures bubble up as [`CronError`](crate::CronError).
 #[allow(
     clippy::too_many_lines,
     reason = "one linear pipeline: spawn, pump both pipes, enforce the limit, harvest"

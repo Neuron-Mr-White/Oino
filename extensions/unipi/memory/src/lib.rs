@@ -43,7 +43,7 @@ use unipi_kit::settings::Store;
 use unipi_kit::topics::{self, MemoryDeleted, MemoryStored, ModuleReady};
 
 use crate::files::{MEMORY_TYPES, Record};
-use crate::palace::{Install, Outcome, Places};
+use crate::palace::{Bins, Install, Outcome, Places};
 use crate::reader::Reader;
 use crate::search::Hit;
 use crate::settings::{Config, Journal, NAMESPACE, PendingOp, SaveMode};
@@ -63,7 +63,7 @@ const PENDING_TIMER: &str = "memory-pending";
 const SAVE_ROLE: &str = "memory-save";
 
 const ROOT: &str = "/ext-global/memory";
-const MEMPALACE_GUEST: &str = "/mempalace";
+pub(crate) const MEMPALACE_GUEST: &str = "/mempalace";
 const CONFIG_GUEST: &str = "/mempalace-config";
 
 /// The recall reminder text (unipi `buildMemoryRecallReminder`).
@@ -194,6 +194,8 @@ pub struct Memory {
     settings: Store,
     sessions: SessionMap<Sess>,
     install: RefCell<Option<Install>>,
+    /// Resolved binaries, keyed by the `mempalaceBin` value they were probed for.
+    bins: RefCell<Option<(String, Bins)>>,
     detected: Cell<bool>,
     reader: RefCell<Option<Rc<Reader>>>,
     save_running: Cell<bool>,
@@ -209,7 +211,7 @@ fn spawn(fut: impl Future<Output = ()> + 'static) {
     drop(fut);
 }
 
-fn preopen_host(guest: &str) -> Option<String> {
+pub(crate) fn preopen_host(guest: &str) -> Option<String> {
     oino_extension::fs::preopens()
         .into_iter()
         .find(|p| p.guest_path == guest)
@@ -269,6 +271,19 @@ impl Memory {
         settings::read(&self.settings.get(NAMESPACE))
     }
 
+    /// `mempalace` / `mempalace-mcp`: the configured path when it runs, else `PATH`.
+    async fn bins(&self) -> Bins {
+        let configured = self.cfg().mempalace_bin;
+        if let Some((key, b)) = self.bins.borrow().as_ref()
+            && *key == configured
+        {
+            return b.clone();
+        }
+        let b = Bins::resolve(&configured).await;
+        *self.bins.borrow_mut() = Some((configured, b.clone()));
+        b
+    }
+
     fn debug(&self, line: &str) {
         if !self.cfg().debug {
             return;
@@ -291,21 +306,27 @@ impl Memory {
     fn install_issue(&self) -> Option<String> {
         match self.install.borrow().as_ref() {
             None => Some("MemPalace isn't installed — install uv (https://docs.astral.sh/uv/) for semantic search".into()),
+            Some(i) if !self.palace_mode() && i.rust => Some(format!(
+                "MemPalace {} (Rust port) is too old — update the mempalace-rs build for semantic search",
+                i.version
+            )),
             Some(i) if !self.palace_mode() => Some(format!("MemPalace {} is too old — run `uv tool upgrade mempalace` for semantic search", i.version)),
             Some(_) => None,
         }
     }
 
-    fn reader(&self) -> Option<Rc<Reader>> {
+    async fn reader(&self) -> Option<Rc<Reader>> {
         if !self.palace_mode() {
             return None;
         }
+        let bins = self.bins().await;
         let mut r = self.reader.borrow_mut();
         Some(Rc::clone(r.get_or_insert_with(|| {
             Rc::new(Reader::new(
                 places().palace.as_deref(),
                 true,
                 reader::READER_IDLE_MS,
+                bins.mcp,
             ))
         })))
     }
@@ -315,13 +336,13 @@ impl Memory {
             return;
         }
         self.detected.set(true);
-        let mut i = palace::ensure_install(&root().join(".mempalace-install")).await;
-        if let Some(inst) = &i
-            && palace::compare_versions(&inst.version, palace::MIN_MEMPALACE)
-                == std::cmp::Ordering::Less
-            && let Some(fresh) = palace::refresh_version(&root().join(".mempalace-install")).await
-        {
-            i = Some(fresh);
+        let cache = root().join(".mempalace-install");
+        let mut bins = self.bins().await;
+        let mut i = palace::ensure_install(&cache, &bins);
+        if i.is_none() && palace::uv_install().await {
+            bins = Bins::resolve(&self.cfg().mempalace_bin).await;
+            *self.bins.borrow_mut() = Some((self.cfg().mempalace_bin, bins.clone()));
+            i = palace::ensure_install(&cache, &bins);
         }
         *self.install.borrow_mut() = i;
     }
@@ -357,6 +378,7 @@ impl Memory {
             );
         }
         let p = places();
+        let bins = self.bins().await;
         let auto = self.cfg().auto_start_daemon;
         let stale: Vec<PathBuf> = files::scan_project(&root, &rec.project)
             .into_iter()
@@ -367,7 +389,7 @@ impl Memory {
         let dir_host = host_of(&files::project_dir(&root, &rec.project));
         let out = palace::file_through_daemon(
             &p,
-            true,
+            &bins,
             auto,
             &dir_host,
             std::slice::from_ref(&md_host),
@@ -377,19 +399,19 @@ impl Memory {
         .await;
         for s in stale {
             let sh = host_of(&s);
-            let del = palace::delete_through_daemon(&p, true, auto, &sh, 10_000).await;
+            let del = palace::delete_through_daemon(&p, &bins, auto, &sh, 10_000).await;
             let _ = std::fs::remove_file(&s);
             if matches!(del.0, Outcome::Filed | Outcome::Queued) {
                 continue;
             }
-            if palace::delete_via_write_mcp(&p, &sh).await.is_err() {
+            if palace::delete_via_write_mcp(&p, &bins, &sh).await.is_err() {
                 Self::journal_enqueue("delete", &sh, &rec.project, &rec.id, None);
             }
         }
         if matches!(out.0, Outcome::Filed | Outcome::Queued) {
             return out;
         }
-        match palace::mine_direct(&p, &dir_host, &rec.project).await {
+        match palace::mine_direct(&p, &bins, &dir_host, &rec.project).await {
             Ok(()) => (Outcome::Filed, None),
             Err((held, err)) => {
                 Self::journal_enqueue("store", &md_host, &rec.project, &rec.id, held);
@@ -422,13 +444,22 @@ impl Memory {
             return (Outcome::MarkdownOnly, found);
         }
         let p = places();
-        let res =
-            palace::delete_through_daemon(&p, true, self.cfg().auto_start_daemon, &md_host, 10_000)
-                .await;
+        let bins = self.bins().await;
+        let res = palace::delete_through_daemon(
+            &p,
+            &bins,
+            self.cfg().auto_start_daemon,
+            &md_host,
+            10_000,
+        )
+        .await;
         if matches!(res.0, Outcome::Filed | Outcome::Queued) {
             return (res.0, found);
         }
-        if palace::delete_via_write_mcp(&p, &md_host).await.is_ok() {
+        if palace::delete_via_write_mcp(&p, &bins, &md_host)
+            .await
+            .is_ok()
+        {
             (Outcome::Filed, found)
         } else {
             Self::journal_enqueue("delete", &md_host, project, key, None);
@@ -437,7 +468,7 @@ impl Memory {
     }
 
     async fn search(&self, query: &str, limit: usize, project: Option<&str>) -> Vec<Hit> {
-        let Some(r) = self.reader() else {
+        let Some(r) = self.reader().await else {
             return search::local_search(&root(), query, limit, project);
         };
         let raw = r.search(query, (limit * 3).max(10), project).await;
@@ -456,12 +487,13 @@ impl Memory {
             return Outcome::MarkdownOnly;
         }
         let p = places();
+        let bins = self.bins().await;
         let auto = self.cfg().auto_start_daemon;
         if op.kind == "store" {
             let dir = host_of(&files::project_dir(&root(), &op.project));
             let r = palace::file_through_daemon(
                 &p,
-                true,
+                &bins,
                 auto,
                 &dir,
                 std::slice::from_ref(&op.file),
@@ -472,17 +504,23 @@ impl Memory {
             if matches!(r.0, Outcome::Filed | Outcome::Queued) {
                 return r.0;
             }
-            return if palace::mine_direct(&p, &dir, &op.project).await.is_ok() {
+            return if palace::mine_direct(&p, &bins, &dir, &op.project)
+                .await
+                .is_ok()
+            {
                 Outcome::Filed
             } else {
                 Outcome::MarkdownOnly
             };
         }
-        let r = palace::delete_through_daemon(&p, true, auto, &op.file, 30_000).await;
+        let r = palace::delete_through_daemon(&p, &bins, auto, &op.file, 30_000).await;
         if matches!(r.0, Outcome::Filed | Outcome::Queued) {
             return r.0;
         }
-        if palace::delete_via_write_mcp(&p, &op.file).await.is_ok() {
+        if palace::delete_via_write_mcp(&p, &bins, &op.file)
+            .await
+            .is_ok()
+        {
             Outcome::Filed
         } else {
             Outcome::MarkdownOnly
@@ -844,7 +882,8 @@ impl Memory {
         spawn(async move {
             self.detect().await;
             if cfg.recall_at_start && cfg.wake_up && self.palace_mode() {
-                let w = palace::wake_up(&places(), &project)
+                let bins = self.bins().await;
+                let w = palace::wake_up(&places(), &bins, &project)
                     .await
                     .map(|t| t.chars().take(3500).collect::<String>());
                 self.sessions.with(&sid, |s| s.wake_up = Some(w));
@@ -884,8 +923,10 @@ impl Memory {
             }
             let install = self.install.borrow().clone();
             if let Some(i) = install.filter(|_| cfg.auto_update) {
+                let bins = self.bins().await;
                 let (updated, cur, latest, _) = palace::maybe_auto_update(
                     &places(),
+                    &bins,
                     &root().join(".mempalace-update"),
                     &i,
                     false,
@@ -897,7 +938,7 @@ impl Memory {
                         &json!({"previousVersion": cur, "newVersion": latest.unwrap_or_default()}),
                     );
                     if let Some(fresh) =
-                        palace::refresh_version(&root().join(".mempalace-install")).await
+                        palace::refresh_version(&bins, &root().join(".mempalace-install")).await
                     {
                         *self.install.borrow_mut() = Some(fresh);
                     }
@@ -1119,7 +1160,11 @@ impl Memory {
                 "backend: {}{}",
                 install.as_ref().map_or_else(
                     || "unavailable".to_owned(),
-                    |i| format!("mempalace {}", i.version)
+                    |i| format!(
+                        "mempalace {} ({})",
+                        i.version,
+                        if i.rust { "rust" } else { "python" }
+                    )
                 ),
                 if self.palace_mode() {
                     ""
@@ -1144,6 +1189,14 @@ impl Memory {
         ];
         if let Some(h) = pending.iter().find_map(|o| o.held_by.clone()) {
             lines.push(format!("palace busy: held by {h}"));
+        }
+        if !cfg.mempalace_bin.is_empty() {
+            let bins = self.bins().await;
+            lines.push(format!(
+                "binary: {} (mempalace-mcp: {})",
+                bins.cli,
+                bins.mcp.first().cloned().unwrap_or_default()
+            ));
         }
         lines.push(format!(
             "switches: recall={} write={} wakeUp={} autoStartDaemon={}",
@@ -1299,11 +1352,12 @@ impl Memory {
             return MoveReport { log };
         }
         let p = places();
+        let bins = self.bins().await;
         let dir = host_of(&files::project_dir(&root, &new_p));
         let news: Vec<String> = moved.iter().map(|(_, n)| n.clone()).collect();
         let r = palace::file_through_daemon(
             &p,
-            true,
+            &bins,
             self.cfg().auto_start_daemon,
             &dir,
             &news,
@@ -1314,7 +1368,7 @@ impl Memory {
         let filed = match r.0 {
             Outcome::Filed => true,
             Outcome::Queued => false,
-            Outcome::MarkdownOnly => palace::mine_direct(&p, &dir, &new_p).await.is_ok(),
+            Outcome::MarkdownOnly => palace::mine_direct(&p, &bins, &dir, &new_p).await.is_ok(),
         };
         log.push(format!(
             "reindex: {}",
@@ -1325,12 +1379,17 @@ impl Memory {
             return MoveReport { log };
         }
         for (old, _) in moved {
-            let d =
-                palace::delete_through_daemon(&p, true, self.cfg().auto_start_daemon, &old, 10_000)
-                    .await;
+            let d = palace::delete_through_daemon(
+                &p,
+                &bins,
+                self.cfg().auto_start_daemon,
+                &old,
+                10_000,
+            )
+            .await;
             let res = if matches!(d.0, Outcome::Filed | Outcome::Queued) {
                 d.0.as_str().to_owned()
-            } else if palace::delete_via_write_mcp(&p, &old).await.is_ok() {
+            } else if palace::delete_via_write_mcp(&p, &bins, &old).await.is_ok() {
                 "filed (direct)".into()
             } else {
                 "failed".into()

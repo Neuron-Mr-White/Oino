@@ -16,6 +16,10 @@ pub const MIN_MEMPALACE: &str = "3.10.0";
 /// `PyPI` check interval.
 pub const UPDATE_CHECK_TTL_MS: i64 = 24 * 60 * 60 * 1000;
 const PYPI_URL: &str = "https://pypi.org/pypi/mempalace/json";
+/// `mempalace` on `PATH`.
+pub const CLI: &str = "mempalace";
+/// `mempalace-mcp` on `PATH`.
+pub const MCP: &str = "mempalace-mcp";
 
 /// unipi `compareVersions` (numeric dotted parts).
 #[must_use]
@@ -40,12 +44,14 @@ pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
     std::cmp::Ordering::Equal
 }
 
-/// Extracts `3.10.2` from `uv tool list` / `--version` output.
+/// Extracts `3.10.2` from `uv tool list` / `--version` output (`mempalace v3.10.2`,
+/// `MemPalace 3.11.0 (rs …)`).
 #[must_use]
 pub fn parse_version(out: &str) -> Option<String> {
     for line in out.lines() {
         let l = line.trim();
-        if !(l.starts_with("mempalace")
+        let lower = l.to_ascii_lowercase();
+        if !(lower.starts_with(CLI)
             || l.chars()
                 .next()
                 .is_some_and(|c| c.is_ascii_digit() || c == 'v'))
@@ -60,6 +66,12 @@ pub fn parse_version(out: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// `MemPalace 3.11.0 (rs 0.6.0-parity.1)` — the Rust port reports itself this way.
+#[must_use]
+pub fn is_rust_version(text: &str) -> bool {
+    text.contains("(rs ")
 }
 
 /// Daemon palace key: `sha256(palace)[:24]`.
@@ -91,6 +103,104 @@ pub struct Places {
 pub struct Install {
     /// Version.
     pub version: String,
+    /// The Rust port (`mempalace-rs`); `uv` does not manage it.
+    #[serde(default)]
+    pub rust: bool,
+}
+
+/// Which `mempalace` / `mempalace-mcp` binaries the extension runs.
+///
+/// The `mempalaceBin` setting may point at the `mempalace` file itself, at the folder holding
+/// it (the Rust port installs `mempalace` and `mempalace-mcp` side by side), or be empty
+/// (`PATH`). The first candidate that answers `--version` is used and `mempalace-mcp` comes
+/// from the same folder; a stale path degrades to `PATH` (Python), never to markdown-only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Bins {
+    /// `mempalace` executable (an absolute path, or the bare name for `PATH`).
+    pub cli: String,
+    /// `mempalace-mcp` candidates in order.
+    pub mcp: Vec<String>,
+    /// Version the CLI reported (`None` = it did not run).
+    pub version: Option<String>,
+    /// The CLI is the Rust port.
+    pub rust: bool,
+}
+
+impl Bins {
+    /// `PATH` only (no `mempalaceBin`): the Python install or a switched entry point.
+    #[must_use]
+    pub fn path() -> Self {
+        Self {
+            cli: CLI.into(),
+            mcp: vec![MCP.into()],
+            version: None,
+            rust: false,
+        }
+    }
+
+    /// The CLI is runnable.
+    #[must_use]
+    pub fn runs(&self) -> bool {
+        self.version.is_some()
+    }
+
+    /// `(cli, mcp)` candidates for a `mempalaceBin` value: the path, `<path>/mempalace`, `PATH`.
+    #[must_use]
+    pub fn candidates(configured: &str) -> (Vec<String>, Vec<String>) {
+        let raw = expand_home(configured.trim());
+        let raw = raw.trim_end_matches('/');
+        if raw.is_empty() {
+            return (vec![CLI.into()], vec![MCP.into()]);
+        }
+        let name = Path::new(raw)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        let cli_named = name == CLI || name == "mempalace.exe";
+        let mcp = if cli_named {
+            Path::new(raw)
+                .parent()
+                .map_or_else(|| MCP.into(), |d| d.join(MCP).display().to_string())
+        } else {
+            format!("{raw}/{MCP}")
+        };
+        (
+            vec![raw.to_owned(), format!("{raw}/{CLI}"), CLI.into()],
+            vec![mcp, MCP.into()],
+        )
+    }
+
+    /// Probes the candidates for `configured`; falls back to `PATH`.
+    pub async fn resolve(configured: &str) -> Self {
+        let (cli, mcp) = Self::candidates(configured);
+        for c in cli {
+            if let Some((version, rust)) = probe_version(&c).await {
+                return Self {
+                    cli: c,
+                    mcp,
+                    version: Some(version),
+                    rust,
+                };
+            }
+        }
+        Self::path()
+    }
+}
+
+/// Expands `~/…` through the granted `~/.mempalace` preopen (the guest has no `$HOME`).
+fn expand_home(path: &str) -> String {
+    let Some(rest) = path.strip_prefix("~/") else {
+        return path.to_owned();
+    };
+    crate::preopen_host(crate::MEMPALACE_GUEST).map_or_else(
+        || path.to_owned(),
+        |palace| {
+            Path::new(&palace).parent().map_or_else(
+                || path.to_owned(),
+                |home| home.join(rest).display().to_string(),
+            )
+        },
+    )
 }
 
 async fn exec(cmd: &str, args: &[&str], timeout_ms: u64) -> Option<wp::ExecResult> {
@@ -114,43 +224,34 @@ pub async fn run_ok(cmd: &str, args: &[&str], timeout_ms: u64) -> bool {
         .is_some_and(|r| r.code == Some(0) && !r.killed)
 }
 
-async fn detect_version() -> Option<String> {
-    if let Some(r) = exec("uv", &["tool", "list"], 5_000).await
-        && r.code == Some(0)
-        && let Some(v) = r
-            .stdout
-            .lines()
-            .find(|l| l.starts_with("mempalace "))
-            .and_then(parse_version)
-    {
-        return Some(v);
-    }
-    let r = exec("mempalace", &["--version"], 5_000).await?;
-    if r.code != Some(0) && r.stdout.is_empty() && r.stderr.is_empty() {
+/// `--version` of one executable → `(version, is the Rust port)`.
+async fn probe_version(cli: &str) -> Option<(String, bool)> {
+    let r = exec(cli, &["--version"], 5_000).await?;
+    let text = format!("{}\n{}", r.stdout, r.stderr);
+    if r.code != Some(0) && text.trim().is_empty() {
         return None;
     }
-    Some(parse_version(&format!("{}\n{}", r.stdout, r.stderr)).unwrap_or_else(|| "unknown".into()))
+    Some((
+        parse_version(&text).unwrap_or_else(|| "unknown".into()),
+        is_rust_version(&text),
+    ))
 }
 
-/// unipi `ensureMempalace`: cached install, else detect, else `uv tool install mempalace`.
-pub async fn ensure_install(cache: &Path) -> Option<Install> {
-    if let Some(i) = std::fs::read(cache)
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Install>(&b).ok())
-        && run_ok("mempalace", &["--help"], 10_000).await
-    {
-        return Some(i);
-    }
-    let mut version = detect_version().await;
-    if version.is_none()
-        && run_ok("uv", &["--version"], 5_000).await
-        && run_ok("uv", &["tool", "install", "mempalace"], 180_000).await
-    {
-        version = detect_version().await;
-    }
-    let install = Install { version: version? };
+/// unipi `ensureMempalace` over the resolved binaries; `None` = not installed.
+#[must_use]
+pub fn ensure_install(cache: &Path, bins: &Bins) -> Option<Install> {
+    let install = Install {
+        version: bins.version.clone()?,
+        rust: bins.rust,
+    };
     write_install(cache, &install);
     Some(install)
+}
+
+/// `uv tool install mempalace` (the Python fallback when no CLI runs at all).
+pub async fn uv_install() -> bool {
+    run_ok("uv", &["--version"], 5_000).await
+        && run_ok("uv", &["tool", "install", "mempalace"], 180_000).await
 }
 
 /// Persists the install record.
@@ -162,10 +263,9 @@ pub fn write_install(cache: &Path, i: &Install) {
 }
 
 /// Re-detects the version (after an upgrade).
-pub async fn refresh_version(cache: &Path) -> Option<Install> {
-    let install = Install {
-        version: detect_version().await?,
-    };
+pub async fn refresh_version(bins: &Bins, cache: &Path) -> Option<Install> {
+    let (version, rust) = probe_version(&bins.cli).await?;
+    let install = Install { version, rust };
     write_install(cache, &install);
     Some(install)
 }
@@ -248,14 +348,14 @@ pub async fn probe_daemon(p: &Places, timeout_ms: u32) -> (bool, bool) {
 }
 
 /// Starts the daemon when allowed; true when healthy.
-pub async fn ensure_daemon(p: &Places, installed: bool, auto_start: bool) -> bool {
+pub async fn ensure_daemon(p: &Places, bins: &Bins, auto_start: bool) -> bool {
     if probe_daemon(p, 300).await.0 {
         return true;
     }
-    if !auto_start || !installed {
+    if !auto_start {
         return false;
     }
-    let _ = run_ok("mempalace", &palace_args(p, &["daemon", "start"]), 15_000).await;
+    let _ = run_ok(&bins.cli, &palace_args(p, &["daemon", "start"]), 15_000).await;
     let deadline = oino_extension::timers::now_ms() + 10_000;
     while oino_extension::timers::now_ms() < deadline {
         if probe_daemon(p, 500).await.0 {
@@ -343,14 +443,14 @@ async fn job(p: &Places, kind: &str, payload: Value, wait_ms: i64) -> (Outcome, 
 /// Files md files through a daemon mine job.
 pub async fn file_through_daemon(
     p: &Places,
-    installed: bool,
+    bins: &Bins,
     auto: bool,
     source_dir: &str,
     files: &[String],
     wing: &str,
     wait_ms: i64,
 ) -> (Outcome, Option<String>) {
-    if !ensure_daemon(p, installed, auto).await {
+    if !ensure_daemon(p, bins, auto).await {
         return (Outcome::MarkdownOnly, Some("daemon unreachable".into()));
     }
     let mut payload = json!({"source": source_dir, "files": files, "wing": wing, "agent": "unipi"});
@@ -363,12 +463,12 @@ pub async fn file_through_daemon(
 /// Deletes a source's drawers through a daemon job.
 pub async fn delete_through_daemon(
     p: &Places,
-    installed: bool,
+    bins: &Bins,
     auto: bool,
     source: &str,
     wait_ms: i64,
 ) -> (Outcome, Option<String>) {
-    if !ensure_daemon(p, installed, auto).await {
+    if !ensure_daemon(p, bins, auto).await {
         return (Outcome::MarkdownOnly, Some("daemon unreachable".into()));
     }
     job(p, "mcp_tool", json!({"name": "mempalace_delete_by_source", "arguments": {"source_file": source, "dry_run": false}}), wait_ms).await
@@ -395,11 +495,12 @@ pub fn lock_holder(text: &str) -> Option<String> {
 /// The lock holder (when the palace was busy) and the last output line.
 pub async fn mine_direct(
     p: &Places,
+    bins: &Bins,
     source_dir: &str,
     wing: &str,
 ) -> Result<(), (Option<String>, Option<String>)> {
     let r = exec(
-        "mempalace",
+        &bins.cli,
         &palace_args(p, &["mine", source_dir, "--wing", wing, "--agent", "unipi"]),
         120_000,
     )
@@ -422,8 +523,8 @@ pub async fn mine_direct(
 /// # Errors
 ///
 /// The server's error text.
-pub async fn delete_via_write_mcp(p: &Places, source: &str) -> Result<(), String> {
-    let r = Reader::new(p.palace.as_deref(), false, 0);
+pub async fn delete_via_write_mcp(p: &Places, bins: &Bins, source: &str) -> Result<(), String> {
+    let r = Reader::new(p.palace.as_deref(), false, 0, bins.mcp.clone());
     let res = r
         .call_tool(
             "mempalace_delete_by_source",
@@ -441,12 +542,12 @@ pub async fn delete_via_write_mcp(p: &Places, source: &str) -> Result<(), String
 }
 
 /// `mempalace wake-up --wing <w>` (falls back to the unscoped wake-up).
-pub async fn wake_up(p: &Places, wing: &str) -> Option<String> {
+pub async fn wake_up(p: &Places, bins: &Bins, wing: &str) -> Option<String> {
     for args in [
         palace_args(p, &["wake-up", "--wing", wing]),
         palace_args(p, &["wake-up"]),
     ] {
-        if let Some(r) = exec("mempalace", &args, 15_000).await
+        if let Some(r) = exec(&bins.cli, &args, 15_000).await
             && r.code == Some(0)
             && !r.stdout.trim().is_empty()
         {
@@ -475,10 +576,15 @@ pub fn update_due(state: Option<&UpdateState>, now: i64) -> bool {
 /// Result of an auto-update attempt: `(updated, current, latest, reason)`.
 pub async fn maybe_auto_update(
     p: &Places,
+    bins: &Bins,
     state_file: &Path,
     install: &Install,
     force: bool,
 ) -> (bool, String, Option<String>, &'static str) {
+    if install.rust || bins.cli != CLI {
+        // `uv tool upgrade` would install/upgrade the Python venv, not the binary in use.
+        return (false, install.version.clone(), None, "not-python");
+    }
     let now = oino_extension::timers::now_ms();
     let st: Option<UpdateState> = std::fs::read(state_file)
         .ok()
@@ -510,9 +616,9 @@ pub async fn maybe_auto_update(
     let Some(latest) = latest else {
         return (false, install.version.clone(), None, "lookup-failed");
     };
-    let current = detect_version()
+    let current = probe_version(&bins.cli)
         .await
-        .unwrap_or_else(|| install.version.clone());
+        .map_or_else(|| install.version.clone(), |(v, _)| v);
     if compare_versions(&latest, &current) != std::cmp::Ordering::Greater {
         return (false, current, Some(latest), "up-to-date");
     }
@@ -521,11 +627,11 @@ pub async fn maybe_auto_update(
     }
     let was_running = probe_daemon(p, 300).await.0;
     if was_running {
-        let _ = run_ok("mempalace", &palace_args(p, &["daemon", "stop"]), 30_000).await;
+        let _ = run_ok(&bins.cli, &palace_args(p, &["daemon", "stop"]), 30_000).await;
     }
     let ok = run_ok("uv", &["tool", "upgrade", "mempalace"], 300_000).await;
     if was_running {
-        let _ = run_ok("mempalace", &palace_args(p, &["daemon", "start"]), 30_000).await;
+        let _ = run_ok(&bins.cli, &palace_args(p, &["daemon", "start"]), 30_000).await;
     }
     if ok {
         (true, current, Some(latest), "updated")
@@ -561,6 +667,12 @@ mod tests {
             Some("3.10.2".into())
         );
         assert_eq!(parse_version("3.11.0"), Some("3.11.0".into()));
+        assert_eq!(
+            parse_version("MemPalace 3.11.0 (rs 0.6.0-parity.1)"),
+            Some("3.11.0".into())
+        );
+        assert!(is_rust_version("MemPalace 3.11.0 (rs 0.6.0-parity.1)"));
+        assert!(!is_rust_version("mempalace v3.11.0"));
         assert_eq!(parse_version("nothing here"), None);
         assert_eq!(palace_key("/p").len(), 24);
         assert_eq!(
@@ -575,6 +687,28 @@ mod tests {
             }),
             1000
         ));
+    }
+
+    #[test]
+    fn bins() {
+        assert_eq!(Bins::candidates("").0, [CLI]);
+        assert_eq!(Bins::candidates("").1, [MCP]);
+        let (cli, mcp) = Bins::candidates("/opt/mempalace-rs/bin");
+        assert_eq!(
+            cli,
+            [
+                "/opt/mempalace-rs/bin",
+                "/opt/mempalace-rs/bin/mempalace",
+                CLI
+            ]
+        );
+        assert_eq!(mcp, ["/opt/mempalace-rs/bin/mempalace-mcp", MCP]);
+        let (cli, mcp) = Bins::candidates("/opt/mempalace-rs/bin/mempalace");
+        assert_eq!(cli[0], "/opt/mempalace-rs/bin/mempalace");
+        assert_eq!(mcp[0], "/opt/mempalace-rs/bin/mempalace-mcp");
+        // `PATH` only: nothing to probe, the record then has no version.
+        assert!(!Bins::path().runs());
+        assert_eq!(Bins::path().cli, CLI);
     }
 
     #[test]

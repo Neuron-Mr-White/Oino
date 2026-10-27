@@ -301,6 +301,17 @@ write}]`, `agents.spawn`,
 `/ext-global/memory/<project>/<type>/<id>.md`; warm `mempalace-mcp` stdio reader (process
 pipe, idle unload 10 min timer); side-save nested agent; all tools and commands per audit.
 
+Settings `mempalaceBin` (default empty = `PATH`) points at the `mempalace` binary **or** the
+folder holding it, which is how the Rust port (`mempalace-rs`, installs both binaries side by
+side) is selected; a leading `~/` is expanded through the granted `~/.mempalace` preopen
+(the guest has no `$HOME`). The extension probes the configured candidates with `--version`
+(and `<path>/mempalace` when the value is a folder) and falls back to `PATH` when none runs,
+so a stale path degrades to the Python install instead of to markdown-only. The detected port
+(`MemPalace 3.11.0 (rs …)` ⇒ Rust) decides whether the daily PyPI auto-update applies: it never
+does for the Rust port or an explicit path, because `uv tool upgrade` would only rewrite the
+Python venv. `/memory` prints the resolved binary when a path is configured. Verified against
+both implementations on palace copies: `scripts/round3/memory-mempalace-e2e.sh`.
+
 ### 3.18 `unipi.skill-registry` (unipi-context, B3)
 Perms: `fs.agentDir: read`, `fs.project: read`, `network.hosts` (jev). Caps: C1 C25.
 `before_agent_start` → modified `systemPromptOptions.skills`; `resources_discover` →
@@ -536,7 +547,7 @@ Sources: `deviations/unipi-{core,ux,agents,context,integrations,kanboard}.md` an
 | 17 | audit §2.18 (autocomplete) | `/compact-then` is offered through `complete-input` (one group from `unipi.compactor`). | ui-protocol §7.3. | — |
 | 18 | audit §2.18 (doctor) | The doctor reads `control.get-settings().compaction.enabled`; the legacy `~/.unipi/db/compactor` check is dropped (Oino never had it). | — | — |
 | 19 | audit §2.18 (settings) | `cooldownMs` / `repeatMinGrowthTokens` are fixed (60 s / 4 000) as in unipi 3.0.0 code; unipi's legacy keys (`overrideDefaultCompaction`, `autoCompaction.*`, `jev`, boolean `sections`) are not read (no legacy unipi support). | unipi source wins over the audit list. | — |
-| 20 | audit §2.3 (paths, binaries) | Memory files live in `/ext-global/memory/<project>/<type>/<id>.md`; MemPalace is driven by program name (`mempalace`, `mempalace-mcp`, `uv`, process allowlist; `MALLOC_ARENA_MAX=2`), the palace is `~/.mempalace/palace` (alias `mempalace`), the daemon endpoint is read from `~/.mempalace/daemon/<sha256(palace)[:24]>/` (no realpath canonicalisation, `MEMPALACE_DAEMON_STATE_ROOT` unsupported), daemon HTTP needs `network.hosts` `127.0.0.1`/`localhost` (added to the manifest). Version detection uses `uv tool list` / `mempalace --version` instead of the venv python. | No venv paths or arbitrary binaries from guests. | — |
+| 20 | audit §2.3 (paths, binaries) | Memory files live in `/ext-global/memory/<project>/<type>/<id>.md`; MemPalace is driven by program name (`mempalace`, `mempalace-mcp`, `uv`, process allowlist; `MALLOC_ARENA_MAX=2`) or by the `mempalaceBin` path (binary or folder, `~` expanded through the `~/.mempalace` preopen, `PATH` fallback), the palace is `~/.mempalace/palace` (alias `mempalace`), the daemon endpoint is read from `~/.mempalace/daemon/<sha256(palace)[:24]>/` (no realpath canonicalisation, `MEMPALACE_DAEMON_STATE_ROOT` unsupported), daemon HTTP needs `network.hosts` `127.0.0.1`/`localhost` (added to the manifest). Version detection is `<cli> --version` (`mempalace v3.11.0`, `MemPalace 3.11.0 (rs …)`) instead of the venv python. | No venv paths or arbitrary binaries from guests (the allowlist still matches on the file name/stem). | — |
 | 21 | audit §2.3 (v2→v3 conversion) | Dropped: no `/memory migrate`, no `~/.unipi/memory` alias, no start-up import prompt, no `unipi://memory/…` drawer mapping (no legacy unipi support). | Owner decision `unipi-native`. | — |
 | 22 | audit §2.3 (side save) | The save pass is a nested agent (`seed: branchCopy`, `persistence: Memory`, `ui: none`, tools = memory tools only, `memory_delete` denied, `childRole: memory-save`), aborted after 8 tool calls. unipi re-exposed every active tool as a stub for prefix-cache parity; the tool policy here lists only the memory tools. | `AgentSpec` tool policy. | Lower cache reuse for the save pass. |
 | 23 | audit §2.3 (cards, renderers) | Memory cards, reminder badges and the session/save cards are OUS `card`s (rail `harness`/`success`/`warning`/`error`); search hits use `meter` nodes. | ui-protocol §6. | — |

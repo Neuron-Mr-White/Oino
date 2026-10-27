@@ -23,7 +23,8 @@ run nice -n 10 cargo clippy --workspace --all-targets -j 4 -- -D warnings -W cli
 R2=$?
 run nice -n 10 cargo test --workspace -j 4
 R3=$?
-run nice -n 10 cargo doc --workspace --no-deps -- -D warnings
+# `cargo doc` no longer forwards trailing args (cargo 1.99): flags go through RUSTDOCFLAGS.
+RUSTDOCFLAGS="-D warnings" run nice -n 10 cargo doc --workspace --no-deps
 R4=$?
 
 echo "=== EXTENSIONS workspace ===" | tee -a "$LOG"

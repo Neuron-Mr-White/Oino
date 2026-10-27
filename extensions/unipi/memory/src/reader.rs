@@ -56,6 +56,8 @@ struct Live {
 pub struct Reader {
     /// `mempalace-mcp` arguments (palace, `--read-only`).
     args: Vec<String>,
+    /// `mempalace-mcp` candidates in order (the configured folder first, then `PATH`).
+    mcp: Vec<String>,
     env: Vec<(String, String)>,
     live: Mutex<Option<Live>>,
     next_id: Cell<u64>,
@@ -68,7 +70,7 @@ pub struct Reader {
 impl Reader {
     /// A reader for `palace` (`None` = `MemPalace` default); `read_only` false = write mode.
     #[must_use]
-    pub fn new(palace: Option<&str>, read_only: bool, idle_ms: u64) -> Self {
+    pub fn new(palace: Option<&str>, read_only: bool, idle_ms: u64, mcp: Vec<String>) -> Self {
         let mut args = Vec::new();
         if let Some(p) = palace {
             args.push("--palace".to_owned());
@@ -79,6 +81,7 @@ impl Reader {
         }
         Self {
             args,
+            mcp,
             env: vec![("MALLOC_ARENA_MAX".into(), "2".into())],
             live: Mutex::new(None),
             next_id: Cell::new(1),
@@ -96,26 +99,34 @@ impl Reader {
     }
 
     fn spawn_child(&self) -> Option<Live> {
-        let spec = wp::SpawnSpec {
-            command: "mempalace-mcp".into(),
-            args: self.args.clone(),
-            cwd: None,
-            env: self.env.clone(),
-            clear_env: false,
-            stdin: wp::StdioMode::Pipe,
-            stdout: wp::OutputTarget::Pipe,
-            stderr: wp::OutputTarget::Null,
-            new_process_group: true,
-            detached: false,
-            timeout_ms: None,
-        };
-        let child = wp::Child::spawn(&spec).ok()?;
-        let out = child.stdout()?;
-        Some(Live {
-            child,
-            out,
-            buf: Vec::new(),
-        })
+        for command in &self.mcp {
+            let spec = wp::SpawnSpec {
+                command: command.clone(),
+                args: self.args.clone(),
+                cwd: None,
+                env: self.env.clone(),
+                clear_env: false,
+                stdin: wp::StdioMode::Pipe,
+                stdout: wp::OutputTarget::Pipe,
+                stderr: wp::OutputTarget::Null,
+                new_process_group: true,
+                detached: false,
+                timeout_ms: None,
+            };
+            let Ok(child) = wp::Child::spawn(&spec) else {
+                continue;
+            };
+            let Some(out) = child.stdout() else {
+                let _ = child.signal(wp::Signal::Kill, true);
+                continue;
+            };
+            return Some(Live {
+                child,
+                out,
+                buf: Vec::new(),
+            });
+        }
+        None
     }
 
     async fn rpc(
@@ -291,7 +302,8 @@ mod tests {
             tool_payload(&json!({"error": {"message": "x"}})),
             json!({"error": "x"})
         );
-        let r = Reader::new(Some("/p"), true, 0);
+        let r = Reader::new(Some("/p"), true, 0, vec!["mempalace-mcp".into()]);
         assert_eq!(r.args, ["--palace", "/p", "--read-only"]);
+        assert_eq!(r.mcp, ["mempalace-mcp"]);
     }
 }

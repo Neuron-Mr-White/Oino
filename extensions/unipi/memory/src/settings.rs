@@ -38,6 +38,8 @@ pub struct Config {
     pub auto_start_daemon: bool,
     /// Daily `PyPI` check + upgrade.
     pub auto_update: bool,
+    /// `mempalace` binary or folder (empty = `PATH`).
+    pub mempalace_bin: String,
     /// Debug log.
     pub debug: bool,
 }
@@ -45,7 +47,7 @@ pub struct Config {
 /// Defaults (`recall` is not defaulted so legacy booleans can decide).
 #[must_use]
 pub fn defaults() -> Value {
-    json!({"write": true, "saveMode": "side", "autoStartDaemon": false, "mempalaceAutoUpdate": true, "debug": false})
+    json!({"write": true, "saveMode": "side", "autoStartDaemon": false, "mempalaceAutoUpdate": true, "mempalaceBin": "", "debug": false})
 }
 
 /// unipi `readMemoryConfig` over the merged namespace values.
@@ -74,6 +76,7 @@ pub fn read(v: &Values) -> Config {
         },
         auto_start_daemon: v.bool("autoStartDaemon", false),
         auto_update: v.bool("mempalaceAutoUpdate", true),
+        mempalace_bin: v.str("mempalaceBin", "").trim().to_owned(),
         debug: v.bool("debug", false),
     }
 }
@@ -112,7 +115,12 @@ pub fn namespace() -> Namespace {
                     .description("How the end-of-task save happens: a background side session, a next-turn reminder, or nothing."),
                 )
                 .field(Field::boolean("autoStartDaemon", "MemPalace daemon").description("Off: use a running daemon or write directly. On: Oino starts one; MemPalace servers in other tools turn read-only."))
-                .field(Field::boolean("mempalaceAutoUpdate", "MemPalace auto-update").description("Keep the MemPalace install current with a daily PyPI check and uv upgrade."))
+                .field(
+                    Field::string("mempalaceBin", "MemPalace binary")
+                        .description("Path to the mempalace binary or the folder holding it — `~/.local/opt/mempalace-rs/bin` runs the Rust port; mempalace-mcp is taken from the same folder. Empty: mempalace on PATH, which also covers a Python install.")
+                        .advanced(),
+                )
+                .field(Field::boolean("mempalaceAutoUpdate", "MemPalace auto-update").description("Keep the Python MemPalace install current with a daily PyPI check and uv upgrade. Not used for the Rust port or an explicit binary path."))
                 .field(Field::boolean("debug", "Debug log").description("Log memory activity to logs/memory.log.").advanced()),
         )
 }
@@ -227,6 +235,11 @@ mod tests {
         assert!(c.recall_at_start && !c.wake_up);
         let c = read(&Values(json!({"recall": "reminder", "saveMode": "off"})));
         assert!(c.recall_at_start && !c.wake_up && c.save_mode == SaveMode::Off);
+        assert!(read(&Values(defaults())).mempalace_bin.is_empty());
+        assert_eq!(
+            read(&Values(json!({"mempalaceBin": " ~/bin/mempalace "}))).mempalace_bin,
+            "~/bin/mempalace"
+        );
         assert!(agent_hooks_enabled(None));
         let d = crate::files::tmp("hooks");
         std::fs::write(d.join("agent-hooks.json"), "{\"enabled\": false}").unwrap_or_default();

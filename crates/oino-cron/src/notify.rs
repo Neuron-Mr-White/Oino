@@ -74,7 +74,7 @@ pub fn should_notify_with(job: &Job, status: RunStatus, defaults: &[String]) -> 
 
 const SUMMARY_CHARS: usize = 500;
 
-/// "Cron: <job name> <status>" + the run summary (first ~500 chars) with cost/duration
+/// "Cron: `<job name>` `<status>`" + the run summary (first ~500 chars) with cost/duration
 /// appended — the same text goes to every channel.
 #[must_use]
 pub fn build_message(job: &Job, run: &Run) -> (String, String) {

@@ -231,7 +231,7 @@ pub struct Embedded {
 
 impl Embedded {
     /// Tries to become the single owner on `paths`; `Err(AlreadyOwned)` means the daemon
-    /// (or another process) ticks already and the caller should use [`ControlClient`].
+    /// (or another process) ticks already and the caller should use [`ControlClient`](crate::client::ControlClient).
     ///
     /// # Errors
     /// [`CronError::AlreadyOwned`] or I/O errors from the lock/store.
