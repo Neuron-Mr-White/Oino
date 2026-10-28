@@ -41,7 +41,8 @@ use crate::views::session_pane::{BottomTab, PaneEvent, PaneMenu, SessionPane, Si
 use crate::views::settings_page::{SettingsEvent, SettingsSection, SettingsView};
 use crate::views::{
     Abort, CloseFind, CommandPalette, FindInConversation, FocusComposer, GoBoard, GoCron,
-    GoExtensions, GoSessions, NewSession, OpenFolder, OpenSettings, PickModel, PickThinking,
+    CycleThinking, GoExtensions, GoSessions, NewSession, OpenFolder, OpenSettings, PickModel,
+    PickThinking,
     SwitchSession, ToggleBottom, ToggleFrameOverlay, ToggleSidePane, ToggleSidebar,
     ToggleStatusPanel, ToggleTheme, TreeView,
 };
@@ -2155,6 +2156,9 @@ impl Render for AppShell {
             }))
             .on_action(cx.listener(|this, _: &PickThinking, _, cx| {
                 this.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Thinking, cx));
+            }))
+            .on_action(cx.listener(|this, _: &CycleThinking, _, cx| {
+                this.with_pane(cx, SessionPane::cycle_thinking);
             }))
             .on_action(cx.listener(|this, _: &OpenSettings, window, cx| {
                 this.open_settings(None, window, cx);

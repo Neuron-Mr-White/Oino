@@ -1628,6 +1628,15 @@ impl SessionPane {
         self.send(PiCommand::SetModel { provider, model_id }.into(), cx);
     }
 
+    /// Steps to the next thinking level in display order, wrapping (`ZCode` `Ctrl+T`; bound to
+    /// `alt-t` here, next to the other pane `alt-` shortcuts). No menu involved.
+    pub fn cycle_thinking(&mut self, cx: &mut Context<Self>) {
+        let levels = crate::components::controls::LEVELS;
+        let at = crate::components::controls::level_index(self.model.thinking);
+        let next = levels[(at + 1) % levels.len()];
+        self.set_thinking(next, cx);
+    }
+
     /// Sets the thinking level.
     pub fn set_thinking(&mut self, level: ThinkingLevel, cx: &mut Context<Self>) {
         self.menu = None;

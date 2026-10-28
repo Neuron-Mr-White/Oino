@@ -64,6 +64,8 @@ gpui_kit::actions!(
         PickModel,
         /// Thinking menu.
         PickThinking,
+        /// Next thinking level (ZCode `Ctrl+T`: cycles without opening the menu).
+        CycleThinking,
         /// Settings.
         OpenSettings,
         /// Toggle light/dark.
@@ -129,6 +131,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new(primary!("shift-p"), CommandPalette, None),
         KeyBinding::new(primary!("m"), PickModel, None),
         KeyBinding::new(primary!("shift-m"), PickThinking, None),
+        KeyBinding::new("alt-t", CycleThinking, None),
         KeyBinding::new(primary!(","), OpenSettings, None),
         KeyBinding::new(primary!("shift-t"), TreeView, None),
         KeyBinding::new(primary!("f"), FindInConversation, None),
