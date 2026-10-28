@@ -77,7 +77,7 @@ processes you start (kill by PID only) and large temp files afterwards.
 |---|---|---|---|
 | `coffee` | Windows (tiny11, 16 threads, ~8 GB RAM) | `ssh coffee` (PowerShell) | unstable under heavy load; console session may be locked (no screenshots) |
 | `desmondgiam` | macOS (Intel x86_64, 8 threads, 8 GB RAM, cargo + Xcode) | `ssh mac` (user desmondgiam) | disk ~93% full (~16 GB free): reuse `~/oino-release`, `cargo clean` large targets you created, never fill the disk; may be asleep, skip if unreachable |
-| `ti` | Ubuntu | `ssh ti@ti` (Tailscale SSH, user `ti`) | Tailscale may demand a browser check (owner must approve); if it does, skip and report |
+| `ti` | Ubuntu (14 threads, 30 GB RAM, ~229 GB free, cargo/rustc, gst) | `ssh ti@ti` (Tailscale SSH, user `ti`) | **Preferred GUI test host.** Has a logged-in desktop on X0/X1: do NOT use those displays, run your own `Xvfb :9x` (install Xvfb with `sudo -S` from `ti/sudo.pass` if missing). Work under `~/oino-test` only, `nice -n 10`, `cargo -j 6`. Tailscale may demand a browser check after a while (owner approves); if it does, skip and report |
 
 **Owner's PC (this machine) is the owner's workstation (owner direction 2026-10-27):** never
 use its display (`DISPLAY=:0`, Xwayland auth, `xdotool`, GNOME/CloakBrowser windows), never
