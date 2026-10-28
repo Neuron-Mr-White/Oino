@@ -89,7 +89,7 @@ impl SessionPane {
                     )
                     .size(BtnSize::Sm)
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.rewind_at(nth, true, cx);
+                        this.request_rewind(nth, true, cx);
                     })),
                 )
             });

@@ -475,7 +475,7 @@ impl SessionPane {
                                 .size(BtnSize::Sm)
                                 .tooltip("Restore the files this turn changed", None)
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.rewind_at(nth, false, cx);
+                                    this.request_rewind(nth, false, cx);
                                 })),
                         )
                     })

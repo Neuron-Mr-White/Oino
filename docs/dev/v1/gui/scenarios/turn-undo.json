@@ -1,0 +1,27 @@
+{
+  "name": "turn-undo",
+  "scene": "run",
+  "backend": "demo",
+  "env": ["OINO_DESKTOP_DEMO_PACE=4"],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 60000}},
+    {"wait_state": {"busy": true, "timeout_ms": 30000}},
+    {"wait_for": {"text": "Changes this turn", "timeout_ms": 180000}},
+    {"wait_state": {"busy": false, "timeout_ms": 120000}},
+    {"wait_for": {"label": "Undo", "timeout_ms": 20000}},
+    {"screenshot": {"name": "01-turn-footer-undo"}},
+    {"click": {"label": "Undo"}},
+    {"wait_for": {"id": "confirm-ok", "timeout_ms": 20000}},
+    {"screenshot": {"name": "02-undo-confirm"}},
+    {"click": {"id": "confirm-ok"}},
+    {"wait_for": {"text": "Restored 1 file", "timeout_ms": 20000}},
+    {"screenshot": {"name": "03-undone"}},
+    {"hover": {"label": "Make the JSON parser accept trailing commas"}},
+    {"click": {"label": "Rewind to here"}},
+    {"wait_for": {"id": "confirm-ok", "timeout_ms": 20000}},
+    {"click": {"id": "confirm-ok"}},
+    {"wait_for": {"text": "Make the JSON parser accept trailing commas", "timeout_ms": 20000}},
+    {"screenshot": {"name": "04-rewound-composer"}}
+  ]
+}
