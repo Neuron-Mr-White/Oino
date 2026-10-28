@@ -46,7 +46,15 @@
     },
     {
       "wait_for": {
-        "text": "2 queued",
+        "role": "row",
+        "label": "Queue second queued note",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "Queue first queued note",
         "timeout_ms": 30000
       }
     },
@@ -97,7 +105,8 @@
     },
     {
       "wait_for": {
-        "text": "queued",
+        "role": "row",
+        "label": "Queue first queued note",
         "absent": true,
         "timeout_ms": 20000
       }

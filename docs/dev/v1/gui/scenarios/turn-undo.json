@@ -3,7 +3,8 @@
   "scene": "run",
   "backend": "demo",
   "env": [
-    "OINO_DESKTOP_DEMO_PACE=4"
+    "OINO_DESKTOP_DEMO_PACE=6",
+    "OINO_DESKTOP_DEMO_APPROVE_MS=4000"
   ],
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [

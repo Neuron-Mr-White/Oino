@@ -596,8 +596,12 @@ def main(argv: list[str]) -> int:
     if args.command == "run" and not args.no_restart:
         scenario = Scenario(Path(args.file))
         scene = args.scene or scenario.scene
-        print(f"# restarting the app ({'demo scene ' + scene if scene else 'default'})", flush=True)
-        ti_restart(path, scene)
+        backend = args.backend or scenario.backend
+        print(
+            f"# restarting the app ({backend}, {'demo scene ' + scene if scene else 'default'})",
+            flush=True,
+        )
+        ti_restart(path, scene, backend, scenario.env)
 
     client = Client(host, path)
     try:

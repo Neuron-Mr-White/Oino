@@ -795,7 +795,8 @@ impl Shared {
                 "result": {"content": [{"type": "text", "text": "Blocked by unipi.workflow: denied by user"}]}, "isError": true}));
         }
         self.emit(json!({"type": "tool_execution_end", "toolCallId": "call_agent", "toolName": "run_subagent",
-            "result": {"content": [{"type": "text", "text": "**Call sites:** `parse_value` → `parse_array`, `parse_object`.\n\n**Tests:** `tests/parser.rs` (12), none cover trailing commas."}]},
+            "result": {"content": [{"type": "text", "text": "**Call sites:** `parse_value` → `parse_array`, `parse_object`.\n\n**Tests:** `tests/parser.rs` (12), none cover trailing commas."}],
+                "details": {"sessionId": "demo-child-1"}},
             "isError": false, "durationMs": 38_000}));
         let mut idle = child.clone();
         idle["state"] = json!("idle");
@@ -1024,9 +1025,20 @@ impl SessionBackend for DemoBackend {
                 RpcCommand::Pi(c) => c,
             };
             Ok(match command {
-                PiCommand::Prompt { message, .. } => {
+                PiCommand::Prompt {
+                    message,
+                    streaming_behavior,
+                    ..
+                } => {
                     if shared.busy.load(Ordering::SeqCst) {
-                        shared.push_queue(QueueKind::Steering, &message);
+                        // `Alt+Enter` queues a follow-up; a plain send steers.
+                        let kind = match streaming_behavior {
+                            Some(oino_core::session::StreamingBehavior::FollowUp) => {
+                                QueueKind::FollowUp
+                            }
+                            _ => QueueKind::Steering,
+                        };
+                        shared.push_queue(kind, &message);
                     } else if message.starts_with("/kanboard") {
                         shared.open_board();
                     } else if message.starts_with("/info") {
