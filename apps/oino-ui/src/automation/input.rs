@@ -17,7 +17,14 @@ use gpui_kit::{
 ///
 /// `Err` carries GPUI's parse message for a spec it cannot read.
 pub fn keystroke(spec: &str, os: OperatingSystem) -> Result<Keystroke, String> {
-    Keystroke::parse_with_os(spec, os).map_err(|e| e.to_string())
+    // Scenarios and the docs spell chords with `+` (`alt+h`, `shift-secondary-p`); GPUI's
+    // parser wants `-` between modifiers. Accept both, and leave a lone `+` key alone.
+    let normalized = if spec == "+" {
+        spec.to_owned()
+    } else {
+        spec.replace('+', "-")
+    };
+    Keystroke::parse_with_os(&normalized, os).map_err(|e| e.to_string())
 }
 
 /// The keystrokes that type `text`: one per character, the way a keyboard produces them
@@ -114,5 +121,20 @@ mod tests {
         assert_eq!(keys[2].key, "space");
         assert_eq!(keys[2].key_char.as_deref(), Some(" "));
         assert_eq!(keys[8].key, "enter");
+    }
+}
+
+#[cfg(test)]
+mod plus_tests {
+    use super::*;
+
+    #[test]
+    fn chord_specs_accept_plus_and_dash() {
+        let os = OperatingSystem::Linux;
+        let plus = keystroke("alt+h", os).unwrap();
+        let dash = keystroke("alt-h", os).unwrap();
+        assert_eq!(plus, dash);
+        assert!(plus.modifiers.alt);
+        assert_eq!(plus.key, "h");
     }
 }
