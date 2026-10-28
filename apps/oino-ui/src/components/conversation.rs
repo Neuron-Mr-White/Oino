@@ -601,14 +601,18 @@ impl SessionPane {
         let header = (!touch).then(|| self.render_header(state, &t, cx));
         if self.model.transcript.is_empty() {
             let welcome = self.render_welcome(window, cx);
-            return div()
-                .flex()
-                .flex_col()
-                .size_full()
-                .track_focus(&self.focus)
-                .on_key_down(cx.listener(Self::on_pane_key))
-                .children(header)
-                .child(div().flex_1().min_h_0().child(welcome))
+            return self
+                .drop_target(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .size_full()
+                        .track_focus(&self.focus)
+                        .on_key_down(cx.listener(Self::on_pane_key))
+                        .children(header)
+                        .child(div().flex_1().min_h_0().child(welcome)),
+                    cx,
+                )
                 .into_any_element();
         }
         // Extension `header` widgets stay; the start header (setHeader) is one collapsed card
@@ -637,58 +641,74 @@ impl SessionPane {
         let meta = self.render_meta_row(&t, cx);
         let below = self.render_widgets(WidgetPlacement::BelowEditor, window, cx);
         let measure = self.measure(cx);
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::on_pane_key))
-            .children(header)
-            .when(!header_widgets.is_empty(), |el| {
-                el.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(space::S1))
-                        .children(header_widgets),
-                )
-            })
-            .when(mini_status, |el| el.children(status.take()))
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .child(timeline)
-                    .children(rail)
-                    .children(status)
-                    .children(find)
-                    .children(pill)
-                    .child(measure),
-            )
-            .child(
-                // A2.11: the bottom area has padding 0 24 14, max 884, centred.
-                div()
-                    .flex()
-                    .flex_col()
-                    .w_full()
-                    .px(if touch { t.gutter() } else { px(space::S6) })
-                    .pb(px(space::S3_5))
-                    .child(
+        self.drop_target(
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .track_focus(&self.focus)
+                .on_key_down(cx.listener(Self::on_pane_key))
+                .children(header)
+                .when(!header_widgets.is_empty(), |el| {
+                    el.child(
                         div()
                             .flex()
                             .flex_col()
-                            .gap(px(space::S2))
-                            .w_full()
-                            .max_w(px(size::COMPOSER_MAX))
-                            .mx_auto()
-                            .child(dock)
-                            .child(composer)
-                            .children(meta)
-                            .children(below),
-                    ),
-            )
-            .into_any_element()
+                            .gap(px(space::S1))
+                            .children(header_widgets),
+                    )
+                })
+                .when(mini_status, |el| el.children(status.take()))
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .child(timeline)
+                        .children(rail)
+                        .children(status)
+                        .children(find)
+                        .children(pill)
+                        .child(measure),
+                )
+                .child(
+                    // A2.11: the bottom area has padding 0 24 14, max 884, centred.
+                    div()
+                        .flex()
+                        .flex_col()
+                        .w_full()
+                        .px(if touch { t.gutter() } else { px(space::S6) })
+                        .pb(px(space::S3_5))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap(px(space::S2))
+                                .w_full()
+                                .max_w(px(size::COMPOSER_MAX))
+                                .mx_auto()
+                                .children(self.render_attachments(&t, cx))
+                                .child(dock)
+                                .child(composer)
+                                .children(meta)
+                                .children(below),
+                        ),
+                ),
+            cx,
+        )
+        .into_any_element()
+    }
+
+    /// Accepts files dragged onto the conversation (design.md A2.11): images become image
+    /// attachments, other files `@` mentions. The drag comes from the platform as
+    /// `FileDropEvent`, the same path a desktop drag uses.
+    fn drop_target(&self, el: gpui_kit::Div, cx: &mut Context<Self>) -> gpui_kit::Div {
+        el.on_drop(cx.listener(|this, paths: &gpui_kit::ExternalPaths, _, cx| {
+            this.attach_paths(paths.paths(), cx);
+        }))
+        .drag_over::<gpui_kit::ExternalPaths>(|style, _, _, cx: &mut App| {
+            style.bg(OinoTheme::get(cx).hover())
+        })
     }
 }

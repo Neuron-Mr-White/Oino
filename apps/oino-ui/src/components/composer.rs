@@ -864,10 +864,138 @@ impl SessionPane {
                 mime_type: image.format.mime_type().to_owned(),
             },
         );
+        self.image_order.push(id.clone());
         self.pending_tokens
             .push((id, format!("[Image #{n}]"), format!("Image #{n}")));
         cx.notify();
         true
+    }
+
+    /// The attachment strip above the composer: one chip per attached image (`Image #n`), so
+    /// what the prompt will carry is visible before sending (design.md A2.11, attachments).
+    pub(crate) fn render_attachments(
+        &self,
+        t: &OinoTheme,
+        _cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if self.image_order.is_empty() {
+            return None;
+        }
+        Some(
+            div()
+                .flex()
+                .flex_row()
+                .flex_wrap()
+                .gap(px(space::S1_5))
+                .children(self.image_order.iter().enumerate().map(|(i, id)| {
+                    let mime = self
+                        .images
+                        .get(id)
+                        .map(|image| image.mime_type.clone())
+                        .unwrap_or_default();
+                    crate::automation::probe(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(space::S1))
+                            .h(px(size::CONTROL_SM))
+                            .px(px(space::S2))
+                            .rounded(px(radius::R_FULL))
+                            .bg(t.bubble())
+                            .border_1()
+                            .border_color(t.border())
+                            .text_role(t, TextRole::Xs)
+                            .text_color(t.fg_subtle())
+                            .child(icon(IconName::File, size::ICON_SM, t.fg_subtle()))
+                            .child(SharedString::from(format!("Image #{}", i + 1)))
+                            .when(!mime.is_empty(), |el| {
+                                el.child(
+                                    div()
+                                        .text_color(t.fg_subtlest())
+                                        .child(SharedString::from(mime)),
+                                )
+                            }),
+                        crate::automation::Meta::labelled(
+                            crate::automation::Role::Row,
+                            format!("Image #{}", i + 1),
+                        ),
+                    )
+                }))
+                .into_any_element(),
+        )
+    }
+
+    /// Attaches dropped paths (design.md A2.11, drag and drop onto the conversation): an image
+    /// file becomes an image attachment (sent as image content with the prompt), anything else
+    /// an `@path` mention relative to the session cwd. Returns how many were attached.
+    pub(crate) fn attach_paths(
+        &mut self,
+        paths: &[std::path::PathBuf],
+        cx: &mut Context<Self>,
+    ) -> usize {
+        /// Largest image attached (a model payload is base64 of this).
+        const MAX_IMAGE: u64 = 16 * 1024 * 1024;
+        let cwd = std::path::PathBuf::from(&self.model.cwd);
+        let mut attached = 0;
+        for path in paths {
+            if path.is_dir() {
+                continue;
+            }
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let image = match ext.as_str() {
+                "png" => Some("image/png"),
+                "jpg" | "jpeg" => Some("image/jpeg"),
+                "webp" => Some("image/webp"),
+                "gif" => Some("image/gif"),
+                _ => None,
+            };
+            if let Some(mime) = image {
+                let bytes = std::fs::metadata(path).map_or(0, |m| m.len());
+                if bytes == 0 || bytes > MAX_IMAGE {
+                    self.toast(&format!("{} is too large to attach", path.display()), cx);
+                    continue;
+                }
+                match std::fs::read(path) {
+                    Ok(data) => {
+                        let n = self.images.len() + 1;
+                        let id = format!("img-{}-{n}", self.model.id);
+                        self.images.insert(
+                            id.clone(),
+                            oino_ai::ImageContent {
+                                data: crate::model::composer::base64(&data),
+                                mime_type: mime.to_owned(),
+                            },
+                        );
+                        self.image_order.push(id.clone());
+                        self.pending_tokens.push((
+                            id,
+                            format!("[Image #{n}]"),
+                            format!("Image #{n}"),
+                        ));
+                        attached += 1;
+                    }
+                    Err(error) => {
+                        self.toast(&format!("Cannot read {}: {error}", path.display()), cx);
+                    }
+                }
+                continue;
+            }
+            let rel = path
+                .strip_prefix(&cwd)
+                .unwrap_or(path)
+                .display()
+                .to_string();
+            let token = format!("@{rel}");
+            self.pending_tokens
+                .push((token.clone(), token.clone(), rel));
+            attached += 1;
+        }
+        cx.notify();
+        attached
     }
 
     /// Opens a native file picker and attaches the files as `@` tokens.

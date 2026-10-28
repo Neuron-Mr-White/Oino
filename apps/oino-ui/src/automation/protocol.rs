@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use super::registry::Role;
 
 /// Methods the server answers (kept in sync with [`Request::method`] and the docs).
-pub const METHODS: [&str; 12] = [
+pub const METHODS: [&str; 14] = [
     "tree",
     "state",
     "click",
@@ -22,6 +22,8 @@ pub const METHODS: [&str; 12] = [
     "wait_for",
     "screenshot",
     "settle",
+    "drop",
+    "clipboard_image",
     "ping",
     "quit",
 ];
@@ -81,6 +83,19 @@ impl Request {
     #[must_use]
     pub fn str(&self, key: &str) -> Option<&str> {
         self.params.get(key).and_then(Value::as_str)
+    }
+
+    /// A string-array parameter (`paths` of a drop).
+    #[must_use]
+    pub fn strings(&self, key: &str) -> Vec<String> {
+        self.params
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
     }
 
     /// A number parameter.

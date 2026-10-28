@@ -87,6 +87,8 @@ async fn handle(
         "focus" => focus(cx, &request).await,
         "wait_for" => wait_for(cx, &request).await,
         "screenshot" => screenshot(cx, &request).await,
+        "drop" => drop_paths(cx, &request).await,
+        "clipboard_image" => clipboard_image(cx, &request).await,
         "settle" => settle(cx, 2, SETTLE_TIMEOUT)
             .await
             .map(|()| json!({"frame": registry::frame_number()})),
@@ -332,6 +334,76 @@ async fn wait_for(cx: &mut AsyncWindowContext, request: &Request) -> Result<Valu
         let timer = cx.background_executor().timer(Duration::from_millis(25));
         timer.await;
     }
+}
+
+/// `drop`: files dragged onto the window at the target. The platform reports a drag as
+/// `FileDropEvent` (entered → submitted) and GPUI turns it into the pointer sequence that hits
+/// the `on_drop` target, so this is the same path as dragging from a file manager.
+async fn drop_paths(cx: &mut AsyncWindowContext, request: &Request) -> Result<Value, String> {
+    let paths: Vec<PathBuf> = request
+        .strings("paths")
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+    if paths.is_empty() {
+        return Err("give \"paths\": [\"/path/to/file.png\"]".into());
+    }
+    let (x, y, id) =
+        if request.has_selector() || (request.num("x").is_some() && request.num("y").is_some()) {
+            target(request)?
+        } else {
+            // No target: the centre of the window.
+            let (x, y) = cx
+                .update(|window: &mut Window, _| {
+                    let size = window.viewport_size();
+                    (f32::from(size.width) / 2.0, f32::from(size.height) / 2.0)
+                })
+                .map_err(|_| "the window is gone".to_owned())?;
+            (x, y, None)
+        };
+    let dropped = paths.clone();
+    settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
+    cx.update(move |window: &mut Window, cx: &mut App| {
+        let position = gpui_kit::point(gpui_kit::px(x), gpui_kit::px(y));
+        let entered = gpui_kit::FileDropEvent::Entered {
+            position,
+            paths: gpui_kit::ExternalPaths(dropped.into_iter().collect()),
+        };
+        window.dispatch_event(PlatformInput::FileDrop(entered), cx);
+        window.dispatch_event(
+            PlatformInput::FileDrop(gpui_kit::FileDropEvent::Submit { position }),
+            cx,
+        );
+    })
+    .map_err(|_| "the window is gone".to_owned())?;
+    settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
+    Ok(json!({
+        "at": [x, y],
+        "id": id,
+        "paths": paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+    }))
+}
+
+/// `clipboard_image`: puts a PNG from the app host on the clipboard, so `secondary-v` in the
+/// composer pastes it exactly like an image copied from another app.
+async fn clipboard_image(cx: &mut AsyncWindowContext, request: &Request) -> Result<Value, String> {
+    let path = request
+        .str("path")
+        .ok_or_else(|| "give \"path\" of a PNG on the app host".to_owned())?
+        .to_owned();
+    let bytes = std::fs::read(&path).map_err(|e| format!("reading {path}: {e}"))?;
+    let len = bytes.len();
+    cx.update(move |_, cx: &mut App| {
+        let image = gpui_kit::Image {
+            format: gpui_kit::ImageFormat::Png,
+            bytes,
+            id: u64::try_from(len).unwrap_or(0),
+        };
+        cx.write_to_clipboard(gpui_kit::ClipboardItem::new_image(&image));
+    })
+    .map_err(|_| "the window is gone".to_owned())?;
+    settle(cx, 1, SETTLE_TIMEOUT).await?;
+    Ok(json!({"path": path, "bytes": len}))
 }
 
 /// `screenshot`: a PNG of the app window (X11 `import`, `xdotool` for the window id).
