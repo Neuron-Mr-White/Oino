@@ -208,80 +208,80 @@ pub fn stack(
             )
             .value(toast.title.clone().unwrap_or_default());
             let card = div()
-                        .id(ElementId::Name(format!("toast-{id}").into()))
-                        .max_w(px(size::TOAST_MAX))
-                        .min_w(px(size::TOAST * 0.6))
+                .id(ElementId::Name(format!("toast-{id}").into()))
+                .max_w(px(size::TOAST_MAX))
+                .min_w(px(size::TOAST * 0.6))
+                .flex()
+                .items_start()
+                .gap(px(space::S2_5))
+                .py(px(space::S2_5))
+                .px(px(space::S3_5))
+                .rounded(px(radius::R_FLOAT))
+                .bg(t.sheet())
+                .border_1()
+                .border_color(t.border())
+                .shadow(t.e_toast())
+                .on_hover(move |h: &bool, w, cx| hover(h.then_some(id), w, cx))
+                .child(div().pt(px(space::HALF)).child(icon(glyph, size::ICON, c)))
+                .child(
+                    div()
                         .flex()
-                        .items_start()
-                        .gap(px(space::S2_5))
-                        .py(px(space::S2_5))
-                        .px(px(space::S3_5))
-                        .rounded(px(radius::R_FLOAT))
-                        .bg(t.sheet())
-                        .border_1()
-                        .border_color(t.border())
-                        .shadow(t.e_toast())
-                        .on_hover(move |h: &bool, w, cx| hover(h.then_some(id), w, cx))
-                        .child(div().pt(px(space::HALF)).child(icon(glyph, size::ICON, c)))
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(space::S1))
+                        .text_color(t.fg())
+                        .text_role(t, TextRole::Base)
+                        .when_some(toast.title.clone(), |el, title| {
+                            el.child(div().weight_medium().child(title))
+                        })
                         .child(
                             div()
-                                .flex()
-                                .flex_col()
-                                .flex_1()
-                                .min_w_0()
-                                .gap(px(space::S1))
-                                .text_color(t.fg())
-                                .text_role(t, TextRole::Base)
-                                .when_some(toast.title.clone(), |el, title| {
-                                    el.child(div().weight_medium().child(title))
-                                })
-                                .child(
-                                    div()
-                                        .line_clamp(TOAST_LINES)
-                                        .text_color(t.fg_subtle())
-                                        .when(toast.title.is_none(), |el| el.text_color(t.fg()))
-                                        .child(toast.message.clone()),
-                                )
-                                .when(clipped || toast.action.is_some(), |el| {
-                                    el.child(
-                                        div()
-                                            .flex()
-                                            .gap(px(space::S1_5))
-                                            .when(clipped, |el| {
-                                                el.child(
-                                                    Btn::new(ElementId::Name(
-                                                        format!("toast-more-{id}").into(),
-                                                    ))
-                                                    .label("More")
-                                                    .variant(Variant::Secondary)
-                                                    .size(BtnSize::Sm)
-                                                    .on_click(move |_, w, cx| more(id, w, cx)),
-                                                )
-                                            })
-                                            .when_some(toast.action.clone(), |el, (label, f)| {
-                                                el.child(
-                                                    Btn::new(ElementId::Name(
-                                                        format!("toast-act-{id}").into(),
-                                                    ))
-                                                    .label(label)
-                                                    .variant(Variant::Secondary)
-                                                    .size(BtnSize::Sm)
-                                                    .on_click(move |_, w, cx| f(w, cx)),
-                                                )
-                                            }),
-                                    )
-                                }),
+                                .line_clamp(TOAST_LINES)
+                                .text_color(t.fg_subtle())
+                                .when(toast.title.is_none(), |el| el.text_color(t.fg()))
+                                .child(toast.message.clone()),
                         )
-                        .child(
-                            div()
-                                .id(ElementId::Name(format!("toast-x-{id}").into()))
-                                .cursor_pointer()
-                                .rounded(px(radius::R_FULL))
-                                .hover(|s| s.bg(t.hover()))
-                                .on_click(move |_: &ClickEvent, w, cx| dismiss(id, w, cx))
-                                .child(icon(IconName::X, size::ICON_MD, t.fg_subtle()))
-                                .automation(crate::automation::Meta::icon_button("Dismiss toast")),
-                        );
+                        .when(clipped || toast.action.is_some(), |el| {
+                            el.child(
+                                div()
+                                    .flex()
+                                    .gap(px(space::S1_5))
+                                    .when(clipped, |el| {
+                                        el.child(
+                                            Btn::new(ElementId::Name(
+                                                format!("toast-more-{id}").into(),
+                                            ))
+                                            .label("More")
+                                            .variant(Variant::Secondary)
+                                            .size(BtnSize::Sm)
+                                            .on_click(move |_, w, cx| more(id, w, cx)),
+                                        )
+                                    })
+                                    .when_some(toast.action.clone(), |el, (label, f)| {
+                                        el.child(
+                                            Btn::new(ElementId::Name(
+                                                format!("toast-act-{id}").into(),
+                                            ))
+                                            .label(label)
+                                            .variant(Variant::Secondary)
+                                            .size(BtnSize::Sm)
+                                            .on_click(move |_, w, cx| f(w, cx)),
+                                        )
+                                    }),
+                            )
+                        }),
+                )
+                .child(
+                    div()
+                        .id(ElementId::Name(format!("toast-x-{id}").into()))
+                        .cursor_pointer()
+                        .rounded(px(radius::R_FULL))
+                        .hover(|s| s.bg(t.hover()))
+                        .on_click(move |_: &ClickEvent, w, cx| dismiss(id, w, cx))
+                        .child(icon(IconName::X, size::ICON_MD, t.fg_subtle()))
+                        .automation(crate::automation::Meta::icon_button("Dismiss toast")),
+                );
             // Leaving toasts fade + drop over `EXIT_MS`; the owner reaps them afterwards.
             let animated = if toast.closing.is_some() {
                 crate::design::motion::exit(
@@ -315,7 +315,10 @@ mod tests {
         assert!(toasts.expire(late));
         assert_eq!(toasts.visible().len(), 1);
         assert!(toasts.get(id).is_some_and(|t| t.closing.is_some()));
-        assert!(toasts.has_timed(), "the sweep must keep running while it fades");
+        assert!(
+            toasts.has_timed(),
+            "the sweep must keep running while it fades"
+        );
         assert!(!toasts.reap(late));
         // …and is gone once the exit window is over.
         assert!(toasts.reap(late + Duration::from_millis(200)));

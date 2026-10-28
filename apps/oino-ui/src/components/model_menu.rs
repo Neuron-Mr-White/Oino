@@ -95,7 +95,14 @@ pub fn model_menu(pane: &SessionPane, t: &OinoTheme, cx: &mut Context<SessionPan
             SharedString::from(provider_title(&open)),
             Some(SharedString::from(format!("{count}"))),
         ));
-        push_models(pane, t, &entity, current.as_ref(), &mut entries, Some(&open));
+        push_models(
+            pane,
+            t,
+            &entity,
+            current.as_ref(),
+            &mut entries,
+            Some(&open),
+        );
         entries.push(MenuEntry::Separator);
         entries.push(manage);
         return menu("model-menu", t, size::MODEL_MENU, entries)
@@ -119,16 +126,25 @@ pub fn model_menu(pane: &SessionPane, t: &OinoTheme, cx: &mut Context<SessionPan
                     format!("{count} models")
                 })),
             ));
-            push_models(pane, t, &entity, current.as_ref(), &mut entries, Some(first));
+            push_models(
+                pane,
+                t,
+                &entity,
+                current.as_ref(),
+                &mut entries,
+                Some(first),
+            );
             entries.push(MenuEntry::Separator);
         }
         for provider in providers.iter().skip(1) {
             let e = entity.clone();
             let p = provider.clone();
-            let count = pane.models.iter().filter(|m| &m.provider == provider).count();
-            let has_current = current
-                .as_ref()
-                .is_some_and(|c| &c.provider == provider);
+            let count = pane
+                .models
+                .iter()
+                .filter(|m| &m.provider == provider)
+                .count();
+            let has_current = current.as_ref().is_some_and(|c| &c.provider == provider);
             entries.push(
                 MenuEntry::item(provider_title(provider), move |_, cx| {
                     let p = p.clone();

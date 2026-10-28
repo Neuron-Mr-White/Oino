@@ -619,9 +619,8 @@ impl Transcript {
                 if let Some(elapsed) = done_thinking {
                     self.thinking_at = None;
                     if let RowKind::Assistant(row) = &mut self.rows[at].kind {
-                        row.thinking_ms = Some(
-                            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
-                        );
+                        row.thinking_ms =
+                            Some(u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX));
                     }
                 }
                 changes.extend(self.sync_tool_calls(assistant));
@@ -644,9 +643,8 @@ impl Transcript {
                         && !row.thinking.trim().is_empty()
                         && let Some(started) = self.thinking_at.take()
                     {
-                        row.thinking_ms = Some(
-                            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-                        );
+                        row.thinking_ms =
+                            Some(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
                     }
                 }
                 self.thinking_at = None;

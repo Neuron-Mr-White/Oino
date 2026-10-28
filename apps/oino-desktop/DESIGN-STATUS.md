@@ -53,7 +53,7 @@ folders under `docs/dev/v1/design/shots/desktop/<scenario>/` (`agents-live`, `st
 | 3 | Code font size | ✅ | `code_font_size` |
 | 4 | Spacing / radius nesting | ✅ | token-only (guard test) |
 | 5 | Icons | ✅ | Lucide vocabulary in `OinoAssets` |
-| 6 | Motion | 🟡 | menus, dialogs, toasts fade + 4 px rise (180 ms, `design::motion`); needs-you pulse; ticker notifies only the views that asked, staggered; exit animations and run-label shimmer not done |
+| 6 | Motion | ✅ | menus, dialogs, toasts fade + 4 px rise (180 ms); exits fade + drop over `EXIT_MS` 120 ms (`design::motion::exit`: toasts keep fading until `Toasts::reap`, the run-state line fades via `run_exit`); run-state, fold-line, tool-row and thinking labels shimmer (1.6 s); needs-you pulse; ticker notifies only the views that asked, staggered, and stops when idle; reduce motion turns all of it off |
 | 7 | Workspace frames | ✅ | independent frames, 4 px gaps with resize handles |
 | 8 | Sidebar width | ✅ | 264 min, ≤ 50 %, draggable |
 | 9 | Sidebar nav order | ✅ | New · Search · Board · Extensions · view switcher |
@@ -73,9 +73,9 @@ folders under `docs/dev/v1/design/shots/desktop/<scenario>/` (`agents-live`, `st
 | 23 | Subagent rows | ✅ | AgentRow live status (state, steps, elapsed, latest action, Stop) from `_oino/agents`; Agent tab is a read-only child timeline (live feed + `_oino/agent_messages` backlog); `btw` / dream children have no tool row and open from the StatusPanel Run section; scenario `agents-live` |
 | 24 | Turn summary + undo | ✅ | TurnFooter Review + Undo; Undo = files-only `_oino/rewind` behind a confirmation (`turn-undo`) |
 | 25 | Rewind message | ✅ | user bubble hover → Rewind: forks before the message, restores its files and puts the text back in the composer, behind a confirmation (scenario `rewind-real`) |
-| 26 | Thinking blocks | ✅ | |
+| 26 | Thinking blocks | ✅ | label `Thinking` (shimmer) while the phase runs, `Thought for 12.3s` after it (`AssistantRow::thinking_ms`), `Thought` for history rows without timing |
 | 27 | Composer shell | ✅ | |
-| 28 | Model menu | ✅ | provider groups, badges, check, Manage models |
+| 28 | Model menu | ✅ | the current provider is pinned first and rendered directly, other providers are submenu rows that drill into their model list ("All providers" back row, ←/Esc back, →/Enter in), single provider = flat list, badges, check, Manage models; no separate "Pinned" group (the pane list already is the `enabledModels` scope, [zcode-details.md](../../docs/dev/v1/zcode-details.md) D7) |
 | 29 | Context ring | ✅ | click = compact |
 | 30 | Mentions | ✅ | `@ / $ #` via `_oino/get_completions`, colored token chips |
 | 31 | Attachments | ✅ | pasted (⌘V) and dropped images become image attachments sent with the prompt (≤ 16 MiB, png/jpeg/webp/gif), other dropped files `@path` mentions; an attachment strip shows what will be sent (`image-attach`) |
@@ -91,7 +91,7 @@ folders under `docs/dev/v1/design/shots/desktop/<scenario>/` (`agents-live`, `st
 | 41 | Side pane tabs | ✅ | Review, Files, Plan, Agent, Tree, panels |
 | 42 | Embedded browser | ✅ | side-pane Browser tab (gpui-webview 0.8.1): URL bar, back/forward/reload, devtools (debug), open externally; `openUrl`, transcript links, terminal ⌘-click and the `localhost:*` chip open there; Linux on X11/XWayland unless "Native Wayland" |
 | 43 | PTY terminal | ✅ | bottom Terminal tabs (`alacritty_terminal` + platform PTY): tabs, split, copy/paste, ⌘-click links, 10k scrollback, token colours |
-| 44 | Command center | ✅ | scopes, prefixes, sections, history |
+| 44 | Command center | ✅ | scopes, prefixes, sections; history chips with ⌥1–⌥3, per-chip forget (persisted), clock icon |
 | 45 | Primary modifier | ✅ | `cmd-*` on macOS / `ctrl-*` elsewhere (gpui 0.3.10 dropped `secondary-`), `⌘` labels become `Ctrl+` off Apple, incl. DockDialog |
 | 46 | Settings | ✅ | page + hub |
 | 47 | Toasts | ✅ | bottom-right, max 3, hover pauses |

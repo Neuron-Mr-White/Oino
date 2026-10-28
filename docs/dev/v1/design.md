@@ -1218,8 +1218,10 @@ notify `bell`; update `arrow-down-circle`; app bridge `smartphone`; kanboard car
 Durations from gpui-kit `MotionTokens`, which match ZCode's 100–300 ms range: `FAST=120 ms`
 (hover/press feedback, chevron rotation, tooltip in), `NORMAL=180 ms` (menu/popover/dialog
 enter: fade + 4 px slide or 0.98→1 scale; drawer and side pane open), `SLOW=280 ms` (mobile
-sheet enter, status panel expand). Exit = 0.7 × enter. Easing enter `cubic-bezier(0.16,1,0.3,1)`,
-exit `ease-in`. Rules:
+sheet enter, status panel expand). Exit = `EXIT=120 ms` fade + 4 px drop
+(`design::motion::exit`); a dismissed overlay stays mounted for that long and is then
+dropped (toasts: `Toasts::dismiss` marks, `reap` drops; the run-state line: `run_exit`).
+Easing enter `cubic-bezier(0.16,1,0.3,1)`, exit `ease-out`. Rules:
 
 - Nothing animates layout while a session streams except: caret blink (530 ms), spinners
   (shared ticker, 12 fps), the composer running shimmer (one 1.6 s sweep loop on the run-state
@@ -1693,11 +1695,17 @@ empty query clears the prefix, Esc closes.
 ### 4.26 `ModelMenu`
 
 `Menu` 280 wide anchored to the model trigger (centre aligned). With one provider: flat model
-list; with several: group label = current provider ("Oino Router" + auth badge `API`/`OAuth`),
-its models, separator, other providers as submenus, separator, "Manage models…" (Settings →
-Models). Row: model name `Base`, capability badges `Xs` (`Vision`, `1M`), trailing `check`.
-Scoped models (settings `enabledModels`) are listed first under "Pinned". Models disabled for
-the running session show `lock` + tooltip. Keys: §4.4 plus ⌘M toggles, type-ahead filters.
+list; with several: the provider in use is pinned at the top and rendered directly (group
+label = current provider "Oino Router" + auth badge `API`/`OAuth`, then its models), separator,
+then the other providers as submenu rows (model count trailing, `chevron-right`) that open that
+provider's model list with an "All providers" row to come back — a level inside the same menu
+(drill-down), because one GPUI popover holds the focus; separator, then "Manage models…"
+(Settings → Models). Row: model name `Base`, capability badges `Xs` (`Vision`, `1M`), trailing
+`check`. A separate "Pinned" group is not drawn: pi's `enabledModels` / `--models` scope is
+already applied to `get_available_models`, so the list *is* the pinned set on desktop
+([zcode-details.md](zcode-details.md) §6). Models disabled for the running session show `lock` + tooltip.
+Keys: §4.4 plus ⌘M toggles, type-ahead filters, →/Enter opens a provider, ←/Esc goes back one
+level, Esc at the top level closes.
 
 ### 4.27 OUS renderer (`components/ous/`)
 

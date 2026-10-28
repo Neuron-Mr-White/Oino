@@ -189,8 +189,7 @@ impl PaletteView {
                     cx.stop_propagation();
                     return;
                 };
-                self.input
-                    .update(cx, |s, cx| s.set_value(text, window, cx));
+                self.input.update(cx, |s, cx| s.set_value(text, window, cx));
                 self.refilter(cx);
             }
             _ => return,
@@ -202,8 +201,7 @@ impl PaletteView {
 
     /// Puts `text` in the search box and refilters (a history chip).
     fn apply_history(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
-        self.input
-            .update(cx, |s, cx| s.set_value(text, window, cx));
+        self.input.update(cx, |s, cx| s.set_value(text, window, cx));
         self.refilter(cx);
     }
 }
@@ -461,10 +459,7 @@ impl Render for PaletteView {
                                                     .cursor_pointer()
                                                     .hover(|s| s.bg(t.hover()))
                                                     .on_click(cx.listener(
-                                                        move |this,
-                                                              _: &ClickEvent,
-                                                              window,
-                                                              cx| {
+                                                        move |this, _: &ClickEvent, window, cx| {
                                                             let q = q.clone();
                                                             this.apply_history(q, window, cx);
                                                         },
@@ -475,12 +470,10 @@ impl Render for PaletteView {
                                                             .text_color(t.fg_subtlest())
                                                             .child(format!("⌥{}", i + 1)),
                                                     )
-                                                    .automation(
-                                                        crate::automation::Meta::labelled(
-                                                            crate::automation::Role::Chip,
-                                                            format!("History {h}"),
-                                                        ),
-                                                    ),
+                                                    .automation(crate::automation::Meta::labelled(
+                                                        crate::automation::Role::Chip,
+                                                        format!("History {h}"),
+                                                    )),
                                             )
                                         })
                                         .child(
@@ -494,12 +487,8 @@ impl Render for PaletteView {
                                                 .cursor_pointer()
                                                 .hover(|s| s.bg(t.hover()))
                                                 .on_click(cx.listener(
-                                                    move |this,
-                                                          _: &ClickEvent,
-                                                          _,
-                                                          cx| {
-                                                        this.history
-                                                            .retain(|x| x != &forget);
+                                                    move |this, _: &ClickEvent, _, cx| {
+                                                        this.history.retain(|x| x != &forget);
                                                         cx.emit(PaletteEvent::ForgetHistory(
                                                             forget.clone(),
                                                         ));
@@ -511,11 +500,9 @@ impl Render for PaletteView {
                                                     size::ICON_SM,
                                                     t.fg_subtlest(),
                                                 ))
-                                                .automation(
-                                                    crate::automation::Meta::icon_button(
-                                                        "Forget search",
-                                                    ),
-                                                ),
+                                                .automation(crate::automation::Meta::icon_button(
+                                                    "Forget search",
+                                                )),
                                         )
                                 }))
                                 .when(more > 0, |el| el.child(format!("+{more}"))),

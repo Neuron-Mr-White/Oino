@@ -40,10 +40,9 @@ use crate::rt::Tokio;
 use crate::views::session_pane::{BottomTab, PaneEvent, PaneMenu, SessionPane, SideTab};
 use crate::views::settings_page::{SettingsEvent, SettingsSection, SettingsView};
 use crate::views::{
-    Abort, CloseFind, CommandPalette, FindInConversation, FocusComposer, GoBoard, GoCron,
-    CycleThinking, GoExtensions, GoSessions, NewSession, OpenFolder, OpenSettings, PickModel,
-    PickThinking,
-    SwitchSession, ToggleBottom, ToggleFrameOverlay, ToggleSidePane, ToggleSidebar,
+    Abort, CloseFind, CommandPalette, CycleThinking, FindInConversation, FocusComposer, GoBoard,
+    GoCron, GoExtensions, GoSessions, NewSession, OpenFolder, OpenSettings, PickModel,
+    PickThinking, SwitchSession, ToggleBottom, ToggleFrameOverlay, ToggleSidePane, ToggleSidebar,
     ToggleStatusPanel, ToggleTheme, TreeView,
 };
 
@@ -1241,9 +1240,7 @@ impl AppShell {
                     }
                     // Removing one recent search keeps the palette open.
                     PaletteEvent::ForgetHistory(query) => {
-                        this.settings
-                            .palette_history
-                            .retain(|q| q != query);
+                        this.settings.palette_history.retain(|q| q != query);
                         this.host.save_app_settings(&this.settings);
                     }
                     PaletteEvent::Dismiss => {

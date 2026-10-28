@@ -69,7 +69,11 @@ impl SessionPane {
                 // ZCode `CopyRowAction`: the glyph turns into a check for 1200 ms.
                 Btn::icon_only(
                     row_id("ub-copy", ix),
-                    if copied { IconName::Check } else { IconName::Copy },
+                    if copied {
+                        IconName::Check
+                    } else {
+                        IconName::Copy
+                    },
                     if copied { "Copied" } else { "Copy" },
                 )
                 .size(BtnSize::Sm)
