@@ -3,20 +3,67 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"click": {"id": "composer"}},
-    {"type_text": {"text": "What single color fills the attached image? Reply with one word."}},
-    {"clipboard_image": {"path": "/home/ti/oino-test/run/attach-red.png"}},
-    {"key": {"key": "secondary-v"}},
-    {"wait_for": {"text": "Image #1", "timeout_ms": 20000}},
-    {"screenshot": {"name": "01-pasted"}},
-    {"drop": {"paths": ["/home/ti/oino-test/run/attach-red.png"]}},
-    {"wait_for": {"text": "Image #2", "timeout_ms": 20000}},
-    {"screenshot": {"name": "02-dropped"}},
-    {"key": {"key": "enter"}},
-    {"wait_state": {"busy": true, "timeout_ms": 60000}},
-    {"wait_state": {"busy": false, "timeout_ms": 300000}},
-    {"wait_for": {"text": "red", "timeout_ms": 20000}},
-    {"screenshot": {"name": "03-answer"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "What single color fills the attached image? Reply with one word."
+      }
+    },
+    {
+      "drop": {
+        "paths": [
+          "/home/ti/oino-test/run/attach-red.png"
+        ]
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Image #1",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-attached"
+      }
+    },
+    {
+      "key": {
+        "key": "enter"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 300000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "red",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-answer"
+      }
+    }
   ]
 }

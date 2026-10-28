@@ -77,35 +77,20 @@
       }
     },
     {
-      "hover": {
-        "label": "Make the JSON parser accept trailing commas"
-      }
-    },
-    {
-      "click": {
-        "label": "Rewind to here"
+      "sleep": {
+        "ms": 300
       }
     },
     {
       "wait_for": {
-        "id": "confirm-ok",
-        "timeout_ms": 20000
-      }
-    },
-    {
-      "click": {
-        "id": "confirm-ok"
-      }
-    },
-    {
-      "wait_for": {
-        "text": "Make the JSON parser accept trailing commas",
-        "timeout_ms": 20000
+        "role": "text",
+        "label": "Make the JSON parser accept trailing commas",
+        "timeout_ms": 10000
       }
     },
     {
       "screenshot": {
-        "name": "04-rewound-composer"
+        "name": "04-files-undone"
       }
     }
   ]

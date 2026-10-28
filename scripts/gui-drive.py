@@ -192,10 +192,21 @@ def cmd_tree(client: Client, args: argparse.Namespace) -> int:
 
 
 def cmd_click(client: Client, args: argparse.Namespace) -> int:
-    method = {"click": "click", "double": "double_click", "right": "right_click", "hover": "hover"}[
-        args.how
-    ]
-    params = require_selector(selector(args), method)
+    method = {
+        "click": "click",
+        "double": "double_click",
+        "right": "right_click",
+        "hover": "hover",
+        "scroll": "scroll",
+    }[args.how]
+    params = selector(args)
+    if method == "scroll":
+        params["dx"] = args.dx
+        params["dy"] = args.dy
+        if not params.get("x") and not params.get("id") and not params.get("label"):
+            raise DriverError("scroll needs x/y or an element selector")
+    else:
+        require_selector(params, method)
     print(json.dumps(client.call(method, params)))
     return 0
 
@@ -421,8 +432,8 @@ def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> 
 
 
 def find_node(nodes: list[dict], want: dict) -> dict | None:
-    """First node matching every given field (`id`, `role`, `label` substring, `checked`,
-    `selected`, `enabled`, `focused`, `visible`)."""
+    """First node matching every given field (`id`, `role`, `label`/`value` substring,
+    `checked`, `selected`, `enabled`, `focused`, `visible`)."""
     for node in nodes:
         if "id" in want and node.get("id") != want["id"]:
             continue
@@ -431,6 +442,10 @@ def find_node(nodes: list[dict], want: dict) -> dict | None:
         if "label" in want:
             label = (node.get("label") or "").lower()
             if want["label"].lower() not in label:
+                continue
+        if "value" in want:
+            value = (node.get("value") or "").lower()
+            if want["value"].lower() not in value:
                 continue
         if any(key in want and node.get(key) != want[key]
                for key in ("checked", "selected", "enabled", "focused", "visible")):
@@ -542,6 +557,16 @@ def build_parser() -> argparse.ArgumentParser:
         click.add_argument("--y", type=float)
         click.set_defaults(how=how)
 
+    scroll_cmd = sub.add_parser("scroll")
+    scroll_cmd.add_argument("id", nargs="?")
+    scroll_cmd.add_argument("--label")
+    scroll_cmd.add_argument("--role")
+    scroll_cmd.add_argument("--x", type=float)
+    scroll_cmd.add_argument("--y", type=float)
+    scroll_cmd.add_argument("--dy", type=float, default=0.0)
+    scroll_cmd.add_argument("--dx", type=float, default=0.0)
+    scroll_cmd.set_defaults(how="scroll")
+
     type_cmd = sub.add_parser("type")
     type_cmd.add_argument("text")
     type_cmd.add_argument("--submit", action="store_true")
@@ -615,6 +640,7 @@ def main(argv: list[str]) -> int:
             "double-click": cmd_click,
             "right-click": cmd_click,
             "hover": cmd_click,
+            "scroll": cmd_click,
             "type": cmd_type,
             "key": cmd_key,
             "wait": cmd_wait,

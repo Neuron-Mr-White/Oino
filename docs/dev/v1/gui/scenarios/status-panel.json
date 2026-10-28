@@ -26,8 +26,14 @@
       }
     },
     {
+      "click": {
+        "id": "status-mini"
+      }
+    },
+    {
       "wait_for": {
-        "text": "3 changed",
+        "role": "row",
+        "label": "btw",
         "timeout_ms": 60000
       }
     },
@@ -38,7 +44,83 @@
     },
     {
       "click": {
-        "id": "status-mini"
+        "id": "status-header"
+      }
+    },
+    {
+      "wait_state": {
+        "element": {
+          "id": "status-panel",
+          "focused": true
+        },
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "key": {
+        "key": "down"
+      }
+    },
+    {
+      "key": {
+        "key": "enter"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "agent-stop",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "what does parse_array do?",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-enter-opens-agent-tab"
+      }
+    },
+    {
+      "click": {
+        "id": "status-header"
+      }
+    },
+    {
+      "key": {
+        "key": "delete"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "confirm-ok",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-stop-confirm"
+      }
+    },
+    {
+      "click": {
+        "id": "confirm-ok"
+      }
+    },
+    {
+      "wait_state": {
+        "absent": {
+          "role": "row",
+          "label": "btw"
+        },
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-agent-stopped"
       }
     },
     {
@@ -71,7 +153,7 @@
     },
     {
       "screenshot": {
-        "name": "02-panel-topics"
+        "name": "05-panel-topics"
       }
     },
     {
@@ -87,7 +169,7 @@
     },
     {
       "screenshot": {
-        "name": "03-collapsed"
+        "name": "06-collapsed"
       }
     },
     {
@@ -103,88 +185,8 @@
       }
     },
     {
-      "click": {
-        "id": "status-header"
-      }
-    },
-    {
-      "wait_state": {
-        "element": {
-          "id": "status-panel",
-          "focused": true
-        },
-        "timeout_ms": 10000
-      }
-    },
-    {
-      "key": {
-        "key": "down"
-      }
-    },
-    {
-      "key": {
-        "key": "delete"
-      }
-    },
-    {
-      "wait_for": {
-        "id": "confirm-ok",
-        "timeout_ms": 20000
-      }
-    },
-    {
       "screenshot": {
-        "name": "04-stop-confirm"
-      }
-    },
-    {
-      "click": {
-        "id": "confirm-ok"
-      }
-    },
-    {
-      "wait_state": {
-        "absent": {
-          "role": "row",
-          "label": "btw"
-        },
-        "timeout_ms": 20000
-      }
-    },
-    {
-      "screenshot": {
-        "name": "05-agent-stopped"
-      }
-    },
-    {
-      "key": {
-        "key": "secondary-shift-s"
-      }
-    },
-    {
-      "key": {
-        "key": "secondary-shift-s"
-      }
-    },
-    {
-      "key": {
-        "key": "up"
-      }
-    },
-    {
-      "key": {
-        "key": "enter"
-      }
-    },
-    {
-      "wait_for": {
-        "id": "agent-stop",
-        "timeout_ms": 20000
-      }
-    },
-    {
-      "screenshot": {
-        "name": "06-enter-opens-agent-tab"
+        "name": "07-expanded"
       }
     }
   ]

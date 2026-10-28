@@ -1,0 +1,104 @@
+{
+  "name": "rewind-real",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "Use the write tool to create a file named hello.txt containing exactly: hi. Then reply with the word done."
+      }
+    },
+    {
+      "key": {
+        "key": "enter"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 300000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "button",
+        "label": "Review",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-turn"
+      }
+    },
+    {
+      "hover": {
+        "role": "text",
+        "label": "Use the write tool to create a file named hello.txt"
+      }
+    },
+    {
+      "wait_for": {
+        "label": "Rewind to here",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-rewind-action"
+      }
+    },
+    {
+      "click": {
+        "label": "Rewind to here"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "confirm-ok",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-confirm"
+      }
+    },
+    {
+      "click": {
+        "id": "confirm-ok"
+      }
+    },
+    {
+      "wait_state": {
+        "element": {
+          "id": "composer",
+          "value": "Use the write tool to create a file named hello.txt"
+        },
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-rewound"
+      }
+    }
+  ]
+}

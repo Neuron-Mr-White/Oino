@@ -364,6 +364,9 @@ async fn drop_paths(cx: &mut AsyncWindowContext, request: &Request) -> Result<Va
     let dropped = paths.clone();
     settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
     cx.update(move |window: &mut Window, cx: &mut App| {
+        // A mouse move first: a `FileDrop` event does not switch the input modality, and hover
+        // (which the drop listeners test) is suppressed while the last input was a keystroke.
+        window.dispatch_event(input::mouse_move(x, y), cx);
         let position = gpui_kit::point(gpui_kit::px(x), gpui_kit::px(y));
         let entered = gpui_kit::FileDropEvent::Entered {
             position,
