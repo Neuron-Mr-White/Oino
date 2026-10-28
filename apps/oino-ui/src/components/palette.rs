@@ -29,6 +29,8 @@ use crate::model::palette::{
 pub enum PaletteEvent {
     /// The user picked an action (and the query that found it).
     Pick(PaletteAction, String),
+    /// The user removed one entry of the recent-search history (the owner persists it).
+    ForgetHistory(String),
     /// Closed without a pick.
     Dismiss,
 }
@@ -180,11 +182,29 @@ impl PaletteView {
             "backspace" if self.input.read(cx).value().is_empty() && self.scope != Scope::All => {
                 self.set_scope(Scope::All, cx);
             }
+            // ⌥1–⌥3 apply a recent-search chip (⌘1–⌘4 already pick a scope).
+            k if m.alt && matches!(k, "1" | "2" | "3") => {
+                let i = k.parse::<usize>().unwrap_or(1) - 1;
+                let Some(text) = self.history.get(i).cloned() else {
+                    cx.stop_propagation();
+                    return;
+                };
+                self.input
+                    .update(cx, |s, cx| s.set_value(text, window, cx));
+                self.refilter(cx);
+            }
             _ => return,
         }
         let _ = window;
         cx.stop_propagation();
         cx.notify();
+    }
+
+    /// Puts `text` in the search box and refilters (a history chip).
+    fn apply_history(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.input
+            .update(cx, |s, cx| s.set_value(text, window, cx));
+        self.refilter(cx);
     }
 }
 
@@ -413,28 +433,90 @@ impl Render for PaletteView {
                                 .px(px(space::S2))
                                 .text_role(&t, TextRole::Sm)
                                 .text_color(t.fg_subtle())
+                                .child(icon(IconName::Clock, size::ICON_SM, t.fg_subtlest()))
                                 .child("History")
                                 .children(history.into_iter().enumerate().map(|(i, h)| {
                                     let q = h.clone();
+                                    let forget = h.clone();
                                     div()
-                                        .id(ElementId::NamedInteger(
-                                            "palette-hist".into(),
-                                            i as u64,
-                                        ))
-                                        .px(px(space::S2))
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(space::S1))
                                         .rounded(px(radius::R_FULL))
                                         .bg(t.surface())
-                                        .cursor_pointer()
-                                        .hover(|s| s.bg(t.hover()))
-                                        .on_click(cx.listener(
-                                            move |this, _: &ClickEvent, window, cx| {
-                                                let q = q.clone();
-                                                this.input
-                                                    .update(cx, |s, cx| s.set_value(q, window, cx));
-                                                this.refilter(cx);
-                                            },
-                                        ))
-                                        .child(SharedString::from(h))
+                                        .when(i < 3, |el| {
+                                            el.child(
+                                                div()
+                                                    .id(ElementId::NamedInteger(
+                                                        "palette-hist".into(),
+                                                        i as u64,
+                                                    ))
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap(px(space::S1))
+                                                    .pl(px(space::S2))
+                                                    .pr(px(space::S1_5))
+                                                    .py(px(space::HALF))
+                                                    .cursor_pointer()
+                                                    .hover(|s| s.bg(t.hover()))
+                                                    .on_click(cx.listener(
+                                                        move |this,
+                                                              _: &ClickEvent,
+                                                              window,
+                                                              cx| {
+                                                            let q = q.clone();
+                                                            this.apply_history(q, window, cx);
+                                                        },
+                                                    ))
+                                                    .child(SharedString::from(h.clone()))
+                                                    .child(
+                                                        div()
+                                                            .text_color(t.fg_subtlest())
+                                                            .child(format!("⌥{}", i + 1)),
+                                                    )
+                                                    .automation(
+                                                        crate::automation::Meta::labelled(
+                                                            crate::automation::Role::Chip,
+                                                            format!("History {h}"),
+                                                        ),
+                                                    ),
+                                            )
+                                        })
+                                        .child(
+                                            div()
+                                                .id(ElementId::Name(
+                                                    format!("palette-forget-{i}").into(),
+                                                ))
+                                                .flex()
+                                                .items_center()
+                                                .pr(px(space::S1_5))
+                                                .cursor_pointer()
+                                                .hover(|s| s.bg(t.hover()))
+                                                .on_click(cx.listener(
+                                                    move |this,
+                                                          _: &ClickEvent,
+                                                          _,
+                                                          cx| {
+                                                        this.history
+                                                            .retain(|x| x != &forget);
+                                                        cx.emit(PaletteEvent::ForgetHistory(
+                                                            forget.clone(),
+                                                        ));
+                                                        cx.notify();
+                                                    },
+                                                ))
+                                                .child(icon(
+                                                    IconName::X,
+                                                    size::ICON_SM,
+                                                    t.fg_subtlest(),
+                                                ))
+                                                .automation(
+                                                    crate::automation::Meta::icon_button(
+                                                        "Forget search",
+                                                    ),
+                                                ),
+                                        )
                                 }))
                                 .when(more > 0, |el| el.child(format!("+{more}"))),
                         )
