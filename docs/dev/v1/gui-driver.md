@@ -40,13 +40,28 @@ scripts/gui-drive.py --ti tree --role switch
 in prepaint and returns immediately when automation is off. No socket, thread, timer or task
 exists unless `OINO_DESKTOP_AUTOMATION` is set.
 
-### Why prepaint
+### Frame hooks
 
 GPUI renders → lays out → prepaints → paints. Components wrap their element with
-`automation::probe(el, meta)` (or `.automation(meta)` at the end of a `div()` chain), which in
-prepaint, where GPUI already hands over the element's bounds, appends one record to a per-frame
-list. `automation::begin_frame(cx)` at the top of `AppShell::render` swaps that list in as the
-snapshot `tree` answers from, so the tree always describes the last finished frame.
+`automation::probe(el, meta)` (or `.automation(meta)` at the end of a `div()` chain), which
+hooks two of those phases:
+
+* **`request_layout`** — the element exists this frame, with this `Meta` (role, label, state,
+  focus). GPUI runs it for every element of every view, including views it renders through a
+  cached element tree, so it is the liveness signal.
+* **`prepaint`** — where the element is (bounds, visibility). GPUI *reuses* the prepaint of a
+  cached child view while its bounds, content mask and text style are unchanged, which is safe
+  here: the previous geometry still describes the element.
+
+`begin_frame(cx)` (top of `AppShell::render`) publishes the focus handles seen last frame, and
+a zero-size paint end-marker (`automation::end_marker()`, after `perf::end_marker()`) publishes
+the snapshot once the whole frame is prepainted — a frame that changes the UI is often the last
+one before the app goes idle, so publishing at paint time (not on the next render) is what makes
+`tree` current.
+
+Two consequences worth knowing: the visible session is rendered **uncached** while automation
+is on (`views/shell.rs`), because a cached view only re-renders when it is notified; and the
+tree costs one hash-map insert per element per frame.
 
 ## 2. RPC
 
