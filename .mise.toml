@@ -20,9 +20,17 @@ run = [
   "cd extensions && cargo clean",
 ]
 
+[tasks.start]
+description = "Build and start Oino Desktop in the background (restarts cleanly if already running)"
+run = "scripts/desktop.sh start"
+
+[tasks.stop]
+description = "Stop the Oino Desktop started by `mise run start`"
+run = "scripts/desktop.sh stop"
+
 [tasks.desktop]
-description = "Run Oino Desktop (release)"
-run = "cd apps && cargo run --release -p oino-desktop"
+description = "Build and run Oino Desktop in the foreground (args: --demo, --cwd DIR)"
+run = "scripts/desktop.sh run"
 
 [tasks."tui:render-test"]
 description = "Run the Ratatui markdown rendering proof-of-concept"
