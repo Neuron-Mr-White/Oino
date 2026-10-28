@@ -90,6 +90,9 @@ pub struct SessionList {
     all: Vec<SessionSummary>,
     live: HashMap<String, LiveStatus>,
     pinned: HashSet<String>,
+    /// Sessions the user marked unread ([`ZCode`] `task-list-context-menu`); shows the same
+    /// done-unread dot as a background run finishing, seeded from the persisted settings.
+    marked_unread: HashSet<String>,
     collapsed: HashSet<String>,
     hidden: HashSet<String>,
     by_name: bool,
@@ -155,6 +158,12 @@ impl SessionList {
         if let Some(status) = self.live.remove(old) {
             self.live.insert(new.to_owned(), status);
         }
+        if self.marked_unread.remove(old) {
+            self.marked_unread.insert(new.to_owned());
+        }
+        if self.pinned.remove(old) {
+            self.pinned.insert(new.to_owned());
+        }
     }
 
     /// Sets the live status.
@@ -165,7 +174,14 @@ impl SessionList {
     /// Live status of `id`.
     #[must_use]
     pub fn live(&self, id: &str) -> LiveStatus {
-        self.live.get(id).copied().unwrap_or_default()
+        self.live
+            .get(id)
+            .copied()
+            .unwrap_or(if self.marked_unread.contains(id) {
+                LiveStatus::Unread
+            } else {
+                LiveStatus::Idle
+            })
     }
 
     /// Toggles a pin.
@@ -175,11 +191,57 @@ impl SessionList {
         }
     }
 
+    /// Seeds the persisted pins (startup).
+    pub fn set_pinned(&mut self, ids: &[String]) {
+        self.pinned = ids.iter().cloned().collect();
+    }
+
+    /// The pinned session ids (persistence).
+    #[must_use]
+    pub fn pinned_ids(&self) -> Vec<String> {
+        self.pinned.iter().cloned().collect()
+    }
+
+    /// Toggles a manual unread mark; returns whether it is now marked.
+    pub fn toggle_mark_unread(&mut self, id: &str) -> bool {
+        if self.marked_unread.remove(id) {
+            false
+        } else {
+            self.marked_unread.insert(id.to_owned())
+        }
+    }
+
+    /// Whether `id` carries a manual unread mark.
+    #[must_use]
+    pub fn is_marked_unread(&self, id: &str) -> bool {
+        self.marked_unread.contains(id)
+    }
+
+    /// Seeds the persisted unread marks (startup).
+    pub fn set_marked_unread(&mut self, ids: &[String]) {
+        self.marked_unread = ids.iter().cloned().collect();
+    }
+
+    /// The manually marked session ids (persistence).
+    #[must_use]
+    pub fn marked_unread_ids(&self) -> Vec<String> {
+        self.marked_unread.iter().cloned().collect()
+    }
+
+    /// Clears a manual unread mark and any done-unseen state (the session was opened).
+    pub fn mark_read(&mut self, id: &str) {
+        self.marked_unread.remove(id);
+        if self.live.get(id).is_some_and(|s| *s == LiveStatus::Unread) {
+            self.live.insert(id.to_owned(), LiveStatus::Idle);
+        }
+    }
+
     /// Drops a session from the list (deleted).
     pub fn remove(&mut self, id: &str) {
         self.all.retain(|s| s.id != id);
         self.live.remove(id);
         self.pinned.remove(id);
+        self.marked_unread.remove(id);
     }
 
     /// Hides a workspace group from the sidebar ("Remove"; its sessions stay on disk and the
@@ -336,6 +398,31 @@ impl SessionList {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn marked_unread_survives_the_live_map_and_reads_on_open() {
+        let mut list = SessionList::new();
+        list.set_sessions(vec![summary("a", "/w", "A", 1)]);
+        // Seeded from the persisted settings: the row reads done-unread without live state.
+        list.set_marked_unread(&["a".to_owned()]);
+        assert_eq!(list.live("a"), LiveStatus::Unread);
+        // A live status (working) wins over the mark.
+        list.set_live("a", LiveStatus::Running);
+        assert_eq!(list.live("a"), LiveStatus::Running);
+        // Opening the session clears the mark and any done-unseen state.
+        list.set_live("a", LiveStatus::Unread);
+        list.mark_read("a");
+        assert_eq!(list.live("a"), LiveStatus::Idle);
+        assert!(!list.is_marked_unread("a"));
+        assert!(list.marked_unread_ids().is_empty());
+        // Toggling from the menu reports the new state; persistence round-trips through ids.
+        assert!(list.toggle_mark_unread("a"));
+        assert!(!list.toggle_mark_unread("a"));
+        list.toggle_pin("a");
+        assert_eq!(list.pinned_ids(), vec!["a".to_owned()]);
+        list.remove("a");
+        assert!(list.pinned_ids().is_empty());
+    }
 
     #[test]
     fn remove_hide_and_sort() {

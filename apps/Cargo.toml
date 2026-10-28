@@ -25,6 +25,7 @@ wry = { package = "lb-wry", version = "0.53.3" }
 # Interactive terminal (design.md A1.5): Zed-style emulation + platform PTY.
 alacritty_terminal = "0.26"
 notify-rust = "4.18"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 # Root workspace crates.
 oino-agent = { path = "../crates/oino-agent" }

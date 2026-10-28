@@ -307,6 +307,10 @@ impl AppShell {
         };
         let root = cx.entity_id();
         crate::design::ticker::Ticker::set_root(cx, root);
+        // Sidebar pins and unread marks persist in the desktop prefs (ZCode
+        // `task-list-context-menu`); the seeds survive restarts.
+        ws.sessions.set_pinned(&ws.settings.sidebar_pinned);
+        ws.sessions.set_marked_unread(&ws.settings.sidebar_unread);
         ws.refresh_sessions(cx);
         ws.load_extensions(cx);
         // After the main window exists (opening a window inside its build is not allowed).
@@ -1345,6 +1349,12 @@ impl AppShell {
     pub(crate) fn open_session(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.switch = None;
         self.needs_drawer = false;
+        // Opening clears a manual unread mark and any done-unseen state (ZCode
+        // `task-list-context-menu`).
+        if self.sessions.is_marked_unread(id) || self.sessions.live(id) == LiveStatus::Unread {
+            self.sessions.mark_read(id);
+            self.persist_sidebar();
+        }
         if let Some(key) = self
             .panes
             .iter()
@@ -1370,6 +1380,13 @@ impl AppShell {
                 cx,
             );
         }
+    }
+
+    /// Persists the sidebar pins and unread marks (`desktop.json`).
+    pub(crate) fn persist_sidebar(&mut self) {
+        self.settings.sidebar_pinned = self.sessions.pinned_ids();
+        self.settings.sidebar_unread = self.sessions.marked_unread_ids();
+        self.host.save_app_settings(&self.settings);
     }
 
     pub(crate) fn new_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {

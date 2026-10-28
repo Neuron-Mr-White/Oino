@@ -9,6 +9,16 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+/// Unix ms (0 on clock failure; only display labels depend on it).
+fn wall_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_millis()).ok())
+        .unwrap_or_default()
+}
+
 use oino_agent::AgentToolResult;
 use oino_ai::{
     AgentMessage, AssistantContent, AssistantMessage, JsonObject, JsonValue, StopReason,
@@ -53,6 +63,10 @@ pub struct AssistantRow {
     /// Wall time of the thinking phase once it is over (the label reads "Thought for 12.3s");
     /// `None` for history rows loaded from a session file, which carry no timing.
     pub thinking_ms: Option<u64>,
+    /// Creation wall time (Unix ms), stamped when the live message starts; `None` for
+    /// history rows (`AgentMessage` carries no timestamps). Drives the hover-bar time label
+    /// ([`ZCode`] `messageTimeLabel`).
+    pub created_ms: Option<i64>,
     /// Still streaming.
     pub streaming: bool,
     /// Error / abort text.
@@ -455,6 +469,9 @@ impl Transcript {
                     text,
                     thinking,
                     thinking_ms: None,
+                    // ZCode `messageTimeLabel`: the hover bar shows when the answer arrived;
+                    // history rows carry no timestamp and stay quiet.
+                    created_ms: streaming.then(wall_ms),
                     streaming,
                     error: if streaming {
                         None

@@ -31,6 +31,7 @@ pub mod soak;
 
 use gpui_kit::{App, KeyBinding};
 
+pub(crate) use shell::now_ms;
 pub use shell::{AppShell, Workspace};
 
 gpui_kit::actions!(

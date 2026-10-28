@@ -279,6 +279,13 @@ pub struct AppSettings {
     pub default_cwd: Option<String>,
     /// Reopen the last session at startup (GA-11; Settings → General → Startup).
     pub reopen_last: bool,
+    /// Sidebar pins ([`SessionList::pinned_ids`]; [`ZCode`] `task-list-context-menu`
+    /// persists pins).
+    ///
+    /// [`ZCode`]: https://github.com/zai-org/ZCode
+    pub sidebar_pinned: Vec<String>,
+    /// Sidebar unread marks (`SessionList::marked_unread_ids`).
+    pub sidebar_unread: Vec<String>,
 }
 
 impl Default for AppSettings {
@@ -306,6 +313,8 @@ impl Default for AppSettings {
             last_session_cwd: None,
             default_cwd: None,
             reopen_last: true,
+            sidebar_pinned: Vec::new(),
+            sidebar_unread: Vec::new(),
         }
     }
 }

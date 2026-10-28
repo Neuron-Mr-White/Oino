@@ -28,6 +28,39 @@ use crate::model::tools::ToolKind;
 use crate::model::transcript::{AssistantRow, Row, RowKind};
 use crate::views::session_pane::SessionPane;
 
+/// The hover-bar time label of an answer ([`ZCode`] `messageTimeLabel`): `14:05` today,
+/// `Yesterday 14:05`, `3/13 14:05` this year, `2025/3/13 14:05` older; local time.
+/// `None` for history rows, which carry no timestamp.
+///
+/// [`ZCode`]: https://github.com/zai-org/ZCode
+fn message_time_label(created_ms: Option<i64>, now_ms: i64) -> Option<String> {
+    use chrono::{Datelike, Local, TimeZone};
+    let created = Local.timestamp_millis_opt(created_ms?).single()?;
+    let now = Local.timestamp_millis_opt(now_ms).single()?;
+    let time = created.format("%H:%M").to_string();
+    if created.date_naive() == now.date_naive() {
+        return Some(time);
+    }
+    if now
+        .date_naive()
+        .signed_duration_since(created.date_naive())
+        .num_days()
+        == 1
+    {
+        return Some(format!("Yesterday {time}"));
+    }
+    if created.year() == now.year() {
+        Some(format!("{}/{} {time}", created.month(), created.day()))
+    } else {
+        Some(format!(
+            "{}/{}/{} {time}",
+            created.year(),
+            created.month(),
+            created.day()
+        ))
+    }
+}
+
 pub(crate) use cards::error_banner;
 
 /// Tool / fold line icon (A2.10: 18).
@@ -537,11 +570,14 @@ impl SessionPane {
                     .child(TextView::new(state).selectable(true))
                     .into_any_element()
             });
-        // Hover actions of one answer (ZCode `CopyRowAction`): copy the answer text, the glyph
-        // turning into a check for `COPIED_MS`. Hidden while the answer still streams.
+        // Hover actions of one answer (ZCode `CopyRowAction` + `messageTimeLabel`): copy the
+        // answer text (the glyph turning into a check for `COPIED_MS`) and, for live rows,
+        // when it arrived. Hidden while the answer still streams.
         let copy_key = format!("row-{ix}");
         let copied = self.copied_check(&copy_key);
         let copy = a.text.clone();
+        let time_label =
+            message_time_label(a.created_ms, crate::views::now_ms()).map(SharedString::from);
         let actions = (!a.streaming && !a.text.is_empty()).then(|| {
             let group = SharedString::from(format!("as{ix}"));
             div()
@@ -575,6 +611,19 @@ impl SessionPane {
                         this.mark_copied(&copy_key.clone(), cx);
                     })),
                 )
+                .children(time_label.map(|label| {
+                    div()
+                        .id(row_id("as-time", ix))
+                        .pl(px(space::S1))
+                        .pr(px(space::S2))
+                        .text_role(t, TextRole::Caption)
+                        .text_color(t.fg_subtlest())
+                        .child(label)
+                        .automation(crate::automation::Meta::labelled(
+                            crate::automation::Role::Text,
+                            "Answer time",
+                        ))
+                }))
                 .into_any_element()
         });
         div()
@@ -591,5 +640,50 @@ impl SessionPane {
                 el.child(error_banner(t, ix, &e, cx))
             })
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+#[cfg(test)]
+mod tests {
+    use super::message_time_label;
+    use chrono::{Datelike, Days, Local, TimeZone};
+
+    /// Local time `h:m` on `date`, as Unix ms (0 if that local time does not exist).
+    fn on(date: chrono::NaiveDate, h: u32, m: u32) -> i64 {
+        Local
+            .with_ymd_and_hms(date.year(), date.month(), date.day(), h, m, 0)
+            .single()
+            .map_or(0, |t| t.timestamp_millis())
+    }
+
+    #[test]
+    fn label_graduates_with_distance() {
+        let today = Local::now().date_naive();
+        let now = on(today, 15, 0);
+        assert_eq!(
+            message_time_label(Some(on(today, 14, 5)), now).as_deref(),
+            Some("14:05")
+        );
+        // History rows carry no timestamp.
+        assert_eq!(message_time_label(None, now), None);
+        let yesterday = today.pred_opt().expect("a previous day");
+        assert_eq!(
+            message_time_label(Some(on(yesterday, 14, 0)), now).as_deref(),
+            Some("Yesterday 14:00")
+        );
+        // 90 days back: `M/D HH:MM` while the year matches.
+        let old = today.checked_sub_days(Days::new(90)).unwrap_or(today);
+        if old.year() == today.year() {
+            let label = message_time_label(Some(on(old, 14, 0)), now).expect("same year");
+            assert_eq!(label.matches('/').count(), 1, "{label}");
+        }
+        // A year back adds `Y/`.
+        let stale = today
+            .with_year(today.year() - 1)
+            .or_else(|| today.with_day(1).and_then(|d| d.with_year(d.year() - 1)))
+            .unwrap_or(today);
+        let label = message_time_label(Some(on(stale, 14, 0)), now).expect("a year back");
+        assert_eq!(label.matches('/').count(), 2, "{label}");
     }
 }

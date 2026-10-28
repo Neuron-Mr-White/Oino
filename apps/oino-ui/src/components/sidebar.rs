@@ -301,6 +301,7 @@ impl AppShell {
         let path = entry.summary.path.clone();
         let title = entry.summary.title.clone();
         let pinned = entry.pinned;
+        let marked = self.sessions.is_marked_unread(&entry.summary.id);
         let act =
             |label: &'static str,
              glyph: IconName,
@@ -317,6 +318,7 @@ impl AppShell {
                 .icon(glyph)
             };
         let copy_id = id.clone();
+        let copy_path = path.clone();
         let reveal = path.clone();
         let delete_path = path.clone();
         menu(
@@ -341,7 +343,23 @@ impl AppShell {
                 act(
                     if pinned { "Unpin" } else { "Pin" },
                     IconName::Pin,
-                    Rc::new(|ws, id, _, _| ws.sessions.toggle_pin(id)),
+                    Rc::new(|ws, id, _, _| {
+                        ws.sessions.toggle_pin(id);
+                        // Pins and unread marks persist (ZCode `task-list-context-menu`).
+                        ws.persist_sidebar();
+                    }),
+                ),
+                act(
+                    if marked {
+                        "Mark read"
+                    } else {
+                        "Mark as unread"
+                    },
+                    IconName::CircleDot,
+                    Rc::new(|ws, id, _, _| {
+                        let _ = ws.sessions.toggle_mark_unread(id);
+                        ws.persist_sidebar();
+                    }),
                 ),
                 act(
                     "Fork",
@@ -362,6 +380,21 @@ impl AppShell {
                     }
                 })
                 .icon(IconName::Copy),
+                MenuEntry::item("Copy session path", {
+                    let e = e.clone();
+                    move |_, cx| {
+                        let Some(p) = &copy_path else {
+                            return;
+                        };
+                        cx.write_to_clipboard(ClipboardItem::new_string(p.display().to_string()));
+                        let _ = e.update(cx, |ws, cx| {
+                            ws.sidebar_menu = None;
+                            cx.notify();
+                        });
+                    }
+                })
+                .icon(IconName::FolderTree)
+                .disabled(path.is_none()),
                 MenuEntry::item("Reveal file", {
                     let e = e.clone();
                     move |_, cx| {

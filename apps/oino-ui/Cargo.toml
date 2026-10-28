@@ -10,7 +10,7 @@ description = "Shared GPUI views and view models for Oino Desktop and Oino Mobil
 [features]
 default = ["views"]
 ## GPUI views (the view models build and test without GPUI).
-views = ["dep:gpui-kit"]
+views = ["dep:gpui-kit", "dep:chrono"]
 ## Touch layouts for Oino Mobile (`oino_ui::mobile`, owned by gpui-mobile).
 mobile = ["views"]
 ## Side-pane Browser tab (gpui-webview; desktop only, X11/XWayland on Linux).
@@ -21,6 +21,7 @@ terminal = ["views", "dep:alacritty_terminal"]
 [dependencies]
 futures.workspace = true
 indexmap.workspace = true
+chrono = { workspace = true, optional = true }
 gpui-kit = { workspace = true, optional = true }
 gpui-webview = { workspace = true, optional = true }
 wry = { workspace = true, optional = true }

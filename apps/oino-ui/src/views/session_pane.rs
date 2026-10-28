@@ -47,6 +47,14 @@ use crate::rt::Tokio;
 
 /// Frame pacing between event batches of the focused pane.
 const FRAME: Duration = Duration::from_millis(8);
+
+/// Background panes pace their batches at ≈ 30 fps (`BACKGROUND_FRAME`) spread over
+/// [`PHASE_SLOTS`] sub-phases, one pane per phase (`PHASE_STEP_MS` apart).
+const PHASE_SLOTS: u64 = 4;
+const PHASE_STEP_MS: u64 = 8;
+
+/// Process-wide pane ordinal for the phase assignment (one pump per pane).
+static PANE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// Pacing of the other split panes while several stream (≈ 30 fps; keeps the 4-pane frame
 /// cost inside the §2.11 budget: each frame re-lays out about one background pane, not three).
 const BACKGROUND_FRAME: Duration = Duration::from_millis(33);
@@ -770,31 +778,39 @@ impl SessionPane {
         cx.spawn(async move |this, cx| {
             let _forward = forward;
             let mut batch = Vec::with_capacity(64);
+            // Fixed-rate pacing with a distinct sub-phase per pane (design.md §2.11): the
+            // next batch applies `pace` after the previous one, so N background panes settle
+            // into N evenly spaced slots instead of drifting into the same frame. The old
+            // id-hash phase collided for most 4-pane sets (a frame with several full pane
+            // layouts); the process-wide round-robin hands the first four panes distinct
+            // slots deterministically.
+            let slot = PANE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % PHASE_SLOTS;
+            let mut next = Instant::now();
             while let Some(first) = rx.next().await {
                 batch.push(first);
                 while let Ok(event) = rx.try_recv() {
                     batch.push(event);
                 }
                 let reduced = coalesce(std::mem::take(&mut batch));
-                let Ok(pace) =
-                    this.update(cx, |pane, cx| {
-                        pane.apply_batch(&reduced, cx);
-                        if pane.focused_pane {
-                            FRAME
-                        } else {
-                            // A per-session phase so background panes do not all re-lay out in
-                            // the same frame.
-                            let phase =
-                                pane.model.id.bytes().fold(0u64, |h, b| {
-                                    h.wrapping_mul(31).wrapping_add(u64::from(b))
-                                }) % 7;
-                            BACKGROUND_FRAME + Duration::from_millis(phase * 3)
-                        }
-                    })
-                else {
+                let Ok(pace) = this.update(cx, |pane, cx| {
+                    pane.apply_batch(&reduced, cx);
+                    if pane.focused_pane {
+                        FRAME
+                    } else {
+                        BACKGROUND_FRAME + Duration::from_millis(slot * PHASE_STEP_MS)
+                    }
+                }) else {
                     break;
                 };
-                cx.background_executor().timer(pace).await;
+                // Restart the schedule after an idle wait (no burst catch-up), then keep a
+                // steady period: an apply that overran its slot applies the next batch at
+                // once instead of drifting.
+                let now = Instant::now();
+                next = next.max(now) + pace;
+                let wait = next.saturating_duration_since(Instant::now());
+                if !wait.is_zero() {
+                    cx.background_executor().timer(wait).await;
+                }
             }
         })
     }
@@ -1946,6 +1962,10 @@ impl SessionPane {
     }
 
     /// Recalls queue item `i` into the composer (removes it from the queue).
+    ///
+    /// With a draft in the composer the item stays queued and the user is told to clear the
+    /// draft first ([`ZCode`] `chat-message-queue`: the edit never clobbers a held draft —
+    /// the old merge silently lost the boundary between the two texts).
     pub fn queue_recall(&mut self, i: usize, cx: &mut Context<Self>) {
         let (queue, index) = self.queue_slot(i);
         let text = match queue {
@@ -1958,12 +1978,13 @@ impl SessionPane {
             self.queue_edit = None;
         }
         let draft = self.composer.read(cx).value().to_string();
-        let restored = if draft.trim().is_empty() {
-            text
-        } else {
-            format!("{draft}\n{text}")
-        };
-        self.set_composer_text(&restored, cx);
+        if !draft.trim().is_empty() {
+            cx.emit(PaneEvent::Toast(
+                "The composer has a draft — clear it first".into(),
+            ));
+            return;
+        }
+        self.set_composer_text(&text, cx);
         self.frontend(
             cx,
             move |b| async move { b.queue_remove(queue, index).await },
