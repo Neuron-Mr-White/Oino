@@ -14,6 +14,7 @@ use gpui_kit::{
 };
 
 use super::{ICON_TOOL, row_id, shimmer};
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::log_view;
 use crate::components::ous::diff_lines;
@@ -462,7 +463,7 @@ impl SessionPane {
                     .text_role(t, TextRole::Caption)
                     .text_color(t.fg_subtle())
                     .when(running, |el| el.opacity(shimmer(t, frame)))
-                    .child(SharedString::from(task)),
+                    .child(SharedString::from(task.clone())),
             )
             .when(!detail.is_empty(), |el| {
                 el.child(
@@ -500,6 +501,12 @@ impl SessionPane {
                 )
             })
             .child(icon(IconName::ChevronRight, size::ICON_MD, t.fg_subtlest()))
+            // Read-back for scenarios: the agent name and its task, the row a person clicks
+            // to open the child's timeline.
+            .automation(crate::automation::Meta::labelled(
+                crate::automation::Role::Row,
+                format!("{} {}", agent.name, task),
+            ))
             .into_any_element()
     }
 

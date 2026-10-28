@@ -45,24 +45,13 @@
     },
     {
       "wait_for": {
-        "id": "result-ok",
+        "text": "no dream report",
         "timeout_ms": 30000
-      }
-    },
-    {
-      "wait_for": {
-        "text": "report",
-        "timeout_ms": 20000
       }
     },
     {
       "screenshot": {
         "name": "02-dream-report"
-      }
-    },
-    {
-      "click": {
-        "id": "result-ok"
       }
     },
     {
@@ -106,8 +95,9 @@
       }
     },
     {
-      "sleep": {
-        "ms": 1500
+      "wait_for": {
+        "text": "Dream",
+        "timeout_ms": 30000
       }
     },
     {
