@@ -1,7 +1,7 @@
 //! [`WasmRuntime`]: the shared wasmtime engine (epoch ticker, compile cache, linker) and the
 //! [`ExtensionRuntime`] implementation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -18,6 +18,7 @@ use crate::http::HttpService;
 use crate::hub::LocalServices;
 use crate::instance::WasmInstance;
 use crate::paths::{self, ExtPaths};
+use crate::paths::{is_agent_file, refresh_agent_view};
 use crate::state::{ExtShared, HostConfig, HostState, HttpGrants};
 
 /// Epoch tick (deadline granularity).
@@ -84,6 +85,9 @@ pub struct WasmRuntime {
     shared: Arc<EngineShared>,
     options: WasmRuntimeOptions,
     hub: Option<Arc<LocalServices>>,
+    /// Holds the agent-dir watcher that refreshes the `/agent` preopen view (dropped with the
+    /// runtime, which stops it).
+    _agent_watch: Option<notify::RecommendedWatcher>,
 }
 
 impl std::fmt::Debug for WasmRuntime {
@@ -92,6 +96,25 @@ impl std::fmt::Debug for WasmRuntime {
             .field("options", &self.options)
             .finish_non_exhaustive()
     }
+}
+
+/// Watches `<agent>` so the `/agent` preopen view follows edits to `mcp.json` (the copies are
+/// refreshed when an instance is created too, so a watcher failure only costs freshness).
+fn watch_agent_dir(agent_dir: &Path) -> Option<notify::RecommendedWatcher> {
+    use notify::Watcher as _;
+    let dir = agent_dir.to_path_buf();
+    let mut watcher =
+        notify::recommended_watcher(move |event: Result<notify::Event, notify::Error>| {
+            let Ok(event) = event else { return };
+            if event.paths.iter().any(|path| is_agent_file(path)) {
+                let _ = refresh_agent_view(&dir);
+            }
+        })
+        .ok()?;
+    watcher
+        .watch(agent_dir, notify::RecursiveMode::NonRecursive)
+        .ok()?;
+    Some(watcher)
 }
 
 impl WasmRuntime {
@@ -133,6 +156,7 @@ impl WasmRuntime {
         let hub = options
             .local_services
             .then(|| Arc::new(LocalServices::new(&options.config.agent_dir)));
+        let agent_watch = watch_agent_dir(&options.config.agent_dir);
         Ok(Self {
             shared: Arc::new(EngineShared {
                 engine,
@@ -141,6 +165,7 @@ impl WasmRuntime {
             }),
             options,
             hub,
+            _agent_watch: agent_watch,
         })
     }
 

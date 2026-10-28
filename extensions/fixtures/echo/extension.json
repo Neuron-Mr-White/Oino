@@ -14,7 +14,7 @@
     "agents": { "spawn": true },
     "process": { "spawn": true, "allow": ["sh", "echo", "cat", "sleep"] },
     "network": { "hosts": ["127.0.0.1"], "listenLoopback": true },
-    "fs": { "project": "read" },
+    "fs": { "project": "read", "agentDir": "read" },
     "env": ["HOME"],
     "secrets": true,
     "osNotify": true,

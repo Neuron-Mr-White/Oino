@@ -15,8 +15,6 @@ pub(crate) struct ExtPaths {
     pub(crate) global: PathBuf,
     pub(crate) workspace_root: PathBuf,
     pub(crate) session_root: PathBuf,
-    /// Read-only view of [`AGENT_FILES`] exposed as `/agent` (outside every preopen).
-    pub(crate) agent_view: PathBuf,
     pub(crate) tmp: PathBuf,
     pub(crate) cache: PathBuf,
     pub(crate) logs: PathBuf,
@@ -31,7 +29,6 @@ impl ExtPaths {
             global: state.join("global"),
             workspace_root: state.join("workspace"),
             session_root: state.join("session"),
-            agent_view: state.join("agent-view"),
             tmp: agent_dir.join("tmp").join("ext").join(id.as_str()),
             cache: agent_dir.join("cache").join("ext").join(id.as_str()),
             logs: agent_dir.join("logs").join("ext").join(id.as_str()),
@@ -45,7 +42,6 @@ impl ExtPaths {
             &self.global,
             &self.workspace_root,
             &self.session_root,
-            &self.agent_view,
             &self.tmp,
             &self.cache,
             &self.logs,
@@ -105,39 +101,24 @@ pub(crate) const AGENT_SUBDIRS: &[&str] = &[
 /// Agent-dir files exposed read-only as `/agent/<name>` (pi `mcp.json`-style config, R1).
 pub(crate) const AGENT_FILES: &[&str] = &["mcp.json"];
 
-// A live read-only view of `AGENT_FILES` (`/agent`): a directory of links to the agent-dir
-// files, so guests read the *current* file through an ordinary preopen while `auth.json` /
-// `secrets.json` stay out of reach. The view lives in `state/<id>/agent-view`, which no guest
-// can write, so a link can never be swapped for an escape.
-
-#[cfg(unix)]
-fn link_file(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::os::unix::fs::symlink(from, to)
+/// Shared read-only view of the agent-dir config files, exposed to guests as `/agent`.
+///
+/// It lives in `<agent>/state/agent-view`, which no extension can write, and holds *copies* of
+/// [`AGENT_FILES`]: cap-std refuses to follow a symlink that leaves the preopen, so links would
+/// not be readable. The host refreshes the copies when an instance is created and whenever the
+/// agent dir changes (`WasmRuntime` watches it), so guests read the current file while
+/// `auth.json` / `secrets.json` stay unreachable.
+#[must_use]
+pub(crate) fn agent_view_dir(agent_dir: &Path) -> PathBuf {
+    agent_dir.join("state").join("agent-view")
 }
 
-#[cfg(not(unix))]
-fn link_file(from: &Path, to: &Path) -> std::io::Result<()> {
-    // Windows symlinks need a privilege or Developer Mode; a hard link works everywhere on the
-    // same volume and is refreshed whenever the instance is created.
-    std::fs::hard_link(from, to)
-}
-
-/// Recreates the `/agent` view so a replaced `mcp.json` is visible without a restart.
-fn refresh_agent_view(paths: &ExtPaths) -> std::io::Result<PathBuf> {
-    let view = paths.agent_view.clone();
-    std::fs::create_dir_all(&view)?;
-    for name in AGENT_FILES {
-        let source = paths.agent_dir.join(name);
-        let target = view.join(name);
-        let _ = std::fs::remove_file(&target);
-        if !source.is_file() {
-            continue;
-        }
-        if link_file(&source, &target).is_err() {
-            std::fs::copy(&source, &target)?;
-        }
-    }
-    Ok(view)
+/// Whether `path` is one of the [`AGENT_FILES`].
+#[must_use]
+pub(crate) fn is_agent_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| AGENT_FILES.contains(&name))
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -147,6 +128,31 @@ fn expand_home(path: &str) -> PathBuf {
         return PathBuf::from(home).join(rest);
     }
     PathBuf::from(path)
+}
+
+/// Refreshes the `/agent` view from the agent dir and returns it.
+///
+/// Each file is staged and renamed into place: the watcher and instance creation can refresh
+/// concurrently, and a plain `fs::copy` would let one refresh truncate the other's file.
+pub(crate) fn refresh_agent_view(agent_dir: &Path) -> std::io::Result<PathBuf> {
+    static REFRESH: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = REFRESH
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let view = agent_view_dir(agent_dir);
+    std::fs::create_dir_all(&view)?;
+    for name in AGENT_FILES {
+        let source = agent_dir.join(name);
+        let target = view.join(name);
+        if !source.is_file() {
+            let _ = std::fs::remove_file(&target);
+            continue;
+        }
+        let staging = view.join(format!(".{name}.staging"));
+        std::fs::copy(&source, &staging)?;
+        std::fs::rename(&staging, &target)?;
+    }
+    Ok(view)
 }
 
 /// Every preopen granted to an extension.
@@ -182,7 +188,7 @@ pub(crate) fn preopens(paths: &ExtPaths, perms: &Permissions, cwd: &Path) -> Vec
                 });
             }
         }
-        if let Ok(view) = refresh_agent_view(paths) {
+        if let Ok(view) = refresh_agent_view(&paths.agent_dir) {
             out.push(Preopen {
                 name: "agent".into(),
                 host: view,

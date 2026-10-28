@@ -111,6 +111,22 @@ async fn probe(name: &str, arg: Value) -> Result<Value> {
             let names: Vec<String> = fs::preopens().into_iter().map(|p| p.name).collect();
             json!({"text": text, "preopens": names})
         }
+        "agent-config" => {
+            // The pi config file reaches the guest through the /agent preopen; the secrets next
+            // to it must not.
+            let mcp =
+                std::fs::read_to_string("/agent/mcp.json").unwrap_or_else(|e| format!("ERR {e:?}"));
+            let unreadable = ["/agent/auth.json", "/agent/secrets.json"]
+                .iter()
+                .filter(|path| std::fs::read_to_string(path).is_err())
+                .count();
+            let names: Vec<String> = fs::preopens()
+                .into_iter()
+                .map(|p| p.name)
+                .filter(|name| name == "agent" || name.starts_with("agent/"))
+                .collect();
+            json!({"mcp": mcp, "unreadable": unreadable, "preopens": names})
+        }
         "fs-write-project" => {
             fs::atomic_write("/project/forbidden.txt", b"x")?;
             Value::Null

@@ -284,6 +284,48 @@ async fn services_bus_and_tasks_between_instances() {
     );
 }
 
+/// `fs.agentDir: read` gives guests pi's `~/.oino/mcp.json` as `/agent/mcp.json` and nothing
+/// else from the agent dir (unipi-integrations R1).
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_preopen_exposes_pi_mcp_json_only() {
+    let h = Harness::new().unwrap();
+    std::fs::write(
+        h.agent_dir.path().join("mcp.json"),
+        r#"{"mcpServers":{"local":{"command":"echo"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(h.agent_dir.path().join("auth.json"), "{}").unwrap();
+    std::fs::write(h.agent_dir.path().join("secrets.json"), "{}").unwrap();
+    let echo = loaded(&h, "echo").await;
+    let out = echo
+        .run_command(
+            "probe",
+            "agent-config",
+            CancellationToken::new(),
+            h.cx("s1", CallKind::Command),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .to_value();
+    let out = &out["ok"];
+    assert!(
+        out["mcp"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("mcpServers"),
+        "{out}"
+    );
+    assert_eq!(out["unreadable"], json!(2), "{out}");
+    assert!(
+        out["preopens"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("agent")),
+        "{out}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn provider_faux_streams_script() {
     let h = Harness::new().unwrap();
