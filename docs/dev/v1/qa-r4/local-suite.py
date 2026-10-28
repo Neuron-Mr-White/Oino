@@ -80,15 +80,34 @@ def start(backend: str, scene: str | None, env: list[str], settings: dict) -> No
     )
     (agent / "logs").mkdir(parents=True, exist_ok=True)
     project.mkdir(parents=True, exist_ok=True)
-    (project / "README.md").write_text("local project\n")
+    (project / "README.md").write_text("oino test project\n")
     args: list[str] = []
     base: dict = {}
     if backend == "demo":
         args = ["--demo"]
     elif backend == "faux":
+        # Mirror `cargo xtask ti start --faux` (H-5): no --faux flag exists — a faux run is a
+        # real session whose settings select the provider-faux fixture directory.
         base = {"defaultProvider": "faux", "defaultModel": "faux-1"}
-        sh_ok(["cp", str(ROOT / "extensions/dist/provider-faux.wasm"), str(agent / "provider-faux.wasm")])
-        args = ["--faux"]
+        fixture = ROOT / "extensions/dist/oino.fixture.provider-faux"
+        if not fixture.is_dir():
+            sys.exit(f"no provider-faux fixture at {fixture} (run: cargo xtask wasm)")
+        ext = agent / "extensions/provider-faux"
+        if ext.exists():
+            import shutil
+            shutil.rmtree(ext)
+        (agent / "extensions").mkdir(parents=True, exist_ok=True)
+        sh_ok(["cp", "-r", str(fixture), str(ext)])
+        sh_ok(["cp", str(Path.home() / ".oino/auth.json"), str(agent / "auth.json")])
+        sh_ok(["chmod", "600", str(agent / "auth.json")])
+        try:
+            auth_path = agent / "auth.json"
+            doc = json.loads(auth_path.read_text()) if auth_path.is_file() else {}
+            doc.setdefault("faux", {"type": "api_key", "key": "k"})
+            auth_path.write_text(json.dumps(doc))
+        except OSError as error:
+            sys.exit(f"patching {agent / 'auth.json'} for faux: {error}")
+        args = []
     elif backend == "real":
         base = {"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"}
         (agent / "cache/models").mkdir(parents=True, exist_ok=True)

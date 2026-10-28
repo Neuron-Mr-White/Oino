@@ -36,24 +36,46 @@ bin="$root/apps/target/release/oino-desktop"
 agent="$run/agent"; project="$run/project"
 rm -rf "$agent/sessions" "$agent/state" "$agent/desktop.json" "$project/.oino" "$project/docs"
 mkdir -p "$agent/logs" "$run" "$project"
-printf 'local project\n' > "$project/README.md"
+printf 'oino test project\n' > "$project/README.md"
 
 args=()
 case "$backend" in
   demo) args=(--demo) ;;
   faux)
+    # Mirror `cargo xtask ti start --faux` (H-5): the binary has no --faux flag — a faux run
+    # is a real session whose settings select the provider-faux fixture, which ships as the
+    # directory extensions/dist/oino.fixture.provider-faux (there is no provider-faux.wasm).
     printf '%s\n' '{"defaultProvider":"faux","defaultModel":"faux-1"}' > "$agent/settings.json"
     printf '%s\n' '{"onboarded":true}' > "$agent/desktop.json"
-    cp "$root/extensions/dist/provider-faux.wasm" "$agent/" 2>/dev/null || true
-    args=(--faux)
+    [ -d "$root/extensions/dist/oino.fixture.provider-faux" ] \
+      || { echo "no provider-faux fixture in extensions/dist (run: cargo xtask wasm)" >&2; exit 1; }
+    mkdir -p "$agent/extensions"
+    rm -rf "$agent/extensions/provider-faux"
+    cp -r "$root/extensions/dist/oino.fixture.provider-faux" "$agent/extensions/provider-faux"
+    [ -f "$HOME/.oino/auth.json" ] \
+      || { echo "no auth file at $HOME/.oino/auth.json" >&2; exit 1; }
+    python3 - "$HOME/.oino/auth.json" "$agent/auth.json" <<'PY'
+import json, sys
+with open(sys.argv[1]) as handle:
+    doc = json.load(handle)
+if "router" in doc:
+    doc.setdefault("oino", doc["router"])
+doc.setdefault("faux", {"type": "api_key", "key": "k"})
+with open(sys.argv[2], "w") as handle:
+    json.dump(doc, handle)
+PY
+    chmod 600 "$agent/auth.json"
     ;;
   real)
     printf '%s\n' '{"defaultProvider":"oino","defaultModel":"deepseek/deepseek-flash"}' > "$agent/settings.json"
     printf '%s\n' '{"onboarded":true}' > "$agent/desktop.json"
     mkdir -p "$agent/cache/models"
-    cp "$HOME/.oino/cache/models/oino.json" "$agent/cache/models/" 2>/dev/null || true
+    cp "$HOME/.oino/cache/models/oino.json" "$agent/cache/models/" 2>/dev/null \
+      || echo "warning: no cached router model list (~/.oino/cache/models/oino.json)" >&2
     cp "$HOME/.oino/auth.json" "$agent/auth.json" && chmod 600 "$agent/auth.json"
-    convert -size 96x96 'xc:#e03018' "$run/attach-red.png" 2>/dev/null || true
+    convert -size 96x96 'xc:#e03018' "$run/attach-red.png" 2>/dev/null \
+      || python3 -c "from PIL import Image; Image.new('RGB', (96, 96), (224, 48, 24)).save('$run/attach-red.png')" 2>/dev/null \
+      || echo "warning: neither convert nor PIL; the gui-drive client creates attach-red.png on demand" >&2
     ;;
   *) echo "unknown backend $backend" >&2; exit 2 ;;
 esac
