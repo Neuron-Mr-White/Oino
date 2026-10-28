@@ -179,6 +179,15 @@ fn upload_auth(remote: &Remote, faux: bool) -> Result<()> {
     }
     let mut doc: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&local).context("reading the auth file")?)?;
+    // The Oino Router's provider id is `oino`, and the router component reads the credential
+    // from `auth.json` under that id (its env fallback is `OINO_API_KEY`). Auth files written
+    // by older builds name the same endpoint `router`; without the alias a scratch agent dir
+    // resolves no `oino:…` model and the app opens with "No model selected".
+    if let Some(legacy) = doc.get("router").cloned()
+        && let Some(map) = doc.as_object_mut()
+    {
+        map.entry("oino").or_insert(legacy);
+    }
     if faux && let Some(map) = doc.as_object_mut() {
         map.entry("faux")
             .or_insert_with(|| serde_json::json!({"type": "api_key", "key": "k"}));

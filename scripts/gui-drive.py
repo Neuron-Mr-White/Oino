@@ -496,9 +496,11 @@ def ti_restart(
     subprocess.run(["cargo", "xtask", "ti", "stop"], check=False)
     if backend == "real":
         # A real run needs a default model and a non-first-run agent dir (no onboarding).
-        # Core setting `model` (`provider:id`); the router needs its cached model catalog,
-        # which is copied from this PC (docs/dev/v1/ti.md §2).
-        settings = json.dumps({"model": "oino:deepseek/deepseek-flash"})
+        # Core settings are pi's `defaultProvider`/`defaultModel` pair (not `model:`); the
+        # router needs its cached model catalog, copied from this PC (docs/dev/v1/ti.md §2).
+        settings = json.dumps(
+            {"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"}
+        )
         desktop = json.dumps({"onboarded": True})
         script = (
             "set -e; mkdir -p ~/oino-test/agent\n"
