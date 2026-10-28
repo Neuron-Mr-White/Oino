@@ -286,7 +286,8 @@ async fn generate_turn_prefix_summary(
 }
 
 /// Core's default summariser exposed to extensions (`models.summarize-default`, C9): a
-/// first-compaction summary of `messages` with optional extra focus.
+/// summary of `messages` with optional extra focus, updating `previous_summary` when given
+/// (pi `generateSummary(…, previousSummary)`).
 ///
 /// # Errors
 ///
@@ -294,9 +295,10 @@ async fn generate_turn_prefix_summary(
 pub async fn summarize_default(
     messages: &[AgentMessage],
     custom_instructions: Option<&str>,
+    previous_summary: Option<&str>,
     summarizer: &Summarizer,
 ) -> Result<SummaryOutput, CompactionError> {
-    generate_summary(messages, summarizer, custom_instructions, None).await
+    generate_summary(messages, summarizer, custom_instructions, previous_summary).await
 }
 
 /// pi `compact`: generates the summary for a [`CompactionPreparation`] (history summary,

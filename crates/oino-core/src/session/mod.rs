@@ -51,9 +51,10 @@ pub use checkpoints::{Checkpoint, CheckpointFile, RewindFailure, RewindResult};
 pub use feeds::{DetachedBash, ExtensionInfo, RunningBash};
 pub use frontend::{
     AuthProviderInfo, CompletionEntry, CompletionGroup, EditorEvent, EditorIntent, FRONTEND_CALLER,
-    FrontendError,
+    FrontendError, RenderDensity, RenderRequest, RenderTarget, RenderWidth,
 };
 pub use host::SlashCommandInfo;
+pub(crate) use host::check_render_override;
 pub(crate) use model::branch_refs as model_branch_refs;
 pub use model::{CycleDirection, CycleModelResult};
 pub use prompt::{InputSource, PromptDisposition, PromptOptions, StreamingBehavior};

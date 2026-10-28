@@ -481,6 +481,30 @@ pub enum OinoCommand {
     /// Extensions → `{extensions: [ExtensionInfo]}`.
     #[serde(rename = "_oino/extensions")]
     Extensions,
+    /// Transcript row render (ui-protocol §6.4) → `{node | null}` from the owner of the
+    /// render spec for `target`/`key` (`guest.render`; built-in tool rows too).
+    #[serde(rename = "_oino/render", rename_all = "camelCase")]
+    Render {
+        /// `customMessage` | `customEntry` | `tool`.
+        target: String,
+        /// Custom type or tool name.
+        key: String,
+        /// Entry or tool-call id.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        entry_id: Option<String>,
+        /// `simple` | `regular` | `advanced`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        density: Option<String>,
+        /// Expanded row.
+        #[serde(default)]
+        expanded: bool,
+        /// `narrow` | `normal` | `wide`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        width: Option<String>,
+        /// Row payload.
+        #[serde(default)]
+        data: JsonValue,
+    },
     /// Enable or disable an extension (`disabledExtensions`; applies to new sessions).
     #[serde(rename = "_oino/set_extension_enabled")]
     SetExtensionEnabled {
@@ -500,7 +524,7 @@ const fn protocol_version() -> u32 {
 }
 
 /// Oino command types implemented by [`OinoCommand`].
-pub const OINO_COMMAND_TYPES: [&str; 34] = [
+pub const OINO_COMMAND_TYPES: [&str; 35] = [
     "_oino/hello",
     "_oino/ui_snapshot",
     "_oino/navigate_tree",
@@ -535,6 +559,7 @@ pub const OINO_COMMAND_TYPES: [&str; 34] = [
     "_oino/running_bash",
     "_oino/extensions",
     "_oino/set_extension_enabled",
+    "_oino/render",
 ];
 
 /// Any command a backend accepts.
@@ -628,6 +653,7 @@ impl OinoCommand {
             Self::RunningBash => "_oino/running_bash",
             Self::Extensions => "_oino/extensions",
             Self::SetExtensionEnabled { .. } => "_oino/set_extension_enabled",
+            Self::Render { .. } => "_oino/render",
         }
     }
 }

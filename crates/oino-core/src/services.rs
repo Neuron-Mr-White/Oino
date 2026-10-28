@@ -236,8 +236,22 @@ impl HostRouter {
         }
     }
 
-    /// Delivers `oino_settings_changed` to the namespace owner when it subscribed.
+    /// Delivers `oino_settings_changed` to the namespace owner when it subscribed and
+    /// publishes the change on the bus topic `oino:settings:<namespace>`.
     async fn deliver_settings_change(&self, change: SettingsChange) {
+        // Frontends (settings hub, StatusPanel) follow every write, including core namespaces
+        // that no extension owns (`tui.*`).
+        self.publish_topic(
+            crate::topics::CORE_PUBLISHER,
+            &crate::topics::settings_topic(&change.namespace),
+            json!({
+                "namespace": change.namespace.clone(),
+                "keys": change.keys,
+                "scope": change.scope,
+                "extensionId": change.extension_id,
+            }),
+            true,
+        );
         let Some(owner) = change.extension_id.as_deref() else {
             return;
         };
@@ -670,7 +684,20 @@ async fn init_extensions(
             continue;
         }
         match instance.init(cx.clone()).await {
-            Ok(registration) => {
+            Ok(mut registration) => {
+                // Render-only overrides of built-in tools need `tools.override` (U1–U2);
+                // specs for extension tools and custom messages are always allowed.
+                let overrides = instance.tool_overrides();
+                registration.renderers.retain(|spec| {
+                    let allowed = crate::session::check_render_override(spec, &overrides).is_ok();
+                    if !allowed {
+                        diagnostics.push(format!(
+                            "{}: render spec {spec} ignored (tools.override)",
+                            instance.id()
+                        ));
+                    }
+                    allowed
+                });
                 for api in &registration.apis {
                     models.register_api_implementor(api, instance.id());
                 }

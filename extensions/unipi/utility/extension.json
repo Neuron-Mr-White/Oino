@@ -12,7 +12,7 @@
     "sessions": { "readAll": true },
     "models": { "complete": true },
     "credentials": ["*"],
-    "tools": { "override": ["read", "bash", "edit", "write"] },
+    "tools": { "override": ["read", "bash", "edit", "write", "grep", "find", "ls"] },
     "agents": { "spawn": true, "maxDepth": 1 },
     "process": { "spawn": true, "allow": ["git", "test"] },
     "network": { "hosts": ["*"], "listenLoopback": true },

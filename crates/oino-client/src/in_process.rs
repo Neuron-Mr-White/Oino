@@ -565,6 +565,42 @@ impl Shared {
         data(result)
     }
 
+    /// `_oino/render` → core render request (`ui-protocol §6.4`).
+    fn render_request(
+        command: &OinoCommand,
+    ) -> Result<oino_core::session::RenderRequest, ClientError> {
+        let OinoCommand::Render {
+            target,
+            key,
+            entry_id,
+            density,
+            expanded,
+            width,
+            data: payload,
+        } = command
+        else {
+            return Err(ClientError::Protocol(format!(
+                "{} is not a render command",
+                command.kind()
+            )));
+        };
+        let target = oino_core::session::RenderTarget::parse(target)
+            .ok_or_else(|| ClientError::Protocol(format!("render target `{target}`")))?;
+        Ok(oino_core::session::RenderRequest {
+            target,
+            key: key.clone(),
+            entry_id: entry_id.clone(),
+            density: density.as_deref().map_or_else(Default::default, |d| {
+                oino_core::session::RenderDensity::parse(d).unwrap_or_default()
+            }),
+            expanded: *expanded,
+            width: width.as_deref().map_or_else(Default::default, |w| {
+                oino_core::session::RenderWidth::parse(w).unwrap_or_default()
+            }),
+            data: payload.clone(),
+        })
+    }
+
     /// The frontend command surface (`_oino/*` completions, actions, settings, auth).
     async fn frontend(
         &self,
@@ -637,6 +673,12 @@ impl Shared {
             OinoCommand::SetApiKey { provider, key } => {
                 session.set_api_key(&provider, &key).await.map_err(failed)?;
                 Ok(None)
+            }
+            render @ OinoCommand::Render { .. } => {
+                let node = session
+                    .render_spec(&Self::render_request(&render)?)
+                    .map_err(failed)?;
+                data(json!({ "node": node }))
             }
             OinoCommand::Hello { .. }
             | OinoCommand::Topics { .. }

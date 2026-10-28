@@ -166,6 +166,16 @@ pub enum HostOp {
         /// Model id.
         id: String,
     },
+    /// `control.set-default-model`: writes the fresh-session model to core settings
+    /// (`defaultProvider`/`defaultModel`/`modelThinkingLevels`) without touching this session.
+    SetDefaultModel {
+        /// Provider id.
+        provider: String,
+        /// Model id.
+        id: String,
+        /// Thinking level remembered for that model.
+        thinking: Option<ThinkingLevel>,
+    },
     /// Current model (`null` when none).
     GetModel,
     /// pi `getThinkingLevel`.
@@ -216,6 +226,8 @@ pub enum HostOp {
         messages: JsonValue,
         /// Extra focus.
         custom_instructions: Option<String>,
+        /// Earlier summary to update (pi `previousSummary`).
+        previous_summary: Option<String>,
     },
     /// pi command `ctx.waitForIdle` (command context only).
     WaitForIdle,

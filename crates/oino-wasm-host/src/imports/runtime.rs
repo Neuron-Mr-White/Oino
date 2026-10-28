@@ -108,6 +108,7 @@ impl<T: Send> wm::HostWithStore<T> for HostState {
         accessor: &Accessor<T, Self>,
         messages: String,
         custom_instructions: Option<String>,
+        previous_summary: Option<String>,
     ) -> HostResult<String> {
         let (ext, cx) = current_async(accessor);
         let r = match json(messages) {
@@ -118,6 +119,7 @@ impl<T: Send> wm::HostWithStore<T> for HostState {
                     ModelsOp::SummarizeDefault {
                         messages,
                         custom_instructions,
+                        previous_summary,
                     },
                 )
                 .await,

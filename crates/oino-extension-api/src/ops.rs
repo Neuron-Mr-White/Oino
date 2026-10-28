@@ -181,6 +181,15 @@ pub enum ControlOp {
         /// Model id.
         id: String,
     },
+    /// `set-default-model` → bool: persists the fresh-session model in core settings.
+    SetDefaultModel {
+        /// Provider id.
+        provider: String,
+        /// Model id.
+        id: String,
+        /// Thinking level to remember for that model.
+        thinking: Option<String>,
+    },
     /// `thinking-level` → string.
     ThinkingLevel,
     /// `set-thinking-level` → clamped level.
@@ -287,6 +296,7 @@ impl ControlOp {
             Self::Model => "model",
             Self::RoutedModel => "routed-model",
             Self::SetModel { .. } => "set-model",
+            Self::SetDefaultModel { .. } => "set-default-model",
             Self::ThinkingLevel => "thinking-level",
             Self::SetThinkingLevel(_) => "set-thinking-level",
             Self::ModelsList => "models-list",
@@ -326,6 +336,7 @@ impl ControlOp {
         matches!(
             self,
             Self::SetModel { .. }
+                | Self::SetDefaultModel { .. }
                 | Self::SetThinkingLevel(_)
                 | Self::Abort
                 | Self::Compact { .. }
@@ -409,6 +420,8 @@ pub enum ModelsOp {
         messages: RawJson,
         /// Custom instructions.
         custom_instructions: Option<String>,
+        /// Summary of the earlier messages: the call then updates it (pi `previousSummary`).
+        previous_summary: Option<String>,
     },
     /// `credential-for`.
     CredentialFor(String),

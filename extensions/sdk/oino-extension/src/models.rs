@@ -21,15 +21,18 @@ pub async fn stream(request: &Value) -> Result<impl Stream<Item = Value>> {
         .map(|item: String| serde_json::from_str(&item).unwrap_or(Value::String(item))))
 }
 
-/// Core's compaction summarizer → `{summary, usage?}`.
+/// Core's compaction summarizer → `{summary, usage?}`. `previous_summary` updates an earlier
+/// summary instead of starting fresh (pi `generateSummary(…, previousSummary)`).
 pub async fn summarize_default(
     messages: &Value,
     custom_instructions: Option<&str>,
+    previous_summary: Option<&str>,
 ) -> Result<Value> {
     parse(
         &wm::summarize_default(
             messages.to_string(),
             custom_instructions.map(ToOwned::to_owned),
+            previous_summary.map(ToOwned::to_owned),
         )
         .await?,
     )

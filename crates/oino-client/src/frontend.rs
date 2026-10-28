@@ -7,8 +7,8 @@ use futures::FutureExt;
 use futures::future::BoxFuture;
 use oino_ai::JsonValue;
 use oino_core::extensions::settings::SettingsLayer;
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use crate::backend::{ClientError, SessionBackend};
 use crate::protocol::{
@@ -197,6 +197,34 @@ pub trait FrontendApi {
         id: &str,
         enabled: bool,
     ) -> BoxFuture<'_, Result<(), ClientError>>;
+    /// `_oino/render`: the OUS node an extension renders for one transcript row, or `None`
+    /// (ui-protocol §6.4; built-in tool rows included).
+    fn render(&self, request: RenderRow) -> BoxFuture<'_, Result<Option<JsonValue>, ClientError>>;
+}
+
+/// `_oino/render` request as frontends build it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderRow {
+    /// `customMessage` | `customEntry` | `tool`.
+    pub target: String,
+    /// Custom type or tool name.
+    pub key: String,
+    /// Entry or tool-call id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_id: Option<String>,
+    /// `simple` | `regular` | `advanced`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub density: Option<String>,
+    /// Expanded row.
+    #[serde(default)]
+    pub expanded: bool,
+    /// `narrow` | `normal` | `wide`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<String>,
+    /// Row payload.
+    #[serde(default)]
+    pub data: JsonValue,
 }
 
 impl<B: SessionBackend + ?Sized> FrontendApi for B {
@@ -474,6 +502,21 @@ impl<B: SessionBackend + ?Sized> FrontendApi for B {
     fn extensions(&self) -> BoxFuture<'_, Result<Vec<ExtensionInfo>, ClientError>> {
         self.send(OinoCommand::Extensions.into())
             .map(|r| field(r?, "extensions"))
+            .boxed()
+    }
+
+    fn render(&self, request: RenderRow) -> BoxFuture<'_, Result<Option<JsonValue>, ClientError>> {
+        let command = OinoCommand::Render {
+            target: request.target,
+            key: request.key,
+            entry_id: request.entry_id,
+            density: request.density,
+            expanded: request.expanded,
+            width: request.width,
+            data: request.data,
+        };
+        self.send(command.into())
+            .map(|r| field::<JsonValue>(r?, "node").map(|v| (!v.is_null()).then_some(v)))
             .boxed()
     }
 

@@ -272,11 +272,54 @@ async fn summarize_default_uses_the_first_compaction_prompt() {
         serde_json::from_value(case["preparation"].clone()).unwrap();
     let recorder = Recorder::new(replies(case));
     let summarizer = summarizer(case, recorder.clone(), Arc::new(Events::default()));
-    let output = summarize_default(&preparation.messages_to_summarize, None, &summarizer)
+    let output = summarize_default(&preparation.messages_to_summarize, None, None, &summarizer)
         .await
         .unwrap();
     assert_eq!(output.summary, "SUMMARY");
     assert_json("request", &recorder.requests()[0], &case["requests"][0]);
+}
+
+/// pi `generateSummary(…, previousSummary)`: the update prompt plus a `<previous-summary>`
+/// block instead of a fresh summary.
+#[tokio::test]
+async fn summarize_default_updates_a_previous_summary() {
+    let llm = fixture("llm.json");
+    let case = &llm["compact"][0];
+    let preparation: CompactionPreparation =
+        serde_json::from_value(case["preparation"].clone()).unwrap();
+    let recorder = Recorder::new(replies(case));
+    let summarizer = summarizer(case, recorder.clone(), Arc::new(Events::default()));
+    summarize_default(
+        &preparation.messages_to_summarize,
+        None,
+        Some("OLD SUMMARY"),
+        &summarizer,
+    )
+    .await
+    .unwrap();
+    let request = &recorder.requests()[0];
+    let text = request["context"]["messages"]
+        .as_array()
+        .and_then(|messages| {
+            messages
+                .iter()
+                .find(|message| message["role"] == json!("user"))
+                .and_then(|message| message["content"][0]["text"].as_str())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_default();
+    assert!(
+        text.contains("<previous-summary>\nOLD SUMMARY\n</previous-summary>"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Update") || text.contains("update"),
+        "update prompt expected: {text}"
+    );
+    assert!(
+        !text.contains("Additional focus"),
+        "no instructions were passed: {text}"
+    );
 }
 
 /// Never answers; used to check cancellation during a retry backoff.

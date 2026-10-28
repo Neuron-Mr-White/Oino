@@ -1460,6 +1460,11 @@ impl Fusion {
         };
         raw["startup"] = json!({"model": model, "thinking": thinking, "active": sel});
         let _ = unipi_kit::paths::write_json(&path, &raw);
+        // pi keeps the fresh-session model in `settings.json` (`defaultModel`), so persist the
+        // same pair in core settings (unipi-port R4); this does not switch the current session.
+        if let Some((provider, id)) = preset::split_key(&model) {
+            let _ = control::set_default_model(provider, id, thinking.as_deref());
+        }
         let _ = ui::notify(
             &match sel {
                 Active::Single { model } => {

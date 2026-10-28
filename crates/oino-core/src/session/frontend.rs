@@ -41,6 +41,155 @@ pub enum FrontendError {
     Failed(String),
 }
 
+/// Transcript row a render spec targets (ui-protocol §6.4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RenderTarget {
+    /// Extension message (`customType`).
+    CustomMessage,
+    /// Extension session entry (`customType`).
+    CustomEntry,
+    /// A tool call (extension tool or built-in override).
+    #[default]
+    Tool,
+}
+
+impl RenderTarget {
+    /// Wire name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CustomMessage => "customMessage",
+            Self::CustomEntry => "customEntry",
+            Self::Tool => "tool",
+        }
+    }
+
+    /// Parses a wire name.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "customMessage" => Some(Self::CustomMessage),
+            "customEntry" => Some(Self::CustomEntry),
+            "tool" => Some(Self::Tool),
+            _ => None,
+        }
+    }
+}
+
+/// Row density the frontend asks for (unipi utility `render.style`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RenderDensity {
+    /// One line per row.
+    #[default]
+    Simple,
+    /// One line plus a short preview.
+    Regular,
+    /// Details expanded.
+    Advanced,
+}
+
+impl RenderDensity {
+    /// Wire name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Simple => "simple",
+            Self::Regular => "regular",
+            Self::Advanced => "advanced",
+        }
+    }
+
+    /// Parses a wire name.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "simple" => Some(Self::Simple),
+            "regular" => Some(Self::Regular),
+            "advanced" => Some(Self::Advanced),
+            _ => None,
+        }
+    }
+}
+
+/// Available width class (ui-protocol §6.1 `responsive`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RenderWidth {
+    /// Narrow (`< 60` columns).
+    Narrow,
+    /// Normal.
+    #[default]
+    Normal,
+    /// Wide (`≥ 100` columns).
+    Wide,
+}
+
+impl RenderWidth {
+    /// Wire name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Narrow => "narrow",
+            Self::Normal => "normal",
+            Self::Wide => "wide",
+        }
+    }
+
+    /// Parses a wire name.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "narrow" => Some(Self::Narrow),
+            "normal" => Some(Self::Normal),
+            "wide" => Some(Self::Wide),
+            _ => None,
+        }
+    }
+}
+
+/// `_oino/render` request: one row's render input.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderRequest {
+    /// Row kind.
+    pub target: RenderTarget,
+    /// Custom type or tool name.
+    pub key: String,
+    /// Entry or tool-call id (cache key).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_id: Option<String>,
+    /// Density hint.
+    #[serde(default)]
+    pub density: RenderDensity,
+    /// Expanded state.
+    #[serde(default)]
+    pub expanded: bool,
+    /// Width class.
+    #[serde(default)]
+    pub width: RenderWidth,
+    /// Row payload (message / entry / `{toolCall, args, result?, isError?}`).
+    #[serde(default)]
+    pub data: JsonValue,
+}
+
+impl RenderRequest {
+    /// A tool-call row.
+    #[must_use]
+    pub fn tool(key: impl Into<String>, entry_id: Option<String>, data: JsonValue) -> Self {
+        Self {
+            target: RenderTarget::Tool,
+            key: key.into(),
+            entry_id,
+            density: RenderDensity::Simple,
+            expanded: false,
+            width: RenderWidth::Normal,
+            data,
+        }
+    }
+}
+
 /// One completion candidate (ui-protocol §7.3).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -607,6 +756,52 @@ impl AgentSession {
             .auth_storage()
             .remove(provider)
             .map_err(|e| FrontendError::Failed(e.to_string()))
+    }
+
+    /// `_oino/render`: the OUS node the owner of `request.key` renders for one transcript row
+    /// (ui-protocol §6.4), or `None` for the frontend's own rendering.
+    ///
+    /// Render specs registered for a built-in tool (`read`/`write`/`edit`/`bash`/…) are
+    /// *render-only overrides*: the extension needs the manifest's `tools.override` for that
+    /// name but does not register the tool itself (U1–U2).
+    ///
+    /// # Errors
+    ///
+    /// [`FrontendError::Failed`] when the owning instance cannot be reached.
+    pub fn render_spec(&self, request: &RenderRequest) -> Result<Option<JsonValue>, FrontendError> {
+        let runner = self.runner();
+        let target = request.target.as_str();
+        let key = request.key.as_str();
+        let owner = runner
+            .renderers()
+            .into_iter()
+            .find(|(_, spec)| {
+                spec.get("target").and_then(JsonValue::as_str) == Some(target)
+                    && spec.get("key").and_then(JsonValue::as_str) == Some(key)
+            })
+            .map(|(id, _)| id);
+        let Some(owner) = owner else {
+            return Ok(None);
+        };
+        let extension = runner
+            .set()
+            .get(&owner)
+            .cloned()
+            .ok_or_else(|| FrontendError::Failed(format!("unknown extension {owner}")))?;
+        let payload = json!({
+            "target": target,
+            "key": key,
+            "entryId": request.entry_id,
+            "density": request.density.as_str(),
+            "expanded": request.expanded,
+            "width": request.width.as_str(),
+            "data": request.data.clone(),
+        });
+        let cx = runner.call_context().with_kind(CallKind::Render);
+        Ok(extension
+            .instance
+            .render(payload, cx)
+            .filter(|v| !v.is_null()))
     }
 
     /// Stores an API key for `provider` in `auth.json`.

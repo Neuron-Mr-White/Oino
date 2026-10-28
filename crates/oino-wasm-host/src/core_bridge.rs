@@ -64,6 +64,7 @@ fn api_cx(cx: &ca::CallContext) -> CallContext {
             ca::CallKind::Command => CallKind::Command,
             ca::CallKind::Shortcut => CallKind::Shortcut,
             ca::CallKind::Service => CallKind::Service,
+            ca::CallKind::Render => CallKind::Render,
         },
         tool_call_id: None,
     }
@@ -313,6 +314,27 @@ fn control_op(op: ControlOp, cx: &CallContext) -> Result<(HostOp, ReplyShape), H
         ControlOp::SetModel { provider, id } => (HostOp::SetModel { provider, id }, |v| {
             ControlReply::Bool(v.as_bool().unwrap_or(false))
         }),
+        ControlOp::SetDefaultModel {
+            provider,
+            id,
+            thinking,
+        } => {
+            let thinking = thinking
+                .map(|level| {
+                    level.parse().map_err(|_| {
+                        HostError::InvalidArgument(format!("thinking level `{level}`"))
+                    })
+                })
+                .transpose()?;
+            (
+                HostOp::SetDefaultModel {
+                    provider,
+                    id,
+                    thinking,
+                },
+                |v| ControlReply::Bool(v.as_bool().unwrap_or(false)),
+            )
+        }
         ControlOp::ThinkingLevel => (HostOp::GetThinkingLevel, |v| {
             ControlReply::String(v.as_str().unwrap_or("off").to_owned())
         }),
@@ -787,9 +809,11 @@ impl HostServices for CoreHost {
                 ModelsOp::SummarizeDefault {
                     messages,
                     custom_instructions,
+                    previous_summary,
                 } => HostOp::SummarizeDefault {
                     messages: messages.to_value(),
                     custom_instructions,
+                    previous_summary,
                 },
                 ModelsOp::Stream { request } => {
                     let request = request.to_value();
@@ -1165,6 +1189,24 @@ impl ca::ExtensionInstance for CoreInstance {
                 settings: reg.settings.iter().map(RawJson::to_value).collect(),
             })
         })
+    }
+
+    fn tool_overrides(&self) -> Vec<String> {
+        self.inner
+            .manifest()
+            .permissions
+            .tools
+            .override_builtins
+            .clone()
+    }
+
+    fn render(&self, request: JsonValue, cx: ca::CallContext) -> Option<JsonValue> {
+        self.inner
+            .render(
+                RawJson::from(request),
+                api_cx(&cx).with_kind(CallKind::Render),
+            )
+            .map(|node| node.to_value())
     }
 
     fn on_event(

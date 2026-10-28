@@ -63,6 +63,8 @@ pub enum CallKind {
     Shortcut,
     /// Service request.
     Service,
+    /// Transcript row rendering (`guest.render`, ui-protocol §6.4).
+    Render,
 }
 
 /// Context carried by every guest call.
@@ -454,6 +456,19 @@ pub trait ExtensionInstance: Send + Sync {
     ) -> BoxFuture<'_, Result<JsonValue, ExtensionCallError>> {
         let message = format!("service {name} is not implemented");
         Box::pin(async move { Err(ExtensionCallError::new(message)) })
+    }
+
+    /// Built-in tools whose rendering this extension may override (manifest
+    /// `tools.override`); `render-only` — no tool registration needed (U1). `"*"` covers all.
+    fn tool_overrides(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// `guest.render`: an OUS node for one transcript row (ui-protocol §6.4), or `None` for the
+    /// default rendering. Called synchronously from the render path; the request JSON is
+    /// `{target, key, entryId?, density, expanded, width, data}`.
+    fn render(&self, _request: JsonValue, _cx: CallContext) -> Option<JsonValue> {
+        None
     }
 
     /// Routes a virtual model (`route-model` export): a pi route request in, a route result

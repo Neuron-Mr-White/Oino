@@ -42,7 +42,7 @@ pub mod protocol;
 pub use backend::{ClientError, SessionBackend};
 #[cfg(feature = "in-process")]
 pub use follow::FollowStream;
-pub use frontend::{AgentTree, FrontendApi, RewindOptions, ShortcutInfo};
+pub use frontend::{AgentTree, FrontendApi, RenderRow, RewindOptions, ShortcutInfo};
 #[cfg(feature = "in-process")]
 pub use in_process::{InProcessBackend, ServerInfo};
 pub use protocol::{

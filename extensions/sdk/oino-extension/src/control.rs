@@ -20,6 +20,17 @@ pub fn model() -> Option<Value> {
 pub fn set_model(provider: &str, id: &str) -> Result<bool> {
     Ok(wc::set_model(provider, id)?)
 }
+
+/// Persists the model a fresh session starts with (core settings `defaultProvider`,
+/// `defaultModel`, `modelThinkingLevels`); the running session is unchanged. `false` when the
+/// model is unknown or has no credentials.
+///
+/// # Errors
+///
+/// Host errors (unknown thinking level, settings write failure).
+pub fn set_default_model(provider: &str, id: &str, thinking: Option<&str>) -> Result<bool> {
+    Ok(wc::set_default_model(provider, id, thinking)?)
+}
 /// pi `setThinkingLevel`; returns the clamped level.
 pub fn set_thinking_level(level: &str) -> Result<String> {
     Ok(wc::set_thinking_level(level)?)

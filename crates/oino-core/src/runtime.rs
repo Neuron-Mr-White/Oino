@@ -23,6 +23,9 @@ use crate::session::{AgentSession, SessionConfig, SessionOpError, ToolEntry, loc
 pub enum SessionSource {
     /// A new persisted session.
     New,
+    /// A new persisted session with an explicit header id (pi `--session-id`; the id is created
+    /// when no session has it yet).
+    NewWithId(String),
     /// Open a session file.
     Open(PathBuf),
     /// Continue the most recent session of the cwd.
@@ -386,6 +389,14 @@ impl AgentSessionRuntime {
             SessionSource::New => {
                 SessionManager::create(&services.cwd, &root, CreateOptions::default())
             }
+            SessionSource::NewWithId(id) => SessionManager::create(
+                &services.cwd,
+                &root,
+                CreateOptions {
+                    id: Some(id.clone()),
+                    parent_session: None,
+                },
+            ),
             SessionSource::Open(path) => SessionManager::open(path, &root, None),
             SessionSource::ContinueRecent => SessionManager::continue_recent(&services.cwd, &root),
             SessionSource::Resume(id) => {

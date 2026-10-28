@@ -307,8 +307,17 @@ impl Compactor {
                     .unwrap_or_default(),
             );
             let instructions = join_instructions(&[user, Some(cfg.llm_instructions.as_str())]);
-            return match models::summarize_default(&Value::Array(messages), instructions.as_deref())
-                .await
+            // pi's summariser updates the earlier summary when there is one
+            // (`preparation.previousSummary`); it is not an instruction.
+            let previous = prep
+                .and_then(|p| p.get("previousSummary"))
+                .and_then(Value::as_str);
+            return match models::summarize_default(
+                &Value::Array(messages),
+                instructions.as_deref(),
+                previous,
+            )
+            .await
             {
                 Ok(r) => {
                     let summary = Self::with_active_work(
@@ -554,13 +563,12 @@ impl Compactor {
                 .iter()
                 .rev()
                 .find(|e| e.get("type").and_then(Value::as_str) == Some("compaction"))
-                .and_then(|e| e.get("summary").and_then(Value::as_str))
-                .map(|p| format!("Update this previous summary with the new messages:\n{p}"));
-            let instructions =
-                join_instructions(&[Some(cfg.llm_instructions.as_str()), previous.as_deref()]);
+                .and_then(|e| e.get("summary").and_then(Value::as_str));
+            let instructions = join_instructions(&[Some(cfg.llm_instructions.as_str())]);
             let r = models::summarize_default(
                 &Value::Array(tail.messages.clone()),
                 instructions.as_deref(),
+                previous,
             )
             .await
             .ok()?;

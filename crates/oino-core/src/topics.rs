@@ -18,6 +18,16 @@ use serde::{Deserialize, Serialize};
 /// Topic of the core's git summary of the session cwd (`{branch, head, dirty, changed}`).
 pub const GIT_TOPIC: &str = "oino:git";
 
+/// Prefix of the core's settings-change topics: `oino:settings:<namespace>`.
+pub const SETTINGS_TOPIC_PREFIX: &str = "oino:settings:";
+
+/// Topic announcing a write to extension settings namespace `namespace`
+/// (`{namespace, keys, scope, extensionId?}`).
+#[must_use]
+pub fn settings_topic(namespace: &str) -> String {
+    format!("{SETTINGS_TOPIC_PREFIX}{namespace}")
+}
+
 /// Publisher name of core-produced topics.
 pub const CORE_PUBLISHER: &str = "oino.core";
 

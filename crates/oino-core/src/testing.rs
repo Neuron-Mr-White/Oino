@@ -337,6 +337,9 @@ pub type ToolHandler =
 pub type CommandHandler =
     Arc<dyn Fn(&str, &str) -> Result<Option<JsonValue>, String> + Send + Sync>;
 
+/// Render body of a [`FakeExtension`] (ui-protocol §6.4).
+pub type RenderHandler = Arc<dyn Fn(JsonValue) -> Option<JsonValue> + Send + Sync>;
+
 /// Arbiter `propose-nudge` body of a [`FakeExtension`].
 pub type NudgeHandler = Arc<dyn Fn(&CallContext) -> Option<JsonValue> + Send + Sync>;
 /// Arbiter `wait-reason` body of a [`FakeExtension`].
@@ -351,6 +354,8 @@ pub struct FakeExtension {
     on_command: CommandHandler,
     on_nudge: Option<NudgeHandler>,
     on_wait: Option<WaitHandler>,
+    overrides: Vec<String>,
+    on_render: Option<RenderHandler>,
     events: Mutex<Vec<(String, JsonValue)>>,
     contexts: Mutex<Vec<(String, CallContext)>>,
     delivered: Mutex<Vec<String>>,
@@ -377,6 +382,8 @@ impl FakeExtension {
             on_command: Arc::new(|_, _| Ok(None)),
             on_nudge: None,
             on_wait: None,
+            overrides: Vec::new(),
+            on_render: None,
             events: Mutex::new(Vec::new()),
             contexts: Mutex::new(Vec::new()),
             delivered: Mutex::new(Vec::new()),
@@ -425,6 +432,18 @@ impl FakeExtension {
         lock(&self.delivered).clone()
     }
 
+    /// Render-only overrides of built-in tools (`tools.override`) and the render body.
+    #[must_use]
+    pub fn on_render(
+        mut self,
+        overrides: &[&str],
+        handler: impl Fn(JsonValue) -> Option<JsonValue> + Send + Sync + 'static,
+    ) -> Self {
+        self.overrides = overrides.iter().map(|s| (*s).to_owned()).collect();
+        self.on_render = Some(Arc::new(handler));
+        self
+    }
+
     /// Sets the event handler.
     #[must_use]
     pub fn on_event(
@@ -465,6 +484,14 @@ impl FakeExtension {
 impl ExtensionInstance for FakeExtension {
     fn id(&self) -> &str {
         &self.id
+    }
+
+    fn tool_overrides(&self) -> Vec<String> {
+        self.overrides.clone()
+    }
+
+    fn render(&self, request: JsonValue, _cx: CallContext) -> Option<JsonValue> {
+        self.on_render.as_ref().and_then(|handler| handler(request))
     }
 
     fn resource_dirs(&self) -> PackageResourceDirs {

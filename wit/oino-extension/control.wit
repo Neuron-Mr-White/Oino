@@ -7,6 +7,11 @@ interface control {
     model: func() -> option<json>;                            // Model
     routed-model: func() -> option<json>;
     set-model: func(provider: string, id: string) -> result<bool, host-error>;  // false when no credentials
+    /// Persist the model a fresh session starts with: core settings `defaultProvider`,
+    /// `defaultModel` and (when given) `modelThinkingLevels["provider/id"]`. Does not change the
+    /// running session (pi `settings.json` `defaultModel`). false when the model is unknown or
+    /// has no credentials.
+    set-default-model: func(provider: string, id: string, thinking: option<string>) -> result<bool, host-error>;
     thinking-level: func() -> string;
     set-thinking-level: func(level: string) -> result<string, host-error>;     // returns clamped
     models-list: func() -> json;                              // Vec<Model> available (with credentials)

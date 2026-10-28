@@ -27,14 +27,38 @@ pub struct KeybindingOverrides {
 pub struct RenderRequest {
     /// `customMessage` | `customEntry` | `tool`.
     pub target: &'static str,
-    /// Custom type or tool name.
+    /// Custom type or tool name (built-in tool names included).
     pub key: String,
     /// Entry or tool-call id.
     pub entry_id: Option<String>,
+    /// `simple` | `regular` | `advanced`.
+    pub density: &'static str,
     /// Expanded state.
     pub expanded: bool,
+    /// `narrow` | `normal` | `wide`.
+    pub width: &'static str,
     /// Payload.
     pub data: JsonValue,
+}
+
+impl RenderRequest {
+    /// Density from the expanded state (`advanced` when expanded).
+    #[must_use]
+    pub const fn density_for(expanded: bool) -> &'static str {
+        if expanded { "advanced" } else { "simple" }
+    }
+
+    /// Width class of `columns` cells.
+    #[must_use]
+    pub const fn width_for(columns: usize) -> &'static str {
+        if columns < 60 {
+            "narrow"
+        } else if columns >= 100 {
+            "wide"
+        } else {
+            "normal"
+        }
+    }
 }
 
 /// Services for the terminal client. Calls may block; the runner calls them off the UI
@@ -194,7 +218,9 @@ pub use local::LocalHost;
 #[cfg(feature = "local-host")]
 mod local {
     use std::path::{Path, PathBuf};
-    use std::sync::{Mutex, PoisonError};
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use oino_client::{FrontendApi, SessionBackend};
     use std::time::UNIX_EPOCH;
 
     use base64::Engine;
@@ -203,7 +229,7 @@ mod local {
     use oino_settings::{SettingsManager, SettingsScope};
     use oino_view::sessions::{Scope, SessionItem};
 
-    use super::{KeybindingOverrides, TuiHost, clipboard_command};
+    use super::{KeybindingOverrides, RenderRequest, TuiHost, clipboard_command};
 
     /// [`TuiHost`] over the local agent directory.
     pub struct LocalHost {
@@ -211,6 +237,8 @@ mod local {
         agent_dir: PathBuf,
         sessions_root: PathBuf,
         settings: Mutex<SettingsManager>,
+        /// Backend the host asks for extension render specs (ui-protocol §6.4).
+        render: Option<Arc<dyn SessionBackend>>,
     }
 
     impl std::fmt::Debug for LocalHost {
@@ -254,7 +282,15 @@ mod local {
                 agent_dir: agent_dir.to_path_buf(),
                 sessions_root: sessions_root.unwrap_or_else(|| agent_dir.join("sessions")),
                 settings: Mutex::new(SettingsManager::create(cwd, agent_dir, project_trusted)),
+                render: None,
             }
+        }
+
+        /// Asks `backend` for extension render specs (built-in tool rows included, U1–U2).
+        #[must_use]
+        pub fn with_render(mut self, backend: Arc<dyn SessionBackend>) -> Self {
+            self.render = Some(backend);
+            self
         }
     }
 
@@ -323,6 +359,26 @@ mod local {
             manager
                 .set(SettingsScope::Global, path, value)
                 .map_err(|e| e.to_string())
+        }
+
+        fn render(&self, request: &RenderRequest) -> Option<JsonValue> {
+            let backend = self.render.as_ref()?;
+            let row = oino_client::RenderRow {
+                target: request.target.to_owned(),
+                key: request.key.clone(),
+                entry_id: request.entry_id.clone(),
+                density: Some(request.density.to_owned()),
+                expanded: request.expanded,
+                width: Some(request.width.to_owned()),
+                data: request.data.clone(),
+            };
+            let handle = tokio::runtime::Handle::try_current().ok()?;
+            if handle.runtime_flavor() != tokio::runtime::RuntimeFlavor::MultiThread {
+                return None;
+            }
+            tokio::task::block_in_place(|| handle.block_on(backend.render(row)))
+                .ok()
+                .flatten()
         }
 
         fn clipboard_image(&self) -> Option<ImageContent> {

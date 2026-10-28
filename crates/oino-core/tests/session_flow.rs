@@ -371,6 +371,146 @@ async fn thinking_levels_and_models() {
     assert_eq!(error.to_string(), "No API key for nokey/faux-1");
 }
 
+/// `control.set-default-model` writes the fresh-session model into core settings without
+/// touching the running session (unipi-port R4).
+#[tokio::test]
+async fn set_default_model_persists_core_settings() {
+    let provider = FauxProvider::new(Vec::new());
+    let session = TestSession::default().build(provider).await;
+    let cx = oino_core::extensions::api::CallContext {
+        session_id: session.session_id().clone(),
+        mode: oino_core::extensions::api::ExtensionMode::Print,
+        has_ui: false,
+        cwd: session.cwd().to_path_buf(),
+        is_child: false,
+        child_role: None,
+        call_kind: oino_core::extensions::api::CallKind::Event,
+    };
+    let model = FauxProvider::model();
+    let written = session
+        .host_call(
+            "acme.ext",
+            &cx,
+            oino_core::extensions::host::HostOp::SetDefaultModel {
+                provider: model.provider.clone(),
+                id: model.id.clone(),
+                thinking: Some(ThinkingLevel::High),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(written, json!(true));
+    let (provider_id, model_id, thinking) = session.with_settings(|s| {
+        let view = s.settings();
+        (
+            view.default_provider().map(ToOwned::to_owned),
+            view.default_model().map(ToOwned::to_owned),
+            view.model_thinking_level(&model.provider, &model.id),
+        )
+    });
+    assert_eq!(provider_id.as_deref(), Some(model.provider.as_str()));
+    assert_eq!(model_id.as_deref(), Some(model.id.as_str()));
+    assert_eq!(thinking, Some(ThinkingLevel::High));
+    // Unknown models are refused, like `set-model`.
+    let refused = session
+        .host_call(
+            "acme.ext",
+            &cx,
+            oino_core::extensions::host::HostOp::SetDefaultModel {
+                provider: "nokey".into(),
+                id: "none".into(),
+                thinking: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(refused, json!(false));
+}
+
+/// Render-only overrides for the built-in tools (`tools.override`, U1–U2): a spec for `read`
+/// needs the permission, and `_oino/render` reaches the owner's `render` with the row data and
+/// the frontend's density/width hints.
+#[tokio::test]
+async fn builtin_tool_render_overrides() {
+    use oino_core::extensions::api::CallKind;
+    use oino_core::extensions::host::HostOp;
+    use oino_core::session::{RenderDensity, RenderRequest, RenderWidth};
+
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorder = Arc::clone(&seen);
+    let extension = Arc::new(
+        FakeExtension::new("acme.render", Registration::default()).on_render(
+            &["read", "bash"],
+            move |request: JsonValue| {
+                recorder.lock().unwrap().push(request);
+                Some(json!({"t": "text", "value": "custom read row"}))
+            },
+        ),
+    );
+    let plain = Arc::new(FakeExtension::new("acme.plain", Registration::default()));
+    let session = TestSession {
+        extensions: vec![extension, plain],
+        ..TestSession::default()
+    }
+    .build(FauxProvider::new(Vec::new()))
+    .await;
+    let cx = oino_core::extensions::api::CallContext {
+        session_id: session.session_id().clone(),
+        mode: oino_core::extensions::api::ExtensionMode::Print,
+        has_ui: false,
+        cwd: session.cwd().to_path_buf(),
+        is_child: false,
+        child_role: None,
+        call_kind: CallKind::Event,
+    };
+    let spec = json!({"target": "tool", "key": "read"});
+    assert!(
+        session
+            .host_call("acme.plain", &cx, HostOp::RegisterRenderer(spec.clone()))
+            .await
+            .is_err(),
+        "tools.override is required for built-in tool rows"
+    );
+    session
+        .host_call("acme.render", &cx, HostOp::RegisterRenderer(spec))
+        .await
+        .unwrap();
+    // Extension tools and custom messages need no override.
+    session
+        .host_call(
+            "acme.plain",
+            &cx,
+            HostOp::RegisterRenderer(json!({"target": "tool", "key": "sidekick"})),
+        )
+        .await
+        .unwrap();
+    let mut request = RenderRequest::tool(
+        "read",
+        Some("call-1".into()),
+        json!({"args": {"path": "a.txt"}}),
+    );
+    request.density = RenderDensity::Advanced;
+    request.expanded = true;
+    request.width = RenderWidth::Wide;
+    let node = session.render_spec(&request).unwrap().expect("render node");
+    assert_eq!(node["value"], json!("custom read row"));
+    let request = seen.lock().unwrap()[0].clone();
+    assert_eq!(request["target"], json!("tool"));
+    assert_eq!(request["key"], json!("read"));
+    assert_eq!(request["entryId"], json!("call-1"));
+    assert_eq!(request["density"], json!("advanced"));
+    assert_eq!(request["width"], json!("wide"));
+    assert_eq!(request["expanded"], json!(true));
+    assert_eq!(request["data"]["args"]["path"], json!("a.txt"));
+    // No renderer for this key: the frontend renders it itself.
+    assert!(
+        session
+            .render_spec(&RenderRequest::tool("write", None, json!({})))
+            .unwrap()
+            .is_none()
+    );
+}
+
 #[tokio::test]
 async fn manual_compaction_and_tree_navigation() {
     let mut responses = Vec::new();

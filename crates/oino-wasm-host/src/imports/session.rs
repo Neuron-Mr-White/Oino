@@ -373,6 +373,22 @@ impl<T: Send> wc::HostWithStore<T> for HostState {
     ) -> impl Future<Output = HostResult<bool>> + Send {
         ctl_wit!(host, ControlOp::SetModel { provider, id }, as_bool)
     }
+    fn set_default_model(
+        mut host: Access<'_, T, Self>,
+        provider: String,
+        id: String,
+        thinking: Option<String>,
+    ) -> impl Future<Output = HostResult<bool>> + Send {
+        ctl_wit!(
+            host,
+            ControlOp::SetDefaultModel {
+                provider,
+                id,
+                thinking,
+            },
+            as_bool
+        )
+    }
     fn thinking_level(
         mut host: Access<'_, T, Self>,
     ) -> impl Future<Output = wasmtime::Result<String>> + Send {

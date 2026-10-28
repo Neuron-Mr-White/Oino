@@ -10,7 +10,9 @@ interface models {
     /// Streaming variant: AssistantMessageEvent JSON values (without `partial`).
     %stream: async func(request: json) -> result<stream<string>, host-error>;
     /// Core's compaction summarizer (C9/C26). entries = Vec<AgentMessage>; returns {summary, usage?}.
-    summarize-default: async func(messages: json, custom-instructions: option<string>) -> result<json, host-error>;
+    /// `previous-summary` makes it an update of an earlier summary (pi `generateSummary`
+    /// `previousSummary`: update prompt + `<previous-summary>` block).
+    summarize-default: async func(messages: json, custom-instructions: option<string>, previous-summary: option<string>) -> result<json, host-error>;
     /// Scoped credentials for outbound HTTP (permission credentials:[provider|*]).
     record credential { headers: list<tuple<string, string>>, base-url: option<string>, provider: string }
     credential-for: async func(provider-or-base-url: string) -> result<option<credential>, host-error>;

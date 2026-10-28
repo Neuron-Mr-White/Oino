@@ -132,7 +132,9 @@ pub(crate) fn row_lines(row: &Row, cx: &RenderCtx<'_>) -> Vec<OLine> {
                 target: "tool",
                 key: tool.name.clone(),
                 entry_id: Some(tool.tool_call_id.clone()),
+                density: RenderRequest::density_for(cx.expanded),
                 expanded: cx.expanded,
+                width: RenderRequest::width_for(width),
                 data: serde_json::json!({
                     "toolCall": {"id": tool.tool_call_id, "name": tool.name},
                     "args": tool.args,
@@ -140,9 +142,9 @@ pub(crate) fn row_lines(row: &Row, cx: &RenderCtx<'_>) -> Vec<OLine> {
                     "isError": tool.output.as_ref().is_some_and(|o| o.is_error),
                 }),
             };
-            if !is_builtin_tool(&tool.name)
-                && let Some(node) = cx.render_spec(&request)
-            {
+            // Render-only overrides (`tools.override`) cover the built-in tools too (U1–U2):
+            // a host that has renderers answers, LocalHost without a session does not.
+            if let Some(node) = cx.render_spec(&request) {
                 return node;
             }
             super::tools::render(tool, cx)
@@ -153,7 +155,9 @@ pub(crate) fn row_lines(row: &Row, cx: &RenderCtx<'_>) -> Vec<OLine> {
                 target: "customMessage",
                 key: custom.custom_type.clone(),
                 entry_id: custom.entry_id.clone(),
+                density: RenderRequest::density_for(cx.expanded),
                 expanded: cx.expanded,
+                width: RenderRequest::width_for(width),
                 data: serde_json::json!({
                     "role": "custom", "customType": custom.custom_type, "content": content_json(&custom.content),
                     "display": true, "details": custom.details,
@@ -184,7 +188,9 @@ pub(crate) fn row_lines(row: &Row, cx: &RenderCtx<'_>) -> Vec<OLine> {
                 target: "customEntry",
                 key: entry.custom_type.clone(),
                 entry_id: Some(entry.entry_id.clone()),
+                density: RenderRequest::density_for(cx.expanded),
                 expanded: cx.expanded,
+                width: RenderRequest::width_for(width),
                 data: serde_json::json!({
                     "type": "custom", "id": entry.entry_id, "customType": entry.custom_type, "data": entry.data,
                 }),
@@ -259,13 +265,6 @@ pub(crate) fn row_lines(row: &Row, cx: &RenderCtx<'_>) -> Vec<OLine> {
             boxed(wrap_plain(&notice.text, style, inner), width, 1, None)
         }
     }
-}
-
-fn is_builtin_tool(name: &str) -> bool {
-    matches!(
-        name,
-        "read" | "write" | "edit" | "bash" | "grep" | "find" | "ls" | "powershell"
-    )
 }
 
 fn content_json(content: &UserContentField) -> JsonValue {

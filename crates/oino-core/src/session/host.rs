@@ -19,6 +19,32 @@ fn failed(error: impl std::fmt::Display) -> HostError {
     HostError::Failed(error.to_string())
 }
 
+/// A render spec for one of the built-in tools is a *render-only override* (U1–U2): it needs the
+/// manifest's `tools.override` for that name, and registers no tool.
+pub(crate) fn check_render_override(
+    spec: &JsonValue,
+    overrides: &[String],
+) -> Result<(), HostError> {
+    let field = |name: &str| {
+        spec.get(name)
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default()
+    };
+    if field("target") != "tool" {
+        return Ok(());
+    }
+    let key = field("key");
+    if oino_tools::BuiltinToolName::parse(key).is_none() {
+        return Ok(());
+    }
+    if overrides.iter().any(|name| name == "*" || name == key) {
+        return Ok(());
+    }
+    Err(HostError::Invalid(format!(
+        "rendering the built-in tool `{key}` needs the manifest permission tools.override"
+    )))
+}
+
 impl AgentSession {
     /// Performs one host operation for `extension` (runtime §7.3 context rules apply).
     ///
@@ -137,6 +163,7 @@ impl AgentSession {
             HostOp::RegisterRenderer(spec) => {
                 let loaded = loaded
                     .ok_or_else(|| HostError::Invalid(format!("Unknown extension {extension}")))?;
+                check_render_override(&spec, &loaded.instance.tool_overrides())?;
                 loaded.update(|state| state.renderers.push(spec));
                 Ok(JsonValue::Null)
             }
@@ -241,6 +268,29 @@ impl AgentSession {
                 self.set_model(model, false).await.map_err(failed)?;
                 Ok(json!(true))
             }
+            HostOp::SetDefaultModel {
+                provider,
+                id,
+                thinking,
+            } => {
+                let Some(model) = self.inner.models.find(&provider, &id) else {
+                    return Ok(json!(false));
+                };
+                if !self.inner.models.has_configured_auth(&model.provider) {
+                    return Ok(json!(false));
+                }
+                let written = self.with_settings(|s| {
+                    s.set_default_model_and_provider(&model.provider, &model.id)
+                        .and_then(|()| match thinking {
+                            Some(level) => {
+                                s.set_model_thinking_level(&model.provider, &model.id, level)
+                            }
+                            None => Ok(()),
+                        })
+                });
+                written.map_err(failed)?;
+                Ok(json!(true))
+            }
             HostOp::GetModel => to_json(self.model()),
             HostOp::GetThinkingLevel => to_json(self.thinking_level()),
             HostOp::SetThinkingLevel(level) => {
@@ -300,6 +350,7 @@ impl AgentSession {
             HostOp::SummarizeDefault {
                 messages,
                 custom_instructions,
+                previous_summary,
             } => {
                 let messages: Vec<oino_ai::AgentMessage> = serde_json::from_value(messages)
                     .map_err(|e| HostError::Invalid(format!("messages: {e}")))?;
@@ -317,6 +368,7 @@ impl AgentSession {
                 let output = crate::compaction::summarize_default(
                     &messages,
                     custom_instructions.as_deref(),
+                    previous_summary.as_deref(),
                     &summarizer,
                 )
                 .await

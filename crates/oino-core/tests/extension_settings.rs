@@ -208,6 +208,19 @@ async fn registry_serves_guests_and_frontends() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
+    // The same writes reach frontends as sticky `oino:settings:<namespace>` topics.
+    let topic = services
+        .host
+        .topics()
+        .get(&oino_core::topics::settings_topic("acme"))
+        .expect("settings topic");
+    assert_eq!(topic.publisher, oino_core::topics::CORE_PUBLISHER);
+    assert!(topic.sticky);
+    assert_eq!(topic.data["namespace"], "acme");
+    assert_eq!(topic.data["keys"], json!(["ui.compact"]));
+    assert_eq!(topic.data["scope"], "global");
+    assert_eq!(topic.data["extensionId"], "acme.ext");
+
     // Dynamic registration of a second namespace; names are owned.
     call(
         &services,
