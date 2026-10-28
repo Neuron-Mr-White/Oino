@@ -17,6 +17,7 @@ use gpui_kit::{
 use oino_ai::JsonValue;
 use oino_client::FrontendApi as _;
 
+use crate::automation::Automatable as _;
 use crate::components::badge::badge;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::empty::empty_state;
@@ -308,6 +309,24 @@ const AGENT_ROWS: usize = 200;
 
 /// One read-only row of a child agent timeline.
 fn child_row(
+    t: &OinoTheme,
+    agent: &str,
+    ix: usize,
+    row: &crate::model::transcript::Row,
+) -> AnyElement {
+    crate::automation::probe(
+        child_body(t, agent, ix, row),
+        crate::automation::Meta::labelled(
+            crate::automation::Role::Text,
+            crate::components::timeline::row_text(Some(row)),
+        )
+        .value(row.id.clone()),
+    )
+    .into_any_element()
+}
+
+/// The body of one read-only child row (the Agent tab's timeline).
+fn child_body(
     t: &OinoTheme,
     agent: &str,
     ix: usize,
@@ -1534,6 +1553,18 @@ impl SessionPane {
             })
             .child(div().flex_1())
             .children(stop);
+        let summary = format!(
+            "Agent session · {word}{}{}",
+            if steps > 0 {
+                format!(" · {steps} steps")
+            } else {
+                String::new()
+            },
+            elapsed
+                .filter(|ms| *ms >= 1000)
+                .map(|ms| format!(" · {}", timeline::duration(ms)))
+                .unwrap_or_default()
+        );
         let mut col = div().flex().flex_col().gap(px(space::S2_5)).child(head);
         let has_rows = live.as_ref().is_some_and(|a| !a.rows.is_empty());
         if let Some(task) = task.filter(|s| !has_rows && !s.trim().is_empty()) {
@@ -1589,6 +1620,11 @@ impl SessionPane {
                 .text_color(t.fg_subtlest())
                 .child("Read-only view of the agent's session."),
         )
+        // Read-back for the driver: state, steps and elapsed of the child session.
+        .automation(crate::automation::Meta::labelled(
+            crate::automation::Role::Row,
+            summary,
+        ))
         .into_any_element()
     }
 

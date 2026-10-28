@@ -1059,7 +1059,7 @@ mod tests {
         let mut feed = AgentFeed::default();
         feed.set_tree(&[info("b1")]);
         let message = |text: &str| {
-            serde_json::from_value::<oino_ai::AgentMessage>(json!({
+            serde_json::from_value::<AgentMessage>(json!({
                 "role": "user", "content": text, "timestamp": 0
             }))
             .unwrap()

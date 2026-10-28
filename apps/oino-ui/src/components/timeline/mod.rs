@@ -88,7 +88,7 @@ fn strip_ansi(text: &str) -> String {
 }
 
 /// The text of a transcript row, for the automation registry (capped at 400 chars).
-fn row_text(row: Option<&Row>) -> String {
+pub(crate) fn row_text(row: Option<&Row>) -> String {
     const MAX: usize = 400;
     let raw = match row.map(|r| &r.kind) {
         Some(RowKind::User(u)) => u.text.clone(),
