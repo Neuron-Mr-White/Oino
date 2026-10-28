@@ -1505,12 +1505,14 @@ impl SessionPane {
         }
         let running_row = tool
             .is_some_and(|tool| matches!(tool.status, ToolStatus::Running | ToolStatus::Preparing));
-        let (running, word) = live.as_ref().map_or(
-            (running_row, if running_row { "running" } else { "done" }),
+        // The `_oino/agents` state is authoritative for a child the feed knows; the tool row
+        // only speaks for one that is not in the tree (a tab opened after the child closed,
+        // or a backend without the feed). A closed child must not look running because its
+        // parent tool call still is.
+        let (running, word) = live.as_ref().map_or_else(
+            || (running_row, if running_row { "running" } else { "done" }),
             |a| agent_state_word(a.state),
         );
-        let running = running || running_row;
-        let word = if running { "running" } else { word };
         let elapsed = if running {
             live.as_ref().map(|a| a.elapsed_ms)
         } else {

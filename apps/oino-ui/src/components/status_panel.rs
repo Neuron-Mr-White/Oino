@@ -4,7 +4,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, Div, ElementId, InteractiveElement as _, IntoElement,
+    AnyElement, ClickEvent, Context, ElementId, InteractiveElement as _, IntoElement,
     ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
@@ -19,7 +19,8 @@ use crate::host::StatusPanelMode;
 use crate::model::status::RunKind;
 use crate::views::session_pane::SessionPane;
 
-fn section(t: &OinoTheme, title: &str, state: String) -> Div {
+fn section(t: &OinoTheme, title: &str, state: String) -> AnyElement {
+    let summary = format!("{title} · {state}");
     div()
         .flex()
         .items_center()
@@ -34,6 +35,11 @@ fn section(t: &OinoTheme, title: &str, state: String) -> Div {
         )
         .child(icon(IconName::ChevronDown, size::ICON_SM, t.fg_subtlest()))
         .child(div().text_color(t.fg_subtle()).child(state))
+        .automation(crate::automation::Meta::labelled(
+            crate::automation::Role::Row,
+            summary,
+        ))
+        .into_any_element()
 }
 
 impl SessionPane {

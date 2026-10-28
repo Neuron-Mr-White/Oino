@@ -21,31 +21,57 @@
     },
     {
       "wait_for": {
-        "text": "Ship trailing commas",
+        "id": "status-mini",
         "timeout_ms": 60000
       }
     },
     {
       "wait_for": {
-        "text": "cargo test --watch",
-        "timeout_ms": 60000
-      }
-    },
-    {
-      "wait_for": {
-        "text": "Kanboard \u00b7 1 claimed",
-        "timeout_ms": 60000
-      }
-    },
-    {
-      "wait_for": {
-        "text": "v1-alpha \u00b7 3 changed",
+        "text": "3 changed",
         "timeout_ms": 60000
       }
     },
     {
       "screenshot": {
-        "name": "01-panel-topics"
+        "name": "01-mini"
+      }
+    },
+    {
+      "click": {
+        "id": "status-mini"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "Goal \u00b7 turn 2/5",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "cargo test --watch",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "Kanboard \u00b7 1 claimed",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "Git \u00b7 v1-alpha \u00b7 3 changed",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-panel-topics"
       }
     },
     {
@@ -61,7 +87,7 @@
     },
     {
       "screenshot": {
-        "name": "02-mini"
+        "name": "03-collapsed"
       }
     },
     {
@@ -100,7 +126,7 @@
     },
     {
       "screenshot": {
-        "name": "03-stop-confirm"
+        "name": "04-stop-confirm"
       }
     },
     {
@@ -119,7 +145,7 @@
     },
     {
       "screenshot": {
-        "name": "04-agent-stopped"
+        "name": "05-agent-stopped"
       }
     },
     {
@@ -150,7 +176,7 @@
     },
     {
       "screenshot": {
-        "name": "05-enter-opens-agent-tab"
+        "name": "06-enter-opens-agent-tab"
       }
     }
   ]

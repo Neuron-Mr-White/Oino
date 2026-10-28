@@ -97,7 +97,7 @@
     },
     {
       "wait_for": {
-        "id": "queue",
+        "text": "queued",
         "absent": true,
         "timeout_ms": 20000
       }
