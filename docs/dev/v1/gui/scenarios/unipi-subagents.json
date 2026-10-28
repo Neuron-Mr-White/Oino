@@ -3,24 +3,110 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/agents", "submit": true}},
-    {"wait_for": {"id": "dock-opt-0", "timeout_ms": 30000}},
-    {"assert": {"dialogs": "select"}},
-    {"wait_for": {"text": "subagent_explore", "timeout_ms": 15000}},
-    {"screenshot": {"name": "01-agents-dialog"}},
-    {"click": {"id": "dock-cancel"}},
-    {"type_text": {"text": "/subagents", "submit": true}},
-    {"wait_for": {"id": "unipi.core/tray/0/tabs-1", "timeout_ms": 30000}},
-    {"assert": {"open": "unipi.core/tray"}},
-    {"screenshot": {"name": "02-subagents-tray"}},
-    {"click": {"id": "editor-panel-close"}},
-    {"click": {"id": "composer"}},
-    {"type_text": {"text": "Use run_subagent with agent \"subagent_explore\" and task \"Read README.md in the working directory and report its first line\". Do not answer yourself; wait for the subagent and report what it found.", "submit": true}},
-    {"wait_for": {"label": "subagent_explore", "timeout_ms": 240000}},
-    {"screenshot": {"name": "03-agent-row"}},
-    {"wait_state": {"busy": false, "timeout_ms": 300000}},
-    {"wait_for": {"text": "ti project", "timeout_ms": 60000}},
-    {"screenshot": {"name": "04-agent-result"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/agents",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "dock-opt-0",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "assert": {
+        "dialogs": "select"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "subagent_explore",
+        "timeout_ms": 15000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-agents-dialog"
+      }
+    },
+    {
+      "click": {
+        "id": "dock-cancel"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/subagents",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "unipi.core/tray/0/tabs-1",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "assert": {
+        "open": "unipi.core/tray"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-subagents-tray"
+      }
+    },
+    {
+      "click": {
+        "id": "editor-panel-close"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "Use run_subagent with agent \"subagent_explore\" and task \"Read README.md in the working directory and report its first line\". Do not answer yourself; wait for the subagent and report what it found.",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "subagent_explore",
+        "timeout_ms": 240000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-agent-row"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 300000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "ti project",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-agent-result"
+      }
+    }
   ]
 }

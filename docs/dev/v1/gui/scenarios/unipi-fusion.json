@@ -112,7 +112,7 @@
     },
     {
       "wait_for": {
-        "text": "Sidekick",
+        "text": "Fusion",
         "timeout_ms": 30000
       }
     },
