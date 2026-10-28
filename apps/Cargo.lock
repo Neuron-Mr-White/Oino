@@ -5727,7 +5727,7 @@ dependencies = [
 
 [[package]]
 name = "oino-agent"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "futures",
  "indexmap",
@@ -5742,7 +5742,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "indexmap",
  "serde",
@@ -5752,7 +5752,7 @@ dependencies = [
 
 [[package]]
 name = "oino-browser"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "base64 0.22.1",
  "command-fds",
@@ -5776,7 +5776,7 @@ dependencies = [
 
 [[package]]
 name = "oino-browser-protocol"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -5785,7 +5785,7 @@ dependencies = [
 
 [[package]]
 name = "oino-bundle"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "serde_json",
  "sha2 0.10.9",
@@ -5795,7 +5795,7 @@ dependencies = [
 
 [[package]]
 name = "oino-client"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "futures",
  "oino-agent",
@@ -5811,7 +5811,7 @@ dependencies = [
 
 [[package]]
 name = "oino-core"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "futures",
  "ignore",
@@ -5835,7 +5835,7 @@ dependencies = [
 
 [[package]]
 name = "oino-cron"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -5854,7 +5854,7 @@ dependencies = [
 
 [[package]]
 name = "oino-desktop"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
  "futures",
@@ -5881,7 +5881,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-api"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "futures",
  "oino-ai",
@@ -5896,7 +5896,7 @@ dependencies = [
 
 [[package]]
 name = "oino-mobile"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "android-activity",
  "android_logger",
@@ -5928,7 +5928,7 @@ dependencies = [
 
 [[package]]
 name = "oino-models"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "futures",
  "globset",
@@ -5943,7 +5943,7 @@ dependencies = [
 
 [[package]]
 name = "oino-resources"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "globset",
  "ignore",
@@ -5958,7 +5958,7 @@ dependencies = [
 
 [[package]]
 name = "oino-session"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "indexmap",
  "oino-ai",
@@ -5970,7 +5970,7 @@ dependencies = [
 
 [[package]]
 name = "oino-settings"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "dirs 5.0.1",
  "indexmap",
@@ -5983,7 +5983,7 @@ dependencies = [
 
 [[package]]
 name = "oino-tools"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -6008,7 +6008,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ui"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "alacritty_terminal",
  "chrono",
@@ -6034,7 +6034,7 @@ dependencies = [
 
 [[package]]
 name = "oino-view"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "indexmap",
  "oino-agent",
@@ -6048,7 +6048,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 dependencies = [
  "base64 0.22.1",
  "bytes",

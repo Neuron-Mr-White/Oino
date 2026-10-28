@@ -1,6 +1,6 @@
 [package]
 name = "oino-extension-api"
-version = "1.0.0-alpha.3"
+version = "1.0.0-alpha.4"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true
