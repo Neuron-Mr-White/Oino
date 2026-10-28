@@ -94,7 +94,7 @@ fn build(jobs: u32, timeout: Duration) -> Result<()> {
          cd ~/{CODE_DIR} || exit 1\n\
          rm -f ~/{RUN_DIR}/build.exit\n\
          echo $$ > ~/{RUN_DIR}/build.pid\n\
-         {{ nice -n 10 cargo build --release -j {jobs} -p oino && cd apps && \
+         {{ nice -n 10 cargo build --release -j {jobs} -p oino -p oino-kanboard && cd apps && \
 nice -n 10 cargo build --release -j {jobs} -p oino-desktop; }} \
 > ~/{RUN_DIR}/build.log 2>&1\n\
          echo $? > ~/{RUN_DIR}/build.exit\n"

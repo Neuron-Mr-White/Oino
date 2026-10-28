@@ -275,6 +275,9 @@ class Scenario:
         # the copied auth.json, e.g. oino/deepseek/deepseek-flash).
         self.backend = self.spec.get("backend", "demo")
         self.env: list[str] = self.spec.get("env", [])
+        # Settings merged into the scratch agent dir's settings.json before the app starts
+        # (extension switches a scenario needs, e.g. `unipi.ask-user.enabled`).
+        self.settings: dict = self.spec.get("settings", {})
         self.shots = Path(self.spec.get("shots", "target/gui-shots")) / self.name
         self.steps = self.spec.get("steps", [])
         self.step = 0
@@ -407,6 +410,22 @@ def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> 
         checked.append(f"session_id={state.get('session_id')}")
         if not state.get("session_id"):
             problems.append("no session is open")
+    if "chrome" in params:
+        # Extension chrome: statuses, above/below-composer widgets and frame segments.
+        chrome = state.get("chrome") or {}
+        texts = [s.get("text") or "" for s in chrome.get("statuses", [])]
+        texts += [w.get("text") or "" for w in chrome.get("widgets", [])]
+        frame = chrome.get("frame") or {}
+        texts += [s.get("text") or "" for key in ("top", "bottom") for s in frame.get(key, [])]
+        needle = params["chrome"]
+        checked.append(f"chrome={needle!r}")
+        if not any(needle.lower() in text.lower() for text in texts):
+            problems.append(f"no status, widget or frame segment contains {needle!r}: {texts}")
+    if "open" in params:
+        entries = state.get("open", [])
+        checked.append(f"open={params['open']!r}")
+        if not any(params["open"].lower() in entry.lower() for entry in entries):
+            problems.append(f"no open surface matches {params['open']!r}: {entries}")
     if "text" in params:
         needle = params["text"]
         hit = any(needle.lower() in (n.get("label") or "").lower() for n in tree["elements"])
@@ -484,8 +503,23 @@ def _fail_shot(client: Client, scenario: Scenario, index: int, args: argparse.Na
 # ── app lifecycle on `ti` ───────────────────────────────────────────────────────────────────
 
 
+def merge_settings(base: dict, extra: dict) -> dict:
+    """Deep-merges `extra` into `base` (one level below `extensionSettings`)."""
+    merged = dict(base)
+    for key, value in extra.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        else:
+            merged[key] = value
+    return merged
+
+
 def ti_restart(
-    socket_path: str, scene: str | None, backend: str = "demo", extra_env: list[str] | None = None
+    socket_path: str,
+    scene: str | None,
+    backend: str = "demo",
+    extra_env: list[str] | None = None,
+    settings: dict | None = None,
 ) -> None:
     """Restarts the app on `ti` with the automation socket (and demo scene) enabled."""
     env = ["--env", f"OINO_DESKTOP_AUTOMATION={socket_path}"]
@@ -498,13 +532,12 @@ def ti_restart(
         # A real run needs a default model and a non-first-run agent dir (no onboarding).
         # Core settings are pi's `defaultProvider`/`defaultModel` pair (not `model:`); the
         # router needs its cached model catalog, copied from this PC (docs/dev/v1/ti.md §2).
-        settings = json.dumps(
-            {"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"}
-        )
+        base = {"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"}
+        merged = json.dumps(merge_settings(base, settings or {}))
         desktop = json.dumps({"onboarded": True})
         script = (
             "set -e; mkdir -p ~/oino-test/agent\n"
-            f"printf '%s' {shlex.quote(settings)} > ~/oino-test/agent/settings.json\n"
+            f"printf '%s' {shlex.quote(merged)} > ~/oino-test/agent/settings.json\n"
             f"printf '%s' {shlex.quote(desktop)} > ~/oino-test/agent/desktop.json"
         )
         # A solid-colour PNG for the attachment scenarios (drop / clipboard paste).
@@ -642,7 +675,7 @@ def main(argv: list[str]) -> int:
             f"# restarting the app ({backend}, {'demo scene ' + scene if scene else 'default'})",
             flush=True,
         )
-        ti_restart(path, scene, backend, scenario.env)
+        ti_restart(path, scene, backend, scenario.env, scenario.settings)
 
     client = Client(host, path)
     try:

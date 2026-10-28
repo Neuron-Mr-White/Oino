@@ -2584,6 +2584,10 @@ impl Extension for Lh {
                     let mut st = ext.state.borrow_mut();
                     st.pending_explicit = Some(Mode::None);
                     st.session_override = Some(Mode::None);
+                    // `/regular` clears the mode outright: `publish` falls back to `display`
+                    // when no owner is active, so leaving the last resolved mode there keeps
+                    // the `Goal`/`Ralph` status chip alive after the stop.
+                    st.display = Some(Mode::None);
                 }
                 if let Some(next) = modes::sync_mode_tools(&control::active_tools(), Mode::None) {
                     let _ = control::set_active_tools(&next);
