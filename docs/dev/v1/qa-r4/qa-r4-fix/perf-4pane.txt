@@ -1,0 +1,11 @@
+# perf 4 streaming panes (headless lavapipe, 20 s, BUDGET_MS=10) — post qa-r4-fix
+# raw frames/latency: target/tmp/oino-perf.V2nH/ (scratch), captured 2026-10-30
+
+mode: headless lavapipe (:82)
+windows=7 frames=1080 (~54 fps rendered) dropped(>16.7ms)=1 over_8.3ms=5
+p50 median=3.16ms  window p99 median=3.62ms  worst window p99=7.67ms  max=18.14ms
+RUN p99 (all frames)=4.50ms  budget=10ms                     -> PASS
+latency first frame: n=1 median=133.3ms max=133.3ms
+latency keystroke: n=60 median=7.6ms max=12.6ms
+latency session switch: n=1 median=9.4ms max=9.4ms
+idle CPU (welcome, after settle): 0.80 % UI thread, 14.00 % process (incl. renderer threads)

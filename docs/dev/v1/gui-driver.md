@@ -110,6 +110,14 @@ for transcript rows is the row text (capped at 400 characters) and for toasts th
 file works on every platform. Chord specs may be written with `+` or `-` (`alt+h` = `alt-h`);
 a lone `+` stays the plus key.
 
+**Pointer cadence** (qa-r4 H-3): a pointer request re-resolves its selector against the last
+published frame immediately before dispatching (the settle frames that precede it can
+re-lay out the window — a row landing at turn end shifts a bottom-pinned target), and the
+MouseMove → MouseDown → MouseUp sequence gets one frame per event, the order a person
+produces; dispatching them as one batch hit-tests against the frame painted before the move,
+which still describes the old layout when the target just moved. `drop` refuses `paths` that
+are not files on the app host instead of silently dragging nothing.
+
 **`screenshot`** shells out to ImageMagick `import` (`xdotool search --onlyvisible --class
 dev.oino.desktop` for the window id, `root` as a fallback) and writes the PNG **on the app host**;
 the client fetches it with `ssh … cat` when it is remote.
@@ -191,7 +199,10 @@ slate: the client deletes the scratch agent dir's `sessions/` and `state/` and t
 JSON object merged into the scratch `settings.json` (extension switches a scenario needs, e.g.
 `{"extensionSettings": {"ask-user": {"enabled": true}}}`; namespaces are the short names the
 settings hub shows, `ask-user`, `dream`, `notify`).
-`--backend` overrides it. `env` entries go to `cargo xtask ti start --env`.
+`--backend` overrides it. `env` entries go to `cargo xtask ti start --env`. In `drop` and
+`clipboard_image` paths, the placeholder `$RUN` resolves to the app host's run dir (`ti:
+~/oino-test/run`, local fallback: `target/tmp/local-run`); the client creates the solid-red
+test PNG there when it is missing.
 
 Steps: any RPC method (`click`, `double_click`, `right_click`, `hover`, `type_text`, `key`,
 `scroll`, `focus`, `wait_for`, `tree`, `state`, `screenshot`, `settle`, `drop`,
@@ -199,9 +210,11 @@ Steps: any RPC method (`click`, `double_click`, `right_click`, `hover`, `type_te
 (`{"ms": 250}`), `assert` and `wait_state` (retries `assert` until it holds or `timeout_ms`
 expires), and `toggle` (clicks a switch and proves its `checked` state flipped, whatever the
 persisted value was). `assert`/`wait_state` accept `route`, `busy`, `dialogs` (count or method),
-`session_id`, `text` (substring of an element label/value), `chrome`/`chrome_absent` (substring
-of any status, widget or frame segment text), `open` (substring of `state.open`), `element`
-(`{"id", "role", "label", "checked", "selected", …}`), `absent`. `wait_for` takes selectors
+`session_id`, `text` (substring of an element label/value), `any_text` (any of several needles
+— for features with two legitimate rendered states, e.g. the updater changelog body when the
+GitHub API quota is spent), `chrome`/`chrome_absent` (substring of any status, widget or frame
+segment text), `open` (substring of `state.open`), `element` (`{"id", "role", "label",
+"checked", "selected", …}`), `absent`. `wait_for` takes selectors
 (`id`/`role`/`label`, `absent`, `text`), `assert`/`wait_state` take the state-level ones. A failed
 step takes a `FAIL-<n>.png` screenshot and prints `state`; the run continues unless
 `--stop-on-failure` was passed. `--no-restart` reuses a running app, `--scene` overrides the

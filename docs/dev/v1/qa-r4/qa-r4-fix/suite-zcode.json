@@ -1,0 +1,41 @@
+{
+ "suite": "zcode",
+ "results": [
+  {
+   "group": "composer",
+   "file": "zcode-model-menu.json",
+   "ok": true,
+   "seconds": 1.6360232830047607
+  },
+  {
+   "group": "composer",
+   "file": "zcode-thinking-cycle.json",
+   "ok": true,
+   "seconds": 1.4252498149871826
+  },
+  {
+   "group": "composer",
+   "file": "zcode-palette-history.json",
+   "ok": true,
+   "seconds": 2.0316245555877686
+  },
+  {
+   "group": "timeline",
+   "file": "zcode-row-actions.json",
+   "ok": true,
+   "seconds": 5.177001237869263
+  },
+  {
+   "group": "sidebar",
+   "file": "zcode-session-menu.json",
+   "ok": true,
+   "seconds": 1.8554484844207764
+  },
+  {
+   "group": "queue",
+   "file": "zcode-queue-guard.json",
+   "ok": true,
+   "seconds": 1.208282232284546
+  }
+ ]
+}

@@ -261,3 +261,72 @@ Findings:
 Cleanup at end of round: `apps/oino-desktop/scripts/local-app.sh stop`, soak helpers kill
 their own Xvfb/dbus/app; verified `pgrep -af 'oino-desktop|Xvfb :9|Xvfb :120'` empty (see
 final commit message).
+
+## 9. Resolution (`[qa-r4-fix]`, 2026-10-30)
+
+All five defects of §5 fixed (QA-8 + H-1…H-5), each verified by its driver scenario, then the
+full suites, soak and perf re-run. Commits `6eeecdb`…`e17f93a` on `v1-alpha`.
+
+**Host**: `ti` stayed Tailscale-blocked the whole round ("additional check" with a fresh
+approval URL per attempt, latest `https://login.tailscale.com/a/lca9869a3a0c73`, surfaced to
+the owner; re-checked at start, mid and end). Everything below ran on the charter's local
+fallback (private `Xvfb :95`, one app instance, release build, `nice -n 10`), like §0. The
+`ti` re-run remains outstanding; every fix is host-neutral by construction (that was the
+point of H-1/H-4).
+
+### Fixes
+
+| Defect | Fix | Verification |
+|---|---|---|
+| QA-8 AgentRow generic name | The subagents extension echoes the resolved profile into the streamed tool details (`profileLabel`, e.g. "Explore subagent", + raw `profile` id) — `view::details` and the `wait_foreground` progress line; `timeline::agent_line` resolves the name args(`agent`/`name`/`subagent`) → details `profileLabel` → details `profile` → args `profile` → label fallback. StatusPanel/side pane share `agent_line`, so they follow. | unit tests (timeline, subagents view); `subagent-real` PASS — row shows `Explore subagent Read README.md…`, Agent tab opens, turn settles |
+| H-1 host-coupled subagents assertion | Every harness writes the same scratch README first line ("oino test project": `ti start`, `local-app.sh`, `local-suite.py`); step 18 waits for that text; step 15 waits for the AgentRow (role row, label "subagent") instead of a raw profile id | `unipi-subagents` PASS (11 s), twice |
+| H-2 watchdog prompt-row race | Step 6 waits for the running fold row (`role row`, label `sleep 60`) — the user prompt row can no longer satisfy it — plus a 4 s settle before `/bg-detach` (the live fold row shows during Preparing too, before the bash process exists) | `unipi-watchdog` 3/3 standalone + in-suite |
+| H-3 dropped clicks at turn end | Two causes, both in `automation/driver.rs`: (1) selector bounds were resolved before the settle frames and a late row insert shifts the bottom-pinned target — `pointer`/`scroll`/`drop` now re-resolve against the last published frame immediately before dispatch; (2) Move+Down+Up dispatched as one batch hit-test against the pre-move frame (a target that just moved, e.g. the hover bar opening, is missed at *correct* coordinates) — each event now gets a frame of its own, the order a person produces | `approval-deny` 3/3 (step 7 fold click), `zcode-row-actions` 6/6 (step 9 copy click) — both previously deterministic FAILs |
+| H-4 hardcoded drop path | Scenario drops `$RUN/attach-red.png`; `gui-drive.py` resolves `$RUN` to the app host's run dir (ti: `~/oino-test/run`, local: `target/tmp/local-run`) and creates the red PNG when missing; the app-side `drop` now refuses paths that are not files on the app host instead of a silent no-op | `image-attach` PASS (PNG created on demand, real vision turn answers "red") |
+| H-5 local-app.sh faux | Faux mode mirrors `cargo xtask ti start --faux`: settings select `faux/faux-1`, the fixture directory `extensions/dist/oino.fixture.provider-faux` is copied to `<agent>/extensions/provider-faux` (there is no `provider-faux.wasm`), auth gets the `faux` key, and no `--faux` flag is passed (the binary only knows `--demo`/`--cwd`/`--soak`). Missing prerequisites fail loudly; `local-suite.py` fixed the same way | `local-app.sh start faux` → real faux session, `hi` → "Hello from faux." |
+
+### Verification (all on the charter local fallback, release build)
+
+| Suite | Result |
+|---|---|
+| `unipi` (28) | **28/28** (`target/tmp/qa-r4-fix-unipi4.log`) |
+| `zcode` (6) | **6/6**, incl. the previously failing `zcode-row-actions` |
+| `qa-r4` desktop sweep (12) | **12/12**, incl. `subagent-real` (QA-8), `approval-deny` (H-3), the previously flaky `turn-undo` first-try |
+| soak 30 min `faux` | **PASS** — 2566 steps, RSS 10→1127 MB, slope **1.07 MB/min** (limit 8), threads 233→232, fds 438→430, 0 crash/stall |
+| perf 4 panes | **PASS** — run p99 **4.50 ms** (budget 10), 1 dropped frame, keystroke→paint 7.6 ms, idle CPU 0.80 % UI thread |
+| gates | `cargo fmt --check`, `clippy -D warnings -W clippy::pedantic` (oino-ui, unipi-subagents, xtask), `cargo test -p oino-ui --lib` (121) and `-p unipi-subagents` (14) green; `cargo xtask wasm -p unipi-subagents` rebuilt into `extensions/dist` |
+
+Evidence: `docs/dev/v1/qa-r4/qa-r4-fix/` (suite summaries, soak summary + samples, perf
+numbers); logs `target/tmp/qa-r4-fix-*.log`; refreshed shots under
+`docs/dev/v1/design/shots/desktop|gui/`. Nothing left running (`pgrep` clean, soak removed
+its own Xvfb/dbus/app).
+
+### New findings from the fix round
+
+- **H-6 (P3, harness)** — extension **panel bodies** (e.g. the updater's `/changelog`) render
+  visually but their OUS text nodes never register in the automation tree (cached-view
+  registration gap), so a scenario cannot assert panel body text; `unipi-updater` now asserts
+  the panel title (`overlay-panel-title`). Same family as the §7b cached-view finding.
+- **M-1 (harness/environment)** — the unipi **memory** extension talks to a host **MemPalace
+  daemon** when one is reachable through `PATH`: on this PC `/memory-search` answered from
+  (and `memory_store` wrote into) the *owner's* daemon store — the round-4 pass was luck
+  (markdown mode until the daemon was probed). `local-app.sh`/`local-suite.py` now run the
+  app with `PATH=/usr/bin:/bin` so scratch runs stay markdown-only, exactly like `ti` (no
+  mempalace there). **Residue:** one QA test drawer (`project_mascot_pixel_crab_unicrab`,
+  project "project") was written into the owner's store (round 4 and this round); the
+  product-path delete (`memory_delete`) no-ops because the clean-slate removed the source md
+  the daemon matches by. It is inert; remove via unipi's memory UI if undesired.
+- **Network quota flake (harness)** — `unipi-updater`'s changelog body comes from GitHub
+  (tag → branch → releases API, unauthenticated 60/h): the old `0.` assertion passed only
+  while quota lasted. The scenario now asserts the rendered panel (title) instead;
+  `assert`/`wait_state` gained `any_text` for either-branch checks.
+- `subagent-real`/`unipi-subagents` prompts no longer name the tool arg in the prompt text —
+  the prompt leaks into the sidebar session-row label and made `role`+`label` selectors
+  ambiguous with it.
+
+### Outstanding
+
+- The `ti` re-run (suites + soak + perf on the reference host) once Tailscale is approved —
+  the three host-coupled originals of §5 are now host-neutral, so the same scenario files
+  must pass there unchanged.
+- H-6 (panel-body registration) left as a small follow-up for the automation layer.

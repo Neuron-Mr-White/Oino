@@ -1,0 +1,77 @@
+{
+ "suite": "qa-r4",
+ "results": [
+  {
+   "group": "shell",
+   "file": "new-session-prompt.json",
+   "ok": true,
+   "seconds": 1.4843356609344482
+  },
+  {
+   "group": "interactions",
+   "file": "approval-allow.json",
+   "ok": true,
+   "seconds": 5.0956010818481445
+  },
+  {
+   "group": "interactions",
+   "file": "approval-deny.json",
+   "ok": true,
+   "seconds": 3.0241539478302
+  },
+  {
+   "group": "interactions",
+   "file": "ask-user-form.json",
+   "ok": true,
+   "seconds": 1.8943753242492676
+  },
+  {
+   "group": "shell",
+   "file": "side-pane-tabs.json",
+   "ok": true,
+   "seconds": 1.992537260055542
+  },
+  {
+   "group": "board",
+   "file": "board-task.json",
+   "ok": true,
+   "seconds": 2.0064139366149902
+  },
+  {
+   "group": "settings",
+   "file": "settings-switches.json",
+   "ok": true,
+   "seconds": 1.7388920783996582
+  },
+  {
+   "group": "timeline",
+   "file": "turn-undo.json",
+   "ok": true,
+   "seconds": 33.3172652721405
+  },
+  {
+   "group": "queue",
+   "file": "queue-edit.json",
+   "ok": true,
+   "seconds": 1.45707368850708
+  },
+  {
+   "group": "status",
+   "file": "status-panel.json",
+   "ok": true,
+   "seconds": 10.383693933486938
+  },
+  {
+   "group": "real-provider",
+   "file": "subagent-real.json",
+   "ok": true,
+   "seconds": 10.296115159988403
+  },
+  {
+   "group": "real-provider",
+   "file": "rewind-real.json",
+   "ok": true,
+   "seconds": 4.366968870162964
+  }
+ ]
+}

@@ -1,0 +1,173 @@
+{
+ "suite": "unipi",
+ "results": [
+  {
+   "group": "core",
+   "file": "unipi-core.json",
+   "ok": true,
+   "seconds": 1.828207015991211
+  },
+  {
+   "group": "info-screen",
+   "file": "unipi-info-screen.json",
+   "ok": true,
+   "seconds": 1.8876736164093018
+  },
+  {
+   "group": "footer",
+   "file": "unipi-footer.json",
+   "ok": true,
+   "seconds": 0.4871065616607666
+  },
+  {
+   "group": "workflow",
+   "file": "unipi-workflow.json",
+   "ok": true,
+   "seconds": 3.1290626525878906
+  },
+  {
+   "group": "ask-user",
+   "file": "unipi-ask-user.json",
+   "ok": true,
+   "seconds": 3.6921520233154297
+  },
+  {
+   "group": "long-horizon",
+   "file": "unipi-long-horizon.json",
+   "ok": true,
+   "seconds": 1.1440987586975098
+  },
+  {
+   "group": "memory",
+   "file": "unipi-memory.json",
+   "ok": true,
+   "seconds": 5.273881673812866
+  },
+  {
+   "group": "dream",
+   "file": "unipi-dream.json",
+   "ok": true,
+   "seconds": 0.937023401260376
+  },
+  {
+   "group": "skill-registry",
+   "file": "unipi-skill-registry.json",
+   "ok": true,
+   "seconds": 0.6243162155151367
+  },
+  {
+   "group": "subagents",
+   "file": "unipi-subagents.json",
+   "ok": true,
+   "seconds": 13.580796241760254
+  },
+  {
+   "group": "subagents",
+   "file": "agents-live.json",
+   "ok": true,
+   "seconds": 5.206584453582764
+  },
+  {
+   "group": "background-tasks",
+   "file": "unipi-background-tasks.json",
+   "ok": true,
+   "seconds": 4.2782697677612305
+  },
+  {
+   "group": "btw",
+   "file": "unipi-btw.json",
+   "ok": true,
+   "seconds": 1.6005640029907227
+  },
+  {
+   "group": "web-api",
+   "file": "unipi-web-api.json",
+   "ok": true,
+   "seconds": 5.584845542907715
+  },
+  {
+   "group": "mcp",
+   "file": "unipi-mcp.json",
+   "ok": true,
+   "seconds": 0.6707985401153564
+  },
+  {
+   "group": "notify",
+   "file": "unipi-notify.json",
+   "ok": true,
+   "seconds": 0.8387715816497803
+  },
+  {
+   "group": "kanboard",
+   "file": "unipi-kanboard.json",
+   "ok": true,
+   "seconds": 3.4925923347473145
+  },
+  {
+   "group": "command-enchantment",
+   "file": "unipi-command-enchantment.json",
+   "ok": true,
+   "seconds": 1.6487610340118408
+  },
+  {
+   "group": "compactor",
+   "file": "unipi-compactor.json",
+   "ok": true,
+   "seconds": 1.5977888107299805
+  },
+  {
+   "group": "updater",
+   "file": "unipi-updater.json",
+   "ok": true,
+   "seconds": 1.6656291484832764
+  },
+  {
+   "group": "input-shortcuts",
+   "file": "unipi-input-shortcuts.json",
+   "ok": true,
+   "seconds": 3.2388837337493896
+  },
+  {
+   "group": "fusion",
+   "file": "unipi-fusion.json",
+   "ok": true,
+   "seconds": 1.1587400436401367
+  },
+  {
+   "group": "watchdog",
+   "file": "unipi-watchdog.json",
+   "ok": true,
+   "seconds": 5.067589282989502
+  },
+  {
+   "group": "app-bridge",
+   "file": "unipi-app-bridge.json",
+   "ok": true,
+   "seconds": 2.2929258346557617
+  },
+  {
+   "group": "utility",
+   "file": "unipi-utility.json",
+   "ok": true,
+   "seconds": 1.322462797164917
+  },
+  {
+   "group": "utility",
+   "file": "image-attach.json",
+   "ok": true,
+   "seconds": 6.89299201965332
+  },
+  {
+   "group": "cron",
+   "file": "unipi-cron.json",
+   "ok": true,
+   "seconds": 0.8768997192382812
+  },
+  {
+   "group": "browser",
+   "file": "unipi-browser.json",
+   "ok": true,
+   "seconds": 3.3456125259399414
+  }
+ ]
+}
