@@ -82,6 +82,10 @@ opt-level = 3
 [profile.dev]
 debug = "line-tables-only"
 
+# Build-cache size policy: no debug info for dependencies (scripts/target-gc.sh budget).
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 16

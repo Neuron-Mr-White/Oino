@@ -41,6 +41,13 @@ panic = "deny"
 todo = "deny"
 dbg_macro = "deny"
 
+# Build-cache size policy (scripts/target-gc.sh budget).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 opt-level = "s"
 lto = true

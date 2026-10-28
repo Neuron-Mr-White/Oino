@@ -85,6 +85,13 @@ open windows or steal focus there. GUI testing runs on `ti` (preferred) or headl
 private Xvfb (`Xvfb :<free>` / `xvfb-run -a`, lavapipe) — on this PC only when `ti` is unreachable,
 with `nice -n 10`, `cargo -j 4`, and one app instance. Builds/tests here: `nice -n 10`, `-j 4`.
 
+**Build-cache budget (app-convention):** `target/` + `apps/target/` + `extensions/target/`
+together stay under `OINO_TARGET_BUDGET_GB` (80 GB, `.mise.toml`). Run `mise run gc`
+(`scripts/target-gc.sh`) before and after heavy build/test sessions; never create new
+persistent target dirs (`--target-dir`, `CARGO_TARGET_DIR`) outside these three; delete scratch
+dirs you create under `target/tmp` when done. Remote hosts: same rule under `~/oino-test` /
+`~/oino-release`.
+
 Credentials: only from `/home/oi/Projects/Neuron/credentials/` (same as
 `/home/oi/Projects/Personal/credentials/`): `pem/white` (SSH key), `mac/sudo.pass`,
 `ti/sudo.pass`, `coffee/windows.env`. Read them at use time (e.g. `sudo -S < file` piped over

@@ -1,3 +1,11 @@
+# Build-cache size policy (app-convention): smaller dev artifacts; budget enforced by
+# scripts/target-gc.sh (`mise run clean` / `mise run gc`).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [workspace]
 members = ["crates/*", "xtask"]
 resolver = "3"

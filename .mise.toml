@@ -1,6 +1,28 @@
+[env]
+# Build-cache budget for target/, apps/target/ and extensions/target/ combined
+# (app-convention: every build cache has a size limit). Enforced by `mise run gc`.
+OINO_TARGET_BUDGET_GB = "80"
+OINO_TARGET_GC_AGE_HOURS = "6"
+
 [tasks.dev]
 description = "Run the Oino TUI app"
-run = "cargo run -p oino-app --bin oino"
+run = "cargo run -p oino --bin oino"
+
+[tasks.gc]
+description = "Trim build caches back under OINO_TARGET_BUDGET_GB (stale tmp, incremental, old artifacts)"
+run = "scripts/target-gc.sh"
+
+[tasks.clean]
+description = "Remove all build caches of the three workspaces"
+run = [
+  "cargo clean",
+  "cd apps && cargo clean",
+  "cd extensions && cargo clean",
+]
+
+[tasks.desktop]
+description = "Run Oino Desktop (release)"
+run = "cd apps && cargo run --release -p oino-desktop"
 
 [tasks."tui:render-test"]
 description = "Run the Ratatui markdown rendering proof-of-concept"
