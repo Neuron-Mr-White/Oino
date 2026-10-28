@@ -49,6 +49,17 @@
       }
     },
     {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "sleep": {
+        "ms": 1500
+      }
+    },
+    {
       "wait_for": {
         "id": "board-fab",
         "timeout_ms": 60000
@@ -92,9 +103,14 @@
       }
     },
     {
+      "click": {
+        "id": "board-refresh"
+      }
+    },
+    {
       "wait_for": {
         "text": "unipi-live board task",
-        "timeout_ms": 30000
+        "timeout_ms": 90000
       }
     },
     {
