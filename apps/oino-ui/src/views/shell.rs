@@ -1687,6 +1687,16 @@ impl AppShell {
                 pane.update(cx, |p, _| p.header_state = state);
                 // Cached: the session re-renders only when it was notified (streaming in a
                 // background session never rebuilds the visible one, design.md §2.11).
+                // The automation driver uncaches it: a cached view only re-renders when it is
+                // notified, so the element registry would miss a stable card
+                // (docs/dev/v1/gui-driver.md §1).
+                let detail: AnyElement = if crate::automation::registry::enabled() {
+                    pane.clone().into_any_element()
+                } else {
+                    pane.clone()
+                        .cached(gpui_kit::StyleRefinement::default().size_full())
+                        .into_any_element()
+                };
                 div()
                     .id("detail")
                     .flex()
@@ -1694,10 +1704,7 @@ impl AppShell {
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .child(
-                        pane.clone()
-                            .cached(gpui_kit::StyleRefinement::default().size_full()),
-                    )
+                    .child(detail)
                     .into_any_element()
             }
             None => self.render_placeholder(&t),
