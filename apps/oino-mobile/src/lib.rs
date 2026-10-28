@@ -1,7 +1,7 @@
 //! Oino Mobile: the GPUI phone app for Android and iOS (gpui-app.md §4).
 //!
 //! The app embeds `oino-core` in-process with every bundled provider and unipi component —
-//! the same [`embedded::EmbeddedHost`] the desktop shell uses (shared by source until it
+//! the same `embedded::EmbeddedHost` the desktop shell uses (shared by source until it
 //! moves into a shared crate) — and renders the touch layout from `oino_ui::mobile` on the
 //! vendored `gpui-mobile` platform (`apps/vendor/gpui-mobile`, gpui-pre =0.3.9).
 //!

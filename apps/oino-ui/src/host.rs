@@ -279,7 +279,7 @@ pub struct AppSettings {
     pub default_cwd: Option<String>,
     /// Reopen the last session at startup (GA-11; Settings → General → Startup).
     pub reopen_last: bool,
-    /// Sidebar pins ([`SessionList::pinned_ids`]; [`ZCode`] `task-list-context-menu`
+    /// Sidebar pins (`SessionList::pinned_ids`; `ZCode` `task-list-context-menu`
     /// persists pins).
     ///
     /// [`ZCode`]: https://github.com/zai-org/ZCode

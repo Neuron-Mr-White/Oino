@@ -44,7 +44,7 @@ where
     .into_any_element()
 }
 
-/// `el` on its way out: fade 1 → 0 and drop by [`RISE`] over `ms` (`EXIT_MS` by default).
+/// `el` on its way out: fade 1 → 0 and drop by `RISE` over `ms` (`EXIT_MS` by default).
 /// The caller keeps the element mounted for `ms` (the animation drives its own frames), then
 /// removes it.
 pub fn exit<E>(t: &OinoTheme, id: impl Into<ElementId>, el: E) -> AnyElement

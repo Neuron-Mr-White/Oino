@@ -65,7 +65,7 @@ pub struct AssistantRow {
     pub thinking_ms: Option<u64>,
     /// Creation wall time (Unix ms), stamped when the live message starts; `None` for
     /// history rows (`AgentMessage` carries no timestamps). Drives the hover-bar time label
-    /// ([`ZCode`] `messageTimeLabel`).
+    /// (`ZCode` `messageTimeLabel`).
     pub created_ms: Option<i64>,
     /// Still streaming.
     pub streaming: bool,

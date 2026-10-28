@@ -445,7 +445,7 @@ fn column_chart(t: &OinoTheme, bars: &[crate::model::ous::Bar], key: &str) -> An
 
 /// Renders `node`; `key` must be unique among siblings rendered in the same frame.
 ///
-/// Text-bearing nodes are wrapped in an [`automation::probe_named`] element while the GUI
+/// Text-bearing nodes are wrapped in an `automation::probe_named` element while the GUI
 /// driver is on, so an extension panel's content is readable in the element tree — otherwise
 /// only the panel's inputs and buttons would be (`docs/dev/v1/gui-driver.md` §2).
 pub fn render(

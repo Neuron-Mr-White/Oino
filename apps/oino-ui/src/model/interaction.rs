@@ -8,7 +8,7 @@ use crate::model::ous::{OusNode, Tone, plain};
 /// Where and how a dialog renders.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InteractionKind {
-    /// `approval` → [`ApprovalCard`](design.md §4.12), docked.
+    /// `approval` → `ApprovalCard` (design.md §4.12), docked.
     Approval,
     /// `form` → `QuestionCard`, docked.
     Question,

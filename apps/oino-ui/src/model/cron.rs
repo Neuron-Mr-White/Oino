@@ -62,7 +62,7 @@ impl CronJob {
         short_time(self.next_fire.as_deref())
     }
 
-    /// "<status> <MM-dd HH:MM>" of the newest run, `—` when there is none.
+    /// "\<status\> \<MM-dd HH:MM\>" of the newest run, `—` when there is none.
     #[must_use]
     pub fn last_run_text(&self) -> String {
         let Some(status) = &self.last_status else {

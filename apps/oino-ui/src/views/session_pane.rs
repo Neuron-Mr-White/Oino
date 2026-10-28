@@ -90,7 +90,7 @@ pub enum PaneEvent {
     ToggleBottom,
     /// Close this split pane (the session keeps running).
     ClosePane,
-    /// A destructive pane action waits for confirmation ([`SessionPane::pending_confirm`]).
+    /// A destructive pane action waits for confirmation (`SessionPane::pending_confirm`).
     Confirm,
 }
 
@@ -1964,7 +1964,7 @@ impl SessionPane {
     /// Recalls queue item `i` into the composer (removes it from the queue).
     ///
     /// With a draft in the composer the item stays queued and the user is told to clear the
-    /// draft first ([`ZCode`] `chat-message-queue`: the edit never clobbers a held draft —
+    /// draft first (`ZCode` `chat-message-queue`: the edit never clobbers a held draft —
     /// the old merge silently lost the boundary between the two texts).
     pub fn queue_recall(&mut self, i: usize, cx: &mut Context<Self>) {
         let (queue, index) = self.queue_slot(i);

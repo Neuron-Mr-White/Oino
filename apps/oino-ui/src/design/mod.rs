@@ -8,7 +8,7 @@
 //! | [`tones`] | OUS tones → tokens, OUS icon names → Lucide |
 //! | [`brand`] | Unicrab sprite data and attention states |
 //! | [`perf`] | frame-time ring buffer (+ overlay with `views`) |
-//! | `theme` (views) | [`OinoTheme`](theme::OinoTheme) global, gpui-kit theme derivation, fonts |
+//! | `theme` (views) | [`OinoTheme`] global, gpui-kit theme derivation, fonts |
 //! | `icons` (views) | icon asset source and helpers |
 //! | `syntax` (views) | highlight theme |
 //! | `ticker` (views) | shared 12 fps spinner ticker |
