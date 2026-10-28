@@ -3,7 +3,7 @@
 //! | unipi | here |
 //! |---|---|
 //! | stdio JSON-RPC client, 10 s timeout, initialize handshake | [`client`] over host `process` pipes; plus streamable HTTP over `http.fetch` (pi `mcp.json` `url` entries) |
-//! | config merge global/project (`mcp-config.json` + `config.json` enabled states) | `/ext-global/mcp.json` + `/ext-global/config.json`; trusted `/project/.oino/mcp.json`; ACP `session/new` servers from `oino:acp:mcp-servers` ([`config`]) |
+//! | config merge global/project (`mcp-config.json` + `config.json` enabled states) | pi's `~/.oino/mcp.json` via `/agent/mcp.json`, then `/ext-global/mcp.json` + `/ext-global/config.json`; trusted `/project/.oino/mcp.json`; ACP `session/new` servers from `oino:acp:mcp-servers` ([`config`]) |
 //! | parallel connect, registration barrier, sorted `<server>__<tool>`, canonical schemas, ≤ 20 servers | [`registry`], [`translate`] |
 //! | 64 KiB head/tail bound + 0600 spill | `unipi_kit::bounded` |
 //! | `/mcp-status`, runners `mcp-add`/`-settings`/`-sync`/`-reload` | same; runners are hidden commands; reload works live (Oino can unregister tools) |
@@ -50,6 +50,8 @@ use crate::translate::ToolDef;
 /// Extension id.
 const EXTENSION_ID: &str = "unipi.mcp";
 const VERSION: &str = "3.0.0";
+/// pi's global file (`~/.oino/mcp.json`, read through the `/agent` preopen; R1).
+const PI_CONFIG: &str = "/agent/mcp.json";
 const GLOBAL_CONFIG: &str = "/ext-global/mcp.json";
 const GLOBAL_META: &str = "/ext-global/config.json";
 const CATALOG_CACHE: &str = "/ext-global/servers.json";
@@ -152,7 +154,10 @@ impl Mcp {
             errors.extend(f.errors.iter().map(|e| format!("{path}: {e}")));
             Some(f)
         };
-        let global = file(GLOBAL_CONFIG, false).unwrap_or_default();
+        let mut global = file(PI_CONFIG, false).unwrap_or_default();
+        if let Some(unipi) = file(GLOBAL_CONFIG, false) {
+            config::absorb(&mut global, unipi);
+        }
         let project = if control::is_project_trusted() {
             file(PROJECT_CONFIG, true)
         } else {

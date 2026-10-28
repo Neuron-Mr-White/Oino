@@ -340,6 +340,49 @@ async fn bash_runs_in_client_terminal() {
     client.close().await;
 }
 
+/// `session/new` forwards the client's `mcpServers` on the bus topic `unipi.mcp` consumes
+/// (unipi-integrations R3).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn session_new_publishes_mcp_servers() {
+    let fixture = Fixture::new(Vec::new());
+    let client = fixture.connect(ClientPolicy::default());
+    client.initialize().await;
+    let servers = json!([
+        {"name": "local", "command": "/bin/echo", "args": ["hi"], "env": []},
+        {"type": "http", "name": "web", "url": "https://example.test/mcp", "headers": []},
+    ]);
+    let _ = session_id(
+        &client
+            .ok(
+                "session/new",
+                json!({"cwd": fixture.cwd(), "mcpServers": servers}),
+            )
+            .await,
+    );
+    let services = fixture.factory.services(&fixture.cwd()).await.unwrap();
+    let topic = services
+        .host
+        .topics()
+        .get("oino:acp:mcp-servers")
+        .expect("mcp servers topic");
+    assert!(topic.sticky);
+    assert_eq!(topic.publisher, "oino.acp");
+    let published = topic.data["servers"].as_array().unwrap();
+    assert_eq!(published.len(), 2);
+    assert_eq!(published[0]["name"], json!("local"));
+    assert_eq!(published[0]["command"], json!("/bin/echo"));
+    assert_eq!(published[1]["type"], json!("http"));
+    assert_eq!(published[1]["url"], json!("https://example.test/mcp"));
+    // No MCP extension is loaded in this fixture: the client is told the servers are ignored.
+    assert!(
+        client
+            .updates()
+            .iter()
+            .any(|u| u["sessionUpdate"] == json!("notice"))
+    );
+    client.close().await;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancel_aborts_the_turn() {
     let fixture = Fixture::new(vec![tool_call(

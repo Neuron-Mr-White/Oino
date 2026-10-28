@@ -1,9 +1,10 @@
 //! Server configuration (unipi `src/config/{schema,manager}.ts`, pi `mcp.json` rules).
 //!
 //! Files (Claude Desktop / pi `mcpServers` format):
-//! - user: `/ext-global/mcp.json` (unipi `~/.unipi/config/mcp/mcp-config.json`), enabled states
-//!   in `/ext-global/config.json` (unipi `config.json`, `{servers: {name: {enabled, addedAt}},
-//!   sync}`);
+//! - pi user file: `/agent/mcp.json` (`~/.oino/mcp.json`, the same file pi reads; R1);
+//! - user: `/ext-global/mcp.json` (unipi `~/.unipi/config/mcp/mcp-config.json`) overrides a pi
+//!   entry of the same name, enabled states in `/ext-global/config.json` (unipi `config.json`,
+//!   `{servers: {name: {enabled, addedAt}}, sync}`);
 //! - project: `/project/.oino/mcp.json` (+ `.oino/mcp-config.json` for unipi parity), only in a
 //!   trusted project; a project entry wins (`project-override`), and an entry without
 //!   `command`/`url`/`type` only overrides `enabled`/`exposure`/`toolExposure` (pi);
@@ -311,6 +312,20 @@ pub(crate) fn parse_file(doc: &Value, project: bool) -> ConfigFile {
     out
 }
 
+/// Merges `extra` (the unipi-style user file) into `base` (the pi `~/.oino/mcp.json`): a server of
+/// the same name is replaced, enabled flags and partial overrides are carried over.
+pub(crate) fn absorb(base: &mut ConfigFile, extra: ConfigFile) {
+    for (name, def) in extra.servers {
+        match base.servers.iter_mut().find(|(n, _)| *n == name) {
+            Some(entry) => entry.1 = def,
+            None => base.servers.push((name, def)),
+        }
+    }
+    base.enabled.extend(extra.enabled);
+    base.partial.extend(extra.partial);
+    base.errors.extend(extra.errors);
+}
+
 /// unipi `McpMetadata.servers` (`{name: {enabled, addedAt}}`).
 pub(crate) fn meta_enabled(meta: &Value) -> BTreeMap<String, bool> {
     meta.get("servers")
@@ -612,6 +627,37 @@ mod tests {
             ["Missing or invalid 'mcpServers' field"]
         );
         assert!(parse_file(&Value::Null, false).errors.is_empty());
+    }
+
+    /// The pi user file (`~/.oino/mcp.json`) is the base; the unipi-style user file overrides.
+    #[test]
+    fn pi_file_is_merged_with_the_unipi_user_file() {
+        let mut base = parse_file(
+            &json!({"mcpServers": {"a": stdio("pa"), "b": stdio("pb")}}),
+            false,
+        );
+        let unipi = parse_file(
+            &json!({"mcpServers": {"b": stdio("ub"), "c": {"command": "uc", "args": [], "enabled": false}}}),
+            false,
+        );
+        absorb(&mut base, unipi);
+        let names: Vec<(&str, &str)> = base
+            .servers
+            .iter()
+            .map(|(n, d)| (n.as_str(), d.command.as_str()))
+            .collect();
+        assert_eq!(names, [("a", "pa"), ("b", "ub"), ("c", "uc")]);
+        assert_eq!(base.enabled.get("c"), Some(&false));
+        let resolved = resolve(
+            &base,
+            &meta_enabled(&json!({})),
+            None,
+            &meta_enabled(&json!({})),
+            &[],
+        );
+        assert_eq!(resolved.len(), 3);
+        assert_eq!(resolved[0].source, Source::Global);
+        assert!(!resolved[2].enabled);
     }
 
     #[test]

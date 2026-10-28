@@ -15,6 +15,8 @@ pub(crate) struct ExtPaths {
     pub(crate) global: PathBuf,
     pub(crate) workspace_root: PathBuf,
     pub(crate) session_root: PathBuf,
+    /// Read-only view of [`AGENT_FILES`] exposed as `/agent` (outside every preopen).
+    pub(crate) agent_view: PathBuf,
     pub(crate) tmp: PathBuf,
     pub(crate) cache: PathBuf,
     pub(crate) logs: PathBuf,
@@ -29,6 +31,7 @@ impl ExtPaths {
             global: state.join("global"),
             workspace_root: state.join("workspace"),
             session_root: state.join("session"),
+            agent_view: state.join("agent-view"),
             tmp: agent_dir.join("tmp").join("ext").join(id.as_str()),
             cache: agent_dir.join("cache").join("ext").join(id.as_str()),
             logs: agent_dir.join("logs").join("ext").join(id.as_str()),
@@ -42,6 +45,7 @@ impl ExtPaths {
             &self.global,
             &self.workspace_root,
             &self.session_root,
+            &self.agent_view,
             &self.tmp,
             &self.cache,
             &self.logs,
@@ -98,6 +102,44 @@ pub(crate) const AGENT_SUBDIRS: &[&str] = &[
     "bundled",
 ];
 
+/// Agent-dir files exposed read-only as `/agent/<name>` (pi `mcp.json`-style config, R1).
+pub(crate) const AGENT_FILES: &[&str] = &["mcp.json"];
+
+// A live read-only view of `AGENT_FILES` (`/agent`): a directory of links to the agent-dir
+// files, so guests read the *current* file through an ordinary preopen while `auth.json` /
+// `secrets.json` stay out of reach. The view lives in `state/<id>/agent-view`, which no guest
+// can write, so a link can never be swapped for an escape.
+
+#[cfg(unix)]
+fn link_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(from, to)
+}
+
+#[cfg(not(unix))]
+fn link_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    // Windows symlinks need a privilege or Developer Mode; a hard link works everywhere on the
+    // same volume and is refreshed whenever the instance is created.
+    std::fs::hard_link(from, to)
+}
+
+/// Recreates the `/agent` view so a replaced `mcp.json` is visible without a restart.
+fn refresh_agent_view(paths: &ExtPaths) -> std::io::Result<PathBuf> {
+    let view = paths.agent_view.clone();
+    std::fs::create_dir_all(&view)?;
+    for name in AGENT_FILES {
+        let source = paths.agent_dir.join(name);
+        let target = view.join(name);
+        let _ = std::fs::remove_file(&target);
+        if !source.is_file() {
+            continue;
+        }
+        if link_file(&source, &target).is_err() {
+            std::fs::copy(&source, &target)?;
+        }
+    }
+    Ok(view)
+}
+
 fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/")
         && let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
@@ -139,6 +181,13 @@ pub(crate) fn preopens(paths: &ExtPaths, perms: &Permissions, cwd: &Path) -> Vec
                     writable: false,
                 });
             }
+        }
+        if let Ok(view) = refresh_agent_view(paths) {
+            out.push(Preopen {
+                name: "agent".into(),
+                host: view,
+                writable: false,
+            });
         }
     }
     for grant in &perms.fs.paths {
@@ -271,6 +320,59 @@ mod tests {
         assert_eq!(
             resolve(&pre, "/agent/sessions/x", false).unwrap(),
             PathBuf::from("/a/s/x")
+        );
+    }
+
+    /// `fs.agentDir: read` exposes the agent-dir config files as `/agent/<name>` (pi `mcp.json`)
+    /// and never the secrets next to them (R1).
+    #[test]
+    fn agent_view_exposes_config_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let agent_dir = dir.path().join("agent");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::write(agent_dir.join("mcp.json"), r#"{"mcpServers":{}}"#).unwrap();
+        std::fs::write(agent_dir.join("auth.json"), "{}").unwrap();
+        std::fs::write(agent_dir.join("secrets.json"), "{}").unwrap();
+        let paths = ExtPaths::new(&agent_dir, &ExtensionId::new("acme.ext").unwrap());
+        paths.create().unwrap();
+        let perms = Permissions {
+            fs: oino_extension_api::manifest::FsPermission {
+                agent_dir: FsAccess::Read,
+                ..oino_extension_api::manifest::FsPermission::default()
+            },
+            ..Permissions::default()
+        };
+        let pre = preopens(&paths, &perms, dir.path());
+        let view = pre.iter().find(|p| p.name == "agent").expect("/agent");
+        assert!(!view.writable);
+        assert!(
+            !view.host.starts_with(&paths.cache),
+            "view outside writable preopens"
+        );
+        assert_eq!(
+            resolve(&pre, "/agent/mcp.json", false).unwrap(),
+            view.host.join("mcp.json")
+        );
+        assert!(
+            std::fs::read_to_string(resolve(&pre, "/agent/mcp.json", false).unwrap())
+                .unwrap()
+                .contains("mcpServers")
+        );
+        // Only the allow-listed names are linked, so the secrets are not reachable.
+        assert!(!resolve(&pre, "/agent/auth.json", false).unwrap().exists());
+        assert!(
+            !resolve(&pre, "/agent/secrets.json", false)
+                .unwrap()
+                .exists()
+        );
+        // The view follows a replaced file (atomic rename) at the next preopen refresh.
+        std::fs::remove_file(agent_dir.join("mcp.json")).unwrap();
+        std::fs::write(agent_dir.join("mcp.json"), r#"{"mcpServers":{"x":{}}}"#).unwrap();
+        let pre = preopens(&paths, &perms, dir.path());
+        assert!(
+            std::fs::read_to_string(resolve(&pre, "/agent/mcp.json", false).unwrap())
+                .unwrap()
+                .contains("\"x\"")
         );
     }
 

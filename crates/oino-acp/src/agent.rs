@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use agent_client_protocol::schema::v1::{
     ClientNotification, ClientRequest, ForkSessionRequest, InitializeRequest, ListSessionsRequest,
-    LoadSessionRequest, NewSessionRequest, PromptRequest, ResumeSessionRequest,
+    LoadSessionRequest, McpServer, NewSessionRequest, PromptRequest, ResumeSessionRequest,
     SetSessionConfigOptionRequest,
 };
 use agent_client_protocol::{Agent, Client, ConnectTo, ConnectionTo, Responder};
@@ -36,6 +36,13 @@ const LIST_PAGE: usize = 50;
 
 /// Oino's ACP extension methods advertised in `agentCapabilities._meta.oino.extensions`.
 pub const OINO_EXTENSIONS: [&str; 2] = ["_oino/extension_ui", "_oino/rpc"];
+
+/// Bus topic carrying the client's `session/new` / `session/load` `mcpServers`
+/// (`{servers: [...]}`; consumed by `unipi.mcp`, unipi-integrations R3).
+pub const MCP_SERVERS_TOPIC: &str = "oino:acp:mcp-servers";
+
+/// Publisher id of the ACP frontend on the bus.
+pub const ACP_PUBLISHER: &str = "oino.acp";
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -297,8 +304,25 @@ impl AcpAgent {
         Ok(session)
     }
 
-    fn mcp_notice(session: &AcpSession, servers: usize) {
-        if servers > 0 {
+    /// Publishes the client's `mcpServers` on [`MCP_SERVERS_TOPIC`] so the bundled MCP extension
+    /// connects them, and warns when no MCP extension is loaded to consume them.
+    fn announce_mcp_servers(session: &AcpSession, servers: &[McpServer]) {
+        let services = session.backend.runtime().services();
+        services.host.publish_topic(
+            ACP_PUBLISHER,
+            MCP_SERVERS_TOPIC,
+            json!({"servers": servers}),
+            true,
+        );
+        if servers.is_empty() {
+            return;
+        }
+        let has_mcp = services
+            .extensions
+            .extensions()
+            .iter()
+            .any(|extension| extension.instance.id() == "unipi.mcp");
+        if !has_mcp {
             let _ = session.shared.link().update(json!({
                 "sessionUpdate": "notice",
                 "severity": "warning",
@@ -325,7 +349,7 @@ impl AcpAgent {
             })),
         );
         session.announce();
-        Self::mcp_notice(&session, request.mcp_servers.len());
+        Self::announce_mcp_servers(&session, &request.mcp_servers);
     }
 
     /// The session file of `id` under `cwd`.
@@ -377,7 +401,7 @@ impl AcpAgent {
             Ok(json!({ "configOptions": config_options(&session.session()) })),
         );
         session.announce();
-        Self::mcp_notice(&session, request.mcp_servers.len());
+        Self::announce_mcp_servers(&session, &request.mcp_servers);
     }
 
     async fn resume_session(
