@@ -13,6 +13,7 @@ use oino_client::PiCommand;
 
 use gpui_kit::component::input::Input;
 
+use crate::automation::Automatable as _;
 use crate::components::badge::kbd;
 use crate::components::button::{Btn, BtnSize};
 use crate::components::ous::{self, Ous};
@@ -170,6 +171,7 @@ impl SessionPane {
                     .as_ref()
                     .filter(|(row, _)| *row == i)
                     .map(|(_, input)| input.clone());
+                let (up, down) = self.queue_can_move(i);
                 div()
                     .id(id("queue"))
                     .group(SharedString::from(format!("q{i}")))
@@ -201,6 +203,22 @@ impl SessionPane {
                             .flex()
                             .gap(px(space::HALF))
                             .child(
+                                Btn::icon_only(id("q-up"), IconName::ChevronUp, "Move up")
+                                    .size(BtnSize::Sm)
+                                    .disabled(!up)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.queue_up(i, cx);
+                                    })),
+                            )
+                            .child(
+                                Btn::icon_only(id("q-down"), IconName::ChevronDown, "Move down")
+                                    .size(BtnSize::Sm)
+                                    .disabled(!down)
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.queue_down(i, cx);
+                                    })),
+                            )
+                            .child(
                                 Btn::icon_only(id("q-now"), IconName::ArrowUp, "Send now")
                                     .size(BtnSize::Sm)
                                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -219,6 +237,19 @@ impl SessionPane {
                                     })),
                             )
                             .child(
+                                Btn::icon_only(
+                                    id("q-recall"),
+                                    IconName::CornerDownLeft,
+                                    "Recall to composer",
+                                )
+                                .size(BtnSize::Sm)
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        this.queue_recall(i, cx);
+                                    },
+                                )),
+                            )
+                            .child(
                                 Btn::icon_only(id("q-remove"), IconName::X, "Remove")
                                     .size(BtnSize::Sm)
                                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -226,6 +257,11 @@ impl SessionPane {
                                     })),
                             ),
                     )
+                    // Read-back for the driver: the row text in queue order.
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Row,
+                        format!("{tag} {text}"),
+                    ))
             });
         Some(
             div()

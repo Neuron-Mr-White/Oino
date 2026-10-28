@@ -1,0 +1,111 @@
+{
+  "name": "queue-edit",
+  "scene": "run",
+  "backend": "demo",
+  "env": [
+    "OINO_DESKTOP_DEMO_PACE=8"
+  ],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "first queued note"
+      }
+    },
+    {
+      "key": {
+        "key": "alt-enter"
+      }
+    },
+    {
+      "type_text": {
+        "text": "second queued note"
+      }
+    },
+    {
+      "key": {
+        "key": "alt-enter"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "2 queued",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-queue"
+      }
+    },
+    {
+      "click": {
+        "id": "q-up-1"
+      }
+    },
+    {
+      "wait_state": {
+        "element": {
+          "role": "row",
+          "label": "Queue second queued note"
+        },
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-reordered"
+      }
+    },
+    {
+      "click": {
+        "id": "q-recall-0"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "second queued note",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-recalled"
+      }
+    },
+    {
+      "click": {
+        "id": "q-remove-0"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "queue",
+        "absent": true,
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-queue-empty"
+      }
+    }
+  ]
+}
