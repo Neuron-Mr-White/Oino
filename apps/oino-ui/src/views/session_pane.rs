@@ -42,7 +42,7 @@ use crate::model::sessions::LiveStatus;
 use crate::model::status::StatusModel;
 use crate::model::timeline::AgentFeed;
 use crate::model::transcript::{NoticeTone, Row, RowChange, RowKind};
-use crate::model::ui_state::{PanelPlacement, UiEffect};
+use crate::model::ui_state::{NotifyKind, PanelPlacement, UiEffect};
 use crate::rt::Tokio;
 
 /// Frame pacing between event batches of the focused pane.
@@ -322,6 +322,9 @@ pub struct SessionPane {
     pub(crate) settings: AppSettings,
     pub(crate) focus: FocusHandle,
     pub(crate) menu: Option<PaneMenu>,
+    /// Provider opened inside the model menu (its models are listed instead of the provider
+    /// list; `None` = the top level). Reset whenever a menu opens or closes.
+    pub(crate) menu_sub: Option<String>,
     pub(crate) completion: Completion,
     pub(crate) find: Option<Find>,
     pub(crate) status: StatusModel,
@@ -334,6 +337,9 @@ pub struct SessionPane {
     pub(crate) status_focus_pending: bool,
     pub(crate) width: Pixels,
     pub(crate) run_started: Option<Instant>,
+    /// The run-state line of a finished run, kept for `EXIT_MS` so it can fade out
+    /// (`design::motion::exit`, design.md §2.10) instead of vanishing with the run.
+    pub(crate) run_exit: Option<(Instant, String)>,
     pub(crate) queue_open: bool,
     pub(crate) hint_index: usize,
     pub(crate) tree: Option<oino_view::tree::TreeModel>,
@@ -346,8 +352,11 @@ pub struct SessionPane {
     pub header_state: crate::components::header::HeaderState,
     /// Timeline keyboard cursor (row index) and whether the timeline has focus.
     pub(crate) cursor: Option<usize>,
-    /// The composer shows the steering placeholder.
+    /// The composer shows the steering placeholder (a run is active).
     steering: bool,
+    /// The placeholder the composer currently shows (`ZCode` `chat-composer-placeholder`: empty
+    /// session, follow-up, running); it is only rewritten when it changes.
+    placeholder: &'static str,
     /// `local_previews` keyed by (row count, last row version).
     #[cfg_attr(
         not(feature = "browser"),
@@ -428,10 +437,14 @@ struct Loaded {
     models: Vec<Model>,
 }
 
-/// Composer placeholder (design.md A2.11).
+/// Composer placeholder of an empty session (design.md A2.11).
 pub const PLACEHOLDER: &str = "Message Oino, / commands, @ files";
-/// Composer placeholder while a run is active (A2.11 steering).
-pub const PLACEHOLDER_STEER: &str = "Steer Oino…";
+/// Placeholder once the session has messages and is idle (`ZCode` `chat-composer-placeholder`:
+/// "Ask for follow-up changes").
+pub const PLACEHOLDER_FOLLOWUP: &str = "Ask for a follow-up change";
+/// Composer placeholder while a run is active (A2.11 steering: Enter steers, Alt+Enter
+/// queues the follow-up).
+pub const PLACEHOLDER_STEER: &str = "Steer Oino, Alt+Enter queues";
 /// The workflow status topic (mode chip, GA-25).
 pub const WORKFLOW_TOPIC: &str = "unipi:workflow:status";
 
@@ -478,6 +491,7 @@ impl SessionPane {
             settings,
             focus: cx.focus_handle(),
             menu: None,
+            menu_sub: None,
             completion: Completion::default(),
             find: None,
             status: StatusModel::default(),
@@ -487,6 +501,7 @@ impl SessionPane {
             status_focus_pending: false,
             width: px(crate::design::size::READING),
             run_started: None,
+            run_exit: None,
             queue_open: true,
             hint_index: 0,
             tree: None,
@@ -499,6 +514,7 @@ impl SessionPane {
             drag_armed: std::rc::Rc::default(),
             cursor: None,
             steering: false,
+            placeholder: PLACEHOLDER,
             previews: std::cell::RefCell::default(),
             timeline_kb: false,
             side_focus: cx.focus_handle(),
@@ -802,6 +818,29 @@ impl SessionPane {
         }
         if !self.model.is_busy() && was_busy {
             self.run_started = None;
+            // Keep the run label one beat so it can fade out (no-op with reduce motion).
+            self.run_exit = Some((
+                Instant::now(),
+                self.model
+                    .ui
+                    .working_message
+                    .clone()
+                    .unwrap_or_else(|| "Working…".to_owned()),
+            ));
+            let exit = cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(Duration::from_millis(
+                        crate::design::tokens::motion::EXIT_MS,
+                    ))
+                    .await;
+                let _ = this.update(cx, |pane, cx| {
+                    if pane.run_exit.is_some() {
+                        pane.run_exit = None;
+                        cx.notify();
+                    }
+                });
+            });
+            exit.detach();
             self.unread = !self.focused_pane;
             if let (Some(started), Some(last)) = (
                 self.turn_started.take(),
@@ -1254,14 +1293,20 @@ impl SessionPane {
     /// Applies pending composer edits (called from render, which has the window).
     pub(crate) fn flush_composer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let busy = self.model.is_busy();
-        if busy != self.steering {
+        // The placeholder follows the run state *and* whether the session has messages
+        // (`ZCode` `chat-composer-placeholder`: empty / follow-up / running).
+        let placeholder = if busy {
+            PLACEHOLDER_STEER
+        } else if self.model.transcript.rows().is_empty() {
+            PLACEHOLDER
+        } else {
+            PLACEHOLDER_FOLLOWUP
+        };
+        if busy != self.steering || self.placeholder != placeholder {
             self.steering = busy;
+            self.placeholder = placeholder;
             self.composer.update(cx, |s, cx| {
-                s.set_placeholder(
-                    if busy { PLACEHOLDER_STEER } else { PLACEHOLDER },
-                    window,
-                    cx,
-                );
+                s.set_placeholder(placeholder, window, cx);
             });
         }
         if let Some(text) = self.pending_text.take() {
@@ -1522,12 +1567,36 @@ impl SessionPane {
     /// Selects a model.
     pub fn set_model(&mut self, provider: String, model_id: String, cx: &mut Context<Self>) {
         self.menu = None;
+        self.menu_sub = None;
+        // `ZCode` `model-switch-toast`: "Switched from X to Y" once the switch is asked for.
+        let from = self.model.model_label();
+        let to = self
+            .models
+            .iter()
+            .find(|m| m.provider == provider && m.id == model_id)
+            .map_or_else(
+                || model_id.clone(),
+                |m| {
+                    if m.name.is_empty() {
+                        m.id.clone()
+                    } else {
+                        m.name.clone()
+                    }
+                },
+            );
+        if from != to {
+            cx.emit(PaneEvent::Effect(UiEffect::Notify {
+                message: format!("Switched from {from} to {to}"),
+                kind: NotifyKind::Info,
+            }));
+        }
         self.send(PiCommand::SetModel { provider, model_id }.into(), cx);
     }
 
     /// Sets the thinking level.
     pub fn set_thinking(&mut self, level: ThinkingLevel, cx: &mut Context<Self>) {
         self.menu = None;
+        self.menu_sub = None;
         self.model.thinking = level;
         self.send(PiCommand::SetThinkingLevel { level }.into(), cx);
         cx.notify();
@@ -2474,6 +2543,15 @@ impl SessionPane {
         } else {
             Some(menu)
         };
+        self.menu_sub = None;
+        cx.notify();
+    }
+
+    /// Opens the model menu at one provider's model list (`None` = the provider list). The
+    /// submenu keeps the model menu open, so a pick from it cannot close the wrong level.
+    pub fn open_model_sub(&mut self, provider: Option<String>, cx: &mut Context<Self>) {
+        self.menu = Some(PaneMenu::Model);
+        self.menu_sub = provider;
         cx.notify();
     }
 

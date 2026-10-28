@@ -733,31 +733,40 @@ impl MobileShell {
         cx: &mut Context<Self>,
     ) {
         self.toasts.push(kind, title, message);
-        if self.toast_timer.is_none() {
-            self.toast_timer = Some(cx.spawn(async move |this, cx| {
-                loop {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(500))
-                        .await;
-                    let keep = this
-                        .update(cx, |shell, cx| {
-                            if shell.toasts.expire(Instant::now()) {
-                                cx.notify();
-                            }
-                            let keep = shell.toasts.has_timed();
-                            if !keep {
-                                shell.toast_timer = None;
-                            }
-                            keep
-                        })
-                        .unwrap_or(false);
-                    if !keep {
-                        break;
-                    }
-                }
-            }));
-        }
+        self.ensure_toast_timer(cx);
         cx.notify();
+    }
+
+    /// Starts the expiry sweep if it is not running (see the desktop shell).
+    pub(crate) fn ensure_toast_timer(&mut self, cx: &mut Context<Self>) {
+        if self.toast_timer.is_some() {
+            return;
+        }
+        self.toast_timer = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(500))
+                    .await;
+                let keep = this
+                    .update(cx, |shell, cx| {
+                        let now = Instant::now();
+                        let changed = shell.toasts.expire(now);
+                        let reaped = shell.toasts.reap(now);
+                        if changed || reaped {
+                            cx.notify();
+                        }
+                        let keep = shell.toasts.has_timed();
+                        if !keep {
+                            shell.toast_timer = None;
+                        }
+                        keep
+                    })
+                    .unwrap_or(false);
+                if !keep {
+                    break;
+                }
+            }
+        }));
     }
 
     // ── settings ─────────────────────────────────────────────────────────────
@@ -1252,11 +1261,13 @@ impl MobileShell {
                             let dy = f32::from(e.delta.pixel_delta(px(size::ICON)).y);
                             if dy < -space::S2 {
                                 this.toasts.dismiss(id);
+                                this.ensure_toast_timer(cx);
                                 cx.notify();
                             }
                         }))
                         .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                             this.toasts.dismiss(id);
+                            this.ensure_toast_timer(cx);
                             cx.notify();
                         }))
                         .child(div().pt(px(space::HALF)).child(icon(glyph, size::ICON, c)))

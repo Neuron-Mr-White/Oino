@@ -846,6 +846,8 @@ pub mod motion {
     pub const CHEVRON_MS: u64 = 160;
     /// Status dot pulse period.
     pub const PULSE_MS: u64 = 1200;
+    /// Exit (fade out + drop) of a dismissed overlay; shorter than any enter.
+    pub const EXIT_MS: u64 = 120;
 }
 
 /// One box shadow layer `(offset_y, blur, spread, color)`.

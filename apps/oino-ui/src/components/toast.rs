@@ -3,7 +3,9 @@
 //! "More" (opens the full text as a result card, GA-24), at most one action pill.
 //! Auto-dismiss 4 s info / 6 s warning, sticky errors; hover pauses (the owner skips expiry
 //! while hovered). Messages longer than [`is_long`] skip the toast and open the result card
-//! directly.
+//! directly. A dismissed toast fades out (`design::motion::exit`, `EXIT_MS`) instead of
+//! vanishing: [`Toasts::dismiss`] only marks it, [`Toasts::reap`] drops it once the exit is
+//! over (the owner's timer does both).
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -19,6 +21,7 @@ use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
+use crate::design::tokens::motion::EXIT_MS as EXIT;
 use crate::design::{TextRole, radius, size, space};
 
 /// Toast severity.
@@ -61,6 +64,9 @@ pub struct Toast {
     pub at: Instant,
     /// Optional action `(label, callback)`.
     pub action: Option<(SharedString, Rc<dyn Fn(&mut Window, &mut App)>)>,
+    /// Set when the toast is on its way out: it fades for [`EXIT`](crate::design::tokens::motion::EXIT_MS)
+    /// and is dropped by [`Toasts::reap`].
+    pub closing: Option<Instant>,
 }
 
 /// The toast stack state.
@@ -88,32 +94,56 @@ impl Toasts {
             message: message.into(),
             at: Instant::now(),
             action: None,
+            closing: None,
         });
         self.next
     }
 
-    /// Removes a toast.
+    /// Starts the exit of a toast (it stays rendered, fading, until [`Self::reap`]).
     pub fn dismiss(&mut self, id: u64) {
-        self.items.retain(|t| t.id != id);
+        let now = Instant::now();
+        for t in &mut self.items {
+            if t.id == id && t.closing.is_none() {
+                t.closing = Some(now);
+            }
+        }
     }
 
-    /// Drops expired toasts; returns whether anything changed.
-    pub fn expire(&mut self, now: Instant) -> bool {
+    /// Removes the toasts whose exit finished; returns whether anything changed.
+    pub fn reap(&mut self, now: Instant) -> bool {
         let before = self.items.len();
-        let hovered = self.hovered;
         self.items.retain(|t| {
-            Some(t.id) == hovered
-                || t.kind
-                    .ttl()
-                    .is_none_or(|ttl| now.duration_since(t.at) < ttl)
+            t.closing
+                .is_none_or(|at| now.duration_since(at) < Duration::from_millis(EXIT))
         });
         before != self.items.len()
     }
 
-    /// Whether any toast may still expire.
+    /// Starts the exit of every expired toast; returns whether anything changed.
+    pub fn expire(&mut self, now: Instant) -> bool {
+        let mut changed = false;
+        let hovered = self.hovered;
+        for t in &mut self.items {
+            if t.closing.is_some() || Some(t.id) == hovered {
+                continue;
+            }
+            if t.kind
+                .ttl()
+                .is_some_and(|ttl| now.duration_since(t.at) >= ttl)
+            {
+                t.closing = Some(now);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// Whether the expiry timer has work left: a timed toast is up or one is fading out.
     #[must_use]
     pub fn has_timed(&self) -> bool {
-        self.items.iter().any(|t| t.kind.ttl().is_some())
+        self.items
+            .iter()
+            .any(|t| t.closing.is_some() || t.kind.ttl().is_some())
     }
 
     /// The toast `id`.
@@ -177,11 +207,7 @@ pub fn stack(
                 toast.message.clone(),
             )
             .value(toast.title.clone().unwrap_or_default());
-            crate::automation::registry::probe_named(
-                crate::design::motion::enter(
-                    t,
-                    ElementId::Name(format!("toast-in-{id}").into()),
-                    div()
+            let card = div()
                         .id(ElementId::Name(format!("toast-{id}").into()))
                         .max_w(px(size::TOAST_MAX))
                         .min_w(px(size::TOAST * 0.6))
@@ -255,10 +281,66 @@ pub fn stack(
                                 .on_click(move |_: &ClickEvent, w, cx| dismiss(id, w, cx))
                                 .child(icon(IconName::X, size::ICON_MD, t.fg_subtle()))
                                 .automation(crate::automation::Meta::icon_button("Dismiss toast")),
-                        ),
-                ),
-                meta,
-                format!("toast-{id}"),
-            )
+                        );
+            // Leaving toasts fade + drop over `EXIT_MS`; the owner reaps them afterwards.
+            let animated = if toast.closing.is_some() {
+                crate::design::motion::exit(
+                    t,
+                    ElementId::Name(format!("toast-out-{id}").into()),
+                    card,
+                )
+            } else {
+                crate::design::motion::enter(
+                    t,
+                    ElementId::Name(format!("toast-in-{id}").into()),
+                    card,
+                )
+            };
+            crate::automation::registry::probe_named(animated, meta, format!("toast-{id}"))
         }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ToastKind, Toasts};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn an_expired_toast_fades_before_it_is_dropped() {
+        let mut toasts = Toasts::default();
+        let id = toasts.push(ToastKind::Info, None, "saved");
+        assert!(!toasts.expire(Instant::now()));
+        // Past the 4 s TTL the toast is marked closing but stays for the exit animation.
+        let late = Instant::now() + Duration::from_secs(5);
+        assert!(toasts.expire(late));
+        assert_eq!(toasts.visible().len(), 1);
+        assert!(toasts.get(id).is_some_and(|t| t.closing.is_some()));
+        assert!(toasts.has_timed(), "the sweep must keep running while it fades");
+        assert!(!toasts.reap(late));
+        // …and is gone once the exit window is over.
+        assert!(toasts.reap(late + Duration::from_millis(200)));
+        assert!(toasts.visible().is_empty());
+        assert!(!toasts.has_timed());
+    }
+
+    #[test]
+    fn a_manual_dismiss_also_fades_and_a_hovered_toast_does_not_expire() {
+        let mut toasts = Toasts::default();
+        let id = toasts.push(ToastKind::Error, None, "failed");
+        let late = Instant::now() + Duration::from_secs(60);
+        // Errors are sticky.
+        assert!(!toasts.expire(late));
+        // Hover pauses a timed toast.
+        let hovered = toasts.push(ToastKind::Info, None, "saved");
+        toasts.hovered = Some(hovered);
+        let _ = toasts.expire(late);
+        assert!(toasts.get(hovered).is_some_and(|t| t.closing.is_none()));
+        toasts.hovered = None;
+        assert!(toasts.expire(late));
+        assert!(toasts.get(hovered).is_some_and(|t| t.closing.is_some()));
+        toasts.dismiss(id);
+        assert!(toasts.get(id).is_some_and(|t| t.closing.is_some()));
+        assert!(toasts.reap(late + Duration::from_millis(200)));
+        assert!(toasts.visible().is_empty());
+    }
 }

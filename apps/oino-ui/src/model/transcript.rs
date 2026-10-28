@@ -7,6 +7,7 @@
 //! `tool_execution_*`.
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use oino_agent::AgentToolResult;
 use oino_ai::{
@@ -49,6 +50,9 @@ pub struct AssistantRow {
     pub text: String,
     /// Thinking text (collapsed by default).
     pub thinking: String,
+    /// Wall time of the thinking phase once it is over (the label reads "Thought for 12.3s");
+    /// `None` for history rows loaded from a session file, which carry no timing.
+    pub thinking_ms: Option<u64>,
     /// Still streaming.
     pub streaming: bool,
     /// Error / abort text.
@@ -246,6 +250,9 @@ pub struct Transcript {
     index: HashMap<String, usize>,
     seq: u64,
     streaming: Option<usize>,
+    /// When the live thinking phase of the streaming assistant message started; resolved into
+    /// [`AssistantRow::thinking_ms`] at the first non-thinking delta or at `message_end`.
+    thinking_at: Option<Instant>,
 }
 
 fn user_text(content: &UserContentField) -> (String, usize) {
@@ -447,6 +454,7 @@ impl Transcript {
                 let row = AssistantRow {
                     text,
                     thinking,
+                    thinking_ms: None,
                     streaming,
                     error: if streaming {
                         None
@@ -458,6 +466,7 @@ impl Transcript {
                 let change = self.push(id, RowKind::Assistant(row));
                 if streaming {
                     self.streaming = Some(self.rows.len() - 1);
+                    self.thinking_at = None;
                 }
                 changes.push(change);
                 changes.extend(self.sync_tool_calls(assistant));
@@ -584,12 +593,36 @@ impl Transcript {
                 };
                 let (text, thinking) = assistant_parts(assistant);
                 let mut changes = Vec::new();
+                // The thinking phase starts at the first thinking delta and ends at the first
+                // visible answer text ("Thought for 12.3s", design.md §4.9). Both are decided
+                // from state read before the row borrow.
+                let started = self.thinking_at;
+                let mut start_thinking = false;
+                let mut done_thinking = None;
                 if let RowKind::Assistant(row) = &mut self.rows[at].kind
                     && (row.text != text || row.thinking != thinking)
                 {
+                    let first_text = row.text.is_empty() && !text.is_empty();
                     row.text = text;
                     row.thinking = thinking;
+                    start_thinking = started.is_none()
+                        && row.thinking_ms.is_none()
+                        && !row.thinking.trim().is_empty();
+                    if first_text && row.thinking_ms.is_none() {
+                        done_thinking = started.map(|s| s.elapsed());
+                    }
                     changes.push(self.touch(at));
+                }
+                if start_thinking {
+                    self.thinking_at = Some(Instant::now());
+                }
+                if let Some(elapsed) = done_thinking {
+                    self.thinking_at = None;
+                    if let RowKind::Assistant(row) = &mut self.rows[at].kind {
+                        row.thinking_ms = Some(
+                            u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+                        );
+                    }
                 }
                 changes.extend(self.sync_tool_calls(assistant));
                 changes
@@ -607,7 +640,16 @@ impl Transcript {
                     row.thinking = thinking;
                     row.streaming = false;
                     row.error = assistant_error(assistant);
+                    if row.thinking_ms.is_none()
+                        && !row.thinking.trim().is_empty()
+                        && let Some(started) = self.thinking_at.take()
+                    {
+                        row.thinking_ms = Some(
+                            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                        );
+                    }
                 }
+                self.thinking_at = None;
                 let mut changes = vec![self.touch(at)];
                 changes.extend(self.sync_tool_calls(assistant));
                 changes

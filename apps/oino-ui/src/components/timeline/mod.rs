@@ -432,7 +432,10 @@ impl SessionPane {
             .into_any_element()
     }
 
-    /// A thinking block as one line inside a fold: the latest paragraph; click opens it.
+    /// A thinking block as one line inside a fold: the latest paragraph; click opens it. The
+    /// label is `Thinking` while the phase runs (with the live shimmer), `Thought for 12.3s`
+    /// once it is over (design.md §4.9, `ZCode` `chat-thought-level-control`), `Thought` for
+    /// history rows that carry no timing.
     fn render_thought_line(
         &self,
         id: &str,
@@ -443,6 +446,7 @@ impl SessionPane {
     ) -> AnyElement {
         let open = self.thinking_open.contains(id);
         let key = id.to_owned();
+        let frame = Ticker::frame(cx);
         let latest = a
             .thinking
             .split("\n\n")
@@ -451,6 +455,14 @@ impl SessionPane {
             .last()
             .unwrap_or_default();
         let line = timeline::excerpt(latest, 1, 140);
+        let thinking_live = a.streaming && a.text.is_empty();
+        let label = if thinking_live {
+            "Thinking".to_owned()
+        } else if let Some(ms) = a.thinking_ms {
+            format!("Thought for {}", timeline::duration(ms))
+        } else {
+            "Thought".to_owned()
+        };
         div()
             .flex()
             .flex_col()
@@ -482,11 +494,8 @@ impl SessionPane {
                             .truncate()
                             .text_role(t, TextRole::Caption)
                             .text_color(t.fg_subtle())
-                            .child(SharedString::from(if open {
-                                "Thought".to_owned()
-                            } else {
-                                line
-                            })),
+                            .when(thinking_live, |el| el.opacity(shimmer(t, frame)))
+                            .child(SharedString::from(if open { label } else { line })),
                     ),
             )
             .when(open, |el| {

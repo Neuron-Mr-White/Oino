@@ -1027,31 +1027,41 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) {
         self.toasts.push(kind, title, message);
-        if self.toast_task.is_none() {
-            self.toast_task = Some(cx.spawn(async move |this, cx| {
-                loop {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(500))
-                        .await;
-                    let keep = this
-                        .update(cx, |ws, cx| {
-                            if ws.toasts.expire(Instant::now()) {
-                                cx.notify();
-                            }
-                            let keep = ws.toasts.has_timed();
-                            if !keep {
-                                ws.toast_task = None;
-                            }
-                            keep
-                        })
-                        .unwrap_or(false);
-                    if !keep {
-                        break;
-                    }
-                }
-            }));
-        }
+        self.ensure_toast_timer(cx);
         cx.notify();
+    }
+
+    /// Starts the 500 ms expiry sweep if it is not running: it ends expired toasts (they fade
+    /// for `EXIT_MS`), drops the finished ones and stops when no toast is timed or fading.
+    pub(crate) fn ensure_toast_timer(&mut self, cx: &mut Context<Self>) {
+        if self.toast_task.is_some() {
+            return;
+        }
+        self.toast_task = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(500))
+                    .await;
+                let keep = this
+                    .update(cx, |ws, cx| {
+                        let now = Instant::now();
+                        let changed = ws.toasts.expire(now);
+                        let reaped = ws.toasts.reap(now);
+                        if changed || reaped {
+                            cx.notify();
+                        }
+                        let keep = ws.toasts.has_timed();
+                        if !keep {
+                            ws.toast_task = None;
+                        }
+                        keep
+                    })
+                    .unwrap_or(false);
+                if !keep {
+                    break;
+                }
+            }
+        }));
     }
 
     /// Opens a multi-line status report as a result card dialog (GA-24).
@@ -1220,15 +1230,23 @@ impl AppShell {
             &view,
             window,
             |this, _, event: &PaletteEvent, window, cx| {
-                this.palette = None;
                 match event {
                     PaletteEvent::Pick(action, query) => {
+                        this.palette = None;
                         let q = query.clone();
                         this.settings.push_palette_history(&q);
                         this.host.save_app_settings(&this.settings);
                         this.run_palette(action.clone(), window, cx);
                     }
+                    // Removing one recent search keeps the palette open.
+                    PaletteEvent::ForgetHistory(query) => {
+                        this.settings
+                            .palette_history
+                            .retain(|q| q != query);
+                        this.host.save_app_settings(&this.settings);
+                    }
                     PaletteEvent::Dismiss => {
+                        this.palette = None;
                         if let Some(pane) = this.active_pane().cloned() {
                             SessionPane::focus(&pane, window, cx);
                         }
@@ -1997,6 +2015,7 @@ impl Render for AppShell {
             Rc::new(move |id, _, cx| {
                 let _ = e.update(cx, |ws, cx| {
                     ws.toasts.dismiss(id);
+                    ws.ensure_toast_timer(cx);
                     cx.notify();
                 });
             })
@@ -2013,6 +2032,7 @@ impl Render for AppShell {
                 let _ = e.update(cx, |ws, cx| {
                     if let Some(toast) = ws.toasts.get(id).cloned() {
                         ws.toasts.dismiss(id);
+                        ws.ensure_toast_timer(cx);
                         let title = toast.title.unwrap_or_else(|| "Details".into());
                         ws.show_result(title, toast.message, cx);
                     }

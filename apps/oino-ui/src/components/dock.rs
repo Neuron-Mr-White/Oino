@@ -326,14 +326,29 @@ impl SessionPane {
         )
     }
 
-    /// The `RunStateLine` (spinner, working message, elapsed, esc hint).
+    /// The `RunStateLine` (spinner, working message, elapsed, esc hint). After a run it stays
+    /// mounted for `EXIT_MS` and fades out (`design::motion::exit`).
     pub(crate) fn render_run_state(
         &self,
         t: &OinoTheme,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         if !self.model.is_busy() {
-            return None;
+            let (_, label) = self.run_exit.as_ref()?;
+            let line = div()
+                .flex()
+                .items_center()
+                .gap(px(space::S2))
+                .h(px(size::CONTROL))
+                .px(px(space::S2))
+                .text_role(t, TextRole::Sm)
+                .text_color(t.fg_subtle())
+                .child(div().child(SharedString::from(label.clone())));
+            return Some(crate::design::motion::exit(
+                t,
+                ElementId::Name(format!("run-exit-{}", self.model.id).into()),
+                line,
+            ));
         }
         let frame = Ticker::frame(cx);
         let message =
