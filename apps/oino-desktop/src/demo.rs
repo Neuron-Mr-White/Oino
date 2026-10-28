@@ -682,6 +682,9 @@ impl Shared {
                 .collect(),
         );
         for row in &child_rows {
+            // A child row is created by its `message_start` (a bare `message_end` adds none).
+            self.emit(json!({"type": "agent_event", "agentId": "demo-child-1",
+                "event": {"type": "message_start", "message": row}}));
             self.emit(json!({"type": "agent_event", "agentId": "demo-child-1",
                 "event": {"type": "message_end", "message": row}}));
         }

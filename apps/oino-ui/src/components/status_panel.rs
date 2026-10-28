@@ -93,7 +93,7 @@ impl SessionPane {
                     .text_role(t, TextRole::Sm)
                     .text_color(t.fg_subtle())
                     .on_click(toggle)
-                    .when_some(progress, |el, p| {
+                    .when_some(progress.clone(), |el, p| {
                         el.child(
                             div()
                                 .flex()
@@ -123,6 +123,18 @@ impl SessionPane {
                                 .child(changed.to_string()),
                         )
                     })
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Row,
+                        format!(
+                            "Status · {}{} · {changed} changed",
+                            progress.unwrap_or_else(|| "0/0".to_owned()),
+                            if running > 0 {
+                                format!(" · {running} running")
+                            } else {
+                                String::new()
+                            }
+                        ),
+                    ))
                     .into_any_element(),
             )
             .map(|capsule| {
@@ -303,6 +315,10 @@ impl SessionPane {
                 .when_some(s.branch.clone(), |el, b| {
                     el.child(section(t, "Git", format!("{b} · {} changed", s.changed)))
                 })
+                .automation(crate::automation::Meta::labelled(
+                    crate::automation::Role::Row,
+                    "Status panel",
+                ))
                 .into_any_element(),
         )
     }
