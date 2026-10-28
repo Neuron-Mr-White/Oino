@@ -587,6 +587,10 @@ impl SessionPane {
     fn render_inner(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         self.flush_composer(window, cx);
         self.sync_interaction(window, cx);
+        // ⌘⇧S expanded the panel: it takes keyboard focus now that it is being rendered.
+        if std::mem::take(&mut self.status_focus_pending) && self.status_expanded_now() {
+            window.focus(&self.status_focus, cx);
+        }
         let t = OinoTheme::get(cx);
         let kb = self.focus.is_focused(window);
         if kb != self.timeline_kb {

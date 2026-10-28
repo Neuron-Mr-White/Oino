@@ -329,6 +329,9 @@ pub struct SessionPane {
     /// Focus and row cursor of the expanded `StatusPanel` (↑/↓ rows, Enter acts, Delete stops).
     pub(crate) status_focus: FocusHandle,
     pub(crate) status_cursor: usize,
+    /// The panel was just expanded: focus it once it is rendered (a handle that is not in the
+    /// tree yet does not take focus).
+    pub(crate) status_focus_pending: bool,
     pub(crate) width: Pixels,
     pub(crate) run_started: Option<Instant>,
     pub(crate) queue_open: bool,
@@ -481,6 +484,7 @@ impl SessionPane {
             status_expanded: None,
             status_focus: cx.focus_handle(),
             status_cursor: 0,
+            status_focus_pending: false,
             width: px(crate::design::size::READING),
             run_started: None,
             queue_open: true,
@@ -624,9 +628,11 @@ impl SessionPane {
     }
 
     /// Gives the expanded `StatusPanel` keyboard focus (⌘⇧S, design.md §4.19).
-    pub fn focus_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn focus_status(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.status_expanded = Some(true);
-        window.focus(&self.status_focus, cx);
+        // The expanded panel is not in the tree while it is collapsed, and a focus handle that
+        // is not rendered cannot take focus: focus it right after the next render.
+        self.status_focus_pending = true;
         self.status_cursor = self
             .status_cursor
             .min(self.status.run.len().saturating_sub(1));
