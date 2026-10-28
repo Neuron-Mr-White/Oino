@@ -1,0 +1,23 @@
+{
+  "name": "unipi-dream",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/dream", "submit": true}},
+    {"wait_for": {"text": "dream", "timeout_ms": 30000}},
+    {"screenshot": {"name": "01-dream-status"}},
+    {"type_text": {"text": "/dream report", "submit": true}},
+    {"wait_for": {"text": "report", "timeout_ms": 30000}},
+    {"screenshot": {"name": "02-dream-report"}},
+    {"type_text": {"text": "/dream approve 1", "submit": true}},
+    {"wait_for": {"text": "proposal", "timeout_ms": 30000}},
+    {"screenshot": {"name": "03-dream-approve"}},
+    {"type_text": {"text": "/dream reject 1", "submit": true}},
+    {"wait_for": {"text": "proposal", "timeout_ms": 30000}},
+    {"screenshot": {"name": "04-dream-reject"}},
+    {"type_text": {"text": "/dream tray", "submit": true}},
+    {"sleep": {"ms": 1500}},
+    {"screenshot": {"name": "05-dream-tray"}}
+  ]
+}

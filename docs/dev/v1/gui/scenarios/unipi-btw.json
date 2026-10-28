@@ -1,0 +1,17 @@
+{
+  "name": "unipi-btw",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/btw What is 2+2? Answer with one word.", "submit": true}},
+    {"wait_state": {"open": "unipi.btw/panel", "timeout_ms": 60000}},
+    {"wait_for": {"text": "Four", "timeout_ms": 120000}},
+    {"assert": {"open": "unipi.btw/panel"}},
+    {"screenshot": {"name": "01-side-chat"}},
+    {"assert": {"element": {"id": "composer", "role": "input"}}},
+    {"click": {"id": "editor-panel-close"}},
+    {"wait_for": {"id": "editor-panel-close", "absent": true, "timeout_ms": 15000}},
+    {"screenshot": {"name": "02-closed"}}
+  ]
+}

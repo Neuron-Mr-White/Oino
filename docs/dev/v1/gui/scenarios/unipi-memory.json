@@ -1,0 +1,29 @@
+{
+  "name": "unipi-memory",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/memory", "submit": true}},
+    {"wait_for": {"id": "result-ok", "timeout_ms": 30000}},
+    {"assert": {"text": "memories"}},
+    {"screenshot": {"name": "01-memory-status"}},
+    {"click": {"id": "result-ok"}},
+    {"type_text": {"text": "/memory-search zebra", "submit": true}},
+    {"wait_for": {"text": "zebra", "timeout_ms": 30000}},
+    {"screenshot": {"name": "02-memory-search"}},
+    {"type_text": {"text": "/global-memory-list", "submit": true}},
+    {"wait_for": {"text": "memor", "timeout_ms": 30000}},
+    {"screenshot": {"name": "03-global-list"}},
+    {"click": {"id": "composer"}},
+    {"type_text": {"text": "Remember one durable fact with the memory_store tool: the project's mascot is a pixel crab named Unicrab. Then reply STORED.", "submit": true}},
+    {"wait_for": {"text": "Unicrab", "timeout_ms": 180000}},
+    {"screenshot": {"name": "04-tool-row"}},
+    {"wait_state": {"chrome": "mem", "timeout_ms": 30000}},
+    {"type_text": {"text": "/memory-consolidate", "submit": true}},
+    {"wait_for": {"id": "dock-opt-0", "timeout_ms": 60000}},
+    {"screenshot": {"name": "05-consolidate-dialog"}},
+    {"click": {"id": "dock-cancel"}},
+    {"screenshot": {"name": "06-cancelled"}}
+  ]
+}

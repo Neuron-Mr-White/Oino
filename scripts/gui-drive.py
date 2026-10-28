@@ -421,6 +421,19 @@ def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> 
         checked.append(f"chrome={needle!r}")
         if not any(needle.lower() in text.lower() for text in texts):
             problems.append(f"no status, widget or frame segment contains {needle!r}: {texts}")
+    if "chrome_absent" in params:
+        # The inverse of `chrome`: no status, widget or frame segment contains the needle
+        # (e.g. `/footer` off drops the stats strip).
+        chrome = state.get("chrome") or {}
+        texts = [s.get("text") or "" for s in chrome.get("statuses", [])]
+        texts += [w.get("text") or "" for w in chrome.get("widgets", [])]
+        frame = chrome.get("frame") or {}
+        texts += [s.get("text") or "" for key in ("top", "bottom") for s in frame.get(key, [])]
+        needle = params["chrome_absent"]
+        checked.append(f"chrome_absent={needle!r}")
+        hits = [text for text in texts if needle.lower() in text.lower()]
+        if hits:
+            problems.append(f"chrome still shows {needle!r}: {hits}")
     if "open" in params:
         entries = state.get("open", [])
         checked.append(f"open={params['open']!r}")

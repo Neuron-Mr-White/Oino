@@ -1,0 +1,20 @@
+{
+  "name": "unipi-browser",
+  "backend": "real",
+  "env": ["OINO_BROWSER=ephemeral"],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/browser", "submit": true}},
+    {"wait_for": {"text": "browser", "timeout_ms": 60000}},
+    {"screenshot": {"name": "01-browser-command"}},
+    {"type_text": {"text": "/permission full", "submit": true}},
+    {"wait_for": {"text": "Permission mode: full", "timeout_ms": 20000}},
+    {"click": {"id": "composer"}},
+    {"type_text": {"text": "Use browser_open to open about:blank, then reply BROWSER-OK.", "submit": true}},
+    {"wait_for": {"text": "browser_", "timeout_ms": 240000}},
+    {"screenshot": {"name": "02-browser-tool-row"}},
+    {"wait_state": {"busy": false, "timeout_ms": 240000}},
+    {"screenshot": {"name": "03-browser-done"}}
+  ]
+}

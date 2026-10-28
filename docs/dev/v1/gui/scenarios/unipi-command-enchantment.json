@@ -1,0 +1,83 @@
+{
+  "name": "unipi-command-enchantment",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/",
+        "submit": false
+      }
+    },
+    {
+      "wait_for": {
+        "id": "completion-menu",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-completions"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Compactor",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-package-tags"
+      }
+    },
+    {
+      "type_text": {
+        "text": "goal",
+        "submit": false
+      }
+    },
+    {
+      "wait_for": {
+        "text": "objective",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-filtered"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-a"
+      }
+    },
+    {
+      "sleep": {
+        "ms": 300
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-cleared"
+      }
+    }
+  ]
+}

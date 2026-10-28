@@ -1,0 +1,30 @@
+{
+  "name": "unipi-input-shortcuts",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"wait_for": {"id": "mode-chip", "timeout_ms": 60000}},
+    {"key": {"key": "alt+h"}},
+    {"sleep": {"ms": 800}},
+    {"assert": {"chrome": "alt+h"}},
+    {"screenshot": {"name": "01-hint-cycled"}},
+    {"key": {"key": "alt+m"}},
+    {"wait_for": {"label": "Full access", "timeout_ms": 20000}},
+    {"screenshot": {"name": "02-alt-m-mode"}},
+    {"key": {"key": "escape"}},
+    {"key": {"key": "alt+p"}},
+    {"wait_state": {"element": {"id": "mode-chip", "label": "Plan"}, "timeout_ms": 20000}},
+    {"screenshot": {"name": "03-alt-p-plan"}},
+    {"key": {"key": "alt+p"}},
+    {"wait_state": {"element": {"id": "mode-chip", "label": "Plan"}, "timeout_ms": 20000}},
+    {"type_text": {"text": "/plan off", "submit": true}},
+    {"wait_state": {"element": {"id": "mode-chip", "label": "Auto"}, "timeout_ms": 20000}},
+    {"screenshot": {"name": "04-plan-off"}},
+    {"click": {"id": "composer"}},
+    {"type_text": {"text": "/ho", "submit": false}},
+    {"wait_for": {"text": "hotkeys", "timeout_ms": 20000}},
+    {"screenshot": {"name": "05-completions"}},
+    {"key": {"key": "escape"}}
+  ]
+}

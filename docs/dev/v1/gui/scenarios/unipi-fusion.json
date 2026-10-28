@@ -1,0 +1,22 @@
+{
+  "name": "unipi-fusion",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/fusion", "submit": true}},
+    {"wait_for": {"id": "dock-opt-0", "timeout_ms": 60000}},
+    {"assert": {"dialogs": "select"}},
+    {"wait_for": {"text": "fusion", "timeout_ms": 20000}},
+    {"screenshot": {"name": "01-fusion-picker"}},
+    {"type_text": {"text": "deepseek", "submit": false}},
+    {"wait_for": {"text": "DeepSeek", "timeout_ms": 20000}},
+    {"screenshot": {"name": "02-fusion-filter"}},
+    {"click": {"label": "DeepSeek", "role": "option"}},
+    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
+    {"screenshot": {"name": "03-fusion-picked"}},
+    {"type_text": {"text": "/fusion-stats", "submit": true}},
+    {"wait_for": {"text": "Fusion", "timeout_ms": 30000}},
+    {"screenshot": {"name": "04-fusion-stats"}}
+  ]
+}

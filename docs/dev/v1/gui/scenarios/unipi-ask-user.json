@@ -1,0 +1,24 @@
+{
+  "name": "unipi-ask-user",
+  "backend": "real",
+  "settings": {"extensionSettings": {"unipi.ask-user": {"enabled": true}}},
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/permission auto", "submit": true}},
+    {"wait_for": {"text": "Permission mode: auto", "timeout_ms": 20000}},
+    {"click": {"id": "composer"}},
+    {"type_text": {"text": "Call the ask_user tool exactly once now. Question: 'Favourite colour?', options: Red, Green, Blue. Call no other tool.", "submit": true}},
+    {"wait_for": {"dialogs": "form", "timeout_ms": 180000}},
+    {"assert": {"dialogs": "form"}},
+    {"screenshot": {"name": "01-question-card"}},
+    {"wait_for": {"text": "Favourite colour", "timeout_ms": 20000}},
+    {"click": {"label": "Green", "role": "option"}},
+    {"screenshot": {"name": "02-picked"}},
+    {"click": {"id": "q-next"}},
+    {"wait_state": {"dialogs": 0, "timeout_ms": 60000}},
+    {"wait_for": {"id": "composer", "timeout_ms": 60000}},
+    {"wait_state": {"busy": false, "timeout_ms": 180000}},
+    {"screenshot": {"name": "03-answered"}}
+  ]
+}

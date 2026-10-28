@@ -1,0 +1,31 @@
+{
+  "name": "unipi-info-screen",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/info", "submit": true}},
+    {"wait_for": {"id": "unipi.info-screen/dashboard/tabs-0", "timeout_ms": 30000}},
+    {"assert": {"open": "unipi.info-screen/dashboard"}},
+    {"wait_for": {"text": "COST", "timeout_ms": 20000}},
+    {"screenshot": {"name": "01-session-tab"}},
+    {"click": {"id": "unipi.info-screen/dashboard/tabs-1"}},
+    {"wait_for": {"text": "TOKENS", "timeout_ms": 15000}},
+    {"assert": {"element": {"id": "unipi.info-screen/dashboard/tabs-1", "selected": true}}},
+    {"screenshot": {"name": "02-usage-tab"}},
+    {"click": {"id": "unipi.info-screen/dashboard/tabs-2"}},
+    {"wait_for": {"text": "Tools", "timeout_ms": 15000}},
+    {"screenshot": {"name": "03-tools-tab"}},
+    {"click": {"id": "unipi.info-screen/dashboard/tabs-3"}},
+    {"wait_for": {"text": "skills", "timeout_ms": 15000}},
+    {"screenshot": {"name": "04-skills-tab"}},
+    {"click": {"id": "unipi.info-screen/dashboard/tabs-4"}},
+    {"wait_for": {"text": "unipi.", "timeout_ms": 15000}},
+    {"screenshot": {"name": "05-modules-tab"}},
+    {"key": {"key": "r"}},
+    {"sleep": {"ms": 500}},
+    {"assert": {"open": "unipi.info-screen/dashboard"}},
+    {"click": {"id": "overlay-panel-x"}},
+    {"wait_for": {"id": "unipi.info-screen/dashboard/tabs-0", "absent": true, "timeout_ms": 15000}}
+  ]
+}

@@ -400,7 +400,12 @@ impl SessionPane {
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Mode, cx)))
                     .child(icon(mode_icon(m), size::ICON_MD, tint))
                     .when(!narrow, |el| el.child(m.label()))
-                    .child(icon(IconName::ChevronDown, size::ICON_SM, tint)),
+                    .child(icon(IconName::ChevronDown, size::ICON_SM, tint))
+                    // Read-back for scenarios: the workflow permission mode the chip shows.
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Chip,
+                        m.label(),
+                    )),
                 self.menu == Some(PaneMenu::Mode),
                 Placement::AboveStart,
                 || {
@@ -434,6 +439,7 @@ impl SessionPane {
         });
         // Model chip: context ring + % + model name + thinking level (A2.11).
         let model_label = self.model.model_label();
+        let model_label_text = self.model.model_label();
         let reasoning = self.model.model.as_ref().is_some_and(|m| m.reasoning);
         let level = self.model.thinking;
         let ratio = self.model.context_percent().map(|p| f32::from(p) / 100.0);
@@ -472,7 +478,15 @@ impl SessionPane {
                             .child(level_label(level).to_lowercase()),
                     )
                 })
-                .child(icon(IconName::ChevronDown, size::ICON_SM, t.fg_subtlest())),
+                .child(icon(IconName::ChevronDown, size::ICON_SM, t.fg_subtlest()))
+                // Read-back for scenarios: the model and thinking level the composer shows.
+                .automation(
+                    crate::automation::Meta::labelled(
+                        crate::automation::Role::Chip,
+                        model_label_text,
+                    )
+                    .value(level_label(level).to_lowercase()),
+                ),
             self.menu == Some(PaneMenu::Model),
             Placement::AboveEnd,
             || crate::components::model_menu::model_menu(self, t, cx),

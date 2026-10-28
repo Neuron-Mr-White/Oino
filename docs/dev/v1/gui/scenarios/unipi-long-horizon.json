@@ -1,0 +1,30 @@
+{
+  "name": "unipi-long-horizon",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/goal Reply with exactly GOAL-OK and stop.", "submit": true}},
+    {"wait_state": {"chrome": "Goal", "timeout_ms": 60000}},
+    {"screenshot": {"name": "01-goal-mode"}},
+    {"wait_for": {"text": "GOAL-OK", "timeout_ms": 180000}},
+    {"screenshot": {"name": "02-goal-ran"}},
+    {"type_text": {"text": "/visualize-progress", "submit": true}},
+    {"wait_for": {"text": "progress", "timeout_ms": 30000}},
+    {"screenshot": {"name": "03-visualize"}},
+    {"key": {"key": "escape"}},
+    {"type_text": {"text": "/regular", "submit": true}},
+    {"wait_for": {"text": "Regular mode", "timeout_ms": 20000}},
+    {"wait_state": {"chrome_absent": "Goal", "timeout_ms": 20000}},
+    {"screenshot": {"name": "04-regular"}},
+    {"type_text": {"text": "/ralph", "submit": true}},
+    {"wait_for": {"text": "ralph", "timeout_ms": 30000}},
+    {"screenshot": {"name": "05-ralph-help"}},
+    {"type_text": {"text": "/graph", "submit": true}},
+    {"wait_for": {"text": "graph", "timeout_ms": 30000}},
+    {"screenshot": {"name": "06-graph-help"}},
+    {"type_text": {"text": "/swarm", "submit": true}},
+    {"wait_for": {"text": "swarm", "timeout_ms": 30000}},
+    {"screenshot": {"name": "07-swarm-help"}}
+  ]
+}

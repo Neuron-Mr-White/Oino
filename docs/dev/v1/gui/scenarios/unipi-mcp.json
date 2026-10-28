@@ -1,0 +1,20 @@
+{
+  "name": "unipi-mcp",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/mcp-status", "submit": true}},
+    {"wait_for": {"text": "MCP", "timeout_ms": 30000}},
+    {"screenshot": {"name": "01-mcp-status"}},
+    {"type_text": {"text": "/settings", "submit": true}},
+    {"wait_for": {"id": "set-ns", "timeout_ms": 30000}},
+    {"assert": {"route": "settings"}},
+    {"screenshot": {"name": "02-settings-hub"}},
+    {"click": {"label": "MCP", "role": "row"}},
+    {"wait_for": {"text": "server", "timeout_ms": 30000}},
+    {"screenshot": {"name": "03-mcp-settings"}},
+    {"click": {"id": "nav-sessions"}},
+    {"wait_for": {"id": "composer", "timeout_ms": 30000}}
+  ]
+}

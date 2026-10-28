@@ -1,0 +1,21 @@
+{
+  "name": "unipi-watchdog",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"click": {"id": "composer"}},
+    {"type_text": {"text": "Run the bash command `sleep 25` and wait for it to finish. Then reply SLEPT.", "submit": true}},
+    {"wait_for": {"text": "sleep 25", "timeout_ms": 120000}},
+    {"screenshot": {"name": "01-bash-running"}},
+    {"type_text": {"text": "/bg-detach", "submit": true}},
+    {"wait_for": {"text": "background", "timeout_ms": 60000}},
+    {"screenshot": {"name": "02-detached"}},
+    {"wait_state": {"chrome": "Background tasks", "timeout_ms": 60000}},
+    {"type_text": {"text": "/bg-tasks", "submit": true}},
+    {"wait_for": {"id": "unipi.core/tray/0/tabs-0", "timeout_ms": 30000}},
+    {"wait_for": {"text": "sleep 25", "timeout_ms": 20000}},
+    {"screenshot": {"name": "03-adopted-task"}},
+    {"click": {"id": "editor-panel-close"}}
+  ]
+}

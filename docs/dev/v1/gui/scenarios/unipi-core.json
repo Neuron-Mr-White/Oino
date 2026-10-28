@@ -1,0 +1,28 @@
+{
+  "name": "unipi-core",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"assert": {"chrome": "alt+h"}},
+    {"screenshot": {"name": "01-hint-strip"}},
+    {"key": {"key": "alt+h"}},
+    {"sleep": {"ms": 800}},
+    {"assert": {"chrome": "alt+h"}},
+    {"type_text": {"text": "/hint", "submit": true}},
+    {"wait_for": {"text": "command (", "timeout_ms": 30000}},
+    {"assert": {"open": "unipi.core/hints"}},
+    {"wait_for": {"text": "alt+h", "timeout_ms": 20000}},
+    {"screenshot": {"name": "02-hint-browser"}},
+    {"key": {"key": "escape"}},
+    {"wait_for": {"id": "overlay-panel-x", "absent": true, "timeout_ms": 15000}},
+    {"click": {"id": "composer"}},
+    {"key": {"key": "down"}},
+    {"wait_for": {"text": "Background tasks", "timeout_ms": 20000}},
+    {"assert": {"open": "unipi.core/tray"}},
+    {"screenshot": {"name": "03-work-tray"}},
+    {"click": {"id": "editor-panel-close"}},
+    {"wait_for": {"id": "editor-panel-close", "absent": true, "timeout_ms": 15000}},
+    {"screenshot": {"name": "04-closed"}}
+  ]
+}

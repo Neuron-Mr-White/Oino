@@ -1,0 +1,22 @@
+{
+  "name": "unipi-web-api",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
+    {"type_text": {"text": "/permission full", "submit": true}},
+    {"wait_for": {"text": "Permission mode: full", "timeout_ms": 20000}},
+    {"click": {"id": "composer"}},
+    {"type_text": {"text": "Use the web_search tool with query \"rust programming language\" and report the first result title. Do not use any other tool.", "submit": true}},
+    {"wait_for": {"text": "web_search", "timeout_ms": 180000}},
+    {"screenshot": {"name": "01-web-search-row"}},
+    {"wait_state": {"busy": false, "timeout_ms": 240000}},
+    {"screenshot": {"name": "02-web-search-done"}},
+    {"type_text": {"text": "/info", "submit": true}},
+    {"wait_for": {"id": "unipi.info-screen/dashboard/tabs-8", "timeout_ms": 30000}},
+    {"click": {"id": "unipi.info-screen/dashboard/tabs-8"}},
+    {"wait_for": {"text": "web", "timeout_ms": 20000}},
+    {"screenshot": {"name": "03-web-tab"}},
+    {"click": {"id": "overlay-panel-x"}}
+  ]
+}
