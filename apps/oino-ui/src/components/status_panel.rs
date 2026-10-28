@@ -22,6 +22,9 @@ use crate::views::session_pane::SessionPane;
 fn section(t: &OinoTheme, title: &str, state: String) -> AnyElement {
     let summary = format!("{title} · {state}");
     div()
+        // A unique id per section: the registry keys by element path, so path-less sibling
+        // sections would collapse into one entry.
+        .id(ElementId::Name(format!("status-section-{title}").into()))
         .flex()
         .items_center()
         .gap(px(space::S1_5))

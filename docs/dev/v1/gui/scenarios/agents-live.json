@@ -91,8 +91,25 @@
     },
     {
       "click": {
+        "id": "status-mini"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
         "label": "btw",
-        "role": "row"
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-status-run-row"
+      }
+    },
+    {
+      "click": {
+        "role": "row",
+        "label": "btw"
       }
     },
     {
@@ -103,7 +120,7 @@
     },
     {
       "screenshot": {
-        "name": "04-btw-agent-tab"
+        "name": "05-btw-agent-tab"
       }
     }
   ]
