@@ -169,14 +169,80 @@ next round can take, not applied here to keep product commits clean)
   the `drop` RPC silently ignores missing files, so off-ti it fails at step 7 with no
   diagnostic. Fix: resolve the scratch png relative to the run dir, or have `drop` error on
   missing paths. Files: scenario step 6; `apps/oino-ui/src/automation/driver.rs` (`drop`).
+- **H-5 (P2)** — `apps/oino-desktop/scripts/local-app.sh` **faux mode is broken**: it passes
+  `--faux`, which the binary rejects (`Error: unknown argument: --faux` — only `--demo`
+  exists), and it copies `extensions/dist/provider-faux.wasm`, which does not exist (the
+  fixture ships as the directory `extensions/dist/oino.fixture.provider-faux/`). The `||
+  true`/`set -e` mix hides both. Found while driving faux locally; the soak runs faux
+  through its own path and is unaffected.
 
-## 6. Soak / perf numbers
+## 6. Soak / perf numbers (local Xvfb + lavapipe, release build)
 
-TBD (soak running; will be filled before the final commit)
+**Soak 30 min, `faux` backend** (`apps/oino-desktop/scripts/soak.sh --minutes 30 --backend faux`,
+evidence `docs/dev/v1/qa-r4/soak-faux-30min/`):
 
-## 7. Exploratory pass notes
+```
+backend=faux minutes=30 samples=360 steps=2567
+rss_mb start=10 end=1098 max=1099 slope_2nd_half_mb_per_min=0.88   (limit 8)
+threads first_quarter_max=228 end=229                              (limit +16)
+fds     first_quarter_max=438 end=430                              (limit +64)
+frame_ms run_max=46.7 run_p99=32.4                                 (report-only on Xvfb)
+crash_logs=0 stall_logs=0 exit=0
+RESULT: PASS
+```
 
-TBD
+Same profile as the recorded round-3 runs (≈1.1 GB wasmtime plateau, flat after the pane
+cap); slope 0.88 MB/min is better than the 2.80 MB/min of the last recorded run.
+
+**Perf, 4 streaming panes** (`perf.sh`, headless lavapipe, 20 s, `BUDGET_MS=10`):
+
+```
+windows=8 frames=1200 (~60 fps rendered) dropped(>16.7ms)=0 over_8.3ms=3
+p50 median=2.15ms  window p99 median=3.79ms  worst window p99=4.11ms  max=4.72ms
+RUN p99 (all frames)=3.90ms  budget=10ms                         -> PASS
+latency first frame 130.4ms · keystroke→paint median 8.4ms max 12.5ms · session switch 8.5ms
+idle CPU (welcome, after settle): 0.80 % UI thread, 13.6 % process
+```
+
+Matches (slightly better than) the recorded 4.1–4.9 ms p99 and the 0.8–1.0 % idle CPU of
+DESIGN-STATUS.
+
+## 7. Exploratory pass notes (every screen, light + dark)
+
+Driver: `docs/dev/v1/qa-r4/exploratory.py` (one app instance per theme, demo + real
+backends) plus targeted manual steps. Shots under `shots/explore-{dark,light}/`.
+
+Walked: sessions home (hero, suggestions, needs-you strip), sidebar nav → Board /
+Automations / Extensions / Settings (16 nav rows) / back; board page (lanes, toolbar, FAB,
+New-task dialog + Esc); automations page; extensions page (`Install from file…`, `Open
+folder`, per-extension switches — `ext-toggle-0` flip + restore verified); settings
+(sections, hub); palette (opens with ⌘K **from every route incl. Settings**, empty-query
+sections, no-results state, Esc); session view (composer focus, typing lands after every
+overlay — the QA-1 fix holds: `/info` + Esc, dialog close, palette close all return focus
+to the composer); side pane + `+` launcher (Review/Files/Plan/Tree/Browser/Terminal/
+Kanboard rows); mode-chip and model-chip menus; `/info` dashboard on a **real** core
+(`panel:unipi.info-screen/dashboard` opens, Esc closes).
+
+Findings:
+
+- **Unknown slash commands are sent to the model as plain text** (no local "unknown
+  command" error). This is pi's behaviour (parity, not a defect); the completion menu only
+  offers known commands.
+- **Local `--faux` startup is broken in the fallback script** (H-5 below); the faux checks
+  were covered by the soak (faux in-process) and the suites' real backend instead.
+- **Look, dark**: pixel probes of live shots resolve exactly to the A2.2 tokens — window
+  `#0A0908` dominant, surfaces `#141211/#1C1917/#26211F`, accents shell `#F03018` (211
+  sampled px on the welcome shot), amber (needs-you/hints) and success green present; no
+  off-token dominant colour on any probed screen.
+- **Look vs unipi refs**: dominant-token fingerprints match the reference shots'
+  families and rank order on every compared pair (sessions 60/54 % window · 25/29 %
+  surface-1; palette 63/73 % · 25/18 %; settings 78/73 % · 17/21 %; board 64/78 % · 23/15 %
+  — ours are emptier screens, same palette). Oino's chat/board shots read "darker" only
+  because the reference screens are denser.
+- **Look, light**: derived light tokens render exactly (`#FAF7F2` bg dominant,
+  `#F2EDE6` surfaces; probes d≤4 on every region) — A2 light is not blocking.
+- The QA-1 focus guarantees re-verified on this build: every overlay/page returns keyboard
+  focus to the composer (`typing lands` checks passed in both themes).
 
 ## 8. Evidence index (docs/dev/v1/qa-r4/)
 
@@ -184,7 +250,9 @@ TBD
 - `shots/agents-live/`, `shots/image-attach*/`, `shots/zcode-*/`, `shots/gui/` — suite shots
 - `shots/fails/` — FAIL screenshots of every failing step (renamed `<suite>-<scenario>-FAIL-NN.png`)
 - `local-suite.py` — the local fallback runner (QA tooling)
+- `exploratory.py` — the every-screen walk (dark + light)
 - `look-probe.py` — pixel probe comparing renders against the A2.2 palette
+- `soak-faux-30min/` — soak summary + samples (raw soak output)
 - `scenarios/*-local.json` — host-neutral variants (subagents relaxed assertion, watchdog
   tool-row wait, image-attach absolute path)
 - logs: `target/tmp/qa-r4-{unipi,zcode,desktop,repro}*.log`, suite json
