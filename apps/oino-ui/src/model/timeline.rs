@@ -1047,6 +1047,49 @@ mod tests {
         );
     }
 
+    /// The nested `agent_event` wire shape (frontend-api §3) reduces into the child
+    /// transcript: `message_start` creates the row, `message_end` settles it.
+    #[test]
+    fn nested_agent_events_reduce_into_the_child_transcript() {
+        let event = |v: serde_json::Value| -> oino_core::events::ClientEvent {
+            serde_json::from_value(v).unwrap()
+        };
+        let mut feed = AgentFeed::default();
+        feed.set_tree(
+            &serde_json::from_value::<Vec<oino_core::agents::AgentInfo>>(json!([
+                {"id": "c1", "label": "Subagent explorer", "owner": "unipi.subagents",
+                 "state": "running", "depth": 1}
+            ]))
+            .unwrap(),
+        );
+        let nested = |inner: serde_json::Value| -> oino_core::events::ClientEvent {
+            match event(json!({"type": "agent_event", "agentId": "c1", "event": inner})) {
+                oino_core::events::ClientEvent::Oino(
+                    oino_core::events::OinoEvent::AgentEvent { event, .. },
+                ) => *event,
+                other => panic!("not an agent_event: {other:?}"),
+            }
+        };
+        let user = nested(json!({"type": "message_start",
+            "message": {"role": "user", "content": "map the parser", "timestamp": 0}}));
+        assert!(feed.apply("c1", &user));
+        let end = nested(json!({"type": "message_end",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "two sites"}],
+                "api": "x", "provider": "p", "model": "m",
+                "usage": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0,
+                    "totalTokens": 0,
+                    "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0,
+                        "total": 0}},
+                "stopReason": "stop", "timestamp": 0}}));
+        assert!(feed.apply("c1", &end));
+        let rows = feed.get("c1").unwrap().transcript.rows();
+        assert_eq!(rows.len(), 2, "user + assistant rows: {rows:#?}");
+        assert_eq!(
+            crate::components::timeline::row_text(rows.first()),
+            "map the parser"
+        );
+    }
+
     /// A late-opened Agent tab loads its backlog (`_oino/agent_messages`); live rows win.
     #[test]
     fn agent_messages_fill_a_late_opened_tab() {

@@ -154,6 +154,7 @@ impl SessionPane {
         let (done, total) = s.progress();
         Some(
             div()
+                .id("status-panel")
                 .absolute()
                 .top(px(space::S3))
                 .right(px(space::S4))

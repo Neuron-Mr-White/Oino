@@ -315,7 +315,11 @@ fn child_row(
     row: &crate::model::transcript::Row,
 ) -> AnyElement {
     crate::automation::probe(
-        child_body(t, agent, ix, row),
+        // The id makes each row's registry path distinct: path-less siblings collapse into
+        // one entry (the registry keys by element path).
+        div()
+            .id(ElementId::NamedInteger("agent-row".into(), ix as u64))
+            .child(child_body(t, agent, ix, row)),
         crate::automation::Meta::labelled(
             crate::automation::Role::Text,
             crate::components::timeline::row_text(Some(row)),
