@@ -344,11 +344,29 @@ pub fn end_frame() {
     let seen = std::mem::take(&mut r.seen);
     let geometry = std::mem::take(&mut r.geometry);
     let previous = std::mem::take(&mut r.live);
-    let mut next_live = std::collections::HashMap::with_capacity(seen.len());
+    let (nodes, live) = publish(&seen, &geometry, &previous);
+    r.current = nodes;
+    r.live = live;
+    r.frame = r.frame.wrapping_add(1);
+}
+
+/// Turns one frame's `request_layout` reports into the snapshot: drops everything not seen
+/// this frame, numbers duplicate ids (`send`, `send#2`, …) and keeps the geometry of elements
+/// whose prepaint GPUI reused.
+fn publish(
+    seen: &[Seen],
+    geometry: &std::collections::HashMap<String, Geometry>,
+    previous: &std::collections::HashMap<String, Geometry>,
+) -> (Vec<Node>, std::collections::HashMap<String, Geometry>) {
+    let empty = Geometry {
+        bounds: (0.0, 0.0, 0.0, 0.0),
+        visible: false,
+    };
+    let mut live = std::collections::HashMap::with_capacity(seen.len());
     let mut nodes = Vec::with_capacity(seen.len());
     let mut ids: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for entry in &seen {
-        if next_live.contains_key(&entry.path) {
+    for entry in seen {
+        if live.contains_key(&entry.path) {
             continue;
         }
         // Fresh geometry when the element was prepainted this frame; otherwise the last
@@ -357,11 +375,8 @@ pub fn end_frame() {
             .get(&entry.path)
             .copied()
             .or_else(|| previous.get(&entry.path).copied())
-            .unwrap_or(Geometry {
-                bounds: (0.0, 0.0, 0.0, 0.0),
-                visible: false,
-            });
-        next_live.insert(entry.path.clone(), geo);
+            .unwrap_or(empty);
+        live.insert(entry.path.clone(), geo);
         let n = ids.entry(entry.base.as_str()).or_insert(0);
         *n += 1;
         let id = if *n == 1 {
@@ -383,9 +398,7 @@ pub fn end_frame() {
             bounds: geo.bounds,
         });
     }
-    r.current = nodes;
-    r.live = next_live;
-    r.frame = r.frame.wrapping_add(1);
+    (nodes, live)
 }
 
 /// A zero-size element for the root view's child list: its paint callback (after every
@@ -646,4 +659,80 @@ fn record_geometry(id: Option<&GlobalElementId>, bounds: Bounds<Pixels>, window:
             visible,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn seen(path: &str, base: &str, label: &str) -> Seen {
+        Seen {
+            path: path.to_owned(),
+            base: base.to_owned(),
+            meta: Meta::button(label),
+            focused: false,
+        }
+    }
+
+    fn geo(bounds: (f32, f32, f32, f32)) -> Geometry {
+        Geometry {
+            bounds,
+            visible: true,
+        }
+    }
+
+    #[test]
+    fn numbers_duplicate_ids_in_tree_order() {
+        let entries = [
+            seen("root.send", "send", "Send"),
+            seen("root.row-0", "row-0", "first"),
+            seen("root.row-1", "row-0", "second"),
+            seen("root.row-2", "row-0", "third"),
+        ];
+        let (nodes, live) = publish(
+            &entries,
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::default(),
+        );
+        let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, ["send", "row-0", "row-0#2", "row-0#3"]);
+        assert_eq!(live.len(), 4);
+        assert!(nodes.iter().all(|n| !n.visible), "no geometry yet");
+    }
+
+    #[test]
+    fn keeps_geometry_when_prepaint_was_reused() {
+        let entries = [seen("root.set-mascot", "set-mascot", "mascot")];
+        let previous: std::collections::HashMap<String, Geometry> = [(
+            "root.set-mascot".to_owned(),
+            geo((1152.0, 167.0, 44.0, 26.0)),
+        )]
+        .into_iter()
+        .collect();
+        let (nodes, live) = publish(&entries, &std::collections::HashMap::new(), &previous);
+        assert_eq!(nodes[0].bounds, (1152.0, 167.0, 44.0, 26.0));
+        assert!(nodes[0].visible);
+        assert_eq!(live["root.set-mascot"].bounds, nodes[0].bounds);
+    }
+
+    #[test]
+    fn drops_elements_that_are_gone_and_dedupes_paths() {
+        let entries = [
+            seen("root.send", "send", "Send"),
+            seen("root.send", "send", "Send"), // the same path twice in one frame
+        ];
+        let geometry: std::collections::HashMap<String, Geometry> =
+            [("root.send".to_owned(), geo((0.0, 0.0, 10.0, 10.0)))]
+                .into_iter()
+                .collect();
+        let (nodes, _) = publish(&entries, &geometry, &std::collections::HashMap::default());
+        assert_eq!(nodes.len(), 1, "a repeated path is one element");
+        // A frame that no longer reports the element publishes nothing.
+        let (nodes, live) = publish(
+            &[],
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::default(),
+        );
+        assert!(nodes.is_empty() && live.is_empty());
+    }
 }

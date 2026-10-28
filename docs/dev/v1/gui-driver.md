@@ -207,10 +207,11 @@ scene). The client restarts the app itself in `run` mode:
 
 ## 6. Tests and gates
 
-* `apps/oino-ui/src/automation/*` unit tests: protocol parse/reject, selector matching, the
-  keystroke mapping (`secondary-` per OS, one keystroke per character), the state JSON, and an
-  end-to-end socket test (two request/response round trips plus a bad-JSON line that keeps the
-  connection alive).
+* `apps/oino-ui/src/automation/*` unit tests (12): protocol parse/reject, selector matching, the
+  keystroke mapping (`secondary-` per OS, one keystroke per character), the state JSON, the
+  snapshot rules (duplicate ids get `#n`, geometry survives a reused prepaint, elements that
+  stop being reported disappear), and an end-to-end socket test (two request/response round
+  trips plus a bad-JSON line that keeps the connection alive).
 * Gates for the touched apps: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets
   -- -D warnings -W clippy::pedantic`, `cargo test --workspace` (in `apps/`), and `cargo clippy -p
   xtask …` for the `--env` flag.
