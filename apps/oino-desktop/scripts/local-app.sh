@@ -91,7 +91,12 @@ if [ "$scene" != "-" ]; then env_extra+=("OINO_DESKTOP_DEMO_SCENE=$scene"); fi
 for pair in "$@"; do env_extra+=("$pair"); done
 
 cd "$project"
-nohup env -u WAYLAND_DISPLAY DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+# The app runs with a minimal PATH: the owner-local tool dirs (~/.local/bin, ~/.cargo/bin)
+# stay out, so owner-hosted services behind them (MemPalace daemon) can never leak into a
+# scratch run — the unipi memory extension stays in its markdown-only mode, exactly like on
+# ti, where no mempalace exists (QA-r4 finding: `/memory-search` once answered from the
+# owner's daemon store, and `memory_store` wrote a test drawer into it).
+nohup env -u WAYLAND_DISPLAY PATH="/usr/bin:/bin" DISPLAY="$display" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
   OINO_AGENT_DIR="$agent" OINO_DESKTOP_SIZE=1600x1000 OINO_REDUCE_MOTION=1 \
   OINO_DESKTOP_AUTOMATION="$sock" \
   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \

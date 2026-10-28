@@ -51,6 +51,11 @@
       }
     },
     {
+      "sleep": {
+        "ms": 4000
+      }
+    },
+    {
       "type_text": {
         "text": "/bg-detach",
         "submit": true

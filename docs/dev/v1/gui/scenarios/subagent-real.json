@@ -16,7 +16,7 @@
     },
     {
       "type_text": {
-        "text": "Use the run_subagent tool with agent \"subagent_explore\" and task \"Read README.md in the working directory and report its first line\". Do not answer yourself; wait for the subagent and report what it found."
+        "text": "Delegate this to a helper: read README.md in the working directory and report its first line. Wait for the helper's report, then relay exactly what it found."
       }
     },
     {

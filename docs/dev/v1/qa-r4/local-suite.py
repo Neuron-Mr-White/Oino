@@ -148,6 +148,10 @@ def start(backend: str, scene: str | None, env: list[str], settings: dict) -> No
     import os
 
     app_env = dict(os.environ)
+    # Minimal PATH for the app: owner-local tool dirs (~/.local/bin, ~/.cargo/bin) stay out
+    # so scratch runs cannot reach owner-hosted services behind them (MemPalace) — the
+    # memory extension stays markdown-only, as on ti (qa-r4.md Resolution, M-1).
+    app_env["PATH"] = "/usr/bin:/bin"
     app_env.update({
         "DISPLAY": DISPLAY,
         "DBUS_SESSION_BUS_ADDRESS": addr,

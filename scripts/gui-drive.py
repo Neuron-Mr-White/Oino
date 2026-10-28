@@ -480,6 +480,19 @@ def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> 
         checked.append(f"text={needle!r}")
         if not hit:
             problems.append(f"no element contains {needle!r}")
+    if "any_text" in params:
+        # Any of the needles matches (a feature with two legitimate rendered states, e.g. the
+        # updater changelog body: release entries when GitHub answers, the empty-state message
+        # when the unauthenticated API quota is spent).
+        needles = params["any_text"]
+        hit = any(
+            needle.lower() in ((n.get("label") or "") + (n.get("value") or "")).lower()
+            for needle in needles
+            for n in tree["elements"]
+        )
+        checked.append(f"any_text={needles!r}")
+        if not hit:
+            problems.append(f"no element contains any of {needles!r}")
     if "element" in params:
         node = find_node(tree["elements"], params["element"])
         checked.append(f"element={params['element']}")
