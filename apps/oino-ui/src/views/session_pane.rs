@@ -354,6 +354,9 @@ pub struct SessionPane {
     pub(crate) cursor: Option<usize>,
     /// The composer shows the steering placeholder (a run is active).
     steering: bool,
+    /// The row whose copy button ran last and when: its icon shows a check for
+    /// [`COPIED_MS`] (`ZCode` `CopyRowAction`), then returns to the copy glyph.
+    pub(crate) copied: Option<(String, Instant)>,
     /// The placeholder the composer currently shows (`ZCode` `chat-composer-placeholder`: empty
     /// session, follow-up, running); it is only rewritten when it changes.
     placeholder: &'static str,
@@ -437,6 +440,8 @@ struct Loaded {
     models: Vec<Model>,
 }
 
+/// How long a copy button shows its check mark (`ZCode` `CopyRowAction`: 1200 ms).
+pub const COPIED_MS: u64 = 1200;
 /// Composer placeholder of an empty session (design.md A2.11).
 pub const PLACEHOLDER: &str = "Message Oino, / commands, @ files";
 /// Placeholder once the session has messages and is idle (`ZCode` `chat-composer-placeholder`:
@@ -514,6 +519,7 @@ impl SessionPane {
             drag_armed: std::rc::Rc::default(),
             cursor: None,
             steering: false,
+            copied: None,
             placeholder: PLACEHOLDER,
             previews: std::cell::RefCell::default(),
             timeline_kb: false,
@@ -1562,6 +1568,33 @@ impl SessionPane {
     /// Aborts the current run.
     pub fn abort(&mut self, cx: &mut Context<Self>) {
         self.send(PiCommand::Abort.into(), cx);
+    }
+
+    /// Marks `key` as just copied (its button shows a check for [`COPIED_MS`]).
+    pub fn mark_copied(&mut self, key: &str, cx: &mut Context<Self>) {
+        self.copied = Some((key.to_owned(), Instant::now()));
+        cx.notify();
+        let key = key.to_owned();
+        let task = cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(COPIED_MS))
+                .await;
+            let _ = this.update(cx, |pane, cx| {
+                if pane.copied.as_ref().is_some_and(|(k, _)| k == &key) {
+                    pane.copied = None;
+                    cx.notify();
+                }
+            });
+        });
+        task.detach();
+    }
+
+    /// Whether `key`'s copy button currently shows the check state.
+    #[must_use]
+    pub fn copied_check(&self, key: &str) -> bool {
+        self.copied
+            .as_ref()
+            .is_some_and(|(k, at)| k == key && at.elapsed() < Duration::from_millis(COPIED_MS))
     }
 
     /// Selects a model.

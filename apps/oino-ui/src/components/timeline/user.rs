@@ -39,6 +39,8 @@ impl SessionPane {
         let group = SharedString::from(format!("ub{ix}"));
         let copy = user.text.clone();
         let edit = user.text.clone();
+        let copy_key = format!("row-{ix}");
+        let copied = self.copied_check(&copy_key);
         let busy = self.model.is_busy();
         let rewind = !busy && self.has_checkpoint(nth);
         let (chip, text) = match command_head(&user.text) {
@@ -64,12 +66,19 @@ impl SessionPane {
             .invisible()
             .group_hover(group.clone(), gpui_kit::Styled::visible)
             .child(
-                Btn::icon_only(row_id("ub-copy", ix), IconName::Copy, "Copy")
-                    .size(BtnSize::Sm)
-                    .on_click(cx.listener(move |_, _, _, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
-                        cx.emit(PaneEvent::Toast("Copied".into()));
-                    })),
+                // ZCode `CopyRowAction`: the glyph turns into a check for 1200 ms.
+                Btn::icon_only(
+                    row_id("ub-copy", ix),
+                    if copied { IconName::Check } else { IconName::Copy },
+                    if copied { "Copied" } else { "Copy" },
+                )
+                .size(BtnSize::Sm)
+                .when(copied, |b| b.color(t.success()))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()));
+                    this.mark_copied(&copy_key.clone(), cx);
+                    cx.emit(PaneEvent::Toast("Copied".into()));
+                })),
             )
             .when(!busy, |el| {
                 el.child(

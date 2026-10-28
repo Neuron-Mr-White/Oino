@@ -537,13 +537,56 @@ impl SessionPane {
                     .child(TextView::new(state).selectable(true))
                     .into_any_element()
             });
+        // Hover actions of one answer (ZCode `CopyRowAction`): copy the answer text, the glyph
+        // turning into a check for `COPIED_MS`. Hidden while the answer still streams.
+        let copy_key = format!("row-{ix}");
+        let copied = self.copied_check(&copy_key);
+        let copy = a.text.clone();
+        let actions = (!a.streaming && !a.text.is_empty()).then(|| {
+            let group = SharedString::from(format!("as{ix}"));
+            div()
+                .absolute()
+                .top_0()
+                .right(px(space::S2))
+                .flex()
+                .items_center()
+                .gap(px(space::HALF))
+                .p(px(space::HALF))
+                .rounded(px(radius::R_FULL))
+                .bg(t.chip())
+                .border_1()
+                .border_color(t.border())
+                .invisible()
+                .group_hover(group.clone(), gpui_kit::Styled::visible)
+                .child(
+                    crate::components::button::Btn::icon_only(
+                        row_id("as-copy", ix),
+                        if copied {
+                            IconName::Check
+                        } else {
+                            IconName::Copy
+                        },
+                        if copied { "Copied" } else { "Copy answer" },
+                    )
+                    .size(crate::components::button::BtnSize::Sm)
+                    .when(copied, |b| b.color(t.success()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(copy.clone()));
+                        this.mark_copied(&copy_key.clone(), cx);
+                    })),
+                )
+                .into_any_element()
+        });
         div()
+            .relative()
+            .group(SharedString::from(format!("as{ix}")))
             .flex()
             .flex_col()
             .w_full()
             .gap(px(space::S2))
             .children(thinking)
             .children(body)
+            .children(actions)
             .when_some(a.error.clone(), |el, e| {
                 el.child(error_banner(t, ix, &e, cx))
             })

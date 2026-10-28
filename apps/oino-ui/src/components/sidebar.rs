@@ -20,6 +20,7 @@ use crate::components::kbd::{kbd, legend};
 use crate::components::menu::{MenuEntry, Placement, menu, popover};
 use crate::components::page_header::{PageHeader, header_crab};
 use crate::components::section_label::{label as section_label, section_row};
+use crate::components::tooltip::tip;
 use crate::components::unicrab::{oino_mark, unicrab};
 use crate::design::brand::CrabState;
 use crate::design::icons::icon;
@@ -534,6 +535,15 @@ impl AppShell {
             .child(icon(IconName::ChevronRight, size::ICON_MD, t.fg_subtlest()));
         let e = cx.entity().downgrade();
         let entry = entry.clone();
+        // A title that cannot fit gets a 300 ms tooltip with the whole text (ZCode
+        // `sidebar-tooltips`; a short title stays quiet so the rows do not chatter).
+        let long_title = entry.summary.title.chars().count() > 32;
+        let full_title = entry.summary.title.clone();
+        let row = if long_title {
+            row.tooltip(tip(full_title, None))
+        } else {
+            row
+        };
         let row = crate::automation::probe(
             row,
             crate::automation::Meta::labelled(
@@ -649,7 +659,7 @@ impl AppShell {
                     .cursor_pointer()
                     .rounded(px(radius::R_FULL))
                     .hover(|s| s.bg(t.hover()))
-                    .tooltip(crate::components::tooltip::tip(crab.label(), None))
+                    .tooltip(tip(crab.label(), None))
                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                         this.needs_drawer = !this.needs_drawer;
                         cx.notify();
