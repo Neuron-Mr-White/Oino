@@ -62,9 +62,14 @@ for d in "${dirs[@]}"; do
 done
 [ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after tmp cleanup"; exit 0; }
 
+# `find … -exec find {} … -exec rm -rf {}` is not valid (a `+` form takes only one `{}`), so
+# the incremental dirs are listed first and cleaned one at a time.
 for d in "${dirs[@]}"; do
   [ -d "$d" ] || continue
-  run "find '$d' -type d -name incremental -prune -exec find {} -mindepth 1 -maxdepth 1 -mmin +$age_min -exec rm -rf '{}' + \\;"
+  while IFS= read -r inc; do
+    [ -n "$inc" ] || continue
+    run "find '$inc' -mindepth 1 -maxdepth 1 -mmin +$age_min -exec rm -rf {} +"
+  done <<<"$(find "$d" -type d -name incremental -prune 2>/dev/null)"
 done
 [ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after incremental cleanup"; exit 0; }
 
