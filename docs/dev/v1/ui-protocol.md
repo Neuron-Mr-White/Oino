@@ -206,8 +206,12 @@ Custom messages, custom entries and extension tools may have renderers (pi
 - `ToolRenderHints` on `tool-spec.render` (no guest call): `{title?: template string with
   {arg} placeholders, icon?: string, collapsedSummary?: template, showArgs?: string[]}`.
 - Built-in tools (read/write/edit/bash/grep/find/ls) are rendered natively by frontends using
-  their typed details (diff for edit, tail for bash). The `tools.override` permission lets
-  unipi utility supply render hints for them.
+  their typed details (diff for edit, tail for bash). A render spec for a built-in name is a
+  **render-only override**: core accepts it when the manifest's `tools.override` lists the tool
+  (or `"*"`), drops it otherwise, and dispatches `render` for built-in rows too (U1–U2 landed
+  2026-10-29; `unipi.utility`'s `render.style` simple/regular/advanced rows). Frontends that
+  ask: the TUI for every tool row when its host has a session (`_oino/render`,
+  frontend-api §13); the GPUI app still renders built-in rows itself.
 - Provenance (`details.oinoProvenance`, runtime §2) renders as a `card` with `source` label and
   `rail` tone `harness` regardless of renderer.
 
@@ -337,7 +341,7 @@ Frontends that do not know a field ignore it; unknown OUS nodes render their `fa
 
 | # | Where | Addition | Source |
 |---|---|---|---|
-| U1 | §6.1 OUS | `responsive {variants: [{minWidth, node}], fallback}`: the first variant whose `minWidth` ≤ available width renders; none ⇒ `fallback`. | unipi-core #4, R4 |
+| U1 | §6.1 OUS | `responsive {variants: [{minWidth, node}], fallback}` ✅ implemented: the first variant whose `minWidth` ≤ available width renders; none ⇒ `fallback`. | unipi-core #4, R4 |
 | U2 | §7.3 completions | `CompletionGroup.from` (character offset the accepted item replaces), `replaces: "commands"` (contributor supersedes the frontend's slash group), `prefix`; items carry `tag`, `tone` (`c1…c12`), `sortTier`. | frontend-cmds #2, unipi-ux #1 |
 | U3 | §7.2 editor intents | `cleared` may carry `reason: "interrupt" \| "submit" \| "edit"`; consumable intents (`emptyArrowDown`, `tokenBackspace`) wait for the first `{consume: true}`; `ui.editor-text` returns the text of the last `editor_event`. | unipi-ux #3, frontend-cmds #5, #10 |
 | U4 | §4.3 dialogs | `form` hints `escape`, `digitAdvance`, `helpLine`, `clarify`; answers `attachments` / `files`. `custom` dialogs: `keys: [{key, actionId, label}]`, `closeOnUnknownKey`. `editor`: `cursorLine`. New dialogs `clipboardReadImage`, `editExternally{text, extensionHint?}`. | unipi-ux #4, #5; unipi-utility #5; frontend-cmds #10 |

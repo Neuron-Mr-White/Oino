@@ -6,6 +6,5 @@ Settled rows #1–#23 are folded into [unipi-port.md](../unipi-port.md#appendix-
 
 | # | To | Request |
 |---|---|---|
-| R1 | core-runtime / wit-v1 | `models.summarize-default` with a previous summary and split-turn prefix (compactor `llm`). |
 | R3 | unipi-core | `SkillConditionReply { hidden, reason? }` in `unipi-kit::services`. |
 | — | tests | MemPalace against a real install. |

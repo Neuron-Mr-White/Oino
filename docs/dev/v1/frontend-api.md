@@ -22,7 +22,8 @@ Contents:
 - [10. Frontend identity (GA-45)](#10-frontend-identity-ga-45)
 - [11. Approval dialogs and handler deadlines (GA-30 / GA-42)](#11-approval-dialogs-and-handler-deadlines-ga-30--ga-42)
 - [12. Companion binaries (GA-41)](#12-companion-binaries-ga-41)
-- [13. Not covered here](#13-not-covered-here)
+- [13. Transcript render specs: `_oino/render`](#13-transcript-render-specs-_oinorender)
+- [14. Not covered here](#14-not-covered-here)
 
 ## 0. Wiring checklist for the GUI batches
 
@@ -71,6 +72,7 @@ fn bus_get(&self, topic: &str) -> BoxFuture<'_, Result<Option<JsonValue>, Client
 // oino_core::topics (re-exported as oino_client::protocol::TopicValue)
 pub struct TopicValue { pub topic: String, pub data: JsonValue, pub sticky: bool, pub publisher: String }
 pub const GIT_TOPIC: &str = "oino:git";
+pub const SETTINGS_TOPIC_PREFIX: &str = "oino:settings:";   // + <namespace>, every settings write
 ```
 
 | Wire | Request | Response `data` |
@@ -302,7 +304,36 @@ The WASM host resolves a bare program name that is not on `PATH` against the dir
 the running executable (`process::resolve_program`). Packaging must put `oino-kanboard`
 (`.exe`) next to `oino-desktop`; the app bundle and AppImage need the same.
 
-## 13. Not covered here
+## 13. Transcript render specs: `_oino/render`
+
+```rust
+// oino_client::FrontendApi
+fn render(&self, request: RenderRow) -> BoxFuture<'_, Result<Option<JsonValue>, ClientError>>;
+
+pub struct RenderRow {  // ui-protocol §6.4
+    pub target: String,          // customMessage | customEntry | tool
+    pub key: String,             // customType or tool name (built-in names included)
+    pub entry_id: Option<String>,
+    pub density: Option<String>, // simple | regular | advanced
+    pub expanded: bool,
+    pub width: Option<String>,   // narrow | normal | wide
+    pub data: JsonValue,
+}
+```
+
+| Wire | Request | Response `data` |
+|---|---|---|
+| `_oino/render` | the `RenderRow` fields | `{node: OusNode \| null}`; `null` = the frontend renders the row itself |
+
+`AgentSession::render_spec` dispatches to the extension that registered the render spec for
+`target`/`key` (`guest.render`, call kind `render`) and passes the request JSON as
+`{target, key, entryId, density, expanded, width, data}`. Render specs for the **built-in**
+tools (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`) are render-only overrides: core
+accepts them when the manifest lists the tool in `tools.override` and drops them otherwise
+(U1–U2, `utility.render.style`). The TUI asks for every tool row through this path when its
+host has a session (`LocalHost::with_render`); the GPUI app still renders tool rows natively.
+
+## 14. Not covered here
 
 These are GUI-side or tracked elsewhere:
 

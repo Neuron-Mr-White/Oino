@@ -52,24 +52,45 @@ round-3 harness scripts; "code" = unit/e2e tests only this round.
 | dream | report card with proposals, tray tab, StatusPanel Run row | 🟡 code | nested-agent dream e2e with resume; Accept/Reject buttons not clicked live |
 | skill-registry | `/skills` → Settings hub "Skills" page, vault discovery | ✅ live | GA-31 (`/hint`), skills page |
 | subagents | `run_subagent` rows, `/subagents` tray tab, `/agents` dialog | 🟡 code | GA-21 tray; live child timeline still open (GA-15 / GA-44 feed exists) |
-| background-tasks | `/bg`, tasks tray tab (`sleep 30 · 4s · 0B`), Stop all / Dismiss, completion card | ✅ live | GA-14, GA-21, GA-22 |
+| background-tasks | `/bg`, tasks tray tab (`sleep 30 · 4s · 0B`), Stop all / Dismiss, completion card | ✅ live | GA-14, GA-21, GA-22; notification `deliverAs: followUp` ([harness-gaps]) |
 | btw | `/btw` side-chat panel, session message count unchanged | ✅ live | smoke (`/btw …` in the panel) |
 | web-api | `web_search` / read tool rows, confirm dialogs | ✅ live | tool rows in the round-2/3 runs |
 | notify | wizards (`form`/`select`), secret fields, toasts, OS notifications | ✅ live | kanboard-onboard dialog (GA-24), notify settings |
 | kanboard | native Board page, `/kanboard open` side pane, New-task dialog, claims badge | ✅ live | GA-17, GA-20, QA-5; `65-unipi-board-newtask.png` |
-| mcp | `/mcp-status` panel, `<server>__<tool>` rows, add/settings flows | 🟡 code | stdio + HTTP e2e; `mcp.json` not readable (R1), ACP `mcpServers` not forwarded (R3) |
+| mcp | `/mcp-status` panel, `<server>__<tool>` rows, add/settings flows | ✅ code | stdio + HTTP e2e; pi `~/.oino/mcp.json` via `/agent`, ACP `mcpServers` on `oino:acp:mcp-servers` ([harness-gaps]) |
 | command-enchantment | completion menu with package colour tags, one COMMANDS group | ✅ live | GA-2, GA-4 |
-| compactor | `/compact*`, `/session-recall`, SummaryCard | 🟡 code | commands + tests; LLM summary still lacks pi's previous-summary parameter (R1) |
+| compactor | `/compact*`, `/session-recall`, SummaryCard | ✅ code | commands + tests; LLM summary takes the previous summary like pi ([harness-gaps]) |
 | updater | `/readme`, `/changelog` (GitHub release notes fallback), update badge | ✅ live | GA-19, QA-4 |
 | **cron** (Oino-native) | **Automations page** (sidebar nav, job rows with each job's own last run, run history, add/edit/enable/disable/run/pause) | ✅ live | `66-automations.png`; `scripts/round3/cron-e2e.sh --real` → PASS (every-minute job 3 runs + sessions, `at:` job, pause/resume, missed-run catch-up, install/uninstall in a scratch HOME, one real `oino/deepseek/deepseek-flash` run) |
 | input-shortcuts | composer editor intents, `setShortcuts` → shell interceptor | ✅ live | GA-16, QA-1 repro 4 |
-| fusion | `/fusion` picker, sidekick AgentRow, wake widget | 🟡 code | sidekick e2e + live handoff; startup model not persisted to core settings (R4) |
-| watchdog | stuck detection, session caps, `/bg-detach`, `setStatus` chip | 🟡 code | `bash-detach` e2e; process stats Linux-only |
+| fusion | `/fusion` picker, sidekick AgentRow, wake widget | ✅ code | sidekick e2e + live handoff; startup pair persisted to core settings ([harness-gaps]) |
+| watchdog | stuck detection, session caps, `/bg-detach`, `setStatus` chip | ✅ code | `bash-detach` e2e; process stats on Linux/macOS/Windows ([harness-gaps]) |
 | app-bridge | `/app` control-centre side tab | ✅ live | GA-18 |
 
 Count: 12 ✅ live, 11 🟡 code, 0 ❌. "🟡 code" means gates green and the surface renders, but
 the round-3 QA budget did not re-drive that turn live; the gaps are itemised in
 [gui-qa.md](gui-qa.md) "Coverage gaps".
+
+### 1b.1b Harness gaps closed (work id `harness-gaps`, 2026-10-29)
+
+Ten request rows from the unipi matrices that needed a core/WIT or component change, closed in
+this round (`[harness-gaps]` commits):
+
+| # | Gap | What landed | Tests |
+|---|---|---|---|
+| 1 | mcp `mcp.json` + ACP `mcpServers` (unipi-integrations R1/R3) | `/agent/mcp.json` read-only view preopen (`state/<id>/agent-view`, links to `mcp.json` only, never `auth.json`/`secrets.json`); `unipi.mcp` merges the pi global file, then `/ext-global/mcp.json` (same-name entry wins), then the trusted project file. ACP publishes `session/new`/`session/load` `mcpServers` as sticky `oino:acp:mcp-servers` (`{servers}`, publisher `oino.acp`); the "ignored" notice only fires without `unipi.mcp` | `paths::tests::agent_view_exposes_config_files_only`, `config::tests::pi_file_is_merged_with_the_unipi_user_file` (29 mcp tests), `acp::session_new_publishes_mcp_servers` |
+| 2 | compactor previous summary (unipi-context R1) | `models.summarize-default(messages, instructions, previous-summary)` throughout (WIT → ops → core → SDK); `unipi.compactor` passes `preparation.previousSummary` / the last compaction summary instead of an instruction | `compaction_llm::summarize_default_updates_a_previous_summary` |
+| 3 | fusion startup model (unipi-agents R4) | `control.set-default-model(provider, id, thinking)` writes `defaultProvider`/`defaultModel`/`modelThinkingLevels` without switching the session; `fusion` calls it on "Confirm and use at startup" | `session_flow::set_default_model_persists_core_settings` |
+| 4 | task notification delivery (unipi-agents R1) | host `task_finished` sends `<background-task-notification>` with `deliverAs: followUp` | `probes::services_bus_and_tasks_between_instances` |
+| 5 | utility render styles (unipi-utility U1–U2) | `tools.override` is enforced for render specs of built-in tools (init + dynamic, diagnostic when dropped); `ExtensionInstance::render` + `AgentSession::render_spec` + `_oino/render` (`RenderRow`/`RenderRequest` with `density`/`width`); the TUI offers every tool row (`LocalHost::with_render`) | `session_flow::builtin_tool_render_overrides` |
+| 6 | watchdog process stats (unipi-agents) | `proc-stats`/`process-tree` on macOS (`ps`) and Windows (`Get-CimInstance`), `taskkill /T` for kills; pure parsers unit-tested on Linux | `process::tests::{ps_output_parsing,cim_output_parsing}` |
+| 7 | `host-info` UTC offset (unipi-core R3) | `info.local-offset-minutes`; SDK `host::local_hour`; late-night hint, info-screen splash greeting and notify test-notification time are local | core/notify guest tests, `unipi.core`/`info-screen` suites |
+| 8 | `oino:settings:<ns>` topic | every settings write (extension or frontend) publishes the sticky `oino:settings:<namespace>` topic (`{namespace, keys, scope, extensionId?}`) | `extension_settings::registry_serves_guests_and_frontends` |
+| 9 | `--session-id` (known issue 14) | `SessionSource::NewWithId`; an unknown id creates the session with that header id; `oino-cron` runs with `--session-id <run id>` | `print::session_id_creates_the_session_like_pi`, `oino-cron` 64 tests |
+| 10 | ask-user forms over ACP (acp #11) | `form` → `elicitation/create` with one object schema per question; `FormAnswers` rebuilt (`{answers:[{id, selected}], action?}`); clients without elicitation still get `cancelled` | `ui::tests::form_schema_and_answers` |
+
+Not closed: the GPUI desktop still renders tool rows natively (`apps/` is owned by another
+work id) and `custom`/clipboard dialogs stay cancelled over ACP.
 
 ### 1b.2 Stability / soak ([stability.md](stability.md))
 
@@ -240,19 +261,19 @@ components (`unipi_settings.rs`); both ran in the gates.
 | Resources: AGENTS.md / SYSTEM.md / APPEND_SYSTEM.md, skills, prompt templates, trust | ✅ | |
 | Themes | 🟡 | custom theme files discovered, only built-in themes rendered |
 | System prompt (sections, docs section, D13) | ✅ | docs root = bundled `oino.docs` |
-| Settings manager + extension settings registry | ✅ | schema, layers, scoped writes, secret fields, change events; `oino:settings:<ns>` bus topic ❌ |
+| Settings manager + extension settings registry | ✅ | schema, layers, scoped writes, secret fields, change events; every write also publishes the sticky `oino:settings:<ns>` topic |
 | Models: registry, `models.json`, `auth.json`, scopes, virtual models | ✅ | dynamic catalogs refreshed at startup |
 | Providers (pi-ai wires) | ✅ | 8 components: chat completions (+Copilot, Cloudflare), Responses (+ChatGPT sign-in), Anthropic, Codex, Azure, Google (Gemini, Vertex), Bedrock, Oino Router; 165 pi oracle fixtures |
 | Provider transports / auth edge cases | 🟡 | WebSockets ❌, Anthropic federation ❌, Bedrock SSO/IMDS ❌ (`extensions/providers/README.md` M1–M10) |
 | OAuth `/login` `/logout` | 🟡 | flows for Anthropic, Copilot, Codex, ChatGPT implemented and fixture-tested; never run against live accounts |
-| CLI flags and help | ✅ | |
+| CLI flags and help | ✅ | `--session-id` creates the session with that header id like pi (known issue 14 fixed) |
 | Print / JSON modes | ✅ | goldens `print`, `json-mode` |
 | RPC mode + extension UI sub-protocol | ✅ | golden `rpc`; RPC / TUI / print exit on `ctx.shutdown()` once idle (`shutdown_requested`); ACP leaves it to the client |
 | `_oino/*` frontend commands | ✅ | completions, ui_action, editor_event, shortcuts, settings, service_call, auth, topics, bus_get, agents, queue_edit, checkpoints / rewind, running_bash, extensions — in-process (runtime-agnostic) and RPC (`FrontendApi`, [frontend-api.md](frontend-api.md)) |
 | Interactive TUI | 🟡 | full chrome, dialogs, panels with buttons, settings hub, completions, editor intents, `/login`, regular mode ✅; inline images ❌; core settings still via `LocalHost` |
 | Package manager + `oino update` | ✅ | dir / archive / https / `git+https`; self-update from `release-manifest.json`; `oino auth`, `ext`, `sessions`, `mcp` ❌ |
-| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers, providers, virtual models, UI, settings r/w, `models.complete/stream/credential-for`, nested agents, turn arbiter, `control.*`, bash detach, `disabledExtensions`, dialog-aware deadlines ✅; provider hooks routing, `models.classify/generate-image`, `set-ui-policy` ❌ |
-| ACP (Zed etc.) | ✅ | protocol v1, permissions, elicitation, client fs/terminal, `--model`; refusals, `mcpServers` forwarding ❌; Zed not tried by hand |
+| Extension API (pi `ExtensionAPI`) via WIT | 🟡 | events, tools, commands, shortcuts, flags, renderers (incl. render-only overrides of built-in tools), providers, virtual models, UI, settings r/w, `models.complete/stream/summarize-default` (with previous summary), `control.*` (incl. `set-default-model`), nested agents, turn arbiter, bash detach, `disabledExtensions`, dialog-aware deadlines ✅; provider hooks routing, `models.classify/generate-image`, `set-ui-policy` ❌ |
+| ACP (Zed etc.) | ✅ | protocol v1, permissions, elicitation (forms included), client fs/terminal, `--model`, `mcpServers` forwarded on `oino:acp:mcp-servers`; refusals ❌; Zed not tried by hand |
 | `oino serve`, `--remote`, multi-client | ❌ | specified (modes §5); blocks mobile/desktop remote attach |
 | `/share`, `/bug`, pi telemetry, pi-mcp, codemode | ⛔ | out of scope (charter; MCP is `unipi.mcp`) |
 
@@ -271,8 +292,8 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 
 | Package | Status | Missing / next step |
 |---|---|---|
-| core (hints, header, work tray) | ✅ | late-night hints need a `host-info` UTC offset (R3) |
-| utility | 🟡 | settings, auto-rename (verified live), `/answer`, attachments, image tools, `/move`, doctor ✅; render styles for built-in tools need core `tools.override` / `render` for built-ins (U1–U2); trust.json move (U5) |
+| core (hints, header, work tray) | ✅ | late-night hint, splash greeting and notify times use the host's UTC offset (`host-info.local-offset-minutes`, R3) |
+| utility | 🟡 | settings, auto-rename (verified live), `/answer`, attachments, image tools, `/move`, doctor ✅; render styles for built-in tools ✅ (core `tools.override` render-only overrides + `_oino/render`; the TUI asks for every tool row, the GPUI app still renders natively); trust.json move (U5) |
 | workflow (permissions, plan mode) | ✅ | mode and rules in the settings files |
 | long-horizon | ✅ | goal continuation through the arbiter verified (e2e + smoke); graph runs not e2e-tested |
 | memory | ✅ | markdown memories, tools, recall, side-save ✅; MemPalace verified against **both** implementations (Python 3.11.0 and mempalace-rs) on palace copies; `mempalaceBin` selects a binary or folder with a `PATH` (Python) fallback — [§1b.5](#1b5-mempalace-rs-the-rust-port) |
@@ -280,21 +301,21 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | skill-registry | ✅ | |
 | info-screen | ✅ | dashboard panel + actions verified in the smoke |
 | subagents | ✅ | foreground/background/read verified (e2e + live); UI policy fixed at spawn (R2) |
-| background-tasks | 🟡 | tasks, tray, notifications, adopting a running bash call (`tasks.adopt-bash`) ✅; notification `deliverAs: followUp` (R1) |
+| background-tasks | ✅ | tasks, tray, notifications delivered with `deliverAs: followUp`, adopting a running bash call (`tasks.adopt-bash`) |
 | btw | ✅ | verified in the smoke |
 | web-api | ✅ | no TLS fingerprinting (`impersonated: false`) |
-| ask-user | ✅ | forms unavailable over ACP |
-| mcp | 🟡 | stdio + HTTP ✅; pi `mcp.json` not readable (R1); ACP `mcpServers` not forwarded (R3) |
+| ask-user | ✅ | forms map to ACP `elicitation/create` (one object schema → `FormAnswers`); `custom`/clipboard dialogs stay cancelled |
+| mcp | ✅ | stdio + HTTP ✅; pi `~/.oino/mcp.json` read through the `/agent` preopen, project `.oino/mcp.json`, ACP `mcpServers` forwarded on `oino:acp:mcp-servers` |
 | notify | ✅ | wizards and secrets in settings |
 | kanboard | ✅ | CLI/daemon, panel, desktop native board, monitor nudges through the arbiter (smoke); TUI renders the board panel generically; `/kanboard open` opens the side pane at any window width ([gui-qa-fix] QA-5) |
 | command-enchantment | ✅ | TUI and desktop merge `complete-input` |
-| compactor | ✅ | `llm` method lacks pi's previous-summary parameter (R1) |
+| compactor | ✅ | `llm` method passes the previous summary (`summarize-default(…, previousSummary)`, pi's update prompt) |
 | footer | ✅ | |
 | updater | ✅ | never installs (by design); `/changelog` falls back to GitHub release notes when no `CHANGELOG.md` exists ([gui-qa-fix] QA-4) |
 | cron (Oino-native) | ✅ | scheduler crate + daemon + user service install, `/cron` + `cron_*` tools + skill + settings namespace, desktop Automations page (`docs/dev/v1/design/shots/desktop/66-automations.png`); verified by `scripts/round3/cron-e2e.sh` with the faux provider (every-minute job: 3 runs, sessions written; `at:` job; pause/resume; missed-run catch-up after the daemon stopped; install/uninstall in a scratch HOME) plus one real `oino/deepseek/deepseek-flash` run ([docs/cron.md](../../../docs/cron.md)) |
 | input-shortcuts | ✅ | TUI and desktop send editor intents; no composer-history push (Q2) |
-| fusion | ✅ | sidekick handoff verified (e2e + live); startup model not persisted to core settings (R4) |
-| watchdog | 🟡 | stuck detection + session caps + kill / background via `bash-detach` ✅; process stats Linux-only |
+| fusion | ✅ | sidekick handoff verified (e2e + live); the startup pair is persisted to core settings (`control.set-default-model`, R4) |
+| watchdog | ✅ | stuck detection + session caps + kill / background via `bash-detach` ✅; process stats + tree on Linux, macOS (`ps`) and Windows (`Get-CimInstance`/`taskkill`) |
 | app-bridge | ✅ | control-centre panel; `_oino/service_call` exists, no native GPUI consumer yet |
 
 ## 5. Parity matrix — ZCode design (design.md §8, desktop + mobile)
@@ -368,10 +389,10 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
     (2.80 MB/min, [stability.md](stability.md)). GA-12 (unipi splash UTC-hour greeting) stays
     open until `host-info` grows the R3 local-offset field. Mouse-only surfaces and the
     real-provider path are still keyboard/config-verified only (§1b.7).
-14. **`--session-id`** only opens an existing session; pi creates one that does not exist
-    (modes.md deviation #13, core `SessionSource` has no explicit id). Cron works around it by
-    passing `--session <agent>/sessions/--<cwd>--/<ts>_<run id>.jsonl` for every run, so the run
-    id is the file-name id, not the header id.
+14. **`--session-id`** (fixed 2026-10-29): a missing id now creates the session with that
+    header id, like pi (`SessionSource::NewWithId`); `--fork` + `--session-id` stays unsupported.
+    Cron passes `--session-id <run id>`, so the run id is both the header id and part of the file
+    name.
 15. **MemPalace**: the Rust port is 99.7% parity but **not switched** (owner action, §1b.5);
     maintenance commands, `mempalace-light-mcp`, the coordination tools and the hook saves stay
     on Python. The Rust daemon sits at 260–360 MB under load (above the 250 MB idle target, flat),
@@ -454,23 +475,23 @@ Finder over a GUI session (this run succeeded; the `hdiutil` fallback stays for 
    checkpoints, queue-edit GUI wiring, StatusPanel + `_oino/topics`, pasted-image attachments,
    model-menu submenus, palette history chips, 4-pane p99 under 10 ms, mobile tablet layout,
    exit animations / run-label shimmer, i18n + Windows/macOS rendering checks.
-1. **core-runtime**: `agents.agent.set-ui-policy` + depth on `call-context`; `tools.override`
-   render-only registration and guest `render` for built-in tools (utility render styles);
-   `summarize-default` with a previous summary. (Bash detach, file checkpoints, single-item
-   queue commands, `disabledExtensions`, topic / agent feeds landed in core-gui-gaps.)
+1. **core-runtime**: `agents.agent.set-ui-policy` + depth on `call-context`; `control.move-project-state`
+   (trust.json + sessions dir) and tmp GC. (Bash detach, file checkpoints, single-item queue
+   commands, `disabledExtensions`, topic / agent feeds, built-in render overrides,
+   `summarize-default` with a previous summary and `control.set-default-model` landed.)
 2. **modes**: `oino serve` + `--remote` (TCP+TLS, pairing) with `_oino/list_sessions`,
    `_oino/get_keybindings`, `_oino/render`; TUI core settings through `_oino/set_setting`;
    ACP exit on `shutdown_requested`.
 3. **release**: raise `RLIMIT_NOFILE` at `oino` startup (macOS); rebuild alpha.2 with
    `cargo xtask remote-build {local,coffee,mac}`; iOS simulator build; signing / notarisation;
    tag so CI assembles the GitHub release.
-4. **wit-v1 / host**: wasmtime Pulley for iOS; `mcp.json` in the agent preopen; TLS
-   fingerprinting; process stats on macOS / Windows; `host-info` UTC offset; task notification
-   `deliverAs: followUp`.
+4. **wit-v1 / host**: wasmtime Pulley for iOS; TLS fingerprinting. (`mcp.json` agent preopen,
+   process stats on macOS / Windows, the `host-info` UTC offset and the task notification
+   `deliverAs: followUp` landed 2026-10-29.)
 5. **gpui**: desktop perf (cheaper per-pane layout), remaining review P2 items, StatusPanel /
    Queue keys; mobile tablet layout and perf measurement; move `EmbeddedHost` into a shared crate.
-6. **acp**: publish `mcpServers` on `oino:acp:mcp-servers`; refusal stop reason; tool kinds;
-   try Zed by hand.
+6. **acp**: refusal stop reason; tool kinds; `custom`/clipboard dialogs over ACP; try Zed by
+   hand. (`mcpServers` on `oino:acp:mcp-servers` and `form` elicitation landed 2026-10-29.)
 7. **integration**: `cargo xtask layering`, `cargo deny`; golden e2e suite under `tests/e2e/`
    with `PARITY.md` (quality §7); criterion benches (quality §5); `oino-protocol` contract crate
    (architecture appendix N1); live OAuth checks.

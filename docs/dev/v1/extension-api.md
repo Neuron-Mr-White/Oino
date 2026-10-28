@@ -280,6 +280,10 @@ interface control {
     model: func() -> option<json>;                            // Model
     routed-model: func() -> option<json>;
     set-model: func(provider: string, id: string) -> result<bool, host-error>;  // false when no credentials
+    /// Persists the fresh-session model in core settings (`defaultProvider`, `defaultModel`,
+    /// `modelThinkingLevels`); the running session is unchanged (pi `settings.json`
+    /// `defaultModel`, unipi-agents R4).
+    set-default-model: func(provider: string, id: string, thinking: option<string>) -> result<bool, host-error>;
     thinking-level: func() -> string;
     set-thinking-level: func(level: string) -> result<string, host-error>;     // returns clamped
     models-list: func() -> json;                              // Vec<Model> available (with credentials)
@@ -337,7 +341,8 @@ interface models {
     /// Streaming variant: AssistantMessageEvent JSON values (without `partial`).
     %stream: async func(request: json) -> result<stream<string>, host-error>;
     /// Core's compaction summarizer (C9/C26). entries = Vec<AgentMessage>; returns {summary, usage?}.
-    summarize-default: async func(messages: json, custom-instructions: option<string>) -> result<json, host-error>;
+    /// `previous-summary` selects pi's update prompt (iterative summary, unipi-context R1).
+    summarize-default: async func(messages: json, custom-instructions: option<string>, previous-summary: option<string>) -> result<json, host-error>;
     /// Scoped credentials for outbound HTTP (permission credentials:[provider|*]).
     record credential { headers: list<tuple<string, string>>, base-url: option<string>, provider: string }
     credential-for: async func(provider-or-base-url: string) -> result<option<credential>, host-error>;
@@ -924,7 +929,7 @@ provider kind requires `provides.apis` non-empty and the component to export `pr
 |---|---|---|
 | `sessionControl` | bool | control setters/actions: set-model, set-thinking-level, abort, compact, shutdown, set-active-tools, session writes other than append-entry/send-message |
 | `sessions.readAll` | bool | `session.sessions-list`, `session-read` |
-| `tools.override` | list of built-in tool names | re-registering render metadata of built-ins |
+| `tools.override` | list of built-in tool names (`"*"` = all) | render-only overrides of built-in tools (`register-renderer {target: tool, key: read}`); the spec is dropped with a diagnostic otherwise (U1) |
 | `models.complete` | bool | `models.complete`, `stream`, `summarize-default`, `classify`, `generate-image` |
 | `credentials` | list of provider ids or `"*"` | `models.credential-for`, `http` `auth: provider(..)` |
 | `agents.spawn` | bool; `agents.maxDepth` u8 | `agents` interface |
@@ -1171,6 +1176,11 @@ Sources: `deviations/wit-v1.md` (incl. core-settings #19), `deviations/providers
 | 3 | architecture §1, extension-api §2 | WASI deps live in `wit/oino-extension/deps/` and are **0.2.12** (spec: `wit/deps/`, 0.2.3). | `wasm-tools`, `wit-bindgen` and `wasmtime::bindgen!` resolve deps relative to the package dir; 0.2.12 matches wasmtime-wasi 48's own WIT so the host maps `wasi:*` to `wasmtime_wasi::p2::bindings`. | None for guests (Rust std's wasip2 imports are semver-compatible). |
 | 4 | extension-api §5.7 | `ext-workspace` and `ext-session` preopens are the *roots* `state/<id>/workspace/` and `state/<id>/session/`; guests use `/ext-workspace/<wsid>/…` and `/ext-session/<sid>/…` (SDK `fs::ext_workspace()`, `fs::ext_session(sid)`). | One instance serves every session of the process (principle 5); WASI preopens are fixed per store. `kv` scopes resolve the per-session/workspace directory from the call context. | unipi ports use the SDK helpers. |
 | 5 | extension-api §5.7 | `fs.agentDir: read` preopens `agent/{sessions,skills,prompts,themes,extensions,bundled}` (those that exist), not the whole agent dir. | WASI cannot mask single files; this guarantees `auth.json`/`secrets.json` stay unreachable. Settings/models/trust are available through `control`. | unipi that read `trust.json`/`models.json` directly must use host APIs. |
+| 20 | extension-api §5.7 | Since 2026-10-29 `fs.agentDir: read` also grants the read-only preopen `/agent` = `state/<id>/agent-view`, a directory of links to the allow-listed agent files (`AGENT_FILES`, currently `mcp.json`). A replaced file is re-linked when the instance is created. | Guests need pi's `~/.oino/mcp.json` (unipi-integrations R1) while `auth.json`/`secrets.json` must stay unreachable; WASI preopens are directory-granular. | Writes still go to `/ext-global/mcp.json` (`/agent` is read-only). |
+| 21 | extension-api §3 `host-info` | `info.local-offset-minutes` (UTC offset now, east positive) + SDK `host::local_hour(now_ms)`. | WASI clocks are UTC; unipi core/notify/info-screen need local hours (unipi-core R3). | Components built against the older record keep loading (extra field is additive). |
+| 22 | extension-api §3 `control` | `set-default-model(provider, id, thinking?)` → bool persists `defaultProvider`/`defaultModel`/`modelThinkingLevels` without switching the session. | pi keeps the fresh-session model in `settings.json`; fusion's startup default must reach core settings (unipi-agents R4). | Guests may now write this one core-settings slice; everything else stays read-only. |
+| 23 | extension-api §3 `models`/`registry` | `summarize-default` takes `previous-summary`; a `register-renderer {target: tool}` spec for a built-in tool is a render-only override gated by `tools.override`, and `guest.render` is dispatched for built-in rows through `_oino/render`. | ui-protocol §6.4 built-in overrides (U1–U2) and pi's iterative summary (unipi-context R1). | Components built before the `summarize-default` change no longer instantiate (WIT signature); all 39 were rebuilt. |
+
 | 6 | extension-api §5.6 | `impersonate` is accepted (permission-checked) but served by reqwest without fingerprinting; responses report `impersonated: false`. No `wreq`/`fingerprint` feature yet. | `wreq` pulls BoringSSL; deferred until web-api needs it. | unipi web-api smart-fetch falls back to plain TLS. |
 | 7 | extension-api §5.1 | No pooling allocator; fuel unused; deadlines = per-call tokio timeouts (`limits.hookTimeoutMs`, `toolCallHookTimeoutMs` for `tool_call`) plus epoch-based async yielding every 10 ms. A timed-out handler's guest task keeps running until it yields; the caller gets an error. | wasmtime concurrent calls cannot be interrupted individually without trapping the instance. | Runaway guest loops still yield (other calls progress); a stuck extension is visible as timeouts. |
 | 8 | extension-api §5.2 | Bus, services, secrets, background tasks and delivery of host-produced `oino_*` events (timers, tasks, bus) are served by `oino_wasm_host::LocalServices` (wrapping the `HostServices` given to `load`), not by core. `WasmRuntimeOptions::local_services = false` hands them to `HostServices`. | core-runtime deferred these (its deviations "Deferred"). | When core implements them, switch the option off. |
@@ -1217,4 +1227,4 @@ providers-more differences from pi (Codex SSE only and uncompressed, Bedrock cre
 | 4 | extension-api §4.4 | `AuthHeaderMode` accepts any header name (e.g. `"x-api-key"`) as informational (`None`: the component places the key). | Bundled anthropic / openai-compat failed `init` with `unknown authHeader "x-api-key"` (gpui-desktop R2). | Both components load. |
 | 6 | extension-api §3 `control` | Core serves `get-settings`, `models-list`, `scoped-models`, `routed-model`, `session-stats`, `is-project-trusted` (integration) and `run-state`, `shutdown`, `system-prompt-options`, `new-session`, `fork`, `switch-session`, `reload` (runtime appendix #21). | Unipi components call them. | `running-bash` and `bash-detach` remain unsupported. |
 | 7 | extension-api §3 `ui` | The core bridge serves panels (`panel-open/update/close` → retained `openPanel`/`updatePanel`/`closePanel`, generated id `<ext>/panel-<n>` when the spec has no `panelId`) and device fire-and-forget requests (`os-notify`, `open-url`, `clipboard-write-text`). | `/info`, btw, kanboard board, work tray, MCP/updater panels failed with `ui panels is not supported`. | `editor-*`, `clipboard-read-image`, `edit-externally` were added by frontend-cmds (#10). |
-| 8 | extension-api §3 `models` | Core serves `models.complete` (model `provider/id` or the session model, credentials and virtual routing as for summaries, no retry events, no cache writes) and `models.summarize-default` (core's compaction summariser on the session model). | jev decisions, compactor `llm`, notify recap, web summaries, long-horizon judges. | `models.stream` and `credential-for` were added by frontend-cmds (modes appendix, frontend-cmds #9); `classify` and `generate-image` remain unsupported; usage is not recorded as `ext:<id>` entries. |
+| 8 | extension-api §3 `models` | Core serves `models.complete` (model `provider/id` or the session model, credentials and virtual routing as for summaries, no retry events, no cache writes) and `models.summarize-default` (core's compaction summariser on the session model, with pi's `previousSummary` update path). | jev decisions, compactor `llm`, notify recap, web summaries, long-horizon judges. | `models.stream` and `credential-for` were added by frontend-cmds (modes appendix, frontend-cmds #9); `classify` and `generate-image` remain unsupported; usage is not recorded as `ext:<id>` entries. |
