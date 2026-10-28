@@ -697,6 +697,21 @@ async fn answer_dialog(request: &UiRequest, shared: &Shared) -> UiAnswer {
                 Presentation::elicitation_answer(confirm, None)
             }
         },
+        Presentation::Form {
+            message,
+            schema,
+            questions,
+        } => match shared
+            .link
+            .elicit_form(&message, schema, running.as_deref())
+            .await
+        {
+            Ok(content) => Presentation::form_answer(&questions, content),
+            Err(error) => {
+                tracing::warn!("{error}");
+                Presentation::form_answer(&questions, None)
+            }
+        },
         Presentation::Immediate(answer) => answer,
     }
 }

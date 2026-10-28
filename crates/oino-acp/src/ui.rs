@@ -36,8 +36,93 @@ pub enum Presentation {
         /// `confirm` (answer `confirmed`).
         confirm: bool,
     },
+    /// `elicitation/create` carrying the `form` questions as one object schema; the answer is
+    /// rebuilt into `FormAnswers` ({answers: [{id, selected[, other]}], action?}).
+    Form {
+        /// Prompt text.
+        message: String,
+        /// `requestedSchema`.
+        schema: JsonValue,
+        /// Questions the schema describes.
+        questions: Vec<FormQuestion>,
+    },
     /// Not representable: resolve with this answer at once.
     Immediate(UiAnswer),
+}
+
+/// One `form` question as the ACP presentation needs it (`FormQuestion`, ui-protocol §4.3).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormQuestion {
+    /// Question id (the schema property name).
+    pub id: String,
+    /// `(label, value, action?)` of every option.
+    pub options: Vec<(String, String, Option<String>)>,
+    /// Multiple choices allowed.
+    pub multi_select: bool,
+    /// Free-text "Other".
+    pub other: bool,
+}
+
+impl FormQuestion {
+    fn parse(value: &JsonValue) -> Option<Self> {
+        let object = value.as_object()?;
+        let id = object.get("id").and_then(JsonValue::as_str)?.to_owned();
+        let options = object
+            .get("options")
+            .and_then(JsonValue::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|option| {
+                let label = option.get("label").and_then(JsonValue::as_str)?.to_owned();
+                let value = option
+                    .get("value")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or(&label)
+                    .to_owned();
+                let action = option
+                    .get("action")
+                    .and_then(JsonValue::as_str)
+                    .map(ToOwned::to_owned);
+                Some((label, value, action))
+            })
+            .collect();
+        Some(Self {
+            id,
+            options,
+            multi_select: object
+                .get("multiSelect")
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false),
+            other: object
+                .get("other")
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false),
+        })
+    }
+
+    /// JSON Schema property of this question.
+    fn property(&self) -> JsonValue {
+        let title = self
+            .options
+            .first()
+            .map_or("Answer", |(label, ..)| label.as_str());
+        let values: Vec<JsonValue> = self
+            .options
+            .iter()
+            .map(|(_, value, _)| json!(value))
+            .collect();
+        let mut property = if self.multi_select {
+            json!({"type": "array", "title": title, "items": {"type": "string", "enum": values}})
+        } else {
+            json!({"type": "string", "title": title, "enum": values})
+        };
+        if self.other {
+            // A free-text answer next to the choices (the "Other" row).
+            property["description"] =
+                json!("Pick one of the listed values or type your own answer");
+        }
+        property
+    }
 }
 
 /// Option id of the "allow" choice of a `confirm` turned into a permission request.
@@ -79,6 +164,10 @@ impl Presentation {
     /// Chooses the presentation of dialog `request`. `tool_running` = a tool call is executing;
     /// `elicitation` = the client supports form elicitation.
     #[must_use]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one arm per ui-protocol §4 dialog method"
+    )]
     pub fn of(request: &UiRequest, tool_running: bool, elicitation: bool) -> Self {
         let params = &request.params;
         let title = text(params, "title").unwrap_or_default().to_owned();
@@ -155,6 +244,34 @@ impl Presentation {
                 }
                 elicit(single_value_schema(property, &title), false)
             }
+            "form" => {
+                let questions: Vec<FormQuestion> = params
+                    .get("questions")
+                    .and_then(JsonValue::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(FormQuestion::parse)
+                    .collect();
+                if questions.is_empty() || !elicitation {
+                    return Self::Immediate(UiAnswer::Cancelled);
+                }
+                let mut properties = JsonObject::new();
+                for question in &questions {
+                    properties.insert(question.id.clone(), question.property());
+                }
+                let mut schema = json!({
+                    "type": "object",
+                    "title": title,
+                    "properties": {},
+                    "required": [],
+                });
+                schema["properties"] = JsonValue::Object(properties);
+                Self::Form {
+                    message: title,
+                    schema,
+                    questions,
+                }
+            }
             "multiSelect" => {
                 let mut property = json!({
                     "type": "array",
@@ -193,6 +310,52 @@ impl Presentation {
             (false, Some(value)) => UiAnswer::Value(value),
             (false, None) => UiAnswer::Cancelled,
         }
+    }
+}
+
+impl Presentation {
+    /// The dialog answer of a form elicitation: the chosen values rebuilt as `FormAnswers`.
+    #[must_use]
+    pub fn form_answer(questions: &[FormQuestion], content: Option<JsonValue>) -> UiAnswer {
+        let Some(content) = content else {
+            return UiAnswer::Cancelled;
+        };
+        let content = content.get("value").cloned().unwrap_or(content);
+        let Some(object) = content.as_object() else {
+            return UiAnswer::Cancelled;
+        };
+        let mut answers = Vec::new();
+        let mut action: Option<String> = None;
+        for question in questions {
+            let selected: Vec<String> = match object.get(&question.id) {
+                Some(JsonValue::String(value)) => vec![value.clone()],
+                Some(JsonValue::Array(values)) => values
+                    .iter()
+                    .filter_map(JsonValue::as_str)
+                    .map(ToOwned::to_owned)
+                    .collect(),
+                _ => Vec::new(),
+            };
+            if selected.is_empty() {
+                continue;
+            }
+            action = action.or_else(|| {
+                question
+                    .options
+                    .iter()
+                    .find(|(_, value, _)| selected.contains(value))
+                    .and_then(|(_, _, action)| action.clone())
+            });
+            answers.push(json!({"id": question.id, "selected": selected}));
+        }
+        if answers.is_empty() {
+            return UiAnswer::Cancelled;
+        }
+        let mut answer = json!({"answers": answers});
+        if let Some(action) = action {
+            answer["action"] = json!(action);
+        }
+        UiAnswer::Value(answer)
     }
 }
 
@@ -292,6 +455,66 @@ mod tests {
         assert_eq!(
             Presentation::elicitation_answer(true, Some(json!({"value": true}))),
             UiAnswer::Confirmed(true)
+        );
+    }
+
+    /// `form` becomes one elicitation object schema; the answer is rebuilt as `FormAnswers`.
+    #[test]
+    fn form_schema_and_answers() {
+        let form = request(
+            "form",
+            json!({
+                "title": "Kanboard setup",
+                "questions": [
+                    {"id": "scope", "question": "Which board?", "options": [
+                        {"label": "Team", "value": "team"},
+                        {"label": "Personal", "value": "personal", "action": "new_session"}
+                    ]},
+                    {"id": "lanes", "question": "Lanes", "multiSelect": true, "options": [
+                        {"label": "Todo", "value": "todo"},
+                        {"label": "Done", "value": "done"}
+                    ]},
+                    {"id": "note", "question": "Note", "other": true}
+                ]
+            }),
+        );
+        let Presentation::Form {
+            schema, questions, ..
+        } = Presentation::of(&form, false, true)
+        else {
+            panic!("expected a form");
+        };
+        assert_eq!(
+            schema["properties"]["scope"]["enum"],
+            json!(["team", "personal"])
+        );
+        assert_eq!(schema["properties"]["lanes"]["type"], json!("array"));
+        assert_eq!(schema["properties"]["note"]["type"], json!("string"));
+        assert_eq!(questions.len(), 3);
+
+        let answer = Presentation::form_answer(
+            &questions,
+            Some(json!({"value": {"scope": "personal", "lanes": ["todo", "done"]}})),
+        );
+        let UiAnswer::Value(answer) = answer else {
+            panic!("expected answers");
+        };
+        assert_eq!(
+            answer["answers"],
+            json!([
+                {"id": "scope", "selected": ["personal"]},
+                {"id": "lanes", "selected": ["todo", "done"]}
+            ])
+        );
+        assert_eq!(answer["action"], json!("new_session"));
+        assert_eq!(
+            Presentation::form_answer(&questions, None),
+            UiAnswer::Cancelled
+        );
+        // Clients without form elicitation cannot show a form (documented deviation).
+        assert_eq!(
+            Presentation::of(&form, false, false),
+            Presentation::Immediate(UiAnswer::Cancelled)
         );
     }
 
