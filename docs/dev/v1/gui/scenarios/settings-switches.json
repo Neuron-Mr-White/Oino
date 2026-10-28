@@ -1,0 +1,85 @@
+{
+  "name": "settings-switches",
+  "scene": "welcome",
+  "shots": "docs/dev/v1/design/shots/gui",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "nav-settings",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "click": {
+        "id": "nav-settings"
+      }
+    },
+    {
+      "assert": {
+        "route": "settings"
+      }
+    },
+    {
+      "wait_for": {
+        "label": "Unicrab",
+        "role": "row",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "label": "Unicrab",
+        "role": "row"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "set-mascot",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "set-mascot",
+          "role": "switch"
+        }
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-unicrab"
+      }
+    },
+    {
+      "toggle": {
+        "id": "set-mascot"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-mascot-on"
+      }
+    },
+    {
+      "toggle": {
+        "id": "set-mascot"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-mascot-off"
+      }
+    },
+    {
+      "toggle": {
+        "id": "set-wayland"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-wayland"
+      }
+    }
+  ]
+}

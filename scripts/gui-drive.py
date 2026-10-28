@@ -325,13 +325,42 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
         result = client.call("state")
         print("      " + json.dumps(result))
         return ""
+    if method == "toggle":
+        # Click a switch/checkbox and prove its `checked` state flipped (the initial state is
+        # whatever the app persisted, so the scenario cannot assume it).
+        timeout_ms = float(params.get("timeout_ms", 10000))
+        before = find_node(client.call("tree", params)["elements"], params)
+        if before is None:
+            raise DriverError(f"no element matches {params}")
+        start = before.get("checked")
+        client.call("click", params)
+        deadline = time.time() + timeout_ms / 1000
+        while time.time() < deadline:
+            now = find_node(client.call("tree", params)["elements"], params)
+            if now is not None and now.get("checked") != start:
+                return f"{now['id']}: checked {start} -> {now.get('checked')}"
+            time.sleep(0.1)
+        raise DriverError(f"{params.get('id') or params}: checked stayed {start}")
     if method == "assert":
         return check_assertions(client, params, args)
+    if method == "wait_state":
+        timeout_ms = float(params.get("timeout_ms", 15000))
+        deadline = time.time() + timeout_ms / 1000
+        last = ""
+        while True:
+            try:
+                return check_assertions(client, params, args)
+            except DriverError as error:
+                last = str(error)
+                if time.time() >= deadline:
+                    raise DriverError(f"{last} (after {int(timeout_ms)} ms)") from None
+                time.sleep(0.1)
     raise DriverError(f"unknown step {method!r}")
 
 
 def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> str:
     """`{route, element, absent, text, dialogs, busy}` assertions against state + tree."""
+    params = {k: v for k, v in params.items() if k != "timeout_ms"}
     state = client.call("state")
     tree = client.call("tree")
     checked = []
@@ -385,6 +414,8 @@ def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> 
 
 
 def find_node(nodes: list[dict], want: dict) -> dict | None:
+    """First node matching every given field (`id`, `role`, `label` substring, `checked`,
+    `selected`, `enabled`, `focused`, `visible`)."""
     for node in nodes:
         if "id" in want and node.get("id") != want["id"]:
             continue
@@ -394,6 +425,9 @@ def find_node(nodes: list[dict], want: dict) -> dict | None:
             label = (node.get("label") or "").lower()
             if want["label"].lower() not in label:
                 continue
+        if any(key in want and node.get(key) != want[key]
+               for key in ("checked", "selected", "enabled", "focused", "visible")):
+            continue
         return node
     return None
 

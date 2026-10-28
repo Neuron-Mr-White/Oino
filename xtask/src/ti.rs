@@ -18,6 +18,7 @@
 //! Credentials: `start` copies this PC's `~/.oino/auth.json` (mode 600) to the scratch agent
 //! dir on ti; the file is never printed or written into the repository.
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -240,7 +241,8 @@ fn start(faux: bool, demo: bool, app_args: &[String], extra_env: &[String]) -> R
     let mut env_line = String::new();
     for pair in extra_env {
         let (key, value) = pair.split_once('=').context("--env needs KEY=VALUE")?;
-        env_line.push_str(&format!("{key}={} ", shell_quote(value)));
+        let quoted = shell_quote(value);
+        write!(env_line, "{key}={quoted} ").context("building the --env line")?;
     }
     let script = format!(
         "set -u\n\

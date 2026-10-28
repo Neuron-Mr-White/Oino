@@ -152,10 +152,13 @@ Scenario format (JSON):
 
 Steps: any RPC method (`click`, `double_click`, `right_click`, `hover`, `type_text`, `key`,
 `scroll`, `focus`, `wait_for`, `tree`, `state`, `screenshot`, `settle`, `ping`) plus `sleep`
-(`{"ms": 250}`) and `assert`. `assert` accepts `route`, `busy`, `dialogs` (count or method),
-`session_id`, `text`, `element`, `absent`. A failed step takes a `FAIL-<n>.png` screenshot and
-prints `state`; the run continues unless `--stop-on-failure` was passed. `--no-restart` reuses a
-running app, `--scene` overrides the scenario's demo scene.
+(`{"ms": 250}`), `assert` and `wait_state` (retries `assert` until it holds or `timeout_ms`
+expires), and `toggle` (clicks a switch and proves its `checked` state flipped, whatever the
+persisted value was). `assert`/`wait_state` accept `route`, `busy`, `dialogs` (count or method),
+`session_id`, `text`, `element` (`{"id", "role", "label", "checked", …}`), `absent`. A failed
+step takes a `FAIL-<n>.png` screenshot and prints `state`; the run continues unless
+`--stop-on-failure` was passed. `--no-restart` reuses a running app, `--scene` overrides the
+scenario's demo scene.
 
 `scene` is the `OINO_DESKTOP_DEMO_SCENE` of the `--demo` backend (`welcome`, `run`, `approval`,
 `question`, `plan`, `board`, `info`, `stream`), so scenarios are deterministic and free
@@ -170,7 +173,8 @@ running app, `--scene` overrides the scenario's demo scene.
 | `approval-deny.json` | the docked approval card: reject, the tool is blocked, the turn still finishes |
 | `ask-user-form.json` | the `ask_user` form: pick an option per step, Next, Submit |
 | `side-pane-tabs.json` | `hdr-side`, the `+` launcher menu, opening Files and Tree tabs, switching tabs |
-| `board-task.json` | nav → Board, the FAB dialog (create), card select, the Move menu (move) |
+| `board-task.json` | nav → Board, the FAB dialog (create), card select, the task detail's move button |
+| `settings-switches.json` | settings nav → Unicrab, `toggle` of the mascot and native-Wayland switches |
 
 ## 5. `ti` specifics
 
@@ -200,19 +204,51 @@ scene). The client restarts the app itself in `run` mode:
 cd apps && TMPDIR=$PWD/../target/tmp cargo test -j 4 -p oino-ui --lib automation
 ```
 
-## 7. Proof on `ti`
+## 7. Proof on `ti` (`a0b75e6`…`bd39807`, 2026-10-29)
 
-See §8 for the runs. Each pointer-only surface from §1b.7 was exercised by the driver only
-(no keyboard shortcut, no config edit):
+Every run below is `scripts/gui-drive.py --ti run <scenario>` on `ti` (`Xvfb :93`, lavapipe,
+release build of `bbebb63`+). Each scenario restarts the app itself, so nothing else was
+running and no state leaked between them. All seven PASSED in one sequential run:
+
+| Scenario | Steps | Result |
+|---|---|---|
+| `new-session-prompt` | 9 | **PASS** — click composer, type 38 chars, Enter, plan streams |
+| `approval-allow` | 12 | **PASS** — allow, tool runs, fold expands to `Compiling json-lite` / `14 passed` |
+| `approval-deny` | 9 | **PASS** — reject, fold shows `Blocked by unipi.workflow: denied by user` |
+| `ask-user-form` | 12 | **PASS** — step 1 option, Next, step 2 multi-select, Submit |
+| `side-pane-tabs` | 15 | **PASS** — `hdr-side`, `+` launcher, Files + Tree tabs, tab switch |
+| `board-task` | 19 | **PASS** — nav → Board, FAB dialog create, card select, `→ In Progress` move |
+| `settings-switches` | 14 | **PASS** — `set-mascot` false→true→false, `set-wayland` false→true |
+
+Screenshots: `docs/dev/v1/design/shots/gui/<scenario>/*.png` (fetched from `ti`).
+
+Pointer-only surfaces from §1b.7, each driven with the mouse only (no shortcut, no config edit):
 
 | Surface | Driver evidence |
 |---|---|
-| board FAB (`board-fab`) | `board-task.json` step 6–12: click opens the dialog, typed title, `Add task` closes it |
-| `+` launcher (`side-add`) | `side-pane-tabs.json`: click opens the menu, "Files" / "Tree" rows open tabs |
-| settings switches (`set-mascot`, …) | switch clicks flip `checked` in `tree` |
-| browser take-over (`br-takeover`) | `Btn` in the browser strip; click flips the strip to "Give back" |
-| mascot toggle (`set-mascot`) | same switch path; the mascot window state follows `state.open` |
+| board FAB (`board-fab`) | `board-task` steps 6–11: click opens the New task dialog, typed title, `Add task` closes it |
+| `+` launcher (`side-add`) | `side-pane-tabs` steps 4–12: click opens the menu, `Files` / `Tree` rows open tabs |
+| settings switches | `settings-switches`: `set-mascot` flips `checked` in `tree` (false→true→false), `set-wayland` too |
+| mascot toggle | same switch (`set-mascot`) — it is what opens/closes the mascot window |
+| browser take-over (`br-takeover`) | **partially**: verified with `--faux` that the browser tab, its tab row and the toolbar (`br-new`, `br-back/fwd/reload/ext`) are pointer-drivable and report `enabled`; the take-over strip itself only renders while an agent drives a tab (`Strip::AgentDriving`/`UserControl`), which the demo/faux backends never do. The strip's button is a `Btn`, the same element and dispatch path proven by `ap-allow`, `board-move` and `q-next`. |
 
-## 8. Verified runs
+Two findings from the proof round, both fixed in the layer:
 
-_(filled in by the run that shipped this document)_
+1. A cached child view (`Entity::cached`) is only re-rendered when it is notified, and GPUI
+   reuses its prepaint while bounds are unchanged — so the registry publishes existence from
+   `request_layout` (always runs) plus geometry from `prepaint`, and the shell leaves the
+   visible session uncached while automation is on (`views/shell.rs`, `automation::enabled()`).
+2. A frame that changes the UI is often the last one before the app goes idle, so the snapshot
+   is published from a zero-size paint end-marker, not from the next render.
+
+## 8. Not covered
+
+* **Mouse drag** (splitter resize, browser page interaction, drag-and-drop) — `click` presses
+  and releases; a drag needs `MouseMove` with `pressed_button` between down and up.
+* **Touch** (`TouchEvent`) — the driver speaks mouse + keyboard; the mobile shell's gestures are
+  not injectable yet.
+* **Multi-window**: the registry follows the main window only (the mascot window is ignored).
+* **Embedded web content** (WebKitGTK) — the tree stops at the webview; page content is not
+  readable or clickable through the RPC.
+* **Real providers** — scenarios run on the `--demo` fixture or `--faux`; the driver itself is
+  backend-agnostic, so a real session only needs `settings.json` defaults.

@@ -33,8 +33,10 @@
       }
     },
     {
-      "assert": {
-        "dialogs": 0
+      "wait_state": {
+        "dialogs": 0,
+        "busy": false,
+        "timeout_ms": 30000
       }
     },
     {

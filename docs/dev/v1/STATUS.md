@@ -192,11 +192,19 @@ staging (mac) removed; `~/oino-release` is kept for reuse (it grew ~4 GB from th
 
 ### 1b.7 Open harness gaps (round 3)
 
-1. **Pointer injection**: XTEST does not apply modifier state on the QA Xvfb and the app
+1. ~~**Pointer injection**: XTEST does not apply modifier state on the QA Xvfb and the app
    selects no core pointer events, so mouse-only surfaces (board FAB, `+` launcher, settings
-   switches, browser take-over, mascot toggle) are keyboard- or config-verified only.
-2. **Screen reading** is a vision model (OCR) on Xvfb screenshots; colours are pixel probes.
-   No accessibility-tree read-back for the GPUI shell.
+   switches, browser take-over, mascot toggle) are keyboard- or config-verified only.~~
+   **Fixed 2026-10-29** ([gui-driver.md](gui-driver.md)): the app serves a JSON-lines RPC on a
+   Unix socket (`OINO_DESKTOP_AUTOMATION`) and injects pointer/keyboard events through
+   `Window::dispatch_event`. Board FAB, `+` launcher, the task detail's move button and the
+   settings switches are click-driven in the shipped scenarios on `ti`; the browser take-over
+   strip is the same `Btn` path but only renders while an agent drives a tab, so it is not
+   exercised by a scenario yet.
+2. ~~**Screen reading** is a vision model (OCR) on Xvfb screenshots; colours are pixel probes.
+   No accessibility-tree read-back for the GPUI shell.~~ **Fixed 2026-10-29**: `tree` returns
+   the semantic element list (id, role, label, state, bounds) from a per-frame registry
+   (`apps/oino-ui/src/automation/`), and transcript rows are readable text.
 3. **Windows**: screenshots need an unlocked console session on `coffee`; verification is
    "process alive after 20 s" plus the build's own smoke.txt.
 4. **macOS**: no Screen Recording grant over SSH and the display may be asleep → "alive after

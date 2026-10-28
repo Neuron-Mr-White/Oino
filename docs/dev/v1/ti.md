@@ -49,7 +49,7 @@ so `cargo xtask wasm` also works on the host.
 |---|---|
 | `ti sync` | `HEAD` as a `git bundle` (incremental when the host has an ancestor) + the local `extensions/dist` tarball → `ti:~/oino-test/oino` (detached checkout). Uncommitted changes are **not** synced. |
 | `ti build [--jobs 6] [--timeout-mins 180]` | `cargo build --release -p oino` then `-p oino-desktop` (in `apps/`) at `nice -n 10`, log `~/oino-test/run/build.log`, streamed line by line. |
-| `ti start [--demo] [--faux] [--cwd <dir>]` | Scratch agent dir + `Xvfb :93 -screen 0 1600x1000x24 -nolisten tcp` + private `dbus-launch` session + the app at `OINO_DESKTOP_SIZE=1600x1000`, `OINO_REDUCE_MOTION=1`, lavapipe (`VK_ICD_FILENAMES=…/lvp_icd.json`). |
+| `ti start [--demo] [--faux] [--cwd <dir>] [--env K=V]` | Scratch agent dir + `Xvfb :93 -screen 0 1600x1000x24 -nolisten tcp` + private `dbus-launch` session + the app at `OINO_DESKTOP_SIZE=1600x1000`, `OINO_REDUCE_MOTION=1`, lavapipe (`VK_ICD_FILENAMES=…/lvp_icd.json`). |
 | `ti shot [--name <n>] [--out <dir>]` | PNG of the app window (`xdotool` → `import`, full display when the window is not found), fetched to `docs/dev/v1/design/shots/ti/<n>.png` by default. |
 | `ti status` | PIDs and whether they are alive, `:93` free/busy, last build exit code, desktop binary. |
 | `ti soak [--minutes 10] [--backend demo\|faux]` | Runs `apps/oino-desktop/scripts/soak.sh` there (its own `Xvfb :12x`, cleans up after itself) and fetches `summary.txt` / `samples.tsv` / `app.out` to `target/ti-soak/`. |
@@ -84,7 +84,11 @@ cargo xtask ti stop
 real and `--faux` runs (`--demo` uploads nothing) so the app has provider keys; the file is read and re-uploaded in memory, never printed,
 logged or copied into the repository. `OINO_AUTH=/path/to/auth.json` overrides the source.
 
-* `--demo` — the scripted demo scene, no providers, no network.
+* `--demo` — the scripted demo scene, no providers, no network. `--env
+  OINO_DESKTOP_DEMO_SCENE=<welcome|run|approval|question|plan|board|info|stream>` picks the
+  scene (see [gui-driver.md](gui-driver.md) §4).
+* `--env KEY=VALUE` (repeatable) adds an environment variable to the app process — how the
+  automation driver enables its socket (`OINO_DESKTOP_AUTOMATION=…`).
 * `--faux` — a **real** session (oino-core + bundled WASM extensions + tools, no network bill):
   the provider-faux fixture from `extensions/dist` is copied into the scratch agent dir and
   `settings.json` selects `faux/faux-1`; a `faux` key is added to the uploaded `auth.json`
