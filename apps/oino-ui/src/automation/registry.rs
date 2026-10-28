@@ -511,6 +511,12 @@ pub trait Automatable: Sized {
     fn automation(self, meta: Meta) -> Probe<Self>
     where
         Self: Element;
+
+    /// Like [`Automatable::automation`], with an explicit id in the tree (`probe_named`).
+    #[must_use]
+    fn automation_named(self, meta: Meta, name: impl Into<String>) -> Probe<Self>
+    where
+        Self: Element;
 }
 
 impl<T: Element> Automatable for T {
@@ -519,6 +525,14 @@ impl<T: Element> Automatable for T {
             inner: self,
             meta,
             name: None,
+        }
+    }
+
+    fn automation_named(self, meta: Meta, name: impl Into<String>) -> Probe<Self> {
+        Probe {
+            inner: self,
+            meta,
+            name: Some(name.into()),
         }
     }
 }

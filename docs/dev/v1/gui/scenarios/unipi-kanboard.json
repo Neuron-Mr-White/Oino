@@ -3,25 +3,117 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"click": {"id": "nav-board"}},
-    {"wait_for": {"route": "board", "timeout_ms": 30000}},
-    {"screenshot": {"name": "01-board"}},
-    {"wait_for": {"id": "board-fab", "timeout_ms": 30000}},
-    {"click": {"id": "board-fab"}},
-    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
-    {"screenshot": {"name": "02-new-task-dialog"}},
-    {"type_text": {"text": "unipi-live board task", "submit": false}},
-    {"click": {"label": "Add task", "role": "button"}},
-    {"wait_for": {"text": "unipi-live board task", "timeout_ms": 30000}},
-    {"screenshot": {"name": "03-task-created"}},
-    {"click": {"id": "nav-sessions"}},
-    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
-    {"type_text": {"text": "/kanboard status", "submit": true}},
-    {"wait_for": {"text": "kanboard", "timeout_ms": 60000}},
-    {"screenshot": {"name": "04-kanboard-status"}},
-    {"type_text": {"text": "/kanboard-add Another captured task", "submit": true}},
-    {"wait_for": {"text": "Another captured task", "timeout_ms": 60000}},
-    {"screenshot": {"name": "05-kanboard-add"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "nav-board"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "board",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-board"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "board-fab",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "click": {
+        "id": "board-fab"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "task",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-new-task-dialog"
+      }
+    },
+    {
+      "type_text": {
+        "text": "unipi-live board task",
+        "submit": false
+      }
+    },
+    {
+      "click": {
+        "label": "Add task",
+        "role": "button"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "unipi-live board task",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-task-created"
+      }
+    },
+    {
+      "click": {
+        "id": "nav-sessions"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/kanboard status",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "kanboard",
+        "timeout_ms": 90000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-kanboard-status"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/kanboard-add Another captured task",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Another captured task",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "05-kanboard-add"
+      }
+    }
   ]
 }

@@ -159,7 +159,7 @@
     },
     {
       "wait_for": {
-        "text": "hotkeys",
+        "text": "/hotkeys",
         "timeout_ms": 20000
       }
     },

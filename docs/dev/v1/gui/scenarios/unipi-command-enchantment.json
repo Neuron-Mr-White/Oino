@@ -27,13 +27,25 @@
       }
     },
     {
+      "wait_for": {
+        "text": "/settings",
+        "timeout_ms": 20000
+      }
+    },
+    {
       "screenshot": {
-        "name": "01-completions"
+        "name": "01-builtin-commands"
+      }
+    },
+    {
+      "type_text": {
+        "text": "co",
+        "submit": false
       }
     },
     {
       "wait_for": {
-        "text": "Compactor",
+        "text": "compactor",
         "timeout_ms": 20000
       }
     },
@@ -44,13 +56,13 @@
     },
     {
       "type_text": {
-        "text": "goal",
+        "text": "mpact-by-llm",
         "submit": false
       }
     },
     {
       "wait_for": {
-        "text": "objective",
+        "text": "Compact now with a model-written summary",
         "timeout_ms": 20000
       }
     },
@@ -61,12 +73,7 @@
     },
     {
       "key": {
-        "key": "escape"
-      }
-    },
-    {
-      "key": {
-        "key": "secondary-a"
+        "key": "tab"
       }
     },
     {
@@ -76,7 +83,17 @@
     },
     {
       "screenshot": {
-        "name": "04-cleared"
+        "name": "04-accepted"
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-a"
+      }
+    },
+    {
+      "key": {
+        "key": "backspace"
       }
     }
   ]

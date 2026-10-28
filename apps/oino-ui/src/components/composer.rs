@@ -710,6 +710,20 @@ impl SessionPane {
                             None => crate::components::chip::tag(t, t.fg_subtle(), tag),
                         })
                     })
+                    // Read-back for scenarios: every completion row with its package tag.
+                    .automation_named(
+                        crate::automation::Meta::labelled(
+                            crate::automation::Role::MenuRow,
+                            format!(
+                                "{} {} {}",
+                                row.label,
+                                row.description.clone().unwrap_or_default(),
+                                row.tag.clone().unwrap_or_default()
+                            ),
+                        )
+                        .selected(active),
+                        format!("completion-{i}"),
+                    )
                     .into_any_element(),
             );
         }
@@ -746,7 +760,11 @@ impl SessionPane {
                                 }
                             }))
                             .overflow_y_scroll()
-                            .children(rows),
+                            .children(rows)
+                            .automation(crate::automation::Meta::labelled(
+                                crate::automation::Role::Card,
+                                "completions",
+                            )),
                     )
                     .child(
                         div()
