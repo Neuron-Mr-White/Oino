@@ -358,7 +358,7 @@ impl SessionPane {
                     .weight_medium()
                     .text_color(t.fg_subtle())
                     .when(s.live.is_some(), |el| el.opacity(shimmer(t, frame)))
-                    .child(SharedString::from(title)),
+                    .child(SharedString::from(title.clone())),
             )
             .when(!detail.is_empty(), |el| {
                 el.child(
@@ -388,6 +388,17 @@ impl SessionPane {
                 size::ICON_MD,
                 t.fg_subtlest(),
             ))
+            .automation(
+                crate::automation::Meta::labelled(
+                    crate::automation::Role::Row,
+                    if detail.is_empty() {
+                        title.clone()
+                    } else {
+                        format!("{title} · {detail}")
+                    },
+                )
+                .selected(open),
+            )
             .into_any_element()
     }
 
@@ -405,11 +416,19 @@ impl SessionPane {
             _ => self.render_kind(row, ix, window, cx),
         };
         div()
+            .id(row_id("fold-row", ix))
             .ml(px(size::FOLD_INDENT))
             .pl(px(space::S2_5))
             .border_l_1()
             .border_color(t.border())
             .child(inner)
+            .automation(
+                crate::automation::Meta::labelled(
+                    crate::automation::Role::Text,
+                    row_text(Some(row)),
+                )
+                .value(row.id.clone()),
+            )
             .into_any_element()
     }
 

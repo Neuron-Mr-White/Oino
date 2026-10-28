@@ -3,15 +3,74 @@
   "scene": "approval",
   "shots": "docs/dev/v1/design/shots/gui",
   "steps": [
-    {"wait_for": {"id": "ap-allow", "timeout_ms": 60000}},
-    {"assert": {"dialogs": "approval", "busy": true}},
-    {"tree": {"role": "button"}},
-    {"screenshot": {"name": "01-card"}},
-    {"click": {"id": "ap-allow"}},
-    {"wait_for": {"id": "ap-allow", "absent": true, "timeout_ms": 20000}},
-    {"wait_for": {"text": "Compiling json-lite", "timeout_ms": 60000}},
-    {"wait_for": {"text": "trailing commas now parse", "timeout_ms": 60000}},
-    {"assert": {"busy": false, "dialogs": 0}},
-    {"screenshot": {"name": "02-done"}}
+    {
+      "wait_for": {
+        "id": "ap-allow",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "assert": {
+        "dialogs": "approval",
+        "busy": true
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-card"
+      }
+    },
+    {
+      "click": {
+        "id": "ap-allow"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "ap-allow",
+        "absent": true,
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "trailing commas now parse",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "assert": {
+        "busy": false,
+        "dialogs": 0
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-done"
+      }
+    },
+    {
+      "click": {
+        "role": "row",
+        "label": "step"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Compiling json-lite",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "14 passed",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-tool-output"
+      }
+    }
   ]
 }

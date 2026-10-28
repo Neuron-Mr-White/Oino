@@ -3,12 +3,56 @@
   "scene": "approval",
   "shots": "docs/dev/v1/design/shots/gui",
   "steps": [
-    {"wait_for": {"id": "ap-deny", "timeout_ms": 60000}},
-    {"screenshot": {"name": "01-card"}},
-    {"click": {"id": "ap-deny"}},
-    {"wait_for": {"id": "ap-deny", "absent": true, "timeout_ms": 20000}},
-    {"wait_for": {"text": "Blocked by unipi.workflow", "timeout_ms": 60000}},
-    {"assert": {"dialogs": 0}},
-    {"screenshot": {"name": "02-blocked"}}
+    {
+      "wait_for": {
+        "id": "ap-deny",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-card"
+      }
+    },
+    {
+      "click": {
+        "id": "ap-deny"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "ap-deny",
+        "absent": true,
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "trailing commas now parse",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "assert": {
+        "dialogs": 0
+      }
+    },
+    {
+      "click": {
+        "role": "row",
+        "label": "step"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Blocked by unipi.workflow: denied by user",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-blocked"
+      }
+    }
   ]
 }
