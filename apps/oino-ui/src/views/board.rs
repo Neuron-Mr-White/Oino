@@ -9,6 +9,7 @@
 
 use std::rc::Rc;
 
+use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -143,12 +144,28 @@ impl Workspace {
                 w.focus(f, cx);
             }
         };
+        // The inputs register for the automation driver: the dialog owns the keyboard, so a
+        // scenario has to click the field it types into (docs/dev/v1/gui-driver.md §2).
+        let title_input = crate::automation::registry::probe_named(
+            Input::new(&title).into_any_element(),
+            crate::automation::Meta::labelled(crate::automation::Role::Input, "Title")
+                .value(title.read(cx).value().to_string())
+                .focus(title.read(cx).focus_handle(cx)),
+            "board-new-task-title-input",
+        );
+        let body_input = crate::automation::registry::probe_named(
+            Input::new(&body).into_any_element(),
+            crate::automation::Meta::labelled(crate::automation::Role::Input, "Description")
+                .value(body.read(cx).value().to_string())
+                .focus(body.read(cx).focus_handle(cx)),
+            "board-new-task-description-input",
+        );
         let fields = div()
             .flex()
             .flex_col()
             .gap(px(space::S3))
-            .child(Input::new(&title))
-            .child(Input::new(&body))
+            .child(title_input)
+            .child(body_input)
             .child(
                 div()
                     .text_role(t, TextRole::Caption)

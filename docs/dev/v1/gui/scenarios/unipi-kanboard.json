@@ -66,13 +66,18 @@
     },
     {
       "wait_for": {
-        "text": "task",
+        "id": "board-new-task-title-input",
         "timeout_ms": 30000
       }
     },
     {
       "screenshot": {
         "name": "03-new-task-dialog"
+      }
+    },
+    {
+      "click": {
+        "id": "board-new-task-title-input"
       }
     },
     {

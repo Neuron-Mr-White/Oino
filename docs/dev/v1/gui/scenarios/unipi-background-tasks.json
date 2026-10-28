@@ -3,24 +3,125 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/bg sleep 30", "submit": true}},
-    {"wait_state": {"chrome": "Background tasks 1 running", "timeout_ms": 30000}},
-    {"screenshot": {"name": "01-task-started"}},
-    {"type_text": {"text": "/bg-tasks", "submit": true}},
-    {"wait_for": {"id": "unipi.core/tray/0/tabs-0", "timeout_ms": 30000}},
-    {"assert": {"open": "unipi.core/tray"}},
-    {"wait_for": {"text": "Shell sleep 30", "timeout_ms": 20000}},
-    {"screenshot": {"name": "02-tasks-tray"}},
-    {"click": {"label": "Stop all", "role": "button"}},
-    {"wait_for": {"text": "stopped", "timeout_ms": 30000}},
-    {"screenshot": {"name": "03-stopped"}},
-    {"click": {"id": "editor-panel-close"}},
-    {"click": {"id": "composer"}},
-    {"type_text": {"text": "Start a background task with bg_run: `sleep 2`. Then reply STARTED.", "submit": true}},
-    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
-    {"wait_for": {"text": "STARTED", "timeout_ms": 180000}},
-    {"wait_for": {"text": "completed", "timeout_ms": 120000}},
-    {"screenshot": {"name": "04-completion-notification"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/bg sleep 30",
+        "submit": true
+      }
+    },
+    {
+      "wait_state": {
+        "chrome": "Background tasks 1 running",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-task-started"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/bg-tasks",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "unipi.core/tray/0/tabs-0",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "assert": {
+        "open": "unipi.core/tray"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Shell sleep 30",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-tasks-tray"
+      }
+    },
+    {
+      "click": {
+        "label": "Stop all",
+        "role": "button"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Press a again",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "label": "Stop all",
+        "role": "button"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "sleep 30",
+        "absent": true,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-stopped"
+      }
+    },
+    {
+      "click": {
+        "id": "editor-panel-close"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "Start a background task with bg_run: `sleep 2`. Then reply STARTED.",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "STARTED",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "completed",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-completion-notification"
+      }
+    }
   ]
 }
