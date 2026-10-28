@@ -259,24 +259,29 @@ async fn services_bus_and_tasks_between_instances() {
         .to_value();
     assert!(id.is_string());
     let mut notified = false;
+    let mut task_event = false;
+    let mut message = false;
     for _ in 0..300 {
-        let task_event = h
+        task_event = h
             .host
             .entries()
             .iter()
             .any(|e| e["customType"] == "async.task" && e["data"]["exitCode"] == 3);
-        let message = h
-            .host
-            .calls_named("session_write")
-            .iter()
-            .any(|c| c.detail["sendMessage"]["customType"] == "background-task-notification");
+        message = h.host.calls_named("session_write").iter().any(|c| {
+            c.detail["sendMessage"]["customType"] == "background-task-notification"
+                && c.detail["options"]["deliverAs"] == "followUp"
+        });
         if task_event && message {
             notified = true;
             break;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    assert!(notified, "{:?}", h.host.calls());
+    assert!(
+        notified,
+        "task_entry={task_event} message={message} writes={:?}",
+        h.host.calls_named("session_write")
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

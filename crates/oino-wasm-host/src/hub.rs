@@ -13,8 +13,8 @@ use oino_cron::paths::CronPaths;
 use oino_extension_api::browser::{BrowserHost, BrowserRequest};
 use oino_extension_api::cron::CronHost;
 use oino_extension_api::ops::{
-    ControlOp, ControlReply, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply, PanelOp,
-    ProviderHook, ProviderHookReply, SecretOp, SendOptions, SessionQuery, SessionWrite,
+    ControlOp, ControlReply, Delivery, DeviceOp, EditorOp, HostContextInfo, ModelsOp, ModelsReply,
+    PanelOp, ProviderHook, ProviderHookReply, SecretOp, SendOptions, SessionQuery, SessionWrite,
     SessionsIndexQuery, SettingsLayer, SettingsScope, TaskOp,
 };
 use oino_extension_api::registry::{
@@ -424,9 +424,11 @@ impl LocalServices {
             let message = RawJson::from(
                 json!({"customType": TASK_NOTIFICATION_TYPE, "content": text, "display": true, "details": {"taskId": info.id}}),
             );
+            // pi/unipi deliver the notification as a follow-up so it lands after the running
+            // turn instead of steering it (unipi `notifyCompletion` → `deliverAs: 'followUp'`).
             let options = SendOptions {
                 trigger_turn: info.spec.trigger_on_completion,
-                deliver_as: None,
+                deliver_as: Some(Delivery::FollowUp),
                 provenance: None,
             };
             if let Some(inner) = hub.inner(&owner) {
