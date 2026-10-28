@@ -103,6 +103,20 @@
       }
     },
     {
+      "click": {
+        "id": "status-header"
+      }
+    },
+    {
+      "wait_state": {
+        "element": {
+          "id": "status-panel",
+          "focused": true
+        },
+        "timeout_ms": 10000
+      }
+    },
+    {
       "key": {
         "key": "down"
       }

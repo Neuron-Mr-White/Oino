@@ -99,6 +99,8 @@ impl SessionPane {
             .items_end()
             .w_full()
             .gap(px(space::S1))
+            // Hovering anywhere on the row (not only the bubble) reveals the action bar.
+            .group(group.clone())
             .when(user.images > 0, |el| {
                 el.child(
                     div()

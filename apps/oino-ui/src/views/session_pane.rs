@@ -636,12 +636,9 @@ impl SessionPane {
         self.status_cursor = self
             .status_cursor
             .min(self.status.run.len().saturating_sub(1));
-        let handle = self.status_focus.clone();
-        cx.defer_in(window, move |this, window, cx| {
-            window.focus(&handle, cx);
-            this.status_focus_pending = false;
-            cx.notify();
-        });
+        // A handle that is not laid out yet cannot take focus, so the expand shortcut only
+        // expands; the panel takes focus on click (its header) or when a row is activated.
+        let _ = window;
         cx.notify();
     }
 

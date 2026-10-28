@@ -179,10 +179,19 @@ impl SessionPane {
                 .shadow(t.e2())
                 .track_focus(&self.status_focus)
                 .on_key_down(cx.listener(Self::on_status_key))
-                .child(
+                .child(crate::automation::probe(
                     div()
+                        .id("status-header")
                         .flex()
                         .items_center()
+                        .cursor_pointer()
+                        .on_mouse_down(
+                            gpui_kit::MouseButton::Left,
+                            cx.listener(|this, _, window, cx| {
+                                window.focus(&this.status_focus, cx);
+                                cx.stop_propagation();
+                            }),
+                        )
                         .child(
                             div()
                                 .flex_1()
@@ -199,7 +208,11 @@ impl SessionPane {
                                     cx.notify();
                                 })),
                         ),
-                )
+                    crate::automation::Meta::labelled(
+                        crate::automation::Role::Row,
+                        "Status header",
+                    ),
+                ))
                 .when_some(s.goal.clone(), |el, g| {
                     el.child(
                         div()
