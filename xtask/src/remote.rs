@@ -93,11 +93,11 @@ fn parse(args: &[String]) -> Result<Opts> {
 }
 
 #[allow(clippy::cast_precision_loss, reason = "display only")]
-fn mib(bytes: u64) -> String {
+pub(crate) fn mib(bytes: u64) -> String {
     format!("{:.1}", bytes as f64 / 1_048_576.0)
 }
 
-fn shell_quote(s: &str) -> String {
+pub(crate) fn shell_quote(s: &str) -> String {
     if !s.is_empty()
         && s.chars()
             .all(|c| c.is_ascii_alphanumeric() || "-_./=:,@+".contains(c))
@@ -109,7 +109,11 @@ fn shell_quote(s: &str) -> String {
 }
 
 /// Runs `cmd`, killing it after `limit`. Returns (success, stdout).
-fn run_bounded(cmd: &mut Command, limit: Duration, capture: bool) -> Result<(bool, String)> {
+pub(crate) fn run_bounded(
+    cmd: &mut Command,
+    limit: Duration,
+    capture: bool,
+) -> Result<(bool, String)> {
     if capture {
         cmd.stdout(Stdio::piped());
     }
@@ -133,7 +137,7 @@ fn run_bounded(cmd: &mut Command, limit: Duration, capture: bool) -> Result<(boo
     }
 }
 
-struct Remote {
+pub(crate) struct Remote {
     host: String,
     os: Os,
     bash: String,
@@ -151,14 +155,23 @@ const SSH_OPTS: &[&str] = &[
 ];
 
 impl Remote {
-    fn ssh(&self, command: &str) -> Command {
+    /// A Linux build host reached with the same SSH plumbing (`cargo xtask ti`).
+    pub(crate) fn linux(host: &str) -> Self {
+        Self {
+            host: host.into(),
+            os: Os::Linux,
+            bash: String::new(),
+        }
+    }
+
+    pub(crate) fn ssh(&self, command: &str) -> Command {
         let mut cmd = Command::new("ssh");
         cmd.args(SSH_OPTS).arg(&self.host).arg(command);
         cmd
     }
 
     /// Copies `local` to `~/<name>` on the host.
-    fn upload(&self, local: &Path, name: &str, limit: Duration) -> Result<()> {
+    pub(crate) fn upload(&self, local: &Path, name: &str, limit: Duration) -> Result<()> {
         let mut cmd = Command::new("scp");
         cmd.arg("-q")
             .args(SSH_OPTS)
@@ -171,8 +184,22 @@ impl Remote {
         Ok(())
     }
 
+    /// Copies `~/<name>` on the host to `local`.
+    pub(crate) fn download(&self, name: &str, local: &Path, limit: Duration) -> Result<()> {
+        let mut cmd = Command::new("scp");
+        cmd.arg("-q")
+            .args(SSH_OPTS)
+            .arg(format!("{}:{name}", self.host))
+            .arg(local);
+        let (ok, _) = run_bounded(&mut cmd, limit, false)?;
+        if !ok {
+            bail!("scp {}:{} → {} failed", self.host, name, local.display());
+        }
+        Ok(())
+    }
+
     /// Uploads `script` as `~/oino-release-<name>.sh`.
-    fn put_script(&self, name: &str, script: &str) -> Result<String> {
+    pub(crate) fn put_script(&self, name: &str, script: &str) -> Result<String> {
         let file = format!("oino-release-{name}.sh");
         let local = root()
             .join("target/tmp")
@@ -184,7 +211,7 @@ impl Remote {
     }
 
     /// The SSH command line that runs `~/<file>` with bash.
-    fn bash_command(&self, file: &str) -> String {
+    pub(crate) fn bash_command(&self, file: &str) -> String {
         match self.os {
             Os::Windows => format!("& '{}' -l \"$HOME/{file}\"", self.bash),
             Os::Linux | Os::Macos => format!("$SHELL -lc 'bash ~/{file}'"),
@@ -192,7 +219,13 @@ impl Remote {
     }
 
     /// Runs a bash script on the host, bounded by `limit`.
-    fn bash(&self, name: &str, script: &str, limit: Duration, capture: bool) -> Result<String> {
+    pub(crate) fn bash(
+        &self,
+        name: &str,
+        script: &str,
+        limit: Duration,
+        capture: bool,
+    ) -> Result<String> {
         let file = self.put_script(name, script)?;
         let (ok, out) = run_bounded(&mut self.ssh(&self.bash_command(&file)), limit, capture)?;
         if !ok {
@@ -202,7 +235,7 @@ impl Remote {
     }
 
     /// Starts a bash script on the host without waiting for it.
-    fn spawn_detached(&self, name: &str, script: &str) -> Result<()> {
+    pub(crate) fn spawn_detached(&self, name: &str, script: &str) -> Result<()> {
         let file = self.put_script(name, script)?;
         let command = match self.os {
             // WMI creates the process outside the SSH session's job object.
@@ -252,7 +285,7 @@ fn git(args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
 
-fn sync(remote: &Remote, dir: &str) -> Result<()> {
+pub(crate) fn sync(remote: &Remote, dir: &str) -> Result<()> {
     let head = git(&["rev-parse", "HEAD"])?;
     let dirty = git(&["status", "--porcelain", "--untracked-files=no"])?;
     if !dirty.is_empty() {
