@@ -87,6 +87,74 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     files
 }
 
+/// pi `--session-id`: an unknown id creates the session with that header id, an existing one
+/// opens it (known issue 14).
+#[test]
+fn session_id_creates_the_session_like_pi() {
+    let sandbox = Sandbox::new();
+    let sessions = sandbox.dir.path().join("sessions");
+    let dir = sessions.display().to_string();
+    let output = sandbox.run(
+        &json!([{"text": "hello"}]),
+        &[
+            "--session-dir",
+            &dir,
+            "--session-id",
+            "run-abc123",
+            "-p",
+            "hi",
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert_eq!(stdout(&output), "hello\n");
+    let files = walk(&sessions);
+    assert_eq!(files.len(), 1, "{files:?}");
+    let entries = support::jsonl(&files[0]);
+    assert_eq!(entries[0]["type"], json!("session"));
+    assert_eq!(entries[0]["id"], json!("run-abc123"));
+    assert_eq!(
+        entries[0]["cwd"],
+        json!(sandbox.cwd().display().to_string())
+    );
+
+    // Reopening by id appends to the same file.
+    let output = sandbox.run(
+        &json!([{"text": "again"}]),
+        &[
+            "--session-dir",
+            &dir,
+            "--session-id",
+            "run-abc123",
+            "-p",
+            "second",
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let reopened = walk(&sessions);
+    assert_eq!(reopened, files, "no second file for a known id");
+    let entries = support::jsonl(&files[0]);
+    let users: Vec<&Value> = entries
+        .iter()
+        .filter(|e| e["type"] == json!("message") && e["message"]["role"] == json!("user"))
+        .collect();
+    assert_eq!(users.len(), 2, "{}", entries.len());
+
+    // Ids pi rejects stay rejected.
+    let rejected = sandbox.run(
+        &json!([{"text": "x"}]),
+        &["--session-dir", &dir, "--session-id", "bad/id", "-p", "hi"],
+        None,
+    );
+    assert_eq!(rejected.status.code(), Some(1));
+    assert!(
+        stderr(&rejected).contains("Session id must be"),
+        "{}",
+        stderr(&rejected)
+    );
+}
+
 #[test]
 fn print_mode_error_exit_code() {
     let sandbox = Sandbox::new();

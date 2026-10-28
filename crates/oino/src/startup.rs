@@ -225,11 +225,11 @@ fn session_source(
         return Ok(SessionSource::ContinueRecent);
     }
     if let Some(id) = &args.session_id {
+        // pi `--session-id`: open the session when it exists, create it with that id otherwise.
         return match SessionManager::find_by_id(cwd, id, root) {
             Ok(Some(path)) => Ok(SessionSource::Open(path)),
-            _ => Err(StartupError::one(format!(
-                "Error: No project session found with id '{id}'; creating sessions with a given id is not supported yet"
-            ))),
+            Ok(None) => Ok(SessionSource::NewWithId(id.clone())),
+            Err(error) => Err(StartupError::one(format!("Error: {error}"))),
         };
     }
     Ok(SessionSource::New)
@@ -240,7 +240,10 @@ fn has_existing_session(source: &SessionSource, cwd: &Path, root: &Path) -> bool
     let path = match source {
         SessionSource::Open(path) | SessionSource::Fork(path) => Some(path.clone()),
         SessionSource::ContinueRecent => SessionManager::find_most_recent(cwd, root).ok().flatten(),
-        SessionSource::Resume(_) | SessionSource::New | SessionSource::InMemory => None,
+        SessionSource::Resume(_)
+        | SessionSource::New
+        | SessionSource::NewWithId(_)
+        | SessionSource::InMemory => None,
     };
     path.and_then(|p| SessionManager::open(&p, root, Some(cwd)).ok())
         .is_some_and(|m| !m.build_session_context().messages.is_empty())

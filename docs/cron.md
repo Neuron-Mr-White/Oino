@@ -103,5 +103,5 @@ message.
 | `~/.oino/cron/scheduler.lock` | the single-owner lock |
 | `~/.oino/cron/serve.json` | the running daemon's pid and control port |
 
-A run's session is a normal Oino session: `oino --session <path>` (or the desktop's
-session list) shows it turn by turn.
+A run's session is a normal Oino session whose **header id is the run id**: `oino --session-id
+<run id>` (or `--session <path>`, or the desktop's session list) shows it turn by turn.
