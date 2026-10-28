@@ -1872,22 +1872,34 @@ impl AppShell {
         let focus = crate::components::dialog::owned_focus("result-card", window, cx);
         let copy = body.clone();
         let done = Rc::clone(&restore);
+        // The card body is the answer of `/doctor`, `/memory`, `/dream` and friends; register
+        // it so a scenario can assert on the text instead of reading a screenshot.
+        let lines = div()
+            .flex()
+            .flex_col()
+            .gap(px(space::S1))
+            .children(body.lines().map(|line| {
+                div()
+                    .text_role(t, TextRole::Base)
+                    .text_color(t.fg_subtle())
+                    .child(SharedString::from(line.to_owned()))
+            }));
+        let content = if crate::automation::registry::enabled() {
+            crate::automation::registry::probe_named(
+                lines,
+                crate::automation::Meta::labelled(crate::automation::Role::Text, body.clone()),
+                "result-body",
+            )
+            .into_any_element()
+        } else {
+            lines.into_any_element()
+        };
         Some(crate::components::dialog::modal_owned(
             t,
             "result-card",
             title,
             size::DIALOG_MD,
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(space::S1))
-                .children(body.lines().map(|line| {
-                    div()
-                        .text_role(t, TextRole::Base)
-                        .text_color(t.fg_subtle())
-                        .child(SharedString::from(line.to_owned()))
-                }))
-                .into_any_element(),
+            content,
             vec![
                 crate::components::button::Btn::new("result-copy")
                     .label("Copy")
