@@ -10,6 +10,18 @@
       }
     },
     {
+      "type_text": {
+        "text": "/permission full",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Permission mode: full",
+        "timeout_ms": 20000
+      }
+    },
+    {
       "click": {
         "id": "composer"
       }

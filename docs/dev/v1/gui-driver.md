@@ -80,7 +80,7 @@ handled.
 |---|---|---|
 | `ping` | — | `{pong, version}` |
 | `tree` | optional selector (`id`, `role`, `label`), `include_hidden` | `{elements[], frame, window{width,height}}` |
-| `state` | — | `{route, session_id, session_name, dialogs[{id,method,title}], panes, busy, open[], frame}` |
+| `state` | — | `{route, session_id, session_name, dialogs[{id,method,title}], panes, busy, open[], chrome, frame}`; `open` names the palette, the switch sheet, side/bottom frames and every open extension panel (`panel:<id>`); `chrome` is `{statuses[{key,text,tone}], widgets[{key,placement,text}], frame{top[],bottom[]}}` — the footer/glance segments, mode chips and above-composer widgets an extension sets |
 | `click` | selector **or** `x`,`y` | `{at, id, handled}` |
 | `double_click` | selector or `x`,`y` | same |
 | `right_click` | selector or `x`,`y` | same |
@@ -107,7 +107,8 @@ then an exact id; an ambiguous selector fails with the candidate list
 for transcript rows is the row text (capped at 400 characters) and for toasts the toast message.
 
 **`secondary-`** resolves from the host OS (`cmd` on macOS, `ctrl` elsewhere), so one scenario
-file works on every platform.
+file works on every platform. Chord specs may be written with `+` or `-` (`alt+h` = `alt-h`);
+a lone `+` stays the plus key.
 
 **`screenshot`** shells out to ImageMagick `import` (`xdotool search --onlyvisible --class
 dev.oino.desktop` for the window id, `root` as a fallback) and writes the PNG **on the app host**;
@@ -117,7 +118,12 @@ the client fetches it with `ssh … cat` when it is remote.
 switches, segmented options, dialog option rows (approval / question / dock / plan), session
 list rows, nav items (Sessions / Board / Automations / Extensions / Settings), the palette rows
 and filter, the composer, the send / attach buttons, the board FAB, board cards, lane pills and
-"Add task" rows, toast text, transcript rows (text), settings nav rows, `+` launchers.
+"Add task" rows, toast text, transcript rows (text), settings nav rows, `+` launchers, the
+composer's mode chip (`mode-chip`) and model chip (`model-trigger`, `value` = thinking level),
+**every OUS text node** an extension panel renders (`ous/<key>`), the result-card body
+(`result-body`), every modal's title (`<id>-title`), the AgentRow (`row_id("agent", …)`, label
+"<name> <task>"), the completion menu (`completion-menu`) and its rows (`completion-<n>`, with
+the package tag in the label), and the board's New-task inputs (`board-new-task-*-input`).
 
 ## 3. Injection is real input
 
@@ -177,8 +183,14 @@ Scenarios also choose the app backend and extra environment:
 
 `backend` is `demo` (default, scripted scene), `faux` (real core, no network) or `real`
 (providers from the copied `auth.json`; the client writes `settings.json`
-`{"model": "oino:deepseek/deepseek-flash"}` and an onboarded `desktop.json`, and copies a
-solid-red test PNG to `~/oino-test/run/attach-red.png` for the attachment scenarios).
+`{"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"}` — pi's keys, not
+`model:` — an onboarded `desktop.json`, the router's cached model list, and a solid-red test PNG
+at `~/oino-test/run/attach-red.png` for the attachment scenarios). A real run starts from a clean
+slate: the client deletes the scratch agent dir's `sessions/` and `state/` and the project's
+`.oino/` + `docs/`, so a scenario can never pass on the previous one's output. `settings` is a
+JSON object merged into the scratch `settings.json` (extension switches a scenario needs, e.g.
+`{"extensionSettings": {"ask-user": {"enabled": true}}}`; namespaces are the short names the
+settings hub shows, `ask-user`, `dream`, `notify`).
 `--backend` overrides it. `env` entries go to `cargo xtask ti start --env`.
 
 Steps: any RPC method (`click`, `double_click`, `right_click`, `hover`, `type_text`, `key`,
@@ -187,7 +199,10 @@ Steps: any RPC method (`click`, `double_click`, `right_click`, `hover`, `type_te
 (`{"ms": 250}`), `assert` and `wait_state` (retries `assert` until it holds or `timeout_ms`
 expires), and `toggle` (clicks a switch and proves its `checked` state flipped, whatever the
 persisted value was). `assert`/`wait_state` accept `route`, `busy`, `dialogs` (count or method),
-`session_id`, `text`, `element` (`{"id", "role", "label", "checked", …}`), `absent`. A failed
+`session_id`, `text` (substring of an element label/value), `chrome`/`chrome_absent` (substring
+of any status, widget or frame segment text), `open` (substring of `state.open`), `element`
+(`{"id", "role", "label", "checked", "selected", …}`), `absent`. `wait_for` takes selectors
+(`id`/`role`/`label`, `absent`, `text`), `assert`/`wait_state` take the state-level ones. A failed
 step takes a `FAIL-<n>.png` screenshot and prints `state`; the run continues unless
 `--stop-on-failure` was passed. `--no-restart` reuses a running app, `--scene` overrides the
 scenario's demo scene.
@@ -214,6 +229,44 @@ scenario's demo scene.
 | `image-attach.json` (real) | a dropped PNG becomes `Image #1` and the prompt carries it (the model answers the colour) |
 | `subagent-real.json` (real) | a real `run_subagent` call → AgentRow → Agent tab |
 | `rewind-real.json` (real) | user bubble Rewind on a short transcript: confirm → fork → composer refilled |
+
+The **unipi suite** (`docs/dev/v1/gui/suites/unipi.json`, one scenario per ported package plus
+`agents-live` and `image-attach`) is the live regression suite:
+
+```bash
+cargo xtask gui list unipi                  # the manifest, its groups and what each proves
+cargo xtask gui suite unipi                 # runs every scenario, report in target/gui-suite/
+cargo xtask gui suite unipi --only workflow,kanboard
+```
+
+| Scenario | Covers |
+|---|---|
+| `unipi-core` | hint strip + `alt+h`, `/hint` browser panel, work tray (`↓`) |
+| `unipi-info-screen` | `/info` dashboard tabs, `r` refresh, close |
+| `unipi-footer` | glance frame + stats strip, `/footer` off/on |
+| `unipi-workflow` | mode chip + menu, `/permission ask`, approval card → allow, `/plan on\|off` |
+| `unipi-ask-user` | `ask_user` (enabled through `settings`) → question card → answer |
+| `unipi-long-horizon` | `/goal` + Goal status, `/visualize-progress`, `/regular` clears it, ralph/graph/swarm |
+| `unipi-memory` | `/memory`, `/memory-search`, `memory_store` tool, `/memory-consolidate` |
+| `unipi-dream` | `/dream` status card, report, approve/reject, tray tab |
+| `unipi-skill-registry` | `/skills` hub page, exposure switch |
+| `unipi-subagents` | `/agents` profiles, `/subagents` tray tab, `run_subagent` row |
+| `unipi-background-tasks` | `/bg`, tray strip, Stop-all confirm, `bg_run` + completion |
+| `unipi-btw` | `/btw` side chat answer |
+| `unipi-web-api` | `web_search` tool row, `/info` Web tab |
+| `unipi-mcp` | `/mcp-status`, settings hub MCP page |
+| `unipi-notify` | `/notify-event` list + toggle, settings hub Notify page |
+| `unipi-kanboard` | `/kanboard onboard`, native Board, FAB task, `/kanboard status` |
+| `unipi-command-enchantment` | `/` completions with package tags, filter, Tab accept |
+| `unipi-compactor` | `/compact-stats`, `/compact-doctor`, `/session-recall`, `/compact-vcc`, `/compact-by-llm` |
+| `unipi-updater` | `/readme`, `/changelog`, Settings → About & updates |
+| `unipi-input-shortcuts` | `alt+h`, `alt+m` cycle, `alt+p` plan toggle, `/ho` completion |
+| `unipi-fusion` | `/fusion` lead→effort→confirm, `/fusion-stats` |
+| `unipi-watchdog` | `/bg-detach` adopts a running bash call into the tray |
+| `unipi-app-bridge` | `/app` control-centre side tab and its four tabs |
+| `unipi-utility` | `/doctor`, `/cleanup`, `/move`, `/answer`, settings hub |
+| `unipi-cron` | `/cron` status, Automations page, new-job dialog |
+| `unipi-browser` | `/browser`, `browser_open` tool row |
 
 ## 5. `ti` specifics
 

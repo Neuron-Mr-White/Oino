@@ -177,7 +177,7 @@ pub fn stack(
                 toast.message.clone(),
             )
             .value(toast.title.clone().unwrap_or_default());
-            crate::automation::probe(
+            crate::automation::registry::probe_named(
                 crate::design::motion::enter(
                     t,
                     ElementId::Name(format!("toast-in-{id}").into()),
@@ -258,6 +258,7 @@ pub fn stack(
                         ),
                 ),
                 meta,
+                format!("toast-{id}"),
             )
         }))
 }

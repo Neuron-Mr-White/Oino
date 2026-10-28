@@ -3,28 +3,133 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/doctor", "submit": true}},
-    {"wait_for": {"text": "Diagnostics", "timeout_ms": 120000}},
-    {"screenshot": {"name": "01-doctor"}},
-    {"type_text": {"text": "/cleanup", "submit": true}},
-    {"wait_for": {"text": "Cleanup", "timeout_ms": 60000}},
-    {"screenshot": {"name": "02-cleanup"}},
-    {"type_text": {"text": "/move", "submit": true}},
-    {"wait_for": {"text": "move", "timeout_ms": 30000}},
-    {"screenshot": {"name": "03-move"}},
-    {"key": {"key": "escape"}},
-    {"click": {"id": "composer"}},
-    {"type_text": {"text": "Reply with exactly two short questions, one per line, numbered 1. and 2., about my setup.", "submit": true}},
-    {"wait_for": {"text": "2.", "timeout_ms": 180000}},
-    {"screenshot": {"name": "04-questions"}},
-    {"type_text": {"text": "/answer", "submit": true}},
-    {"wait_for": {"text": "Answer", "timeout_ms": 120000}},
-    {"screenshot": {"name": "05-answer-panel"}},
-    {"key": {"key": "escape"}},
-    {"type_text": {"text": "/settings", "submit": true}},
-    {"wait_for": {"id": "set-ns", "timeout_ms": 30000}},
-    {"assert": {"route": "settings"}},
-    {"screenshot": {"name": "06-settings"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/doctor",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Diagnostics",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-doctor"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/cleanup",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Cleanup",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-cleanup"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/move",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "orphaned",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-move"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "Reply with exactly two short questions, one per line, numbered 1. and 2., about my setup.",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "2.",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-questions"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/answer",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Answer",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "05-answer-panel"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/settings",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "set-ns-0",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "assert": {
+        "route": "settings"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "06-settings"
+      }
+    }
   ]
 }

@@ -114,6 +114,11 @@
       }
     },
     {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
       "type_text": {
         "text": "/kanboard status",
         "submit": true

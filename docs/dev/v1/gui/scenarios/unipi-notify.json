@@ -3,21 +3,97 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/notify-event", "submit": true}},
-    {"wait_for": {"text": "event", "timeout_ms": 30000}},
-    {"screenshot": {"name": "01-notify-events"}},
-    {"type_text": {"text": "/notify-event done off", "submit": true}},
-    {"wait_for": {"text": "done", "timeout_ms": 30000}},
-    {"screenshot": {"name": "02-event-off"}},
-    {"type_text": {"text": "/notify-event done on", "submit": true}},
-    {"wait_for": {"text": "done", "timeout_ms": 30000}},
-    {"type_text": {"text": "/settings", "submit": true}},
-    {"wait_for": {"id": "set-ns", "timeout_ms": 30000}},
-    {"click": {"label": "Notify", "role": "row"}},
-    {"wait_for": {"text": "notify", "timeout_ms": 30000}},
-    {"screenshot": {"name": "03-notify-settings"}},
-    {"click": {"id": "nav-sessions"}},
-    {"wait_for": {"id": "composer", "timeout_ms": 30000}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/notify-event",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "event",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-notify-events"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/notify-event done off",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "done",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-event-off"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/notify-event done on",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "done",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/settings",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "set-ns-0",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "click": {
+        "label": "Notify",
+        "role": "row"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "notify",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-notify-settings"
+      }
+    },
+    {
+      "click": {
+        "id": "nav-sessions"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 30000
+      }
+    }
   ]
 }

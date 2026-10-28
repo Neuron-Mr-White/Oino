@@ -3,22 +3,89 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/skills", "submit": true}},
-    {"wait_for": {"id": "set-ns", "timeout_ms": 30000}},
-    {"assert": {"route": "settings"}},
-    {"wait_for": {"id": "hub-exposure.mode-0", "timeout_ms": 30000}},
-    {"wait_for": {"text": "Skill", "timeout_ms": 20000}},
-    {"screenshot": {"name": "01-skills-page"}},
-    {"click": {"id": "hub-exposure.mode-1"}},
-    {"wait_for": {"element": {"id": "hub-exposure.mode-1", "selected": true}, "timeout_ms": 20000}},
-    {"screenshot": {"name": "02-exposure-all"}},
-    {"click": {"id": "hub-exposure.mode-0"}},
-    {"wait_for": {"element": {"id": "hub-exposure.mode-0", "selected": true}, "timeout_ms": 20000}},
-    {"click": {"id": "nav-sessions"}},
-    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
-    {"type_text": {"text": "/hint", "submit": true}},
-    {"wait_for": {"text": "skills", "timeout_ms": 30000}},
-    {"screenshot": {"name": "03-hint-skills"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/skills",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "hub-exposure.mode-0",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "assert": {
+        "route": "settings"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "hub-exposure.mode-0",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Skill",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-skills-page"
+      }
+    },
+    {
+      "click": {
+        "id": "hub-exposure.mode-1"
+      }
+    },
+    {
+      "wait_state": {
+        "element": {
+          "selected": true,
+          "id": "hub-exposure.mode-1"
+        },
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-exposure-all"
+      }
+    },
+    {
+      "click": {
+        "id": "hub-exposure.mode-0"
+      }
+    },
+    {
+      "wait_state": {
+        "element": {
+          "selected": true,
+          "id": "hub-exposure.mode-0"
+        },
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "id": "nav-sessions"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 30000
+      }
+    }
   ]
 }

@@ -3,29 +3,146 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"click": {"id": "composer"}},
-    {"type_text": {"text": "Reply with exactly SESSION-ONE.", "submit": true}},
-    {"wait_for": {"text": "SESSION-ONE", "timeout_ms": 180000}},
-    {"type_text": {"text": "/compact-stats", "submit": true}},
-    {"wait_for": {"id": "result-ok", "timeout_ms": 30000}},
-    {"screenshot": {"name": "01-compact-stats"}},
-    {"click": {"id": "result-ok"}},
-    {"type_text": {"text": "/compact-doctor", "submit": true}},
-    {"wait_for": {"text": "compact", "timeout_ms": 30000}},
-    {"screenshot": {"name": "02-compact-doctor"}},
-    {"type_text": {"text": "/session-recall SESSION-ONE", "submit": true}},
-    {"wait_for": {"text": "SESSION-ONE", "timeout_ms": 60000}},
-    {"screenshot": {"name": "03-session-recall"}},
-    {"type_text": {"text": "/compact-vcc", "submit": true}},
-    {"wait_for": {"text": "compact", "timeout_ms": 120000}},
-    {"screenshot": {"name": "04-compact-vcc"}},
-    {"type_text": {"text": "/compact-by-llm", "submit": true}},
-    {"wait_for": {"id": "composer", "timeout_ms": 240000}},
-    {"wait_for": {"text": "Summary", "timeout_ms": 240000}},
-    {"screenshot": {"name": "05-llm-summary"}},
-    {"type_text": {"text": "/compact-help", "submit": true}},
-    {"wait_for": {"text": "compact", "timeout_ms": 30000}},
-    {"screenshot": {"name": "06-compact-help"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "Reply with exactly SESSION-ONE.",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "SESSION-ONE",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/compact-stats",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "result-ok",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-compact-stats"
+      }
+    },
+    {
+      "click": {
+        "id": "result-ok"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/compact-doctor",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "compact",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-compact-doctor"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/session-recall SESSION-ONE",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "SESSION-ONE",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-session-recall"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/compact-vcc",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "compact",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-compact-vcc"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/compact-by-llm",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 240000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Nothing to compact",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "05-compact-by-llm"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "05-llm-summary"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/compact-help",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "compact",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "06-compact-help"
+      }
+    }
   ]
 }

@@ -48,7 +48,7 @@ so `cargo xtask wasm` also works on the host.
 | Command | Does |
 |---|---|
 | `ti sync` | `HEAD` as a `git bundle` (incremental when the host has an ancestor) + the local `extensions/dist` tarball → `ti:~/oino-test/oino` (detached checkout). Uncommitted changes are **not** synced. |
-| `ti build [--jobs 6] [--timeout-mins 180]` | `cargo build --release -p oino` then `-p oino-desktop` (in `apps/`) at `nice -n 10`, log `~/oino-test/run/build.log`, streamed line by line. |
+| `ti build [--jobs 6] [--timeout-mins 180]` | `cargo build --release -p oino -p oino-kanboard` then `-p oino-desktop` (in `apps/`), then a symlink of `oino-kanboard` next to the desktop binary (the host looks for helper binaries beside the executable, as packaging ships them — without it the Board view sits on "Starting the kanboard daemon") at `nice -n 10`, log `~/oino-test/run/build.log`, streamed line by line. |
 | `ti start [--demo] [--faux] [--cwd <dir>] [--env K=V]` | Scratch agent dir + `Xvfb :93 -screen 0 1600x1000x24 -nolisten tcp` + private `dbus-launch` session + the app at `OINO_DESKTOP_SIZE=1600x1000`, `OINO_REDUCE_MOTION=1`, lavapipe (`VK_ICD_FILENAMES=…/lvp_icd.json`). |
 | `ti shot [--name <n>] [--out <dir>]` | PNG of the app window (`xdotool` → `import`, full display when the window is not found), fetched to `docs/dev/v1/design/shots/ti/<n>.png` by default. |
 | `ti status` | PIDs and whether they are alive, `:93` free/busy, last build exit code, desktop binary. |
@@ -94,7 +94,13 @@ logged or copied into the repository. `OINO_AUTH=/path/to/auth.json` overrides t
   `settings.json` selects `faux/faux-1`; a `faux` key is added to the uploaded `auth.json`
   because oino-core requires one.
 * no flag — real providers from the copied `auth.json`; a fresh agent dir opens onboarding, so
-  set a default provider/model in `~/oino-test/agent/settings.json` first.
+  set a default provider/model in `~/oino-test/agent/settings.json` first. The core keys are
+  pi's `defaultProvider`/`defaultModel` pair (`{"defaultProvider":"oino","defaultModel":
+  "deepseek/deepseek-flash"}`), and the router provider needs its credential under its own id:
+  `upload_auth` adds `auth.json`'s legacy `router` entry as `oino` (the component's env fallback
+  is `OINO_API_KEY`). A dynamic provider also needs its cached model list in
+  `<agent>/cache/models/<provider>.json`; `scripts/gui-drive.py` copies this PC's
+  `~/.oino/cache/models/oino.json` for `backend: real` scenarios.
 
 Driving the window (no window manager on `:93`): `xdotool search --onlyvisible --class
 dev.oino.desktop | head -1`, then `xdotool windowfocus <id>`, `xdotool type --window <id> "hi"`,

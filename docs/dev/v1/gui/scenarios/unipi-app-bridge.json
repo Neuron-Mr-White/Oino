@@ -44,7 +44,7 @@
       }
     },
     {
-      "wait_for": {
+      "wait_state": {
         "element": {
           "id": "unipi.app-bridge/control/tabs-1",
           "selected": true
@@ -63,7 +63,7 @@
       }
     },
     {
-      "wait_for": {
+      "wait_state": {
         "element": {
           "id": "unipi.app-bridge/control/tabs-2",
           "selected": true
@@ -82,7 +82,7 @@
       }
     },
     {
-      "wait_for": {
+      "wait_state": {
         "element": {
           "id": "unipi.app-bridge/control/tabs-4",
           "selected": true

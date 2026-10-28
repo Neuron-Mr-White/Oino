@@ -27,36 +27,57 @@
       }
     },
     {
-      "wait_for": {
-        "text": "fusion",
-        "timeout_ms": 20000
-      }
-    },
-    {
       "screenshot": {
         "name": "01-fusion-picker"
       }
     },
     {
-      "type_text": {
-        "text": "deepseek",
-        "submit": false
+      "click": {
+        "id": "dock-opt-1"
       }
     },
     {
       "wait_for": {
-        "text": "DeepSeek",
+        "text": "effort",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-effort"
+      }
+    },
+    {
+      "click": {
+        "id": "dock-opt-4"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "dock-opt-1",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Confirm",
         "timeout_ms": 20000
       }
     },
     {
       "screenshot": {
-        "name": "02-fusion-filter"
+        "name": "03-confirm"
       }
     },
     {
-      "key": {
-        "key": "enter"
+      "click": {
+        "id": "dock-opt-0"
+      }
+    },
+    {
+      "wait_state": {
+        "dialogs": 0,
+        "timeout_ms": 30000
       }
     },
     {
@@ -66,8 +87,21 @@
       }
     },
     {
+      "assert": {
+        "element": {
+          "id": "model-trigger",
+          "label": "DeepSeek"
+        }
+      }
+    },
+    {
       "screenshot": {
-        "name": "03-fusion-picked"
+        "name": "04-picked"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
       }
     },
     {
@@ -78,13 +112,13 @@
     },
     {
       "wait_for": {
-        "text": "Fusion",
+        "text": "Sidekick",
         "timeout_ms": 30000
       }
     },
     {
       "screenshot": {
-        "name": "04-fusion-stats"
+        "name": "05-fusion-stats"
       }
     }
   ]

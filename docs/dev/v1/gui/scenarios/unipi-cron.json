@@ -3,21 +3,99 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/cron", "submit": true}},
-    {"wait_for": {"text": "cron", "timeout_ms": 60000}},
-    {"screenshot": {"name": "01-cron-status"}},
-    {"click": {"id": "nav-cron"}},
-    {"wait_for": {"route": "cron", "timeout_ms": 30000}},
-    {"screenshot": {"name": "02-automations-page"}},
-    {"wait_for": {"text": "Automations", "timeout_ms": 30000}},
-    {"click": {"label": "New", "role": "button"}},
-    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
-    {"screenshot": {"name": "03-new-job"}},
-    {"key": {"key": "escape"}},
-    {"wait_for": {"route": "cron", "timeout_ms": 20000}},
-    {"screenshot": {"name": "04-cancelled"}},
-    {"click": {"id": "nav-sessions"}},
-    {"wait_for": {"id": "composer", "timeout_ms": 30000}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/cron",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "cron",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-cron-status"
+      }
+    },
+    {
+      "click": {
+        "id": "nav-cron"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "cron",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Automations",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "id": "cron-new",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-automations-page"
+      }
+    },
+    {
+      "click": {
+        "id": "cron-new"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Schedule",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-new-job"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "cron",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-cancelled"
+      }
+    },
+    {
+      "click": {
+        "id": "nav-sessions"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 30000
+      }
+    }
   ]
 }

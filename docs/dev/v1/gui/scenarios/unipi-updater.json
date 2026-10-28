@@ -3,21 +3,95 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/readme", "submit": true}},
-    {"wait_state": {"open": "unipi.updater/readme", "timeout_ms": 30000}},
-    {"wait_for": {"text": "oino", "timeout_ms": 20000}},
-    {"screenshot": {"name": "01-readme"}},
-    {"key": {"key": "escape"}},
-    {"type_text": {"text": "/changelog", "submit": true}},
-    {"wait_state": {"open": "unipi.updater/changelog", "timeout_ms": 30000}},
-    {"wait_for": {"text": "0.", "timeout_ms": 20000}},
-    {"screenshot": {"name": "02-changelog"}},
-    {"key": {"key": "escape"}},
-    {"type_text": {"text": "/settings", "submit": true}},
-    {"wait_for": {"id": "set-about", "timeout_ms": 30000}},
-    {"click": {"id": "set-about"}},
-    {"wait_for": {"text": "ersion", "timeout_ms": 30000}},
-    {"screenshot": {"name": "03-about-updates"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/readme",
+        "submit": true
+      }
+    },
+    {
+      "wait_state": {
+        "open": "unipi.updater/readme",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "oino",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-readme"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/changelog",
+        "submit": true
+      }
+    },
+    {
+      "wait_state": {
+        "open": "unipi.updater/changelog",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "0.",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-changelog"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/settings",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "set-about",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "click": {
+        "id": "set-about"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "about-check",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-about-updates"
+      }
+    }
   ]
 }

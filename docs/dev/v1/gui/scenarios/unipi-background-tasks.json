@@ -74,7 +74,7 @@
     },
     {
       "wait_for": {
-        "text": "sleep 30",
+        "label": "sleep 30",
         "absent": true,
         "timeout_ms": 30000
       }
