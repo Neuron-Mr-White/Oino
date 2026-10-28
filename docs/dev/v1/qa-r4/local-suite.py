@@ -38,6 +38,14 @@ def sh(cmd: list[str], **kw) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=ROOT, **kw)
 
 
+def sh_ok(cmd: list[str]) -> None:
+    """Best-effort helper step: never fails the run (missing `convert` etc.)."""
+    try:
+        subprocess.run(cmd, cwd=ROOT, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
 def stop() -> None:
     for f in ("app", "dbus", "xvfb"):
         p = RUN / f"{f}.pid"
@@ -79,16 +87,21 @@ def start(backend: str, scene: str | None, env: list[str], settings: dict) -> No
         args = ["--demo"]
     elif backend == "faux":
         base = {"defaultProvider": "faux", "defaultModel": "faux-1"}
-        sh(["cp", str(ROOT / "extensions/dist/provider-faux.wasm"), str(agent / "/")], check=False)
+        sh_ok(["cp", str(ROOT / "extensions/dist/provider-faux.wasm"), str(agent / "provider-faux.wasm")])
         args = ["--faux"]
     elif backend == "real":
         base = {"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"}
         (agent / "cache/models").mkdir(parents=True, exist_ok=True)
-        sh(["cp", str(Path.home() / ".oino/cache/models/oino.json"),
-            str(agent / "cache/models/oino.json")], check=False)
-        sh(["cp", str(Path.home() / ".oino/auth.json"), str(agent / "auth.json")], check=False)
-        sh(["chmod", "600", str(agent / "auth.json")], check=False)
-        sh(["convert", "-size", "96x96", "xc:#e03018", str(RUN / "attach-red.png")], check=False)
+        sh_ok(["cp", str(Path.home() / ".oino/cache/models/oino.json"),
+              str(agent / "cache/models/oino.json")])
+        sh_ok(["cp", str(Path.home() / ".oino/auth.json"), str(agent / "auth.json")])
+        sh_ok(["chmod", "600", str(agent / "auth.json")])
+        # A solid red test PNG for the attachment scenarios (no ImageMagick needed).
+        try:
+            from PIL import Image
+            Image.new("RGB", (96, 96), (224, 48, 24)).save(RUN / "attach-red.png")
+        except OSError:
+            pass
     else:
         sys.exit(f"unknown backend {backend}")
     (agent / "settings.json").write_text(json.dumps(merge(base, settings)))
@@ -161,7 +174,7 @@ def run_scenario(path: Path, backend_override: str | None) -> tuple[bool, float,
     cmd = ["python3", str(DRIVER), "--socket", str(SOCK), "run", "--no-restart", str(path)]
     t0 = time.time()
     r = sh(cmd)
-    return r.returncode == 0, time.time() - t0, r.stdout + r.stderr
+    return r.returncode == 0, time.time() - t0, (r.stdout or "") + (r.stderr or "")
 
 
 def main() -> int:
