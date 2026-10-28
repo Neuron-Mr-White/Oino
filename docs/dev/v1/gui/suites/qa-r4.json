@@ -1,0 +1,66 @@
+{
+    "name": "qa-r4",
+    "description": "QA round 4 regression sweep: the desktop driver scenarios that are not part of the unipi or zcode suites (docked interactions, board, launcher tabs, settings switches, turn undo, queue edit, status panel, plus the real-provider subagent and rewind scenarios), driven live on ti through the automation socket.",
+    "scenarios": [
+        {
+            "group": "shell",
+            "file": "docs/dev/v1/gui/scenarios/new-session-prompt.json",
+            "covers": "click the composer, type a prompt, Enter, the assistant plan streams"
+        },
+        {
+            "group": "interactions",
+            "file": "docs/dev/v1/gui/scenarios/approval-allow.json",
+            "covers": "docked approval card: allow, bash runs, turn finishes"
+        },
+        {
+            "group": "interactions",
+            "file": "docs/dev/v1/gui/scenarios/approval-deny.json",
+            "covers": "docked approval card: reject, tool blocked, turn still finishes"
+        },
+        {
+            "group": "interactions",
+            "file": "docs/dev/v1/gui/scenarios/ask-user-form.json",
+            "covers": "ask_user form: option per step, Next, multi-select, Submit"
+        },
+        {
+            "group": "shell",
+            "file": "docs/dev/v1/gui/scenarios/side-pane-tabs.json",
+            "covers": "hdr-side, + launcher menu, Files and Tree tabs, tab switching"
+        },
+        {
+            "group": "board",
+            "file": "docs/dev/v1/gui/scenarios/board-task.json",
+            "covers": "nav to Board, FAB dialog create, card select, move button"
+        },
+        {
+            "group": "settings",
+            "file": "docs/dev/v1/gui/scenarios/settings-switches.json",
+            "covers": "settings nav, mascot and native-Wayland switch toggles"
+        },
+        {
+            "group": "timeline",
+            "file": "docs/dev/v1/gui/scenarios/turn-undo.json",
+            "covers": "turn footer Undo: confirmation, files restored toast, checkpoint kept"
+        },
+        {
+            "group": "queue",
+            "file": "docs/dev/v1/gui/scenarios/queue-edit.json",
+            "covers": "queued follow-ups, reorder, recall to composer, remove, empty queue"
+        },
+        {
+            "group": "status",
+            "file": "docs/dev/v1/gui/scenarios/status-panel.json",
+            "covers": "StatusPanel topics, expand, run rows, stop confirm, collapse/expand"
+        },
+        {
+            "group": "real-provider",
+            "file": "docs/dev/v1/gui/scenarios/subagent-real.json",
+            "covers": "real run_subagent call, AgentRow, Agent tab (needs router credits)"
+        },
+        {
+            "group": "real-provider",
+            "file": "docs/dev/v1/gui/scenarios/rewind-real.json",
+            "covers": "user bubble Rewind on a real transcript: confirm, fork, composer refilled"
+        }
+    ]
+}
