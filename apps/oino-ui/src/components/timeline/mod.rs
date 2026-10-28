@@ -65,6 +65,28 @@ fn fold_icon(kind: Option<ToolKind>) -> IconName {
     }
 }
 
+/// `text` without ANSI SGR escapes (tool output is coloured for the terminal view; the
+/// automation tree should read as plain text).
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        // Skip `ESC [ … m` (SGR) and any other `ESC x` pair.
+        if chars.next() == Some('[') {
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
 /// The text of a transcript row, for the automation registry (capped at 400 chars).
 fn row_text(row: Option<&Row>) -> String {
     const MAX: usize = 400;
@@ -78,7 +100,8 @@ fn row_text(row: Option<&Row>) -> String {
         Some(RowKind::Notice(_, text)) => text.clone(),
         None => return String::new(),
     };
-    let trimmed = raw.trim();
+    let plain = strip_ansi(&raw);
+    let trimmed = plain.trim();
     if trimmed.chars().count() <= MAX {
         return trimmed.to_owned();
     }

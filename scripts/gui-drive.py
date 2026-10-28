@@ -29,7 +29,9 @@ Examples
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import shlex
 import os
 import socket
 import subprocess
@@ -40,21 +42,25 @@ from pathlib import Path
 TI_HOST = "ti@ti"
 TI_SOCKET = "/home/ti/oino-test/run/automation.sock"
 TI_SHOTS = "docs/dev/v1/design/shots/gui"
+TI_REMOTE_SHOTS = "/home/ti/oino-test/run/gui-shots"
 
-# Runs on the far side of the SSH pipe: stdin lines -> socket -> stdout lines.
-PROXY = r"""
-import socket, sys
-s = socket.socket(socket.AF_UNIX)
-s.connect(sys.argv[1])
-f = s.makefile('rwb', buffering=0)
-for line in sys.stdin.buffer:
-    f.write(line if line.endswith(b'\n') else line + b'\n')
-    r = f.readline()
-    if not r:
-        break
-    sys.stdout.buffer.write(r)
-    sys.stdout.buffer.flush()
-"""
+# Runs on the far side of the SSH pipe: stdin lines -> socket -> stdout lines. It travels as
+# base64 because SSH joins the remote command into one shell line (no quoting survives).
+PROXY = (
+    "import socket, sys\n"
+    "s = socket.socket(socket.AF_UNIX)\n"
+    "s.connect(sys.argv[1])\n"
+    "f = s.makefile('rwb', buffering=0)\n"
+    "for line in sys.stdin.buffer:\n"
+    "    f.write(line if line.endswith(b'\\n') else line + b'\\n')\n"
+    "    r = f.readline()\n"
+    "    if not r:\n"
+    "        break\n"
+    "    sys.stdout.buffer.write(r)\n"
+    "    sys.stdout.buffer.flush()\n"
+)
+PROXY_B64 = base64.b64encode(PROXY.encode()).decode()
+PROXY_CMD = f"import base64;exec(base64.b64decode('{PROXY_B64}'))"
 
 
 class DriverError(RuntimeError):
@@ -71,8 +77,10 @@ class Client:
         self.proc: subprocess.Popen[bytes] | None = None
         self.sock: socket.socket | None = None
         if host:
+            # SSH joins the remote command into one shell line, so quote it here.
+            remote = f"python3 -u -c {shlex.quote(PROXY_CMD)} {shlex.quote(path)}"
             self.proc = subprocess.Popen(
-                ["ssh", host, "python3", "-u", "-c", PROXY, path],
+                ["ssh", host, remote],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
             )
@@ -102,7 +110,7 @@ class Client:
             raise DriverError(f"{method}: {message}")
         return reply.get("result", {})
 
-    def _exchange(self, line: bytes, timeout: float) -> dict:
+    def _exchange(self, line: bytes, timeout: float) -> dict:  # noqa: ARG002
         if self.sock:
             self.sock.settimeout(timeout)
             self.sock.sendall(line)
@@ -117,16 +125,10 @@ class Client:
         assert self.proc and self.proc.stdin and self.proc.stdout
         self.proc.stdin.write(line)
         self.proc.stdin.flush()
-        deadline = time.time() + timeout
-        out = b""
-        while not out.endswith(b"\n"):
-            if time.time() > deadline:
-                raise DriverError("timed out waiting for the app (SSH pipe)")
-            chunk = self.proc.stdout.read(1 << 20)
-            if not chunk:
-                raise DriverError("the SSH pipe to the app closed")
-            out += chunk
-        return json.loads(out.decode())
+        reply = self.proc.stdout.readline()
+        if not reply:
+            raise DriverError("the SSH pipe to the app closed")
+        return json.loads(reply.decode())
 
 
 # ── selectors ────────────────────────────────────────────────────────────────────────────────
@@ -274,7 +276,7 @@ def run_scenario(client: Client, args: argparse.Namespace) -> int:
     failures = 0
     for index, step in enumerate(scenario.steps, start=1):
         scenario.step = index
-        (method, params), *_ = [(item) for item in step.items()][0]
+        method, params = next(iter(step.items()))
         params = params or {}
         started = time.time()
         try:
@@ -398,9 +400,13 @@ def find_node(nodes: list[dict], want: dict) -> dict | None:
 
 def _take_shot(client: Client, path: Path, args: argparse.Namespace) -> str:
     remote = bool(client.host)
-    target = args.remote_path_prefix.rstrip("/") + "/" + path.name if remote else str(path)
     if remote:
-        subprocess.run(["ssh", client.host, "mkdir", "-p", args.remote_path_prefix], check=False)
+        # The app writes on its own host; the client fetches the PNG below.
+        folder = f"{args.remote_path_prefix.rstrip('/')}/{path.parent.name}"
+        target = f"{folder}/{path.name}"
+        subprocess.run(["ssh", client.host, "mkdir", "-p", folder], check=False)
+    else:
+        target = str(path)
     result = client.call("screenshot", {"path": target})
     if remote:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -501,7 +507,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--stop-on-failure", action="store_true", default=True, help=argparse.SUPPRESS)
     run.add_argument(
         "--remote-path-prefix",
-        default=TI_SHOTS,
+        default=TI_REMOTE_SHOTS,
         help="where screenshots land on the app host (they are fetched back)",
     )
 
