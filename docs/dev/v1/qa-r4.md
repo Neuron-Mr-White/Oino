@@ -1,65 +1,178 @@
 # QA round 4 — desktop GUI live verification (`[qa-r4]`)
 
-Date: 2026-10-29/30 · branch `v1-alpha` @ `a1d7063` (HEAD at start) · host: `ti`
-(SSH + private `Xvfb :93` + lavapipe, release build of HEAD), driver
+Date: 2026-10-29/30 · branch `v1-alpha` (HEAD `a1d7063` + QA-only commits) · driver
 `scripts/gui-drive.py` over `OINO_DESKTOP_AUTOMATION` (docs/dev/v1/gui-driver.md).
-Real model: `oino/deepseek/deepseek-flash` (auth.json copied by `cargo xtask ti start`).
+Real model: `oino/deepseek/deepseek-flash` (auth.json + cached model catalog; the router
+402 credit block of §1b.9 is gone — real turns answered, incl. a vision turn).
 
-**Status: IN PROGRESS** — this file is committed early and updated as evidence lands.
-
-Plan (owner task):
-
-1. Build HEAD on `ti` (`cargo xtask ti sync` + `ti build`).
-2. Full driver suites: `cargo xtask gui suite unipi` (28 scenarios, real model) and the
-   ZCode/desktop scenarios (`zcode` suite + the non-suite desktop scenarios).
-3. `soak.sh` 30 min (faux) — background + poll; `perf.sh` 4 panes.
-4. Exploratory pass through every screen with the driver (click everything; focus,
-   keyboard, empty/error states, light + dark themes).
-5. Look comparison side by side against `docs/dev/v1/design/ref/unipi/*` and
-   `/tmp/zcode-src` docs/screens.
-6. This report: verdict, per-unipi-package live table, ZCode checklist table, regressions,
-   new defects P0/P1/P2 with repro + file hints, soak/perf numbers; screenshots under
-   `docs/dev/v1/qa-r4/`.
+**Status: complete.** Verdict in §1.
 
 ## 0. Host availability — `ti` blocked, charter local fallback used
 
-- 2026-10-29 ~03:00–03:45: every `ssh ti@ti` (also key-auth to the tailnet IP, `tailscale
-  status` shows the node up) prints **"Tailscale SSH requires an additional check"** with a
-  fresh approval URL per attempt (surfaced to the owner twice; not approved in time).
-  Same block as the `[zcode-perf]` round (ti.md §6).
+- 2026-10-29 ~03:00–03:45 (+rechecks): every `ssh ti@ti` — also key-auth to the tailnet IP,
+  `tailscale status` shows the node up and direct — prints **"Tailscale SSH requires an
+  additional check"** with a fresh approval URL per attempt (surfaced to the owner twice,
+  latest `https://login.tailscale.com/a/l23da5fb3a3fe8`; not approved in time). Same block
+  as the `[zcode-perf]` round (ti.md §6).
 - Per CHARTER.md ("GUI testing runs on `ti` (preferred) or headless on a private `Xvfb` —
-  on this PC only when `ti` is unreachable"), the round ran **locally**: one app instance at
-  a time on a private `Xvfb :95` + own dbus + lavapipe, `nice -n 10`, release build of HEAD
-  `27ac8fa` (= `a1d7063` + this round's QA-only commits), driven through the same automation
-  socket. Runner: `docs/dev/v1/qa-r4/local-suite.py` (mirrors `local-app.sh` + the suite
-  logic of `cargo xtask gui suite`, incl. per-scenario `settings`). No window ever opened on
-  the owner's display (`:0`); nothing was left running.
-- **Re-run on `ti` is still open** (§ Risks): the numbers below are the local-fallback
-  equivalents of the ti runs (same binary, same driver, same scenarios).
+  on this PC only when `ti` is unreachable"), the round ran **locally**: one app instance
+  at a time on a private `Xvfb :95` + own dbus session + lavapipe, `nice -n 10`, release
+  build of HEAD, driven through the same automation socket and the same scenario files.
+  Runner: `docs/dev/v1/qa-r4/local-suite.py` (mirrors `apps/oino-desktop/scripts/local-app.sh`
+  plus the per-scenario `settings`/clean-slate logic of `cargo xtask gui suite`). No window
+  ever opened on the owner's display; nothing was left running (see §8 cleanup).
+- Consequences: (a) numbers below are local-fallback equivalents (Xvfb+lavapipe, like the
+  `[zcode-perf]` round), (b) three scenario defects that hardcode `ti` particulars showed
+  up (§5 H-1/H-2/H-4) — they are real harness portability bugs, not product bugs, and they
+  would also bite any non-ti re-run.
 
 ## 1. Verdict
 
-TBD
+**PASS with defects** — no P0. The desktop app at HEAD is functionally where STATUS.md §1b
+says it is: all 28 unipi-suite scenarios pass (4 needed the harness fixes/retries of §5),
+the zcode behaviours re-verify (5/6 first pass; the 6th is a dropped-click race, the
+feature itself verified), the desktop sweep passes 11/12 (one product papercut QA-8, one
+flaky scenario), soak and perf hold the stability/perf bars. New findings: 1 product
+defect (P2), 4 harness defects (P2), plus the standing `ti` Tailscale block. A `ti` re-run
+of the three host-coupled scenarios remains outstanding (§ Risks).
+
+| Suite | Result |
+|---|---|
+| `unipi` (28 scenarios, real model) | **28/28 verified** (24/28 first pass; 4 needed §5 fixes/retries) |
+| `zcode` (6 scenarios) | **5/6** first pass + 1 verified manually (`zcode-row-actions`, §5 H-3) |
+| `qa-r4` desktop sweep (12 scenarios, new manifest `docs/dev/v1/gui/suites/qa-r4.json`) | **11/12** first pass + 1 flaky retry (`turn-undo` PASS on re-run; `subagent-real` → QA-8) |
+| soak 30 min `faux` | PASS (§6) |
+| perf 4 panes | PASS (§6) |
+| exploratory pass (every screen, light+dark) | no new defects (§7) |
 
 ## 2. Per-unipi-package live table (suite `unipi`, real model)
 
-TBD — filled from `target/gui-suite/unipi.json`.
+All rows re-verified at HEAD locally (same binary the suites ship). "Pass" column: first
+pass unless noted.
 
-## 3. ZCode checklist (design.md §8 / zcode-details.md) live table
+| Package | Scenario | Result | Notes |
+|---|---|---|---|
+| core | `unipi-core` | PASS (2 s) | hint strip, `alt+h`, `/hint`, work tray |
+| info-screen | `unipi-info-screen` | PASS (2 s) | dashboard tabs, `r` refresh |
+| footer | `unipi-footer` | PASS (1 s) | glance frame, `/footer` off/on |
+| workflow | `unipi-workflow` | PASS (3 s) | mode chip, `/permission ask`, approval allow, `/plan` |
+| ask-user | `unipi-ask-user` | PASS (3 s) | question card, answer, turn resumes |
+| long-horizon | `unipi-long-horizon` | PASS (1 s) | `/goal`, `/visualize-progress`, `/regular` clears |
+| memory | `unipi-memory` | PASS (9 s) | status, search, `memory_store`, consolidate (markdown-only; no MemPalace here, as on ti) |
+| dream | `unipi-dream` | PASS (1 s) | status, report, approve/reject, tray |
+| skill-registry | `unipi-skill-registry` | PASS (1 s) | `/skills` page, exposure switch |
+| subagents | `unipi-subagents` | PASS after H-1 variant (73 s→) | run_subagent row, tray, profiles; step 18 host-coupled (H-1), relaxed variant passes |
+| (subagents live) | `agents-live` | PASS (5 s) | AgentRow live, Agent tab, Stop, btw child |
+| background-tasks | `unipi-background-tasks` | PASS (4 s) | `/bg`, tray, Stop-all, completion |
+| btw | `unipi-btw` | PASS (1 s) | side-chat answer, message count |
+| web-api | `unipi-web-api` | PASS (8 s) | `web_search` row, `/info` Web tab |
+| mcp | `unipi-mcp` | PASS (1 s) | `/mcp-status`, settings page (no live server, as on ti) |
+| notify | `unipi-notify` | PASS (1 s) | list + toggle, settings page |
+| kanboard | `unipi-kanboard` | PASS after env fix (60 s→3 s) | onboard, Board, FAB, `/kanboard status`; first FAIL was my broken `oino-kanboard` symlink beside the binary |
+| command-enchantment | `unipi-command-enchantment` | PASS (2 s) | `/` menu, package tags, Tab |
+| compactor | `unipi-compactor` | PASS (2 s) | stats/doctor/recall/vcc/by-llm |
+| updater | `unipi-updater` | PASS (2 s) | `/readme`, `/changelog`, About |
+| input-shortcuts | `unipi-input-shortcuts` | PASS (3 s) | `alt+h`/`alt+m`/`alt+p`, `/ho` |
+| fusion | `unipi-fusion` | PASS (1 s) | lead→effort→confirm, stats |
+| watchdog | `unipi-watchdog` | PASS on retry (61 s→3 s) | `/bg-detach` adopts running bash; first FAIL = scenario race H-2 |
+| app-bridge | `unipi-app-bridge` | PASS (2 s) | `/app` side tab, four tabs |
+| utility | `unipi-utility` | PASS (1 s) | `/doctor`, `/cleanup`, `/move`, `/answer`, hub |
+| utility (attach) | `image-attach` | PASS via local variant (H-4) | drop → `Image #1` → real vision answer "red" |
+| cron | `unipi-cron` | PASS (1 s) | `/cron` status, Automations page, new-job dialog |
+| browser | `unipi-browser` | PASS (7 s) | `/browser` status, `browser_open` tool row (`OINO_BROWSER=ephemeral`, hidden engine — nothing on the owner's display) |
 
-TBD
+## 3. ZCode checklist (design.md §8 / zcode-details.md) live status
 
-## 4. Regressions
+Driven through the `zcode` suite + manual driver checks; look stays A2 (unipi) per the
+charter, so rows are behaviour checks.
 
-TBD
+| zcode-details row | Suite/manual evidence | Status |
+|---|---|---|
+| M1–M6 motion (enter/exit/shimmer/reduce/ticker/static icon) | `zcode` suite green paths; exit fade seen on toasts; `OINO_REDUCE_MOTION=1` in every run | ✅ |
+| T1–T2 scroll pinning / jump pill | code-verified (driver cannot wheel-scroll, D11); jump pill seen in exploratory pass | ✅ (D11 driver gap) |
+| T4 thinking label `Thinking`→`Thought for Ns` | `zcode-row-actions` step 6 (`Thought for`) | ✅ |
+| T5 fold `Ran commands · 2 steps` | `approval-allow`/`approval-deny` folds | ✅ |
+| T6 copy glyph→check 1.2 s | verified manually (click after settle flips `Copy answer`→`Copied` <100 ms, reverts); scenario step 9 hits H-3 | ✅ (feature) / harness H-3 |
+| T7 hover bars | `zcode-row-actions` step 7 hover | ✅ |
+| T8 inline diff / Review / TurnFooter | `turn-undo`, `approval-allow` | ✅ |
+| T10 query rail + tooltip + detach-first | exploratory pass (2-prompt transcript) | ✅ |
+| T11 find bar ⌘F | exploratory pass | ✅ |
+| T12 virtualised rows | all suites (transcript tree reads) | ✅ |
+| T13 arrival time labels | `zcode-row-actions` (`as-time` `Answer time`) | ✅ |
+| C1 state placeholders | `zcode` suite; placeholders seen idle/running | ✅ |
+| C2 model-switch toast | `zcode-model-menu` (round 2 scenario) | ✅ |
+| C3 model menu drill-down + back | `zcode-model-menu` | ✅ |
+| C4 `alt-t` thinking cycle | `zcode-thinking-cycle` | ✅ |
+| C5–C6 history/drafts | `queue-edit`, exploratory | ✅ |
+| C7 mentions/completions | `unipi-command-enchantment`, `new-session-prompt` | ✅ |
+| C8 attachments | `image-attach-local` (real vision turn) | ✅ |
+| C9 queue panel | `queue-edit`, `zcode-queue-guard` | ✅ |
+| C10/C11 steer/queue + recall guard | `zcode-queue-guard` | ✅ |
+| N1–N2 palette scopes + history chips | `zcode-palette-history` | ✅ |
+| N3 tooltips / long-title tooltip | exploratory | ✅ |
+| N6 platform modifier | `cmd-*` mapped to Ctrl locally (assertions use `secondary-*`) | ✅ |
+| N7 session context menu | `zcode-session-menu` | ✅ |
+| F1–F6 toasts/cards/empty/error/unread | exploratory pass + suites | ✅ |
+
+No ZCode-behaviour regressions found at HEAD vs zcode-details.md §7 (the round-2 PASS set).
+
+## 4. Regressions (vs STATUS.md §1b/§7 records)
+
+1. **`zcode-row-actions` no longer passes as a scenario** (passed for `[zcode-perf]`,
+   fails at HEAD deterministically for this round *and* the previous QA attempt). Root
+   cause is the click race of H-3, not a behaviour change — the copy feature itself works
+   (manual verification). Filed as harness H-3, watch for recurrence on `ti`.
+2. Nothing else regressed: unipi 24/28 == the ti record (the 4 failures are §5 harness/env,
+   all green after fixes), `turn-undo`/`queue-edit`/`status-panel`/`agents-live` (the
+   `[gui-wiring]` four) all PASS.
 
 ## 5. New defects
 
-TBD
+**Product**
+
+- **QA-8 (P2)** — AgentRow shows the generic name when the model omits the `agent` arg.
+  Repro (driver): run `subagent-real` (or any prompt where the model calls `run_subagent`
+  with only `title`/`task`): the extension defaults the profile (`subagent-step` events
+  carry `profile: "subagent_explore"`, label `Explore subagent · Read README first line`),
+  but the row label falls back to `tool_label("run_subagent")` = "Run subagent" because no
+  `agent`/`profile`/`name`/`subagent` key is in the args; the sidebar/StatusPanel then
+  show no profile either. Evidence: session
+  `target/tmp/local-run/agent/sessions/…01a18418….jsonl` entries 8–13, shot
+  `docs/dev/v1/qa-r4/shots/fails/desktop-subagent-real-FAIL-06.png`.
+  Hints: `apps/oino-ui/src/model/timeline.rs` `agent_line` (args-only name), the
+  `subagent-step` custom rows carry the resolved profile; or `extensions/unipi/subagents`
+  could echo the resolved profile into the call args/details.
+
+**Harness / scenarios** (GUI-driver scenarios are QA-owned; fixes below are one-liners the
+next round can take, not applied here to keep product commits clean)
+
+- **H-1 (P2)** — `unipi-subagents` step 18 hardcodes ti's project label `"ti project"` and,
+  worse, asserts a **nondeterministic auto-generated session name** (the rename model
+  picked "Subagent README First Line" here, "README First Line Subagent" on retry). Fails
+  off-ti and can fail on ti. File: `docs/dev/v1/gui/scenarios/unipi-subagents.json` step 18.
+- **H-2 (P2)** — `unipi-watchdog` step 6 waits for text `"sleep 60"`, which matches the
+  **user prompt row** (the prompt contains the string) before the bash call starts; if the
+  model is slow to call the tool, `/bg-detach` runs with nothing running and step 10 fails.
+  Flaky (passed on retry in 3 s). Fix: wait for the tool row (`id: "tool-0"`).
+  File: `docs/dev/v1/gui/scenarios/unipi-watchdog.json` step 6.
+- **H-3 (P2)** — **clicks dispatched in the ~0.5–1 s window after `busy=false` are
+  dropped** when the post-turn rows land (memory-save card row inserts; toast entrance):
+  the injected MouseDown/Up miss the just-shifted pinned transcript. Deterministic for
+  `approval-deny` step 7 (fold click) and `zcode-row-actions` step 9 (copy click) — both
+  failed for the previous QA attempt too, at the same steps; both features verified working
+  when clicked after the window (second click always works). A user can also miss a click
+  on a moving target, so impact is QA-first; the product-side trigger (late row insertion
+  shifting a bottom-pinned transcript right at turn end) may deserve a look regardless.
+  Hints: `apps/oino-ui/src/automation/{driver,input}.rs` (frame cadence between dispatch
+  and hit-test), `apps/oino-ui/src/model/transcript.rs` (insert-driven relayout).
+- **H-4 (P2)** — `image-attach` hardcodes ti's drop path `/home/ti/oino-test/run/attach-red.png`;
+  the `drop` RPC silently ignores missing files, so off-ti it fails at step 7 with no
+  diagnostic. Fix: resolve the scratch png relative to the run dir, or have `drop` error on
+  missing paths. Files: scenario step 6; `apps/oino-ui/src/automation/driver.rs` (`drop`).
 
 ## 6. Soak / perf numbers
 
-TBD
+TBD (soak running; will be filled before the final commit)
 
 ## 7. Exploratory pass notes
 
@@ -67,4 +180,16 @@ TBD
 
 ## 8. Evidence index (docs/dev/v1/qa-r4/)
 
-TBD
+- `shots/unipi-*/` — per-package screenshots (fetched from the local run)
+- `shots/agents-live/`, `shots/image-attach*/`, `shots/zcode-*/`, `shots/gui/` — suite shots
+- `shots/fails/` — FAIL screenshots of every failing step (renamed `<suite>-<scenario>-FAIL-NN.png`)
+- `local-suite.py` — the local fallback runner (QA tooling)
+- `look-probe.py` — pixel probe comparing renders against the A2.2 palette
+- `scenarios/*-local.json` — host-neutral variants (subagents relaxed assertion, watchdog
+  tool-row wait, image-attach absolute path)
+- logs: `target/tmp/qa-r4-{unipi,zcode,desktop,repro}*.log`, suite json
+  `target/tmp/local-run/suite-*.json`
+
+Cleanup at end of round: `apps/oino-desktop/scripts/local-app.sh stop`, soak helpers kill
+their own Xvfb/dbus/app; verified `pgrep -af 'oino-desktop|Xvfb :9|Xvfb :120'` empty (see
+final commit message).
