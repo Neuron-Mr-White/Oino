@@ -8,12 +8,13 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{self, Textarea};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    px,
+    AnyElement, App, ClickEvent, Context, ElementId, Focusable as _, InteractiveElement as _,
+    IntoElement, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
+    Window, div, px,
 };
 use oino_ai::JsonValue;
 
+use crate::automation::Automatable as _;
 use crate::components::badge::kbd;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::{LEVELS, context_ring, level_label, thinking_bars};
@@ -116,6 +117,12 @@ impl SessionPane {
             .then(|| self.render_context_header(welcome, &frame_top, &t, cx));
         let completion = (!self.completion.rows.is_empty()).then(|| self.render_completion(&t, cx));
         let (prose, _) = t.text(TextRole::Prose);
+        // Automation (`gui-driver.md`): the composer is the session's only text input.
+        let draft = self.composer.read(cx);
+        let automation =
+            crate::automation::Meta::labelled(crate::automation::Role::Input, "Message")
+                .value(draft.value().to_string())
+                .focus(draft.focus_handle(cx));
         let editor = div()
             .id("composer")
             .w_full()
@@ -161,6 +168,7 @@ impl SessionPane {
                         .child(ctx.token().label().clone())
                 }
             }));
+        let editor = crate::automation::probe(editor, automation);
         let toolbar = self.render_toolbar(busy, empty, blocked, narrow, &t, cx);
         // A2.11 shell: input (surface-2), radius 26, padding 8 8 8 0, inset line at 80 %,
         // composer elevation. The editor has no inner border.
@@ -332,7 +340,8 @@ impl SessionPane {
                 .hover(|s| s.bg(t.border()))
                 .tooltip(crate::components::tooltip::tip("Attach", None))
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Attach, cx)))
-                .child(icon(IconName::Paperclip, size::ICON, t.fg())),
+                .child(icon(IconName::Paperclip, size::ICON, t.fg()))
+                .automation(crate::automation::Meta::icon_button("Attach")),
             self.menu == Some(PaneMenu::Attach),
             Placement::AboveStart,
             || {
@@ -540,7 +549,11 @@ impl SessionPane {
                 },
                 size::ICON_LG,
                 t.primary_fg(),
-            ));
+            ))
+            .automation(
+                crate::automation::Meta::icon_button(if stop { "Stop" } else { "Send" })
+                    .disabled(disabled && !stop),
+            );
         // ⌄: the Steer / Queue choice while a run is active (also Ctrl+Enter).
         let choice = (busy && !empty).then(|| {
             let e1 = entity.clone();

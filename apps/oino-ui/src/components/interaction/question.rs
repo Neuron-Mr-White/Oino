@@ -10,6 +10,7 @@ use gpui_kit::{
 };
 
 use super::{InteractionView, digit};
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::check;
 use crate::design::icons::icon;
@@ -209,6 +210,14 @@ impl InteractionView {
                     this.toggle_option(step, oi);
                     cx.notify();
                 }))
+                .automation(
+                    crate::automation::Meta::labelled(
+                        crate::automation::Role::Option,
+                        o.label.clone(),
+                    )
+                    .selected(checked)
+                    .checked(checked),
+                )
                 .into_any_element()
             })
             .collect();

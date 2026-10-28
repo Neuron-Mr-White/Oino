@@ -19,6 +19,7 @@ use gpui_kit::{
 };
 use oino_ai::JsonValue;
 
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::dialog::modal_frame;
 use crate::components::empty::empty_state;
@@ -864,6 +865,8 @@ impl Workspace {
                     size::ICON_LG,
                     t.primary_fg(),
                 ))
+                // Pointer-only surface (STATUS.md §1b.7 gap 1): the FAB has no keyboard path.
+                .automation(crate::automation::Meta::icon_button("New task"))
         });
         div()
             .id("board")

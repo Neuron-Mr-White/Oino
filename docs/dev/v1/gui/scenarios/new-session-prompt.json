@@ -1,0 +1,16 @@
+{
+  "name": "new-session-prompt",
+  "scene": "welcome",
+  "shots": "docs/dev/v1/design/shots/gui",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
+    {"click": {"id": "composer"}},
+    {"type_text": {"text": "make the parser accept trailing commas"}},
+    {"screenshot": {"name": "01-typed"}},
+    {"key": {"key": "enter"}},
+    {"wait_for": {"text": "make the parser accept trailing commas", "timeout_ms": 20000}},
+    {"wait_for": {"text": "Locate", "timeout_ms": 30000}},
+    {"assert": {"busy": true, "session_id": true}},
+    {"screenshot": {"name": "02-plan-streaming"}}
+  ]
+}

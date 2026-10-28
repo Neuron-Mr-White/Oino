@@ -11,6 +11,7 @@ use gpui_kit::{
 };
 use oino_ai::JsonValue;
 
+use crate::automation::Automatable as _;
 use crate::components::ous::{ActionFn, Ous, render};
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
@@ -184,6 +185,10 @@ fn lane(
             .on_click(move |_: &ClickEvent, _, cx| cb("add", JsonValue::Null, cx))
             .child(icon(IconName::Plus, size::ICON_SM, t.fg_subtle()))
             .child("Add task")
+            .automation(crate::automation::Meta::labelled(
+                crate::automation::Role::Button,
+                format!("Add task ({})", lane.title),
+            ))
             .into_any_element()
     });
     div()
@@ -310,6 +315,14 @@ fn lane(
                         ),
                     )
                 })
+                .automation(
+                    crate::automation::Meta::labelled(
+                        crate::automation::Role::Card,
+                        format!("{} {}", card.id, card.title),
+                    )
+                    .selected(card.selected)
+                    .disabled(select.is_none()),
+                )
         }))
         .children(add_row)
         .into_any_element()
@@ -361,6 +374,13 @@ pub fn lane_strip(
                     l.cards.len(),
                     false,
                 ))
+                .automation(
+                    crate::automation::Meta::labelled(
+                        crate::automation::Role::Tab,
+                        l.title.clone(),
+                    )
+                    .selected(on),
+                )
         }))
         .into_any_element()
 }

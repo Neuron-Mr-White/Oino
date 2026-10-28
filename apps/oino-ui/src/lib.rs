@@ -31,6 +31,7 @@
 //! | `rt` (feature `views`) | tokio ↔ GPUI bridge (`Tokio::spawn` → `gpui::Task`) |
 //! | [`stability`] | crash-log panic hook, UI-thread watchdog, activity breadcrumbs |
 //! | `views` (feature `views`) | GPUI views |
+//! | `automation` (feature `views`) | opt-in GUI automation server (`OINO_DESKTOP_AUTOMATION`) |
 //! | `mobile` (feature `mobile`) | phone shell: stacked screens, bottom sheets, safe areas |
 
 #![forbid(unsafe_code)]
@@ -46,6 +47,8 @@
     )
 )]
 
+#[cfg(feature = "views")]
+pub mod automation;
 #[cfg(feature = "views")]
 pub mod components;
 pub mod design;

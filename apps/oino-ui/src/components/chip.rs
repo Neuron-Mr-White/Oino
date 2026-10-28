@@ -12,6 +12,7 @@ use gpui_kit::{
     SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
+use crate::automation::Automatable as _;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
@@ -86,6 +87,13 @@ pub fn segmented(
                 .when(!selected, |el| el.hover(|s| s.text_color(t.fg())))
                 .on_click(move |_: &ClickEvent, w, cx| pick(i, w, cx))
                 .child(SharedString::from((*label).to_owned()))
+                .automation(
+                    crate::automation::Meta::labelled(
+                        crate::automation::Role::Segment,
+                        (*label).to_owned(),
+                    )
+                    .selected(selected),
+                )
         }))
 }
 

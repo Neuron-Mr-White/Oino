@@ -40,8 +40,12 @@ pub fn switch(
 ) -> impl IntoElement {
     let (w, h) = size::SWITCH_LG;
     let knob = h - space::S1;
-    div()
-        .id(id.into())
+    let id = id.into();
+    // Automation (`gui-driver.md`): a switch has no text of its own, so its label is its id.
+    let meta = crate::automation::Meta::labelled(crate::automation::Role::Switch, id.to_string())
+        .checked(on);
+    let el = div()
+        .id(id)
         .flex_shrink_0()
         .w(px(w))
         .h(px(h))
@@ -62,7 +66,8 @@ pub fn switch(
                 .size(px(knob))
                 .rounded(px(radius::R_FULL))
                 .bg(if on { t.cream() } else { t.fg_subtle() }),
-        )
+        );
+    crate::automation::probe(el, meta)
 }
 
 /// A 16 px checkbox (or radio when `round`).

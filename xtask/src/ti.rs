@@ -9,7 +9,7 @@
 //! |---|---|
 //! | `sync` | `HEAD` as a git bundle + `extensions/dist` → `ti:~/oino-test/oino` |
 //! | `build [--jobs 6]` | `cargo build --release` of `oino` + `oino-desktop` there |
-//! | `start [--demo] [--faux] [--cwd <dir>]` | scratch agent dir + `Xvfb :93` + dbus + app |
+//! | `start [--demo] [--faux] [--cwd <dir>] [--env K=V]` | scratch agent dir + `Xvfb :93` + dbus + app (extra env repeatable) |
 //! | `shot [--name <n>] [--out <dir>]` | app-window PNG → `docs/dev/v1/design/shots/ti/<n>.png` |
 //! | `status` | PIDs, build state, whether `:93` is free |
 //! | `soak [--minutes 10] [--backend demo\|faux]` | `apps/oino-desktop/scripts/soak.sh` there |
@@ -37,8 +37,8 @@ const SHOT_DIR: &str = "docs/dev/v1/design/shots/ti";
 const DESKTOP_BIN: &str = "oino-test/oino/apps/target/release/oino-desktop";
 
 const USAGE: &str = "usage: cargo xtask ti <sync | build | start | shot | status | soak | stop> \
-[sync] [build --jobs <n>] [start --demo|--faux] [start --cwd <dir>] [shot --name <n>] \
-[shot --out <dir>] [soak --minutes <n> --backend demo|faux]";
+[sync] [build --jobs <n>] [start --demo|--faux] [start --cwd <dir>] [start --env K=V ...] \
+[shot --name <n>] [shot --out <dir>] [soak --minutes <n> --backend demo|faux]";
 
 fn remote() -> Remote {
     Remote::linux(HOST)
@@ -57,6 +57,26 @@ fn flag<'a>(args: &'a [String], name: &str) -> Result<Option<&'a str>> {
 
 fn has(args: &[String], name: &str) -> bool {
     args.iter().any(|a| a == name)
+}
+
+/// Every `--env K=V` value (repeatable; `scripts/gui-drive.py` passes the automation socket
+/// and the demo scene this way).
+fn envs(args: &[String]) -> Result<Vec<String>> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--env" {
+            let value = args.get(i + 1).context("--env needs KEY=VALUE")?;
+            if !value.contains('=') {
+                bail!("--env needs KEY=VALUE, got {value}");
+            }
+            out.push(value.clone());
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    Ok(out)
 }
 
 /// `HEAD` (git bundle) + `extensions/dist` into `~/oino-test/oino` on ti.
@@ -186,7 +206,7 @@ fn upload_auth(remote: &Remote, faux: bool) -> Result<()> {
 
 /// Prepares the scratch agent dir (auth, optional faux fixture) and starts `Xvfb :93` + a
 /// private dbus session + the app. Records every PID in `~/oino-test/run/`.
-fn start(faux: bool, demo: bool, app_args: &[String]) -> Result<()> {
+fn start(faux: bool, demo: bool, app_args: &[String], extra_env: &[String]) -> Result<()> {
     let remote = remote();
     // A faux run needs the fixture and the provider defaults soak.sh sets up; `--demo` needs
     // neither, and a real run reads the copied auth.json.
@@ -216,6 +236,12 @@ fn start(faux: bool, demo: bool, app_args: &[String]) -> Result<()> {
         upload_auth(&remote, faux)?;
     }
     let args: Vec<String> = app_args.iter().map(|a| shell_quote(a)).collect();
+    // Extra environment for the app (repeatable `--env K=V`).
+    let mut env_line = String::new();
+    for pair in extra_env {
+        let (key, value) = pair.split_once('=').context("--env needs KEY=VALUE")?;
+        env_line.push_str(&format!("{key}={} ", shell_quote(value)));
+    }
     let script = format!(
         "set -u\n\
          export PATH=\"$HOME/.cargo/bin:$PATH\"\n\
@@ -235,7 +261,7 @@ echo 'display {DISPLAY} is busy on this host'; exit 3; fi\n\
          echo \"$DBUS_SESSION_BUS_ADDRESS\" > \"$run/dbus.address\"\n\
          cd ~/{PROJECT_DIR} || exit 1\n\
          nohup env DISPLAY={DISPLAY} DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SESSION_BUS_ADDRESS\" \
-OINO_AGENT_DIR=\"$agent\" OINO_DESKTOP_SIZE=1600x1000 OINO_REDUCE_MOTION=1 \
+OINO_AGENT_DIR=\"$agent\" OINO_DESKTOP_SIZE=1600x1000 OINO_REDUCE_MOTION=1 {env_line}\
 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
 \"$bin\" {args} >\"$run/app.log\" 2>&1 </dev/null &\n\
          echo $! > \"$run/app.pid\"\n\
@@ -245,7 +271,8 @@ VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
 tail -n 20 \"$run/app.log\"; exit 1; fi\n\
          echo \"app pid $app on {DISPLAY} (xvfb $(cat \"$run/xvfb.pid\"), \
 dbus $(cat \"$run/dbus.pid\"))\"\n",
-        args = args.join(" ")
+        args = args.join(" "),
+        env_line = env_line
     );
     let out = remote.bash("ti-start", &script, Duration::from_secs(180), true)?;
     print!("{out}");
@@ -459,7 +486,12 @@ pub fn ti(args: &[String]) -> Result<()> {
                 app_args.push("--cwd".into());
                 app_args.push(cwd.into());
             }
-            start(has(rest, "--faux"), has(rest, "--demo"), &app_args)
+            start(
+                has(rest, "--faux"),
+                has(rest, "--demo"),
+                &app_args,
+                &envs(rest)?,
+            )
         }
         "shot" => {
             let name = flag(rest, "--name")?.unwrap_or("desktop");

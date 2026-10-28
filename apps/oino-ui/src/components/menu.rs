@@ -11,6 +11,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, anchored, deferred, div, point, px,
 };
 
+use crate::automation::{Automatable as _, Meta, Role};
 use crate::components::badge::kbd;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
@@ -384,6 +385,10 @@ fn row(id: &SharedString, i: usize, t: &OinoTheme, entry: MenuEntry) -> AnyEleme
             on_select,
         } => {
             let fg = if disabled { t.fg_subtlest() } else { t.fg() };
+            let meta = Meta::labelled(Role::MenuRow, label.to_string())
+                .disabled(disabled)
+                .checked(checked)
+                .selected(active);
             div()
                 .id(ElementId::Name(format!("{id}-{i}").into()))
                 .flex()
@@ -426,6 +431,7 @@ fn row(id: &SharedString, i: usize, t: &OinoTheme, entry: MenuEntry) -> AnyEleme
                 .when(submenu, |el| {
                     el.child(icon(IconName::ChevronRight, size::ICON_MD, t.fg_subtle()))
                 })
+                .automation(meta)
                 .into_any_element()
         }
     }

@@ -22,6 +22,7 @@ pi behaviour, pi 1.4.0 behaviour (as described in audit-pi) is binding.
 | [gpui-app.md](gpui-app.md) | Desktop + mobile apps, crates under `apps/`, UX, build matrix | gpui-desktop, gpui-mobile |
 | [quality.md](quality.md) | Gates, test strategy, golden tests, fixtures, CI | everyone |
 | [ti.md](ti.md) | `ti` GUI test host: one-time setup, `cargo xtask ti` (sync/build/start/shot/soak/stop), private `Xvfb :93`, screenshots, soak numbers | gpui-*, stability, testers |
+| [gui-driver.md](gui-driver.md) | GUI automation driver: `OINO_DESKTOP_AUTOMATION` JSON-lines RPC over a Unix socket (tree/click/type/key/wait/screenshot), `scripts/gui-drive.py`, scenarios, proof on `ti` | gpui-*, stability, QA/fix agents |
 
 ## 2. Decision register
 

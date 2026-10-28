@@ -14,6 +14,7 @@ use gpui_kit::{
     px,
 };
 
+use crate::automation::Automatable as _;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
@@ -136,6 +137,9 @@ fn pill_tab(
     let close = Rc::clone(on_close);
     let fg = if selected { t.fg() } else { t.fg_subtle() };
     let group = SharedString::from(format!("{id}-g-{}", tab.key));
+    let meta =
+        crate::automation::Meta::labelled(crate::automation::Role::Tab, tab.title.to_string())
+            .selected(selected);
     div()
         .id(ElementId::Name(format!("{id}-tab-{}", tab.key).into()))
         .group(group.clone())
@@ -189,6 +193,7 @@ fn pill_tab(
                     .child(icon(IconName::X, size::ICON_SM, t.fg_subtle())),
             )
         })
+        .automation(meta)
         .into_any_element()
 }
 
@@ -219,5 +224,9 @@ pub fn underline_tabs(
                 .when(selected, |el| el.border_b_2().border_color(t.fg()))
                 .on_click(move |_: &ClickEvent, w, cx| select(i, w, cx))
                 .child(SharedString::from(title.clone()))
+                .automation(
+                    crate::automation::Meta::labelled(crate::automation::Role::Tab, title.clone())
+                        .selected(selected),
+                )
         }))
 }

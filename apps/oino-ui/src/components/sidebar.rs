@@ -14,6 +14,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, div, px, relative,
 };
 
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::kbd::{kbd, legend};
 use crate::components::menu::{MenuEntry, Placement, menu, popover};
@@ -533,6 +534,14 @@ impl AppShell {
             .child(icon(IconName::ChevronRight, size::ICON_MD, t.fg_subtlest()));
         let e = cx.entity().downgrade();
         let entry = entry.clone();
+        let row = crate::automation::probe(
+            row,
+            crate::automation::Meta::labelled(
+                crate::automation::Role::Row,
+                entry.summary.title.clone(),
+            )
+            .selected(is_active),
+        );
         popover(
             row,
             menu_open,
@@ -645,7 +654,11 @@ impl AppShell {
                         this.needs_drawer = !this.needs_drawer;
                         cx.notify();
                     }))
-                    .child(header_crab(crab, needs, cx)),
+                    .child(header_crab(crab, needs, cx))
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Button,
+                        crab.label(),
+                    )),
             )
             .render(&t);
         let active = self.active_pane().map(|p| p.read(cx).model.id.clone());
@@ -970,7 +983,11 @@ impl AppShell {
                     .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                         this.open_settings(Some("about"), window, cx);
                     }))
-                    .child("Update"),
+                    .child("Update")
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Button,
+                        "Update",
+                    )),
             )
         });
         let search = div()
@@ -995,7 +1012,11 @@ impl AppShell {
             }))
             .child(icon(IconName::Search, size::ICON, t.fg_subtlest()))
             .child(div().flex_1().child("Search"))
-            .child(kbd(&t, "⌘K"));
+            .child(kbd(&t, "⌘K"))
+            .automation(crate::automation::Meta::labelled(
+                crate::automation::Role::Button,
+                "Search",
+            ));
         div()
             .flex()
             .flex_col()
@@ -1022,11 +1043,16 @@ impl AppShell {
                         .when(needs > 0, |el| {
                             el.child(crate::components::chip::count_badge(&t, needs, true))
                         })
-                        .on_click(cx.listener(
-                            |this, _: &ClickEvent, window, cx| {
-                                this.run_app_action("sessions", window, cx);
-                            },
-                        )),
+                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                            this.run_app_action("sessions", window, cx);
+                        }))
+                        .automation(
+                            crate::automation::Meta::labelled(
+                                crate::automation::Role::Row,
+                                "Sessions",
+                            )
+                            .selected(route == Route::Sessions),
+                        ),
                     )
                     .when(has_board, |el| {
                         el.child(
@@ -1045,11 +1071,16 @@ impl AppShell {
                                     false,
                                 ))
                             })
-                            .on_click(cx.listener(
-                                |this, _: &ClickEvent, window, cx| {
-                                    this.open_board(window, cx);
-                                },
-                            )),
+                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.open_board(window, cx);
+                            }))
+                            .automation(
+                                crate::automation::Meta::labelled(
+                                    crate::automation::Role::Row,
+                                    "Board",
+                                )
+                                .selected(route == Route::Board),
+                            ),
                         )
                     })
                     .child(
@@ -1061,11 +1092,16 @@ impl AppShell {
                             Some("⌘4"),
                             route == Route::Cron,
                         )
-                        .on_click(cx.listener(
-                            |this, _: &ClickEvent, window, cx| {
-                                this.open_cron(window, cx);
-                            },
-                        )),
+                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                            this.open_cron(window, cx);
+                        }))
+                        .automation(
+                            crate::automation::Meta::labelled(
+                                crate::automation::Role::Row,
+                                "Automations",
+                            )
+                            .selected(route == Route::Cron),
+                        ),
                     )
                     .child(
                         nav_item(
@@ -1076,11 +1112,16 @@ impl AppShell {
                             Some("⌘3"),
                             route == Route::Extensions,
                         )
-                        .on_click(cx.listener(
-                            |this, _: &ClickEvent, window, cx| {
-                                this.run_app_action("extensions", window, cx);
-                            },
-                        )),
+                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                            this.run_app_action("extensions", window, cx);
+                        }))
+                        .automation(
+                            crate::automation::Meta::labelled(
+                                crate::automation::Role::Row,
+                                "Extensions",
+                            )
+                            .selected(route == Route::Extensions),
+                        ),
                     )
                     .child(
                         nav_item(
@@ -1091,11 +1132,16 @@ impl AppShell {
                             Some("⌘,"),
                             route == Route::Settings,
                         )
-                        .on_click(cx.listener(
-                            |this, _: &ClickEvent, window, cx| {
-                                this.open_settings(None, window, cx);
-                            },
-                        )),
+                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                            this.open_settings(None, window, cx);
+                        }))
+                        .automation(
+                            crate::automation::Meta::labelled(
+                                crate::automation::Role::Row,
+                                "Settings",
+                            )
+                            .selected(route == Route::Settings),
+                        ),
                     ),
             )
             .child(div().flex_1())

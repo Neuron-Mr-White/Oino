@@ -14,6 +14,7 @@ use gpui_kit::{
     uniform_list,
 };
 
+use crate::automation::Automatable as _;
 use crate::components::badge::kbd;
 use crate::components::controls::segmented;
 use crate::design::icons::icon;
@@ -250,6 +251,10 @@ impl Render for PaletteView {
                                     this.pick(cx);
                                 }))
                                 .child(format!("Show {n} more"))
+                                .automation(crate::automation::Meta::labelled(
+                                    crate::automation::Role::Row,
+                                    format!("Show {n} more"),
+                                ))
                                 .into_any_element(),
                             Row::Item(i) => {
                                 let item = this.items.get(*i)?;
@@ -320,6 +325,13 @@ impl Render for PaletteView {
                                         ))
                                     })
                                     .when_some(item.keys.clone(), |el, k| el.child(kbd(&t, k)))
+                                    .automation(
+                                        crate::automation::Meta::labelled(
+                                            crate::automation::Role::Row,
+                                            item.label.clone(),
+                                        )
+                                        .selected(selected),
+                                    )
                                     .into_any_element()
                             }
                         })
@@ -380,7 +392,15 @@ impl Render for PaletteView {
                                     .flex_1()
                                     .child(Input::new(&self.input).appearance(false)),
                             )
-                            .child(kbd(&t, "esc")),
+                            .child(kbd(&t, "esc"))
+                            .automation(
+                                crate::automation::Meta::labelled(
+                                    crate::automation::Role::Input,
+                                    "Search commands",
+                                )
+                                .value(self.input.read(cx).value().to_string())
+                                .focus(self.input.focus_handle(cx)),
+                            ),
                     )
                     .child(div().px(px(space::S3)).child(tabs))
                     .when(!history.is_empty() && query.is_empty(), |el| {

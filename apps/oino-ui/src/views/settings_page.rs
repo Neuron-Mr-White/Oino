@@ -29,6 +29,8 @@ use oino_core::extensions::settings::SettingsLayer;
 use oino_core::session::AuthProviderInfo;
 use oino_view::settings_hub::{self, FieldKind, HubField, HubNamespace};
 
+use crate::automation::Automatable as _;
+
 use crate::components::badge::{badge, kbd};
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::{segmented, switch};
@@ -541,7 +543,14 @@ impl SettingsView {
                         if active { t.fg() } else { t.fg_subtlest() },
                     ))
                 })
-                .child(div().flex_1().min_w_0().truncate().child(label))
+                .child(div().flex_1().min_w_0().truncate().child(label.clone()))
+                .automation(
+                    crate::automation::Meta::labelled(
+                        crate::automation::Role::Row,
+                        label.to_string(),
+                    )
+                    .selected(active),
+                )
                 .into_any_element()
         };
         let s = &self.section;

@@ -1,0 +1,19 @@
+{
+  "name": "ask-user-form",
+  "scene": "question",
+  "shots": "docs/dev/v1/design/shots/gui",
+  "steps": [
+    {"wait_for": {"label": "Arrays and objects", "role": "option", "timeout_ms": 60000}},
+    {"assert": {"dialogs": "form"}},
+    {"screenshot": {"name": "01-question"}},
+    {"click": {"label": "Arrays and objects", "role": "option"}},
+    {"click": {"id": "q-next"}},
+    {"wait_for": {"label": "Add regression tests?", "timeout_ms": 10000}},
+    {"click": {"label": "Unit tests", "role": "option"}},
+    {"screenshot": {"name": "02-second-step"}},
+    {"click": {"id": "q-next"}},
+    {"wait_for": {"id": "q-next", "absent": true, "timeout_ms": 20000}},
+    {"assert": {"dialogs": 0}},
+    {"screenshot": {"name": "03-answered"}}
+  ]
+}

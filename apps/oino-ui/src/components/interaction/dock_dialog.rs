@@ -13,6 +13,7 @@ use gpui_kit::{
 };
 
 use super::{Field, InteractionView, digit};
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::check;
 use crate::components::ous::{self, Ous};
@@ -172,6 +173,14 @@ impl InteractionView {
                         this.pick(i, cx);
                         cx.notify();
                     }))
+                    .automation(
+                        crate::automation::Meta::labelled(
+                            crate::automation::Role::Option,
+                            label.clone(),
+                        )
+                        .selected(i == highlighted || mark == Some(true))
+                        .checked(mark == Some(true)),
+                    )
                     .into_any_element()
                 }));
             let _ = total;

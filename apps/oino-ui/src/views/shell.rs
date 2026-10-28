@@ -318,6 +318,8 @@ impl AppShell {
         if let Some(config) = crate::views::soak::SoakConfig::get(cx) {
             crate::views::soak::start(config, window, cx);
         }
+        // Opt-in automation server (`OINO_DESKTOP_AUTOMATION`), docs/dev/v1/gui-driver.md.
+        crate::automation::install(cx, window);
         if let Ok(open) = std::env::var("OINO_DESKTOP_OPEN") {
             cx.spawn_in(window, async move |this, cx| {
                 cx.background_executor()
@@ -518,6 +520,51 @@ impl AppShell {
     pub(crate) fn active_pane(&self) -> Option<&Entity<SessionPane>> {
         let key = self.focused?;
         self.panes.iter().find(|p| p.key == key).map(|p| &p.entity)
+    }
+
+    /// What the automation driver's `state` method reports (docs/dev/v1/gui-driver.md §2).
+    pub(crate) fn automation_state(&self, cx: &App) -> crate::automation::State {
+        let pane = self.active_pane().map(|p| p.read(cx));
+        crate::automation::State {
+            route: match self.route {
+                Route::Sessions => "sessions",
+                Route::Settings => "settings",
+                Route::Board => "board",
+                Route::Extensions => "extensions",
+                Route::Cron => "cron",
+                Route::Onboarding => "onboarding",
+            }
+            .to_owned(),
+            session: pane.as_ref().map(|p| p.model.id.clone()),
+            session_name: pane.as_ref().and_then(|p| p.model.name.clone()),
+            dialogs: pane
+                .as_ref()
+                .map(|p| {
+                    p.model
+                        .ui
+                        .dialogs()
+                        .map(|d| crate::automation::state::DialogInfo {
+                            id: d.id.clone(),
+                            method: d.method.clone(),
+                            title: d.title.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            panes: self.panes.len(),
+            busy: pane.as_ref().is_some_and(|p| p.model.is_busy()),
+            open: [
+                (self.palette.is_some(), "palette"),
+                (self.switch.is_some(), "switch"),
+                (self.side_open, "side"),
+                (self.bottom_open, "bottom"),
+                (self.settings_view.is_some(), "settings-view"),
+            ]
+            .iter()
+            .filter(|(open, _)| *open)
+            .map(|(_, name)| (*name).to_owned())
+            .collect(),
+        }
     }
 
     pub(crate) fn pane_by_key(&self, key: u64) -> Option<&Entity<SessionPane>> {
@@ -1787,6 +1834,9 @@ impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _activity = crate::stability::activity("shell render");
         perf::begin(cx);
+        // Publishes the element registry of the frame that just finished (a no-op while
+        // automation is off).
+        crate::automation::begin_frame(cx);
         self.repair_focus(window, cx);
         let t = OinoTheme::get(cx);
         self.window_width = window.viewport_size().width;

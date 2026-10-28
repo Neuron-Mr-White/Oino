@@ -474,6 +474,11 @@ impl UiState {
         self.dialogs.front()
     }
 
+    /// Every queued dialog, front first (the automation driver's `state`).
+    pub fn dialogs(&self) -> impl Iterator<Item = &Dialog> {
+        self.dialogs.iter()
+    }
+
     /// Number of queued dialogs.
     #[must_use]
     pub fn dialog_count(&self) -> usize {

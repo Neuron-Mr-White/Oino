@@ -1,0 +1,26 @@
+{
+  "name": "board-task",
+  "scene": "board",
+  "shots": "docs/dev/v1/design/shots/gui",
+  "steps": [
+    {"wait_for": {"id": "nav-board", "timeout_ms": 40000}},
+    {"click": {"id": "nav-board"}},
+    {"wait_for": {"id": "board-fab", "timeout_ms": 20000}},
+    {"assert": {"route": "board"}},
+    {"screenshot": {"name": "01-board"}},
+    {"click": {"id": "board-fab"}},
+    {"wait_for": {"id": "board-new-add", "timeout_ms": 10000}},
+    {"type_text": {"text": "QA automation task"}},
+    {"screenshot": {"name": "02-new-task"}},
+    {"click": {"id": "board-new-add"}},
+    {"wait_for": {"id": "board-new-add", "absent": true, "timeout_ms": 10000}},
+    {"wait_for": {"id": "card-OIN-12", "timeout_ms": 20000}},
+    {"click": {"id": "card-OIN-12"}},
+    {"click": {"id": "board-move"}},
+    {"wait_for": {"label": "In Progress", "role": "menu_row", "timeout_ms": 10000}},
+    {"screenshot": {"name": "03-move-menu"}},
+    {"click": {"label": "In Progress", "role": "menu_row"}},
+    {"wait_for": {"text": "Moved OIN-12 to in_progress", "timeout_ms": 20000}},
+    {"screenshot": {"name": "04-moved"}}
+  ]
+}

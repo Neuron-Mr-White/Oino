@@ -17,6 +17,7 @@ use gpui_kit::{
     px,
 };
 
+use crate::automation::Automatable as _;
 use crate::design::icons::{icon, spinner};
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::ticker::Ticker;
@@ -62,6 +63,27 @@ fn fold_icon(kind: Option<ToolKind>) -> IconName {
         Some(_) => IconName::Zap,
         None => IconName::Brain,
     }
+}
+
+/// The text of a transcript row, for the automation registry (capped at 400 chars).
+fn row_text(row: Option<&Row>) -> String {
+    const MAX: usize = 400;
+    let raw = match row.map(|r| &r.kind) {
+        Some(RowKind::User(u)) => u.text.clone(),
+        Some(RowKind::Assistant(a)) => a.text.clone(),
+        Some(RowKind::Tool(t)) => format!("{} {}", t.name, t.output),
+        Some(RowKind::Bash(b)) => format!("{} {}", b.command, b.output),
+        Some(RowKind::Custom(c)) => c.text.clone(),
+        Some(RowKind::Summary(s)) => s.summary.clone(),
+        Some(RowKind::Notice(_, text)) => text.clone(),
+        None => return String::new(),
+    };
+    let trimmed = raw.trim();
+    if trimmed.chars().count() <= MAX {
+        return trimmed.to_owned();
+    }
+    let cut: String = trimmed.chars().take(MAX).collect();
+    format!("{cut}…")
 }
 
 impl SessionPane {
@@ -209,7 +231,9 @@ impl SessionPane {
             px(size::READING_PAD)
         };
         let cursor = self.timeline_kb && self.cursor == Some(ix);
+        let text = row_text(rows.get(ix));
         div()
+            .id(ElementId::NamedInteger("row".into(), ix as u64))
             .w_full()
             .pl(pad)
             .pr(pad + px(shift))
@@ -230,7 +254,13 @@ impl SessionPane {
                             t.find()
                         })
                     })
-                    .child(body),
+                    .child(body)
+                    // Read-back for the automation driver (STATUS.md §1b.7 gap 2: screen
+                    // reading was OCR over screenshots).
+                    .automation(
+                        crate::automation::Meta::labelled(crate::automation::Role::Text, text)
+                            .value(rows[ix].id.clone()),
+                    ),
             )
             .into_any_element()
     }

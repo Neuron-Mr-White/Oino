@@ -1,0 +1,22 @@
+{
+  "name": "side-pane-tabs",
+  "scene": "welcome",
+  "shots": "docs/dev/v1/design/shots/gui",
+  "steps": [
+    {"wait_for": {"id": "hdr-side", "timeout_ms": 30000}},
+    {"click": {"id": "hdr-side"}},
+    {"wait_for": {"id": "side-add", "timeout_ms": 10000}},
+    {"click": {"id": "side-add"}},
+    {"wait_for": {"label": "Files", "role": "menu_row", "timeout_ms": 10000}},
+    {"screenshot": {"name": "01-launcher"}},
+    {"click": {"label": "Files", "role": "menu_row"}},
+    {"wait_for": {"label": "Files", "role": "tab", "timeout_ms": 10000}},
+    {"screenshot": {"name": "02-files"}},
+    {"click": {"id": "side-add"}},
+    {"wait_for": {"label": "Tree", "role": "menu_row", "timeout_ms": 10000}},
+    {"click": {"label": "Tree", "role": "menu_row"}},
+    {"wait_for": {"label": "Tree", "role": "tab", "timeout_ms": 10000}},
+    {"click": {"label": "Files", "role": "tab"}},
+    {"screenshot": {"name": "03-tabs"}}
+  ]
+}

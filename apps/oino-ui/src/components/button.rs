@@ -264,6 +264,25 @@ impl RenderOnce for Btn {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let t = OinoTheme::get(cx);
         let h = self.size.height();
+        // Automation (`gui-driver.md`): what the registry reports for this button.
+        let automation = {
+            let label = self
+                .label
+                .as_ref()
+                .map_or_else(
+                    || self.tooltip.as_ref().map(|(t, _)| t.to_string()),
+                    |l| Some(l.to_string()),
+                )
+                .unwrap_or_default();
+            let role = if self.square {
+                crate::automation::Role::IconButton
+            } else {
+                crate::automation::Role::Button
+            };
+            crate::automation::Meta::labelled(role, label)
+                .disabled(self.disabled)
+                .selected(self.selected)
+        };
         // No keyboard hints on touch (design.md §6.3: number keys are not shown).
         let kbd = if t.touch() { None } else { self.kbd };
         let (bg, fg, border, hover) = match self.variant {
@@ -401,6 +420,6 @@ impl RenderOnce for Btn {
         if let Some((text, keys)) = self.tooltip {
             el = el.tooltip(tip(text, keys));
         }
-        el
+        crate::automation::probe(el, automation)
     }
 }
