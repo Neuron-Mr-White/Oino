@@ -893,6 +893,23 @@ impl AppShell {
                 cx.notify();
             }
             PaneEvent::PickModel => pane.update(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
+            PaneEvent::Confirm => {
+                // A pane action that needs a confirmation (rewind, stop an agent / task): the
+                // shell's dialog runs it against the pane it came from (app-convention).
+                let Some(request) = pane.update(cx, |p, _| p.pending_confirm.take()) else {
+                    return;
+                };
+                let pane = pane.clone();
+                self.confirm = Some(Confirm {
+                    title: SharedString::from(request.title),
+                    body: SharedString::from(request.body),
+                    action: SharedString::from(request.action),
+                    run: Rc::new(move |_, _, cx| {
+                        pane.update(cx, |p, cx| (request.run)(p, cx));
+                    }),
+                });
+                cx.notify();
+            }
             PaneEvent::Effect(effect) => self.perform(effect.clone(), window, cx),
             PaneEvent::Toast(text) => self.toast(ToastKind::Info, None, text.clone(), cx),
             PaneEvent::ShowSide => {
@@ -2070,12 +2087,18 @@ impl Render for AppShell {
                     SessionPane::focus(&p, window, cx);
                 }
             }))
-            .on_action(cx.listener(|this, _: &ToggleStatusPanel, _, cx| {
-                this.with_pane(cx, |p, cx| {
-                    let now = p.status_expanded_now();
-                    p.status_expanded = Some(!now);
-                    cx.notify();
-                });
+            .on_action(cx.listener(|this, _: &ToggleStatusPanel, window, cx| {
+                if let Some(p) = this.active_pane().cloned() {
+                    let expand = !p.read(cx).status_expanded_now();
+                    p.update(cx, |p, cx| {
+                        if expand {
+                            p.focus_status(window, cx);
+                        } else {
+                            p.status_expanded = Some(false);
+                            cx.notify();
+                        }
+                    });
+                }
             }))
             .on_action(cx.listener(|this, _: &ToggleFrameOverlay, window, cx| {
                 this.run_app_action("frame-overlay", window, cx);

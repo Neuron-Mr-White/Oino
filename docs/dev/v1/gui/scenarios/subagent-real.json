@@ -1,0 +1,73 @@
+{
+  "name": "subagent-real",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "Use the run_subagent tool with agent \"subagent_explore\" and task \"Read README.md in the working directory and report its first line\". Do not answer yourself; wait for the subagent and report what it found."
+      }
+    },
+    {
+      "key": {
+        "key": "enter"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_for": {
+        "label": "subagent_explore",
+        "timeout_ms": 240000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-agent-row"
+      }
+    },
+    {
+      "click": {
+        "label": "subagent_explore",
+        "role": "text"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "agent-stop",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-agent-tab"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 300000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-settled"
+      }
+    }
+  ]
+}

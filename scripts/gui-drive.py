@@ -260,6 +260,10 @@ class Scenario:
         self.spec = json.loads(path.read_text())
         self.name = self.spec.get("name", path.stem)
         self.scene = self.spec.get("scene")
+        # `demo` (scripted, free) | `faux` (real core, no network) | `real` (providers from
+        # the copied auth.json, e.g. oino/deepseek/deepseek-flash).
+        self.backend = self.spec.get("backend", "demo")
+        self.env: list[str] = self.spec.get("env", [])
         self.shots = Path(self.spec.get("shots", "target/gui-shots")) / self.name
         self.steps = self.spec.get("steps", [])
         self.step = 0
@@ -325,6 +329,9 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
         result = client.call("state")
         print("      " + json.dumps(result))
         return ""
+    if method in ("drop", "clipboard_image"):
+        # Platform input injections for attachments (docs/dev/v1/gui-driver.md §2).
+        return json.dumps(client.call(method, params))[:160]
     if method == "toggle":
         # Click a switch/checkbox and prove its `checked` state flipped (the initial state is
         # whatever the app persisted, so the scenario cannot assume it).
@@ -462,15 +469,36 @@ def _fail_shot(client: Client, scenario: Scenario, index: int, args: argparse.Na
 # ── app lifecycle on `ti` ───────────────────────────────────────────────────────────────────
 
 
-def ti_restart(socket_path: str, scene: str | None, demo: bool = True) -> None:
+def ti_restart(
+    socket_path: str, scene: str | None, backend: str = "demo", extra_env: list[str] | None = None
+) -> None:
     """Restarts the app on `ti` with the automation socket (and demo scene) enabled."""
     env = ["--env", f"OINO_DESKTOP_AUTOMATION={socket_path}"]
+    for pair in extra_env or []:
+        env += ["--env", pair]
     if scene:
         env += ["--env", f"OINO_DESKTOP_DEMO_SCENE={scene}"]
     subprocess.run(["cargo", "xtask", "ti", "stop"], check=False)
+    if backend == "real":
+        # A real run needs a default model and a non-first-run agent dir (no onboarding).
+        settings = json.dumps({"defaultProvider": "oino", "defaultModel": "deepseek/deepseek-flash"})
+        desktop = json.dumps({"onboarded": True})
+        script = (
+            "set -e; mkdir -p ~/oino-test/agent\n"
+            f"printf '%s' {shlex.quote(settings)} > ~/oino-test/agent/settings.json\n"
+            f"printf '%s' {shlex.quote(desktop)} > ~/oino-test/agent/desktop.json"
+        )
+        # A solid-colour PNG for the attachment scenarios (drop / clipboard paste).
+        script += (
+            "\nconvert -size 96x96 xc:'#e03018' /home/ti/oino-test/run/attach-red.png"
+            "\nidentify /home/ti/oino-test/run/attach-red.png"
+        )
+        subprocess.run(["ssh", TI_HOST, script], check=True)
     run = ["cargo", "xtask", "ti", "start"]
-    if demo:
+    if backend == "demo":
         run.append("--demo")
+    elif backend == "faux":
+        run.append("--faux")
     run += env
     subprocess.run(run, check=True)
 
@@ -537,6 +565,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("file")
     run.add_argument("--scene", help="demo scene to launch with (overrides the scenario)")
     run.add_argument("--no-restart", action="store_true", help="use the app that is already up")
+    run.add_argument(
+        "--backend",
+        choices=("demo", "faux", "real"),
+        help="app backend (default: the scenario's `backend`, else demo)",
+    )
     run.add_argument("--scene-demo", action="store_true", default=True, help=argparse.SUPPRESS)
     run.add_argument("--stop-on-failure", action="store_true", default=True, help=argparse.SUPPRESS)
     run.add_argument(

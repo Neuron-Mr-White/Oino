@@ -82,6 +82,20 @@ pub enum PaneEvent {
     ToggleBottom,
     /// Close this split pane (the session keeps running).
     ClosePane,
+    /// A destructive pane action waits for confirmation ([`SessionPane::pending_confirm`]).
+    Confirm,
+}
+
+/// A destructive pane action waiting for the shell's confirmation dialog (app-convention).
+pub struct PaneConfirm {
+    /// Dialog title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Confirm button label.
+    pub action: String,
+    /// Runs when confirmed (against the pane it came from).
+    pub run: std::rc::Rc<dyn Fn(&mut SessionPane, &mut Context<SessionPane>)>,
 }
 
 /// Side frame tab (design.md §4.20).
@@ -298,6 +312,8 @@ pub struct SessionPane {
     pub(crate) pending_text: Option<String>,
     pub(crate) pending_tokens: Vec<(String, String, String)>,
     pub(crate) images: HashMap<String, ImageContent>,
+    /// Image token ids in attach order (the composer's attachment strip, design.md A2.11).
+    pub(crate) image_order: Vec<String>,
     pub(crate) interaction: Option<Entity<InteractionView>>,
     /// Side frame tabs.
     pub side: SidePane,
@@ -310,6 +326,9 @@ pub struct SessionPane {
     pub(crate) find: Option<Find>,
     pub(crate) status: StatusModel,
     pub(crate) status_expanded: Option<bool>,
+    /// Focus and row cursor of the expanded `StatusPanel` (↑/↓ rows, Enter acts, Delete stops).
+    pub(crate) status_focus: FocusHandle,
+    pub(crate) status_cursor: usize,
     pub(crate) width: Pixels,
     pub(crate) run_started: Option<Instant>,
     pub(crate) queue_open: bool,
@@ -355,6 +374,8 @@ pub struct SessionPane {
     pub(crate) cards_open: HashSet<String>,
     /// Prompt numbers (nth user message) with a file checkpoint (`_oino/checkpoints`).
     pub(crate) checkpoints: HashSet<usize>,
+    /// A destructive action waiting for the shell's confirmation (`PaneEvent::Confirm`).
+    pub(crate) pending_confirm: Option<PaneConfirm>,
     /// Queue item being edited in place: (queue, index, field).
     pub(crate) queue_edit: Option<(
         QueueKind,
@@ -447,6 +468,7 @@ impl SessionPane {
             pending_text: None,
             pending_tokens: Vec::new(),
             images: HashMap::new(),
+            image_order: Vec::new(),
             interaction: None,
             side: SidePane::default(),
             bottom: (Vec::new(), 0),
@@ -457,6 +479,8 @@ impl SessionPane {
             find: None,
             status: StatusModel::default(),
             status_expanded: None,
+            status_focus: cx.focus_handle(),
+            status_cursor: 0,
             width: px(crate::design::size::READING),
             run_started: None,
             queue_open: true,
@@ -487,6 +511,7 @@ impl SessionPane {
             agents: AgentFeed::default(),
             cards_open: HashSet::new(),
             checkpoints: HashSet::new(),
+            pending_confirm: None,
             queue_edit: None,
             turn_started: None,
             turn_stats: HashMap::new(),
@@ -584,6 +609,123 @@ impl SessionPane {
         )
     }
 
+    /// Rebuilds the `StatusPanel` (design.md §4.19): session state first, then every sticky topic
+    /// the session keeps (`_oino/topics`, frontend-api §2). A topic value wins where it exists
+    /// — long-horizon goal / progress, background tasks, fusion, kanboard claims, `oino:git`.
+    pub(crate) fn rebuild_status(&mut self) {
+        let mut status = StatusModel::from_session(&self.model);
+        for (topic, data) in &self.model.topics {
+            status.ingest_topic(topic, data);
+        }
+        self.status = status;
+        self.status_cursor = self
+            .status_cursor
+            .min(self.status.run.len().saturating_sub(1));
+    }
+
+    /// Gives the expanded `StatusPanel` keyboard focus (⌘⇧S, design.md §4.19).
+    pub fn focus_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.status_expanded = Some(true);
+        window.focus(&self.status_focus, cx);
+        self.status_cursor = self
+            .status_cursor
+            .min(self.status.run.len().saturating_sub(1));
+        cx.notify();
+    }
+
+    /// Enter / click on Run row `i`: a child session opens its Agent tab, a task opens the
+    /// Tasks tab.
+    pub fn status_activate(&mut self, i: usize, cx: &mut Context<Self>) {
+        let Some(item) = self.status.run.get(i).cloned() else {
+            return;
+        };
+        match item.agent_id {
+            Some(id) => self.open_agent(&id, &item.label, cx),
+            None => self.open_bottom_tasks(cx),
+        }
+    }
+
+    /// Delete on Run row `i`: stop a running background task (after a confirmation), or abort a
+    /// child agent (design.md §4.19).
+    pub fn status_stop(&mut self, i: usize, cx: &mut Context<Self>) {
+        let Some(item) = self.status.run.get(i).cloned() else {
+            return;
+        };
+        if let Some(agent) = item.agent_id {
+            self.confirm(
+                "Stop this agent?",
+                &format!(
+                    "\u{201c}{}\u{201d} is aborted; its session stays on disk.",
+                    item.label
+                ),
+                "Stop agent",
+                move |pane, cx| {
+                    let id = agent.clone();
+                    pane.frontend(cx, move |b| async move { b.agent_abort(&id).await });
+                },
+                cx,
+            );
+            return;
+        }
+        if item.kind != crate::model::status::RunKind::Task || item.id == "kanboard" {
+            return;
+        }
+        let task = item.id.clone();
+        self.confirm(
+            "Stop this task?",
+            &format!("\u{201c}{}\u{201d} is killed.", item.label),
+            "Stop task",
+            move |pane, cx| pane.stop_task(&task, cx),
+            cx,
+        );
+    }
+
+    /// Asks the shell to confirm a destructive pane action (app-convention). The pane-local
+    /// alternative would duplicate the shell's dialog.
+    pub fn confirm(
+        &mut self,
+        title: &str,
+        body: &str,
+        action: &str,
+        run: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.pending_confirm = Some(PaneConfirm {
+            title: title.to_owned(),
+            body: body.to_owned(),
+            action: action.to_owned(),
+            run: std::rc::Rc::new(run),
+        });
+        cx.emit(PaneEvent::Confirm);
+    }
+
+    /// `StatusPanel` keys (design.md §4.19): ↑/↓ rows, Enter acts, Delete stops, Esc collapses.
+    pub(crate) fn on_status_key(
+        &mut self,
+        event: &gpui_kit::KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rows = self.status.run.len();
+        match event.keystroke.key.as_str() {
+            "down" if rows > 0 => {
+                self.status_cursor = (self.status_cursor + 1).min(rows - 1);
+            }
+            "up" if rows > 0 => {
+                self.status_cursor = self.status_cursor.saturating_sub(1);
+            }
+            "enter" => self.status_activate(self.status_cursor, cx),
+            "delete" | "backspace" => self.status_stop(self.status_cursor, cx),
+            "escape" => {
+                self.status_expanded = Some(false);
+                self.restore_focus(window, cx);
+            }
+            _ => return,
+        }
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     fn pump(backend: &Arc<dyn SessionBackend>, cx: &mut Context<Self>) -> Task<()> {
         let (tx, mut rx) = futures::channel::mpsc::unbounded::<ClientEvent>();
         let mut stream = backend.events();
@@ -630,6 +772,13 @@ impl SessionPane {
         let _activity = crate::stability::activity("pane apply_batch");
         let before = (self.live(), self.model.title(), self.model.id.clone());
         let was_busy = self.model.is_busy();
+        // Child agents feed the StatusPanel's Run rows.
+        let agents = batch.iter().any(|e| {
+            matches!(
+                e,
+                ClientEvent::Oino(OinoEvent::AgentsChanged { .. } | OinoEvent::AgentEvent { .. })
+            )
+        });
         let mut feed = self.apply_feeds(batch);
         let applied = self.model.apply_all(batch);
         if let Some(m) = ModeChip::from_segments(self.model.ui.frame_segments()) {
@@ -657,6 +806,11 @@ impl SessionPane {
                 }
             }
             self.load_checkpoints(cx);
+            feed = true;
+        }
+        // A child agent starting or settling changes the Run rows (btw, dream, subagents).
+        if agents {
+            self.rebuild_status();
             feed = true;
         }
         if feed {
@@ -715,7 +869,7 @@ impl SessionPane {
                 .iter()
                 .any(|c| !matches!(c, RowChange::Updated { at } if self.model.transcript.is_streaming() && *at + 1 == self.model.transcript.len()));
         if structural {
-            self.status = StatusModel::from_session(&self.model);
+            self.rebuild_status();
             if let Some(find) = &mut self.find {
                 find.matches.clear();
             }
@@ -1344,6 +1498,9 @@ impl SessionPane {
         if let Some(command) = intent.command(images) {
             self.send(command, cx);
         }
+        // The attachments went with the prompt: the strip and the token payloads are done.
+        self.images.clear();
+        self.image_order.clear();
         self.list.scroll_to_end();
         self.set_composer_text("", cx);
     }
@@ -1640,6 +1797,57 @@ impl SessionPane {
         });
     }
 
+    /// Moves queue item `i` one down within its queue.
+    pub fn queue_down(&mut self, i: usize, cx: &mut Context<Self>) {
+        let (queue, index) = self.queue_slot(i);
+        let len = match queue {
+            QueueKind::Steering => self.model.steering.len(),
+            QueueKind::FollowUp => self.model.follow_up.len(),
+        };
+        if index + 1 >= len {
+            return;
+        }
+        self.frontend(cx, move |b| async move {
+            b.queue_move(queue, index, index + 1).await
+        });
+    }
+
+    /// Whether queue item `i` can move up / down inside its own queue.
+    #[must_use]
+    pub fn queue_can_move(&self, i: usize) -> (bool, bool) {
+        let (queue, index) = self.queue_slot(i);
+        let len = match queue {
+            QueueKind::Steering => self.model.steering.len(),
+            QueueKind::FollowUp => self.model.follow_up.len(),
+        };
+        (index > 0, index + 1 < len)
+    }
+
+    /// Recalls queue item `i` into the composer (removes it from the queue).
+    pub fn queue_recall(&mut self, i: usize, cx: &mut Context<Self>) {
+        let (queue, index) = self.queue_slot(i);
+        let text = match queue {
+            QueueKind::Steering => self.model.steering.get(index),
+            QueueKind::FollowUp => self.model.follow_up.get(index),
+        }
+        .cloned()
+        .unwrap_or_default();
+        if self.queue_edit.is_some() {
+            self.queue_edit = None;
+        }
+        let draft = self.composer.read(cx).value().to_string();
+        let restored = if draft.trim().is_empty() {
+            text
+        } else {
+            format!("{draft}\n{text}")
+        };
+        self.set_composer_text(&restored, cx);
+        self.frontend(
+            cx,
+            move |b| async move { b.queue_remove(queue, index).await },
+        );
+    }
+
     /// Starts editing queue item `i` in place.
     pub fn queue_begin_edit(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
         let (queue, index) = self.queue_slot(i);
@@ -1693,7 +1901,35 @@ impl SessionPane {
 
     /// Rewinds to before the `nth` user prompt: restores the files its turn and later turns
     /// changed and, with `conversation`, forks the session before it and puts the prompt
-    /// back in the composer.
+    /// back in the composer. Destructive, so it asks first (design.md §4.9 turn footer).
+    pub fn request_rewind(&mut self, nth: usize, conversation: bool, cx: &mut Context<Self>) {
+        if self.model.is_busy() {
+            self.toast("Stop the run first", cx);
+            return;
+        }
+        let (title, body, action) = if conversation {
+            (
+                "Rewind to this message?",
+                "The files this and later turns changed are restored, the conversation is forked before the message and its text goes back in the composer.",
+                "Rewind",
+            )
+        } else {
+            (
+                "Undo this turn?",
+                "The files this turn changed are restored and its file checkpoint is dropped. The conversation stays.",
+                "Undo",
+            )
+        };
+        self.confirm(
+            title,
+            body,
+            action,
+            move |pane, cx| pane.rewind_at(nth, conversation, cx),
+            cx,
+        );
+    }
+
+    /// Rewinds to before the `nth` user prompt (see [`Self::request_rewind`]).
     pub fn rewind_at(&mut self, nth: usize, conversation: bool, cx: &mut Context<Self>) {
         if self.model.is_busy() {
             self.toast("Stop the run first", cx);
@@ -2141,6 +2377,41 @@ impl SessionPane {
         self.side.open(tab);
         cx.emit(PaneEvent::ShowSide);
         cx.notify();
+    }
+
+    /// Opens the Agent tab for child session `agent_id` (`_oino/agents`). When the live feed
+    /// has no rows for it — a tab opened after the child settled, or a `btw` / dream child the
+    /// transcript has no tool row for — the backlog comes from `_oino/agent_messages`
+    /// (frontend-api §3).
+    pub fn open_agent(&mut self, agent_id: &str, title: &str, cx: &mut Context<Self>) {
+        let backlog = self
+            .agents
+            .get(agent_id)
+            .is_none_or(|a| a.transcript.is_empty());
+        self.open_side(
+            SideTab::Agent {
+                call_id: agent_id.to_owned(),
+                title: title.to_owned(),
+            },
+            cx,
+        );
+        if !backlog {
+            return;
+        }
+        let backend = Arc::clone(&self.backend);
+        let id = agent_id.to_owned();
+        let key = id.clone();
+        let task = Tokio::spawn(cx, async move { backend.agent_messages(&id).await });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(messages)) = task.await {
+                let _ = this.update(cx, |pane, cx| {
+                    if pane.agents.load_messages(&key, &messages) {
+                        cx.notify();
+                    }
+                });
+            }
+        })
+        .detach();
     }
 
     /// Loads the session tree for the Tree tab.

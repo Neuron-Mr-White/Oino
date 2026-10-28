@@ -1431,28 +1431,37 @@ impl SessionPane {
             .into_any_element()
     }
 
-    /// The live child agent behind subagent tool row `call_id` (`_oino/agents` feed).
-    fn agent_live(&self, call_id: &str) -> Option<AgentView<'_>> {
+    /// The live child agent behind an Agent tab. A subagent / sidekick tool row resolves
+    /// through the row (its `child` id, else the nth spawned agent); a child session the feed
+    /// knows directly — `btw`, a dream run — has no tool row and is looked up by agent id.
+    fn agent_live(&self, key: &str) -> Option<AgentView<'_>> {
         let rows = self.model.transcript.rows();
-        let ix = rows
+        let live = match rows
             .iter()
-            .position(|r| matches!(&r.kind, RowKind::Tool(t) if t.call_id == call_id))?;
-        let RowKind::Tool(tool) = &rows[ix].kind else {
-            return None;
-        };
-        let agent = timeline::agent_line(tool)?;
-        let nth = rows[..ix]
-            .iter()
-            .filter(|r| matches!(&r.kind, RowKind::Tool(t) if timeline::agent_line(t).is_some()))
-            .count();
-        let a = self.agents.for_row(agent.child.as_deref(), nth)?;
+            .position(|r| matches!(&r.kind, RowKind::Tool(t) if t.call_id == key))
+        {
+            Some(ix) => {
+                let RowKind::Tool(tool) = &rows[ix].kind else {
+                    return None;
+                };
+                let agent = timeline::agent_line(tool)?;
+                let nth = rows[..ix]
+                    .iter()
+                    .filter(|r| {
+                        matches!(&r.kind, RowKind::Tool(t) if timeline::agent_line(t).is_some())
+                    })
+                    .count();
+                self.agents.for_row(agent.child.as_deref(), nth)
+            }
+            None => self.agents.get(key),
+        }?;
         Some(AgentView {
-            id: &a.info.id,
-            owner: &a.info.owner,
-            state: a.info.state,
-            elapsed_ms: u64::try_from(a.started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            steps: a.steps(),
-            rows: a.transcript.rows(),
+            id: &live.info.id,
+            owner: &live.info.owner,
+            state: live.info.state,
+            elapsed_ms: u64::try_from(live.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            steps: live.steps(),
+            rows: live.transcript.rows(),
         })
     }
 
@@ -1931,7 +1940,7 @@ impl SessionPane {
     }
 
     /// Stops a running task through background-tasks' tray action (`stop:<id>`).
-    fn stop_task(&mut self, id: &str, cx: &mut Context<Self>) {
+    pub(crate) fn stop_task(&mut self, id: &str, cx: &mut Context<Self>) {
         let backend = Arc::clone(&self.backend);
         let payload = serde_json::json!({"tab": "bg", "actionId": format!("stop:{id}")});
         Tokio::spawn(cx, async move {

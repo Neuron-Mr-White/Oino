@@ -8,6 +8,7 @@ use gpui_kit::{
     ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize};
 use crate::design::icons::{icon, spinner};
 use crate::design::theme::{OinoTheme, TextExt as _};
@@ -16,7 +17,7 @@ use crate::design::tokens::breakpoint;
 use crate::design::{TextRole, radius, size, space};
 use crate::host::StatusPanelMode;
 use crate::model::status::RunKind;
-use crate::views::session_pane::{SessionPane, SideTab};
+use crate::views::session_pane::SessionPane;
 
 fn section(t: &OinoTheme, title: &str, state: String) -> Div {
     div()
@@ -154,6 +155,8 @@ impl SessionPane {
                 .border_1()
                 .border_color(t.popover_border())
                 .shadow(t.e2())
+                .track_focus(&self.status_focus)
+                .on_key_down(cx.listener(Self::on_status_key))
                 .child(
                     div()
                         .flex()
@@ -252,9 +255,8 @@ impl SessionPane {
                                     RunKind::Sidekick => IconName::Users,
                                     RunKind::Dream => IconName::Moon,
                                 };
-                                let call = r.id.clone();
-                                let title = r.label.clone();
-                                let agent = matches!(r.kind, RunKind::Agent | RunKind::Sidekick);
+                                let label = r.label.clone();
+                                let cursor = self.status_cursor == i;
                                 div()
                                     .id(ElementId::NamedInteger(
                                         "status-run".into(),
@@ -267,19 +269,11 @@ impl SessionPane {
                                     .px(px(space::S1))
                                     .rounded(px(radius::R_MD))
                                     .cursor_pointer()
+                                    .when(cursor, |el| el.bg(t.selected()))
                                     .hover(|st| st.bg(t.hover()))
                                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                        if agent {
-                                            this.open_side(
-                                                SideTab::Agent {
-                                                    call_id: call.clone(),
-                                                    title: title.clone(),
-                                                },
-                                                cx,
-                                            );
-                                        } else {
-                                            this.open_bottom_tasks(cx);
-                                        }
+                                        this.status_cursor = i;
+                                        this.status_activate(i, cx);
                                     }))
                                     .child(spinner(frame, size::ICON_SM, t.working()))
                                     .child(icon(glyph, size::ICON_SM, t.fg_subtle()))
@@ -299,6 +293,10 @@ impl SessionPane {
                                                 .child(SharedString::from(e)),
                                         )
                                     })
+                                    .automation(crate::automation::Meta::labelled(
+                                        crate::automation::Role::Row,
+                                        label,
+                                    ))
                             })),
                     )
                 })

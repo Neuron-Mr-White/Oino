@@ -609,6 +609,24 @@ impl MobileShell {
                 self.open_sheet(Sheet::Model, cx);
             }
             PaneEvent::Effect(effect) => self.perform(effect.clone(), window, cx),
+            PaneEvent::Confirm => {
+                // Destructive pane action (rewind, stop an agent / task) → confirm sheet.
+                let Some(request) = pane.update(cx, |p, _| p.pending_confirm.take()) else {
+                    return;
+                };
+                let pane = pane.clone();
+                self.open_sheet(
+                    Sheet::Confirm(Confirm {
+                        title: SharedString::from(request.title),
+                        body: SharedString::from(request.body),
+                        action: SharedString::from(request.action),
+                        run: Rc::new(move |_, _, cx| {
+                            pane.update(cx, |p, cx| (request.run)(p, cx));
+                        }),
+                    }),
+                    cx,
+                );
+            }
             PaneEvent::Toast(text) => self.toast(ToastKind::Info, None, text.clone(), cx),
             PaneEvent::ShowSide => self.on_show_side(key, pane, cx),
             PaneEvent::ToggleSide => {

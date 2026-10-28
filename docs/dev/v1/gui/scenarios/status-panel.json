@@ -1,0 +1,157 @@
+{
+  "name": "status-panel",
+  "scene": "run",
+  "backend": "demo",
+  "env": [
+    "OINO_DESKTOP_DEMO_PACE=8"
+  ],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Ship trailing commas",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "cargo test --watch",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Kanboard \u00b7 1 claimed",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "v1-alpha \u00b7 3 changed",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-panel-topics"
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-shift-s"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "status-mini",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-mini"
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-shift-s"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "status-mini",
+        "absent": true,
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "key": {
+        "key": "down"
+      }
+    },
+    {
+      "key": {
+        "key": "delete"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "confirm-ok",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Stop this agent?",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-stop-confirm"
+      }
+    },
+    {
+      "click": {
+        "id": "confirm-ok"
+      }
+    },
+    {
+      "wait_state": {
+        "absent": {
+          "role": "row",
+          "label": "btw"
+        },
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-agent-stopped"
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-shift-s"
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-shift-s"
+      }
+    },
+    {
+      "key": {
+        "key": "up"
+      }
+    },
+    {
+      "key": {
+        "key": "enter"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "agent-stop",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "05-enter-opens-agent-tab"
+      }
+    }
+  ]
+}

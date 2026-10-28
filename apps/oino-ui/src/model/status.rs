@@ -17,6 +17,15 @@ use crate::model::transcript::{RowKind, ToolStatus};
 /// the only Progress source; assistant replies are not (GA-10).
 const APPROVED_PLAN_PREFIX: &str = "Implement the approved plan below.";
 
+/// Epoch milliseconds now (elapsed text of running background tasks).
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_millis()).ok())
+        .unwrap_or_default()
+}
+
 /// The plan body of an approved-plan handoff message.
 #[must_use]
 fn approved_plan(text: &str) -> Option<&str> {
@@ -39,7 +48,7 @@ pub enum RunKind {
 /// One Run row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunItem {
-    /// Stable id (tool call id or task id).
+    /// Stable id (tool call id, task id, agent id or topic key).
     pub id: String,
     /// Kind.
     pub kind: RunKind,
@@ -47,6 +56,21 @@ pub struct RunItem {
     pub label: String,
     /// Elapsed text when known.
     pub elapsed: Option<String>,
+    /// Child session behind the row (`_oino/agents`): Enter / click opens its Agent tab.
+    pub agent_id: Option<String>,
+}
+
+impl RunItem {
+    /// A row that opens a child session's Agent tab.
+    fn agent(id: &str, kind: RunKind, label: String) -> Self {
+        Self {
+            id: id.to_owned(),
+            kind,
+            label,
+            elapsed: None,
+            agent_id: Some(id.to_owned()),
+        }
+    }
 }
 
 /// One Progress step.
@@ -188,6 +212,7 @@ impl StatusModel {
                         format!("{}: {}", agent.name, agent.task)
                     },
                     elapsed: None,
+                    agent_id: agent.child.clone(),
                 });
             } else if ToolKind::of(&tool.name) == ToolKind::Shell || tool.name.starts_with("bg_") {
                 let line = timeline::tool_line(tool);
@@ -200,8 +225,47 @@ impl StatusModel {
                     kind: RunKind::Task,
                     label,
                     elapsed: None,
+                    agent_id: None,
                 });
             }
+        }
+        // Child sessions from the `_oino/agents` feed that have no tool row of their own:
+        // `btw`, a dream run, anything else an extension spawned (GA-15 / GA-44). Helper
+        // children (the auto-rename title run) stay out of Run.
+        let child_ids: Vec<Option<String>> = rows
+            .iter()
+            .filter_map(|row| match &row.kind {
+                RowKind::Tool(tool) => agent_line(tool).map(|a| a.child),
+                _ => None,
+            })
+            .collect();
+        for info in &session.agents {
+            if info.parent_id.is_some() || info.state == oino_core::agents::AgentRunState::Closed {
+                continue;
+            }
+            if info.owner == "unipi.utility" || child_ids.contains(&Some(info.id.clone())) {
+                continue;
+            }
+            // A subagent / sidekick row without a child id still covers its agent.
+            let covered = child_ids.contains(&None)
+                && (info.owner.contains("subagent") || info.owner.contains("fusion"));
+            if covered {
+                continue;
+            }
+            let label = info.label.trim();
+            let label = if label.is_empty() {
+                info.owner.clone()
+            } else {
+                label.to_owned()
+            };
+            let kind = if label.contains("dream") || info.owner.contains("dream") {
+                RunKind::Dream
+            } else if label.contains("sidekick") || info.owner.contains("fusion") {
+                RunKind::Sidekick
+            } else {
+                RunKind::Agent
+            };
+            model.run.push(RunItem::agent(&info.id, kind, label));
         }
         for (key, widget) in session.ui.widgets_keyed() {
             let process = key.starts_with("unipi.footer/") && key.contains("process")
@@ -213,6 +277,7 @@ impl StatusModel {
                         kind: RunKind::Task,
                         label: line.trim().to_owned(),
                         elapsed: None,
+                        agent_id: None,
                     });
                 }
             }
@@ -226,6 +291,7 @@ impl StatusModel {
                         .cloned()
                         .unwrap_or_else(|| "Dream".into()),
                     elapsed: None,
+                    agent_id: None,
                 });
             }
         }
@@ -234,6 +300,7 @@ impl StatusModel {
     }
 
     /// Applies a sticky-topic payload (R3 feed); unknown topics are ignored.
+    #[allow(clippy::too_many_lines, reason = "one arm per sticky topic")]
     pub fn ingest_topic(&mut self, topic: &str, payload: &JsonValue) {
         let s = |k: &str| {
             payload
@@ -242,13 +309,61 @@ impl StatusModel {
                 .map(str::to_owned)
         };
         match topic {
+            // `{mode, paused, owner, lastStop}` — the goal text is in the progress topic.
             "unipi:long-horizon:state" => {
-                self.goal = s("goal").or_else(|| s("objective")).map(|text| Goal {
-                    text,
-                    paused: payload.get("paused").and_then(JsonValue::as_bool) == Some(true),
-                    detail: s("detail"),
-                });
+                let mode = s("mode").unwrap_or_default();
+                if mode == "none" {
+                    self.goal = None;
+                } else if let Some(goal) = &mut self.goal {
+                    goal.paused = s("paused").is_some();
+                } else {
+                    let paused = s("paused").is_some();
+                    self.goal = Some(Goal {
+                        text: s("owner").unwrap_or_else(|| mode.clone()),
+                        paused,
+                        detail: None,
+                    });
+                }
             }
+            // `{mode, goal:{objective,status,turn,maxTurns}, ralph:{…}, graph:{…}, todos}`.
+            "unipi:long-horizon:progress" => {
+                let goal = payload.get("goal").filter(|g| !g.is_null());
+                match goal {
+                    Some(goal) => {
+                        let objective = goal
+                            .get("objective")
+                            .and_then(JsonValue::as_str)
+                            .unwrap_or_default()
+                            .to_owned();
+                        let turn = goal.get("turn").and_then(JsonValue::as_u64);
+                        let max = goal.get("maxTurns").and_then(JsonValue::as_u64);
+                        let status = goal
+                            .get("status")
+                            .and_then(JsonValue::as_str)
+                            .unwrap_or_default();
+                        let detail = match (turn, max) {
+                            (Some(t), Some(m)) => Some(format!("turn {t}/{m}")),
+                            (Some(t), None) => Some(format!("turn {t}")),
+                            _ => (!status.is_empty()).then(|| status.to_owned()),
+                        };
+                        if !objective.is_empty() {
+                            let paused = self.goal.as_ref().is_some_and(|g| g.paused);
+                            self.goal = Some(Goal {
+                                text: objective,
+                                paused,
+                                detail,
+                            });
+                        }
+                    }
+                    None => {
+                        if payload.get("mode").and_then(JsonValue::as_str) == Some("none") {
+                            self.goal = None;
+                        }
+                    }
+                }
+            }
+            // `{planMode, permissionMode}`: the core plan steps come from the approved-plan
+            // handoff (GA-10); a topic that carries explicit steps wins.
             "unipi:workflow:status" => {
                 if let Some(steps) = payload.get("steps").and_then(JsonValue::as_array) {
                     self.steps = steps
@@ -263,29 +378,57 @@ impl StatusModel {
                 }
             }
             "unipi:bg:tasks" => {
-                self.run.retain(|r| r.kind != RunKind::Task);
-                for task in payload
-                    .get("tasks")
+                self.run
+                    .retain(|r| r.kind != RunKind::Task || r.id == "kanboard");
+                for task in crate::components::side_pane::bg_tasks(payload) {
+                    let elapsed = (task.status == "running")
+                        .then(|| timeline::duration(task.elapsed_ms(now_ms())));
+                    self.run.push(RunItem {
+                        id: task.id,
+                        kind: RunKind::Task,
+                        label: task.command,
+                        elapsed,
+                        agent_id: None,
+                    });
+                }
+            }
+            // `{leadName, sidekickName, busy, …}`: a handoff in flight is a Run row.
+            "unipi:fusion:status" => {
+                self.run
+                    .retain(|r| r.kind != RunKind::Sidekick || r.agent_id.is_some());
+                if payload.get("busy").and_then(JsonValue::as_bool) == Some(true) {
+                    let name = s("sidekickName").unwrap_or_else(|| "Sidekick".to_owned());
+                    self.run.push(RunItem {
+                        id: "fusion-sidekick".to_owned(),
+                        kind: RunKind::Sidekick,
+                        label: name,
+                        elapsed: None,
+                        agent_id: None,
+                    });
+                }
+            }
+            // `{claims:[taskId], autowork}`: claimed kanboard tasks show in Run.
+            "unipi:kanboard:status" => {
+                self.run.retain(|r| r.id != "kanboard");
+                let claims = payload
+                    .get("claims")
                     .and_then(JsonValue::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    if let Some(id) = task.get("id").and_then(JsonValue::as_str) {
-                        self.run.push(RunItem {
-                            id: id.to_owned(),
-                            kind: RunKind::Task,
-                            label: task
-                                .get("command")
-                                .or_else(|| task.get("name"))
-                                .and_then(JsonValue::as_str)
-                                .unwrap_or(id)
-                                .to_owned(),
-                            elapsed: task
-                                .get("elapsed")
-                                .and_then(JsonValue::as_str)
-                                .map(str::to_owned),
-                        });
-                    }
+                    .map_or(0, Vec::len);
+                if claims > 0 {
+                    self.run.push(RunItem {
+                        id: "kanboard".to_owned(),
+                        kind: RunKind::Task,
+                        label: format!("Kanboard · {claims} claimed"),
+                        elapsed: None,
+                        agent_id: None,
+                    });
+                }
+            }
+            // Core git topic: `{branch, head, dirty, changed, ahead, behind}`.
+            oino_core::topics::GIT_TOPIC => {
+                self.branch = s("branch");
+                if let Some(changed) = payload.get("changed").and_then(JsonValue::as_u64) {
+                    self.changed = usize::try_from(changed).unwrap_or(usize::MAX);
                 }
             }
             "unipi:footer:git" => self.branch = s("branch"),
@@ -377,24 +520,82 @@ mod tests {
         );
     }
 
+    /// The real unipi shapes (unipi-kit `topics`): the goal text lives in
+    /// `long-horizon:progress`, the pause flag in `long-horizon:state`, tasks in
+    /// `bg:tasks`, and `oino:git` carries the branch and the changed count.
     #[test]
     fn topics_update_sections() {
         let mut m = StatusModel::default();
         m.ingest_topic(
             "unipi:long-horizon:state",
-            &json!({"goal":"G","paused":true}),
-        );
-        m.ingest_topic(
-            "unipi:workflow:status",
-            &json!({"steps":[{"text":"a","done":true},{"text":"b"}]}),
-        );
-        m.ingest_topic(
-            "unipi:bg:tasks",
-            &json!({"tasks":[{"id":"t","command":"cargo watch","elapsed":"4m"}]}),
+            &json!({"mode": "ralph", "paused": "owner"}),
         );
         assert!(m.goal.as_ref().unwrap().paused);
+        m.ingest_topic(
+            "unipi:long-horizon:progress",
+            &json!({"goal": {"objective": "G", "status": "active", "turn": 2, "maxTurns": 5}}),
+        );
+        let goal = m.goal.clone().unwrap();
+        assert_eq!(goal.text, "G");
+        assert!(goal.paused, "the state topic's pause flag survives");
+        assert_eq!(goal.detail.as_deref(), Some("turn 2/5"));
+        m.ingest_topic(
+            "unipi:workflow:status",
+            &json!({"planMode": false, "permissionMode": "auto",
+                "steps": [{"text": "a", "done": true}, {"text": "b"}]}),
+        );
         assert_eq!(m.progress(), (1, 2));
-        assert_eq!(m.run[0].elapsed.as_deref(), Some("4m"));
+        m.ingest_topic(
+            "unipi:bg:tasks",
+            &json!({"tasks": [{"id": "t", "command": "cargo watch", "status": "running",
+                "startTime": 0}]}),
+        );
+        assert!(m.run[0].elapsed.is_some(), "a running task shows elapsed");
+        m.ingest_topic(
+            "unipi:fusion:status",
+            &json!({"leadName": "Lead", "sidekickName": "Haiku", "busy": true}),
+        );
+        assert!(m.run.iter().any(|r| r.kind == RunKind::Sidekick));
+        m.ingest_topic(
+            "unipi:kanboard:status",
+            &json!({"claims": ["OIN-1"], "autowork": true}),
+        );
+        assert!(m.run.iter().any(|r| r.id == "kanboard"));
+        m.ingest_topic(
+            oino_core::topics::GIT_TOPIC,
+            &json!({"branch": "v1-alpha", "changed": 3}),
+        );
+        assert_eq!(m.branch.as_deref(), Some("v1-alpha"));
+        assert_eq!(m.changed, 3);
+        m.ingest_topic("unipi:long-horizon:state", &json!({"mode": "none"}));
+        assert!(m.goal.is_none(), "mode none clears the goal");
         m.ingest_topic("nope", &json!({}));
+    }
+
+    /// A child session without a tool row (`btw`) shows in Run and opens its Agent tab.
+    #[test]
+    fn btw_child_shows_in_run() {
+        let mut s = SessionModel::new("s", "/w");
+        s.agents = vec![btw("b1", "btw", "unipi.btw")];
+        let m = StatusModel::from_session(&s);
+        let row = m.run.iter().find(|r| r.agent_id.as_deref() == Some("b1"));
+        assert!(row.is_some(), "the btw child is a Run row: {:?}", m.run);
+        // The auto-rename helper child stays out of Run.
+        s.agents.push(btw("h1", "session name", "unipi.utility"));
+        let m = StatusModel::from_session(&s);
+        assert!(!m.run.iter().any(|r| r.agent_id.as_deref() == Some("h1")));
+    }
+
+    fn btw(id: &str, label: &str, owner: &str) -> oino_core::agents::AgentInfo {
+        oino_core::agents::AgentInfo {
+            id: id.into(),
+            parent_id: None,
+            label: label.into(),
+            owner: owner.into(),
+            role: None,
+            state: oino_core::agents::AgentRunState::Running,
+            depth: 1,
+            session_file: None,
+        }
     }
 }

@@ -2,7 +2,7 @@
 //! meta), "Explored N files" grouping of read-only runs, per-turn file change summaries,
 //! subagent rows and query-rail excerpts. Pure functions over transcript rows.
 
-use oino_ai::{JsonObject, JsonValue};
+use oino_ai::{AgentMessage, JsonObject, JsonValue};
 
 use crate::model::tools::{self, ToolKind};
 use crate::model::transcript::{Row, RowKind, ToolRow, ToolStatus};
@@ -637,6 +637,21 @@ impl AgentFeed {
         self.agents.iter().find(|a| a.info.id == id)
     }
 
+    /// Loads a child transcript from `_oino/agent_messages` (frontend-api §3): the backlog of
+    /// a tab opened after the child settled, or for a child the live feed never streamed
+    /// (btw / dream children, which have no tool row). A transcript that already has rows is
+    /// kept — the live feed is newer than a fetched backlog. Returns whether rows changed.
+    pub fn load_messages(&mut self, agent_id: &str, messages: &[AgentMessage]) -> bool {
+        let Some(agent) = self.agents.iter_mut().find(|a| a.info.id == agent_id) else {
+            return false;
+        };
+        if !agent.transcript.is_empty() || messages.is_empty() {
+            return false;
+        }
+        agent.transcript.load(messages);
+        true
+    }
+
     /// The agent behind a subagent tool row: by child id when the row knows it, else the
     /// `nth` agent (in start order) owned by an agent-spawning extension.
     #[must_use]
@@ -1030,6 +1045,30 @@ mod tests {
             feed.get("s1").unwrap().info.state,
             oino_core::agents::AgentRunState::Closed
         );
+    }
+
+    /// A late-opened Agent tab loads its backlog (`_oino/agent_messages`); live rows win.
+    #[test]
+    fn agent_messages_fill_a_late_opened_tab() {
+        let info = |id: &str| {
+            serde_json::from_value::<oino_core::agents::AgentInfo>(json!({
+                "id": id, "label": "btw", "owner": "unipi.btw", "state": "idle", "depth": 1
+            }))
+            .unwrap()
+        };
+        let mut feed = AgentFeed::default();
+        feed.set_tree(&[info("b1")]);
+        let message = |text: &str| {
+            serde_json::from_value::<oino_ai::AgentMessage>(json!({
+                "role": "user", "content": text, "timestamp": 0
+            }))
+            .unwrap()
+        };
+        assert!(feed.load_messages("b1", &[message("what does parse_array do?")]));
+        assert_eq!(feed.get("b1").unwrap().transcript.rows().len(), 1);
+        // A second fetch never replaces live rows, and an unknown agent is ignored.
+        assert!(!feed.load_messages("b1", &[message("stale")]));
+        assert!(!feed.load_messages("nope", &[message("x")]));
     }
 
     #[test]

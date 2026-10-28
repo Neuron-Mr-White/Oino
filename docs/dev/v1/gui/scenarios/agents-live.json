@@ -1,0 +1,24 @@
+{
+  "name": "agents-live",
+  "scene": "run",
+  "backend": "demo",
+  "env": ["OINO_DESKTOP_DEMO_PACE=4"],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 60000}},
+    {"wait_for": {"id": "row-2", "timeout_ms": 60000}},
+    {"wait_for": {"label": "explorer", "timeout_ms": 60000}},
+    {"assert": {"busy": true}},
+    {"screenshot": {"name": "01-agent-row-live"}},
+    {"click": {"label": "explorer"}},
+    {"wait_for": {"id": "agent-stop", "timeout_ms": 20000}},
+    {"wait_for": {"text": "Read-only view of the agent's session.", "timeout_ms": 20000}},
+    {"screenshot": {"name": "02-agent-tab"}},
+    {"click": {"id": "agent-stop"}},
+    {"wait_for": {"id": "agent-stop", "absent": true, "timeout_ms": 20000}},
+    {"screenshot": {"name": "03-agent-aborted"}},
+    {"click": {"label": "btw", "role": "row"}},
+    {"wait_for": {"text": "what does parse_array do?", "timeout_ms": 20000}},
+    {"screenshot": {"name": "04-btw-agent-tab"}}
+  ]
+}

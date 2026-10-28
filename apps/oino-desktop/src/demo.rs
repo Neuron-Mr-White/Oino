@@ -29,6 +29,7 @@ use oino_ai::{AgentMessage, JsonValue, Model};
 use oino_client::fake::FakeBackend;
 use oino_client::{
     ClientError, OinoCommand, PiCommand, RpcCommand, RpcResponseData, SessionBackend,
+    protocol::{QueueEdit, QueueKind},
 };
 use oino_core::events::ClientEvent;
 use oino_core::ui::{UiAnswer, UiResponse};
@@ -145,6 +146,12 @@ struct Shared {
     seq: AtomicU64,
     board_selected: Mutex<String>,
     info_tab: Mutex<String>,
+    /// Live child sessions (`_oino/agents`), their transcripts and the sticky topics.
+    agents: Mutex<Vec<JsonValue>>,
+    agent_messages: Mutex<HashMap<String, Vec<AgentMessage>>>,
+    topics: Mutex<Vec<JsonValue>>,
+    /// Steering / follow-up queue of a running demo turn (`_oino/queue_edit`).
+    queue: Mutex<(Vec<String>, Vec<String>)>,
 }
 
 /// A scripted session.
@@ -170,6 +177,10 @@ impl DemoBackend {
                 seq: AtomicU64::new(0),
                 board_selected: Mutex::new("OIN-12".into()),
                 info_tab: Mutex::new("overview".into()),
+                agents: Mutex::new(Vec::new()),
+                agent_messages: Mutex::new(HashMap::new()),
+                topics: Mutex::new(Vec::new()),
+                queue: Mutex::new((Vec::new(), Vec::new())),
             }),
             id: id.to_owned(),
         }
@@ -324,6 +335,113 @@ impl Shared {
         }
     }
 
+    /// Adds a queue item and publishes the new `queue_update` (steering first).
+    fn push_queue(&self, queue: QueueKind, text: &str) {
+        {
+            let mut q = lock(&self.queue);
+            let list = match queue {
+                QueueKind::Steering => &mut q.0,
+                QueueKind::FollowUp => &mut q.1,
+            };
+            list.push(text.to_owned());
+        }
+        self.emit_queue();
+    }
+
+    fn emit_queue(&self) {
+        let q = lock(&self.queue);
+        self.emit(json!({"type": "queue_update", "steering": q.0, "followUp": q.1}));
+    }
+
+    /// Applies `_oino/queue_edit` to the demo queue (remove / edit / move / send now).
+    fn edit_queue(&self, edit: QueueEdit) {
+        let mut q = lock(&self.queue);
+        match edit {
+            QueueEdit::Remove { queue, index } => {
+                let list = match queue {
+                    QueueKind::Steering => &mut q.0,
+                    QueueKind::FollowUp => &mut q.1,
+                };
+                if index < list.len() {
+                    list.remove(index);
+                }
+            }
+            QueueEdit::Edit { queue, index, text } => {
+                let list = match queue {
+                    QueueKind::Steering => &mut q.0,
+                    QueueKind::FollowUp => &mut q.1,
+                };
+                if let Some(slot) = list.get_mut(index) {
+                    *slot = text;
+                }
+            }
+            QueueEdit::Move { queue, from, to } => {
+                let list = match queue {
+                    QueueKind::Steering => &mut q.0,
+                    QueueKind::FollowUp => &mut q.1,
+                };
+                if from < list.len() && to < list.len() {
+                    let item = list.remove(from);
+                    list.insert(to, item);
+                }
+            }
+            QueueEdit::SendNow { queue, index } => {
+                let list = match queue {
+                    QueueKind::Steering => &mut q.0,
+                    QueueKind::FollowUp => &mut q.1,
+                };
+                if index < list.len() {
+                    let item = list.remove(index);
+                    match queue {
+                        // Sent now: steering goes to the front, a follow-up becomes steering.
+                        QueueKind::Steering => q.0.insert(0, item),
+                        QueueKind::FollowUp => q.0.push(item),
+                    }
+                }
+            }
+        }
+        let snapshot = json!({"steering": q.0, "followUp": q.1});
+        drop(q);
+        self.emit(json!({"type": "queue_update", "steering": snapshot["steering"], "followUp": snapshot["followUp"]}));
+    }
+
+    /// Records the demo agent tree and publishes `agents_changed`.
+    fn set_agents(&self, agents: &[JsonValue]) {
+        lock(&self.agents).clone_from(&agents.to_vec());
+        self.emit(json!({"type": "agents_changed", "agents": agents}));
+    }
+
+    /// Marks agent `id` closed (its `agent_abort`).
+    fn close_agent(&self, id: &str) {
+        let mut agents = lock(&self.agents);
+        for a in agents.iter_mut() {
+            if a.get("id").and_then(JsonValue::as_str) == Some(id) {
+                a["state"] = json!("closed");
+            }
+        }
+        let snapshot = agents.clone();
+        drop(agents);
+        self.emit(json!({"type": "agents_changed", "agents": snapshot}));
+    }
+
+    /// Publishes a sticky topic, keeping the snapshot `_oino/topics` serves.
+    fn topic(&self, name: &str, data: &JsonValue) {
+        {
+            let mut topics = lock(&self.topics);
+            if let Some(t) = topics
+                .iter_mut()
+                .find(|t| t.get("topic").and_then(JsonValue::as_str) == Some(name))
+            {
+                t["data"] = data.clone();
+            } else {
+                topics.push(
+                    json!({"topic": name, "data": data, "sticky": true, "publisher": "unipi.demo"}),
+                );
+            }
+        }
+        self.emit(json!({"type": "topic", "topic": name, "data": data, "sticky": true, "publisher": "unipi.demo"}));
+    }
+
     async fn pause(&self, ms: u64) -> bool {
         // `OINO_DESKTOP_DEMO_PACE` slows the script (screenshots of mid-stream states).
         let pace = std::env::var("OINO_DESKTOP_DEMO_PACE")
@@ -343,6 +461,43 @@ impl Shared {
         fields["extensionId"] = json!(extension);
         self.emit(fields);
         id
+    }
+
+    /// The sticky topics the `StatusPanel` reads (design.md §4.19): goal, background tasks,
+    /// fusion handoff, kanboard claims and the core git topic.
+    fn demo_topics(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(0));
+        self.topic(
+            "unipi:long-horizon:progress",
+            &json!({"mode": "ralph", "goal": {"objective": "Ship trailing commas", "status": "active", "turn": 2, "maxTurns": 5},
+                "todos": "- [x] locate the loop\n- [ ] patch the lexer"}),
+        );
+        self.topic(
+            "unipi:long-horizon:state",
+            &json!({"mode": "ralph", "owner": {"kind": "ralph", "status": "active"}}),
+        );
+        self.topic(
+            "unipi:bg:tasks",
+            &json!({"tasks": [{"id": "bg-1", "name": "parser tests", "command": "cargo test --watch",
+                "status": "running", "startTime": now - 240_000, "outputPath": "/tmp/bg-1.log",
+                "outputTail": ["running 14 tests"]}]}),
+        );
+        self.topic(
+            "unipi:fusion:status",
+            &json!({"leadName": "Oino Large", "leadEffort": "high", "sidekickName": "Haiku",
+                "sidekickEffort": "low", "busy": true}),
+        );
+        self.topic(
+            "unipi:kanboard:status",
+            &json!({"claims": ["OIN-9"], "autowork": true}),
+        );
+        self.topic(
+            oino_core::topics::GIT_TOPIC,
+            &json!({"branch": "v1-alpha", "head": "438cb49", "dirty": true, "changed": 3,
+                "ahead": 0, "behind": 0}),
+        );
     }
 
     /// Ambient unipi chrome every demo session shows.
@@ -445,6 +600,7 @@ impl Shared {
         if scene == Scene::Stream {
             return self.stream_forever().await;
         }
+        self.demo_topics();
         self.ui("setStatus", json!({"statusKey": "goal", "statusText": "Ship trailing commas", "tone": "accent", "priority": 6}), "unipi.long-horizon");
         self.ui(
             "setStatus",
@@ -503,6 +659,38 @@ impl Shared {
         // Subagent while the edit streams.
         self.emit(json!({"type": "tool_execution_start", "toolCallId": "call_agent", "toolName": "run_subagent",
             "args": {"agent": "explorer", "task": "Map the parser's call sites and existing tests"}}));
+        // Live child sessions (`_oino/agents`): the subagent behind the row plus a `btw` side
+        // chat, which has no tool row of its own.
+        let child = json!({"id": "demo-child-1", "label": "Subagent explorer", "owner": "unipi.subagents",
+            "role": "explorer", "state": "running", "depth": 1});
+        let btw = json!({"id": "demo-btw-1", "label": "btw", "owner": "unipi.btw",
+            "role": "btw", "state": "running", "depth": 1});
+        self.set_agents(&[child.clone(), btw.clone()]);
+        let child_rows: Vec<AgentMessage> = [
+            json!({"role": "user", "content": "Map the parser's call sites and existing tests", "timestamp": 0}),
+            assistant(&json!([{"type": "text", "text": "Two call sites and twelve tests; none cover trailing commas."}]), "stop", &usage(1_200, 60)),
+        ]
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect();
+        lock(&self.agent_messages).insert("demo-child-1".into(), child_rows.clone());
+        lock(&self.agent_messages).insert(
+            "demo-btw-1".into(),
+            [json!({"role": "user", "content": "what does parse_array do?", "timestamp": 0})]
+                .into_iter()
+                .filter_map(|v| serde_json::from_value(v).ok())
+                .collect(),
+        );
+        for row in &child_rows {
+            self.emit(json!({"type": "agent_event", "agentId": "demo-child-1",
+                "event": {"type": "message_end", "message": row}}));
+        }
+        self.emit(json!({"type": "agent_event", "agentId": "demo-child-1",
+            "event": {"type": "tool_execution_start", "toolCallId": "child-1", "toolName": "read",
+                "args": {"path": "src/parser.rs"}}}));
+        self.emit(json!({"type": "agent_event", "agentId": "demo-child-1",
+            "event": {"type": "tool_execution_end", "toolCallId": "child-1", "toolName": "read",
+                "result": {"content": [{"type": "text", "text": "1  fn parse_array"}]}, "isError": false, "durationMs": 4}}));
         for (i, args) in [
             json!({"path": "src/parser.rs"}),
             json!({"path": "src/parser.rs", "edits": [{"oldText": "if self.peek() == Some(b']') {\n    break;\n}", "newText": ""}]}),
@@ -606,6 +794,9 @@ impl Shared {
         self.emit(json!({"type": "tool_execution_end", "toolCallId": "call_agent", "toolName": "run_subagent",
             "result": {"content": [{"type": "text", "text": "**Call sites:** `parse_value` → `parse_array`, `parse_object`.\n\n**Tests:** `tests/parser.rs` (12), none cover trailing commas."}]},
             "isError": false, "durationMs": 38_000}));
+        let mut idle = child.clone();
+        idle["state"] = json!("idle");
+        self.set_agents(&[idle, btw]);
         let start = assistant(&json!([]), "stop", &usage(0, 0));
         self.emit(json!({"type": "message_start", "message": start}));
         if !self.stream_text(&[], "", DONE, 6, 14).await {
@@ -649,6 +840,11 @@ impl Shared {
         self.emit(json!({"type": "agent_end", "messages": [], "willRetry": false}));
         self.emit(json!({"type": "agent_settled", "aborted": aborted}));
         self.busy.store(false, Ordering::SeqCst);
+        {
+            let mut q = lock(&self.queue);
+            q.0.clear();
+            q.1.clear();
+        }
     }
 
     fn open_board(&self) {
@@ -743,6 +939,36 @@ impl SessionBackend for DemoBackend {
                 RpcCommand::Oino(oino) => {
                     return Ok(match oino {
                         OinoCommand::UiSnapshot => Some(json!({"requests": []})),
+                        OinoCommand::Topics { .. } => Some(
+                            json!({"topics": *lock(&shared.topics), "patterns": ["unipi:*", "oino:git"]}),
+                        ),
+                        OinoCommand::Agents { .. } => {
+                            Some(json!({"agents": *lock(&shared.agents), "follow": true}))
+                        }
+                        OinoCommand::AgentMessages { agent_id } => Some(json!({
+                            "messages": lock(&shared.agent_messages)
+                                .get(&agent_id)
+                                .cloned()
+                                .unwrap_or_default(),
+                        })),
+                        OinoCommand::AgentAbort { agent_id } => {
+                            shared.close_agent(&agent_id);
+                            None
+                        }
+                        OinoCommand::Checkpoints => Some(json!({"checkpoints": [
+                            {"entryId": "a0000001", "createdAt": 0,
+                             "files": [{"path": "src/parser.rs", "existed": true}]}
+                        ]})),
+                        OinoCommand::Rewind { .. } => Some(json!({
+                            "restored": ["src/parser.rs"], "deleted": [], "failed": [],
+                            "text": "Make the JSON parser accept trailing commas",
+                            "cancelled": false,
+                        })),
+                        OinoCommand::QueueEdit(edit) => {
+                            shared.edit_queue(edit);
+                            None
+                        }
+                        OinoCommand::RunningBash => Some(json!({"calls": []})),
                         OinoCommand::GetCompletions { text, .. } => {
                             Some(Shared::completions(&text))
                         }
@@ -797,9 +1023,7 @@ impl SessionBackend for DemoBackend {
             Ok(match command {
                 PiCommand::Prompt { message, .. } => {
                     if shared.busy.load(Ordering::SeqCst) {
-                        shared.emit(
-                            json!({"type": "queue_update", "steering": [message], "followUp": []}),
-                        );
+                        shared.push_queue(QueueKind::Steering, &message);
                     } else if message.starts_with("/kanboard") {
                         shared.open_board();
                     } else if message.starts_with("/info") {
@@ -823,6 +1047,8 @@ impl SessionBackend for DemoBackend {
                     None
                 }
                 PiCommand::ClearQueue => {
+                    lock(&shared.queue).0.clear();
+                    lock(&shared.queue).1.clear();
                     shared.emit(json!({"type": "queue_update", "steering": [], "followUp": []}));
                     None
                 }
