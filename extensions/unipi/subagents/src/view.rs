@@ -407,7 +407,7 @@ pub fn detail_body(
 /// `run_subagent` details (unipi `CardDetails`).
 #[must_use]
 pub fn details(rec: &Record, phase: Option<&str>, status: Status) -> Value {
-    let mut d = json!({"owner": "subagents", "id": rec.id, "title": rec.title, "profile": rec.profile, "model": rec.model, "status": status.as_str()});
+    let mut d = json!({"owner": "subagents", "id": rec.id, "title": rec.title, "profile": rec.profile, "profileLabel": format!("{} subagent", profile_label(&rec.profile)), "model": rec.model, "status": status.as_str()});
     if let Some(p) = phase {
         d["phase"] = json!(p);
     }
@@ -571,6 +571,20 @@ pub fn live_card(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn details_carry_the_resolved_profile_label() {
+        // QA-8: the parent model may call run_subagent without `agent`/`profile`; the
+        // streamed details must name the resolved profile so the UI's AgentRow does not
+        // fall back to the generic "Run subagent" label.
+        let rec = Record {
+            profile: "subagent_explore".into(),
+            ..Record::default()
+        };
+        let d = details(&rec, Some("done"), Status::Completed);
+        assert_eq!(d["profileLabel"], "Explore subagent");
+        assert_eq!(d["profile"], "subagent_explore");
+    }
 
     #[test]
     fn session_and_live_transcripts() {

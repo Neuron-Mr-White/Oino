@@ -324,19 +324,35 @@ pub fn agent_line(tool: &ToolRow) -> Option<AgentLine> {
         return None;
     }
     let sidekick = tool.name == "sidekick";
-    let name = ["agent", "profile", "name", "subagent"]
+    // QA-8: when the model omits `agent`/`profile`/`name` (the subagents extension resolves
+    // the profile server-side), the name comes from the tool details the extension streams
+    // (`profileLabel`, else the raw `profile` id) instead of falling back to the generic
+    // tool label. An explicitly named agent wins; the pretty label beats the raw id the
+    // schema makes the model pass, so the row matches the subagent-step cards either way.
+    let details_name = tool
+        .details
+        .as_ref()
+        .and_then(|d| {
+            d.get("profileLabel")
+                .or_else(|| d.get("profile"))
+                .and_then(JsonValue::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        })
+        .filter(|_| !sidekick);
+    let fallback = || {
+        if sidekick {
+            "Sidekick".to_owned()
+        } else {
+            tool_label(&tool.name)
+        }
+    };
+    let name = ["agent", "name", "subagent"]
         .iter()
         .find_map(|k| s(&tool.args, k))
-        .map_or_else(
-            || {
-                if sidekick {
-                    "Sidekick".to_owned()
-                } else {
-                    tool_label(&tool.name)
-                }
-            },
-            str::to_owned,
-        );
+        .or(details_name.as_deref())
+        .or_else(|| s(&tool.args, "profile"))
+        .map_or_else(fallback, str::to_owned);
     let task = ["task", "prompt", "message", "question"]
         .iter()
         .find_map(|k| s(&tool.args, k))
@@ -1133,6 +1149,42 @@ mod tests {
             (source.as_str(), title.as_str()),
             ("Memory", "Wake-up text")
         );
+    }
+
+    #[test]
+    fn agent_row_names_itself_from_subagent_details() {
+        // QA-8: the model may omit `agent`/`profile`; the extension streams the resolved
+        // profile in the tool details and the row must show it, not the generic label.
+        let RowKind::Tool(mut t) = tool(
+            "s",
+            "run_subagent",
+            json!({"title": "Read README", "task": "Read README.md first line"}),
+            ToolStatus::Running,
+        )
+        .kind
+        else {
+            panic!()
+        };
+        assert_eq!(agent_line(&t).unwrap().name, "Run subagent");
+        t.details = Some(json!({
+            "owner": "subagents",
+            "profile": "subagent_explore",
+            "profileLabel": "Explore subagent"
+        }));
+        let a = agent_line(&t).unwrap();
+        assert_eq!(a.name, "Explore subagent");
+        assert_eq!(a.task, "Read README.md first line");
+        // A raw profile id still beats the generic label (sessions from before profileLabel).
+        t.details = Some(json!({"profile": "subagent_explore"}));
+        assert_eq!(agent_line(&t).unwrap().name, "subagent_explore");
+        assert_eq!(agent_line(&t).unwrap().name, "subagent_explore");
+        // An explicit custom agent name always wins.
+        t.args = serde_json::from_value(json!({"agent": "explorer"})).unwrap();
+        assert_eq!(agent_line(&t).unwrap().name, "explorer");
+        // The pretty label beats the raw profile id the schema makes the model pass.
+        t.args = serde_json::from_value(json!({"profile": "subagent_explore"})).unwrap();
+        t.details = Some(json!({"profileLabel": "Explore subagent"}));
+        assert_eq!(agent_line(&t).unwrap().name, "Explore subagent");
     }
 
     #[test]

@@ -749,8 +749,13 @@ impl Subagents {
                 break Wait::Timeout;
             }
             let calls = run.progress.borrow().tool_calls;
+            // The streamed details carry the resolved profile (QA-8): the parent model may
+            // call run_subagent without an `agent`/`profile` arg, and the UI names the
+            // AgentRow from these details while the run is live.
+            let mut live = view::details(rec, None, Status::Running);
+            live["startedAt"] = json!(rec.started_at);
             cx.progress(&ToolResult::text(format!("Subagent \"{}\" working · {}", rec.title, record::plural(calls, "tool call")))
-                .with_details(json!({"owner": "subagents", "id": rec.id, "title": rec.title, "profile": rec.profile, "model": rec.model, "status": "running", "startedAt": rec.started_at})));
+                .with_details(live));
             timers::sleep(Duration::from_millis(400)).await;
         };
         self.sessions.with(sid, |s| s.fg_waits.remove(&rec.id));
