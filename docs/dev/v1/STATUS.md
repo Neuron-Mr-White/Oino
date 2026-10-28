@@ -18,7 +18,7 @@ rustc 1.99.1. Script: `scripts/round3/gates.sh` (log `target/gate-round3.log`).
 |---|---|---|---|---|
 | root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ **826 passed** (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components; +10 by `harness-gaps`) | ✅ rustdoc `-D warnings` (`RUSTDOCFLAGS`); ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh` (source install + faux prompt); all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
 | `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ **679 native** (4 ignored); ✅ 7 wasm-host harness suites, **36 passed** (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
-| `apps/` (GPUI) | ✅ | ✅ | ✅ **120 passed** | — |
+| `apps/` (GPUI) | ✅ | ✅ | ✅ **135 passed** (`cargo test --workspace`, incl. the automation, status-topic and agent-feed tests added by `[gui-wiring]`) | — |
 
 Red gates found and fixed this round: the doc gate (`cargo doc … -- -D warnings` no longer
 passes trailing args on cargo 1.99 → `RUSTDOCFLAGS`), three rustdoc links/HTML tags in
