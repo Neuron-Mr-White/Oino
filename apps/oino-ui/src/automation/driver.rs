@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use super::protocol::{Request, error, ok};
 use super::registry::{self, Node};
+#[cfg(unix)]
 use super::server::{self, Call, Server};
 use super::{input, state};
 use crate::views::shell::AppShell;
@@ -30,28 +31,36 @@ const SETTLE_FRAMES: u32 = 2;
 const SETTLE_TIMEOUT: Duration = Duration::from_millis(200);
 
 /// Installs the automation layer when `OINO_DESKTOP_AUTOMATION` names a socket path.
+/// No-op on platforms without the Unix-socket server (Windows).
 pub fn install(cx: &mut Context<AppShell>, window: &mut Window) {
-    let Some(path) = std::env::var_os("OINO_DESKTOP_AUTOMATION").filter(|p| !p.is_empty()) else {
-        return;
-    };
-    let path = PathBuf::from(path);
-    registry::activate();
-    registry::set_main_window(window.window_handle().window_id());
-    match server::spawn(&path) {
-        Ok((server, rx)) => {
-            tracing::info!(target: "oino_automation", socket = %server.path().display(),
-                "automation listening");
-            cx.spawn_in(window, async move |this, cx| {
-                serve(this, cx, server, rx).await;
-            })
-            .detach();
+    #[cfg(unix)]
+    {
+        let Some(path) = std::env::var_os("OINO_DESKTOP_AUTOMATION").filter(|p| !p.is_empty())
+        else {
+            return;
+        };
+        let path = PathBuf::from(path);
+        registry::activate();
+        registry::set_main_window(window.window_handle().window_id());
+        match server::spawn(&path) {
+            Ok((server, rx)) => {
+                tracing::info!(target: "oino_automation", socket = %server.path().display(),
+                    "automation listening");
+                cx.spawn_in(window, async move |this, cx| {
+                    serve(this, cx, server, rx).await;
+                })
+                .detach();
+            }
+            Err(e) => tracing::error!(target: "oino_automation", %e,
+                path = %path.display(), "automation socket"),
         }
-        Err(e) => tracing::error!(target: "oino_automation", %e,
-            path = %path.display(), "automation socket"),
     }
+    #[cfg(not(unix))]
+    let _ = (cx, window);
 }
 
 /// Answers requests until the client closes the connection or the app quits.
+#[cfg(unix)]
 async fn serve(
     this: WeakEntity<AppShell>,
     cx: &mut AsyncWindowContext,

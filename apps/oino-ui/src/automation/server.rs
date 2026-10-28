@@ -3,6 +3,9 @@
 //! A plain OS thread owns the listening socket and one client connection at a time; each
 //! request is handed to the UI thread over an unbounded channel and the reply comes back on a
 //! oneshot. Nothing here touches GPUI, so it is unit-testable with a fake handler.
+//!
+//! Unix only (a Unix-domain socket): Windows builds have no server and `install` is a no-op.
+#![cfg(unix)]
 
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::os::unix::fs::FileTypeExt as _;

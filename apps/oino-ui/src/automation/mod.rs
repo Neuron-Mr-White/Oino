@@ -19,6 +19,7 @@ pub mod driver;
 pub mod input;
 pub mod protocol;
 pub mod registry;
+#[cfg(unix)]
 pub mod server;
 pub mod state;
 
