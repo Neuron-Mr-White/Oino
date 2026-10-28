@@ -18,7 +18,7 @@ rustc 1.99.1. Script: `scripts/round3/gates.sh` (log `target/gate-round3.log`).
 |---|---|---|---|---|
 | root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ **826 passed** (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components; +10 by `harness-gaps`) | ✅ rustdoc `-D warnings` (`RUSTDOCFLAGS`); ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh` (source install + faux prompt); all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
 | `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ **679 native** (4 ignored); ✅ 7 wasm-host harness suites, **36 passed** (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
-| `apps/` (GPUI) | ✅ | ✅ | ✅ **135 passed** (`cargo test --workspace`, incl. the automation, status-topic and agent-feed tests added by `[gui-wiring]`) | — |
+| `apps/` (GPUI) | ✅ | ✅ | ✅ **136 passed** (`cargo test --workspace`, incl. the automation, status-topic, agent-feed and chord-parsing tests added by `[gui-wiring]` / `[unipi-live]`) | ✅ the unipi suite on `ti`: `cargo xtask gui suite unipi` (§1b.10) |
 
 Red gates found and fixed this round: the doc gate (`cargo doc … -- -D warnings` no longer
 passes trailing args on cargo 1.99 → `RUSTDOCFLAGS`), three rustdoc links/HTML tags in
@@ -36,40 +36,44 @@ Version: **1.0.0-alpha.3**.
 ### 1b.1 unipi 3.0.0 in the desktop app (incl. cron)
 
 Every unipi surface (design.md §7) reaches exactly one primary rendering; the desktop now
-renders each one natively or through the shared OUS/docked-card machinery. "Live" = exercised
-in the round-3 / round-4 QA runs on the release binary (private Xvfb + lavapipe) or by the
-round-3 harness scripts; "code" = unit/e2e tests only this round.
+renders each one natively or through the shared OUS/docked-card machinery. Since
+`[unipi-live]` (2026-10-29) "live" means: exercised on `ti` by a **driver scenario with a real
+model** (`oino/deepseek/deepseek-flash`) that asserts the rendered panel text, the element
+tree and `state.chrome`/`state.open` — the scenarios below are the regression suite
+`cargo xtask gui suite unipi` ([gui-driver.md](gui-driver.md) §4). Screenshots per scenario:
+`docs/dev/v1/design/shots/desktop/<scenario>/`.
 
-| Package | Desktop surface | Status | Evidence |
+| Package | Desktop surface | Status | Scenario (proof) |
 |---|---|---|---|
-| core | hint strip (`alt+h`), hints overlay, welcome hero / slim header card, work tray (`↓`, `/subagents`) | ✅ live | GA-5, GA-16, GA-21, GA-22, GA-31 |
-| info-screen | `/info` dashboard dialog (tabs, stat tiles, meters, `1–9` pages, `r` refresh) | ✅ live | GA-23 |
-| footer | glance frame under the composer + stats strip (`/footer off` keeps the mode chip) | ✅ live | GA-25, GA-26 |
-| workflow | approval card (keyboard + focus, >4 min alive), plan review card, `/permission`, `alt+m`/`alt+p`, Permissions page | ✅ live | GA-16, GA-27, GA-30, GA-33, QA-1 |
-| ask-user | question card, tool rows, OS notification | 🟡 code | forms render (GA-7); a live `form` turn was not re-driven (budget) |
-| long-horizon | `/goal` continuation, `/ralph` `/swarm` `/graph`, visualise dialog, StatusPanel goal row | 🟡 code | `/goal-start` e2e + smoke; graph runs not e2e-tested |
-| memory | recall/save cards, badge rows, forget/consolidate dialogs, `memory_*` tools | 🟡 code | MemPalace verified with both implementations ([§1b.5](#1b5-mempalace-rs-the-rust-port)); `/memory` in the desktop not driven this round |
-| dream | report card with proposals, tray tab, StatusPanel Run row | 🟡 code | nested-agent dream e2e with resume; Accept/Reject buttons not clicked live |
-| skill-registry | `/skills` → Settings hub "Skills" page, vault discovery | ✅ live | GA-31 (`/hint`), skills page |
-| subagents | `run_subagent` rows, `/subagents` tray tab, `/agents` dialog | 🟡 code | GA-21 tray; live child timeline still open (GA-15 / GA-44 feed exists) |
-| background-tasks | `/bg`, tasks tray tab (`sleep 30 · 4s · 0B`), Stop all / Dismiss, completion card | ✅ live | GA-14, GA-21, GA-22; notification `deliverAs: followUp` ([harness-gaps]) |
-| btw | `/btw` side-chat panel, session message count unchanged | ✅ live | smoke (`/btw …` in the panel) |
-| web-api | `web_search` / read tool rows, confirm dialogs | ✅ live | tool rows in the round-2/3 runs |
-| notify | wizards (`form`/`select`), secret fields, toasts, OS notifications | ✅ live | kanboard-onboard dialog (GA-24), notify settings |
-| kanboard | native Board page, `/kanboard open` side pane, New-task dialog, claims badge | ✅ live | GA-17, GA-20, QA-5; `65-unipi-board-newtask.png` |
-| mcp | `/mcp-status` panel, `<server>__<tool>` rows, add/settings flows | ✅ code | stdio + HTTP e2e; pi `~/.oino/mcp.json` via `/agent`, ACP `mcpServers` on `oino:acp:mcp-servers` ([harness-gaps]) |
-| command-enchantment | completion menu with package colour tags, one COMMANDS group | ✅ live | GA-2, GA-4 |
-| compactor | `/compact*`, `/session-recall`, SummaryCard | ✅ code | commands + tests; LLM summary takes the previous summary like pi ([harness-gaps]) |
-| updater | `/readme`, `/changelog` (GitHub release notes fallback), update badge | ✅ live | GA-19, QA-4 |
-| **cron** (Oino-native) | **Automations page** (sidebar nav, job rows with each job's own last run, run history, add/edit/enable/disable/run/pause) | ✅ live | `66-automations.png`; `scripts/round3/cron-e2e.sh --real` → PASS (every-minute job 3 runs + sessions, `at:` job, pause/resume, missed-run catch-up, install/uninstall in a scratch HOME, one real `oino/deepseek/deepseek-flash` run) |
-| input-shortcuts | composer editor intents, `setShortcuts` → shell interceptor | ✅ live | GA-16, QA-1 repro 4 |
-| fusion | `/fusion` picker, sidekick AgentRow, wake widget | ✅ code | sidekick e2e + live handoff; startup pair persisted to core settings ([harness-gaps]) |
-| watchdog | stuck detection, session caps, `/bg-detach`, `setStatus` chip | ✅ code | `bash-detach` e2e; process stats on Linux/macOS/Windows ([harness-gaps]) |
-| app-bridge | `/app` control-centre side tab | ✅ live | GA-18 |
+| core | hint strip (`alt+h`), hints browser (`/hint`), welcome hero / slim header card, work tray (`↓`) | ✅ live | `unipi-core` |
+| info-screen | `/info` dashboard dialog (tabs, stat tiles, meters, `r` refresh) | ✅ live | `unipi-info-screen` |
+| footer | glance frame under the composer + stats strip (`/footer off` hides it) | ✅ live | `unipi-footer` |
+| workflow | mode chip + menu, `/permission`, `alt+m` cycle, `alt+p` plan mode, approval card (allow) | ✅ live | `unipi-workflow`, `unipi-input-shortcuts` |
+| ask-user | `ask_user` tool → question card → answer → turn resumes | ✅ live | `unipi-ask-user` (the tool is off by default, like unipi; the scenario enables it through `settings`) |
+| long-horizon | `/goal` continuation + `Goal` status, `/visualize-progress`, `/regular` clears the mode, `/ralph`/`/graph` help | ✅ live | `unipi-long-horizon` (`/regular` left the chip behind — fixed) |
+| memory | `/memory` status card, `/memory-search`, `/global-memory-list`, `memory_store` tool, `/memory-consolidate` | ✅ live | `unipi-memory` (markdown-only on `ti`: no MemPalace install) |
+| dream | `/dream` status card, report, approve/reject, work-tray tab | ✅ live | `unipi-dream` |
+| skill-registry | `/skills` → Settings hub "Skills" page, exposure switch | ✅ live | `unipi-skill-registry` |
+| subagents | `run_subagent` row → Agent tab, `/agents` profile manager, `/subagents` tray tab | ✅ live | `unipi-subagents`, `agents-live` |
+| background-tasks | `/bg`, tasks tray tab, tray strip, Stop all (two-step confirm), `bg_run` completion notification | ✅ live | `unipi-background-tasks` |
+| btw | `/btw` side-chat panel, session message count unchanged | ✅ live | `unipi-btw` |
+| web-api | `web_search` tool row, `/info` Web tab | ✅ live | `unipi-web-api` |
+| notify | `/notify-event` list + toggle, Settings → Notify page | ✅ live | `unipi-notify` |
+| kanboard | `/kanboard onboard`, native Board page, New-task dialog, `/kanboard status` | ✅ live | `unipi-kanboard` (the board panel follows the daemon SSE and can lag a capture; the board's Refresh is the workaround — gap 17) |
+| mcp | `/mcp-status` panel, Settings → MCP page | ✅ live | `unipi-mcp` (no live MCP server on `ti`; the stdio/HTTP paths stay covered by the harness e2e) |
+| command-enchantment | `/` completion menu with package colour tags, filter, Tab accept | ✅ live | `unipi-command-enchantment` |
+| compactor | `/compact-stats`, `/compact-doctor`, `/session-recall`, `/compact-vcc`, `/compact-by-llm`, `/compact-help` | ✅ live | `unipi-compactor` (a tiny session reports "Nothing to compact"; the LLM summary path needs a context-sized session) |
+| updater | `/readme`, `/changelog`, Settings → About & updates | ✅ live | `unipi-updater` |
+| input-shortcuts | `alt+h`, `alt+m` (ask→auto→full→ask), `alt+p`, `/ho` completion | ✅ live | `unipi-input-shortcuts` |
+| fusion | `/fusion` lead → effort → confirm, `/fusion-stats` | ✅ live | `unipi-fusion` |
+| watchdog | `/bg-detach` adopts a running bash call, stuck chip, tray row | ✅ live | `unipi-watchdog` |
+| app-bridge | `/app` control-centre side tab (Session/Work/Modes/BTW/Info) | ✅ live | `unipi-app-bridge` |
+| utility | `/doctor`, `/cleanup`, `/move`, `/answer`, Settings hub, image attachments | ✅ live | `unipi-utility`, `image-attach` |
+| **cron** (Oino-native) | **Automations page** (sidebar nav, job rows, run history, add/edit/enable/disable/run/pause) | ✅ live | `unipi-cron` (+ `scripts/round3/cron-e2e.sh --real`) |
+| browser | `/browser` status (engine, display, profile, tabs), `browser_*` tool rows | ✅ live | `unipi-browser` |
 
-Count: 12 ✅ live, 11 🟡 code, 0 ❌. "🟡 code" means gates green and the surface renders, but
-the round-3 QA budget did not re-drive that turn live; the gaps are itemised in
-[gui-qa.md](gui-qa.md) "Coverage gaps".
+Count: **24 ✅ live, 0 🟡, 0 ❌** for the 24 bundled packages + cron. Run the same suite to
+re-check: `cargo xtask gui suite unipi` (report in `target/gui-suite/unipi.json`).
 
 ### 1b.1b Harness gaps closed (work id `harness-gaps`, 2026-10-29)
 
@@ -239,6 +243,61 @@ account is out of OpenRouter credits (HTTP 402, "can only afford 25079 tokens") 
 [gui-driver.md](gui-driver.md) §7b. GA-46 (idle cost) stays as measured: the scoped ticker
 stops when nothing animates; no new timer or task was added by this round.
 
+### 1b.10 `[unipi-live]`: every unipi package driven live in the desktop app
+
+Goal (owner priority #1): each unipi 3.0.0 feature works **live** in Oino Desktop with the
+behaviour of the reference app. This round wrote one driver scenario per package
+(`docs/dev/v1/gui/scenarios/unipi-*.json`, listed in
+[docs/dev/v1/gui/suites/unipi.json](gui/suites/unipi.json), runner `cargo xtask gui suite unipi`)
+and drove each on `ti` (Xvfb :93, lavapipe, release build) against a real provider
+(`oino/deepseek/deepseek-flash`), asserting rendered panel text, the element tree and
+`state.chrome`/`state.open` — no OCR. 28 scenarios: 24 for the bundled packages,
+`image-attach` (utility attachments), `agents-live` (subagent timeline fixtures) and cron.
+Full suite on `ti` (release build, Xvfb :93): **28/28 PASS** (report `target/gui-suite/unipi.json`).
+
+Why the earlier rounds could not drive real-model turns: the `ti` harness wrote a `model:`
+setting (core reads pi's `defaultProvider`/`defaultModel`), uploaded `auth.json` with the
+legacy `router` credential name (the provider id is `oino`) and never copied the router's
+dynamic model catalog — so the app always opened with "No model selected", which round 3 read
+as a router credit block. With that fixed, every scenario runs a real turn.
+
+Harness work needed to make the surfaces assertable (`apps/oino-ui`, all inert while
+automation is off): OUS text nodes (`ous/<key>`), `state.chrome` (statuses, widgets, frame
+segments), `state.open` naming open extension panels (`panel:<id>`), the result-card body
+(`result-body`), every modal title (`<id>-title`), the AgentRow (`<name> <task>`), the
+completion menu and its rows (package tag in the label), toast messages (`toast-<id>`), the
+board's New-task inputs, and the composer's mode/model chips. `+` chords (`alt+h`) now parse,
+and a scenario can carry `settings` (extension switches) and assert `chrome`/`chrome_absent`/
+`open`.
+
+Defects found live and fixed:
+
+1. **`/regular` left long-horizon mode on** — `publish` falls back to the last resolved mode
+   when no owner is active, and the command did not clear it, so the `Goal` chip and the
+   long-horizon status survived the stop (`extensions/unipi/long-horizon/src/lib.rs`).
+2. **`ti` never built `oino-kanboard`** (nor linked it beside `oino-desktop`), so the native
+   Board view sat on "Starting the kanboard daemon…" forever (`xtask/src/ti.rs`).
+3. The driver injected `alt+h`/`alt+m`/`alt+p` as literal text instead of a chord
+   (`apps/oino-ui/src/automation/input.rs`).
+
+Per-package status and the scenarios that prove each one: [§1b.1](#1b1-unipi-300-in-the-desktop-app-incl-cron).
+
+Open gaps (recorded, not fixed here):
+
+17. **Board refresh latency**: the native Board renders the extension panel, which the kanboard
+    extension refreshes from the daemon's SSE stream; a task captured from another view can
+    take tens of seconds to appear (the board's own Refresh shows it at once). Worth a
+    follow-up in `apps/oino-ui/src/views/board.rs` (poll or subscribe to the kanboard topic).
+18. **MCP** has no live server in the `ti` scratch dir: `/mcp-status` and the settings page are
+    live-verified, the stdio/HTTP tool paths stay covered by the wasm-host e2e tests.
+19. **MemPalace** is not installed on `ti`, so `/memory` runs markdown-only there (the palace
+    paths are verified separately, [§1b.5](#1b5-mempalace-rs-the-rust-port)).
+20. **LLM compaction** needs a context-sized session; the scenario exercises the command
+    surface and the "Nothing to compact" answer on a small one.
+21. **Browser**: the engine status and a `browser_open` tool row are live-verified; page
+    interaction, screencast and take-over remain WP5 items ([§5b](#5b-browser-control)).
+22. **Mobile/TUI** are not part of this suite (desktop only).
+
 ## 2. End-to-end smoke (release `oino` 1.0.0-alpha.2, temp agent dir, bundle of 33 packages)
 
 Re-checked on **1.0.0-alpha.3** (2026-10-28, local release build): `oino --version`,
@@ -315,8 +374,8 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | core (hints, header, work tray) | ✅ | late-night hint, splash greeting and notify times use the host's UTC offset (`host-info.local-offset-minutes`, R3) |
 | utility | 🟡 | settings, auto-rename (verified live), `/answer`, attachments, image tools, `/move`, doctor ✅; render styles for built-in tools ✅ (core `tools.override` render-only overrides + `_oino/render`; the TUI asks for every tool row, the GPUI app still renders natively); trust.json move (U5) |
 | workflow (permissions, plan mode) | ✅ | mode and rules in the settings files |
-| long-horizon | ✅ | goal continuation through the arbiter verified (e2e + smoke); graph runs not e2e-tested |
-| memory | ✅ | markdown memories, tools, recall, side-save ✅; MemPalace verified against **both** implementations (Python 3.11.0 and mempalace-rs) on palace copies; `mempalaceBin` selects a binary or folder with a `PATH` (Python) fallback — [§1b.5](#1b5-mempalace-rs-the-rust-port) |
+| long-horizon | ✅ | goal continuation through the arbiter verified (e2e + smoke + the live desktop scenario); `/regular` now clears the mode (fixed in `[unipi-live]`); graph runs not e2e-tested beyond `/graph` help |
+| memory | ✅ | markdown memories, tools, recall, side-save ✅ (live desktop scenario); MemPalace verified against **both** implementations (Python 3.11.0 and mempalace-rs) on palace copies; `mempalaceBin` selects a binary or folder with a `PATH` (Python) fallback — [§1b.5](#1b5-mempalace-rs-the-rust-port) |
 | dream | ✅ | nested-agent dream runs with resume (e2e) |
 | skill-registry | ✅ | |
 | info-screen | ✅ | dashboard panel + actions verified in the smoke |
@@ -327,7 +386,7 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 | ask-user | ✅ | forms map to ACP `elicitation/create` (one object schema → `FormAnswers`); `custom`/clipboard dialogs stay cancelled |
 | mcp | ✅ | stdio + HTTP ✅; pi `~/.oino/mcp.json` read through the `/agent` preopen, project `.oino/mcp.json`, ACP `mcpServers` forwarded on `oino:acp:mcp-servers` |
 | notify | ✅ | wizards and secrets in settings |
-| kanboard | ✅ | CLI/daemon, panel, desktop native board, monitor nudges through the arbiter (smoke); TUI renders the board panel generically; `/kanboard open` opens the side pane at any window width ([gui-qa-fix] QA-5) |
+| kanboard | ✅ | CLI/daemon, panel, desktop native board, monitor nudges through the arbiter (smoke + the live desktop scenario); TUI renders the board panel generically; `/kanboard open` opens the side pane at any window width ([gui-qa-fix] QA-5). Open: a capture can take tens of seconds to show in the native board (SSE-driven refresh, §1b.10 gap 17) |
 | command-enchantment | ✅ | TUI and desktop merge `complete-input` |
 | compactor | ✅ | `llm` method passes the previous summary (`summarize-default(…, previousSummary)`, pi's update prompt) |
 | footer | ✅ | |
