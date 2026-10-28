@@ -13,6 +13,7 @@ use gpui_kit::{
     Window, div, px, relative,
 };
 
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize};
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
@@ -193,7 +194,15 @@ pub fn modal_with_toolbar_focused(
                                         .truncate()
                                         .text_role(t, TextRole::Title)
                                         .weight_semibold()
-                                        .child(title),
+                                        .child(title.clone())
+                                        // Read-back for scenarios: every modal's title.
+                                        .automation_named(
+                                            crate::automation::Meta::labelled(
+                                                crate::automation::Role::Text,
+                                                title.to_string(),
+                                            ),
+                                            format!("{id}-title"),
+                                        ),
                                 )
                                 .children(toolbar)
                                 .child(

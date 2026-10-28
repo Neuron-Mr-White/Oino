@@ -95,9 +95,15 @@
       }
     },
     {
+      "wait_state": {
+        "open": "unipi.core/tray",
+        "timeout_ms": 30000
+      }
+    },
+    {
       "wait_for": {
         "text": "Dream",
-        "timeout_ms": 30000
+        "timeout_ms": 20000
       }
     },
     {
@@ -105,5 +111,12 @@
         "name": "05-dream-tray"
       }
     }
-  ]
+  ],
+  "settings": {
+    "extensionSettings": {
+      "dream": {
+        "enabled": true
+      }
+    }
+  }
 }

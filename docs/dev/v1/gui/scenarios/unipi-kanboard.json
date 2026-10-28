@@ -10,6 +10,34 @@
       }
     },
     {
+      "type_text": {
+        "text": "/kanboard onboard",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "result-ok",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "/kanboard-add",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-onboarded"
+      }
+    },
+    {
+      "click": {
+        "id": "result-ok"
+      }
+    },
+    {
       "click": {
         "id": "nav-board"
       }
@@ -21,14 +49,14 @@
       }
     },
     {
-      "screenshot": {
-        "name": "01-board"
+      "wait_for": {
+        "id": "board-fab",
+        "timeout_ms": 60000
       }
     },
     {
-      "wait_for": {
-        "id": "board-fab",
-        "timeout_ms": 30000
+      "screenshot": {
+        "name": "02-board"
       }
     },
     {
@@ -44,7 +72,7 @@
     },
     {
       "screenshot": {
-        "name": "02-new-task-dialog"
+        "name": "03-new-task-dialog"
       }
     },
     {
@@ -55,8 +83,7 @@
     },
     {
       "click": {
-        "label": "Add task",
-        "role": "button"
+        "id": "board-new-add"
       }
     },
     {
@@ -67,7 +94,7 @@
     },
     {
       "screenshot": {
-        "name": "03-task-created"
+        "name": "04-task-created"
       }
     },
     {
@@ -95,24 +122,7 @@
     },
     {
       "screenshot": {
-        "name": "04-kanboard-status"
-      }
-    },
-    {
-      "type_text": {
-        "text": "/kanboard-add Another captured task",
-        "submit": true
-      }
-    },
-    {
-      "wait_for": {
-        "text": "Another captured task",
-        "timeout_ms": 60000
-      }
-    },
-    {
-      "screenshot": {
-        "name": "05-kanboard-add"
+        "name": "05-kanboard-status"
       }
     }
   ]
