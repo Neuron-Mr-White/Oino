@@ -73,6 +73,12 @@ build_target() { # $1 = optional target triple
   log "building oino CLI ${1:-host} ($profile)"
   (cd "$root" && cargo build -j "$jobs" -p oino \
     ${cargo_profile[@]+"${cargo_profile[@]}"} ${target_args[@]+"${target_args[@]}"})
+  # Companion binaries the WASM host finds next to the running executable (GA-41):
+  # `oino-kanboard` is the kanboard daemon the Board page starts; cron is an `oino`
+  # subcommand (`oino cron serve`), which ships with the CLI above.
+  log "building oino-kanboard ${1:-host} ($profile)"
+  (cd "$root" && cargo build -j "$jobs" -p oino-kanboard \
+    ${cargo_profile[@]+"${cargo_profile[@]}"} ${target_args[@]+"${target_args[@]}"})
 }
 
 if [[ $os == macos && $universal == 1 ]]; then
@@ -86,13 +92,20 @@ if [[ $os == macos && $universal == 1 ]]; then
   lipo -create -output "$root/target/$profile/oino" \
     "$root/target/aarch64-apple-darwin/$profile/oino" \
     "$root/target/x86_64-apple-darwin/$profile/oino"
+  lipo -create -output "$root/target/$profile/oino-kanboard" \
+    "$root/target/aarch64-apple-darwin/$profile/oino-kanboard" \
+    "$root/target/x86_64-apple-darwin/$profile/oino-kanboard"
 else
   build_target ""
 fi
 
 app_bin="$apps/target/$profile/oino-desktop$exe"
 cli_bin="$root/target/$profile/oino$exe"
+kanboard_bin="$root/target/$profile/oino-kanboard$exe"
+# GA-41: the WASM host resolves a bare program name against the directory of the running
+# executable, so the kanboard daemon ships next to oino-desktop (and in the tarball's bin/).
 [[ -f "$cli_bin" ]] && cp "$cli_bin" "$apps/target/$profile/"
+[[ -f "$kanboard_bin" ]] && cp "$kanboard_bin" "$apps/target/$profile/"
 [[ $package == 0 ]] && { log "built $app_bin"; exit 0; }
 
 mkdir -p "$dist"
@@ -103,6 +116,7 @@ if [[ $os == linux ]]; then
   mkdir -p "$stage/$name/share/applications" "$stage/$name/share/icons/hicolor/256x256/apps" "$stage/$name/bin"
   cp "$app_bin" "$stage/$name/bin/"
   [[ -f "$cli_bin" ]] && cp "$cli_bin" "$stage/$name/bin/"
+  [[ -f "$kanboard_bin" ]] && cp "$kanboard_bin" "$stage/$name/bin/"
   cp "$apps/oino-desktop/assets/oino-desktop.desktop" "$stage/$name/share/applications/"
   cp "$apps/oino-desktop/assets/oino-256.png" "$stage/$name/share/icons/hicolor/256x256/apps/oino-desktop.png"
   tar -C "$stage" -czf "$dist/$name.tar.gz" "$name"
@@ -121,6 +135,14 @@ if command -v cargo-packager >/dev/null 2>&1; then
     ${cargo_profile[@]+"${cargo_profile[@]}"} --formats "$formats" --out-dir "$dist")
 else
   log "cargo-packager not installed: skipping $formats (cargo install cargo-packager --locked)"
+fi
+
+# GA-41: the companions go beside the app binary inside the bundle, where the WASM host
+# resolves them (`Contents/MacOS` on macOS). The AppImage/deb layout is cargo-packager's.
+if [[ $os == macos && -d "$dist/Oino.app/Contents/MacOS" ]]; then
+  for b in oino oino-kanboard; do
+    [[ -f "$root/target/$profile/$b" ]] && cp "$root/target/$profile/$b" "$dist/Oino.app/Contents/MacOS/"
+  done
 fi
 
 sum() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
