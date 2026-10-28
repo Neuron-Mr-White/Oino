@@ -1,6 +1,6 @@
 # Oino v1.0.0-alpha.3 — status
 
-Date: 2026-10-28 · branch `v1-alpha` · round 3 (`round3-integration`: gui-qa + gui-qa-fix,
+Date: 2026-10-29 · branch `v1-alpha` · round 3 + `harness-gaps` (`round3-integration`: gui-qa + gui-qa-fix,
 stability, browser-impl, unipi-native + commands, cron, mempalace-rs, cross-platform smoke;
 on top of round 2 `integration-2`: core-agents, core-settings, frontend-cmds, providers-more,
 unipi-utility, design-spec / design-desktop(-fix) / design-mobile, release-builds).
@@ -16,8 +16,8 @@ rustc 1.99.1. Script: `scripts/round3/gates.sh` (log `target/gate-round3.log`).
 
 | Workspace | fmt | clippy `-D warnings` (pedantic) | tests | other |
 |---|---|---|---|---|
-| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ **816 passed** (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components) | ✅ rustdoc `-D warnings` (`RUSTDOCFLAGS`); ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh` (source install + faux prompt); all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
-| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ **678 native** (4 ignored); ✅ 7 wasm-host harness suites, **36 passed** (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
+| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ **826 passed** (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components; +10 by `harness-gaps`) | ✅ rustdoc `-D warnings` (`RUSTDOCFLAGS`); ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh` (source install + faux prompt); all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
+| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ **679 native** (4 ignored); ✅ 7 wasm-host harness suites, **36 passed** (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
 | `apps/` (GPUI) | ✅ | ✅ | ✅ **120 passed** | — |
 
 Red gates found and fixed this round: the doc gate (`cargo doc … -- -D warnings` no longer
