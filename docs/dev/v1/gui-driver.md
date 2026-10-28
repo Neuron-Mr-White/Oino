@@ -92,6 +92,8 @@ handled.
 | `wait_for` | selector and/or `text`, `absent`, `timeout_ms` | `{matched, ms, frame}` |
 | `screenshot` | `path` (on the app host) | `{path, width, height}` |
 | `settle` | — | `{frame}` |
+| `drop` | selector or `x`,`y`, `paths` (on the app host) | `{at, id, paths}`: files dragged onto the window |
+| `clipboard_image` | `path` of a PNG on the app host | `{path, bytes}`: puts it on the clipboard for `secondary-v` |
 | `quit` | — | `{quitting}` |
 
 **Selectors.** `id` is the element's own `ElementId` (`send`, `ap-allow`, `card-OIN-12`);
@@ -167,8 +169,21 @@ Scenario format (JSON):
 }
 ```
 
+Scenarios also choose the app backend and extra environment:
+
+```json
+{"name": "rewind-real", "backend": "real", "env": ["OINO_DESKTOP_DEMO_PACE=8"], "steps": []}
+```
+
+`backend` is `demo` (default, scripted scene), `faux` (real core, no network) or `real`
+(providers from the copied `auth.json`; the client writes `settings.json`
+`{"model": "oino:deepseek/deepseek-flash"}` and an onboarded `desktop.json`, and copies a
+solid-red test PNG to `~/oino-test/run/attach-red.png` for the attachment scenarios).
+`--backend` overrides it. `env` entries go to `cargo xtask ti start --env`.
+
 Steps: any RPC method (`click`, `double_click`, `right_click`, `hover`, `type_text`, `key`,
-`scroll`, `focus`, `wait_for`, `tree`, `state`, `screenshot`, `settle`, `ping`) plus `sleep`
+`scroll`, `focus`, `wait_for`, `tree`, `state`, `screenshot`, `settle`, `drop`,
+`clipboard_image`, `ping`) plus `sleep`
 (`{"ms": 250}`), `assert` and `wait_state` (retries `assert` until it holds or `timeout_ms`
 expires), and `toggle` (clicks a switch and proves its `checked` state flipped, whatever the
 persisted value was). `assert`/`wait_state` accept `route`, `busy`, `dialogs` (count or method),
@@ -192,6 +207,13 @@ scenario's demo scene.
 | `side-pane-tabs.json` | `hdr-side`, the `+` launcher menu, opening Files and Tree tabs, switching tabs |
 | `board-task.json` | nav → Board, the FAB dialog (create), card select, the task detail's move button |
 | `settings-switches.json` | settings nav → Unicrab, `toggle` of the mascot and native-Wayland switches |
+| `agents-live.json` | AgentRow live status, the Agent tab's read-only child timeline (`_oino/agents` + `agent_messages`), Stop agent, and the `btw` child opened from the StatusPanel's Run row |
+| `status-panel.json` | the StatusPanel fed by the sticky topics (Goal `turn 2/5`, tasks, sidekick, kanboard claims, git), header click → focus, ↓ + Enter → child Agent tab, Delete → stop confirm, ⌘⇧S collapse/expand |
+| `turn-undo.json` | the turn footer's Undo: confirmation, files restored toast, checkpoint still offered |
+| `queue-edit.json` | two queued follow-ups, ↑ reorder, recall to the composer, remove, empty queue |
+| `image-attach.json` (real) | a dropped PNG becomes `Image #1` and the prompt carries it (the model answers the colour) |
+| `subagent-real.json` (real) | a real `run_subagent` call → AgentRow → Agent tab |
+| `rewind-real.json` (real) | user bubble Rewind on a short transcript: confirm → fork → composer refilled |
 
 ## 5. `ti` specifics
 
@@ -258,6 +280,32 @@ Two findings from the proof round, both fixed in the layer:
    visible session uncached while automation is on (`views/shell.rs`, `automation::enabled()`).
 2. A frame that changes the UI is often the last one before the app goes idle, so the snapshot
    is published from a zero-size paint end-marker, not from the next render.
+
+## 7b. Proof of the gui-wiring scenarios (`6ef6f83`…`be6ce69`, 2026-10-29)
+
+Release build of `be6ce69`, `Xvfb :93`, lavapipe, one app instance per scenario (each
+`run` restarts the app itself):
+
+| Scenario | Backend | Steps | Result |
+|---|---|---|---|
+| `agents-live` | demo | 20 | **PASS** — AgentRow live (`run_subagent`, 1 step, 20.9 s), Agent tab timeline ("Map the parser's call sites…"), Stop agent → `Agent session · done`, StatusPanel Run row `btw` → its child timeline |
+| `status-panel` | demo | 31 | **PASS** — mini capsule `Status · 0/0 · 5 running · 3 changed`, expand, header focus, ↓ + Enter → `btw` Agent tab, Delete → `Stop agent` confirm → row gone, sections `Goal · turn 2/5`, `cargo test --watch 4m12s`, `Haiku`, `Kanboard · 1 claimed`, `Git · v1-alpha · 3 changed`, ⌘⇧S collapse/expand |
+| `turn-undo` | demo | 13 | **PASS** — Undo → confirm → `Restored 1 file`, checkpoint stays |
+| `queue-edit` | demo | 19 | **PASS** — two follow-ups queued, ↑ reorder, recall refills the composer, remove empties the queue |
+| `image-attach` | real | 12 | **blocked** — the drop lands and `Image #1 · image/png` attaches (steps 1–8 pass), but the prompt fails with the provider error: the Oino Router account is out of OpenRouter credits (HTTP 402, `can only afford 25079` tokens) and the `ti` agent dir had no router model catalog (copied from this PC since). Not a GUI defect |
+| `subagent-real`, `rewind-real` | real | — | **not run** — same provider block |
+
+Screenshots: `docs/dev/v1/design/shots/desktop/<scenario>/*.png`.
+
+Two harness limits found and handled:
+
+1. A `FileDrop` event does not change GPUI's input modality, and hover (which `on_drop`
+   listeners test) is suppressed while the last input was a keystroke — `drop` now sends a
+   `MouseMove` first, like a real drag.
+2. The transcript is virtualised: a user bubble scrolled above the viewport is not rendered,
+   and the wheel injected through `dispatch_event` did not move the list on Xvfb, so the
+   Rewind button of a long transcript is not clickable from a scenario (`rewind-real` uses a
+   short real transcript instead).
 
 ## 8. Not covered
 

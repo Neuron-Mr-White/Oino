@@ -77,18 +77,6 @@
       }
     },
     {
-      "sleep": {
-        "ms": 300
-      }
-    },
-    {
-      "wait_for": {
-        "role": "text",
-        "label": "Make the JSON parser accept trailing commas",
-        "timeout_ms": 10000
-      }
-    },
-    {
       "screenshot": {
         "name": "04-files-undone"
       }

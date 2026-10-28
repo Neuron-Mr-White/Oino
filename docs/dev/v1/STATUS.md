@@ -221,11 +221,23 @@ staging (mac) removed; `~/oino-release` is kept for reuse (it grew ~4 GB from th
 
 ### 1b.8 Next round: ZCode parity
 
-ZCode parity ([design.md](design.md) §8, 54 rows) is the next round: 44 ✅ · 8 🟡 · 1 ⛔ ·
-1 n/a on desktop (perf row 🟡). Priorities: core subagent/agent feed wiring (GA-15/44),
-turn undo/rewind buttons on the core file checkpoints, queue-edit wiring, StatusPanel +
-topics feed, attachments from pasted images, 4-pane p99 under the 10 ms budget, mobile tablet
-layout, exit animations. `apps/oino-desktop/DESIGN-STATUS.md` is the row-by-row source.
+ZCode parity ([design.md](design.md) §8, 54 rows): desktop 50 ✅ · 2 🟡 (motion,
+performance) · 1 ⛔ · 1 n/a after §1b.9. Open: 4-pane p99 under the 10 ms budget, exit
+animations, mobile tablet layout and the mobile halves of rows 23–25, 31, 33, 40. `apps/oino-desktop/DESIGN-STATUS.md` is the row-by-row source.
+
+### 1b.9 `[gui-wiring]`: the core features reach the GUI
+
+Rows 23, 24–25, 31, 33 and 40 of the desktop checklist are closed on desktop
+(`apps/oino-desktop/DESIGN-STATUS.md`); GA-41 packaging now ships `oino-kanboard` beside
+`oino-desktop`. Verified on `ti` (release build, Xvfb :93, lavapipe) with four new driver
+scenarios — `agents-live` (20 steps), `status-panel` (31), `turn-undo` (13), `queue-edit`
+(19) — all **PASS**; screenshots under
+`docs/dev/v1/design/shots/desktop/<scenario>/`. The real-provider scenarios
+(`image-attach`, `subagent-real`, `rewind-real`) are written and their GUI half runs (the
+drop attaches `Image #1`, the prompt is sent), but the model call fails: the Oino Router
+account is out of OpenRouter credits (HTTP 402, "can only afford 25079 tokens") — see
+[gui-driver.md](gui-driver.md) §7b. GA-46 (idle cost) stays as measured: the scoped ticker
+stops when nothing animates; no new timer or task was added by this round.
 
 ## 2. End-to-end smoke (release `oino` 1.0.0-alpha.2, temp agent dir, bundle of 33 packages)
 
@@ -331,7 +343,7 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 Source of truth: `apps/oino-desktop/DESIGN-STATUS.md` (54-row checklist, perf numbers),
 `apps/oino-mobile/DESIGN-STATUS.md`, [design/review-desktop.md](design/review-desktop.md)
 (review FAIL → Resolution: all P0 fixed except perf, P1 fixed except keyboard leftovers and shots).
-Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mobile).
+Desktop: 50 ✅ · 2 🟡 (motion 6, performance 52) · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mobile).
 
 | Group (design.md §8 rows) | Desktop | Mobile | Gaps |
 |---|---|---|---|
@@ -339,13 +351,13 @@ Desktop: 44 ✅ · 8 🟡 · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mo
 | Motion (6) | 🟡 | 🟡 | exit animations, run-label shimmer |
 | Frames, sidebar, header, welcome (7–13) | ✅ | ✅ (M1/M2 app bars, sections, swipe rows) | tablet layout on mobile ❌ |
 | Timeline, tool rows, diffs, bash, thinking (14–22, 26) | ✅ | ✅ (touch rows) | "Thought for Ns" timing |
-| Subagent rows (23) | 🟡 | 🟡 | core `_oino/agents` feed ✅ (core-gui-gaps); GUI wiring open |
-| Turn undo / rewind (24–25) | 🟡 | 🟡 | core file checkpoints + `_oino/rewind` ✅ (core-gui-gaps); GUI buttons open |
+| Subagent rows (23) | ✅ | 🟡 | [gui-wiring] AgentRow live status + Agent tab child timeline from `_oino/agents` / `agent_messages`, Stop agent, `btw` / dream children from the StatusPanel Run section; scenario `agents-live` (mobile: drawer rows still show task + result only) |
+| Turn undo / rewind (24–25) | ✅ | 🟡 | [gui-wiring] turn footer Undo (files) and user-bubble Rewind (fork + composer) behind a confirmation (`turn-undo`); mobile keeps Edit & resend only |
 | Composer, model menu, context ring, mentions, history (27–30, 32, 34) | ✅ | ✅ | model-menu submenus / pinned group |
-| Attachments (31) | 🟡 | 🟡 | pasted images not converted |
-| Queue (33) | 🟡 | 🟡 | core `_oino/queue_edit` (remove / send-now / move / edit) ✅; GUI wiring open |
+| Attachments (31) | ✅ | 🟡 | [gui-wiring] pasted (⌘V) and dropped images become image attachments sent with the prompt, other files `@path` mentions, an attachment strip shows the payload; scenario `image-attach` (real provider blocked by the router balance, see §1b.9) |
+| Queue (33) | ✅ | 🟡 | [gui-wiring] ↑/↓ reorder, send now, edit in place, recall to composer, remove (`_oino/queue_edit`); scenario `queue-edit` |
 | Permission, guard, elicitation, plan, waiting badge (35–39) | ✅ | ✅ (docked + sheet promotion) | — |
-| Status panel (40) | 🟡 | 🟡 | core `_oino/topics` feed (+ `oino:git`) ✅; StatusPanel wiring and keys open |
+| Status panel (40) | ✅ | 🟡 | [gui-wiring] `rebuild_status` merges session state with the sticky topics (long-horizon state/progress, `bg:tasks`, `fusion:status`, `kanboard:status`, `oino:git`), Run rows open the child Agent tab / Tasks tab, ⌘⇧S expand, ↑/↓, Enter, Delete (confirm), Esc; scenario `status-panel` |
 | Side pane, browser, PTY terminal (41–43) | ✅ | ✅ browser (Custom Tabs / SFSafariViewController); terminal ❌ on mobile | — |
 | Command center, modifiers, settings + hub, toasts, split panes, board (44–49) | ✅ | ✅ (search, stacked settings + hub, lane pager) | palette history chips |
 | Performance (52) | 🟡 | 🟡 | desktop 4-pane run p99 9.3–14.9 ms vs 10 ms; mobile 120 Hz not measured |
@@ -478,11 +490,11 @@ Finder over a GUI session (this run succeeded; the `hdiutil` fallback stays for 
 
 ## 8. Next steps
 
-0. **ZCode parity round** (design.md §8; `apps/oino-desktop/DESIGN-STATUS.md`): agent/subagent
-   timeline on the `_oino/agents` feed, TurnFooter undo + UserBubble rewind on the core file
-   checkpoints, queue-edit GUI wiring, StatusPanel + `_oino/topics`, pasted-image attachments,
-   model-menu submenus, palette history chips, 4-pane p99 under 10 ms, mobile tablet layout,
-   exit animations / run-label shimmer, i18n + Windows/macOS rendering checks.
+0. **ZCode parity round** (design.md §8; `apps/oino-desktop/DESIGN-STATUS.md`): agent feed,
+   undo/rewind, queue edits, StatusPanel topics and image attachments landed on desktop
+   (§1b.9). Remaining: model-menu submenus, palette history chips, 4-pane p99 under 10 ms,
+   mobile tablet layout, exit animations / run-label shimmer, i18n + Windows/macOS rendering
+   checks; real-provider scenario runs once the router balance allows (§1b.9).
 1. **core-runtime**: `agents.agent.set-ui-policy` + depth on `call-context`; `control.move-project-state`
    (trust.json + sessions dir) and tmp GC. (Bash detach, file checkpoints, single-item queue
    commands, `disabledExtensions`, topic / agent feeds, built-in render overrides,

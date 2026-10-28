@@ -5,7 +5,9 @@ gaps, perf numbers and requests. `docs/dev/v1/deviations/design-desktop.md` is o
 integration and should be created from this file (request D1 below).
 
 Screenshots: `docs/dev/v1/design/shots/desktop/*.png` (`scripts/screenshot.sh`, `--demo`,
-1400×900, Xvfb + lavapipe; `16-narrow` at 860×760).
+1400×900, Xvfb + lavapipe; `16-narrow` at 860×760). The driver scenarios add their own
+folders under `docs/dev/v1/design/shots/desktop/<scenario>/` (`agents-live`, `status-panel`,
+`turn-undo`, `queue-edit`, `image-attach`; [gui-driver.md](../../docs/dev/v1/gui-driver.md) §7b).
 
 | Shot | Screen |
 |---|---|
@@ -68,24 +70,24 @@ Screenshots: `docs/dev/v1/design/shots/desktop/*.png` (`scripts/screenshot.sh`, 
 | 20 | Inline diff + View diff | ✅ | |
 | 21 | Streaming tool input preview | ✅ | `−n +m` while preparing |
 | 22 | Bash output | ✅ | BashTail with ANSI colors, Output tab |
-| 23 | Subagent rows | 🟡 | AgentRow → Agent tab shows task + result; live child timeline needs `_oino/agents` (R5) |
-| 24 | Turn summary + undo | 🟡 | TurnFooter Review ✅; Undo hidden until core file checkpoints exist (request) |
-| 25 | Rewind message | 🟡 | edit & resend (fork) ✅; file rewind hidden until core checkpoints exist |
+| 23 | Subagent rows | ✅ | AgentRow live status (state, steps, elapsed, latest action, Stop) from `_oino/agents`; Agent tab is a read-only child timeline (live feed + `_oino/agent_messages` backlog); `btw` / dream children have no tool row and open from the StatusPanel Run section; scenario `agents-live` |
+| 24 | Turn summary + undo | ✅ | TurnFooter Review + Undo; Undo = files-only `_oino/rewind` behind a confirmation (`turn-undo`) |
+| 25 | Rewind message | ✅ | user bubble hover → Rewind: forks before the message, restores its files and puts the text back in the composer, behind a confirmation (scenario `rewind-real`) |
 | 26 | Thinking blocks | ✅ | |
 | 27 | Composer shell | ✅ | |
 | 28 | Model menu | ✅ | provider groups, badges, check, Manage models |
 | 29 | Context ring | ✅ | click = compact |
 | 30 | Mentions | ✅ | `@ / $ #` via `_oino/get_completions`, colored token chips |
-| 31 | Attachments | 🟡 | `insertEditorToken`, file picker; pasted images not converted |
+| 31 | Attachments | ✅ | pasted (⌘V) and dropped images become image attachments sent with the prompt (≤ 16 MiB, png/jpeg/webp/gif), other dropped files `@path` mentions; an attachment strip shows what will be sent (`image-attach`) |
 | 32 | History, drafts | ✅ | per session |
-| 33 | Queue panel | 🟡 | edit, clear; send-now/remove/reorder of single items need core queue commands |
+| 33 | Queue panel | ✅ | per item: ↑ / ↓ reorder (`queue_move`), send now, edit in place, recall to the composer, remove (`_oino/queue_edit`); scenario `queue-edit` |
 | 34 | Steer / follow-up | ✅ | Enter / Alt+Enter |
 | 35 | Permission dialog | ✅ | docked, 4 kinds, feedback, number keys |
 | 36 | Dangerous command guard | ✅ | |
 | 37 | Elicitation | ✅ | stepped QuestionCard, keys |
 | 38 | Plan approval | ✅ | PlanReviewCard + Plan tab |
 | 39 | Waiting badge | ✅ | |
-| 40 | Status panel | 🟡 | Goal/Progress/Run/Git from session state; sticky-topic feed (R3) pending |
+| 40 | Status panel | ✅ | Goal/Progress/Run/Git from session state + the sticky topics (`long-horizon` state/progress, `unipi:bg:tasks`, `unipi:fusion:status`, `unipi:kanboard:status`, `oino:git`); Run rows open the child's Agent tab or the Tasks tab; keys ⌘⇧S expand, ↑/↓, Enter, Delete (confirm), Esc; scenario `status-panel` |
 | 41 | Side pane tabs | ✅ | Review, Files, Plan, Agent, Tree, panels |
 | 42 | Embedded browser | ✅ | side-pane Browser tab (gpui-webview 0.8.1): URL bar, back/forward/reload, devtools (debug), open externally; `openUrl`, transcript links, terminal ⌘-click and the `localhost:*` chip open there; Linux on X11/XWayland unless "Native Wayland" |
 | 43 | PTY terminal | ✅ | bottom Terminal tabs (`alacritty_terminal` + platform PTY): tabs, split, copy/paste, ⌘-click links, 10k scrollback, token colours |

@@ -38,6 +38,11 @@
       }
     },
     {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
       "key": {
         "key": "enter"
       }
