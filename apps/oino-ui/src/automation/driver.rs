@@ -154,6 +154,18 @@ fn target(request: &Request) -> Result<(f32, f32, Option<String>), String> {
     Ok((x, y, Some(node.id.clone())))
 }
 
+/// Re-resolves a selector against the frame that will hit-test the injected events and
+/// returns its fresh centre (QA-r4 H-3): the settle frames that precede a pointer request
+/// can re-lay out the window — a late row insertion right after `busy` clears shifts a
+/// bottom-pinned transcript — so coordinates resolved before the settle can point where the
+/// target *was*, and the synthesized MouseDown/Up miss it.
+fn recentered(selector: &super::protocol::Selector) -> Result<(f32, f32, String), String> {
+    let nodes = registry::snapshot();
+    let node = registry::select(&nodes, selector)?;
+    let (x, y) = node.center();
+    Ok((x, y, node.id.clone()))
+}
+
 /// A `f64` from the protocol as `f32`.
 fn num_f32(value: f64) -> Result<f32, String> {
     #[allow(
@@ -170,7 +182,8 @@ fn num_f32(value: f64) -> Result<f32, String> {
 
 /// `click` / `double_click` / `right_click` / `hover`: a real pointer sequence at the target.
 async fn pointer(cx: &mut AsyncWindowContext, request: &Request) -> Result<Value, String> {
-    let (x, y, id) = target(request)?;
+    let selector = request.has_selector().then(|| request.selector());
+    let (mut x, mut y, mut id) = target(request)?;
     let method = request.method.as_str();
     let (button, clicks) = match method {
         "right_click" => (MouseButton::Right, 1),
@@ -178,36 +191,57 @@ async fn pointer(cx: &mut AsyncWindowContext, request: &Request) -> Result<Value
         _ => (MouseButton::Left, 1),
     };
     settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
+    if let Some(sel) = &selector {
+        let (nx, ny, nid) = recentered(sel)?;
+        x = nx;
+        y = ny;
+        id = Some(nid);
+    }
     let hover_only = method == "hover";
-    let events: Vec<PlatformInput> = if hover_only {
-        vec![input::mouse_move(x, y)]
-    } else {
-        let mut events = vec![input::mouse_move(x, y)];
-        for n in 1..=clicks {
-            events.push(input::mouse_down(x, y, button, n));
-            events.push(input::mouse_up(x, y, button, n));
-        }
-        events
-    };
+    // Each event gets a frame of its own (QA-r4 H-3): dispatching Move+Down+Up in one batch
+    // hit-tests them all against the frame painted before the move — when the target just
+    // moved (hover bar opening, a row landing at turn end), that frame's hitboxes can still
+    // describe the old layout and the synthesized click vanishes on a row with no handler.
+    // A person moves, a frame paints the new hover state, then presses; spreading the
+    // sequence over frames gives GPUI the same ordering.
     cx.update(|window: &mut Window, cx: &mut App| {
-        for event in events {
-            window.dispatch_event(event, cx);
-        }
+        window.dispatch_event(input::mouse_move(x, y), cx);
     })
     .map_err(|_| "the window is gone".to_owned())?;
+    if !hover_only {
+        for n in 1..=clicks {
+            settle(cx, 1, SETTLE_TIMEOUT).await?;
+            cx.update(|window: &mut Window, cx: &mut App| {
+                window.dispatch_event(input::mouse_down(x, y, button, n), cx);
+            })
+            .map_err(|_| "the window is gone".to_owned())?;
+            settle(cx, 1, SETTLE_TIMEOUT).await?;
+            cx.update(|window: &mut Window, cx: &mut App| {
+                window.dispatch_event(input::mouse_up(x, y, button, n), cx);
+            })
+            .map_err(|_| "the window is gone".to_owned())?;
+        }
+    }
     settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
     Ok(json!({"at": [x, y], "id": id, "handled": true}))
 }
 
 /// `scroll`: wheel lines at the target (positive `dy` scrolls down).
 async fn scroll(cx: &mut AsyncWindowContext, request: &Request) -> Result<Value, String> {
-    let (x, y, id) = target(request)?;
+    let selector = request.has_selector().then(|| request.selector());
+    let (mut x, mut y, mut id) = target(request)?;
     let dy = request.num("dy").map_or(Ok(0.0), num_f32)?;
     let dx = request.num("dx").map_or(Ok(0.0), num_f32)?;
     if dx == 0.0 && dy == 0.0 {
         return Err("give \"dy\" (or \"dx\") lines to scroll".into());
     }
     settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
+    if let Some(sel) = &selector {
+        let (nx, ny, nid) = recentered(sel)?;
+        x = nx;
+        y = ny;
+        id = Some(nid);
+    }
     cx.update(|window: &mut Window, cx: &mut App| {
         window.dispatch_event(input::mouse_move(x, y), cx);
         window.dispatch_event(input::scroll(x, y, dx, dy), cx);
@@ -357,7 +391,16 @@ async fn drop_paths(cx: &mut AsyncWindowContext, request: &Request) -> Result<Va
     if paths.is_empty() {
         return Err("give \"paths\": [\"/path/to/file.png\"]".into());
     }
-    let (x, y, id) =
+    // A drag of a missing file is a silent no-op downstream (QA-r4 H-4): fail with the path
+    // instead, so a scenario written for another host says so instead of timing out later.
+    if let Some(missing) = paths.iter().find(|p| !p.is_file()) {
+        return Err(format!(
+            "drop path {} is not a file on the app host",
+            missing.display()
+        ));
+    }
+    let selector = request.has_selector().then(|| request.selector());
+    let (mut x, mut y, mut id) =
         if request.has_selector() || (request.num("x").is_some() && request.num("y").is_some()) {
             target(request)?
         } else {
@@ -372,6 +415,14 @@ async fn drop_paths(cx: &mut AsyncWindowContext, request: &Request) -> Result<Va
         };
     let dropped = paths.clone();
     settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
+    if let Some(sel) = &selector {
+        // Same race as `pointer` (H-3): drop where the target is in the frame that will
+        // hit-test the drag, not where it was before the settle frames.
+        let (nx, ny, nid) = recentered(sel)?;
+        x = nx;
+        y = ny;
+        id = Some(nid);
+    }
     cx.update(move |window: &mut Window, cx: &mut App| {
         // A mouse move first: a `FileDrop` event does not switch the input modality, and hover
         // (which the drop listeners test) is suppressed while the last input was a keystroke.
