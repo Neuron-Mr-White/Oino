@@ -553,6 +553,7 @@ impl AppShell {
                 .unwrap_or_default(),
             panes: self.panes.len(),
             busy: pane.as_ref().is_some_and(|p| p.model.is_busy()),
+            chrome: Self::chrome_json(pane),
             open: [
                 (self.palette.is_some(), "palette".to_owned()),
                 (self.switch.is_some(), "switch".to_owned()),
@@ -573,6 +574,61 @@ impl AppShell {
             )
             .collect(),
         }
+    }
+
+    /// Extension chrome for `state.chrome`: every status, above/below-composer widget and frame
+    /// segment the visible session shows, so a scenario can assert on `setStatus`, `setWidget`,
+    /// `setFooter` and `setFrame` without pixel-reading (`docs/dev/v1/gui-driver.md` §2).
+    fn chrome_json(pane: Option<&SessionPane>) -> serde_json::Value {
+        use serde_json::json;
+
+        let Some(pane) = pane else {
+            return serde_json::Value::Null;
+        };
+        let ui = &pane.model.ui;
+        let text_of = |spec: &Option<crate::model::ous::OusNode>, lines: &[String]| -> String {
+            spec.as_ref()
+                .and_then(crate::model::ous::node_text)
+                .unwrap_or_else(|| lines.join("\n"))
+        };
+        let segment = |s: &crate::model::ui_state::Segment| {
+            json!({
+                "id": s.id,
+                "text": if s.text.is_empty() {
+                    s.spans
+                        .as_ref()
+                        .map(|rich| rich.iter().map(|span| span.text.as_str()).collect::<String>())
+                        .unwrap_or_default()
+                } else {
+                    s.text.clone()
+                },
+                "command": s.command,
+                "tone": format!("{:?}", s.tone).to_lowercase(),
+            })
+        };
+        let frame = ui.frame();
+        json!({
+            "statuses": ui
+                .statuses_keyed()
+                .map(|(key, status)| json!({
+                    "key": key,
+                    "text": status.text,
+                    "tone": format!("{:?}", status.tone).to_lowercase(),
+                }))
+                .collect::<Vec<_>>(),
+            "widgets": ui
+                .widgets_keyed()
+                .map(|(key, widget)| json!({
+                    "key": key,
+                    "placement": format!("{:?}", widget.placement).to_lowercase(),
+                    "text": text_of(&widget.spec, &widget.lines),
+                }))
+                .collect::<Vec<_>>(),
+            "frame": {
+                "top": frame.top.iter().map(segment).collect::<Vec<_>>(),
+                "bottom": frame.bottom.iter().map(segment).collect::<Vec<_>>(),
+            },
+        })
     }
 
     pub(crate) fn pane_by_key(&self, key: u64) -> Option<&Entity<SessionPane>> {

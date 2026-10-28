@@ -22,8 +22,11 @@ pub struct State {
     pub panes: usize,
     /// The visible session is running a turn.
     pub busy: bool,
-    /// Extra surfaces that are open (palette, switch sheet, side pane, bottom frame).
+    /// Extra surfaces that are open (palette, switch sheet, side pane, bottom frame, panels).
     pub open: Vec<String>,
+    /// The extension chrome the shell shows: statuses, above/below-composer widgets and the
+    /// frame segments (footer / glance). Scenario assertions read it as `state.chrome`.
+    pub chrome: Value,
 }
 
 /// One pending dialog.
@@ -53,6 +56,7 @@ impl State {
             "panes": self.panes,
             "busy": self.busy,
             "open": self.open,
+            "chrome": self.chrome,
         })
     }
 }
@@ -123,12 +127,14 @@ mod tests {
             panes: 2,
             busy: true,
             open: vec!["side".into()],
+            chrome: json!({"statuses": [{"key": "unipi.workflow/mode", "text": "Plan"}]}),
         };
         let json = state.to_json();
         assert_eq!(json["route"], json!("sessions"));
         assert_eq!(json["session_id"], json!("abc"));
         assert_eq!(json["dialogs"][0]["method"], json!("approval"));
         assert_eq!(json["panes"], json!(2));
+        assert_eq!(json["chrome"]["statuses"][0]["text"], json!("Plan"));
         assert_eq!(json["open"][0], json!("side"));
     }
 }
