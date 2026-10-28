@@ -549,7 +549,12 @@ def ti_restart(
         merged = json.dumps(merge_settings(base, settings or {}))
         desktop = json.dumps({"onboarded": True})
         script = (
-            "set -e; mkdir -p ~/oino-test/agent\n"
+            "set -e; mkdir -p ~/oino-test/agent ~/oino-test/project\n"
+            # A real scenario starts from a clean slate: no resumed session, no leftover
+            # workspace state (plan/permission mode, long-horizon runs, kanboard db) from the
+            # previous run, so assertions cannot pass on another scenario's output.
+            "rm -rf ~/oino-test/agent/sessions ~/oino-test/agent/state "
+            "~/oino-test/project/.oino ~/oino-test/project/docs\n"
             f"printf '%s' {shlex.quote(merged)} > ~/oino-test/agent/settings.json\n"
             f"printf '%s' {shlex.quote(desktop)} > ~/oino-test/agent/desktop.json"
         )
