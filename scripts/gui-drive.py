@@ -511,6 +511,18 @@ def ti_restart(
             "\nidentify /home/ti/oino-test/run/attach-red.png"
         )
         subprocess.run(["ssh", TI_HOST, script], check=True)
+        # The router's model list is a dynamic catalog: the app reads
+        # `<agent>/cache/models/<provider>.json` until its provider answers, and a stale or
+        # missing file makes `oino:deepseek/deepseek-flash` unresolvable (ti.md §2).
+        catalog = Path.home() / ".oino/cache/models/oino.json"
+        if catalog.is_file():
+            subprocess.run(
+                ["ssh", TI_HOST, "mkdir -p ~/oino-test/agent/cache/models"], check=True
+            )
+            subprocess.run(
+                ["scp", "-q", str(catalog), f"{TI_HOST}:oino-test/agent/cache/models/oino.json"],
+                check=True,
+            )
     run = ["cargo", "xtask", "ti", "start"]
     if backend == "demo":
         run.append("--demo")

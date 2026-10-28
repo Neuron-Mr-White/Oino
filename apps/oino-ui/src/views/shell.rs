@@ -554,15 +554,23 @@ impl AppShell {
             panes: self.panes.len(),
             busy: pane.as_ref().is_some_and(|p| p.model.is_busy()),
             open: [
-                (self.palette.is_some(), "palette"),
-                (self.switch.is_some(), "switch"),
-                (self.side_open, "side"),
-                (self.bottom_open, "bottom"),
-                (self.settings_view.is_some(), "settings-view"),
+                (self.palette.is_some(), "palette".to_owned()),
+                (self.switch.is_some(), "switch".to_owned()),
+                (self.side_open, "side".to_owned()),
+                (self.bottom_open, "bottom".to_owned()),
+                (self.settings_view.is_some(), "settings-view".to_owned()),
             ]
-            .iter()
+            .into_iter()
             .filter(|(open, _)| *open)
-            .map(|(_, name)| (*name).to_owned())
+            .map(|(_, name)| name)
+            // Extension panels (an `/info` dashboard, the hints browser, `/mcp-status`) are
+            // what a scenario asserts on, so name them in `state.open`.
+            .chain(
+                pane.as_ref()
+                    .into_iter()
+                    .flat_map(|p| p.model.ui.panels())
+                    .map(|panel| format!("panel:{}", panel.id)),
+            )
             .collect(),
         }
     }

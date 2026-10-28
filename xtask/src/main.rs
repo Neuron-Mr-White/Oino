@@ -7,6 +7,7 @@
 //! | `wit` | validates `wit/oino-extension` with `wasm-tools component wit` |
 //! | `remote-build <host\|local> [opts] [-- build-host args]` | release build over SSH (or locally) via `scripts/release/build-host.sh`; artifacts in `target/release-artifacts/<target>/` (see `remote.rs`) |
 //! | `ti <sync\|build\|start\|shot\|status\|soak\|stop>` | the `ti` Ubuntu box as GUI test host: private `Xvfb :93`, scratch agent dir, screenshots, soak (see `ti.rs`, docs/dev/v1/ti.md) |
+//! | `gui <list\|suite> <name>` | the driver's regression suites: runs every scenario of `docs/dev/v1/gui/suites/<name>.json` through `scripts/gui-drive.py` (see `gui.rs`, docs/dev/v1/gui-driver.md) |
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -17,6 +18,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+mod gui;
 mod remote;
 mod ti;
 
@@ -242,9 +244,11 @@ fn main() -> Result<()> {
         Some("wit") => wit(),
         Some("remote-build") => remote::remote_build(&args[1..]),
         Some("ti") => ti::ti(&args[1..]),
+        Some("gui") => gui::gui(&args[1..]),
         _ => bail!(
             "usage: cargo xtask <wasm [--debug] [-p crate]… | checksums | wit | \
-             remote-build <host|local> … | ti <sync|build|start|shot|status|soak|stop> …>"
+             remote-build <host|local> … | ti <sync|build|start|shot|status|soak|stop> … | \
+             gui <list|suite> <name> …>"
         ),
     }
 }

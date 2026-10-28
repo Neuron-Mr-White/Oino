@@ -486,6 +486,18 @@ pub fn probe<E: Element>(element: E, meta: Meta) -> Probe<E> {
     Probe {
         inner: element,
         meta,
+        name: None,
+    }
+}
+
+/// A probe that gives the element its own id (`name`) in the tree — for elements that are
+/// only readable text (an OUS node, a panel line) and would otherwise show up as `anon`.
+#[must_use]
+pub fn probe_named<E: Element>(element: E, meta: Meta, name: impl Into<String>) -> Probe<E> {
+    Probe {
+        inner: element,
+        meta,
+        name: Some(name.into()),
     }
 }
 
@@ -503,7 +515,11 @@ pub trait Automatable: Sized {
 
 impl<T: Element> Automatable for T {
     fn automation(self, meta: Meta) -> Probe<Self> {
-        Probe { inner: self, meta }
+        Probe {
+            inner: self,
+            meta,
+            name: None,
+        }
     }
 }
 
@@ -511,6 +527,8 @@ impl<T: Element> Automatable for T {
 pub struct Probe<E: Element> {
     inner: E,
     meta: Meta,
+    /// Id override (`probe_named`); `None` keeps the inner element's id.
+    name: Option<String>,
 }
 
 impl<E: Element> Element for Probe<E> {
@@ -518,7 +536,10 @@ impl<E: Element> Element for Probe<E> {
     type PrepaintState = E::PrepaintState;
 
     fn id(&self) -> Option<ElementId> {
-        self.inner.id()
+        self.name
+            .as_ref()
+            .map(|name| ElementId::Name(name.clone().into()))
+            .or_else(|| self.inner.id())
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {

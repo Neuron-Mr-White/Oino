@@ -444,8 +444,101 @@ fn column_chart(t: &OinoTheme, bars: &[crate::model::ous::Bar], key: &str) -> An
 }
 
 /// Renders `node`; `key` must be unique among siblings rendered in the same frame.
-#[allow(clippy::too_many_lines, reason = "one arm per OUS node kind")]
+///
+/// Text-bearing nodes are wrapped in an [`automation::probe_named`] element while the GUI
+/// driver is on, so an extension panel's content is readable in the element tree — otherwise
+/// only the panel's inputs and buttons would be (`docs/dev/v1/gui-driver.md` §2).
 pub fn render(
+    node: &OusNode,
+    key: &str,
+    o: &mut Ous<'_>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let element = render_node(node, key, o, window, cx);
+    let Some(text) = readable_text(node) else {
+        return element;
+    };
+    if !crate::automation::registry::enabled() {
+        return element;
+    }
+    let meta =
+        crate::automation::registry::Meta::labelled(crate::automation::registry::Role::Text, text);
+    crate::automation::registry::probe_named(element, meta, format!("ous/{key}")).into_any_element()
+}
+
+/// The text a node itself shows (not its children's), for the automation tree.
+fn readable_text(node: &OusNode) -> Option<String> {
+    fn plain(rich: &Rich) -> String {
+        rich.iter().map(|s| s.text.as_str()).collect::<String>()
+    }
+    fn clip(mut text: String) -> Option<String> {
+        text = text.trim().to_owned();
+        if text.is_empty() {
+            return None;
+        }
+        if text.chars().count() > 400 {
+            text = text.chars().take(400).collect();
+        }
+        Some(text)
+    }
+    match node {
+        OusNode::Text { value, .. } | OusNode::Badge { value, .. } => clip(plain(value)),
+        OusNode::Markdown { value } | OusNode::Code { value, .. } => clip(value.clone()),
+        OusNode::Image { alt } => clip(alt.clone()),
+        OusNode::Log { lines, .. } => clip(lines.join("\n")),
+        OusNode::Kv { items } => clip(
+            items
+                .iter()
+                .map(|(k, v)| format!("{}: {}", plain(k), plain(v)))
+                .collect::<Vec<_>>()
+                .join(" · "),
+        ),
+        OusNode::Table { columns, rows, .. } => clip(
+            std::iter::once(columns.join(" · "))
+                .chain(
+                    rows.iter()
+                        .map(|row| row.iter().map(plain).collect::<Vec<_>>().join(" · ")),
+                )
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        OusNode::List { items, .. } => clip(
+            items
+                .iter()
+                .map(|item| plain(&item.label))
+                .collect::<Vec<_>>()
+                .join(" · "),
+        ),
+        OusNode::Tree { nodes, .. } => {
+            fn walk(nodes: &[TreeItem], out: &mut Vec<String>) {
+                for node in nodes {
+                    out.push(plain(&node.label));
+                    walk(&node.children, out);
+                }
+            }
+            let mut out = Vec::new();
+            walk(nodes, &mut out);
+            clip(out.join(" · "))
+        }
+        OusNode::Section { title, .. } => clip(plain(title)),
+        OusNode::Card { title, .. } => title.as_ref().and_then(|t| clip(plain(t))),
+        OusNode::Meter { label, .. }
+        | OusNode::Gauge { label, .. }
+        | OusNode::Sparkline { label, .. } => label.clone().and_then(clip),
+        OusNode::BarChart { bars, .. } => clip(
+            bars.iter()
+                .map(|bar| format!("{} {:.0}", bar.label, bar.value))
+                .collect::<Vec<_>>()
+                .join(" · "),
+        ),
+        _ => None,
+    }
+}
+
+/// The rendered element of `node` (see [`render`], which adds the automation probe).
+#[allow(clippy::too_many_lines, reason = "one arm per OUS node kind")]
+fn render_node(
     node: &OusNode,
     key: &str,
     o: &mut Ous<'_>,
