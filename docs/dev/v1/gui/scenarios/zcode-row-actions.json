@@ -1,0 +1,74 @@
+{
+  "name": "zcode-row-actions",
+  "scene": "run",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "ap-allow",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "click": {
+        "id": "ap-allow"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 90000
+      }
+    },
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "icon_button",
+        "label": "Dismiss toast",
+        "absent": true,
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "role": "text",
+          "value": "Thought for"
+        }
+      }
+    },
+    {
+      "hover": {
+        "id": "as-copy-5"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-hover-bar"
+      }
+    },
+    {
+      "click": {
+        "id": "as-copy-5"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "icon_button",
+        "label": "Copied",
+        "timeout_ms": 3000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-copied"
+      }
+    }
+  ]
+}

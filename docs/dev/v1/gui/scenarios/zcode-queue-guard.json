@@ -1,0 +1,115 @@
+{
+  "name": "zcode-queue-guard",
+  "scene": "run",
+  "backend": "demo",
+  "env": [
+    "OINO_DESKTOP_DEMO_PACE=8"
+  ],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "queued thought"
+      }
+    },
+    {
+      "key": {
+        "key": "alt-enter"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "Queue queued thought",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "type_text": {
+        "text": "meanwhile a draft"
+      }
+    },
+    {
+      "click": {
+        "id": "q-recall-0"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "The composer has a draft",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "Queue queued thought",
+        "timeout_ms": 5000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-guard"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-a"
+      }
+    },
+    {
+      "key": {
+        "key": "backspace"
+      }
+    },
+    {
+      "click": {
+        "id": "q-recall-0"
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "role": "input",
+          "label": "Message",
+          "value": "queued thought"
+        }
+      }
+    },
+    {
+      "wait_for": {
+        "role": "row",
+        "label": "Queue queued thought",
+        "absent": true,
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-recalled"
+      }
+    }
+  ]
+}

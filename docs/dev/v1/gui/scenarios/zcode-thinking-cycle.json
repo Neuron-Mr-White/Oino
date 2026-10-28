@@ -1,0 +1,22 @@
+{
+  "name": "zcode-thinking-cycle",
+  "scene": "welcome",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
+    {"key": {"key": "secondary-shift-m"}},
+    {"wait_for": {"role": "menu_row", "label": "Off", "timeout_ms": 20000}},
+    {"click": {"role": "menu_row", "label": "Off"}},
+    {"assert": {"element": {"id": "model-trigger", "value": "off"}}},
+    {"key": {"key": "alt-t"}},
+    {"assert": {"element": {"id": "model-trigger", "value": "minimal"}}},
+    {"screenshot": {"name": "01-minimal"}},
+    {"key": {"key": "alt-t"}},
+    {"assert": {"element": {"id": "model-trigger", "value": "low"}}},
+    {"key": {"key": "secondary-shift-m"}},
+    {"wait_for": {"role": "menu_row", "label": "Low", "checked": true, "timeout_ms": 20000}},
+    {"screenshot": {"name": "02-menu-low"}},
+    {"key": {"key": "escape"}}
+  ]
+}

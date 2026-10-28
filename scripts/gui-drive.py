@@ -494,7 +494,8 @@ def _take_shot(client: Client, path: Path, args: argparse.Namespace) -> str:
         target = f"{folder}/{path.name}"
         subprocess.run(["ssh", client.host, "mkdir", "-p", folder], check=False)
     else:
-        target = str(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        target = str(path.resolve())
     result = client.call("screenshot", {"path": target})
     if remote:
         path.parent.mkdir(parents=True, exist_ok=True)

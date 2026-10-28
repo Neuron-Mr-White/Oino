@@ -1,0 +1,26 @@
+{
+  "name": "zcode-palette-history",
+  "scene": "welcome",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 30000}},
+    {"key": {"key": "secondary-k"}},
+    {"wait_for": {"id": "palette-scope-0", "timeout_ms": 20000}},
+    {"type_text": {"text": "board"}},
+    {"key": {"key": "enter"}},
+    {"wait_state": {"open": "board", "timeout_ms": 20000}},
+    {"key": {"key": "secondary-k"}},
+    {"wait_for": {"role": "chip", "label": "History board", "timeout_ms": 20000}},
+    {"screenshot": {"name": "01-history-chips"}},
+    {"key": {"key": "alt-1"}},
+    {"assert": {"element": {"role": "input", "label": "Search commands", "value": "board"}}},
+    {"key": {"key": "escape"}},
+    {"key": {"key": "secondary-k"}},
+    {"click": {"id": "palette-forget-0"}},
+    {"wait_for": {"role": "chip", "label": "History board", "absent": true, "timeout_ms": 20000}},
+    {"wait_for": {"id": "palette-scope-0", "timeout_ms": 5000}},
+    {"screenshot": {"name": "02-forgotten"}},
+    {"key": {"key": "escape"}}
+  ]
+}

@@ -18,7 +18,7 @@ use crate::automation::Automatable as _;
 use crate::components::badge::kbd;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::{LEVELS, context_ring, level_label, thinking_bars};
-use crate::components::menu::{MenuEntry, Placement, menu, popover};
+use crate::components::menu::{MenuEntry, Placement, menu, popover, popover_key};
 use crate::components::ous::{self, Ous};
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
@@ -444,7 +444,23 @@ impl SessionPane {
         let level = self.model.thinking;
         let ratio = self.model.context_percent().map(|p| f32::from(p) / 100.0);
         let percent = self.model.context_percent();
-        let model_el = popover(
+        // The model menu is a drill-down: ←/Esc at a provider level goes back one level
+        // first (design.md §4.26); at the top level they close. Clicks outside always close.
+        let model_key: Rc<dyn Fn(&str, &mut Window, &mut App)> = {
+            let this = cx.entity().downgrade();
+            Rc::new(move |_: &str, _, cx| {
+                let _ = this.update(cx, |p, cx| {
+                    if p.menu == Some(PaneMenu::Model) && p.menu_sub.is_some() {
+                        p.open_model_sub(None, cx);
+                    } else {
+                        p.menu = None;
+                        p.menu_sub = None;
+                        cx.notify();
+                    }
+                });
+            })
+        };
+        let model_el = popover_key(
             capsule_pill(t, "model-trigger")
                 .bg(t.card())
                 .text_color(t.fg())
@@ -491,6 +507,7 @@ impl SessionPane {
             Placement::AboveEnd,
             || crate::components::model_menu::model_menu(self, t, cx),
             close.clone(),
+            Some(model_key),
         );
         let thinking_el = (reasoning && self.menu == Some(PaneMenu::Thinking)).then(|| {
             let entity = cx.entity().downgrade();

@@ -459,6 +459,19 @@ pub fn popover(
     content: impl FnOnce() -> AnyElement,
     on_close: impl Fn(&mut Window, &mut App) + 'static,
 ) -> Div {
+    popover_key(trigger, open, placement, content, on_close, None)
+}
+
+/// [`popover`] with a key-aware close: when set, Esc/← go to `on_key` (which may go back a
+/// level instead of closing) while clicks outside still close through `on_close`.
+pub fn popover_key(
+    trigger: impl IntoElement,
+    open: bool,
+    placement: Placement,
+    content: impl FnOnce() -> AnyElement,
+    on_close: impl Fn(&mut Window, &mut App) + 'static,
+    on_key: Option<Rc<dyn Fn(&str, &mut Window, &mut App)>>,
+) -> Div {
     let wrapper = div().relative().flex_shrink_0().child(trigger);
     if !open {
         return wrapper;
@@ -475,13 +488,17 @@ pub fn popover(
     };
     let on_close = Rc::new(on_close);
     let on_escape = Rc::clone(&on_close);
+    let on_key_close = on_key;
     let body = div()
         .occlude()
         .on_mouse_down_out(move |_: &MouseDownEvent, w, cx| on_close(w, cx))
         .on_key_down(move |e: &KeyDownEvent, w, cx| {
             if e.keystroke.key == "escape" || e.keystroke.key == "left" {
                 cx.stop_propagation();
-                on_escape(w, cx);
+                match (&on_key_close, e.keystroke.key.as_str()) {
+                    (Some(f), key) => f(key, w, cx),
+                    _ => on_escape(w, cx),
+                }
             }
         })
         .child(content());

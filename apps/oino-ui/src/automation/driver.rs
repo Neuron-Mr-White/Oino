@@ -312,12 +312,21 @@ async fn wait_for(cx: &mut AsyncWindowContext, request: &Request) -> Result<Valu
         }
         if started.elapsed() >= timeout {
             let visible = nodes.iter().filter(|n| n.visible).count();
-            let seen: Vec<&str> = nodes
+            let mut seen: Vec<String> = nodes
                 .iter()
                 .filter(|n| n.visible && !n.label.is_empty())
                 .map(|n| n.label.as_str())
                 .take(12)
+                .map(str::to_owned)
                 .collect();
+            if selector.role.is_some() {
+                let rows: Vec<String> = nodes
+                    .iter()
+                    .filter(|n| n.visible && selector.matches_role(n))
+                    .map(|n| format!("{}={}", n.id, n.label))
+                    .collect();
+                seen.push(format!("[role rows: {}]", rows.join(",")));
+            }
             return Err(format!(
                 "timed out after {} ms waiting for {} ({} visible elements; labels: {})",
                 started.elapsed().as_millis(),
@@ -430,26 +439,108 @@ async fn screenshot(cx: &mut AsyncWindowContext, request: &Request) -> Result<Va
 }
 
 /// Runs `import` for the app window; returns its pixel size when `identify` could read it.
+/// Hosts without [`ImageMagick`] fall back to `ffmpeg -f x11grab` of the whole display (the
+/// driver runs on a private Xvfb that shows only the app).
+///
+/// [`ImageMagick`]: https://imagemagick.org
 fn capture(path: &Path, display: Option<&str>) -> Result<(Option<u32>, Option<u32>), String> {
     let mut import = std::process::Command::new("import");
     if let Some(display) = display {
         import.args(["-display", display]);
     }
     let window = xdotool_window(display).unwrap_or_else(|| "root".to_owned());
-    let output = import
-        .args(["-window", &window])
-        .arg(path)
+    match import.args(["-window", &window]).arg(path).output() {
+        Ok(output) if output.status.success() => Ok(identify(path).unwrap_or((None, None))),
+        Ok(output) => Err(format!(
+            "import failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )),
+        Err(spawn) if spawn.kind() == std::io::ErrorKind::NotFound => {
+            ffmpeg_capture(path, display).or_else(|_| pil_capture(path, display))
+        }
+        Err(e) => Err(format!("running import: {e} (ImageMagick is required)")),
+    }
+}
+
+/// `PIL.ImageGrab.grab(xdisplay=…)` of the whole display, one frame (the last capture
+/// fallback: `import` and an `x11grab`-capable ffmpeg may both be missing on a dev box).
+fn pil_capture(path: &Path, display: Option<&str>) -> Result<(Option<u32>, Option<u32>), String> {
+    let fallback_display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_owned());
+    let display = display.unwrap_or(&fallback_display);
+    let script = format!(
+        "from PIL import ImageGrab; im = ImageGrab.grab(xdisplay='{display}'); \
+         im.save('{}'); print(im.size)",
+        path.display()
+    );
+    let output = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(&script)
         .output()
-        .map_err(|e| format!("running import: {e} (ImageMagick is required)"))?;
+        .map_err(|e| format!("running python3/PIL: {e}"))?;
     if !output.status.success() {
         return Err(format!(
-            "import failed ({}): {}",
+            "python3 PIL grab failed ({}): {}",
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let size = identify(path).unwrap_or((None, None));
-    Ok(size)
+    let text = String::from_utf8_lossy(&output.stdout);
+    let dims = text
+        .trim()
+        .strip_prefix('(')
+        .and_then(|t| t.strip_suffix(')'))
+        .and_then(|t| t.split_once(", "))
+        .ok_or_else(|| format!("PIL printed {text:?}, expected (w, h)"))?;
+    let parse = |v: &str, what: &str| v.parse().map_err(|_| format!("PIL {what} in {text:?}"));
+    let (w, h) = (parse(dims.0, "width")?, parse(dims.1, "height")?);
+    Ok((Some(w), Some(h)))
+}
+
+/// `ffmpeg -f x11grab` of the whole display (one frame).
+fn ffmpeg_capture(
+    path: &Path,
+    display: Option<&str>,
+) -> Result<(Option<u32>, Option<u32>), String> {
+    let fallback_display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_owned());
+    let display = display.unwrap_or(&fallback_display);
+    let size = std::process::Command::new("xdpyinfo")
+        .arg("-display")
+        .arg(display)
+        .output()
+        .ok()
+        .and_then(|out| {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let line = text.lines().find(|l| l.contains("dimensions:"))?;
+            let dims = line.split_whitespace().nth(2)?.to_owned();
+            dims.contains('x').then_some(dims)
+        })
+        .unwrap_or_else(|| "1600x1000".to_owned());
+    let output = std::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "x11grab",
+            "-framerate",
+            "1",
+        ])
+        .args(["-video_size", &size])
+        .arg("-i")
+        .arg(display)
+        .args(["-frames:v", "1"])
+        .arg(path)
+        .output()
+        .map_err(|e| format!("running ffmpeg: {e} (ImageMagick `import` or ffmpeg is required)"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "ffmpeg x11grab failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(identify(path).unwrap_or((None, None)))
 }
 
 /// The X11 window id of the app window (`xdotool search`).

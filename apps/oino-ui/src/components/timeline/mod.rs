@@ -496,6 +496,7 @@ impl SessionPane {
         } else {
             "Thought".to_owned()
         };
+        let shown = if open { label.clone() } else { line.clone() };
         div()
             .flex()
             .flex_col()
@@ -528,7 +529,14 @@ impl SessionPane {
                             .text_role(t, TextRole::Caption)
                             .text_color(t.fg_subtle())
                             .when(thinking_live, |el| el.opacity(shimmer(t, frame)))
-                            .child(SharedString::from(if open { label } else { line })),
+                            .child(SharedString::from(shown.clone()))
+                            .automation(
+                                crate::automation::Meta::labelled(
+                                    crate::automation::Role::Text,
+                                    shown,
+                                )
+                                .value(label),
+                            ),
                     ),
             )
             .when(open, |el| {

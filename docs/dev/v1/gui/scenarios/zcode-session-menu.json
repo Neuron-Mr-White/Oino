@@ -1,0 +1,22 @@
+{
+  "name": "zcode-session-menu",
+  "scene": "run",
+  "backend": "demo",
+  "env": ["OINO_DESKTOP_DEMO_PACE=8"],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 60000}},
+    {"wait_state": {"busy": true, "timeout_ms": 30000}},
+    {"right_click": {"role": "row", "label": "Make the JSON"}},
+    {"wait_for": {"role": "menu_row", "label": "Mark as unread", "timeout_ms": 20000}},
+    {"wait_for": {"role": "menu_row", "label": "Copy session path", "timeout_ms": 20000}},
+    {"wait_for": {"role": "menu_row", "label": "Pin", "timeout_ms": 20000}},
+    {"screenshot": {"name": "01-menu"}},
+    {"click": {"role": "menu_row", "label": "Mark as unread"}},
+    {"sleep": {"ms": 500}},
+    {"right_click": {"role": "row", "label": "Make the JSON"}},
+    {"wait_for": {"role": "menu_row", "label": "Mark read", "timeout_ms": 20000}},
+    {"screenshot": {"name": "02-marked"}},
+    {"click": {"role": "menu_row", "label": "Mark read"}}
+  ]
+}

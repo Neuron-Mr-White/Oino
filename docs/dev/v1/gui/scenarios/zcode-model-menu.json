@@ -1,0 +1,120 @@
+{
+  "name": "zcode-model-menu",
+  "scene": "welcome",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "click": {
+        "id": "model-trigger"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "menu_row",
+        "label": "Oino Large",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "menu_row",
+        "label": "Anthropic",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "menu_row",
+        "label": "Manage models",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-providers"
+      }
+    },
+    {
+      "click": {
+        "role": "menu_row",
+        "label": "Anthropic"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "menu_row",
+        "label": "All providers",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "role": "menu_row",
+        "label": "Claude Sonnet 4.6",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-submenu"
+      }
+    },
+    {
+      "key": {
+        "key": "left"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "menu_row",
+        "label": "Anthropic",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "role": "menu_row",
+        "label": "Anthropic"
+      }
+    },
+    {
+      "wait_for": {
+        "role": "menu_row",
+        "label": "Claude Sonnet 4.6",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "role": "menu_row",
+        "label": "Claude Sonnet 4.6"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Switched from Oino Large to Claude Sonnet 4.6",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "model-trigger",
+          "label": "Claude Sonnet 4.6"
+        }
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-switched"
+      }
+    }
+  ]
+}

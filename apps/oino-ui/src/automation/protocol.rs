@@ -174,6 +174,12 @@ impl Selector {
         }
         self.id.is_some() || self.role.is_some() || self.label.is_some()
     }
+
+    /// Whether `node` carries the selector's role (for timeout diagnostics).
+    #[must_use]
+    pub fn matches_role(&self, node: &super::registry::Node) -> bool {
+        self.role.is_some_and(|role| node.role == role)
+    }
 }
 
 impl std::fmt::Debug for Request {

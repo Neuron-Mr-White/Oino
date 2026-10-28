@@ -1,0 +1,36 @@
+{
+  "name": "zcode",
+  "description": "The ZCode micro-behaviour round of docs/dev/v1/zcode-details.md, driven live through the automation tree: model-menu drill-down and switch toast, palette history chips, answer hover-bar copy feedback and time label, scroll pinning with the jump-to-latest pill, the sidebar session context menu (mark unread / copy path), the queue-recall draft guard and the alt-t thinking cycle.",
+  "scenarios": [
+    {
+      "group": "composer",
+      "file": "docs/dev/v1/gui/scenarios/zcode-model-menu.json",
+      "covers": "model menu provider pin + drill-down submenu (All providers back row), model switch toast, chip read-back"
+    },
+    {
+      "group": "composer",
+      "file": "docs/dev/v1/gui/scenarios/zcode-thinking-cycle.json",
+      "covers": "alt-t cycles the thinking level, level menu shows it checked"
+    },
+    {
+      "group": "composer",
+      "file": "docs/dev/v1/gui/scenarios/zcode-palette-history.json",
+      "covers": "\u2318K history chips, \u23252 applies one, per-chip \u00d7 forgets it, palette stays open"
+    },
+    {
+      "group": "timeline",
+      "file": "docs/dev/v1/gui/scenarios/zcode-row-actions.json",
+      "covers": "answer hover bar: Copy \u2192 check glyph, arrival time label, 'Thought for Ns'"
+    },
+    {
+      "group": "sidebar",
+      "file": "docs/dev/v1/gui/scenarios/zcode-session-menu.json",
+      "covers": "session context menu: Mark as unread \u2194 Mark read, Copy session path, Pin"
+    },
+    {
+      "group": "queue",
+      "file": "docs/dev/v1/gui/scenarios/zcode-queue-guard.json",
+      "covers": "recall into a non-empty composer keeps the item and toasts; empty draft recalls"
+    }
+  ]
+}
