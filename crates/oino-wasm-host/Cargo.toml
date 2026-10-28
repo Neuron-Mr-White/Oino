@@ -17,6 +17,7 @@ testing = ["oino-extension-api/testing", "dep:tempfile"]
 [dependencies]
 base64.workspace = true
 bytes.workspace = true
+chrono.workspace = true
 futures.workspace = true
 notify = "8.2"
 oino-agent = { path = "../oino-agent", optional = true }

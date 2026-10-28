@@ -227,9 +227,12 @@ fn has_pending_work() -> bool {
     wake || waiting
 }
 
+/// `HH:MM:SS` in the host's local time zone (unipi `new Date().toLocaleTimeString()`); the
+/// guest clock is UTC, so the host's `host-info` offset is applied (unipi-core R3).
 fn time_of_day() -> String {
-    let iso = unipi_kit::fmt::iso_from_ms(timers::now_ms());
-    iso.get(11..19).unwrap_or(&iso).to_owned() + " UTC"
+    let offset_ms = i64::from(host::local_offset_minutes()) * 60_000;
+    let iso = unipi_kit::fmt::iso_from_ms(timers::now_ms().saturating_add(offset_ms));
+    iso.get(11..19).unwrap_or(&iso).to_owned()
 }
 
 impl Notify {

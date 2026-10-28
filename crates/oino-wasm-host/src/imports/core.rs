@@ -77,6 +77,15 @@ fn platform() -> &'static str {
     }
 }
 
+/// `host-info.local-offset-minutes`: the host's current UTC offset in minutes (east positive).
+///
+/// Guests cannot read the local clock (WASI clocks are UTC), so the offset is what lets unipi's
+/// late-night hint, splash greeting, quiet hours and day buckets use local time (unipi-core R3).
+fn local_offset_minutes() -> i32 {
+    use chrono::Offset as _;
+    chrono::Local::now().offset().fix().local_minus_utc() / 60
+}
+
 impl wh::Host for HostState {}
 
 impl<T: Send> wh::HostWithStore<T> for HostState {
@@ -94,6 +103,7 @@ impl<T: Send> wh::HostWithStore<T> for HostState {
             has_ui: cx.has_ui,
             frontends: ctx.frontends,
             extension_version: ext.manifest.version.clone(),
+            local_offset_minutes: local_offset_minutes(),
         })
     }
 

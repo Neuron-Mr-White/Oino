@@ -748,7 +748,7 @@ impl InfoScreen {
         }
         let auto = (s.boot_mode == BootMode::AutoClose).then(|| s.boot_timeout_ms.max(500));
         let info = host::info();
-        let hour = (timers::now_ms() / 3_600_000).rem_euclid(24);
+        let hour = host::local_hour(timers::now_ms());
         let spec = splash::spec(
             unipi_kit::suite::UNIPI_VERSION,
             &info.oino_version,

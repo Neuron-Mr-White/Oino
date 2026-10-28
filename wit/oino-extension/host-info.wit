@@ -11,6 +11,7 @@ interface host-info {
         has-ui: bool,
         frontends: list<string>,      // attached frontends: "tui","desktop","mobile","rpc","acp"
         extension-version: string,
+        local-offset-minutes: s32,    // UTC offset of the host's local time right now (east of UTC)
     }
     record workspace-info {
         id: string,                   // D10 wsid

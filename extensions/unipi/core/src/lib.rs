@@ -433,8 +433,10 @@ impl Core {
                     u.get("cacheRead").and_then(Value::as_f64).unwrap_or(0.0),
                 ))
             });
-        // The host exposes no local time zone yet: late-night stays off (see deviations).
-        self.hints(cx, |s, e| s.on_turn_end(e, percent, None, usage));
+        // Local time comes from the host's UTC offset (`host-info.local-offset-minutes`);
+        // the late-night hint fires at 01:00–04:59 local like unipi.
+        let local_hour = u32::try_from(host::local_hour(timers::now_ms())).ok();
+        self.hints(cx, |s, e| s.on_turn_end(e, percent, local_hour, usage));
     }
 
     fn on_pi_event(&self, ev: &Event, cx: &Ctx) {
