@@ -21,7 +21,7 @@ apps/oino-ui/src/automation/
   server.rs     Unix-socket server (plain thread) → UI thread channel
   driver.rs     UI-thread request loop: tree/state/click/type/key/scroll/focus/wait_for/screenshot/quit
   input.rs      platform events (MouseDown/Up/Move, Scroll, Keystroke) built for `dispatch_event`
-  state.rs      screen/session/dialog snapshot + focus handles seen during prepaint
+  state.rs      screen/session/dialog snapshot + the focus handles seen during a frame
 scripts/gui-drive.py           client: commands, remote SSH pipe, scenario runner
 docs/dev/v1/gui/scenarios/*.json   example scenarios
 ```
@@ -36,9 +36,11 @@ scripts/gui-drive.py --ti tree --role switch
 
 ### Zero cost when off
 
-`registry::enabled()` is a relaxed atomic load; every probed element checks it once per frame
-in prepaint and returns immediately when automation is off. No socket, thread, timer or task
-exists unless `OINO_DESKTOP_AUTOMATION` is set.
+`registry::enabled()` is a relaxed atomic load; every probed element checks it once per
+`request_layout` and once per `prepaint` and returns immediately when automation is off (the
+same check gates the end-marker). No socket, thread, timer or task exists unless
+`OINO_DESKTOP_AUTOMATION` is set — that also means every scenario step is opt-in, never part of
+a normal run.
 
 ### Frame hooks
 
