@@ -34,7 +34,8 @@
     },
     {
       "wait_for": {
-        "text": "sleep 60",
+        "role": "row",
+        "label": "sleep 60",
         "timeout_ms": 120000
       }
     },

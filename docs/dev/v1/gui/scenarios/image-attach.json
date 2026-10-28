@@ -34,7 +34,7 @@
     {
       "drop": {
         "paths": [
-          "/home/ti/oino-test/run/attach-red.png"
+          "$RUN/attach-red.png"
         ]
       }
     },

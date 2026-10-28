@@ -238,7 +238,7 @@ fn start(faux: bool, demo: bool, app_args: &[String], extra_env: &[String]) -> R
         "ti-agent",
         &format!(
             "mkdir -p ~/{AGENT_DIR}/logs ~/{RUN_DIR} ~/{PROJECT_DIR}\n\
-             printf 'ti project\\n' > ~/{PROJECT_DIR}/README.md\n{faux_setup}"
+             printf 'oino test project\\n' > ~/{PROJECT_DIR}/README.md\n{faux_setup}"
         ),
         Duration::from_secs(120),
         true,

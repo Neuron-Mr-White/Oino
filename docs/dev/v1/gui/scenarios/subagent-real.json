@@ -32,7 +32,8 @@
     },
     {
       "wait_for": {
-        "label": "subagent_explore",
+        "role": "row",
+        "label": "subagent",
         "timeout_ms": 240000
       }
     },
@@ -43,8 +44,8 @@
     },
     {
       "click": {
-        "label": "subagent_explore",
-        "role": "text"
+        "role": "row",
+        "label": "subagent"
       }
     },
     {

@@ -82,7 +82,8 @@
     },
     {
       "wait_for": {
-        "text": "subagent_explore",
+        "role": "row",
+        "label": "subagent",
         "timeout_ms": 240000
       }
     },
@@ -99,7 +100,7 @@
     },
     {
       "wait_for": {
-        "text": "ti project",
+        "text": "oino test project",
         "timeout_ms": 60000
       }
     },

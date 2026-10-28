@@ -263,6 +263,32 @@ def cmd_quit(client: Client, _: argparse.Namespace) -> int:
 # ── scenarios ───────────────────────────────────────────────────────────────────────────────
 
 
+ROOT = Path(__file__).resolve().parents[1]
+LOCAL_RUN = ROOT / "target/tmp/local-run"
+RED_PNG = "attach-red.png"
+
+
+def resolve_run_path(client: Client, path: str) -> str:
+    """`$RUN/<file>` → the app host's run dir (ti: `~/oino-test/run`, the local charter
+    fallback: `target/tmp/local-run`), creating the solid-red test PNG there when it is
+    missing (QA-r4 H-4: a scenario must not hardcode one host's drop path, and the app-side
+    `drop` now refuses missing files instead of silently dropping nothing)."""
+    if not path.startswith("$RUN/"):
+        return path
+    name = path[len("$RUN/"):]
+    if client.host:
+        return f"/home/ti/oino-test/run/{name}"
+    target = LOCAL_RUN / name
+    if name == RED_PNG and not target.is_file():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            from PIL import Image
+        except ImportError as error:
+            raise DriverError(f"creating {target}: {error} (python3-PIL is required)") from None
+        Image.new("RGB", (96, 96), (224, 48, 24)).save(target)
+    return str(target)
+
+
 class Scenario:
     """A JSON scenario: `{name, scene, shots, steps}` (docs/dev/v1/gui-driver.md §4)."""
 
@@ -344,8 +370,14 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
         print("      " + json.dumps(result))
         return ""
     if method in ("drop", "clipboard_image"):
-        # Platform input injections for attachments (docs/dev/v1/gui-driver.md §2).
-        return json.dumps(client.call(method, params))[:160]
+        # Platform input injections for attachments (docs/dev/v1/gui-driver.md §2); `$RUN`
+        # placeholders resolve to the app host's run dir.
+        payload = dict(params)
+        if isinstance(payload.get("paths"), list):
+            payload["paths"] = [resolve_run_path(client, p) for p in payload["paths"]]
+        if isinstance(payload.get("path"), str):
+            payload["path"] = resolve_run_path(client, payload["path"])
+        return json.dumps(client.call(method, payload))[:160]
     if method == "toggle":
         # Click a switch/checkbox and prove its `checked` state flipped (the initial state is
         # whatever the app persisted, so the scenario cannot assume it).
