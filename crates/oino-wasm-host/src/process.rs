@@ -1,4 +1,16 @@
 //! `process`: spawning, streaming, signals, process trees and stats (extension-api §5.4).
+//!
+//! # Platform support
+//!
+//! | Feature | Linux | macOS | Windows |
+//! |---|---|---|---|
+//! | `proc-stats` | `/proc` | `ps -o ppid=,stat=,rss=,time=,etime=` | PowerShell `Get-CimInstance Win32_Process` |
+//! | `process-tree` | `/proc` parents | `ps -A -o pid=,ppid=` | `Get-CimInstance Win32_Process` |
+//! | signals | `nix` (`kill`/`killpg`) | `nix` | `taskkill` (`/T` kills the tree) |
+//!
+//! Fields the platform does not expose are reported as `0`/empty: macOS has no per-process byte
+//! counters, and Windows reports no process state or byte counters. The watchdog only needs CPU,
+//! RSS and the child tree, all of which are available everywhere.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -311,7 +323,11 @@ impl ChildHandle {
         {
             send_signal(self.pid, sig, group && self.group)
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            signal_windows(self.pid, sig, group && self.group)
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = (sig, group);
             if let Some(tx) = lock(&self.kill).take() {
@@ -361,7 +377,12 @@ pub(crate) fn kill_tree(pid: u32, group: bool) {
         }
         let _ = send_signal(pid, Sig::Kill, group);
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // `taskkill /T` walks the tree itself; `/F` is the SIGKILL equivalent.
+        let _ = signal_windows(pid, Sig::Kill, group);
+    }
+    #[cfg(not(any(unix, windows)))]
     let _ = group;
 }
 
@@ -445,7 +466,20 @@ fn proc_parents() -> Result<Vec<(u32, u32)>, HostError> {
         .collect())
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
+fn proc_parents() -> Result<Vec<(u32, u32)>, HostError> {
+    let out = run_tool("ps", &["-A", "-o", "pid=,ppid="])?;
+    parse_ps_parents(&out).ok_or_else(|| HostError::Failed("ps output".into()))
+}
+
+#[cfg(windows)]
+fn proc_parents() -> Result<Vec<(u32, u32)>, HostError> {
+    let script = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Json -Compress";
+    let out = run_powershell(script)?;
+    parse_cim_parents(&out).ok_or_else(|| HostError::Failed("Win32_Process output".into()))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
 fn proc_parents() -> Result<Vec<(u32, u32)>, HostError> {
     Err(HostError::unsupported("process-tree on this platform"))
 }
@@ -514,11 +548,283 @@ fn read_stat(pid: u32) -> Option<Stats> {
     })
 }
 
+// ── platform helpers (macOS `ps`, Windows `Get-CimInstance`) ────────────────
+
+/// Runs a short-lived tool and returns its trimmed stdout.
+#[cfg(any(target_os = "macos", windows))]
+fn run_tool(program: &str, args: &[&str]) -> Result<String, HostError> {
+    let out = std::process::Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| HostError::Failed(format!("{program}: {e}")))?;
+    if !out.status.success() {
+        return Err(HostError::Failed(format!(
+            "{program} exited with {:?}",
+            out.status.code()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
+}
+
+/// Runs a bounded PowerShell script (CIM queries take ~100–300 ms).
+#[cfg(windows)]
+fn run_powershell(script: &str) -> Result<String, HostError> {
+    run_tool(
+        "powershell.exe",
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+    )
+}
+
+/// Milliseconds since the Unix epoch (wall clock).
+#[cfg(target_os = "macos")]
+fn unix_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// `ps -A -o pid=,ppid=` → `(pid, ppid)` pairs.
+#[cfg(any(target_os = "macos", test))]
+fn parse_ps_parents(out: &str) -> Option<Vec<(u32, u32)>> {
+    let mut pairs = Vec::new();
+    for line in out.lines() {
+        let mut fields = line.split_whitespace();
+        let child: u32 = fields.next()?.parse().ok()?;
+        let parent: u32 = fields.next()?.parse().ok()?;
+        pairs.push((child, parent));
+    }
+    Some(pairs)
+}
+
+/// `ps -p <pid> -o ppid=,stat=,rss=,time=,etime=` → [`Stats`].
+///
+/// `time` is the CPU time, `etime` the elapsed wall time (`[[dd-]hh:]mm:ss`), so the start time is
+/// `now - etime`. macOS exposes no per-process read/write byte counters: those stay `0`.
+#[cfg(any(target_os = "macos", test))]
+fn parse_ps_stats(pid: u32, out: &str, now_ms: u64) -> Option<Stats> {
+    let line = out.lines().find(|l| !l.trim().is_empty())?;
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    let [parent, state, rss, cpu, elapsed, ..] = fields.as_slice() else {
+        return None;
+    };
+    let parent: u32 = parent.parse().ok()?;
+    let rss_kib: u64 = rss.parse().ok()?;
+    Some(Stats {
+        pid,
+        ppid: parent,
+        state: (*state).to_owned(),
+        cpu_ms: parse_clock_ms(cpu)?,
+        rss_bytes: rss_kib.saturating_mul(1024),
+        read_bytes: 0,
+        write_bytes: 0,
+        start_time_ms: now_ms.saturating_sub(parse_clock_ms(elapsed)?),
+    })
+}
+
+/// `[[dd-]hh:]mm:ss[.frac]` (or plain seconds) → milliseconds.
+#[cfg(any(target_os = "macos", test))]
+fn parse_clock_ms(text: &str) -> Option<u64> {
+    let (days, rest) = match text.split_once('-') {
+        Some((days, rest)) => (days.parse::<u64>().ok()?, rest),
+        None => (0, text),
+    };
+    let parts: Vec<&str> = rest.split(':').collect();
+    let seconds = parts.last()?.replace(',', ".");
+    let seconds: f64 = seconds.parse().ok()?;
+    let mut ms = seconds * 1000.0;
+    let mut unit = 60_000.0;
+    for part in parts.iter().rev().skip(1) {
+        ms += part.parse::<f64>().ok()? * unit;
+        unit *= 60.0;
+    }
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        reason = "clock components are far below f64's exact integer range"
+    )]
+    let ms = (ms + (days * 86_400_000) as f64) as u64;
+    Some(ms)
+}
+
+/// `Get-CimInstance Win32_Process | Select ProcessId,ParentProcessId | ConvertTo-Json` → pairs.
+#[cfg(any(windows, test))]
+fn parse_cim_parents(out: &str) -> Option<Vec<(u32, u32)>> {
+    let value: serde_json::Value = serde_json::from_str(out).ok()?;
+    let items = match value {
+        serde_json::Value::Array(items) => items,
+        object @ serde_json::Value::Object(_) => vec![object],
+        _ => return None,
+    };
+    let mut pairs = Vec::new();
+    for row in items {
+        let child = row.get("ProcessId").and_then(serde_json::Value::as_u64)?;
+        let parent = row
+            .get("ParentProcessId")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        pairs.push((
+            u32::try_from(child).ok()?,
+            u32::try_from(parent).unwrap_or(0),
+        ));
+    }
+    Some(pairs)
+}
+
+/// One `Win32_Process` row → [`Stats`]: `WorkingSetSize` bytes, CPU from `KernelModeTime` +
+/// `UserModeTime` (100 ns units), start from `CreationDate` (ISO 8601). Windows exposes no
+/// process state or byte counters.
+#[cfg(any(windows, test))]
+fn parse_cim_stats(out: &str) -> Option<Stats> {
+    let value: serde_json::Value = serde_json::from_str(out).ok()?;
+    let row = if value.is_array() {
+        value.as_array()?.first()?.clone()
+    } else {
+        value
+    };
+    let num = |key: &str| row.get(key).and_then(serde_json::Value::as_u64);
+    let pid = u32::try_from(num("ProcessId")?).ok()?;
+    let cpu_100ns = num("KernelModeTime").unwrap_or(0) + num("UserModeTime").unwrap_or(0);
+    let start_time_ms = row
+        .get("CreationDate")
+        .and_then(serde_json::Value::as_str)
+        .and_then(parse_iso_ms)
+        .unwrap_or(0);
+    Some(Stats {
+        pid,
+        ppid: u32::try_from(num("ParentProcessId").unwrap_or(0)).unwrap_or(0),
+        state: "R".to_owned(),
+        cpu_ms: cpu_100ns / 10_000,
+        rss_bytes: num("WorkingSetSize").unwrap_or(0),
+        read_bytes: 0,
+        write_bytes: 0,
+        start_time_ms,
+    })
+}
+
+/// `YYYY-MM-DDTHH:MM:SS[.frac](Z|±HH:MM)` → epoch milliseconds.
+#[cfg(any(windows, test))]
+fn parse_iso_ms(text: &str) -> Option<u64> {
+    let bytes = text.as_bytes();
+    if bytes.len() < 19 {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    let days = days_from_civil(year, month, day);
+    let mut ms = days * 86_400_000 + hour * 3_600_000 + minute * 60_000 + second * 1000;
+    if let Some(rest) = text.get(19..) {
+        if let Some(frac) = rest.strip_prefix('.') {
+            let digits: String = frac.chars().take_while(char::is_ascii_digit).collect();
+            let millis = format!("{digits:0<3}");
+            ms += millis.get(..3)?.parse::<i64>().ok()?;
+            let offset = frac.get(digits.len()..).unwrap_or_default();
+            ms -= offset_minutes(offset)? * 60_000;
+        } else if !rest.is_empty() {
+            ms -= offset_minutes(rest)? * 60_000;
+        }
+    }
+    u64::try_from(ms).ok()
+}
+
+/// `Z`, `+HH:MM`, `-HH:MM`, `+HHMM` → minutes east of UTC (`0` when absent).
+#[cfg(any(windows, test))]
+fn offset_minutes(text: &str) -> Option<i64> {
+    let sign = match text.as_bytes().first()? {
+        b'+' => 1,
+        b'-' => -1,
+        // `Z`, or a value without an offset.
+        _ => return Some(0),
+    };
+    let digits: String = text
+        .chars()
+        .skip(1)
+        .filter(char::is_ascii_digit)
+        .take(4)
+        .collect();
+    let hours: i64 = digits.get(0..2)?.parse().ok()?;
+    let minutes: i64 = digits.get(2..4).unwrap_or("0").parse().ok()?;
+    Some(sign * (hours * 60 + minutes))
+}
+
+/// Days since 1970-01-01 of a civil date (Howard Hinnant's `days_from_civil`).
+#[cfg(any(windows, test))]
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let month_index = (month + 9) % 12;
+    let day_of_year = (153 * month_index + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+/// `taskkill` on Windows: `TERM` asks politely, `KILL` forces; both take the tree with `/T`.
+#[cfg(windows)]
+fn signal_windows(pid: u32, sig: Sig, group: bool) -> Result<(), HostError> {
+    let mut command = std::process::Command::new("taskkill");
+    command.arg("/PID").arg(pid.to_string());
+    if group {
+        command.arg("/T");
+    }
+    if matches!(sig, Sig::Kill) {
+        command.arg("/F");
+    }
+    let out = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| HostError::Failed(format!("taskkill {pid}: {e}")))?;
+    if out.success() {
+        Ok(())
+    } else {
+        Err(HostError::Failed(format!("taskkill {pid} failed")))
+    }
+}
+
 /// Stats for `pid`.
 pub(crate) fn process_stats(pid: u32) -> Result<Stats, HostError> {
-    if cfg!(target_os = "linux") {
+    #[cfg(target_os = "linux")]
+    {
         read_stat(pid).ok_or_else(|| HostError::NotFound(format!("process {pid}")))
-    } else {
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let out = run_tool(
+            "ps",
+            &[
+                "-p",
+                &pid.to_string(),
+                "-o",
+                "ppid=,stat=,rss=,time=,etime=",
+            ],
+        )?;
+        parse_ps_stats(pid, &out, unix_now_ms())
+            .ok_or_else(|| HostError::NotFound(format!("process {pid}")))
+    }
+    #[cfg(windows)]
+    {
+        let script = format!(
+            "$p = Get-CimInstance Win32_Process -Filter 'ProcessId={pid}';\
+             if ($p) {{ $p | Select-Object ProcessId,ParentProcessId,WorkingSetSize,KernelModeTime,\
+             UserModeTime,CreationDate | ConvertTo-Json -Compress }}"
+        );
+        let out = run_powershell(&script)?;
+        parse_cim_stats(&out).ok_or_else(|| HostError::NotFound(format!("process {pid}")))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+    {
+        let _ = pid;
         Err(HostError::unsupported("process-stats on this platform"))
     }
 }
@@ -568,6 +874,50 @@ mod tests {
         let out: Vec<u8> = child.take_stdout().unwrap().concat().await;
         assert_eq!(out, b"hello");
         assert_eq!(child.wait().await.code, Some(0));
+    }
+
+    /// macOS `ps` rows (pure parsing, so the platform paths are covered on any host).
+    #[test]
+    fn ps_output_parsing() {
+        let parents = parse_ps_parents("    1     0\n  421     1\n  555   421\n").unwrap();
+        assert_eq!(parents, vec![(1, 0), (421, 1), (555, 421)]);
+        let stats =
+            parse_ps_stats(421, "     1 S+   123456  0:01.25 02:03:04\n", 10_000_000).unwrap();
+        assert_eq!(stats.ppid, 1);
+        assert_eq!(stats.state, "S+");
+        assert_eq!(stats.rss_bytes, 123_456 * 1024);
+        assert_eq!(stats.cpu_ms, 1_250);
+        assert_eq!(stats.read_bytes, 0);
+        assert_eq!(stats.write_bytes, 0);
+        // Started `02:03:04` before `now`.
+        assert_eq!(
+            stats.start_time_ms,
+            10_000_000 - (2 * 3_600_000 + 3 * 60_000 + 4_000)
+        );
+        assert!(parse_ps_stats(1, "", 0).is_none());
+        assert_eq!(parse_clock_ms("03:04"), Some(184_000));
+        assert_eq!(parse_clock_ms("1-00:00:01"), Some(86_401_000));
+        assert_eq!(parse_clock_ms("0,50"), Some(500));
+    }
+
+    /// `Get-CimInstance Win32_Process` JSON (pure parsing).
+    #[test]
+    fn cim_output_parsing() {
+        let row = r#"{"ProcessId":421,"ParentProcessId":1,"WorkingSetSize":52428800,
+            "KernelModeTime":1500000,"UserModeTime":2500000,"CreationDate":"2023-10-27T12:30:45.5000000+02:00"}"#;
+        let stats = parse_cim_stats(row).unwrap();
+        assert_eq!((stats.pid, stats.ppid), (421, 1));
+        assert_eq!(stats.rss_bytes, 52_428_800);
+        assert_eq!(stats.cpu_ms, 400);
+        assert_eq!(stats.start_time_ms, 1_698_402_645_500);
+        assert!(parse_cim_stats("[]").is_none());
+        let parents = parse_cim_parents(
+            r#"[{"ProcessId":1,"ParentProcessId":0},{"ProcessId":421,"ParentProcessId":1}]"#,
+        )
+        .unwrap();
+        assert_eq!(parents, vec![(1, 0), (421, 1)]);
+        assert_eq!(parse_iso_ms("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_iso_ms("1970-01-02T00:00:00Z"), Some(86_400_000));
     }
 
     #[cfg(unix)]
