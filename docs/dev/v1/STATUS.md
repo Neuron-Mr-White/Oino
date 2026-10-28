@@ -402,24 +402,26 @@ imports, migrate prompts, legacy argument shapes, renderers or settings keys).
 Source of truth: `apps/oino-desktop/DESIGN-STATUS.md` (54-row checklist, perf numbers),
 `apps/oino-mobile/DESIGN-STATUS.md`, [design/review-desktop.md](design/review-desktop.md)
 (review FAIL → Resolution: all P0 fixed except perf, P1 fixed except keyboard leftovers and shots).
-Desktop: 50 ✅ · 2 🟡 (motion 6, performance 52) · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mobile).
+Desktop: 52 ✅ · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mobile) — the [zcode-perf] rounds
+(motion, exit animations, timestamps, model-menu drill-down, palette history, pacing) closed
+rows 6 and 52; details + measured numbers in `apps/oino-desktop/DESIGN-STATUS.md`.
 
 | Group (design.md §8 rows) | Desktop | Mobile | Gaps |
 |---|---|---|---|
 | Theme, type, spacing, icons (1–5) | ✅ | ✅ | unipi warm OLED dark + derived light (A1) |
-| Motion (6) | 🟡 | 🟡 | exit animations, run-label shimmer |
+| Motion (6) | ✅ | 🟡 | desktop: enter/exit animation pairs (`design::motion::enter/exit`), run-state/fold/thinking shimmer, ticker stops when idle; mobile still lacks exit animations |
 | Frames, sidebar, header, welcome (7–13) | ✅ | ✅ (M1/M2 app bars, sections, swipe rows) | tablet layout on mobile ❌ |
-| Timeline, tool rows, diffs, bash, thinking (14–22, 26) | ✅ | ✅ (touch rows) | "Thought for Ns" timing |
+| Timeline, tool rows, diffs, bash, thinking (14–22, 26) | ✅ | ✅ (touch rows) | `Thought for Ns` timing + hover-bar arrival times on desktop; history rows carry no timing (session messages have no timestamps) |
 | Subagent rows (23) | ✅ | 🟡 | [gui-wiring] AgentRow live status + Agent tab child timeline from `_oino/agents` / `agent_messages`, Stop agent, `btw` / dream children from the StatusPanel Run section; scenario `agents-live` (mobile: drawer rows still show task + result only) |
 | Turn undo / rewind (24–25) | ✅ | 🟡 | [gui-wiring] turn footer Undo (files) and user-bubble Rewind (fork + composer) behind a confirmation (`turn-undo`); mobile keeps Edit & resend only |
-| Composer, model menu, context ring, mentions, history (27–30, 32, 34) | ✅ | ✅ | model-menu submenus / pinned group |
+| Composer, model menu, context ring, mentions, history (27–30, 32, 34) | ✅ | ✅ | provider drill-down submenu (←/Esc back, one provider = flat list), alt-t thinking cycle, state placeholders ([zcode-perf]) |
 | Attachments (31) | ✅ | 🟡 | [gui-wiring] pasted (⌘V) and dropped images become image attachments sent with the prompt, other files `@path` mentions, an attachment strip shows the payload; scenario `image-attach` (real provider blocked by the router balance, see §1b.9) |
 | Queue (33) | ✅ | 🟡 | [gui-wiring] ↑/↓ reorder, send now, edit in place, recall to composer, remove (`_oino/queue_edit`); scenario `queue-edit` |
 | Permission, guard, elicitation, plan, waiting badge (35–39) | ✅ | ✅ (docked + sheet promotion) | — |
 | Status panel (40) | ✅ | 🟡 | [gui-wiring] `rebuild_status` merges session state with the sticky topics (long-horizon state/progress, `bg:tasks`, `fusion:status`, `kanboard:status`, `oino:git`), Run rows open the child Agent tab / Tasks tab, ⌘⇧S expand, ↑/↓, Enter, Delete (confirm), Esc; scenario `status-panel` |
 | Side pane, browser, PTY terminal (41–43) | ✅ | ✅ browser (Custom Tabs / SFSafariViewController); terminal ❌ on mobile | — |
-| Command center, modifiers, settings + hub, toasts, split panes, board (44–49) | ✅ | ✅ (search, stacked settings + hub, lane pager) | palette history chips |
-| Performance (52) | 🟡 | 🟡 | desktop 4-pane run p99 9.3–14.9 ms vs 10 ms; mobile 120 Hz not measured |
+| Command center, modifiers, settings + hub, toasts, split panes, board (44–49) | ✅ | ✅ (search, stacked settings + hub, lane pager) | — (history chips, ⌥1–⌥3, per-chip forget on desktop) |
+| Performance (52) | ✅ | 🟡 | desktop 4-pane run p99 4.1–4.9 ms (budget 10, per-pane phase pacing), idle CPU 0.8–1.0 % UI thread, threads/fds flat (Xvfb+lavapipe numbers; `ti` blocked by a Tailscale re-auth, GPU re-run pending); mobile 120 Hz not measured |
 | i18n, window chrome (53–54) | ✅ | ✅ (safe areas, system bars) | Windows / macOS rendering not checked on the build hosts |
 | Remote attach (mobile M10, D16) | — | 🟡 | hosts list + pairing stored; needs `oino serve` |
 | unipi surfaces (design.md §7) | ✅ | ✅ | all render through OUS / docked cards / native board; `_oino/*` wired |
@@ -492,7 +494,7 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
 | GA-43 | ✅ | core fires retained `setShortcuts` | S3 / GA-16: bind keys, palette, settings page |
 | GA-44 | ✅ | `_oino/agents`, `agents_changed`, `agent_event`, `_oino/agent_messages` | P3 / GA-15: Agent tab timeline |
 | GA-45 | ✅ | `ExtensionMode::Desktop` / `Mobile`; `host-info.frontends` from mode + `_oino/hello` | none — `embedded.rs` passes `Desktop` and registers `oino-desktop` ([gui-qa-fix] `1e1242c`, verified via `/doctor`) |
-| GA-46 | ❌ | — | K6: idle cost (GPUI refresh loop, thread pools) |
+| GA-46 | ✅ | no refresh loop when idle (scoped ticker ends one tick after the last animation) | measured 2026-10-29: idle CPU 0.8–1.0 % UI thread after settle, threads 180 / fds 43 flat across idle ↔ 2 streaming sessions (64 llvmpipe + 32 GPUI + 84 app threads), 12-min faux soak PASS (threads 233→231, RSS slope −0.1 MB/min) — [zcode-perf], DESIGN-STATUS perf section |
 
 ## 7. Release builds (1.0.0-alpha.3, 2026-10-27/28, `v1-alpha` @ `f934b81`, not tagged or published)
 
@@ -549,11 +551,13 @@ Finder over a GUI session (this run succeeded; the `hdiutil` fallback stays for 
 
 ## 8. Next steps
 
-0. **ZCode parity round** (design.md §8; `apps/oino-desktop/DESIGN-STATUS.md`): agent feed,
-   undo/rewind, queue edits, StatusPanel topics and image attachments landed on desktop
-   (§1b.9). Remaining: model-menu submenus, palette history chips, 4-pane p99 under 10 ms,
-   mobile tablet layout, exit animations / run-label shimmer, i18n + Windows/macOS rendering
-   checks; real-provider scenario runs once the router balance allows (§1b.9).
+0. **ZCode parity round** — desktop side done ([zcode-perf], 2026-10-29): every §8 row that
+   was 🟡 is closed (motion 6, performance 52), the `zcode` GUI suite covers the round
+   (docs/dev/v1/gui/suites/zcode.json) and docs/dev/v1/zcode-details.md maps each behaviour to
+   its ZCode spec. Remaining from the old list: mobile tablet layout, i18n + Windows/macOS
+   rendering checks, re-running the `zcode`/`unipi` suites and `perf.sh`/`soak.sh` on `ti`
+   once its Tailscale re-auth is approved (this round's numbers are Xvfb+lavapipe local
+   fallback), and real-provider scenario runs once the router balance allows (§1b.9).
 1. **core-runtime**: `agents.agent.set-ui-policy` + depth on `call-context`; `control.move-project-state`
    (trust.json + sessions dir) and tmp GC. (Bash detach, file checkpoints, single-item queue
    commands, `disabledExtensions`, topic / agent feeds, built-in render overrides,

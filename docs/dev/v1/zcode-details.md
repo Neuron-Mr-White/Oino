@@ -7,7 +7,12 @@ the look).
 Sources, read for this pass (`/tmp/zcode-src`, `git clone --depth 1
 https://github.com/zai-org/ZCode`): `DESIGN.md` (Motion, Depth, Responsive), `docs/ui/*.md`
 (~180 specs) and `packages/ui/src` (`v4/ConversationRowView.tsx`, `v4/ConversationComposer.tsx`,
-`ModelConfigSelect.tsx`, `styles.css`, `CommandCenter*`, `ToolCallBlocks/*`).
+`v4/messageTimeLabel.ts`, `ModelConfigSelect.tsx`, `styles.css`, `CommandCenter*`,
+`ToolCallBlocks/*`).
+
+Round 2 (same work id, 2026-10-29) added the rows marked 🆕🆕: answer timestamps, the
+session context-menu parity items, the queue-recall draft guard and the per-pane pacing
+phase (§1 of the perf row in [DESIGN-STATUS.md](../../apps/oino-desktop/DESIGN-STATUS.md)).
 
 Format per row: **ZCode behaviour** (doc) → **Oino today** → state.
 ✅ parity · 🆕 added in this round · ⛔ deferred (reason) · ➖ not applicable to Oino.
@@ -39,6 +44,7 @@ Format per row: **ZCode behaviour** (doc) → **Oino today** → state.
 | T10 | Query rail: one bar per visible user query, ≥ 2 queries and ≥ 864 px wide, tooltip = query + owning answer excerpt, click = exact anchor (`conversation-turn-navigator`) | ✅ `render_rail` gates on ≥ 2 prompts and the free margin left of the 896 px column; tooltip `query\n— excerpt`; 🆕 the click detaches pinning first |
 | T11 | Find: ⌘F inside the conversation column, case toggle, wrap-around, Esc yields to an open nested overlay first (`chat-find-placement`) | ✅ `FindBar` in the transcript column, wraps, `case` toggle; Esc closes the bar first (pane key handler) |
 | T12 | Virtualised rows, row-level re-measure, incremental markdown | ✅ `list` + per-row `remeasure_items`, `TextViewState` per row |
+| T13 | Assistant actions bar ends in the arrival time: `HH:MM` today, `Yesterday HH:MM`, `M/D HH:MM` this year, `Y/M/D HH:MM` older (`v4/messageTimeLabel.ts`; history rows have no timestamp) | 🆕🆕 `message_time_label` on the hover bar (`as-time-N`, caption colour); `AssistantRow::created_ms` stamped at `message_start`, `None` for history rows |
 
 ## 3. Composer (rows 27–34)
 
@@ -54,6 +60,7 @@ Format per row: **ZCode behaviour** (doc) → **Oino today** → state.
 | C8 | Long paste becomes a text attachment; images become chips (`chat-file-attachments`) | ✅ images pasted/dropped (≤ 16 MiB), other files `@path`; long text stays inline (pi behaviour) |
 | C9 | Queue: reorder, send now, edit in place, recall, delete (`chat-message-queue`) | ✅ `QueuePanel` + `_oino/queue_edit` |
 | C10 | Steer while running, Enter sends, Alt+Enter queues | ✅ pi semantics (Adapt, row 34) |
+| C11 | Queue recall never clobbers a held draft: with text in the composer the item stays queued and the user is told to clear the draft first (`chat-message-queue` edit boundary) | 🆕🆕 `queue_recall` toasts “The composer has a draft — clear it first” and keeps the item (the old code silently merged the two texts) |
 
 ## 4. Navigation, palette, settings
 
@@ -65,6 +72,7 @@ Format per row: **ZCode behaviour** (doc) → **Oino today** → state.
 | N4 | Settings: full page, section nav, search, bordered groups, empty state (`settings-*`) | ✅ page + search + hub |
 | N5 | Model provider rows: enablement state + action on the title line, context-window pill inside the id field (`model-provider-*`) | ✅ settings hub rows; context pill shown on model rows in the menu |
 | N6 | Platform primary modifier: Cmd on Apple, Ctrl elsewhere (`platform-primary-keyboard-shortcuts`) | ✅ `cmd-*` / `ctrl-*`, ⌘ labels become `Ctrl+` |
+| N7 | Session context menu: Pin persists, Mark as unread persists (blue dot until opened), Copy path of the task file (`task-list-context-menu`) | 🆕🆕 menu has Pin / Mark as unread ↔ Mark read / Copy session id / Copy session path / Reveal / Delete; pins and unread marks persist in `desktop.json` (`AppSettings.sidebar_pinned`/`sidebar_unread`, seeded at startup, `mark_read` on open — done-unseen and manual marks share the dot). “Open in new pane” is not built: §8 row 48 diverges (no multiplexer); ZCode's Archive/Go to config have no Oino equivalent (no archive state, config is settings) |
 
 ## 5. Feedback, empty and error states
 
@@ -88,11 +96,23 @@ Format per row: **ZCode behaviour** (doc) → **Oino today** → state.
 | D5 | Sidebar 1 s hover marquee, remote workspace HoverCard | No remote workspaces in v1 (no multiplexer, A2.2). |
 | D6 | Search-history *recent changes / recent tasks* groups in the palette | Oino's palette already lists sessions and files in scope tabs; the history chips cover the recency need. |
 | D7 | A separate "Pinned" model group (design.md §4.26) | pi's `enabledModels` / `--models` scope is already applied to `get_available_models`, so the pane's list **is** the scoped (pinned) set — a second group would repeat it. The menu pins the provider in use instead. The scope itself is not exposed to the frontend (`get_available_models` returns models only); filed as a request if the group is wanted anyway. |
+| D8 | Model-menu ←/Esc at a provider level closing the whole menu | Fixed in round 2: `popover_key` routes Esc/← through a key-aware close for the model menu — a provider level goes back one level, the top level closes, clicks outside always close. |
+| D9 | Sidebar time groups (Today / Yesterday / This week…, `sidebar-task-timeline-groups`) | A2 owns the sidebar: rows group by project (§4.7), which is the unipi look the amendment keeps; a second, time-based grouping would fight it. |
+| D10 | Task empty-result state (`task-empty-result-state`) | An Oino session with a sent prompt always has its user row (the welcome shows only for truly empty sessions), and load/restore states already have their own treatment, so the extra “no visible content this turn” hint has no reachable state. |
+| D11 | Driving a wheel-scroll detach in a GUI scenario | The automation driver's synthetic `Scroll` event is not accepted by GPUI's `list` (its `should_handle_scroll` hitbox test never matches the synthetic dispatch), so the DETACHED leg of `chat-scroll-bottom-pinning` cannot be driven end-to-end yet; the detach itself is gpui's own unit-tested behaviour (`test_follow_tail_disengages_on_user_scroll`) plus Oino's pause-before-reveal paths (T1). Driver gap, not a product gap. |
 
 ## 7. Proof
 
-- Unit: `components::toast::tests` (exit before drop, hover pause, sticky errors) — 2 tests.
+- Unit: `components::toast::tests` (exit before drop, hover pause, sticky errors) — 2 tests;
+  `components::timeline::tests::label_graduates_with_distance` (the four time-label
+  graduations); `model::sessions::tests::marked_unread_survives_the_live_map_and_reads_on_open`
+  (marks, live-map precedence, read-on-open, persistence ids).
 - Gates: `cargo fmt --all --check`, `cargo clippy -p oino-ui --all-targets -- -D warnings
-  -W clippy::pedantic`, `cargo test -p oino-ui --lib` (118 passed) in `apps/`.
-- Driver scenarios on `ti`: see [gui-driver.md](gui-driver.md) §7b and the `[zcode-perf]`
-  commit messages; screenshots under `docs/dev/v1/design/shots/desktop/zcode-*/`.
+  -W clippy::pedantic`, `cargo test -p oino-ui --lib` (120 passed) in `apps/`.
+- Driver scenarios (`zcode` suite, `docs/dev/v1/gui/suites/zcode.json`): `zcode-model-menu`,
+  `zcode-thinking-cycle`, `zcode-palette-history`, `zcode-row-actions`, `zcode-session-menu`,
+  `zcode-queue-guard` — all PASS (2026-10-29; `ti` was blocked by a Tailscale re-auth check, so
+  the round ran on the charter's local fallback: one app instance on a private Xvfb + lavapipe,
+  `apps/oino-desktop/scripts/local-app.sh`); screenshots under
+  `docs/dev/v1/design/shots/desktop/zcode-*/`. See [gui-driver.md](gui-driver.md) §7c and the
+  `[zcode-perf]` commit messages.

@@ -7,7 +7,7 @@ integration and should be created from this file (request D1 below).
 Screenshots: `docs/dev/v1/design/shots/desktop/*.png` (`scripts/screenshot.sh`, `--demo`,
 1400×900, Xvfb + lavapipe; `16-narrow` at 860×760). The driver scenarios add their own
 folders under `docs/dev/v1/design/shots/desktop/<scenario>/` (`agents-live`, `status-panel`,
-`turn-undo`, `queue-edit`, `image-attach`; [gui-driver.md](../../docs/dev/v1/gui-driver.md) §7b).
+`turn-undo`, `queue-edit`, `image-attach`, `zcode-*`; [gui-driver.md](../../docs/dev/v1/gui-driver.md) §7b–§7c).
 
 | Shot | Screen |
 |---|---|
@@ -37,7 +37,7 @@ folders under `docs/dev/v1/design/shots/desktop/<scenario>/` (`agents-live`, `st
 | 24-bottom-output | bottom frame Output tab |
 | 25-side-files | side pane Files tab |
 | 26-side-launcher | empty side-pane launcher (incl. Browser) |
-| 27-session-menu | sidebar session context menu (Rename, Pin, Fork, Open in new pane, Copy id, Reveal, Delete…) |
+| 27-session-menu | sidebar session context menu (Rename, Pin, Fork, Mark as unread, Copy id, Copy session path, Reveal, Delete…) |
 | 28-delete-confirm | destructive-action confirmation dialog |
 | 29-onboarding | D13 onboarding (forced with `OINO_DESKTOP_ONBOARDING=1`) |
 | 30-720 | 720 × 600 minimum-ish window, mini status strip above the timeline |
@@ -99,7 +99,7 @@ folders under `docs/dev/v1/design/shots/desktop/<scenario>/` (`agents-live`, `st
 | 49 | Automations → Board | ✅ | |
 | 50 | ZCode product features | ⛔ | |
 | 51 | Mobile | — | design-mobile |
-| 52 | Performance bar | 🟡 | RTX 4070 Ti numbers below; 4-pane whole-run p99 9.3–14.9 ms vs the 10 ms budget |
+| 52 | Performance bar | ✅ | whole-run p99 4.1–4.9 ms with 4 streaming panes (budget 10 ms, `perf.sh` gate); idle CPU 0.8–1.0 % of the UI thread; threads/fds/RSS flat (soak PASS). Numbers below — 2026-10-29, Xvfb + lavapipe (see the ti note) |
 | 53 | i18n | ✅ | English |
 | 54 | Window chrome | ✅ | client-side decorations on Linux/Windows: sidebar top row + headers drag (double-click zooms, right-click window menu), window controls in the right-most header / side tab bar, resize edges, Linux 16 px radius while floating; macOS transparent title bar |
 
@@ -120,7 +120,8 @@ uses `_oino/get_settings_schema` + `get/set/unset_extension_setting`; Models & P
 switch, palette open, synthetic keystroke → paint) and idle CPU (welcome scene, after the 60 s
 splash drain). Frame cost = UI-thread time from the root `render` to the end of paint.
 
-Real GPU (RTX 4070 Ti, GNOME XWayland `:0`, 25 s, 4 panes, synthetic typing):
+Real GPU (RTX 4070 Ti, GNOME XWayland `:0`, 25 s, 4 panes, synthetic typing) — previous
+round, before the phase fix (kept for comparison):
 
 | Run | fps | p50 | window p99 median | worst window p99 | **run p99** | > 8.3 ms | dropped |
 |---|---|---|---|---|---|---|---|
@@ -128,22 +129,46 @@ Real GPU (RTX 4070 Ti, GNOME XWayland `:0`, 25 s, 4 panes, synthetic typing):
 | after (staggered ticker, 30 fps background panes) | 96–101 | 3.6–3.9 ms | 7.5–8.4 ms | 11.9–15.0 ms | 9.3–11.6 ms | 65–129 | 0–4 |
 | after, machine under load (load avg 7–10) | 96–101 | 4.4–5.7 ms | 9.6–12.5 ms | 17.0–19.9 ms | 13.3–14.9 ms | 303–492 | 4–5 |
 
-Latency (same runs): first frame 280–290 ms after process start (cold Vulkan on the NVIDIA
-driver), keystroke → paint median 3–5 ms (max 9–15), session switch 6–12 ms, palette 10k
-items filter 0.98 ms (`cargo test --release -p oino-ui palette_10k`). Idle CPU: 1–3 % of the UI
-thread (lavapipe's worker threads add ~19 % under Xvfb, ~1 % on the GPU).
+**2026-10-29, after the per-pane phase fix** (`[zcode-perf]` “details” commit): background
+panes pace at a fixed 33 ms rate with a distinct sub-phase per pane (process-wide
+round-robin slot 0–3 × 8 ms — the old id-hash phase collided for most 4-pane sets), so the
+four panes no longer re-lay out in one frame. `ti` was blocked by a Tailscale re-auth check
+(the owner has to approve; [ti.md](../../docs/dev/v1/ti.md) §6), so these runs used the
+charter's local fallback: private Xvfb + lavapipe, `nice`, one instance
+(`scripts/perf.sh`, headless mode):
+
+| Run | panes | frames | p50 | window p99 median | worst window p99 | max | **run p99** | > 8.3 ms | dropped |
+|---|---|---|---|---|---|---|---|---|---|
+| 20 s | 4 | 1080 (~54 fps on the 60 Hz Xvfb) | 2.66 ms | 3.77 ms | 4.12 ms | 4.32 ms | **4.10 ms** | 2 | 0 |
+| 30 s | 4 | 1800 (~60 fps) | 2.91 ms | 4.13 ms | 13.59 ms | 19.61 ms | **4.90 ms** | 6 | 2 |
+
+Latency (same runs): first frame 125–359 ms after process start (lavapipe cold start),
+keystroke → paint median 6.6–7.7 ms (max 12), session switch 12–13 ms, palette 10k items
+filter 0.98 ms (`cargo test --release -p oino-ui palette_10k`). Idle CPU (welcome scene, after
+the 60 s splash drain): **0.8–1.0 % of the UI thread**, ~14 % of the process incl. lavapipe's
+software renderer threads (~1 % on a GPU, per the previous round). GA-46: no refresh loop
+when idle (the ticker task ends one tick after the last animation; `design::ticker`), thread
+pools bounded and flat — 180 threads / 43 fds at idle **and** with 2 streaming sessions
+(64 llvmpipe + 32 GPUI workers + 84 app), 231 threads at the end of a 12-min faux soak with 8
+live panes.
 
 Speed work: panes are `cached` views; the ticker notifies only the views that asked for a
 frame (scoped per pane, round-robin over 4 sub-ticks) instead of `refresh_windows`, which had
-re-rendered all four panes 12×/s; unfocused split panes pace their event batches at ≈ 30 fps
-with a per-session phase; idle / sleeping crabs do not animate; preview-URL scanning is
+re-rendered all four panes 12×/s; background panes pace their event batches at a fixed ≈ 30 fps
+rate, one pane per sub-phase; idle / sleeping crabs do not animate; preview-URL scanning is
 cached per transcript version.
 
-Open: the 4-pane whole-run p99 does not reliably meet the 10 ms budget (9.3–14.9 ms across runs
-on a shared desktop): frames where all four panes re-lay out in one frame cost 6–12 ms.
+Soak (12 min, `faux` backend — real in-process core, WASM, tools, Xvfb + lavapipe):
+1026 steps, RSS 10→1080 MB max 1087 (slope −0.10 MB/min over the second half), threads
+233→231, fds 438→428, no crash/stall logs, exit 0 — **PASS**
+(`target/tmp/soak-zcode/summary.txt` was the raw output).
 
 ## Requests
 
+- Owner: `ti` printed “Tailscale SSH requires an additional check” on 2026-10-29 (re-auth
+  URL in the session log); until it is approved, `ti`-gated GUI/perf runs use the charter's
+  local Xvfb fallback. Re-run `cargo xtask ti build` + `perf.sh`/`soak.sh` on `ti` (GPU vs
+  lavapipe deltas) and the `zcode` + `unipi` suites there once it is back.
 - D1 (integration): copy this file to `docs/dev/v1/deviations/design-desktop.md`; replace
   gpui-app.md §5 with a pointer to design.md (R6).
 - core-runtime: file checkpoints for TurnFooter Undo and UserBubble rewind (the buttons stay

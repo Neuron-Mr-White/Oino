@@ -160,6 +160,7 @@ dev loop; `remote-build` additionally builds `oino-kanboard` and the installers.
 
 | Date | What | Result |
 |---|---|---|
+| 2026-10-29 | `[zcode-perf]` round tried `ti sync`/`ti status` | **blocked**: `ti@ti` prints “Tailscale SSH requires an additional check” (re-auth URL `https://login.tailscale.com/a/l2e205673a3abc` — the owner approves). The round's GUI/perf verification ran on the charter's local Xvfb fallback instead; re-run `perf.sh`/`soak.sh` and the `zcode`/`unipi` suites here once approved |
 | 2026-10-28 | release build of `oino` + `oino-desktop` (HEAD `f7dc777`) | OK, `build exit 0`, desktop 140 MiB, ~14 min cold |
 | 2026-10-28 | `ti start --demo` + screenshot | [design/shots/ti/demo.png](design/shots/ti/demo.png), 1598×1000 |
 | 2026-10-28 | `ti start --faux` (real session, prompt `hi`) | `Hello from faux.` in 240 ms, [design/shots/ti/real-faux.png](design/shots/ti/real-faux.png) |

@@ -360,6 +360,40 @@ Two harness limits found and handled:
    Rewind button of a long transcript is not clickable from a scenario (`rewind-real` uses a
    short real transcript instead).
 
+## 7c. Proof of the `zcode` suite (`[zcode-perf]` round 2, 2026-10-29)
+
+`ti` was blocked (Tailscale re-auth check, [ti.md](ti.md) §6), so the round ran on the
+charter's local fallback: one app instance per scenario on a private `Xvfb :95` + lavapipe,
+`nice -n 10`, driven with `scripts/gui-drive.py --socket target/tmp/local-run/automation.sock
+run --no-restart` after `apps/oino-desktop/scripts/local-app.sh start <backend> <scene>`
+(mirrors `cargo xtask ti start`; scratch agent dir + project under `target/tmp/local-run`).
+
+| Scenario | Steps | Result |
+|---|---|---|
+| `zcode-model-menu` | 18 | **PASS** — ⌘M opens the menu (pinned provider with its checked models, provider submenu rows, Manage models), Anthropic drill-down (`All providers` back row), ← goes back one level, re-enter + pick `Claude Sonnet 4.6` → `Switched from Oino Large to Claude Sonnet 4.6` toast + chip read-back |
+| `zcode-thinking-cycle` | 14 | **PASS** — level menu sets Off, `alt-t` steps Off→Minimal→Low, menu shows Low checked |
+| `zcode-palette-history` | 18 | **PASS** — ⌘K search “board” + pick records history, chip `History board` on the empty query, ⌥1 applies it, per-chip × forgets it (persisted), palette stays open |
+| `zcode-row-actions` | 11 | **PASS** — `Thought for` label, hover bar with the arrival time, Copy → check glyph for 1.2 s |
+| `zcode-session-menu` | 13 | **PASS** — right-click a session row: Pin / Mark as unread / Copy session id / Copy session path / Reveal / Delete; Mark as unread ↔ Mark read toggles |
+| `zcode-queue-guard` | 18 | **PASS** — recall into a non-empty composer keeps the item and toasts `The composer has a draft — clear it first`; after clearing, the recall refills the composer and empties the queue |
+
+Regression scenarios from §7/§7b re-run after the round's code changes: `new-session-prompt`,
+`approval-allow`, `queue-edit` — all **PASS**. The `unipi` suite (real backend) was not
+re-run this round (router credits + `ti` blocked; its scenarios do not touch the changed
+paths beyond what `queue-edit`/`approval-allow` cover). Screenshots:
+`docs/dev/v1/design/shots/desktop/zcode-<scenario>/*.png`.
+
+Harness changes this round:
+
+1. `screenshot` capture chain: `import` → `ffmpeg -f x11grab` → `python3 -c PIL.ImageGrab`
+   (dev boxes without ImageMagick still take shots; `ti` keeps using `import`).
+2. Local runs: `gui-drive.py` writes screenshots to resolved paths and creates their folders;
+   `local-app.sh` is the local lifecycle twin of `cargo xtask ti start`.
+3. `wait_for` timeout errors now list the elements of the selector's role (an ambiguous
+   substring match — e.g. `OpenAI` vs `OpenAI-compatible` — reads as a timeout without it).
+4. Known limit (D11 in [zcode-details.md](zcode-details.md)): synthetic `Scroll` events are
+   not accepted by GPUI's `list` hitbox, so wheel-scroll pinning cannot be driven yet.
+
 ## 8. Not covered
 
 * **Mouse drag** (splitter resize, browser page interaction, drag-and-drop) — `click` presses
