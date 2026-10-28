@@ -266,39 +266,33 @@ impl Node {
     }
 }
 
-/// A record collected during prepaint, before ids are assigned.
-struct Record {
+/// What one `request_layout` pass reports: the element exists and means `meta`.
+struct Seen {
     path: String,
     base: String,
     meta: Meta,
-    bounds: (f32, f32, f32, f32),
-    visible: bool,
     focused: bool,
 }
 
-impl Record {
-    fn to_node(&self, id: String) -> Node {
-        Node {
-            id,
-            path: self.path.clone(),
-            role: self.meta.role,
-            label: self.meta.label.clone(),
-            value: self.meta.value.clone(),
-            enabled: self.meta.enabled,
-            focused: self.focused,
-            checked: self.meta.checked,
-            selected: self.meta.selected,
-            visible: self.visible,
-            bounds: self.bounds,
-        }
-    }
+/// Geometry of the last prepaint of one element (GPUI reuses a cached view's prepaint while
+/// its bounds, content mask and text style stay the same, so this can be a frame or a
+/// hundred frames old — it is still the element's current geometry).
+#[derive(Clone, Copy)]
+struct Geometry {
+    bounds: (f32, f32, f32, f32),
+    visible: bool,
 }
 
 #[derive(Default)]
 struct Registry {
     main_window: Option<WindowId>,
-    collecting: Vec<Record>,
+    /// Elements whose `request_layout` ran in the frame being collected.
+    seen: Vec<Seen>,
+    /// Geometry from `prepaint`, by element path.
+    geometry: std::collections::HashMap<String, Geometry>,
+    /// The published snapshot and its geometry (carried forward for reused prepaints).
     current: Vec<Node>,
+    live: std::collections::HashMap<String, Geometry>,
     frame: u64,
 }
 
@@ -335,20 +329,50 @@ pub fn begin_frame(cx: &mut App) {
     let Ok(mut r) = REGISTRY.lock() else {
         return;
     };
-    let records = std::mem::take(&mut r.collecting);
-    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    let mut nodes = Vec::with_capacity(records.len());
-    for record in &records {
-        let n = seen.entry(record.base.as_str()).or_insert(0);
+    let seen = std::mem::take(&mut r.seen);
+    let geometry = std::mem::take(&mut r.geometry);
+    let previous = std::mem::take(&mut r.live);
+    let mut next_live = std::collections::HashMap::with_capacity(seen.len());
+    let mut nodes = Vec::with_capacity(seen.len());
+    let mut ids: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for entry in &seen {
+        if next_live.contains_key(&entry.path) {
+            continue;
+        }
+        // Fresh geometry when the element was prepainted this frame; otherwise the last
+        // prepaint still describes it (GPUI only reuses prepaint when the bounds match).
+        let geo = geometry
+            .get(&entry.path)
+            .copied()
+            .or_else(|| previous.get(&entry.path).copied())
+            .unwrap_or(Geometry {
+                bounds: (0.0, 0.0, 0.0, 0.0),
+                visible: false,
+            });
+        next_live.insert(entry.path.clone(), geo);
+        let n = ids.entry(entry.base.as_str()).or_insert(0);
         *n += 1;
         let id = if *n == 1 {
-            record.base.clone()
+            entry.base.clone()
         } else {
-            format!("{}#{}", record.base, *n)
+            format!("{}#{}", entry.base, *n)
         };
-        nodes.push(record.to_node(id));
+        nodes.push(Node {
+            id,
+            path: entry.path.clone(),
+            role: entry.meta.role,
+            label: entry.meta.label.clone(),
+            value: entry.meta.value.clone(),
+            enabled: entry.meta.enabled,
+            focused: entry.focused,
+            checked: entry.meta.checked,
+            selected: entry.meta.selected,
+            visible: geo.visible,
+            bounds: geo.bounds,
+        });
     }
     r.current = nodes;
+    r.live = next_live;
     r.frame = r.frame.wrapping_add(1);
 }
 
@@ -463,6 +487,9 @@ impl<E: Element> Element for Probe<E> {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
+        if enabled() {
+            record_seen(id, &self.meta, window);
+        }
         self.inner.request_layout(id, inspector_id, window, cx)
     }
 
@@ -479,7 +506,7 @@ impl<E: Element> Element for Probe<E> {
             .inner
             .prepaint(id, inspector_id, bounds, request_layout, window, cx);
         if enabled() {
-            record(id, bounds, &self.meta, window);
+            record_geometry(id, bounds, window);
         }
         state
     }
@@ -514,12 +541,58 @@ impl<E: Element> IntoElement for Probe<E> {
     }
 }
 
-/// Appends one record (the prepaint hook).
-fn record(id: Option<&GlobalElementId>, bounds: Bounds<Pixels>, meta: &Meta, window: &Window) {
-    // The focus state is read here, where the window is at hand.
+/// The element's path and its own id, from GPUI's global element id.
+fn path_and_base(id: Option<&GlobalElementId>) -> (String, String) {
+    match id {
+        Some(id) => {
+            let base = id
+                .last()
+                .map_or_else(|| "anon".to_owned(), ToString::to_string);
+            (id.to_string(), base)
+        }
+        None => ("anon".to_owned(), "anon".to_owned()),
+    }
+}
+
+/// Whether this element belongs to the window the driver speaks to (the mascot window is not).
+fn ours(window: &Window) -> bool {
+    REGISTRY.lock().is_ok_and(|r| {
+        r.main_window
+            .is_none_or(|w| w == window.window_handle().window_id())
+    })
+}
+
+/// `request_layout` hook: the element exists this frame, with this meaning
+/// (GPUI runs `request_layout` for cached views too, so this never goes stale).
+fn record_seen(id: Option<&GlobalElementId>, meta: &Meta, window: &Window) {
+    if !ours(window) {
+        return;
+    }
+    let (path, base) = path_and_base(id);
     let focused = meta.focus.as_ref().is_some_and(|f| f.is_focused(window));
     let mut meta = meta.clone();
-    let focus = meta.focus.take();
+    if let Some(focus) = meta.focus.take() {
+        super::state::stash_focus(&path, focus);
+    }
+    let Ok(mut r) = REGISTRY.lock() else {
+        return;
+    };
+    r.seen.push(Seen {
+        path,
+        base,
+        meta,
+        focused,
+    });
+}
+
+/// `prepaint` hook: where the element is. Skipped by GPUI when it reuses the prepaint of a
+/// cached view, in which case the previous geometry still applies (the cache key includes the
+/// bounds).
+fn record_geometry(id: Option<&GlobalElementId>, bounds: Bounds<Pixels>, window: &Window) {
+    if !ours(window) {
+        return;
+    }
+    let (path, _) = path_and_base(id);
     let left = f32::from(bounds.origin.x);
     let top = f32::from(bounds.origin.y);
     let width = f32::from(bounds.size.width);
@@ -531,32 +604,14 @@ fn record(id: Option<&GlobalElementId>, bounds: Bounds<Pixels>, meta: &Meta, win
         && top < f32::from(viewport.height)
         && left + width > 0.0
         && top + height > 0.0;
-    let (path, base) = match id {
-        Some(id) => {
-            let base = id
-                .last()
-                .map_or_else(|| "anon".to_owned(), ToString::to_string);
-            (id.to_string(), base)
-        }
-        None => ("anon".to_owned(), "anon".to_owned()),
-    };
     let Ok(mut r) = REGISTRY.lock() else {
         return;
     };
-    if r.main_window
-        .is_some_and(|w| w != window.window_handle().window_id())
-    {
-        return;
-    }
-    if let Some(focus) = focus {
-        super::state::stash_focus(&path, focus);
-    }
-    r.collecting.push(Record {
+    r.geometry.insert(
         path,
-        base,
-        meta,
-        bounds: (left, top, width, height),
-        visible,
-        focused,
-    });
+        Geometry {
+            bounds: (left, top, width, height),
+            visible,
+        },
+    );
 }

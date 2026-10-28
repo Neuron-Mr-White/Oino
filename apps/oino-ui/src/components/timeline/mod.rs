@@ -233,7 +233,6 @@ impl SessionPane {
         let cursor = self.timeline_kb && self.cursor == Some(ix);
         let text = row_text(rows.get(ix));
         div()
-            .id(ElementId::NamedInteger("row".into(), ix as u64))
             .w_full()
             .pl(pad)
             .pr(pad + px(shift))
@@ -241,6 +240,7 @@ impl SessionPane {
             .pb(px(bottom))
             .child(
                 div()
+                    .id(ElementId::NamedInteger("row".into(), ix as u64))
                     .w_full()
                     .max_w(px(size::READING))
                     .mx_auto()
