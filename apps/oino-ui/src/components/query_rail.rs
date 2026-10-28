@@ -55,6 +55,10 @@ impl SessionPane {
                     .cursor_pointer()
                     .tooltip(tip(text, None))
                     .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        // A jump is a locating scroll: it leaves tail following first, so the
+                        // next streamed patch cannot pull the view back (ZCode
+                        // `chat-scroll-bottom-pinning`).
+                        this.list.pause_following_tail();
                         this.list.scroll_to_reveal_item(ix);
                         cx.notify();
                     }))
@@ -154,6 +158,7 @@ impl SessionPane {
             }
         }
         if let Some(&first) = find.matches.first() {
+            self.list.pause_following_tail();
             self.list.scroll_to_reveal_item(first);
         }
         self.list.remeasure();
@@ -169,6 +174,7 @@ impl SessionPane {
                 .checked_add_signed(dir)
                 .map_or(n - 1, |c| c % n);
             let ix = find.matches[find.current];
+            self.list.pause_following_tail();
             self.list.scroll_to_reveal_item(ix);
             self.list.remeasure();
             cx.notify();

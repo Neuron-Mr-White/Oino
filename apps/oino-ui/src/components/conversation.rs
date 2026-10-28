@@ -7,9 +7,9 @@ use std::rc::Rc;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
-    canvas, div, list, px,
+    AnyElement, App, ClickEvent, Context, ElementId, FollowMode, InteractiveElement as _,
+    IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Window, canvas, div, list, px,
 };
 
 use crate::components::interaction::InteractionView;
@@ -555,7 +555,9 @@ impl SessionPane {
                 .cursor_pointer()
                 .tooltip(crate::components::tooltip::tip("Jump to latest", None))
                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                    this.list.scroll_to_end();
+                    // Back to the bottom re-engages tail following (ZCode
+                    // `chat-scroll-bottom-pinning`: DETACHED → FOLLOWING).
+                    this.list.set_follow_mode(FollowMode::Tail);
                     cx.notify();
                 }))
                 .child(icon(IconName::ArrowDown, size::ICON, t.fg()))

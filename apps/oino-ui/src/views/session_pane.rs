@@ -1285,7 +1285,7 @@ impl SessionPane {
         self.load_checkpoints(cx);
         cx.emit(PaneEvent::Changed);
         cx.emit(PaneEvent::Live(self.live()));
-        self.list.scroll_to_end();
+        self.list.set_follow_mode(FollowMode::Tail);
     }
 
     // ── composer ─────────────────────────────────────────────────────────────
@@ -1561,7 +1561,9 @@ impl SessionPane {
         // The attachments went with the prompt: the strip and the token payloads are done.
         self.images.clear();
         self.image_order.clear();
-        self.list.scroll_to_end();
+        // A sent prompt pins the transcript to the bottom again (ZCode
+        // `chat-scroll-bottom-pinning`: a new prompt re-engages FOLLOWING).
+        self.list.set_follow_mode(FollowMode::Tail);
         self.set_composer_text("", cx);
     }
 

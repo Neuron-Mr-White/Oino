@@ -111,6 +111,9 @@ impl SessionPane {
             }
         }
         if let Some(ix) = to {
+            // Keyboard navigation is a locating scroll (ZCode
+            // `chat-scroll-bottom-pinning`): it stops tail following.
+            self.list.pause_following_tail();
             self.list.scroll_to_reveal_item(ix);
         }
         cx.notify();
