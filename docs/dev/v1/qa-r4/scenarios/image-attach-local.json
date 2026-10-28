@@ -1,0 +1,86 @@
+{
+  "name": "image-attach-local",
+  "backend": "real",
+  "shots": "docs/dev/v1/qa-r4/shots",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/permission full",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Permission mode: full",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "What single color fills the attached image? Reply with one word."
+      }
+    },
+    {
+      "drop": {
+        "paths": [
+          "/home/oi/Projects/Personal/llm/oino/target/tmp/local-run/attach-red.png"
+        ]
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Image #1",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-attached"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "key": {
+        "key": "enter"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 300000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "red",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-answer"
+      }
+    }
+  ]
+}

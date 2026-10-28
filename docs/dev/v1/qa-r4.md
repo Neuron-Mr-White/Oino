@@ -21,10 +21,21 @@ Plan (owner task):
    new defects P0/P1/P2 with repro + file hints, soak/perf numbers; screenshots under
    `docs/dev/v1/qa-r4/`.
 
-## 0. Host availability
+## 0. Host availability — `ti` blocked, charter local fallback used
 
-- 2026-10-30: `ssh ti@ti` prints "Tailscale SSH requires an additional check"
-  (URL changes per attempt) — waiting for the owner to approve; retrying.
+- 2026-10-29 ~03:00–03:45: every `ssh ti@ti` (also key-auth to the tailnet IP, `tailscale
+  status` shows the node up) prints **"Tailscale SSH requires an additional check"** with a
+  fresh approval URL per attempt (surfaced to the owner twice; not approved in time).
+  Same block as the `[zcode-perf]` round (ti.md §6).
+- Per CHARTER.md ("GUI testing runs on `ti` (preferred) or headless on a private `Xvfb` —
+  on this PC only when `ti` is unreachable"), the round ran **locally**: one app instance at
+  a time on a private `Xvfb :95` + own dbus + lavapipe, `nice -n 10`, release build of HEAD
+  `27ac8fa` (= `a1d7063` + this round's QA-only commits), driven through the same automation
+  socket. Runner: `docs/dev/v1/qa-r4/local-suite.py` (mirrors `local-app.sh` + the suite
+  logic of `cargo xtask gui suite`, incl. per-scenario `settings`). No window ever opened on
+  the owner's display (`:0`); nothing was left running.
+- **Re-run on `ti` is still open** (§ Risks): the numbers below are the local-fallback
+  equivalents of the ti runs (same binary, same driver, same scenarios).
 
 ## 1. Verdict
 
