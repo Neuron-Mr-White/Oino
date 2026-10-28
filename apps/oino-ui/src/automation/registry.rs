@@ -319,13 +319,25 @@ pub fn set_main_window(window: WindowId) {
     }
 }
 
-/// Swaps in the previous frame's records and numbers their ids. Called from the root render
-/// (which also publishes the focus handles seen during the last prepaint).
+/// Start of the root render: publishes the focus handles seen during the last frame's
+/// `request_layout` pass (the snapshot itself is published by [`end_frame`]).
 pub fn begin_frame(cx: &mut App) {
     if !enabled() {
         return;
     }
     super::state::publish(cx);
+}
+
+/// End of a frame (a paint callback of the root view): numbers the ids of everything that
+/// `request_layout` reported this frame and publishes the snapshot `tree` answers from.
+///
+/// It must run after prepaint — painting starts only once every element is prepainted — and
+/// it must run on *every* frame, because a frame that changes the UI is often the last one
+/// before the app goes idle.
+pub fn end_frame() {
+    if !enabled() {
+        return;
+    }
     let Ok(mut r) = REGISTRY.lock() else {
         return;
     };
@@ -374,6 +386,26 @@ pub fn begin_frame(cx: &mut App) {
     r.current = nodes;
     r.live = next_live;
     r.frame = r.frame.wrapping_add(1);
+}
+
+/// A zero-size element for the root view's child list: its paint callback (after every
+/// prepaint of the frame) publishes the snapshot. Costs nothing while automation is off.
+#[must_use]
+pub fn end_marker() -> gpui_kit::AnyElement {
+    use gpui_kit::{ParentElement as _, Styled as _};
+
+    gpui_kit::div()
+        .absolute()
+        .size_0()
+        .child(gpui_kit::canvas(
+            |_, _, _| (),
+            |_, (), _, _| {
+                if enabled() {
+                    end_frame();
+                }
+            },
+        ))
+        .into_any_element()
 }
 
 /// The current element snapshot (the last completed frame).

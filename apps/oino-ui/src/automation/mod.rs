@@ -23,5 +23,5 @@ pub mod server;
 pub mod state;
 
 pub use driver::install;
-pub use registry::{Automatable, Meta, Node, Role, begin_frame, probe};
+pub use registry::{Automatable, Meta, Node, Role, begin_frame, end_frame, end_marker, probe};
 pub use state::State;

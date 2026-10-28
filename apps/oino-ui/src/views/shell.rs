@@ -1834,7 +1834,7 @@ impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _activity = crate::stability::activity("shell render");
         perf::begin(cx);
-        // Publishes the element registry of the frame that just finished (a no-op while
+        // Publishes the focus handles of the frame that just finished (no-op while
         // automation is off).
         crate::automation::begin_frame(cx);
         self.repair_focus(window, cx);
@@ -2110,6 +2110,8 @@ impl Render for AppShell {
             .child(toasts)
             .children(perf::overlay(cx))
             .child(perf::end_marker())
+            // Publishes the automation element tree once the frame is fully prepainted.
+            .child(crate::automation::end_marker())
     }
 }
 
