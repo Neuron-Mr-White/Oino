@@ -628,14 +628,20 @@ impl SessionPane {
     }
 
     /// Gives the expanded `StatusPanel` keyboard focus (⌘⇧S, design.md §4.19).
-    pub fn focus_status(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn focus_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.status_expanded = Some(true);
         // The expanded panel is not in the tree while it is collapsed, and a focus handle that
-        // is not rendered cannot take focus: focus it right after the next render.
-        self.status_focus_pending = true;
+        // is not laid out cannot take focus: focus it after this frame.
+        self.status_focus_pending = false;
         self.status_cursor = self
             .status_cursor
             .min(self.status.run.len().saturating_sub(1));
+        let handle = self.status_focus.clone();
+        cx.defer_in(window, move |this, window, cx| {
+            window.focus(&handle, cx);
+            this.status_focus_pending = false;
+            cx.notify();
+        });
         cx.notify();
     }
 

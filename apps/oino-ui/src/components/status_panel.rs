@@ -325,10 +325,10 @@ impl SessionPane {
                 .when_some(s.branch.clone(), |el, b| {
                     el.child(section(t, "Git", format!("{b} · {} changed", s.changed)))
                 })
-                .automation(crate::automation::Meta::labelled(
-                    crate::automation::Role::Row,
-                    "Status panel",
-                ))
+                .automation(
+                    crate::automation::Meta::labelled(crate::automation::Role::Row, "Status panel")
+                        .focus(self.status_focus.clone()),
+                )
                 .into_any_element(),
         )
     }
