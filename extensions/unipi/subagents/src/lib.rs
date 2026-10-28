@@ -754,8 +754,14 @@ impl Subagents {
             // AgentRow from these details while the run is live.
             let mut live = view::details(rec, None, Status::Running);
             live["startedAt"] = json!(rec.started_at);
-            cx.progress(&ToolResult::text(format!("Subagent \"{}\" working · {}", rec.title, record::plural(calls, "tool call")))
-                .with_details(live));
+            cx.progress(
+                &ToolResult::text(format!(
+                    "Subagent \"{}\" working · {}",
+                    rec.title,
+                    record::plural(calls, "tool call")
+                ))
+                .with_details(live),
+            );
             timers::sleep(Duration::from_millis(400)).await;
         };
         self.sessions.with(sid, |s| s.fg_waits.remove(&rec.id));
