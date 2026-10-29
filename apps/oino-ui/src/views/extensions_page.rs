@@ -261,85 +261,99 @@ impl AppShell {
         } else {
             format!("{} · {}", e.id, e.description)
         };
-        div()
-            .id(("ext-row", i))
-            .flex()
-            .items_center()
-            .gap(px(space::S3))
-            .min_h(px(size::ROW))
-            .py(px(space::S2))
-            .px(px(space::S3_5))
-            .hover(|s| s.bg(t.hover()))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .flex_shrink_0()
-                    .size(px(size::TILE_ROW))
-                    .rounded(px(radius::R_ROW))
-                    .bg(t.chip())
-                    .child(icon(glyph, size::ICON, t.fg_subtle())),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(space::HALF))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(space::S2))
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_role(t, TextRole::Prose)
-                                    .line_height(t.text(TextRole::Base).1)
-                                    .weight_medium()
-                                    .child(SharedString::from(name)),
-                            )
-                            .when(e.bundled, |el| {
-                                el.child(
+        // Registered for the driver (D-10): the row carries the extension id in its label,
+        // so `absent {label "unipi.footer"}` on this page fails on a real row, not just on
+        // a stray string elsewhere in the tree.
+        let probe = format!("ext-row-{}", e.id.replace(['.', '/', '-'], "-"));
+        let row_label = if e.name.is_empty() {
+            e.id.clone()
+        } else {
+            format!("{} {}", e.name, e.id)
+        };
+        crate::automation::registry::probe_named(
+            div()
+                .id(("ext-row", i))
+                .flex()
+                .items_center()
+                .gap(px(space::S3))
+                .min_h(px(size::ROW))
+                .py(px(space::S2))
+                .px(px(space::S3_5))
+                .hover(|s| s.bg(t.hover()))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .flex_shrink_0()
+                        .size(px(size::TILE_ROW))
+                        .rounded(px(radius::R_ROW))
+                        .bg(t.chip())
+                        .child(icon(glyph, size::ICON, t.fg_subtle())),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(space::HALF))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(space::S2))
+                                .child(
                                     div()
-                                        .text_role(t, TextRole::Xs)
-                                        .text_color(t.fg_subtlest())
-                                        .child("bundled"),
+                                        .truncate()
+                                        .text_role(t, TextRole::Prose)
+                                        .line_height(t.text(TextRole::Base).1)
+                                        .weight_medium()
+                                        .child(SharedString::from(name)),
                                 )
-                            }),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .mono_text(t, TextRole::Sm)
-                            .text_color(t.fg_subtlest())
-                            .child(SharedString::from(detail)),
-                    ),
-            )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .mono_text(t, TextRole::Sm)
-                    .text_color(t.fg_subtle())
-                    .child(SharedString::from(e.version.clone())),
-            )
-            .child(state)
-            .child(crate::components::controls::switch(
-                ("ext-toggle", i),
-                t,
-                enabled,
-                {
-                    let weak = cx.entity().downgrade();
-                    move |on, _, cx| {
-                        let id = id.clone();
-                        let _ = weak.update(cx, |this, cx| this.toggle_extension(&id, on, cx));
-                    }
-                },
-            ))
-            .child(more)
-            .into_any_element()
+                                .when(e.bundled, |el| {
+                                    el.child(
+                                        div()
+                                            .text_role(t, TextRole::Xs)
+                                            .text_color(t.fg_subtlest())
+                                            .child("bundled"),
+                                    )
+                                }),
+                        )
+                        .child(
+                            div()
+                                .truncate()
+                                .mono_text(t, TextRole::Sm)
+                                .text_color(t.fg_subtlest())
+                                .child(SharedString::from(detail)),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .mono_text(t, TextRole::Sm)
+                        .text_color(t.fg_subtle())
+                        .child(SharedString::from(e.version.clone())),
+                )
+                .child(state)
+                .child(crate::components::controls::switch(
+                    ("ext-toggle", i),
+                    t,
+                    enabled,
+                    {
+                        let weak = cx.entity().downgrade();
+                        move |on, _, cx| {
+                            let id = id.clone();
+                            let _ = weak.update(cx, |this, cx| this.toggle_extension(&id, on, cx));
+                        }
+                    },
+                ))
+                .child(more)
+                .into_any_element(),
+            crate::automation::Meta::labelled(crate::automation::Role::Row, row_label),
+            probe,
+        )
+        .into_any_element()
     }
 
     /// The extensions page.

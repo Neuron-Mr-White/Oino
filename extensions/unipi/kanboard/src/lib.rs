@@ -554,7 +554,8 @@ impl Kanboard {
 
     /// `/kanboard close` closes the board tab (nothing else runs anymore).
     fn close_board(&self, cx: &Ctx) {
-        self.sessions.with(cx.session_id(), |s| s.panel_open = false);
+        self.sessions
+            .with(cx.session_id(), |s| s.panel_open = false);
         ui::panel_close(panel::PANEL_ID);
     }
 
@@ -580,7 +581,7 @@ impl Kanboard {
                             .join(", ")
                     };
                     lines.push(format!(
-                        "project: {slug} · {} tasks ({summary})",
+                        "kanboard: project {slug} · {} tasks ({summary})",
                         tasks.len()
                     ));
                     if let Ok(v) = self.run(cx, &["list", "--all"], Some(&slug), true).await
@@ -612,7 +613,7 @@ impl Kanboard {
                         }
                     }
                 }
-                Err(_) => lines.push(format!("project: {slug} (unreadable board)")),
+                Err(_) => lines.push(format!("kanboard: project {slug} (unreadable board)")),
             },
             None => lines.push("project: not registered here — /kanboard onboard".into()),
         }
@@ -960,7 +961,8 @@ impl Kanboard {
             return;
         }
         if s(&ev.payload, "actionId") == "$close" {
-            self.sessions.with(cx.session_id(), |s| s.panel_open = false);
+            self.sessions
+                .with(cx.session_id(), |s| s.panel_open = false);
         }
     }
 

@@ -32,7 +32,6 @@ const PNG: &[u8] = &[
     0x42, 0x60, 0x82,
 ];
 
-
 #[test]
 fn cli_attach_stores_the_file_and_logs_a_comment_that_embeds_it() {
     let fixture = Fixture::new();
@@ -114,4 +113,3 @@ fn cli_attach_stores_the_file_and_logs_a_comment_that_embeds_it() {
         String::from_utf8_lossy(&validate.stdout)
     );
 }
-

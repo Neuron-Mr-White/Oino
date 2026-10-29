@@ -79,7 +79,10 @@ pub fn parse_request(value: &Value) -> Result<ExecRequest, Error> {
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);
-    let stdin = value.get("stdin").and_then(Value::as_str).map(str::to_owned);
+    let stdin = value
+        .get("stdin")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     Ok(ExecRequest {
         argv,
         env,
@@ -139,11 +142,7 @@ pub fn exec(request: &ExecRequest) -> Value {
     let exec = run::Exec {
         // The request's env comes on top of the host's, like `process.exec`
         // `env` did for the binary.
-        var: &|name| {
-            env.get(name)
-                .cloned()
-                .or_else(|| std::env::var(name).ok())
-        },
+        var: &|name| env.get(name).cloned().or_else(|| std::env::var(name).ok()),
         cwd: &cwd,
         stdin: request.stdin.as_deref().or(Some("")),
         // An in-process `start` without a pid claims for this process — the
@@ -325,9 +324,6 @@ mod tests {
         }));
         assert!(is_error(&payload));
         assert_eq!(payload["kind"], "not_found");
-        assert_eq!(
-            exec_json(&json!({"argv": ["frobnicate"]}))["kind"],
-            "usage"
-        );
+        assert_eq!(exec_json(&json!({"argv": ["frobnicate"]}))["kind"], "usage");
     }
 }

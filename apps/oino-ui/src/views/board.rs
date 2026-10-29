@@ -75,6 +75,15 @@ pub struct BoardUi {
     new_task: Option<(Entity<InputState>, Entity<InputState>)>,
 }
 
+impl BoardUi {
+    /// Whether the native New task dialog is open. The shell's focus safety net must not
+    /// run while it is: the dialog focuses its Title field before its first frame (D-1).
+    #[must_use]
+    pub(crate) const fn has_new_task(&self) -> bool {
+        self.new_task.is_some()
+    }
+}
+
 impl Workspace {
     fn board_pane(&self) -> Option<Entity<SessionPane>> {
         self.active_pane().cloned()

@@ -1,12 +1,7 @@
 {
   "name": "zcode",
-  "description": "The ZCode micro-behaviour round of docs/dev/v1/zcode-details.md, driven live through the automation tree: model-menu drill-down and switch toast, palette history chips, answer hover-bar copy feedback and time label, scroll pinning with the jump-to-latest pill, the sidebar session context menu (mark unread / copy path), the queue-recall draft guard and the alt-t thinking cycle.",
+  "description": "The ZCode micro-behaviour round of docs/dev/v1/zcode-details.md, driven live through the automation tree: palette history chips, answer hover-bar copy feedback and time label, the sidebar session context menu (mark unread / copy path), the queue-recall draft guard and the alt-t thinking cycle. (The model-menu drill-down scenario was replaced by r5-model-picker-modal in round 5, round5.md \u00a72 #1.)",
   "scenarios": [
-    {
-      "group": "composer",
-      "file": "docs/dev/v1/gui/scenarios/zcode-model-menu.json",
-      "covers": "model menu provider pin + drill-down submenu (All providers back row), model switch toast, chip read-back"
-    },
     {
       "group": "composer",
       "file": "docs/dev/v1/gui/scenarios/zcode-thinking-cycle.json",

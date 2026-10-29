@@ -53,7 +53,7 @@ use std::time::Duration;
 
 use oino_extension::command::CompletionItem;
 use oino_extension::prelude::*;
-use oino_extension::session::Provenance;
+use oino_extension::session::{CustomMessage, Delivery, Provenance, SendOptions};
 use unipi_kit::services::{CompactionContext, fanout as fan, point};
 use unipi_kit::settings::Store;
 use unipi_kit::topics;
@@ -143,6 +143,38 @@ fn text(t: impl Into<String>) -> ToolResult {
 
 fn err(t: impl Into<String>) -> ToolResult {
     ToolResult::error(t)
+}
+
+/// A mode-command status as a transcript row (unipi prints these in the chat; a long
+/// `notify` would open the blocking result-card modal and swallow the next typed
+/// command — D-2). Same shape as the utility package's `respond`.
+async fn respond(markdown: &str) {
+    let msg = CustomMessage {
+        custom_type: "unipi-response".into(),
+        content: json!(markdown),
+        display: true,
+        details: Some(json!({
+            "unipiHarness": {
+                "version": 1,
+                "id": format!("hm-{}", unipi_kit::fmt::random_hex(8)),
+                "source": "Long-horizon",
+                "title": "Response",
+                "synopsis": "Mode command response",
+                "delivery": "followUp"
+            }
+        })),
+    };
+    let options = SendOptions {
+        trigger_turn: false,
+        deliver_as: Some(Delivery::FollowUp),
+        provenance: Some(Provenance {
+            source: "Long-horizon".into(),
+            title: Some("Response".into()),
+            synopsis: Some("Mode command response".into()),
+            severity: None,
+        }),
+    };
+    let _ = session::send_message(&msg, options).await;
 }
 
 fn task_path(name: &str) -> String {
@@ -1883,7 +1915,10 @@ impl Lh {
                     s.default_mode.as_str()
                 )
             };
-            notify(&msg);
+            // D-2: a mode-command status is a chat row (unipi prints these in the
+            // transcript). A long `notify` would open the blocking result-card modal,
+            // which owns the keyboard and swallows the next typed command.
+            respond(&msg).await;
             if mode == Mode::Goal && s.goal_progress != "off" {
                 self.estimate().await;
             }

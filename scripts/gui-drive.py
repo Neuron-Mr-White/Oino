@@ -854,15 +854,16 @@ def ti_restart(
     subprocess.run(run, check=True)
 
 
-def wait_for_app(client: Client, timeout_s: float = 40.0) -> None:
+def wait_for_app(client: Client, timeout_s: float = 60.0) -> bool:
+    """Waits for the composer probe. False if it never appears (D-8 startup flake)."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         try:
             client.call("wait_for", {"id": "composer", "timeout_ms": 2000}, timeout=15)
-            return
+            return True
         except DriverError:
             time.sleep(0.5)
-    raise DriverError("the app did not come up with a composer")
+    return False
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────────────────────
@@ -980,7 +981,19 @@ def main(argv: list[str]) -> int:
     client = Client(host, path)
     try:
         if args.command == "run" and not args.no_restart:
-            wait_for_app(client)
+            if not wait_for_app(client):
+                # D-8 startup flake: occasionally the app's first frames never publish the
+                # pane probes (seen on approval-deny and twice by WP-composer); a clean
+                # restart has always recovered it. One retry, then fail.
+                print(
+                    "# no composer after 60 s — restarting the app once (D-8 flake)",
+                    flush=True,
+                )
+                ti_restart(path, scene, backend, scenario.env, scenario.settings)
+                if not wait_for_app(client):
+                    raise DriverError(
+                        "the app did not come up with a composer (after one restart)"
+                    )
         handlers = {
             "ping": cmd_ping,
             "state": cmd_state,

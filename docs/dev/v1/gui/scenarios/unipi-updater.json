@@ -74,13 +74,14 @@
     },
     {
       "wait_for": {
-        "id": "set-about",
+        "id": "settings-nav",
         "timeout_ms": 30000
       }
     },
     {
       "click": {
-        "id": "set-about"
+        "label": "About & updates",
+        "role": "row"
       }
     },
     {

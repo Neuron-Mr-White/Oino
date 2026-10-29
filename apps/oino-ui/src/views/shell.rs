@@ -1657,6 +1657,12 @@ impl AppShell {
         if self.palette.is_some() || self.switch.is_some() {
             return; // their input is in-tree and holds focus
         }
+        // Dialogs that focus a field of their own while open: the open handler runs before
+        // the first frame that contains the dialog, so the safety net would read the stale
+        // tree and steal that just-set focus (D-1). Every close path restores focus (QA-1).
+        if self.board_ui.has_new_task() || self.cron_ui.edit.is_some() || self.host_form.is_some() {
+            return;
+        }
         if self.focus.contains_focused(window, cx) {
             return;
         }

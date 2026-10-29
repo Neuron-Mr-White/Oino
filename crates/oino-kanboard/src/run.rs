@@ -467,7 +467,10 @@ fn resolve_actor_in(explicit: Option<&str>, exec: &Exec<'_>) -> Actor {
 /// The pid that owns a `start` claim: `--pid`, else `$OINO_KANBOARD_PID`
 /// (the pi extension exports its own pid), else `exec.owner_pid` — the
 /// caller's parent for the CLI, the host process for in-process calls.
-#[allow(clippy::unnecessary_wraps, reason = "kept uniform with older fallible shape")]
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "kept uniform with older fallible shape"
+)]
 fn owner_pid(explicit: Option<u32>, exec: &Exec<'_>) -> Result<u32> {
     if let Some(pid) = explicit.filter(|pid| *pid > 0) {
         return Ok(pid);
