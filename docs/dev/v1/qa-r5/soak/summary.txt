@@ -1,0 +1,7 @@
+backend=faux minutes=30 samples=365 steps=2560
+rss_mb start=11 end=588 max=748 slope_2nd_half_mb_per_min=2.08
+threads first_quarter_max=116 end=104
+fds first_quarter_max=399 end=399
+frame_ms run_max=86.7408218383789 run_p99=57.5
+crash_logs=0 stall_logs=0 exit=0
+RESULT: PASS

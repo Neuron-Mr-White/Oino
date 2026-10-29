@@ -1,0 +1,83 @@
+{
+ "name": "qa-r5-board-add-debug",
+ "scene": "board",
+ "shots": "docs/dev/v1/qa-r5/shots",
+ "steps": [
+  {
+   "kanboard_seed": {
+    "slug": "demo-board",
+    "next_id": 12
+   }
+  },
+  {
+   "wait_for": {
+    "id": "nav-board",
+    "timeout_ms": 40000
+   }
+  },
+  {
+   "click": {
+    "id": "nav-board"
+   }
+  },
+  {
+   "wait_for": {
+    "id": "board-fab",
+    "timeout_ms": 20000
+   }
+  },
+  {
+   "click": {
+    "id": "board-fab"
+   }
+  },
+  {
+   "wait_for": {
+    "id": "board-new-task-title-input",
+    "timeout_ms": 10000
+   }
+  },
+  {
+   "click": {
+    "id": "board-new-task-title-input"
+   }
+  },
+  {
+   "type_text": {
+    "text": "Typed title QA"
+   }
+  },
+  {
+   "wait_for": {
+    "text": "Typed title QA",
+    "timeout_ms": 3000
+   }
+  },
+  {
+   "screenshot": {
+    "name": "01-typed"
+   }
+  },
+  {
+   "key": {
+    "key": "enter"
+   }
+  },
+  {
+   "sleep": {
+    "ms": 1000
+   }
+  },
+  {
+   "wait_for": {
+    "text": "OIN-12",
+    "timeout_ms": 8000
+   }
+  },
+  {
+   "screenshot": {
+    "name": "02-added"
+   }
+  }
+ ]
+}

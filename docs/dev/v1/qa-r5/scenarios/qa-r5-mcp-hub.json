@@ -1,0 +1,58 @@
+{
+ "name": "qa-r5-mcp-hub",
+ "backend": "real",
+ "shots": "docs/dev/v1/qa-r5/shots",
+ "steps": [
+  {
+   "wait_for": {
+    "id": "composer",
+    "timeout_ms": 180000
+   }
+  },
+  {
+   "type_text": {
+    "text": "/mcp-status",
+    "submit": true
+   }
+  },
+  {
+   "wait_for": {
+    "text": "MCP",
+    "timeout_ms": 30000
+   }
+  },
+  {
+   "screenshot": {
+    "name": "01-mcp-status"
+   }
+  },
+  {
+   "click": {
+    "id": "nav-settings"
+   }
+  },
+  {
+   "wait_for": {
+    "id": "settings-nav",
+    "timeout_ms": 20000
+   }
+  },
+  {
+   "click": {
+    "label": "MCP",
+    "role": "row"
+   }
+  },
+  {
+   "wait_for": {
+    "text": "server",
+    "timeout_ms": 30000
+   }
+  },
+  {
+   "screenshot": {
+    "name": "02-mcp-settings"
+   }
+  }
+ ]
+}
