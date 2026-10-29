@@ -1,0 +1,25 @@
+{
+  "name": "r5-new-chat-page",
+  "scene": "welcome",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {"wait_for": {"id": "list-new", "timeout_ms": 60000}},
+    {"click": {"id": "list-new"}},
+    {"wait_state": {"route": "new-chat", "timeout_ms": 20000}},
+    {"wait_for": {"id": "brand-logo", "timeout_ms": 20000}},
+    {"wait_for": {"id": "new-chat-none", "timeout_ms": 20000}},
+    {"wait_for": {"id": "new-chat-folder", "timeout_ms": 20000}},
+    {"assert": {"text": "What should we work on?"}},
+    {"screenshot": {"name": "01-new-chat"}},
+    {"click": {"id": "new-chat-project-0"}},
+    {"wait_state": {"route": "sessions", "timeout_ms": 20000}},
+    {"assert": {"session_id": "", "panes": 1}},
+    {"screenshot": {"name": "02-project-picked"}},
+    {"click": {"id": "list-new"}},
+    {"wait_state": {"route": "new-chat", "timeout_ms": 20000}},
+    {"key": {"key": "escape"}},
+    {"wait_state": {"route": "sessions", "timeout_ms": 20000}},
+    {"screenshot": {"name": "03-esc-returns"}}
+  ]
+}

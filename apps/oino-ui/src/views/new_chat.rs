@@ -1,15 +1,15 @@
-//! The new-chat page (round5 #6, ZCode `ConversationDraftEmptyState`): a greeting with the
+//! The new-chat page (round5 #6, `ZCode` `ConversationDraftEmptyState`): a greeting with the
 //! Oino logo and a project picker — recent projects (`recent_cwds`), the "No project"
 //! bucket and "Choose folder…" over the native prompt. Every choice calls
 //! [`AppShell::open`] with `OpenRequest::New`, which reuses an existing empty session in
 //! that folder instead of stacking drafts (#4); the sidebar keeps the per-project `+`
-//! affordances (ZCode `PurposeSections`). Esc returns to the sessions.
+//! affordances (`ZCode` `PurposeSections`). Esc returns to the sessions.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, InteractiveElement as _, IntoElement,
-    KeyDownEvent, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Window, div, px,
+    AnyElement, ClickEvent, Context, InteractiveElement as _, IntoElement, KeyDownEvent,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+    px,
 };
 
 use crate::automation::Automatable as _;
@@ -33,7 +33,7 @@ pub(crate) struct ProjectChoice {
 
 /// The picker rows for `recents` (deduplicated, most recent first, capped).
 #[must_use]
-pub fn project_choices(recents: &[String], max: usize) -> Vec<ProjectChoice> {
+pub(crate) fn project_choices(recents: &[String], max: usize) -> Vec<ProjectChoice> {
     let mut out: Vec<ProjectChoice> = Vec::new();
     for cwd in recents {
         if cwd.is_empty() || out.iter().any(|c| c.cwd == *cwd) {
@@ -67,7 +67,7 @@ impl AppShell {
     #[allow(clippy::too_many_lines, reason = "the page layout")]
     pub(crate) fn render_new_chat(
         &mut self,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let t = OinoTheme::get(cx);
@@ -135,13 +135,13 @@ impl AppShell {
                 .hover(|s| s.bg(t.hover()))
                 .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                     let cwd = this.default_cwd();
-                    this.open(
-                        crate::host::OpenRequest::New { cwd },
-                        window,
-                        cx,
-                    );
+                    this.open(crate::host::OpenRequest::New { cwd }, window, cx);
                 }))
-                .child(icon(IconName::MessageSquareDashed, size::ICON, t.fg_subtle()))
+                .child(icon(
+                    IconName::MessageSquareDashed,
+                    size::ICON,
+                    t.fg_subtle(),
+                ))
                 .child(
                     div()
                         .flex()
@@ -163,9 +163,10 @@ impl AppShell {
                                 .child("Start in the default folder"),
                         ),
                 )
-                .automation(
-                    crate::automation::Meta::labelled(crate::automation::Role::Row, "No project"),
-                )
+                .automation(crate::automation::Meta::labelled(
+                    crate::automation::Role::Row,
+                    "No project",
+                ))
                 .into_any_element(),
         );
         rows.push(
@@ -266,21 +267,16 @@ impl AppShell {
                             .w_full(),
                     )
                     .child(
-                        div()
-                            .flex()
-                            .w_full()
-                            .justify_end()
-                            .pt(px(space::S2))
-                            .child(
-                                Btn::new("new-chat-back")
-                                    .label("Back to sessions")
-                                    .icon(IconName::ArrowLeft)
-                                    .variant(Variant::Secondary)
-                                    .size(BtnSize::Xl)
-                                    .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                                        this.run_app_action("sessions", window, cx);
-                                    })),
-                            ),
+                        div().flex().w_full().justify_end().pt(px(space::S2)).child(
+                            Btn::new("new-chat-back")
+                                .label("Back to sessions")
+                                .icon(IconName::ArrowLeft)
+                                .variant(Variant::Secondary)
+                                .size(BtnSize::Xl)
+                                .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                    this.run_app_action("sessions", window, cx);
+                                })),
+                        ),
                     )
                     .child(
                         div()

@@ -2112,10 +2112,9 @@ impl Render for AppShell {
             && match self.route {
                 Route::Sessions => !(self.detail_open && self.focused.is_some()),
                 Route::Settings => self.settings_view.is_none(),
-                Route::Extensions => false,
                 Route::Cron => self.cron_ui.edit.is_none(),
-                Route::NewChat => false,
-                Route::Board | Route::Onboarding => true,
+                Route::Extensions => false,
+                Route::NewChat | Route::Board | Route::Onboarding => true,
             };
         let columns = div()
             .absolute()

@@ -19,7 +19,7 @@ apps/oino-ui/src/automation/
   registry.rs   per-frame element registry + the `probe` element wrapper (`Role`, `Meta`, `Node`)
   protocol.rs   JSON-lines request/response types, selectors
   server.rs     Unix-socket server (plain thread) → UI thread channel
-  driver.rs     UI-thread request loop: tree/state/click/type/key/scroll/focus/wait_for/screenshot/quit
+  driver.rs     UI-thread request loop: tree/state/click/type/key/scroll/drag/focus/wait_for/screenshot/quit
   input.rs      platform events (MouseDown/Up/Move, Scroll, Keystroke) built for `dispatch_event`
   state.rs      screen/session/dialog snapshot + the focus handles seen during a frame
 scripts/gui-drive.py           client: commands, remote SSH pipe, scenario runner
@@ -88,6 +88,7 @@ handled.
 | `type_text` | `text`, `submit` | `{typed, chars, submit}` |
 | `key` | `key` (`enter`, `tab`, `secondary-k`, `shift-secondary-p`, …) | `{key, handled}` |
 | `scroll` | selector or `x`,`y`, `dy`, `dx` (lines) | `{at, dx, dy, id}` |
+| `drag` | source selector or `x`,`y`; target `to_id`/`to_label`/`to_role` or `to_x`,`to_y`; `steps` (default 12) | `{from, to, id, steps}`: MouseDown → `steps` MouseMove-with-pressed → MouseUp, one frame each; the `to_*` selector re-resolves before the drop (lanes re-layout mid-drag) |
 | `focus` | selector (inputs register a focus handle) | `{focused}` |
 | `wait_for` | selector and/or `text`, `absent`, `timeout_ms` | `{matched, ms, frame}` |
 | `screenshot` | `path` (on the app host) | `{path, width, height}` |
@@ -205,12 +206,13 @@ settings hub shows, `ask-user`, `dream`, `notify`).
 test PNG there when it is missing.
 
 Steps: any RPC method (`click`, `double_click`, `right_click`, `hover`, `type_text`, `key`,
-`scroll`, `focus`, `wait_for`, `tree`, `state`, `screenshot`, `settle`, `drop`,
+`scroll`, `drag`, `focus`, `wait_for`, `tree`, `state`, `screenshot`, `settle`, `drop`,
 `clipboard_image`, `ping`) plus `sleep`
 (`{"ms": 250}`), `assert` and `wait_state` (retries `assert` until it holds or `timeout_ms`
 expires), and `toggle` (clicks a switch and proves its `checked` state flipped, whatever the
 persisted value was). `assert`/`wait_state` accept `route`, `busy`, `dialogs` (count or method),
-`session_id`, `text` (substring of an element label/value), `any_text` (any of several needles
+`session_id`, `panes` (open/warm session count; round5 #4), `text` (substring of an element
+label/value), `any_text` (any of several needles
 — for features with two legitimate rendered states, e.g. the updater changelog body when the
 GitHub API quota is spent), `chrome`/`chrome_absent` (substring of any status, widget or frame
 segment text), `open` (substring of `state.open`), `element` (`{"id", "role", "label",
@@ -229,6 +231,11 @@ scenario's demo scene.
 | File | Covers |
 |---|---|
 | `new-session-prompt.json` | click the composer, type a prompt, Enter, the assistant plan streams |
+| `r5-no-dup-sessions.json` | round5 #4 — `+`/⌘N route to the new-chat page; two rapid `+` presses keep one pane; "No project" reuses the empty startup session (`panes == 1`); after the turn has content, `+` + "No project" spawns a genuinely new session (`panes == 2`) |
+| `r5-new-chat-page.json` | round5 #6 — the new-chat page: greeting + `brand-logo`, project picker rows from `recent_cwds`, "No project", "Choose folder…"; picking a project opens its session; Esc returns |
+| `r5-host-switcher.json` | round5 #12 — the sidebar chip reads exactly "Current PC" with no hosts; "Add host…" form (name + SSH target) persists into the menu; selecting a host toasts the honest `oino serve` scope; back to "Current PC" |
+| `r5-icons-automations.json` | round5 #5/#13 — the sidebar Automations row renders its `CalendarClock` icon (the `IconName`-vs-assets unit test is the assertion); nav → Automations page screenshots |
+| `r5-contrast-tokens.json` | round5 #25 — screenshots of sidebar, Settings and Board on the raised contrast floor (the AA-ratio unit test over the token table is the assertion) |
 | `r5-model-picker-modal.json` (real) | round5 #1 — the model-picker modal: ⌘M opens `model-picker`, search filters over name + full `provider/id`, pin → Pinned section after close+reopen, pick + Apply switches the model, Fusion tab picks any lead+sidekick and Apply auto-answers the `/fusion` dialogs → chip reads `Lead ◆ Sidekick`, Esc closes |
 | `r5-mode-switcher.json` | round5 #2 — the agent-mode switcher: five modes, Goal arms the chip without a command, Ctrl+Shift+M cycles, no `mode-chip`, no "unipi" text in the composer |
 | `r5-composer-context-ring.json` | round5 #3/#18 — the one-card composer: no project row, `context-ring` with its hover panel (sources, Compact), model + thought selects, Stop while busy |
@@ -409,8 +416,10 @@ Harness changes this round:
 
 ## 8. Not covered
 
-* **Mouse drag** (splitter resize, browser page interaction, drag-and-drop) — `click` presses
-  and releases; a drag needs `MouseMove` with `pressed_button` between down and up.
+* ~~Mouse drag~~ — `drag` covers it (round-5): MouseDown → MouseMove with `pressed_button`
+  → MouseUp, one frame per event so `on_drag`/`on_drag_move`/drop-line animations run.
+  What it does not cover is a drag that leaves the window (OS-level drag out); `drop`
+  covers the inbound direction.
 * **Touch** (`TouchEvent`) — the driver speaks mouse + keyboard; the mobile shell's gestures are
   not injectable yet.
 * **Multi-window**: the registry follows the main window only (the mascot window is ignored).

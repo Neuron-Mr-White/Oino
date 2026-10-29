@@ -68,7 +68,7 @@ pub fn clamp_code(size: f32) -> f32 {
     size.clamp(CODE_FONT_RANGE.0, CODE_FONT_RANGE.1)
 }
 
-/// ZCode's absolute text scale (round5 §1.1): px sizes that do not track `ui_font_size` —
+/// `ZCode`'s absolute text scale (round5 §1.1): px sizes that do not track `ui_font_size` —
 /// greeting heroes, page furniture. Where a role should follow the user's font setting,
 /// use [`TextRole`] instead.
 pub mod zcode {

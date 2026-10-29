@@ -2,7 +2,7 @@
 //! the active host — exactly "Current PC" when no hosts are configured — with a monitor
 //! icon and a chevron. Its menu lists the configured hosts (name + SSH target, checked
 //! when active) with "Current PC" always present and "Add host…" opening a small form.
-//! Modelled on ZCode's centralized identity; pages never pick hosts (the composer's
+//! Modelled on `ZCode`'s centralized identity; pages never pick hosts (the composer's
 //! project header is gone with #3, the board keeps its project chip).
 //!
 //! Remote selection is honest this round: `oino serve` does not exist yet (STATUS known
@@ -172,7 +172,9 @@ impl AppShell {
             .cursor_pointer()
             .text_role(t, TextRole::Base)
             .when(menu_open, |el| el.border_color(t.border_hover()))
-            .when(!menu_open, |el| el.hover(|s| s.border_color(t.border_hover())))
+            .when(!menu_open, |el| {
+                el.hover(|s| s.border_color(t.border_hover()))
+            })
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.host_menu = !this.host_menu;
                 cx.notify();

@@ -285,8 +285,7 @@ mod tests {
                 .load(&path)
                 .ok()
                 .flatten()
-                .map(|b| !b.is_empty())
-                .unwrap_or(false);
+                .is_some_and(|b| !b.is_empty());
             assert!(embedded, "{name} renders blank: {path} is not embedded");
         }
     }

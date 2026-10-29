@@ -221,6 +221,26 @@ def cmd_key(client: Client, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_drag(client: Client, args: argparse.Namespace) -> int:
+    params = selector(args)
+    if not params and not (args.x is not None and args.y is not None):
+        raise DriverError("drag needs a source: id, --label, --role or --x/--y")
+    to = {}
+    for key in ("to_id", "to_label", "to_role"):
+        value = getattr(args, key, None)
+        if value:
+            to[key] = value
+    if args.to_x is not None and args.to_y is not None:
+        to["to_x"] = args.to_x
+        to["to_y"] = args.to_y
+    if not to:
+        raise DriverError("drag needs a drop target: --to-id/--to-label/--to-role or --to-x/--to-y")
+    params.update(to)
+    params["steps"] = args.steps
+    print(json.dumps(client.call("drag", params, timeout=120)))
+    return 0
+
+
 def cmd_wait(client: Client, args: argparse.Namespace) -> int:
     params = selector(args)
     if args.text:
@@ -347,7 +367,7 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
         payload.setdefault("submit", False)
         result = client.call("type_text", payload, timeout=180)
         return f"{result.get('typed')} chars"
-    if method in ("key", "focus", "scroll", "settle", "ping"):
+    if method in ("key", "focus", "scroll", "settle", "ping", "drag"):
         return json.dumps(client.call(method, params))[:120]
     if method == "wait_for":
         payload = dict(params)
@@ -508,6 +528,13 @@ def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> 
         checked.append(f"session_id={state.get('session_id')}")
         if not state.get("session_id"):
             problems.append("no session is open")
+    if "panes" in params:
+        # Open (warm) session count; round5 #4 (no duplicate `+` sessions) asserts on it.
+        want = params["panes"]
+        have = state.get("panes")
+        checked.append(f"panes={have}")
+        if have != want:
+            problems.append(f"{have} open panes, expected {want}")
     if "chrome" in params:
         # Extension chrome: statuses, above/below-composer widgets and frame segments.
         chrome = state.get("chrome") or {}
@@ -752,6 +779,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     key = sub.add_parser("key")
     key.add_argument("spec")
+
+    drag_cmd = sub.add_parser("drag", help="press on an element and drag it to a target")
+    drag_cmd.add_argument("id", nargs="?", help="source element")
+    drag_cmd.add_argument("--label")
+    drag_cmd.add_argument("--role")
+    drag_cmd.add_argument("--x", type=float)
+    drag_cmd.add_argument("--y", type=float)
+    drag_cmd.add_argument("--to-id", dest="to_id")
+    drag_cmd.add_argument("--to-label", dest="to_label")
+    drag_cmd.add_argument("--to-role", dest="to_role")
+    drag_cmd.add_argument("--to-x", dest="to_x", type=float)
+    drag_cmd.add_argument("--to-y", dest="to_y", type=float)
+    drag_cmd.add_argument("--steps", type=int, default=12)
 
     wait = sub.add_parser("wait")
     wait.add_argument("id", nargs="?")

@@ -164,8 +164,9 @@ pub const LIGHT: Palette = Palette {
     resize_handle: 0x2A1F_1A33,
     fg: 0x1C19_17FF,
     fg_subtle: 0x5E55_4DFF,
-    // round5 #25: AA 4.5:1 on `window` and `card` (4.59 / 4.83; was `#8A8078` at 3.61 / 3.80).
-    fg_subtlest: 0x7670_66FF,
+    // round5 #25: AA 4.5:1 on `window`, `card` and the sidebar (5.16 / 5.43 / 4.85; was
+    // `#8A8078` at 3.61 / 3.80 / 3.40).
+    fg_subtlest: 0x6E68_60FF,
     fg_inverse: 0xFFFF_FFFF,
     primary: 0xF030_18FF,
     primary_hover: 0xF018_18FF,
@@ -826,17 +827,17 @@ pub mod breakpoint {
     pub const NARROW: f32 = 720.0;
 }
 
-/// Motion durations in milliseconds (design.md §2.10, round5 §1.1 ZCode motion).
+/// Motion durations in milliseconds (design.md §2.10, round5 §1.1 `ZCode` motion).
 pub mod motion {
-    /// Hover / press feedback (ZCode `fast`).
+    /// Hover / press feedback (`ZCode` `fast`).
     pub const FAST_MS: u64 = 120;
-    /// Menu / popover / dialog enter (ZCode `base`).
+    /// Menu / popover / dialog enter (`ZCode` `base`).
     pub const NORMAL_MS: u64 = 180;
-    /// ZCode `base` (160) — the standard transition duration.
+    /// `ZCode` `base` (160) — the standard transition duration.
     pub const BASE_MS: u64 = 160;
-    /// ZCode `enter` (200) — overlay enter.
+    /// `ZCode` `enter` (200) — overlay enter.
     pub const ENTER_MS: u64 = 200;
-    /// ZCode `ink` (320) — long, calm transitions (marks, highlights).
+    /// `ZCode` `ink` (320) — long, calm transitions (marks, highlights).
     pub const INK_MS: u64 = 320;
     /// Sheet enter, status panel expand.
     pub const SLOW_MS: u64 = 280;
@@ -860,7 +861,7 @@ pub mod motion {
     pub const EXIT_MS: u64 = 120;
 }
 
-/// The ZCode standard ease (round5 §1.1): `cubic-bezier(0.22, 0.61, 0.36, 1)` as
+/// The `ZCode` standard ease (round5 §1.1): `cubic-bezier(0.22, 0.61, 0.36, 1)` as
 /// `(x1, y1, x2, y2)` control points. Pure data so this module stays toolkit-free;
 /// build the curve with `gpui_kit::base::animation::cubic_bezier(*EASE.0 …)`.
 /// Every animated block honours `reduce_motion` (design.md §2.10).
