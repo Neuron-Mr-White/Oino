@@ -38,7 +38,7 @@
     "@tauri-apps/plugin-haptics": "~2.4.0",
     "@tauri-apps/plugin-os": "~2.4.0",
     "@tauri-apps/plugin-store": "latest",
-    "@unipi/protocol": "*",
+    "@unipi/protocol": "file:./packages/protocol",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode11": "^0.9.0",
     "@xterm/addon-web-links": "^0.12.0",

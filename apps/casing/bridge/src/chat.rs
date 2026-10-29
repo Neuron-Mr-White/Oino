@@ -108,6 +108,7 @@ impl Chats {
                     }],
                 }],
             },
+            "tmux": {"available": false, "reason": "no tmux on the oino casing bridge"},
             "protected": [],
         })
     }
@@ -118,6 +119,7 @@ impl Chats {
         bin: &Path,
         agent_dir: &Path,
         model: Option<&str>,
+        faux: bool,
         _session: String,
         cwd: &str,
     ) -> std::io::Result<ChatNewData> {
@@ -125,7 +127,7 @@ impl Chats {
         if !dir.is_dir() {
             return Err(std::io::Error::other(format!("{cwd} is not a folder")));
         }
-        let rpc = RpcChild::spawn(bin, agent_dir, model, dir)?;
+        let rpc = RpcChild::spawn(bin, agent_dir, model, faux, dir)?;
         let pid = rpc.pid;
         // Readiness: get_state must answer.
         let state = tokio::time::timeout(std::time::Duration::from_secs(20), rpc.request(json!({"type": "get_state"})))
@@ -178,8 +180,10 @@ impl Chats {
                 .await
                 .map_err(internal)?;
         }
+        eprintln!("casing-bridge: chat_open {pid}: ok sent, refreshing hello");
         // Fresh hello on every (re)connect.
         let hello = refresh_hello(&chat).await;
+        eprintln!("casing-bridge: chat_open {pid}: hello refreshed");
         {
             let mut guard = write.lock().await;
             send_line(&mut *guard, &hello_line(&chat, &hello))
@@ -212,22 +216,20 @@ impl Chats {
         });
         // In: phone → pi lines.
         loop {
-            let frame = tokio::select! {
-                frame = read_frame(&mut read) => frame,
-                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
-                    if *chat.gone.lock().unwrap() {
-                        break;
-                    }
-                    continue;
-                }
-            };
+            let frame = read_frame(&mut read).await;
             let Ok(Some((kind, bytes))) = frame else { break };
             if kind != 0 {
                 continue;
             }
-            let Ok(Control::Chat { line }) = serde_json::from_slice::<Control>(&bytes) else {
+            let Ok(control) = serde_json::from_slice::<Control>(&bytes) else {
+                eprintln!("casing-bridge: chat_open {pid}: bad control frame");
                 continue;
             };
+            let Control::Chat { line } = control else {
+                eprintln!("casing-bridge: chat_open {pid}: non-chat control {control:?}");
+                continue;
+            };
+            eprintln!("casing-bridge: chat_open {pid}: inbound line");
             if let Some(reply) = handle_phone_line(&chat, &line).await {
                 let mut guard = write.lock().await;
                 let _ = send_line(&mut *guard, &reply).await;
@@ -548,6 +550,7 @@ async fn handle_phone_line(chat: &Arc<Chat>, line: &str) -> Option<String> {
     };
     let t = msg["t"].as_str().unwrap_or("").to_owned();
     let r#ref = msg["ref"].as_str().map(str::to_owned);
+    eprintln!("casing-bridge: phone line t={t} ref={:?}", r#ref);
     let ack = |r: &Option<String>| json!({"t": "ack", "ref": r}).to_string();
     let error_reply = |message: String, r: &Option<String>| json!({"t": "error", "message": message, "ref": r}).to_string();
     match t.as_str() {
@@ -569,7 +572,10 @@ async fn handle_phone_line(chat: &Arc<Chat>, line: &str) -> Option<String> {
                 }
             };
             let request = json!({"type": command_type, "message": text});
-            match chat.rpc.request(request).await {
+            eprintln!("casing-bridge: sending rpc {command_type}");
+            let result = chat.rpc.request(request).await;
+            eprintln!("casing-bridge: rpc {command_type} -> {:?}", result.as_ref().map(|v| v.to_string()).map_err(|e| e.to_string()));
+            match result {
                 Ok(_) => {
                     if let Some(r) = &r#ref {
                         chat.broadcast(&json!({"t": "ack", "ref": r}));

@@ -143,4 +143,5 @@ if (root) {
   watchDesktopUpdates();
   render(() => <Root />, root);
   void dismissSplashWhenReady();
+  import('./lib/spikeDebug').then((m) => m.startSpikeDebug()).catch(() => {});
 }

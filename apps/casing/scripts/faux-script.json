@@ -1,0 +1,4 @@
+[
+  {"thinking": "The user asked me to prove the spike end to end. Let me run one quick command first.", "text": "Sure — one quick check first.", "toolCalls": [{"id": "c1", "name": "bash", "arguments": {"command": "echo casing-spike-ok"}}]},
+  {"text": "Done! The oino casing spike works: this reply streamed from the faux provider through the bridge into the chat UI. Anything else?"}
+]

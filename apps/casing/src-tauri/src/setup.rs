@@ -1075,12 +1075,19 @@ fn now_unix() -> u64 {
 // ---------------------------------------------------------------- commands
 
 /// `setup_detect`: the report, plus where it was recorded.
+///
+/// OINO SPIKE: always a ready, empty report — the casing talks to the oino
+/// bridge, not a self-installed unipi stack, so the "Set up this PC"
+/// takeover must never appear.
 #[tauri::command]
 pub async fn setup_detect() -> Result<SetupReport, AppErrorDto> {
-    let home = crate::host_supervisor::home_dir();
-    let report = detect_here(&home).await;
-    let _ = report.clone();
-    Ok(report)
+    Ok(SetupReport {
+        components: vec![],
+        path: PathReport { value: String::new(), from_shell: vec![], local_bin_on_login_path: false, probed: true },
+        ready: true,
+        update_available: false,
+        at: now_unix(),
+    })
 }
 
 #[cfg(test)]

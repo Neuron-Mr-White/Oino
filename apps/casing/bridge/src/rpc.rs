@@ -36,11 +36,18 @@ pub struct RpcChild {
 }
 
 impl RpcChild {
-    /// Spawns `<bin> --mode rpc [--model provider/model] --agent-dir <dir>` in `cwd`.
-    pub fn spawn(bin: &Path, agent_dir: &Path, model: Option<&str>, cwd: &Path) -> std::io::Result<Arc<Self>> {
+    /// Spawns `<bin> --mode rpc [-e builtin:faux] [--model provider/model] --agent-dir <dir>` in `cwd`.
+    pub fn spawn(bin: &Path, agent_dir: &Path, model: Option<&str>, faux: bool, cwd: &Path) -> std::io::Result<Arc<Self>> {
         let mut cmd = Command::new(bin);
-        cmd.args(["--mode", "rpc", "--agent-dir", &agent_dir.display().to_string()])
-            .current_dir(cwd)
+        cmd.args(["--mode", "rpc", "--agent-dir", &agent_dir.display().to_string()]);
+        if faux {
+            cmd.args(["-e", "builtin:faux"]);
+            cmd.env("OINO_FAUX_API_KEY", "casing-spike");
+            if let Ok(script) = std::env::var("OINO_CASING_FAUX_SCRIPT") {
+                cmd.env("OINO_FAUX_SCRIPT", script);
+            }
+        }
+        cmd.current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

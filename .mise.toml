@@ -118,3 +118,15 @@ run = [
   "cargo test --workspace",
   "cargo doc --workspace --no-deps",
 ]
+
+[tasks.casing]
+description = "Casing spike: the unipi app casing on the oino loop (chat only; args: --faux, --model P/M)"
+run = "scripts/casing.sh run"
+
+[tasks."casing:start"]
+description = "Start the casing spike in the background (bridge + vite + app)"
+run = "scripts/casing.sh start"
+
+[tasks."casing:stop"]
+description = "Stop everything scripts/casing.sh started"
+run = "scripts/casing.sh stop"

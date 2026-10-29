@@ -37,6 +37,8 @@ pub struct Bridge {
     pub agent_dir: PathBuf,
     /// Default model (`provider/model`), optional.
     pub model: Option<String>,
+    /// `-e builtin:faux` demo mode (scripted provider, no network).
+    pub faux: bool,
     pub chats: Chats,
 }
 
@@ -58,7 +60,11 @@ async fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| find_oino());
     let agent_dir = dir.join("agent");
-    let model = std::env::var("OINO_CASING_MODEL").ok().filter(|m| !m.is_empty());
+    let faux = std::env::var("OINO_CASING_FAUX").is_ok_and(|v| v == "1");
+    let model = std::env::var("OINO_CASING_MODEL")
+        .ok()
+        .filter(|m| !m.is_empty())
+        .or_else(|| faux.then(|| "faux/faux-1".to_owned()));
 
     if let Err(e) = std::fs::create_dir_all(&dir) {
         eprintln!("casing-bridge: cannot create {}: {e}", dir.display());
@@ -85,8 +91,21 @@ async fn main() {
     }
 
     // endpoint.json: a real (never-dialed) iroh ticket so the app's
-    // "This computer" detection + ticket parsing succeed offline.
-    let secret = iroh::SecretKey::generate();
+    // "This computer" detection + ticket parsing succeed offline. The key is
+    // persisted so the host id survives bridge restarts.
+    let identity = dir.join("identity.key");
+    let secret = match std::fs::read(&identity) {
+        Ok(bytes) if bytes.len() == 32 => {
+            let mut array = [0u8; 32];
+            array.copy_from_slice(&bytes);
+            iroh::SecretKey::from_bytes(&array)
+        }
+        _ => {
+            let secret = iroh::SecretKey::generate();
+            let _ = std::fs::write(&identity, secret.to_bytes());
+            secret
+        }
+    };
     let addr = iroh::EndpointAddr::new(secret.public());
     let ticket = iroh_tickets::endpoint::EndpointTicket::new(addr.clone()).to_string();
     let cache = json!({"addr": {"id": addr.id.to_string(), "addrs": []}, "ticket": ticket});
@@ -100,6 +119,7 @@ async fn main() {
         oino_bin,
         agent_dir,
         model,
+        faux,
         chats: Chats::default(),
     });
 
@@ -256,7 +276,7 @@ async fn handle_op<R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin + Send + 's
                 .unwrap_or_else(|| ".".into());
             let data = bridge
                 .chats
-                .new_chat(&bridge.oino_bin, &bridge.agent_dir, bridge.model.as_deref(), target.session().to_owned(), &cwd)
+                .new_chat(&bridge.oino_bin, &bridge.agent_dir, bridge.model.as_deref(), bridge.faux, target.session().to_owned(), &cwd)
                 .await
                 .map_err(internal)?;
             write_control_locked(&write, &Control::Ok { data: Some(serde_json::to_value(data).unwrap_or(Value::Null)) })
@@ -273,7 +293,9 @@ async fn handle_op<R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin + Send + 's
                 .map_err(internal)?;
         }
         Request::ChatConfig | Request::ChatConfigSet { .. } => {
-            let data = json!({"launcher": "oino", "default": true, "herdr": false, "tmux": false});
+            // herdr:true — the bridge fakes one herdr session ("oino") so the
+            // New chat sheet offers its "new workspace" targets.
+            let data = json!({"launcher": "oino", "default": true, "herdr": true, "tmux": false});
             write_control_locked(&write, &Control::Ok { data: Some(data) })
                 .await
                 .map_err(internal)?;
@@ -297,7 +319,14 @@ async fn handle_op<R: AsyncReadExt + Unpin, W: AsyncWriteExt + Unpin + Send + 's
                 .await
                 .map_err(internal)?;
         }
-        Request::List { .. } | Request::Tree | Request::Shortcuts => {
+        Request::Tree => {
+            // The same fake herdr tree as chat_list ("oino"), as raw TreeData.
+            let data = bridge.chats.list();
+            write_control_locked(&write, &Control::Ok { data: Some(data) })
+                .await
+                .map_err(internal)?;
+        }
+        Request::List { .. } | Request::Shortcuts => {
             // No mux: the app's Terminal screen shows nothing.
             write_control_locked(&write, &Control::Ok { data: Some(json!({"mux": "none"})) })
                 .await
