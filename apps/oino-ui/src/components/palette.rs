@@ -374,6 +374,8 @@ impl Render for PaletteView {
             .pt(gpui_kit::relative(size::PALETTE_TOP_FRACTION))
             .bg(t.scrim())
             .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(PaletteEvent::Dismiss)))
+            // #23: wheel over the scrim must not scroll the surface underneath.
+            .on_scroll(|_: &gpui_kit::ScrollEvent, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .id("palette")
@@ -393,6 +395,10 @@ impl Render for PaletteView {
                     .text_color(t.fg())
                     .font_family(t.ui_font())
                     .on_click(|_: &ClickEvent, _, cx| cx.stop_propagation())
+                    // #23: the palette's wheel events stop at the sheet.
+                    .on_scroll(|_: &gpui_kit::ScrollEvent, _, cx| {
+                        cx.stop_propagation();
+                    })
                     .capture_key_down(cx.listener(Self::on_key))
                     .child(
                         div()

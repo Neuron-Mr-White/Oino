@@ -39,6 +39,25 @@ use crate::views::session_pane::{BottomTab, PaneEvent, SessionPane, SideTab};
 /// Lines shown by the read-only code viewer.
 const VIEW_LINES: usize = 2000;
 
+/// Per-pane state of the native board tab (`SideTab::Panel(BOARD_PANEL)`;
+/// round-5 #7 — the board is in-process, the id is the extension's for
+/// compat).
+#[derive(Clone, Debug, Default)]
+pub struct BoardTab {
+    /// Selected task (its detail shows inline).
+    pub selected: Option<String>,
+    /// Active lane pill.
+    pub lane: usize,
+    /// The board project slug resolved for `slug_cwd`.
+    pub slug: Option<String>,
+    /// The cwd `slug` was resolved from.
+    pub slug_cwd: Option<String>,
+    /// Status id of the card being dragged (#8).
+    pub drag_status: Option<String>,
+    /// Lane id under the pointer during a drag.
+    pub hover: Option<String>,
+}
+
 /// The Files tab: a lazily expanded read-only tree of the session cwd.
 #[derive(Debug, Default)]
 pub struct FileTree {
@@ -841,6 +860,12 @@ impl SessionPane {
                 "Tree".into(),
                 Launch::Side(SideTab::Tree),
             ),
+            // The native board tab (round-5 #7): always offered, extension-free.
+            (
+                IconName::Kanban,
+                "Board".into(),
+                Launch::Side(SideTab::Panel(kanban::BOARD_PANEL.to_owned())),
+            ),
         ];
         if crate::platform::BrowserSupport::get(cx) {
             items.push((
@@ -963,6 +988,12 @@ impl SessionPane {
                 None => "Subagent".to_owned(),
             },
             SideTab::Tree => "Session tree".to_owned(),
+            SideTab::Panel(id) if id == kanban::BOARD_PANEL => self
+                .side
+                .board
+                .slug
+                .clone()
+                .unwrap_or_else(|| self.model.cwd.clone()),
             SideTab::Panel(id) => id.split('/').next().unwrap_or(id).to_owned(),
             SideTab::Diff { title, .. } => split_path(title).1,
             SideTab::Output { .. } => "Tool output".to_owned(),
@@ -1059,6 +1090,12 @@ impl SessionPane {
     /// Closes side tab `i` (panels send `$close`, the browser view is released).
     fn close_side_tab(&mut self, i: usize, cx: &mut Context<Self>) {
         match self.side.tabs.get(i).cloned() {
+            // The native board tab has no extension to `$close`.
+            Some(SideTab::Panel(id))
+                if id == kanban::BOARD_PANEL && self.model.ui.panel(&id).is_none() =>
+            {
+                self.side.close_at(i);
+            }
             Some(SideTab::Panel(id)) => self.close_panel(&id, cx),
             #[cfg(feature = "browser")]
             Some(SideTab::Browser) => {
@@ -1113,12 +1150,17 @@ impl SessionPane {
             .iter()
             .map(|tab| {
                 let title = match tab {
-                    SideTab::Panel(id) => self
-                        .model
-                        .ui
-                        .panel(id)
-                        .map(|p| p.title.clone())
-                        .unwrap_or_default(),
+                    SideTab::Panel(id) => {
+                        if id.as_str() == kanban::BOARD_PANEL {
+                            "Board".to_owned()
+                        } else {
+                            self.model
+                                .ui
+                                .panel(id)
+                                .map(|p| p.title.clone())
+                                .unwrap_or_default()
+                        }
+                    }
                     SideTab::Browser => self.browser_title(cx),
                     _ => String::new(),
                 };
@@ -1187,10 +1229,11 @@ impl SessionPane {
     #[allow(clippy::too_many_lines, reason = "one arm per tab kind")]
     pub fn render_side(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let t = OinoTheme::get(cx);
-        // Panels closed by their extension drop their tabs.
+        // Panels closed by their extension drop their tabs. The board tab is
+        // native (round-5 #7): it stays without a marker panel.
         let ui = &self.model.ui;
         self.side.tabs.retain(|tab| match tab {
-            SideTab::Panel(id) => ui.panel(id).is_some(),
+            SideTab::Panel(id) => id.as_str() == kanban::BOARD_PANEL || ui.panel(id).is_some(),
             _ => true,
         });
         if self.side.active >= self.side.tabs.len() {
@@ -1846,7 +1889,9 @@ impl SessionPane {
         )
     }
 
-    /// A panel's body (kanboard boards render natively).
+    /// A panel's body. `unipi.kanboard/board` is the native board tab
+    /// (round-5 #7) — data comes from the [`crate::kanboard`] service, the
+    /// extension's marker panel only opens the tab.
     pub(crate) fn render_panel_body(
         &mut self,
         id: &str,
@@ -1854,6 +1899,9 @@ impl SessionPane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if id == kanban::BOARD_PANEL {
+            return self.render_side_board(window, cx);
+        }
         let t = OinoTheme::get(cx);
         let Some(panel) = self.model.ui.panel(id).cloned() else {
             return div().into_any_element();
@@ -1866,16 +1914,152 @@ impl SessionPane {
             cols: crate::components::ous_cols(self.width),
             roomy,
         };
-        if panel.id == kanban::BOARD_PANEL
-            && let Some(board) = kanban::recognise(&panel.spec)
-        {
-            let opts = ous::kanban::BoardOptions {
-                inline_detail: true,
-                ..Default::default()
-            };
-            return ous::kanban::board(&mut o, &board, &opts, id, window, cx);
-        }
         ous::render(&panel.spec, id, &mut o, window, cx)
+    }
+
+    /// The native board tab (#10 phone layout): lane pills, the active lane's
+    /// cards, the selected task's detail inline — all in-process.
+    fn render_side_board(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let t = OinoTheme::get(cx);
+        let Some(service) = crate::kanboard::kanboard(cx) else {
+            return empty_state(
+                &t,
+                IconName::Kanban,
+                "Board is off",
+                Some("The board state directory cannot be resolved.".into()),
+                Vec::new(),
+            )
+            .into_any_element();
+        };
+        let cwd = self.model.cwd.clone();
+        // A miss retries each render — a project can be registered (or seeded)
+        // after the tab first drew.
+        if self.side.board.slug.is_none()
+            || self.side.board.slug_cwd.as_deref() != Some(cwd.as_str())
+        {
+            self.side.board.slug_cwd = Some(cwd.clone());
+            self.side.board.slug = service
+                .project_for_cwd(Path::new(&cwd))
+                .ok()
+                .map(|p| p.slug);
+            if self.side.board.slug.is_some() {
+                self.side.board.selected = None;
+            }
+        }
+        let Some(slug) = self.side.board.slug.clone() else {
+            return empty_state(
+                &t,
+                IconName::Kanban,
+                "No board here",
+                Some("This workspace is not a board project.".into()),
+                Vec::new(),
+            )
+            .into_any_element();
+        };
+        let board = service.board(
+            &slug,
+            self.side.board.selected.as_deref(),
+            Some(&self.model.id),
+        );
+        let board = match board {
+            Ok(board) => board,
+            Err(e) => {
+                return empty_state(
+                    &t,
+                    IconName::Kanban,
+                    "The board could not be read",
+                    Some(e.to_string().into()),
+                    Vec::new(),
+                )
+                .into_any_element();
+            }
+        };
+        let e = cx.entity().downgrade();
+        let on_lane: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(move |i, _, cx| {
+            let _ = e.update(cx, |p, cx| {
+                p.side.board.lane = i;
+                cx.notify();
+            });
+        });
+        let e = cx.entity().downgrade();
+        let on_action: ous::ActionFn = Rc::new(move |action, value, cx| {
+            let action = action.to_owned();
+            let value = value.clone();
+            let _ = e.update(cx, |p, cx| p.side_board_action(&action, value, cx));
+        });
+        let mut o = Ous {
+            t,
+            on_action,
+            inputs: Some(&mut self.inputs),
+            cols: crate::components::ous_cols(self.width),
+            roomy: true,
+        };
+        // #8: stale drag state clears once the pointer is released (no drag
+        // lives across a render without `active_drag`).
+        if !cx.has_active_drag() {
+            self.side.board.drag_status = None;
+            self.side.board.hover = None;
+        }
+        ous::kanban::phone_board(
+            &mut o,
+            &board,
+            self.side.board.lane,
+            kanban::BOARD_PANEL,
+            on_lane,
+            self.side.board.drag_status.as_deref(),
+            self.side.board.hover.as_deref(),
+            window,
+            cx,
+        )
+    }
+
+    /// `select` picks a card (its detail shows inline); `move:<x>` moves the
+    /// selected task in-process; errors land as pane notices.
+    fn side_board_action(&mut self, action: &str, value: JsonValue, cx: &mut Context<Self>) {
+        if action == "select" {
+            self.side.board.selected = value.as_str().map(str::to_owned);
+            cx.notify();
+            return;
+        }
+        if let Some(status) = action.strip_prefix("drag-start:") {
+            self.side.board.drag_status = Some(status.to_owned());
+            cx.notify();
+            return;
+        }
+        if let Some(lane) = action.strip_prefix("hover:") {
+            if self.side.board.hover.as_deref() != Some(lane) {
+                self.side.board.hover = Some(lane.to_owned());
+                cx.notify();
+            }
+            return;
+        }
+        let Some(service) = crate::kanboard::kanboard(cx) else {
+            return;
+        };
+        let Some(slug) = self.side.board.slug.clone() else {
+            return;
+        };
+        if let Some(to) = action.strip_prefix("move:") {
+            self.side.board.drag_status = None;
+            self.side.board.hover = None;
+            let Some(id) = self
+                .side
+                .board
+                .selected
+                .clone()
+                .or_else(|| value.as_str().map(str::to_owned))
+            else {
+                return;
+            };
+            let Ok(status) = to.parse::<oino_kanboard::Status>() else {
+                return;
+            };
+            match service.move_task(&slug, &id, status, None) {
+                Err(e) => self.notice(&e.to_string(), cx),
+                Ok(_) => self.notice(&format!("Moved {id} to {}", status.as_str()), cx),
+            }
+        }
+        cx.notify();
     }
 
     fn terminal_title(&self, id: u64) -> String {

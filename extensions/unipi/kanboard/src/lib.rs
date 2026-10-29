@@ -63,9 +63,7 @@ use crate::guard::WriteGuard;
 use crate::monitor::{Monitor, Notice, OwnerStatus, SettleInfo};
 use crate::reminders::Tracker;
 use crate::render::{BADGE_ENTRY, NOTICE_ENTRY, PROGRESS_ENTRY};
-use crate::settings::{
-    ACTION_OPEN, ACTION_ROTATE_TOKEN, ACTION_STOP_DAEMON, KanboardSettings, NAMESPACE,
-};
+use crate::settings::{ACTION_OPEN, KanboardSettings, NAMESPACE};
 use crate::shapes::Task;
 
 /// The skill utility reveals on `-do`/autowork.
@@ -82,10 +80,7 @@ struct SessionState {
     tool_calls: u32,
     settle: SettleInfo,
     panel_open: bool,
-    panel_gen: u64,
-    selected: Option<String>,
     cache: Option<(i64, Vec<Task>)>,
-    live: bool,
 }
 
 /// The extension.
@@ -106,13 +101,6 @@ pub struct Kanboard {
     /// This machine's host name (`status.hostname`).
     host_name: RefCell<Option<String>>,
     seq: Cell<u64>,
-}
-
-fn wit_spawn(fut: impl Future<Output = ()> + 'static) {
-    #[cfg(target_arch = "wasm32")]
-    oino_extension::wit_bindgen::spawn_local(fut);
-    #[cfg(not(target_arch = "wasm32"))]
-    drop(fut);
 }
 
 fn notify(text: &str, level: &str) {
@@ -549,249 +537,29 @@ impl Kanboard {
         }
     }
 
-    async fn daemon(&self, cx: &Ctx) -> Option<shapes::DaemonInfo> {
-        let status = self.attach(cx).await.ok()?;
-        status.daemon.filter(|_| status.alive)
-    }
-
-    async fn healthy(port: u16, token: Option<&str>) -> bool {
-        let mut req = http::get(&format!("http://127.0.0.1:{port}/api/health")).timeout_ms(700);
-        if let Some(t) = token {
-            req = req.header("authorization", &format!("Bearer {t}"));
-        }
-        match req.send().await {
-            Ok(resp) if resp.status() == 200 => {
-                resp.json::<Value>()
-                    .await
-                    .ok()
-                    .and_then(|v| v.get("ok").and_then(Value::as_bool))
-                    == Some(true)
-            }
-            _ => false,
-        }
-    }
-
-    /// Ensures the daemon runs on the requested binding; a different binding restarts it.
-    async fn ensure_daemon(&self, cx: &Ctx, host: &str, port: u16) -> Option<(u16, bool)> {
-        let cfg = self.config();
-        let mut restarted = false;
-        if let Some(existing) = self.daemon(cx).await
-            && Self::healthy(existing.port, existing.token.as_deref()).await
-        {
-            let same = existing.host.as_deref().unwrap_or("127.0.0.1") == host
-                && (port == 0 || existing.port == port);
-            if same {
-                let wants_token = cfg.require_auth || !args::is_loopback_host(host);
-                let has_token = existing.token.as_deref().is_some_and(|t| !t.is_empty());
-                if wants_token != has_token {
-                    let mode = if has_token {
-                        "token-gated"
-                    } else {
-                        "open (no token)"
-                    };
-                    notify(
-                        &format!(
-                            "kanboard: the board is running {mode} on {}:{} — /kanboard close then open to apply",
-                            existing.host.as_deref().unwrap_or("127.0.0.1"),
-                            existing.port
-                        ),
-                        "warning",
-                    );
-                }
-                return Some((existing.port, false));
-            }
-            let _ = self.run(cx, &["stop"], None, true).await;
-            restarted = true;
-        }
-        let mut argv = vec![
-            "serve".to_owned(),
-            "--host".into(),
-            host.to_owned(),
-            "--port".into(),
-            port.to_string(),
-            "--idle-min".into(),
-            cfg.idle_min.to_string(),
-        ];
-        if cfg.require_auth {
-            argv.push("--require-auth".into());
-        }
-        if cfg.keep_token {
-            argv.push("--keep-token".into());
-        }
-        let mut spec = process::spec(&self.binary(), &[]);
-        spec.args = argv;
-        spec.stdin = process::StdioMode::Null;
-        spec.stdout = process::OutputTarget::Null;
-        spec.stderr = process::OutputTarget::Null;
-        spec.detached = true;
-        spec.env = self.base_env(cx, None);
-        spec.env.push(("OINO_KANBOARD_ACTOR".into(), "user".into()));
-        if let Err(e) = process::Child::spawn(&spec) {
-            notify(
-                &format!("kanboard: could not start the daemon — {e}"),
-                "error",
-            );
-            return None;
-        }
-        for _ in 0..20 {
-            timers::sleep(std::time::Duration::from_millis(150)).await;
-            if let Some(info) = self.daemon(cx).await
-                && Self::healthy(info.port, info.token.as_deref()).await
-            {
-                return Some((info.port, restarted));
-            }
-        }
-        notify("kanboard: the daemon did not answer within 3s", "warning");
-        None
-    }
-
-    async fn open(&'static self, cx: &Ctx, rest: &str) {
+    /// `/kanboard open` (round-5 #7): opens the native board tab — the panel
+    /// is only a marker; the pane renders the board in-process from the
+    /// library, so there is nothing to start and no URL to print.
+    async fn open(&'static self, cx: &Ctx, _rest: &str) {
         if let Some(why) = self.unavailable(cx).await {
             notify(&format!("kanboard: {why}"), "warning");
             return;
-        }
-        let cfg = self.config();
-        let flags = args::parse_open_args(rest, &cfg.host, cfg.port);
-        if !flags.unknown.is_empty() {
-            notify(
-                &format!(
-                    "kanboard: ignoring unknown option(s) {}",
-                    flags.unknown.join(" ")
-                ),
-                "warning",
-            );
-        }
-        let host = match self.resolve_host(cx, &flags.host).await {
-            Ok(h) => h,
-            Err(e) => {
-                notify(&format!("kanboard: {e}"), "error");
-                return;
-            }
-        };
-        let Some((port, restarted)) = self.ensure_daemon(cx, &host, flags.port).await else {
-            return;
-        };
-        if restarted {
-            notify(
-                &format!("kanboard: restarted kanboard on {host}:{port}"),
-                "info",
-            );
-        }
-        self.sync_runtime(cx).await;
-        let info = self.daemon(cx).await;
-        let tailscale = if host == "0.0.0.0" {
-            self.resolve_host(cx, "tailscale").await.ok()
-        } else {
-            None
-        };
-        let slug = self.slug(cx).await;
-        let hostname = self.host_name.borrow().clone();
-        let (urls, warnings) = args::format_board_urls(
-            &host,
-            port,
-            slug.as_deref(),
-            info.as_ref().and_then(|i| i.token.as_deref()),
-            hostname.as_deref(),
-            tailscale.as_deref(),
-        );
-        for url in urls {
-            notify(&format!("kanboard: {url}"), "info");
-        }
-        for w in warnings {
-            notify(&format!("kanboard: ⚠ {w}"), "warning");
         }
         if cx.has_ui() {
-            self.open_panel(cx).await;
+            self.open_panel(cx);
+        } else {
+            notify("kanboard: no UI here — the board tab opens in Oino", "info");
         }
     }
 
-    async fn resolve_host(&self, cx: &Ctx, host: &str) -> Result<String, String> {
-        if host.trim() != "tailscale" {
-            return Ok(host.trim().to_owned());
-        }
-        let cwd = cx.cwd().to_string_lossy().into_owned();
-        match process::exec("tailscale", &["ip", "-4"], Some(&cwd), Some(5_000)).await {
-            Ok(out) if out.code == Some(0) => args::first_line(&out.stdout).ok_or_else(|| {
-                "tailscale ip -4 returned nothing — is this machine on a tailnet?".to_owned()
-            }),
-            Ok(out) => Err(format!(
-                "tailscale is not available ({}) — install it or pass --host <addr>",
-                out.stderr.trim()
-            )),
-            Err(e) => Err(format!(
-                "tailscale is not available ({e}) — install it or pass --host <addr>"
-            )),
-        }
-    }
-
-    /// Tells the daemon how to run Oino for summaries (`piCommand = ["oino"]`; the binary
-    /// prefers the `oino` next to itself). Skipped inside kanboard's own children.
-    async fn sync_runtime(&self, cx: &Ctx) {
-        if self.own_child.get() {
-            return;
-        }
-        let _ = self
-            .run(
-                cx,
-                &["settings", "set", "pi-command", "[\"oino\"]"],
-                None,
-                true,
-            )
-            .await;
-    }
-
-    async fn stop_daemon(&self, cx: &Ctx) {
-        if let Some(why) = self.unavailable(cx).await {
-            notify(&format!("kanboard: {why}"), "warning");
-            return;
-        }
-        match self
-            .run(cx, &["stop"], None, true)
-            .await
-            .map_err(|e| e.message)
-            .and_then(|v| shapes::as_stop(&v).map_err(|e| e.to_string()))
-        {
-            Ok((true, pid, _)) => notify(
-                &format!("kanboard daemon stopped (pid {})", pid.unwrap_or(0)),
-                "info",
-            ),
-            Ok((false, _, reason)) => notify(
-                &format!(
-                    "kanboard: {}",
-                    reason.unwrap_or_else(|| "not running".into())
-                ),
-                "info",
-            ),
-            Err(e) => notify(&format!("kanboard: {e}"), "error"),
-        }
-    }
-
-    async fn rotate_token(&self, cx: &Ctx) {
-        if let Some(why) = self.unavailable(cx).await {
-            notify(&format!("kanboard: {why}"), "warning");
-            return;
-        }
-        match self.run(cx, &["rotate-token"], None, true).await {
-            Ok(_) => notify(
-                "kanboard: new token on the next daemon start — /kanboard close, then open",
-                "info",
-            ),
-            Err(e) => notify(&format!("kanboard: rotate-token failed — {e}"), "error"),
-        }
+    /// `/kanboard close` closes the board tab (nothing else runs anymore).
+    fn close_board(&self, cx: &Ctx) {
+        self.sessions.with(cx.session_id(), |s| s.panel_open = false);
+        ui::panel_close(panel::PANEL_ID);
     }
 
     async fn status(&self, cx: &Ctx) {
         let mut lines = Vec::new();
-        match self.daemon(cx).await {
-            Some(d) if Self::healthy(d.port, d.token.as_deref()).await => lines.push(format!(
-                "daemon: pid {} · http://{}:{} · v{}",
-                d.pid,
-                d.host.as_deref().unwrap_or("127.0.0.1"),
-                d.port,
-                d.version
-            )),
-            _ => lines.push("daemon: not running".into()),
-        }
         match self.slug(cx).await {
             Some(slug) => match self.list(cx, &["--all"]).await {
                 Ok(tasks) => {
@@ -877,43 +645,6 @@ impl Kanboard {
             Ok(_) => check(Some(true), format!("binary: {} ({source})", self.binary())),
             Err(why) => check(Some(false), format!("binary: {why}")),
         });
-        let daemon = attached.as_ref().ok().and_then(|s| s.daemon.clone());
-        let alive = match &daemon {
-            Some(d) => Self::healthy(d.port, d.token.as_deref()).await,
-            None => false,
-        };
-        lines.push(check(
-            Some(alive),
-            daemon.as_ref().map_or_else(
-                || "daemon: not running".to_owned(),
-                |d| {
-                    format!(
-                        "daemon: http://{}:{} alive (pid {})",
-                        d.host.as_deref().unwrap_or("127.0.0.1"),
-                        d.port,
-                        d.pid
-                    )
-                },
-            ),
-        ));
-        if let Some(d) = &daemon {
-            let bind = d.host.clone().unwrap_or_else(|| "127.0.0.1".into());
-            let loopback = args::is_loopback_host(&bind);
-            let host = if loopback {
-                "127.0.0.1".to_owned()
-            } else {
-                self.host_name
-                    .borrow()
-                    .clone()
-                    .unwrap_or_else(|| "host".into())
-            };
-            let mode = if loopback {
-                "(loopback — local only)".to_owned()
-            } else {
-                format!("(remote — token-gated, e.g. http://{host}:{}?t=…)", d.port)
-            };
-            lines.push(check(Some(true), format!("bind: {bind}:{} {mode}", d.port)));
-        }
         let slug = self.slug(cx).await;
         match &slug {
             None => lines.push(check(
@@ -1091,7 +822,7 @@ impl Kanboard {
             "onboard" => {
                 self.onboard(cx).await;
             }
-            "close" => self.stop_daemon(cx).await,
+            "close" => self.close_board(cx),
             "status" => {
                 if let Some(why) = self.unavailable(cx).await {
                     notify(&format!("kanboard: {why}"), "warning");
@@ -1214,178 +945,22 @@ impl Kanboard {
 
     // ── panel ───────────────────────────────────────────────────────────
 
-    async fn panel_body(&self, cx: &Ctx) -> Option<(String, Value)> {
-        let slug = self.slug(cx).await?;
-        let mut tasks = self.list(cx, &["--all"]).await.unwrap_or_default();
-        let (selected, live) = self
-            .sessions
-            .with(cx.session_id(), |s| (s.selected.clone(), s.live));
-        if let Some(sel) = &selected
-            && let Ok(v) = self.run(cx, &["show", sel], Some(&slug), true).await
-            && let Ok(full) = shapes::as_task("show", &v)
-            && let Some(slot) = tasks.iter_mut().find(|t| &t.id == sel)
-        {
-            *slot = full;
-        }
-        let tag = Self::session_tag(cx);
-        Some((
-            slug.clone(),
-            panel::spec(&slug, &tasks, selected.as_deref(), &tag, live),
-        ))
-    }
-
-    async fn open_panel(&'static self, cx: &Ctx) {
-        let Some((slug, body)) = self.panel_body(cx).await else {
-            let project = cx.cwd().file_name().map_or_else(
-                || "This project".to_owned(),
-                |n| n.to_string_lossy().into_owned(),
-            );
-            if ui::panel_open(&panel::setup_request(&project)).is_err() {
-                notify("kanboard: not set up here — /kanboard onboard", "warning");
-            }
-            return;
-        };
-        if ui::panel_open(&panel::open_request(&slug, &body)).is_err() {
-            return;
-        }
-        let generation = self.sessions.with(cx.session_id(), |s| {
-            s.panel_open = true;
-            s.panel_gen += 1;
-            s.panel_gen
-        });
-        if let Some(d) = self.daemon(cx).await {
-            let cx = cx.clone();
-            wit_spawn(async move { self.follow_sse(&cx, d, &slug, generation).await });
+    /// Opens the native board tab (round-5 #7): the panel is a marker — the
+    /// pane renders `unipi.kanboard/board` itself from the in-process kanboard
+    /// service, so there is no spec to send and no SSE to follow.
+    fn open_panel(&self, cx: &Ctx) {
+        if ui::panel_open(&panel::open_request()).is_ok() {
+            self.sessions.with(cx.session_id(), |s| s.panel_open = true);
         }
     }
 
-    async fn refresh_panel(&self, cx: &Ctx) {
-        if !self.sessions.with(cx.session_id(), |s| s.panel_open) {
-            return;
-        }
-        if let Some((slug, body)) = self.panel_body(cx).await {
-            let _ = ui::panel_update(
-                panel::PANEL_ID,
-                &json!({"spec": body, "title": format!("Kanboard · {slug}")}),
-            );
-        }
-    }
-
-    async fn follow_sse(
-        &'static self,
-        cx: &Ctx,
-        daemon: shapes::DaemonInfo,
-        slug: &str,
-        generation: u64,
-    ) {
-        use oino_extension::futures::StreamExt;
-        let mut req = http::get(&format!(
-            "http://127.0.0.1:{}/events?project={slug}",
-            daemon.port
-        ));
-        if let Some(t) = daemon.token.as_deref() {
-            req = req.header("authorization", &format!("Bearer {t}"));
-        }
-        let Ok(resp) = req.send().await else {
-            return;
-        };
-        if resp.status() != 200 {
-            return;
-        }
-        self.sessions.with(cx.session_id(), |s| s.live = true);
-        let mut stream = resp.body().into_stream();
-        let mut buffer = String::new();
-        let mut bytes: Vec<u8> = Vec::new();
-        while let Some(b) = stream.next().await {
-            if self.sessions.with(cx.session_id(), |s| {
-                !s.panel_open || s.panel_gen != generation
-            }) {
-                return;
-            }
-            bytes.push(b);
-            if b != b'\n' {
-                continue;
-            }
-            buffer.push_str(&String::from_utf8_lossy(&bytes));
-            bytes.clear();
-            if !panel::drain_sse(&mut buffer).is_empty() {
-                self.refresh_panel(cx).await;
-            }
-        }
-        self.sessions.with(cx.session_id(), |s| s.live = false);
-    }
-
-    async fn on_ui_action(&'static self, ev: &Event, cx: &Ctx) {
+    fn on_ui_action(&self, ev: &Event, cx: &Ctx) {
         let panel_id = s(&ev.payload, "panelId");
         if !panel_id.ends_with(panel::PANEL_ID) {
             return;
         }
-        let action = s(&ev.payload, "actionId");
-        let value = ev.payload.get("value").cloned().unwrap_or(Value::Null);
-        match action.as_str() {
-            "$close" => self.sessions.with(cx.session_id(), |s| {
-                s.panel_open = false;
-                s.live = false;
-            }),
-            panel::ACTION_SELECT => {
-                let id = value.as_str().map(ToOwned::to_owned);
-                self.sessions.with(cx.session_id(), |s| s.selected = id);
-                self.refresh_panel(cx).await;
-            }
-            panel::ACTION_REFRESH => self.refresh_panel(cx).await,
-            panel::ACTION_ONBOARD => {
-                if self.onboard(cx).await.is_some() {
-                    self.open_panel(cx).await;
-                }
-            }
-            panel::ACTION_SHOW => self.show(cx, false, None).await,
-            panel::ACTION_ADD => {
-                if let Ok(Some(text)) =
-                    ui::input("Add to Backlog", Some("title (lines below = description)")).await
-                    && !text.trim().is_empty()
-                {
-                    self.add(cx, &text).await;
-                }
-                self.refresh_panel(cx).await;
-            }
-            a if a.starts_with(panel::ACTION_MOVE) => {
-                let to = &a[panel::ACTION_MOVE.len()..];
-                let selected = self.sessions.with(cx.session_id(), |s| s.selected.clone());
-                if let (Some(id), Some(slug)) = (selected, self.slug(cx).await) {
-                    self.panel_move(cx, &slug, &id, to).await;
-                }
-                self.refresh_panel(cx).await;
-            }
-            _ => {}
-        }
-    }
-
-    async fn panel_move(&self, cx: &Ctx, slug: &str, id: &str, to: &str) {
-        match self.run(cx, &["move", id, to], Some(slug), true).await {
-            Ok(_) => notify(&format!("kanboard: {id} → {to}"), "info"),
-            Err(e) if panel::needs_comment(&e.message) => {
-                let Ok(Some(comment)) =
-                    ui::input(&format!("{id} → {to}: comment"), Some(&e.message)).await
-                else {
-                    return;
-                };
-                if comment.trim().is_empty() {
-                    return;
-                }
-                match self
-                    .run(
-                        cx,
-                        &["move", id, to, "--comment", comment.trim()],
-                        Some(slug),
-                        true,
-                    )
-                    .await
-                {
-                    Ok(_) => notify(&format!("kanboard: {id} → {to}"), "info"),
-                    Err(e) => notify(&format!("kanboard: {e}"), "error"),
-                }
-            }
-            Err(e) => notify(&format!("kanboard: {e}"), "error"),
+        if s(&ev.payload, "actionId") == "$close" {
+            self.sessions.with(cx.session_id(), |s| s.panel_open = false);
         }
     }
 
@@ -1599,9 +1174,6 @@ impl Kanboard {
         });
         if attached.is_err() {
             return;
-        }
-        if !cx.is_child() {
-            self.sync_runtime(cx).await;
         }
         let slug = self.slug(cx).await;
         if !cx.is_child()
@@ -1825,28 +1397,10 @@ fn register_commands(cx: &mut Init<Kanboard>) {
     );
     cx.command(
         Command::<Kanboard>::new(ACTION_OPEN)
-            .description("Kanboard: start the daemon and open the board")
+            .description("Kanboard: open the board tab")
             .hidden()
             .run(|ext, _args, cx| async move {
                 ext.open(&cx.cx, "").await;
-                Ok(())
-            }),
-    );
-    cx.command(
-        Command::<Kanboard>::new(ACTION_STOP_DAEMON)
-            .description("Kanboard: stop the board daemon")
-            .hidden()
-            .run(|ext, _args, cx| async move {
-                ext.stop_daemon(&cx.cx).await;
-                Ok(())
-            }),
-    );
-    cx.command(
-        Command::<Kanboard>::new(ACTION_ROTATE_TOKEN)
-            .description("Kanboard: rotate the access token")
-            .hidden()
-            .run(|ext, _args, cx| async move {
-                ext.rotate_token(&cx.cx).await;
                 Ok(())
             }),
     );
@@ -1931,7 +1485,7 @@ fn register_events(cx: &mut Init<Kanboard>) {
         Ok(ext.on_tool_result(&ev, &cx).await)
     });
     cx.on(EventKind::OinoUiAction, |ext, ev, cx| async move {
-        ext.on_ui_action(&ev, &cx).await;
+        ext.on_ui_action(&ev, &cx);
         Ok(())
     });
     cx.on(EventKind::OinoBus, |ext, ev, cx| async move {

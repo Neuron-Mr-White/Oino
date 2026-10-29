@@ -52,6 +52,17 @@ pub fn keystrokes_for(text: &str) -> Vec<Keystroke> {
         .collect()
 }
 
+/// A pointer move to `(x, y)` with `button` held — the drag path (round-5 #8):
+/// `on_drag`/`on_drag_move` handlers only see moves that carry the pressed button.
+#[must_use]
+pub fn mouse_move_pressed(x: f32, y: f32, button: MouseButton) -> PlatformInput {
+    PlatformInput::MouseMove(MouseMoveEvent {
+        position: point(px(x), px(y)),
+        pressed_button: Some(button),
+        modifiers: Modifiers::default(),
+    })
+}
+
 /// A pointer move to `(x, y)` (window px), with no button held.
 #[must_use]
 pub fn mouse_move(x: f32, y: f32) -> PlatformInput {

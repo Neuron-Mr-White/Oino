@@ -1,7 +1,8 @@
-//! Oino kanboard — task storage, transition rules, dependency graph, CLI and the board
-//! daemon (JSON API + SSE; no web UI). The binary `oino-kanboard` is the only writer of
-//! board files; the `unipi.kanboard` extension and the daemon call the same library, so the
-//! panel and the terminal enforce exactly the same rules.
+//! Oino kanboard — task storage, transition rules, dependency graph and CLI (round 5:
+//! in-process; the daemon is gone). Every write goes through this library's validated
+//! commands under a per-project file lock, so the `unipi.kanboard` extension (via
+//! [`service::exec`]/`kanboard.exec`), the CLI binary and the desktop board all enforce
+//! exactly the same rules.
 //!
 //! | Module | Boundary |
 //! |---|---|
@@ -10,7 +11,7 @@
 //! | [`store`], [`board`], [`attachments`] | home layout (`<agent dir>/state/unipi.kanboard`), locks, atomic writes |
 //! | [`commands`] | one operation per subcommand (JSON payloads) |
 //! | [`cli`], [`run`] | clap definitions, dispatcher and human rendering |
-//! | [`daemon`], [`serve`] | `daemon.json`, single instance, the axum JSON API + SSE |
+//! | [`service`], [`sys`] | in-process `exec` (argv/env/cwd/stdin → `--json` payload), file watch, pid/agent-dir helpers |
 //! | [`error`] | `Error` (`usage` exit 2; `rule`, `not_found`, `io` exit 1) |
 
 #![allow(
@@ -22,15 +23,15 @@ pub mod attachments;
 pub mod board;
 pub mod cli;
 pub mod commands;
-pub mod daemon;
 pub mod deps;
 pub mod error;
 pub mod format;
 pub mod model;
 pub mod order;
 pub mod run;
-pub mod serve;
+pub mod service;
 pub mod store;
+pub mod sys;
 pub mod transitions;
 
 pub use error::{Error, Problem, Result};

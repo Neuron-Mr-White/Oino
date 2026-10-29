@@ -1,0 +1,69 @@
+{
+  "name": "r5-board-side-phone",
+  "scene": "board",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "kanboard_seed": {
+        "slug": "demo-board",
+        "next_id": 12
+      }
+    },
+    {
+      "wait_for": {
+        "label": "Board",
+        "role": "tab",
+        "timeout_ms": 40000
+      }
+    },
+    {
+      "click": {
+        "label": "Todo",
+        "role": "tab"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "card-OIN-11",
+        "timeout_ms": 15000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-phone-lane"
+      }
+    },
+    {
+      "click": {
+        "id": "card-OIN-11"
+      }
+    },
+    {
+      "wait_for": {
+        "label": "\u2192 Backlog",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-phone-detail"
+      }
+    },
+    {
+      "click": {
+        "label": "\u2192 Backlog"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Moved OIN-11 to backlog",
+        "timeout_ms": 15000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-phone-moved"
+      }
+    }
+  ]
+}

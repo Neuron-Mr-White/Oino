@@ -105,6 +105,7 @@ pub mod fs;
 pub mod host;
 pub mod http;
 mod init;
+pub mod kanboard;
 pub mod kv;
 pub mod models;
 pub mod process;

@@ -89,6 +89,7 @@ fn the_session_cap_is_per_project() {
         session: "s3",
         pid,
         host: &host,
+        max_sessions: commands::max_sessions(),
     };
     let value = commands::start(
         &fixture.layout,
@@ -120,6 +121,7 @@ fn start_reaps_dead_sessions_and_leaves_foreign_hosts_alone() {
             session: "elsewhere",
             pid: 999_998,
             host: "not-this-host",
+            max_sessions: commands::max_sessions(),
         },
         fixture.common.now,
     )

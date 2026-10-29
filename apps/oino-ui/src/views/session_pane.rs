@@ -164,6 +164,8 @@ pub struct SidePane {
     pub tabs: Vec<SideTab>,
     /// Active tab.
     pub active: usize,
+    /// Native board tab state (round-5 #7 — the `unipi.kanboard/board` tab).
+    pub board: crate::components::side_pane::BoardTab,
 }
 
 impl SidePane {

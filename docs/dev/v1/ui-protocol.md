@@ -137,6 +137,13 @@ owning extension; `closed` is sent as `actionId: "$close"` when the user closes 
 Panel ids are unique per session (`<extensionId>/<name>`); opening an existing id replaces it.
 Max spec size 256 KiB (larger ⇒ request rejected with an `extension_error`).
 
+One id is reserved: **`unipi.kanboard/board`** (round-5 #7). The GPUI frontend
+renders this `sidePane` tab natively — the extension's `openPanel` is only a
+marker (empty `spec`) that opens the tab; the Board page and the tab read and
+mutate the board in-process through `oino_kanboard`'s commands under the same
+file locks the CLI binary takes. No OUS round-trip, no action callbacks: a
+`$close` on it is the only `extension_ui_action` the extension still sees.
+
 ## 6. OUS v1 — node vocabulary
 
 ### 6.1 Node shape

@@ -4,6 +4,19 @@
 use std::fs;
 use std::path::PathBuf;
 
+/// `~/rest` (or an absolute path) → a `PathBuf` under `$HOME`; `None` when
+/// the input needs `$HOME` and it is unset.
+#[must_use]
+pub fn tilde_home(dir: &str) -> Option<PathBuf> {
+    if let Some(rest) = dir.strip_prefix("~/") {
+        return std::env::var_os("HOME").map(|home| PathBuf::from(home).join(rest));
+    }
+    if dir == "~" {
+        return std::env::var_os("HOME").map(PathBuf::from);
+    }
+    Some(PathBuf::from(dir))
+}
+
 /// Oino's agent dir: `$OINO_AGENT_DIR` (tilde-expanded), else `~/.oino`.
 #[must_use]
 pub fn agent_dir() -> Option<PathBuf> {
@@ -11,11 +24,7 @@ pub fn agent_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("OINO_AGENT_DIR")
         && !dir.trim().is_empty()
     {
-        let dir = dir.trim();
-        if let Some(rest) = dir.strip_prefix("~/") {
-            return home.map(|h| h.join(rest));
-        }
-        return Some(PathBuf::from(dir));
+        return tilde_home(dir.trim());
     }
     home.map(|h| h.join(".oino"))
 }

@@ -63,6 +63,11 @@ pub struct BoardOptions {
     pub inline_detail: bool,
     /// Show the dashed "Add task" row under the first lane (the board page).
     pub add_row: bool,
+    /// Status id of the card being dragged (round-5 #8): refused lanes dim,
+    /// accepted lanes outline.
+    pub dragging: Option<String>,
+    /// Lane id under the pointer during a drag (its highlight).
+    pub hover_lane: Option<String>,
 }
 
 impl BoardOptions {
@@ -132,6 +137,82 @@ fn lane_noun(id: &str) -> &'static str {
     clippy::too_many_lines,
     reason = "lane head, cards, empty lane, add row"
 )]
+/// A card dragged between lanes (round-5 #8): `on_drag` carries it, lanes
+/// accept it in `can_drop`/`on_drop` and report hover through `on_drag_move`.
+pub struct BoardDrag {
+    /// Task id.
+    pub id: String,
+    /// Source lane's status id.
+    pub from: String,
+}
+
+/// Whether a user move from `from` to `to` is a legal transition (the same
+/// rule the board's `move` buttons use — dimmed lanes refuse the drop too).
+fn accepts(from: &str, to: &str) -> bool {
+    let (Ok(from), Ok(to)) = (
+        from.parse::<oino_kanboard::Status>(),
+        to.parse::<oino_kanboard::Status>(),
+    ) else {
+        return false;
+    };
+    oino_kanboard::transitions::allowed_targets(from, oino_kanboard::Actor::User).contains(&to)
+}
+
+/// The drag preview (a small card ghost following the pointer).
+struct CardGhost {
+    id: String,
+    title: String,
+}
+
+impl gpui_kit::Render for CardGhost {
+    fn render(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut gpui_kit::Context<Self>,
+    ) -> impl IntoElement {
+        let t = OinoTheme::get(cx);
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(space::S1))
+            .w(px(size::LANE))
+            .p(px(space::S3))
+            .rounded(px(radius::R_CARD))
+            .bg(t.card())
+            .border_1()
+            .border_color(t.focus())
+            .shadow(t.e_toast())
+            .child(
+                div()
+                    .mono_text(&t, TextRole::Xs)
+                    .text_color(t.fg_subtlest())
+                    .child(SharedString::from(self.id.clone())),
+            )
+            .child(
+                div()
+                    .text_role(&t, TextRole::Prose)
+                    .weight_semibold()
+                    .text_color(t.fg())
+                    .line_clamp(2)
+                    .child(SharedString::from(self.title.clone())),
+            )
+            .into_any_element()
+    }
+}
+
+/// Per-lane drag state (round-5 #8): a drag is live, the lane accepts the
+/// dragged card (`accept`), and the pointer hovers it (`hover`).
+#[derive(Clone, Copy, Default)]
+pub struct DropHint {
+    /// A board card drag is live.
+    pub dragging: bool,
+    /// The dragged card's status may move to this lane.
+    pub accept: bool,
+    /// The pointer is over this lane.
+    pub hover: bool,
+}
+
+#[allow(clippy::too_many_lines, reason = "one card builder")]
 fn lane(
     t: &OinoTheme,
     lane: &Lane,
@@ -139,6 +220,7 @@ fn lane(
     on_action: &ActionFn,
     cursor: Option<usize>,
     add: bool,
+    drop: Option<DropHint>,
 ) -> AnyElement {
     let c = lane_color(t, &lane.id);
     let n = lane.cards.len();
@@ -165,6 +247,7 @@ fn lane(
             )))
             .into_any_element()
     });
+    let lane_id = lane.id.clone();
     let add_row = add.then(|| {
         let cb = Rc::clone(on_action);
         div()
@@ -192,11 +275,48 @@ fn lane(
             .into_any_element()
     });
     div()
+        .id(ElementId::Name(format!("lane-{}", lane.id).into()))
         .flex()
         .flex_col()
         .w(px(size::LANE))
         .flex_shrink_0()
         .gap(px(space::S2_5))
+        .rounded(px(radius::R_CARD))
+        // round-5 #8: the column is the drop target. `can_drop` refuses illegal
+        // transitions (the OS no-drop cursor); refused lanes also dim while a
+        // drag is live, the hovered accepted lane takes the focus border.
+        .border_1()
+        .border_color(drop.map_or_else(gpui_kit::transparent_black, |d| {
+            if d.hover && d.accept {
+                t.focus()
+            } else if d.dragging && d.accept {
+                t.fg_subtlest()
+            } else {
+                gpui_kit::transparent_black()
+            }
+        }))
+        .when(drop.is_some_and(|d| d.dragging && !d.accept), |el| {
+            el.opacity(0.45)
+        })
+        .can_drop({
+            let to = lane_id.clone();
+            move |v: &dyn std::any::Any, _, _| {
+                v.downcast_ref::<BoardDrag>()
+                    .is_some_and(|d| accepts(&d.from, &to))
+            }
+        })
+        .on_drop::<BoardDrag>({
+            let cb = Rc::clone(on_action);
+            let to = lane_id.clone();
+            move |d, _, cx| cb(&format!("move:{to}"), JsonValue::from(d.id.clone()), cx)
+        })
+        .on_drag_move::<BoardDrag>({
+            let cb = Rc::clone(on_action);
+            let to = lane_id.clone();
+            move |_: &gpui_kit::DragMoveEvent<BoardDrag>, _, cx| {
+                cb(&format!("hover:{to}"), JsonValue::Null, cx);
+            }
+        })
         .child(
             div()
                 .flex()
@@ -315,6 +435,27 @@ fn lane(
                         ),
                     )
                 })
+                // round-5 #8: press-and-drag the card; the ghost follows the
+                // pointer and `drag-start` lets the view dim refused lanes.
+                // (`on_drag` needs the stateful div, so it sits before
+                // `.automation`'s Probe wrapper.)
+                .on_drag(
+                    BoardDrag {
+                        id: card.id.clone(),
+                        from: lane_id.clone(),
+                    },
+                    {
+                        let cb = Rc::clone(on_action);
+                        let title = card.title.clone();
+                        move |d: &BoardDrag, _point, _window, cx| {
+                            cb(&format!("drag-start:{}", d.from), JsonValue::Null, cx);
+                            gpui_kit::AppContext::new(cx, |_| CardGhost {
+                                id: d.id.clone(),
+                                title: title.clone(),
+                            })
+                        }
+                    },
+                )
                 .automation(
                     crate::automation::Meta::labelled(
                         crate::automation::Role::Card,
@@ -325,6 +466,13 @@ fn lane(
                 )
         }))
         .children(add_row)
+        // The drop target the driver drags to (`to_id: "lane-<status>"` /
+        // `to_label: "lane In Progress"`); last in the chain (`Probe` wraps
+        // the finished element).
+        .automation(crate::automation::Meta::labelled(
+            crate::automation::Role::Row,
+            format!("lane {}", lane.title),
+        ))
         .into_any_element()
 }
 
@@ -385,6 +533,76 @@ pub fn lane_strip(
         .into_any_element()
 }
 
+/// The phone-width board (round-5 #10): a lane pill strip on top, then the
+/// active lane's cards as one scrollable column, then the selected task's
+/// detail inline. The side pane's `unipi.kanboard/board` tab renders this.
+#[allow(clippy::too_many_arguments, reason = "view plumbing, not data")]
+pub fn phone_board(
+    o: &mut Ous<'_>,
+    board: &Board,
+    active: usize,
+    key: &str,
+    on_lane: Rc<dyn Fn(usize, &mut Window, &mut App)>,
+    dragging: Option<&str>,
+    hover: Option<&str>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let t = o.t;
+    let active = active.min(board.lanes.len().saturating_sub(1));
+    let strip = lane_strip(&t, &board.lanes, Some(active), key, on_lane);
+    let cards = board.lanes.get(active).map(|l| {
+        lane(
+            &t,
+            l,
+            board.select_action.as_deref(),
+            &o.on_action,
+            None,
+            false,
+            dragging.map(|d| DropHint {
+                dragging: true,
+                accept: accepts(d, &l.id),
+                hover: hover == Some(l.id.as_str()),
+            }),
+        )
+    });
+    let detail = board
+        .detail
+        .as_ref()
+        .map(|d| render(d, &format!("{key}/detail"), o, window, cx));
+    div()
+        .flex()
+        .flex_col()
+        .size_full()
+        .gap(px(space::S3))
+        .child(strip)
+        .child(
+            div()
+                .id(ElementId::Name(format!("{key}/lane").into()))
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .flex()
+                .flex_col()
+                .gap(px(space::S3))
+                .children(cards)
+                .when_some(detail, |el, d| {
+                    el.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(space::S2))
+                            .p(px(space::S4))
+                            .rounded(px(radius::R_CARD))
+                            .border_1()
+                            .border_color(t.border())
+                            .child(d),
+                    )
+                }),
+        )
+        .into_any_element()
+}
+
 /// Renders a recognised board: toolbar line, lanes (horizontal scroll), detail of the selected
 /// task with its move buttons.
 pub fn board(
@@ -409,6 +627,11 @@ pub fn board(
                 &o.on_action,
                 cur,
                 li == 0 && opts.add_row,
+                opts.dragging.as_deref().map(|d| DropHint {
+                    dragging: true,
+                    accept: accepts(d, &l.id),
+                    hover: opts.hover_lane.as_deref() == Some(l.id.as_str()),
+                }),
             )
         })
         .collect();

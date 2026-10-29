@@ -143,6 +143,9 @@ pub fn modal_with_toolbar_focused(
         .justify_center()
         .bg(t.scrim())
         .occlude()
+        // #23: a wheel event over the scrim must not scroll what is under the
+        // dialog; inner scrollables still handle first (bubble order).
+        .on_scroll(|_: &gpui_kit::ScrollEvent, _, cx| cx.stop_propagation())
         .when_some(focus, |el, f| el.track_focus(&f))
         .on_click(move |_: &ClickEvent, w, cx| close_scrim(w, cx))
         .on_key_down(move |e: &KeyDownEvent, w, cx| {
@@ -177,6 +180,11 @@ pub fn modal_with_toolbar_focused(
                         .text_color(t.fg())
                         .font_family(t.ui_font())
                         .on_click(|_: &ClickEvent, _, cx| cx.stop_propagation())
+                        // #23: the sheet's own wheel events stop here — inner
+                        // scrollables got them first, the board never does.
+                        .on_scroll(|_: &gpui_kit::ScrollEvent, _, cx| {
+                            cx.stop_propagation();
+                        })
                         .child(
                             div()
                                 .flex()

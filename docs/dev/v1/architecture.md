@@ -52,7 +52,7 @@ and no crate in `crates/` depends on a crate in `apps/` or `extensions/` (D3).
 | `oino-view` | lib, no UI toolkit | frontend-agnostic view models: transcript rows keyed by entry/tool id, streaming coalescer, extension UI state reducer (status/frame/widgets/panels/dialog queue), session list/tree models, composer completion model | oino-protocol | — |
 | `oino-tui` | lib | interactive terminal client over `oino-client` + `oino-view` | oino-client, oino-view, oino-protocol | ratatui, crossterm, syntect, pulldown-cmark |
 | `oino-acp` | lib | ACP v1 agent adapter over `SessionBackend` | oino-client, oino-protocol | agent-client-protocol =3.5.x (feature `stdio`) |
-| `oino-kanboard` | lib + bin `oino-kanboard` | kanboard CLI/daemon (port of unipi crate) | — | (its own) |
+| `oino-kanboard` | lib + bin `oino-kanboard` | kanboard CLI + in-process board service (the daemon is gone — round-5 #7) | — | (its own) |
 | `oino-bundle` | lib (build.rs) | static table of bundled components + resources from `extensions/dist` | — | zstd |
 | `oino` | bin | CLI (clap), mode dispatch (interactive/print/json/rpc/acp), `serve`, `update`, package subcommands (`install/remove/update/list/config`), `auth check`, `ext validate` | oino-core, oino-client, oino-rpc, oino-tui, oino-acp, oino-wasm-host, oino-bundle | clap, anyhow (binary edge only) |
 | `xtask` | bin | `wasm` (build all components → `extensions/dist`), `checksums`, `bundle-check`, `layering`, `golden` | — | — |

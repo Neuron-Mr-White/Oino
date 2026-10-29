@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.99"
 license.workspace = true
 repository.workspace = true
-description = "Kanboard for Oino: task format, transition rules, dependency graph, CLI and the board daemon (JSON API + SSE)"
+description = "Kanboard for Oino: task format, transition rules, dependency graph, in-process service and CLI"
 keywords = ["kanboard", "oino", "tasks"]
 categories = ["command-line-utilities"]
 
@@ -18,12 +18,8 @@ name = "oino_kanboard"
 path = "src/lib.rs"
 
 [dependencies]
-axum = { version = "0.8", features = ["json"] }
-base64.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
-futures-util = "0.3"
-getrandom = "0.3"
 mime_guess = "2"
 notify = "8"
 serde.workspace = true
@@ -31,7 +27,6 @@ serde_json.workspace = true
 serde_yaml_ng.workspace = true
 sha2.workspace = true
 thiserror = "2"
-tokio = { workspace = true, features = ["macros", "net", "process", "rt-multi-thread", "signal", "sync", "time", "io-util"] }
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

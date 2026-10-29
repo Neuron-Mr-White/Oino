@@ -91,6 +91,7 @@ async fn handle(
         "state" => read_state(this, cx),
         "click" | "double_click" | "right_click" | "hover" => pointer(cx, &request).await,
         "scroll" => scroll(cx, &request).await,
+        "drag" => drag(cx, &request).await,
         "type_text" => type_text(cx, &request).await,
         "key" => key(cx, &request).await,
         "focus" => focus(cx, &request).await,
@@ -258,6 +259,105 @@ async fn scroll(cx: &mut AsyncWindowContext, request: &Request) -> Result<Value,
     .map_err(|_| "the window is gone".to_owned())?;
     settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
     Ok(json!({"at": [x, y], "dx": dx, "dy": dy, "id": id}))
+}
+
+/// `drag`: press on the source, move to the target over `steps` moves, drop.
+/// Every move carries the pressed button (round-5 #8 — `on_drag`/`on_drag_move`
+/// only run for pressed moves). Source: the shared selector/`x`+`y` params; the
+/// drop target: `to_id`/`to_label`/`to_role` or `to_x`+`to_y`; `steps` (default
+/// 12) spreads the path over as many frames, so lane-collapses and the drop
+/// line animate instead of teleporting.
+async fn drag(cx: &mut AsyncWindowContext, request: &Request) -> Result<Value, String> {
+    let source_sel = request.has_selector().then(|| request.selector());
+    let (mut sx, mut sy, mut id) = target(request)?;
+    // The drop target: its own `to_*` selector, or coordinates.
+    let to_selector = {
+        let sel = super::protocol::Selector {
+            id: request.str("to_id").map(str::to_owned),
+            role: request.str("to_role").and_then(registry::Role::parse),
+            label: request.str("to_label").map(str::to_owned),
+            include_hidden: request.bool("include_hidden"),
+        };
+        (sel.id.is_some() || sel.role.is_some() || sel.label.is_some()).then_some(sel)
+    };
+    let to = if let Some(sel) = &to_selector {
+        let nodes = registry::snapshot();
+        let node = registry::select(&nodes, sel)?;
+        Some(node.center())
+    } else if let (Some(x), Some(y)) = (request.num("to_x"), request.num("to_y")) {
+        Some((num_f32(x)?, num_f32(y)?))
+    } else {
+        None
+    };
+    let Some((mut tx, mut ty)) = to else {
+        return Err(
+            "drag needs a drop target: \"to_id\" / \"to_label\" / \"to_role\" or \"to_x\" + \"to_y\""
+                .into(),
+        );
+    };
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "steps is clamped to 1–64 above"
+    )]
+    let steps = request
+        .num("steps")
+        .unwrap_or(12.0)
+        .clamp(1.0, 64.0)
+        .round() as u32;
+
+    settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
+    if let Some(sel) = &source_sel {
+        // Same race as `pointer` (QA-r4 H-3): press where the card is in the
+        // frame that will hit-test the down event.
+        let (nx, ny, nid) = recentered(sel)?;
+        sx = nx;
+        sy = ny;
+        id = Some(nid);
+    }
+    cx.update(|window: &mut Window, cx: &mut App| {
+        window.dispatch_event(input::mouse_move(sx, sy), cx);
+    })
+    .map_err(|_| "the window is gone".to_owned())?;
+    settle(cx, 1, SETTLE_TIMEOUT).await?;
+    cx.update(|window: &mut Window, cx: &mut App| {
+        window.dispatch_event(input::mouse_down(sx, sy, MouseButton::Left, 1), cx);
+    })
+    .map_err(|_| "the window is gone".to_owned())?;
+    settle(cx, 1, SETTLE_TIMEOUT).await?;
+    for step in 1..=steps {
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "pointer coordinates are well inside f32 mantissa"
+        )]
+        let (x, y) = (
+            sx + (tx - sx) * (step as f32 / steps as f32),
+            sy + (ty - sy) * (step as f32 / steps as f32),
+        );
+        cx.update(|window: &mut Window, cx: &mut App| {
+            window.dispatch_event(input::mouse_move_pressed(x, y, MouseButton::Left), cx);
+        })
+        .map_err(|_| "the window is gone".to_owned())?;
+        settle(cx, 1, SETTLE_TIMEOUT).await?;
+    }
+    if let Some(sel) = &to_selector {
+        // Lanes re-layout mid-drag (refused lanes collapse): drop where the
+        // target is now, not where it was when the drag started.
+        if let Ok(node) = registry::select(&registry::snapshot(), sel) {
+            (tx, ty) = node.center();
+        }
+        cx.update(|window: &mut Window, cx: &mut App| {
+            window.dispatch_event(input::mouse_move_pressed(tx, ty, MouseButton::Left), cx);
+        })
+        .map_err(|_| "the window is gone".to_owned())?;
+        settle(cx, 1, SETTLE_TIMEOUT).await?;
+    }
+    cx.update(|window: &mut Window, cx: &mut App| {
+        window.dispatch_event(input::mouse_up(tx, ty, MouseButton::Left, 1), cx);
+    })
+    .map_err(|_| "the window is gone".to_owned())?;
+    settle(cx, SETTLE_FRAMES, SETTLE_TIMEOUT).await?;
+    Ok(json!({"from": [sx, sy], "to": [tx, ty], "id": id, "steps": steps}))
 }
 
 /// `type_text`: one keystroke per character into whatever holds keyboard focus.

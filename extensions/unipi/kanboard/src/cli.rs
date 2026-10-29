@@ -1,8 +1,8 @@
-//! The CLI bridge (unipi `bin.ts`): runs `oino-kanboard` through host `process.exec`, parses
-//! its JSON and surfaces its rule messages.
-//!
-//! Binary resolution: `$OINO_KANBOARD_BIN` (an explicit path — tests and tinkerers), else
-//! `oino-kanboard` found by the host (the Oino install dir is on the extension search path).
+//! The kanboard bridge (round-5 #7): runs an `oino-kanboard` argv **in the
+//! host process** through `oino:extension/kanboard.exec` — no binary, no
+//! daemon, no HTTP port; writes still serialise on the library's file locks
+//! (the CLI binary and the agent's own calls share them). `binary` is kept in
+//! the signature for callers and ignored.
 
 use serde_json::Value;
 
@@ -125,35 +125,58 @@ pub fn argv(args: &[String], json: bool) -> Vec<String> {
     out
 }
 
-/// Runs the binary. `env` comes on top of the host environment; the actor defaults to
-/// `user` (the extension acts as the user; only the agent's own calls say `agent`).
+/// Runs `oino-kanboard args` in the host process. `env` comes on top of the
+/// host environment; the actor defaults to `user` (the extension acts as the
+/// user; only the agent's own calls say `agent`). `binary` and `timeout_ms`
+/// are ignored — an in-process call cannot be killed or go missing.
+#[allow(clippy::unused_async, reason = "callers await a uniform Result")]
 pub async fn run(
-    binary: &str,
+    _binary: &str,
     args: &[String],
     env: &[(String, String)],
     cwd: Option<&str>,
     json: bool,
-    timeout_ms: Option<u64>,
+    _timeout_ms: Option<u64>,
 ) -> Result<Value, CliError> {
-    let mut env = env.to_vec();
-    if !env.iter().any(|(k, _)| k == "OINO_KANBOARD_ACTOR") {
-        env.push(("OINO_KANBOARD_ACTOR".into(), "user".into()));
-    }
-    let options = oino_extension::wit::process::ExecOptions {
+    let mut vars = std::collections::BTreeMap::from_iter(env.iter().cloned());
+    vars.entry("OINO_KANBOARD_ACTOR".to_owned())
+        .or_insert_with(|| "user".to_owned());
+    let request = oino_extension::kanboard::Request {
+        argv: argv(args, json),
+        env: vars,
         cwd: cwd.map(ToOwned::to_owned),
-        timeout_ms: Some(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS)),
-        env,
+        stdin: None,
     };
-    let result = oino_extension::wit::process::exec(binary.to_owned(), argv(args, json), options)
-        .await
-        .map_err(|e| CliError::io(oino_extension::Error::from(e).to_string()))?;
-    interpret(
-        &result.stdout,
-        &result.stderr,
-        result.code,
-        result.killed,
-        json,
-    )
+    let payload =
+        oino_extension::kanboard::exec(&request).map_err(|e| CliError::io(e.to_string()))?;
+    if oino_extension::kanboard::is_error(&payload) {
+        return Err(CliError {
+            message: payload
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("oino-kanboard failed")
+                .to_owned(),
+            code: 1,
+            kind: payload
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("rule")
+                .to_owned(),
+        });
+    }
+    if json {
+        return Ok(payload);
+    }
+    // The human rendering travels as `output` ([`service::exec`]) — the text
+    // the binary would have printed.
+    Ok(Value::String(
+        payload
+            .get("output")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim_end()
+            .to_owned(),
+    ))
 }
 
 #[cfg(test)]

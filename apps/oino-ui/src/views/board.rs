@@ -28,9 +28,10 @@ use crate::components::menu::{MenuEntry, Placement, menu, popover};
 use crate::components::ous::kanban::{BoardOptions, filtered};
 use crate::components::ous::{self, Ous};
 use crate::components::page_header::{PageHeader, header_crab};
+use crate::components::toast::ToastKind;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
-use crate::model::kanban::{self as kb, BOARD_PANEL};
+use crate::model::kanban as kb;
 use crate::model::sessions::workspace_label;
 use crate::views::session_pane::SessionPane;
 use crate::views::shell::{Route, Workspace};
@@ -58,39 +59,139 @@ pub struct BoardUi {
     pub focus: Option<FocusHandle>,
     /// Open menu.
     pub menu: Option<BoardMenu>,
-    /// Task id whose detail overlay is shown.
+    /// Task id whose detail overlay is shown (also the selected card).
     pub detail: Option<String>,
-    /// The extension's selection last frame (a change opens the overlay).
-    last_selected: Option<String>,
-    /// The session the board was requested in (`/kanboard open` runs once per session).
-    requested: Option<gpui_kit::EntityId>,
+    /// Board project slug (resolved per workspace cwd, or picked in the menu).
+    pub project: Option<String>,
+    /// Status id of the card being dragged (lanes highlight / dim, #8).
+    drag_status: Option<String>,
+    /// Lane id under the pointer during a drag.
+    hover_lane: Option<String>,
+    /// The `(pane, cwd)` `project` was resolved for — a change re-resolves.
+    resolved_for: Option<(gpui_kit::EntityId, String)>,
+    /// Last board error (shown in the empty state).
+    error: Option<String>,
     /// The native New task dialog: title and description fields (GA-20).
     new_task: Option<(Entity<InputState>, Entity<InputState>)>,
 }
-
-/// The command that starts the kanboard daemon and opens its board panel (GA-17; the bare
-/// `/kanboard` only prints help).
-pub const OPEN_COMMAND: &str = "/kanboard open";
-/// The prefilled add command (GA-20).
-pub const ADD_COMMAND: &str = "/kanboard-add ";
 
 impl Workspace {
     fn board_pane(&self) -> Option<Entity<SessionPane>> {
         self.active_pane().cloned()
     }
 
-    fn board_action(&self, action: &str, value: JsonValue, cx: &mut Context<Self>) {
-        if let Some(p) = self.board_pane() {
-            let action = action.to_owned();
-            p.update(cx, |p, cx| p.panel_action(BOARD_PANEL, &action, value, cx));
+    /// The slug this board shows: the project registered for the active
+    /// workspace's cwd, re-resolved when the pane or its cwd changes (a menu
+    /// pick survives until then).
+    fn board_project(&mut self, cx: &mut Context<Self>) -> Option<String> {
+        // No session yet: keep a picked project (the board works without one).
+        if self.board_pane().is_none() {
+            return self.board_ui.project.clone();
         }
+        let pane = self.board_pane()?;
+        let id = pane.entity_id();
+        let cwd = pane.read(cx).model.cwd.clone();
+        // A miss is retried every render: a board can be seeded (scenario
+        // `kanboard_seed`) or registered after the pane first drew.
+        let resolved = self.board_ui.project.is_some()
+            && self
+                .board_ui
+                .resolved_for
+                .as_ref()
+                .is_some_and(|(pid, c)| *pid == id && *c == cwd);
+        if !resolved {
+            self.board_ui.resolved_for = Some((id, cwd.clone()));
+            self.board_ui.project = crate::kanboard::kanboard(cx)
+                .and_then(|s| s.project_for_cwd(std::path::Path::new(&cwd)).ok())
+                .map(|project| project.slug);
+        }
+        self.board_ui.project.clone()
     }
 
-    fn board_model(&self, cx: &App) -> Option<kb::Board> {
-        let p = self.board_pane()?;
-        let p = p.read(cx);
-        let panel = p.model.ui.panel(BOARD_PANEL)?;
-        kb::recognise(&panel.spec)
+    /// The board's action path: `select` opens the detail overlay, `move:<x>`
+    /// runs the move in-process (round-5 #7 — no panel round-trip).
+    fn board_action(&mut self, action: &str, value: JsonValue, cx: &mut Context<Self>) {
+        if action == "select" {
+            if let Some(id) = value.as_str() {
+                self.board_ui.detail = Some(id.to_owned());
+            }
+            cx.notify();
+            return;
+        }
+        if let Some(status) = action.strip_prefix("drag-start:") {
+            self.board_ui.drag_status = Some(status.to_owned());
+            self.board_ui.hover_lane = None;
+            cx.notify();
+            return;
+        }
+        if let Some(lane) = action.strip_prefix("hover:") {
+            // Fires per pointer move; only a lane change repaints.
+            if self.board_ui.hover_lane.as_deref() != Some(lane) {
+                self.board_ui.hover_lane = Some(lane.to_owned());
+                cx.notify();
+            }
+            return;
+        }
+        let Some(service) = crate::kanboard::kanboard(cx) else {
+            return;
+        };
+        let Some(slug) = self.board_ui.project.clone() else {
+            return;
+        };
+        if let Some(to) = action.strip_prefix("move:") {
+            self.board_ui.drag_status = None;
+            self.board_ui.hover_lane = None;
+            let Some(id) = self
+                .board_ui
+                .detail
+                .clone()
+                .or_else(|| value.as_str().map(str::to_owned))
+            else {
+                return;
+            };
+            let Ok(status) = to.parse::<oino_kanboard::Status>() else {
+                return;
+            };
+            match service.move_task(&slug, &id, status, None) {
+                Err(e) => self.toast(ToastKind::Error, None, e.to_string(), cx),
+                Ok(_) => {
+                    self.toast(
+                        ToastKind::Success,
+                        None,
+                        format!("Moved {id} to {}", status.as_str()),
+                        cx,
+                    );
+                }
+            }
+        } else if action == "show" {
+            // The extension prints the board into the chat (kept: it is a
+            // command, not the panel).
+            if let Some(p) = self.board_pane()
+                && p.read(cx).has_command("kanboard")
+            {
+                p.update(cx, |p, cx| p.run_prompt("/kanboard", cx));
+                self.route = Route::Sessions;
+            }
+        }
+        // `refresh` and every mutation: the watcher bumps the windows; the
+        // service cache is already invalidated, so a notify is the refresh.
+        cx.notify();
+    }
+
+    fn board_model(&mut self, cx: &mut Context<Self>) -> Option<kb::Board> {
+        let slug = self.board_project(cx)?;
+        let service = crate::kanboard::kanboard(cx)?;
+        let session = self.board_pane().map(|pane| pane.read(cx).model.id.clone());
+        match service.board(&slug, self.board_ui.detail.as_deref(), session.as_deref()) {
+            Ok(board) => {
+                self.board_ui.error = None;
+                Some(board)
+            }
+            Err(e) => {
+                self.board_ui.error = Some(e.to_string());
+                None
+            }
+        }
     }
 
     /// Opens the native New task dialog (FAB, `c`, the lane's "Add task"); it adds the task
@@ -111,6 +212,8 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Commit the native New task dialog: `add` in-process through the service
+    /// (round-5 #7 — no `/kanboard-add` prompt through the session).
     fn board_add_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((title, body)) = self.board_ui.new_task.take() else {
             return;
@@ -118,13 +221,20 @@ impl Workspace {
         let title = title.read(cx).value().trim().to_owned();
         let body = body.read(cx).value().trim().to_owned();
         if !title.is_empty() {
-            let text = if body.is_empty() {
-                format!("{ADD_COMMAND}{title}")
-            } else {
-                format!("{ADD_COMMAND}{title}\n{body}")
-            };
-            if let Some(p) = self.board_pane() {
-                p.update(cx, |p, cx| p.run_prompt(&text, cx));
+            match crate::kanboard::kanboard(cx).zip(self.board_ui.project.clone()) {
+                Some((service, slug)) => {
+                    if let Err(e) =
+                        service.add_task(&slug, &title, (!body.is_empty()).then_some(body.as_str()))
+                    {
+                        self.toast(ToastKind::Error, None, e.to_string(), cx);
+                    }
+                }
+                None => self.toast(
+                    ToastKind::Error,
+                    None,
+                    "No board project — pick or register one.",
+                    cx,
+                ),
             }
         }
         if let Some(f) = &self.board_ui.focus {
@@ -310,15 +420,21 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let service = crate::kanboard::kanboard(cx);
         let project = self
-            .board_pane()
-            .map(|p| workspace_label(&p.read(cx).model.cwd))
-            .unwrap_or_default();
-        let groups: Vec<(String, String)> = self
-            .sessions
-            .groups()
+            .board_ui
+            .project
+            .clone()
+            .or_else(|| {
+                self.board_pane()
+                    .map(|p| workspace_label(&p.read(cx).model.cwd))
+            })
+            .unwrap_or_else(|| "Board".to_owned());
+        let projects: Vec<(String, String)> = service
+            .and_then(|s| s.projects().ok())
+            .unwrap_or_default()
             .into_iter()
-            .map(|g| (g.cwd, g.label))
+            .map(|p| (p.name.clone(), p.slug))
             .collect();
         let e = cx.entity().downgrade();
         let picker = popover(
@@ -331,15 +447,15 @@ impl Workspace {
             self.board_ui.menu == Some(BoardMenu::Project),
             Placement::BelowStart,
             || {
-                let entries = groups
+                let entries = projects
                     .into_iter()
-                    .map(|(cwd, label)| {
+                    .map(|(label, slug)| {
                         let e = e.clone();
-                        MenuEntry::item(label, move |window, cx| {
-                            let cwd = cwd.clone();
+                        MenuEntry::item(label, move |_, cx| {
+                            let slug = slug.clone();
                             let _ = e.update(cx, |ws, cx| {
                                 ws.board_ui.menu = None;
-                                ws.board_open_project(&cwd, window, cx);
+                                ws.board_pick_project(&slug, cx);
                             });
                         })
                         .icon(IconName::Folder)
@@ -431,38 +547,18 @@ impl Workspace {
             .into_any_element()
     }
 
-    /// Opens the board of another workspace: an open pane there, else a new session.
-    fn board_open_project(&mut self, cwd: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(key) = self
-            .panes
-            .iter()
-            .find(|p| p.entity.read(cx).model.cwd == cwd)
-            .map(|p| p.key)
-        {
-            self.focus_pane(key, window, cx);
-        } else {
-            self.new_session_in(cwd, window, cx);
-        }
-        self.board_ui = BoardUi::default();
-        self.ensure_board(cx);
+    /// The picker sets the shown project; the next pane switch re-resolves it
+    /// from the workspace's cwd (round-5: the board follows the workspace, not
+    /// an extension panel).
+    fn board_pick_project(&mut self, slug: &str, cx: &mut Context<Self>) {
+        self.board_ui.project = Some(slug.to_owned());
+        self.board_ui.detail = None;
         cx.notify();
     }
 
-    /// Runs [`OPEN_COMMAND`] in the board's session once, when its panel is not open yet.
+    /// Resolves the board project once per render (no extension round-trip).
     pub(crate) fn ensure_board(&mut self, cx: &mut Context<Self>) {
-        let Some(pane) = self.board_pane() else {
-            return;
-        };
-        let id = pane.entity_id();
-        let open = pane.read(cx).model.ui.panel(BOARD_PANEL).is_some();
-        if open || self.board_ui.requested == Some(id) {
-            return;
-        }
-        self.board_ui.requested = Some(id);
-        // Outside the current render / update.
-        cx.defer(move |cx| {
-            pane.update(cx, |p, cx| p.run_prompt(OPEN_COMMAND, cx));
-        });
+        let _ = self.board_project(cx);
     }
 
     fn close_board_menu(&self, cx: &mut Context<Self>) -> impl Fn(&mut Window, &mut App) + 'static {
@@ -654,7 +750,6 @@ impl Workspace {
     ) -> AnyElement {
         let t = OinoTheme::get(cx);
         self.ensure_board(cx);
-        let pane = self.board_pane();
         let board = self.board_model(cx);
         let header = self.board_header(board.as_ref(), &t, window, cx);
         let toolbar = self.board_toolbar(board.as_ref(), &t, window, cx);
@@ -664,25 +759,30 @@ impl Workspace {
         {
             window.focus(f, cx);
         }
-        let has_kanboard = pane
-            .as_ref()
-            .is_none_or(|p| p.read(cx).has_command("kanboard"));
-        let raw_panel = pane.as_ref().and_then(|p| {
-            p.read(cx)
-                .model
-                .ui
-                .panel(BOARD_PANEL)
-                .map(|panel| panel.spec.clone())
-        });
-        let body = match (&pane, &board) {
-            (Some(p), Some(b)) => {
+        let service = crate::kanboard::kanboard(cx);
+        #[allow(
+            clippy::single_match_else,
+            reason = "the empty-state arm is the meat, not the default"
+        )]
+        let body = match &board {
+            Some(b) => {
                 let mut opts = self.board_ui.opts.clone();
                 opts.add_row = true;
-                let forward = p.update(cx, |p, cx| p.action_fn(BOARD_PANEL, cx));
+                // #8: drag state only matters while a drag is live — clearing
+                // here also sweeps a drag that ended without a drop.
+                if cx.has_active_drag() {
+                    opts.dragging = self.board_ui.drag_status.clone();
+                    opts.hover_lane = self.board_ui.hover_lane.clone();
+                } else {
+                    self.board_ui.drag_status = None;
+                    self.board_ui.hover_lane = None;
+                }
                 let ws = cx.entity().downgrade();
-                let select = b.select_action.clone();
-                // The lane's "Add task" opens the native dialog, not the extension's prompt.
+                // Native actions: "add" opens the dialog, "select" the overlay,
+                // "move:<x>" runs in-process — all through `board_action`.
                 let on_action: ous::ActionFn = Rc::new(move |action, value, cx| {
+                    let value = value.clone();
+                    let action = action.to_owned();
                     if action == "add" {
                         let ws = ws.clone();
                         cx.defer(move |cx| {
@@ -695,29 +795,17 @@ impl Workspace {
                             }
                         });
                     } else {
-                        // A card click selects it and opens its detail (Enter does the same).
-                        if select.as_deref() == Some(action)
-                            && let Some(id) = value.as_str().map(str::to_owned)
-                        {
-                            let _ = ws.update(cx, |ws, cx| {
-                                ws.board_ui.detail = Some(id);
-                                ws.board_ui.last_selected = None;
-                                cx.notify();
-                            });
-                        }
-                        forward(action, value, cx);
+                        let _ = ws.update(cx, |ws, cx| ws.board_action(&action, value, cx));
                     }
                 });
-                let lanes = p.update(cx, |p, cx| {
-                    let mut o = Ous {
-                        t,
-                        on_action: Rc::clone(&on_action),
-                        inputs: Some(&mut p.inputs),
-                        cols: crate::components::ous_cols(p.width),
-                        roomy: true,
-                    };
-                    ous::kanban::board(&mut o, b, &opts, BOARD_PANEL, window, cx)
-                });
+                let mut o = Ous {
+                    t,
+                    on_action: Rc::clone(&on_action),
+                    inputs: None,
+                    cols: crate::components::ous_cols(self.window_width),
+                    roomy: true,
+                };
+                let lanes = ous::kanban::board(&mut o, b, &opts, "board", window, cx);
                 let visible = filtered(b, &self.board_ui.opts);
                 let e = cx.entity().downgrade();
                 let strip = ous::kanban::lane_strip(
@@ -743,91 +831,97 @@ impl Workspace {
                     .child(div().flex_1().min_h_0().child(lanes))
                     .into_any_element()
             }
-            // The panel is open but is not a board (the "set up the board" panel): render it.
-            (Some(p), None) if raw_panel.is_some() => {
-                let spec = raw_panel.unwrap_or(crate::model::ous::OusNode::Empty { message: None });
-                let rendered = p.update(cx, |p, cx| {
-                    let on_action = p.action_fn(BOARD_PANEL, cx);
-                    let mut o = Ous {
-                        t,
-                        on_action,
-                        inputs: Some(&mut p.inputs),
-                        cols: crate::components::ous_cols(px(size::DIALOG_MD)),
-                        roomy: true,
-                    };
-                    ous::render(&spec, "board/setup", &mut o, window, cx)
-                });
-                div()
-                    .flex()
-                    .justify_center()
-                    .pt(px(size::EMPTY_TOP))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .w(px(size::DIALOG_MD))
-                            .p(px(space::S5))
-                            .rounded(px(radius::R_CARD))
-                            .bg(t.card())
-                            .border_1()
-                            .border_color(t.border())
-                            .child(rendered),
-                    )
-                    .into_any_element()
-            }
-            _ if !has_kanboard => {
+            // No service → the board home cannot be resolved; a registered-but-
+            // unreadable project → the error; an unregistered cwd → offer `init`.
+            None => {
                 let e = cx.entity().downgrade();
-                empty_state(
-                    &t,
-                    IconName::Kanban,
-                    "Board is off",
-                    Some("Turn on the kanboard extension to plan work here.".into()),
-                    vec![
-                        Btn::new("board-ext")
-                            .label("Open Extensions")
-                            .variant(Variant::Secondary)
-                            .size(BtnSize::Xl)
-                            .on_click(move |_, window, cx| {
-                                let _ = e.update(cx, |ws, cx| {
-                                    ws.run_app_action("extensions", window, cx);
-                                });
-                            })
-                            .into_any_element(),
-                    ],
-                )
-                .into_any_element()
+                match &service {
+                    None => empty_state(
+                        &t,
+                        IconName::Kanban,
+                        "Board is off",
+                        Some("The board state directory cannot be resolved.".into()),
+                        Vec::new(),
+                    )
+                    .into_any_element(),
+                    Some(_) if self.board_ui.project.is_none() => {
+                        let cwd = self
+                            .board_pane()
+                            .map(|p| p.read(cx).model.cwd.clone())
+                            .unwrap_or_default();
+                        let label = workspace_label(&cwd);
+                        empty_state(
+                            &t,
+                            IconName::Kanban,
+                            "No board here yet",
+                            Some(
+                                format!("{label} is not a board project. Set one up, or pick another project above.")
+                                    .into(),
+                            ),
+                            vec![
+                                Btn::new("board-init")
+                                    .label("Set up the board")
+                                    .variant(Variant::Primary)
+                                    .size(BtnSize::Xl)
+                                    .on_click(move |_, _, cx| {
+                                        let cwd = cwd.clone();
+                                        let _ = e.update(cx, |ws, cx| {
+                                            let result = crate::kanboard::kanboard(cx)
+                                                .map(|s| s.register(std::path::Path::new(&cwd)));
+                                            if let Some(Ok(project)) = result {
+                                                ws.board_ui.project = Some(project.slug);
+                                            } else if let Some(Err(err)) = result {
+                                                ws.toast(
+                                                    ToastKind::Error,
+                                                    None,
+                                                    err.to_string(),
+                                                    cx,
+                                                );
+                                            }
+                                            cx.notify();
+                                        });
+                                    })
+                                    .into_any_element(),
+                            ],
+                        )
+                        .into_any_element()
+                    }
+                    Some(_) => empty_state(
+                        &t,
+                        IconName::Kanban,
+                        "The board could not be read",
+                        self.board_ui.error.clone().map(SharedString::from),
+                        Vec::new(),
+                    )
+                    .into_any_element(),
+                }
             }
-            _ => empty_state(
-                &t,
-                IconName::Kanban,
-                "Opening the board…",
-                Some("Starting the kanboard daemon for this project.".into()),
-                Vec::new(),
-            )
-            .into_any_element(),
         };
         // The selected task's detail as an overlay (Enter / click), not inline.
         let selected = board.as_ref().and_then(|b| {
             b.lanes
                 .iter()
                 .flat_map(|l| &l.cards)
-                .find(|c| c.selected)
+                .find(|c| Some(c.id.as_str()) == self.board_ui.detail.as_deref())
                 .map(|c| (c.id.clone(), c.title.clone()))
         });
-        let overlay = match (&pane, &board, &self.board_ui.detail, &selected) {
-            (Some(p), Some(b), Some(open), Some((id, title))) if open == id => {
+        let overlay = match (&board, &self.board_ui.detail, &selected) {
+            (Some(b), Some(open), Some((id, title))) if open == id => {
                 b.detail.clone().map(|detail| {
-                    let rendered = p.update(cx, |p, cx| {
-                        let on_action = p.action_fn(BOARD_PANEL, cx);
-                        let mut o = Ous {
-                            t,
-                            on_action,
-                            inputs: Some(&mut p.inputs),
-                            cols: crate::components::ous_cols(px(size::DIALOG_MD)),
-                            roomy: true,
-                        };
-                        ous::render(&detail, "board/detail", &mut o, window, cx)
+                    let ws = cx.entity().downgrade();
+                    let on_action: ous::ActionFn = Rc::new(move |action, value, cx| {
+                        let action = action.to_owned();
+                        let value = value.clone();
+                        let _ = ws.update(cx, |ws, cx| ws.board_action(&action, value, cx));
                     });
+                    let mut o = Ous {
+                        t,
+                        on_action,
+                        inputs: None,
+                        cols: crate::components::ous_cols(px(size::DIALOG_MD)),
+                        roomy: true,
+                    };
+                    let rendered = ous::render(&detail, "board/detail", &mut o, window, cx);
                     let e = cx.entity().downgrade();
                     modal_frame(
                         &t,
@@ -847,15 +941,6 @@ impl Workspace {
             }
             _ => None,
         };
-        // Clicking a card selects it in the extension; open its overlay on that change.
-        if let Some((id, _)) = &selected
-            && self.board_ui.last_selected.as_deref() != Some(id.as_str())
-        {
-            if self.board_ui.last_selected.is_some() {
-                self.board_ui.detail = Some(id.clone());
-            }
-            self.board_ui.last_selected = Some(id.clone());
-        }
         let new_task = self.new_task_dialog(&t, cx);
         let fab = board.is_some().then(|| {
             div()

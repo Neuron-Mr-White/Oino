@@ -82,12 +82,16 @@ struct Env {
 
 impl Env {
     fn new() -> Self {
-        let bin = root_dir().join("target/debug/oino-kanboard");
-        assert!(bin.exists(), "build oino-kanboard first (run.sh does)");
+        // The extension runs kanboard in-process now (`kanboard.exec`); the
+        // binary only simulates the agent's own calls in `settle_nudges`.
+        assert!(
+            root_dir().join("target/debug/oino-kanboard").exists(),
+            "build oino-kanboard first (run.sh does)"
+        );
         let home = tempfile::tempdir().unwrap();
         // SAFETY: set before the runtime starts; tests run with --test-threads=1.
         unsafe {
-            std::env::set_var("OINO_KANBOARD_BIN", &bin);
+            std::env::remove_var("OINO_KANBOARD_BIN");
             std::env::set_var("OINO_KANBOARD_HOME", home.path());
             std::env::set_var("OINO_KANBOARD_NO_WATCH", "1");
             std::env::remove_var("OINO_KANBOARD_CHILD");
@@ -197,8 +201,6 @@ async fn registration() {
             ("kanboard-do", false),
             ("kanboard-autowork", false),
             ("kanboard-open", true),
-            ("kanboard-stop-daemon", true),
-            ("kanboard-rotate-token", true),
         ]
     );
     assert!(reg.tools.is_empty());

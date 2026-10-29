@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use super::registry::Role;
 
 /// Methods the server answers (kept in sync with [`Request::method`] and the docs).
-pub const METHODS: [&str; 17] = [
+pub const METHODS: [&str; 18] = [
     "tree",
     "state",
     "click",
@@ -21,6 +21,7 @@ pub const METHODS: [&str; 17] = [
     "type_text",
     "key",
     "scroll",
+    "drag",
     "focus",
     "wait_for",
     "screenshot",

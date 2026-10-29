@@ -491,6 +491,9 @@ pub fn popover_key(
     let on_key_close = on_key;
     let body = div()
         .occlude()
+        // #23: wheel over the menu body stops here (the menu's own scrollable
+        // handles first); it must never scroll the board underneath.
+        .on_scroll(|_: &gpui_kit::ScrollEvent, _, cx| cx.stop_propagation())
         .on_mouse_down_out(move |_: &MouseDownEvent, w, cx| on_close(w, cx))
         .on_key_down(move |e: &KeyDownEvent, w, cx| {
             if e.keystroke.key == "escape" || e.keystroke.key == "left" {

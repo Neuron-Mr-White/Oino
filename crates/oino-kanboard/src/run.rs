@@ -418,14 +418,14 @@ pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
 }
 
 /// The `--attach-existing` paths that name existing files (`~/` → `$HOME`).
-fn existing_files(paths: &[String]) -> Vec<std::path::PathBuf> {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+fn existing_files(paths: &[String]) -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
     paths
         .iter()
         .filter_map(|raw| match (raw.strip_prefix("~/"), &home) {
             (Some(rest), Some(home)) => Some(home.join(rest)),
             (Some(_), None) => None,
-            (None, _) => Some(std::path::PathBuf::from(raw)),
+            (None, _) => Some(PathBuf::from(raw)),
         })
         .filter(|path| path.is_file())
         .collect()
@@ -837,48 +837,6 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             }
             out
         }
-        Command::Settings { .. } => {
-            if field(payload, "maxSessions").is_null() {
-                let argv = field(payload, "piCommand")
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default();
-                let joined: Vec<String> = argv
-                    .iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect();
-                format!("pi-command set to {:?}", joined.join(" "))
-            } else {
-                let argv = field(payload, "piCommand")
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default();
-                let joined: Vec<String> = argv
-                    .iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect();
-                format!(
-                    "pi-command: {}\nmodels: {} reported\nsummary model: {}\ncustom summary instruction: {}\nmaxSessions: {}",
-                    if joined.is_empty() {
-                        "(not set)".to_string()
-                    } else {
-                        joined.join(" ")
-                    },
-                    field(payload, "models").as_array().map_or(0, Vec::len),
-                    {
-                        let m = text(payload, "summaryModel");
-                        if m.is_empty() {
-                            "pi default".to_string()
-                        } else {
-                            m
-                        }
-                    },
-                    field(payload, "summaryInstructionSet"),
-                    text(payload, "maxSessions")
-                )
-            }
-        }
-        Command::RotateToken => format!("rotate-token: {}", text(payload, "note")),
         Command::Chain { id } => {
             let upstream = field(payload, "upstream")
                 .as_array()
@@ -959,72 +917,21 @@ pub fn human(cli: &Cli, payload: &Value) -> String {
             }
             line
         }
-        Command::Serve { .. } => {
-            if field(payload, "alreadyRunning").as_bool().unwrap_or(false) {
-                let daemon = field(payload, "daemon");
-                let mut line = format!(
-                    "kanboard already running on {}:{} (pid {})",
-                    text(daemon, "host"),
-                    text(daemon, "port"),
-                    text(daemon, "pid")
-                );
-                if field(payload, "bindingChanged").as_bool().unwrap_or(false) {
-                    let _ = write!(
-                        line,
-                        " — requested {}:{}; stop it first (oino-kanboard stop) to rebind",
-                        text(field(payload, "requested"), "host"),
-                        text(field(payload, "requested"), "port")
-                    );
-                }
-                line
-            } else if field(payload, "stopped").as_bool().unwrap_or(false) {
-                let daemon = field(payload, "daemon");
-                format!(
-                    "kanboard stopped (was pid {} on port {})",
-                    text(daemon, "pid"),
-                    text(daemon, "port")
-                )
-            } else {
-                let daemon = field(payload, "daemon");
-                format!(
-                    "kanboard listening on {}:{} (pid {}){}",
-                    text(daemon, "host"),
-                    text(daemon, "port"),
-                    text(daemon, "pid"),
-                    if field(daemon, "token").is_null() {
-                        String::new()
-                    } else {
-                        " · remote access requires the token from daemon.json".to_string()
-                    }
-                )
-            }
-        }
         Command::Status => {
-            let daemon = field(payload, "daemon");
-            if daemon.is_null() {
-                "no daemon recorded".to_string()
+            let home = text(payload, "home");
+            let projects = payload
+                .get("projects")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if projects.is_empty() {
+                format!("kanboard home {home} — no projects registered")
             } else {
-                format!(
-                    "pid {} · port {} · version {} · started {} · alive={}",
-                    text(daemon, "pid"),
-                    text(daemon, "port"),
-                    text(daemon, "version"),
-                    text(daemon, "startedAt"),
-                    field(payload, "alive")
-                )
-            }
-        }
-        Command::Stop { .. } => {
-            if field(payload, "stopped").as_bool().unwrap_or(false) {
-                format!("stopped pid {}", text(payload, "pid"))
-            } else {
-                format!(
-                    "not stopped: {}",
-                    payload
-                        .get("reason")
-                        .and_then(|reason| reason.as_str())
-                        .unwrap_or("unknown")
-                )
+                let names: Vec<String> = projects
+                    .iter()
+                    .map(|project| text(project, "slug"))
+                    .collect();
+                format!("kanboard home {home} — projects: {}", names.join(" "))
             }
         }
         Command::Validate { .. } => {
@@ -1070,31 +977,7 @@ pub fn exit_code(cli: &Cli, payload: &Value) -> i32 {
     0
 }
 
-/// Resolve the project without touching the board (used by `main` for context).
-pub fn project_for(layout: &Layout, cli: &Cli) -> Result<store::Project> {
-    store::resolve_project(layout, cli.project.as_deref())
-}
-
-/// Re-exported for `main`/daemon use.
-pub fn layout() -> Result<Layout> {
-    Layout::from_env()
-}
-
-/// Kept public so K2 can build the same `Value` payloads for the JSON API.
-pub fn dispatch_value(cli: &Cli) -> Result<Value> {
-    dispatch(cli)
-}
-
-/// Helper for the daemon: the JSON of a task list is the API payload.
-pub fn list_payload(cli: &Cli) -> Result<Value> {
-    dispatch(cli)
-}
-
-/// Unused-import guard for `Priority` (kept for API symmetry in K2).
-#[allow(dead_code)]
-fn _priority_marker(_: Priority) {}
-
-/// Convenience for tests and the daemon.
+/// Per-status task counts for one project (the board header's summary).
 pub fn project_counts(layout: &Layout, project: &store::Project) -> Result<Value> {
     let board = crate::board::Board::open(layout, project.clone())?;
     let tasks = board.tasks()?;

@@ -1,0 +1,88 @@
+{
+  "name": "r5-board-inprocess",
+  "scene": "board",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "kanboard_seed": {
+        "slug": "demo-board",
+        "next_id": 12
+      }
+    },
+    {
+      "wait_for": {
+        "id": "nav-board",
+        "timeout_ms": 40000
+      }
+    },
+    {
+      "click": {
+        "id": "nav-board"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "card-OIN-11",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "wait_for": {
+        "id": "card-OIN-10",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Starting the kanboard daemon",
+        "absent": true,
+        "timeout_ms": 4000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-inprocess"
+      }
+    },
+    {
+      "kanboard_seed": {
+        "slug": "demo-board",
+        "next_id": 13,
+        "tasks": [
+          {
+            "id": "OIN-11",
+            "title": "Seed the demo board",
+            "status": "todo",
+            "priority": "high"
+          },
+          {
+            "id": "OIN-10",
+            "title": "Write the board design",
+            "status": "in_progress"
+          },
+          {
+            "id": "OIN-9",
+            "title": "Pick the lane glyphs",
+            "status": "done"
+          },
+          {
+            "id": "OIN-13",
+            "title": "Appears from a file write (watcher)",
+            "status": "todo"
+          }
+        ]
+      }
+    },
+    {
+      "wait_for": {
+        "id": "card-OIN-13",
+        "timeout_ms": 15000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-watcher-refresh"
+      }
+    }
+  ]
+}

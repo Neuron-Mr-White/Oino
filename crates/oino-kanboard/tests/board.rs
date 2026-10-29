@@ -598,6 +598,7 @@ fn eight_threads_race_but_the_two_session_cap_holds() {
                 // two-sessions-per-project cap is what the threads hit.
                 pid: std::process::id(),
                 host: &host,
+                max_sessions: commands::max_sessions(),
             };
             commands::start(
                 &layout,
@@ -648,8 +649,14 @@ fn re_registering_a_project_never_reuses_ids() {
 
     // `project add` again (what a re-onboard does) must not reset the counter.
     let root = fixture.root();
-    let again = commands::project_add(&fixture.layout, Some(&root), Some("Fixture"), Some("FIX"))
-        .expect("re-register");
+    let again = commands::project_add(
+        &fixture.layout,
+        Some(&root),
+        Some("Fixture"),
+        Some("FIX"),
+        &root,
+    )
+    .expect("re-register");
     assert_eq!(
         again["nextId"],
         first.id.trim_start_matches("FIX-").parse::<u64>().unwrap() + 1

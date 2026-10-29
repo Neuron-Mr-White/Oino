@@ -53,6 +53,7 @@ pub mod automation;
 pub mod components;
 pub mod design;
 pub mod host;
+pub mod kanboard;
 #[cfg(feature = "mobile")]
 pub mod mobile;
 pub mod model;

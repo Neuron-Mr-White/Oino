@@ -273,47 +273,10 @@ pub fn as_project_detail(value: &Value) -> Result<(Project, u64), ShapeError> {
     ))
 }
 
-/// `stop` → `{stopped, pid?, reason?}`.
-pub fn as_stop(value: &Value) -> Result<(bool, Option<u64>, Option<String>), ShapeError> {
-    let map = require_object("stop", value)?;
-    let Some(stopped) = map.get("stopped").and_then(Value::as_bool) else {
-        return Err(shape("stop", "missing boolean \"stopped\""));
-    };
-    Ok((
-        stopped,
-        map.get("pid").and_then(Value::as_u64),
-        map.get("reason")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
-    ))
-}
-
-/// `daemon.json` as `status` reports it.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DaemonInfo {
-    /// Pid.
-    pub pid: u64,
-    /// Port.
-    pub port: u16,
-    /// Version.
-    #[serde(default)]
-    pub version: String,
-    /// Bind host.
-    #[serde(default)]
-    pub host: Option<String>,
-    /// Access token (non-loopback or `--require-auth`).
-    #[serde(default)]
-    pub token: Option<String>,
-}
-
-/// `status` → `{daemon, alive, home, binary, hostname}`.
+/// `status` → `{ok, home, binary, hostname, projects}` (round-5 #7: no
+/// daemon to report — `ok` means the board is reachable in-process).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Status {
-    /// The recorded daemon.
-    pub daemon: Option<DaemonInfo>,
-    /// Its pid is alive.
-    pub alive: bool,
     /// Kanboard home.
     pub home: Option<String>,
     /// Absolute path of the binary.
@@ -325,15 +288,8 @@ pub struct Status {
 /// Parses `status`.
 pub fn as_status(value: &Value) -> Result<Status, ShapeError> {
     let map = require_object("status", value)?;
-    let daemon = match map.get("daemon") {
-        None | Some(Value::Null) => None,
-        Some(d @ Value::Object(_)) => serde_json::from_value(d.clone()).ok(),
-        Some(_) => return Err(shape("status", "\"daemon\" must be an object or null")),
-    };
     let s = |key: &str| map.get(key).and_then(Value::as_str).map(ToOwned::to_owned);
     Ok(Status {
-        daemon,
-        alive: map.get("alive").and_then(Value::as_bool) == Some(true),
         home: s("home"),
         binary: s("binary"),
         hostname: s("hostname"),
@@ -387,15 +343,8 @@ mod tests {
 
     #[test]
     fn status_stop_and_project_shapes() {
-        let s = as_status(&json!({"daemon": {"pid": 1, "port": 9, "version": "1"}, "alive": true, "binary": "/b"})).unwrap();
-        assert_eq!(s.daemon.unwrap().port, 9);
+        let s = as_status(&json!({"home": "/h", "binary": "/b"})).unwrap();
         assert_eq!(s.binary.as_deref(), Some("/b"));
-        assert!(as_status(&json!({"daemon": 3})).is_err());
-        assert_eq!(
-            as_stop(&json!({"stopped": false, "reason": "r"})).unwrap(),
-            (false, None, Some("r".into()))
-        );
-        assert!(as_stop(&json!({})).is_err());
         let (p, total) =
             as_project_detail(&json!({"project": {"slug": "s", "name": "n"}, "total": 4})).unwrap();
         assert_eq!((p.slug.as_str(), total), ("s", 4));

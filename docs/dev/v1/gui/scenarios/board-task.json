@@ -4,6 +4,12 @@
   "shots": "docs/dev/v1/design/shots/gui",
   "steps": [
     {
+      "kanboard_seed": {
+        "slug": "demo-board",
+        "next_id": 12
+      }
+    },
+    {
       "wait_for": {
         "id": "nav-board",
         "timeout_ms": 40000
@@ -76,7 +82,7 @@
     },
     {
       "wait_for": {
-        "label": "\u2192 In Progress",
+        "label": "\u2192 Todo",
         "timeout_ms": 10000
       }
     },
@@ -87,12 +93,12 @@
     },
     {
       "click": {
-        "label": "\u2192 In Progress"
+        "label": "\u2192 Todo"
       }
     },
     {
       "wait_for": {
-        "text": "Moved OIN-12 to in_progress",
+        "text": "Moved OIN-12 to todo",
         "timeout_ms": 20000
       }
     },

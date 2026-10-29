@@ -357,6 +357,86 @@ def run_scenario(client: Client, args: argparse.Namespace) -> int:
     return 0 if failures == 0 else 1
 
 
+def _task_md(task: dict, stamp: str) -> str:
+    """One kanboard task file (the `crates/oino-kanboard` frontmatter format)."""
+    deps = json.dumps(task.get("deps", []))
+    labels = json.dumps(task.get("labels", []))
+    body = task.get("body", "")
+    status = task.get("status", "backlog")
+    parts = [
+        "---",
+        f"id: {task['id']}",
+        f"title: {task['title']}",
+        f"status: {status}",
+        f"priority: {task.get('priority', 'none')}",
+        f"order: {task.get('order', 2000)}",
+        f"deps: {deps}",
+        f"labels: {labels}",
+        "creator: user",
+        f"created: {stamp}",
+        f"updated: {stamp}",
+        "---",
+    ]
+    if body:
+        parts += ["", body]
+    parts += ["", "## Activity", f"- {stamp} [user] created in {status}", ""]
+    return "\n".join(parts)
+
+
+def kanboard_seed(client: Client, params: dict) -> str:
+    """`kanboard_seed` step (round-5 #7): writes `<home>/projects/<slug>/`
+    (project.json + one .md per task) on the app host. `home` defaults to the
+    harness's agent dir (`~/oino-test/agent/state/unipi.kanboard` on `ti`,
+    `$OINO_KANBOARD_HOME`/`~/.oino` locally); `root` defaults to the app cwd
+    (`~/oino-test/project` on `ti`)."""
+    remote = bool(client.host)
+    home = params.get("home") or (
+        "/home/ti/oino-test/agent/state/unipi.kanboard"
+        if remote
+        else os.environ.get("OINO_KANBOARD_HOME")
+        or str(Path.home() / ".oino/state/unipi.kanboard")
+    )
+    root = params.get("root") or ("/home/ti/oino-test/project" if remote else os.getcwd())
+    slug = params.get("slug", "demo-board")
+    prefix = params.get("prefix", "OIN")
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    tasks = params.get("tasks") or [
+        {"id": f"{prefix}-11", "title": "Seed the demo board", "status": "todo", "priority": "high"},
+        {"id": f"{prefix}-10", "title": "Write the board design", "status": "in_progress"},
+        {"id": f"{prefix}-9", "title": "Pick the lane glyphs", "status": "done"},
+    ]
+    project = {
+        "slug": slug,
+        "name": params.get("name", slug),
+        "root": root,
+        "prefix": prefix,
+        "nextId": params.get("next_id", len(tasks) + 11),
+        "createdAt": stamp,
+        "archived": False,
+    }
+    files = {
+        f"projects/{slug}/project.json": json.dumps(project, indent=2),
+    }
+    for task in tasks:
+        files[f"projects/{slug}/tasks/{task['id']}.md"] = _task_md(task, stamp)
+    if remote:
+        script = f"mkdir -p {shlex.quote(home + '/projects/' + slug + '/tasks')}"
+        subprocess.run(["ssh", client.host, script], check=True)
+        for rel, text in files.items():
+            target = f"{home}/{rel}"
+            subprocess.run(
+                ["ssh", client.host, f"mkdir -p $(dirname {shlex.quote(target)}) && cat > {shlex.quote(target)}"],
+                input=text.encode(),
+                check=True,
+            )
+    else:
+        for rel, text in files.items():
+            target = Path(home) / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+    return f"{slug}: {len(tasks)} task(s) under {home}"
+
+
 def run_step(client: Client, scenario: Scenario, method: str, params: dict, args: argparse.Namespace) -> str:
     """Runs one scenario step and returns a short human summary."""
     if method in ("click", "double_click", "right_click", "hover"):
@@ -377,6 +457,11 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
     if method == "sleep":
         time.sleep(float(params.get("ms", 250)) / 1000)
         return f"{params.get('ms', 250)} ms"
+    if method == "kanboard_seed":
+        # Writes a board home (project.json + task .md files) on the app host
+        # (round-5 #7: the board is in-process — a scenario seeds files, the
+        # app's file watcher picks them up).
+        return kanboard_seed(client, params)
     if method == "screenshot":
         name = params.get("name", f"{scenario.step:02d}-{scenario.name}")
         path = scenario.shots / f"{name}.png"
@@ -591,6 +676,25 @@ def check_assertions(client: Client, params: dict, args: argparse.Namespace) -> 
         checked.append(f"element={params['element']}")
         if node is None:
             problems.append(f"no element matches {params['element']}")
+        elif "bounds" in params["element"]:
+            # Range check on the node's geometry (`[x, y, w, h]`, round5 #14: the settings
+            # nav rail is ~268 px wide). Keys: width_min / width_max / height_min /
+            # height_max / x_min / x_max / y_min / y_max.
+            spec = params["element"]["bounds"]
+            x, y, w, h = node.get("bounds") or [0.0, 0.0, 0.0, 0.0]
+            values = {
+                "width": w, "height": h, "x": x, "y": y,
+            }
+            for axis, value in values.items():
+                lo, hi = spec.get(f"{axis}_min"), spec.get(f"{axis}_max")
+                if lo is not None and value < float(lo):
+                    problems.append(
+                        f"{node['id']} {axis} {value:.0f} < {lo}"
+                    )
+                if hi is not None and value > float(hi):
+                    problems.append(
+                        f"{node['id']} {axis} {value:.0f} > {hi}"
+                    )
     if "absent" in params:
         node = find_node(tree["elements"], params["absent"])
         checked.append(f"absent={params['absent']}")

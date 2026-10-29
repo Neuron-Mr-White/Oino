@@ -20,7 +20,7 @@
 //! "…", "kind": "usage|rule|not_found|io"}`.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
@@ -151,7 +151,18 @@ pub fn exec(request: &ExecRequest) -> Value {
         owner_pid: std::process::id(),
     };
     match run::dispatch_in(&cli, &exec) {
-        Ok(payload) => payload,
+        Ok(mut payload) => {
+            // Text callers (the extension's chat replies, `oino-kanboard`
+            // without --json) read `output` — the same rendering the binary
+            // prints.
+            if !cli.json {
+                let output = run::human(&cli, &payload);
+                if let Value::Object(map) = &mut payload {
+                    map.insert("output".to_owned(), Value::String(output));
+                }
+            }
+            payload
+        }
         Err(err) => err_payload(&err),
     }
 }
@@ -187,6 +198,9 @@ pub fn is_error(payload: &Value) -> bool {
 }
 
 // ── file watch ─────────────────────────────────────────────────────────────
+
+/// The watcher [`watch_projects`] returns; keep it alive for events to flow.
+pub type Watcher = notify::RecommendedWatcher;
 
 /// Watches `<home>/projects` and calls `changed(slug)` for content changes
 /// (task `.md` files and `project.json`), coalesced to one call per 150 ms per

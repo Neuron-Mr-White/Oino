@@ -31,6 +31,7 @@ oino-ai.workspace = true
 oino-client = { workspace = true }
 oino-core.workspace = true
 oino-extension-api.workspace = true
+oino-kanboard.workspace = true
 image = { version = "0.25", default-features = false, features = ["jpeg"], optional = true }
 oino-session.workspace = true
 oino-view.workspace = true

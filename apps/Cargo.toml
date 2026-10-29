@@ -36,6 +36,7 @@ oino-client = { path = "../crates/oino-client" }
 oino-core = { path = "../crates/oino-core" }
 oino-cron = { path = "../crates/oino-cron" }
 oino-extension-api = { path = "../crates/oino-extension-api" }
+oino-kanboard = { path = "../crates/oino-kanboard" }
 oino-models = { path = "../crates/oino-models" }
 oino-session = { path = "../crates/oino-session" }
 oino-settings = { path = "../crates/oino-settings" }

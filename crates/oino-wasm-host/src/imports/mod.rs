@@ -9,6 +9,7 @@ mod browser;
 mod core;
 mod cron;
 mod io;
+mod kanboard;
 mod runtime;
 mod session;
 

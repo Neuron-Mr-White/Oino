@@ -27,7 +27,7 @@ wit/oino-extension/
   types.wit      host-info.wit  log.wit       registry.wit  session.wit  control.wit
   models.wit     ui.wit         agents.wit    process.wit   tasks.wit    http.wit
   fs.wit         timers.wit     kv.wit        secrets.wit   bus.wit      services.wit
-  guest.wit      provider.wit   provider-host.wit  worlds.wit
+  kanboard.wit   guest.wit      provider.wit  provider-host.wit  worlds.wit
 wit/deps/        wasi:cli, wasi:clocks, wasi:random, wasi:filesystem, wasi:io  (0.2.x)
 ```
 
@@ -550,6 +550,20 @@ interface services {
     list: func() -> list<tuple<extension-id, string>>;
 }
 
+// ─────────────────────────── kanboard.wit ───────────────────────────
+/// The in-process board (round-5 #7): one `exec` call runs an `oino-kanboard`
+/// argv inside the host — no binary, no daemon, no HTTP port. Writes go
+/// through the library's file locks, so the CLI binary, the agent's own
+/// calls and extension calls serialise on the same files.
+interface kanboard {
+    use types.{json, host-error};
+    /// Request `{argv, env?, cwd?, stdin?}` (the `OINO_KANBOARD_*` variables a
+    /// process.exec would have carried; `cwd` defaults to the session cwd, the
+    /// board home to the host's agent dir) → the command's `--json` payload;
+    /// failures come back inside it as `{ok: false, error, kind}`.
+    exec: func(request: json) -> result<json, host-error>;
+}
+
 // ──────────────────────────── guest.wit ─────────────────────────────
 interface guest {
     use types.{json, call-context, cancel-token};
@@ -709,8 +723,11 @@ sessions, UI, models, agents, settings, bus, services, secrets, registry, tasks 
 `HostServices` (§6) with the caller's `ExtensionId`; `process`, `http`, `fs`, `timers`
 (timer wheel per instance, firing through `HostServices::deliver_event`), `kv` (one JSON file
 per scope, `kv.json` inside the scope's preopen directory, written atomically, max 16 MiB),
-`log`, `host-info` and `provider-host` (forwarded to `HostServices::provider_hook`) are
-implemented in the wasm host itself.
+`log`, `host-info`, `kanboard` and `provider-host` (forwarded to `HostServices::provider_hook`) are
+implemented in the wasm host itself. `kanboard.exec` delegates to
+`oino_kanboard::service::exec` in-process (round-5 #7 — the board library lives in the host,
+so every host that links `oino-wasm-host` serves it identically; the guest's `cwd` defaults to
+the call's session cwd and the board home defaults to the host's agent dir).
 
 ### 5.3 Permission enforcement
 

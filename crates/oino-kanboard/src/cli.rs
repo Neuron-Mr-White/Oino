@@ -40,23 +40,6 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// `settings` subcommands.
-#[derive(Debug, Subcommand)]
-pub enum SettingsSub {
-    /// Print piCommand, the model list and effective limits.
-    Show,
-    /// Change a setting: `pi-command` (JSON argv), `models` (JSON array),
-    /// `summary-model` (provider/id, empty clears).
-    Set {
-        /// The field name.
-        #[arg(value_name = "FIELD")]
-        field: String,
-        /// The new value (empty string clears).
-        #[arg(value_name = "VALUE", default_value = "")]
-        value: String,
-    },
-}
-
 /// Every subcommand.
 #[derive(Debug, Subcommand)]
 pub enum Command {
@@ -309,47 +292,9 @@ pub enum Command {
         retention_days: Option<i64>,
     },
 
-    /// Start the daemon: UI + JSON API + SSE (single instance).
-    Serve {
-        /// Bind address: 127.0.0.1 (default, open) or e.g. 0.0.0.0 (token-gated).
-        #[arg(long, default_value = "127.0.0.1", value_name = "ADDR")]
-        host: String,
-        /// Port to bind (0 = let the OS choose).
-        #[arg(long, default_value_t = 0)]
-        port: u16,
-        /// Shut down after this many idle minutes with no UI and no clients.
-        #[arg(long = "idle-min", value_name = "N")]
-        idle_min: Option<u64>,
-        /// Hidden: idle seconds instead of minutes (tests).
-        #[arg(long = "idle-secs", value_name = "N", hide = true)]
-        idle_secs: Option<u64>,
-        /// Require the access token on loopback binds too (remote always does).
-        #[arg(long = "require-auth")]
-        require_auth: bool,
-        /// Reuse the token stored in `<home>/token` so links survive restarts.
-        #[arg(long = "keep-token")]
-        keep_token: bool,
-    },
-
-    /// Show or change board settings (agent command, effective limits).
-    Settings {
-        /// Settings action.
-        #[command(subcommand)]
-        sub: SettingsSub,
-    },
-
-    /// Drop the persistent access token (the next daemon start mints a fresh one).
-    RotateToken,
-
-    /// Show the recorded daemon (pid, port, version) and whether it is alive.
+    /// Health check: where the files live, which projects exist (in-process —
+    /// there is no daemon).
     Status,
-
-    /// Stop the daemon (SIGTERM, waits up to --timeout).
-    Stop {
-        /// Seconds to wait for the daemon to exit.
-        #[arg(long, default_value_t = 3, value_name = "SECS")]
-        timeout: u64,
-    },
 
     /// Check every task file (and the board) for rule violations.
     Validate {

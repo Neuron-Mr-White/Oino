@@ -1803,12 +1803,11 @@ pub fn board_status(layout: &Layout) -> Result<Value> {
     let binary = std::env::current_exe()
         .ok()
         .map(|path| path.to_string_lossy().into_owned());
-    let _ = &binary;
     Ok(json!({
         "ok": true,
         "home": layout.home.to_string_lossy(),
         "binary": binary,
-        "hostname": sys::hostname(),
+        "hostname": hostname(),
         "projects": projects.iter().map(|project| json!({
             "slug": project.slug,
             "name": project.name,

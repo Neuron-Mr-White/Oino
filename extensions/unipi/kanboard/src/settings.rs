@@ -7,10 +7,6 @@ use unipi_kit::settings::{Field, Kind, Namespace, Section, Unit, Values, choice}
 pub const NAMESPACE: &str = "kanboard";
 /// Hidden command behind the hub's "Open board…" action.
 pub const ACTION_OPEN: &str = "kanboard-open";
-/// Hidden command behind "Stop daemon…".
-pub const ACTION_STOP_DAEMON: &str = "kanboard-stop-daemon";
-/// Hidden command behind "Rotate access token…".
-pub const ACTION_ROTATE_TOKEN: &str = "kanboard-rotate-token";
 
 /// Which dependency status counts as "the chain reached this task".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,22 +37,10 @@ impl ChainGate {
 pub struct KanboardSettings {
     /// Chain gate.
     pub chain_gate: ChainGate,
-    /// `serve --idle-min`.
-    pub idle_min: u64,
-    /// `serve --host`.
-    pub host: String,
-    /// `serve --port` (0 = OS-assigned).
-    pub port: u16,
     /// Auto-archive done/cancelled after N days (0 = off).
     pub archive_after_days: u64,
     /// Cold storage after N days (0 = off).
     pub retention_days: u64,
-    /// Open the board on `open` (unipi: browser; Oino: the board panel always opens).
-    pub open_browser: bool,
-    /// Token-gate loopback binds too.
-    pub require_auth: bool,
-    /// Reuse `<home>/token` across restarts.
-    pub keep_token: bool,
     /// Distinct sessions running tasks per project (min 1).
     pub max_sessions: u64,
     /// `add` calls per turn (0 = unlimited).
@@ -74,14 +58,8 @@ pub struct KanboardSettings {
 pub fn defaults() -> Value {
     json!({
         "chainGate": "in_review",
-        "idleMin": 10,
-        "host": "127.0.0.1",
-        "port": 0,
         "archiveAfterDays": 0,
         "retentionDays": 90,
-        "openBrowser": false,
-        "requireAuth": false,
-        "keepToken": false,
         "maxSessions": 2,
         "turnAddLimit": 20,
         "doTasks": 5,
@@ -107,34 +85,18 @@ impl KanboardSettings {
     /// Reads and validates `raw` (the merged namespace object).
     #[must_use]
     pub fn from_raw(raw: &Value) -> Self {
-        let get_bool = |key: &str| raw.get(key).and_then(Value::as_bool);
-        let host = raw
-            .get("host")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|h| !h.is_empty())
-            .unwrap_or("127.0.0.1")
-            .to_owned();
         Self {
             chain_gate: if raw.get("chainGate").and_then(Value::as_str) == Some("done") {
                 ChainGate::Done
             } else {
                 ChainGate::InReview
             },
-            idle_min: num(raw, "idleMin").filter(|v| *v >= 1.0).map_or(10, whole),
-            host,
-            port: num(raw, "port")
-                .filter(|v| (0.0..=65535.0).contains(v))
-                .map_or(0, |v| u16::try_from(whole(v)).unwrap_or(0)),
             archive_after_days: num(raw, "archiveAfterDays")
                 .filter(|v| *v > 0.0)
                 .map_or(0, whole),
             retention_days: num(raw, "retentionDays")
                 .filter(|v| *v >= 0.0)
                 .map_or(90, whole),
-            open_browser: get_bool("openBrowser") == Some(true),
-            require_auth: get_bool("requireAuth") == Some(true),
-            keep_token: get_bool("keepToken") == Some(true),
             max_sessions: num(raw, "maxSessions")
                 .filter(|v| *v >= 1.0)
                 .map_or(2, whole),
@@ -143,7 +105,7 @@ impl KanboardSettings {
                 .map_or(20, whole),
             do_tasks: num(raw, "doTasks").filter(|v| *v >= 0.0).map_or(5, whole),
             do_writes: num(raw, "doWrites").filter(|v| *v >= 0.0).map_or(10, whole),
-            reminders: get_bool("reminders") != Some(false),
+            reminders: raw.get("reminders").and_then(Value::as_bool) != Some(false),
         }
     }
 
@@ -233,44 +195,9 @@ pub fn namespace() -> Namespace {
                 ),
         )
         .section(
-            Section::new("server", "Board server")
-                .description("Daemon binding, lifetime and access token")
-                .advanced(true)
-                .field(
-                    Field::string("host", "Bind address")
-                        .empty_label("127.0.0.1 (local only)")
-                        .hint("127.0.0.1 · 0.0.0.0 (LAN, token-gated) · tailscale (tailnet IP)")
-                        .description("Address the board server binds; anything but a loopback requires the access token."),
-                )
-                .field(
-                    number("port", "Daemon port", 0.0, Some(65535.0), None, Some("auto"))
-                        .description("Port the board server listens on; 0 lets the OS pick a free one."),
-                )
-                .field(
-                    number("idleMin", "Daemon idle", 1.0, None, Some(Unit::Min), None)
-                        .description("Shut the daemon down after this long with no board open."),
-                )
-                .field(
-                    Field::boolean("openBrowser", "Open board panel")
-                        .description("Open the board panel when the daemon starts from the hub action."),
-                )
-                .field(
-                    Field::boolean("requireAuth", "Token on localhost")
-                        .description("Require the access token on 127.0.0.1 too; remote binds always need it. Next daemon start."),
-                )
-                .field(
-                    Field::boolean("keepToken", "Keep token")
-                        .description("Reuse <home>/token across restarts so board links stay valid; rotate below."),
-                )
-                .field(Field::action("open", "Open board…", ACTION_OPEN).description("Start the daemon and open the board."))
-                .field(
-                    Field::action("stopDaemon", "Stop daemon…", ACTION_STOP_DAEMON)
-                        .description("Shut the board server down now."),
-                )
-                .field(
-                    Field::action("rotateToken", "Rotate access token…", ACTION_ROTATE_TOKEN)
-                        .description("Issue a new token; old board links stop working."),
-                ),
+            Section::new("board", "Board")
+                .field(Field::action("open", "Open board…", ACTION_OPEN)
+                    .description("Open the board tab — it renders in Oino itself (no daemon, no browser).")),
         )
 }
 
@@ -282,10 +209,7 @@ mod tests {
     fn defaults_validate_like_unipi() {
         let s = KanboardSettings::from_raw(&defaults());
         assert_eq!(s.chain_gate, ChainGate::InReview);
-        assert_eq!(
-            (s.idle_min, s.port, s.max_sessions, s.turn_add_limit),
-            (10, 0, 2, 20)
-        );
+        assert_eq!((s.max_sessions, s.turn_add_limit), (2, 20));
         assert_eq!(
             (
                 s.do_tasks,
@@ -295,17 +219,12 @@ mod tests {
             ),
             (5, 10, 90, 0)
         );
-        assert!(s.reminders && !s.open_browser && !s.require_auth && !s.keep_token);
-        assert_eq!(s.host, "127.0.0.1");
+        assert!(s.reminders);
         let bad = KanboardSettings::from_raw(
-            &json!({"chainGate": "done", "idleMin": 0, "host": "  ", "port": 70000, "maxSessions": 0, "turnAddLimit": -1, "reminders": "no", "archiveAfterDays": -3}),
+            &json!({"chainGate": "done", "maxSessions": 0, "turnAddLimit": -1, "reminders": "no", "archiveAfterDays": -3}),
         );
         assert_eq!(bad.chain_gate, ChainGate::Done);
-        assert_eq!(
-            (bad.idle_min, bad.port, bad.max_sessions, bad.turn_add_limit),
-            (10, 0, 2, 20)
-        );
-        assert_eq!(bad.host, "127.0.0.1");
+        assert_eq!((bad.max_sessions, bad.turn_add_limit), (2, 20));
         assert!(bad.reminders, "only an explicit false turns reminders off");
         assert!(!KanboardSettings::from_raw(&json!({"reminders": false})).reminders);
     }
@@ -331,15 +250,7 @@ mod tests {
             "doWrites",
             "archiveAfterDays",
             "retentionDays",
-            "host",
-            "port",
-            "idleMin",
-            "openBrowser",
-            "requireAuth",
-            "keepToken",
             "open",
-            "stopDaemon",
-            "rotateToken",
         ] {
             assert!(ns.field(key).is_some(), "{key}");
         }

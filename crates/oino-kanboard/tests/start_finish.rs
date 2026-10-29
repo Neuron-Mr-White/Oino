@@ -43,6 +43,7 @@ fn start(
             session,
             pid,
             host: &host,
+            max_sessions: commands::max_sessions(),
         },
         fixture.common.now,
     )
