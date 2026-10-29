@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mascot",
+  "description": "UNI-200: the always-on-top mascot window (desktop only) — talks to the main window over events, drags itself",
+  "platforms": [
+    "linux",
+    "macOS",
+    "windows"
+  ],
+  "windows": [
+    "mascot"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging"
+  ]
+}

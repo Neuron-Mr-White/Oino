@@ -1,0 +1,16 @@
+{
+  "name": "unipi-app",
+  "private": true,
+  "workspaces": [
+    "apps/mobile",
+    "packages/protocol"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces",
+    "typecheck": "npm run -w apps/mobile typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "6.0.3"
+  }
+}

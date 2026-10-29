@@ -1,0 +1,26 @@
+/* "Pair a phone" dialog (UNI-266). */
+.pair-phone-body { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 4px 0 2px; }
+.pair-phone-qr-wrap { padding: 0; border-radius: 16px; overflow: hidden; background: #fff; line-height: 0; box-shadow: 0 0 0 1px var(--color-line); }
+.pair-phone-qr { display: block; width: min(280px, 72vw); height: auto; aspect-ratio: 1; }
+.pair-phone-qr-ghost { width: min(280px, 72vw); aspect-ratio: 1; border-radius: 16px; background: var(--color-surface-2); border: 1px dashed var(--color-line); display: grid; place-items: center; color: var(--color-text-muted); }
+.pair-phone-steps { margin: 0; max-width: 360px; text-align: center; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+.pair-phone-steps b { color: var(--color-text); font-weight: 600; }
+.pair-phone-meta { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.pair-phone-timer { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.pair-phone-code { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 9999px; background: var(--color-surface-2); color: var(--color-text); font-family: var(--font-mono); font-size: 14px; letter-spacing: .08em; user-select: all; }
+.dialog-actions.pair-phone-actions { justify-content: center; width: 100%; flex-wrap: wrap; margin: 0; padding: 0; border: 0; }
+.pair-phone-foot { margin: 0; max-width: 380px; text-align: center; font-size: 12px; line-height: 17px; color: var(--color-text-dim); }
+.pair-phone-state { padding: 18px 0 4px; text-align: center; }
+.pair-phone-state-icon { width: 56px; height: 56px; border-radius: 9999px; display: grid; place-items: center; background: var(--color-surface-2); color: var(--color-text-muted); }
+.pair-phone-state-icon[data-tone=ok] { background: rgb(90 210 90 / 14%); color: var(--color-wm-green); }
+.pair-phone-state-icon[data-tone=error] { background: rgb(240 60 50 / 14%); color: var(--color-wm-red); }
+.pair-phone-state-title { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; }
+.pair-phone-state-text { margin: 0; max-width: 400px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); overflow-wrap: anywhere; }
+.pair-phone-cmd { display: flex; align-items: center; gap: 4px; width: 100%; max-width: 440px; padding: 4px 4px 4px 12px; border-radius: 12px; background: var(--color-surface-2); border: 1px solid var(--color-line); text-align: left; }
+.pair-phone-cmd code { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12.5px; color: var(--color-text); overflow-wrap: anywhere; }
+.pair-phone-cmd .ghost-icon-button { flex: none; width: 36px; height: 36px; min-height: 36px; }
+html[data-shell=desktop] .sheet.pair-phone-sheet { width: min(500px, calc(100vw - 64px)); }
+.pair-phone-sheet .board-sheet-body { padding-bottom: 20px; }
+/* The Add a PC dialog's link to it. */
+.pair-phone-link { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 10px; border-radius: 9999px; font-size: 14px; color: var(--color-text-muted); }
+.pair-phone-link:hover { color: var(--color-text); background: var(--color-surface-2); }

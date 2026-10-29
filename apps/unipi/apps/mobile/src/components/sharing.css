@@ -1,0 +1,50 @@
+/* UNI-248: Sharing with phones — the switch / ask cards in Preview and the Settings section. */
+.share-card { display: flex; flex-direction: column; gap: 12px; }
+.share-card > .preview-notice-icon, .share-card > h2 { margin-bottom: 0; }
+.share-switch-row { display: flex; align-items: flex-start; gap: 14px; }
+.share-switch-row .share-icon { flex: none; margin-bottom: 0; }
+.share-switch-text { flex: 1; min-width: 0; }
+.share-switch-text h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.share-switch-row > [role=switch], .share-switch-row > .inline-flex { margin-top: 10px; flex: none; }
+.share-options { display: flex; flex-direction: column; gap: 10px; }
+.share-options:empty { display: none; }
+.share-seg { align-self: flex-start; display: inline-flex; padding: 3px; gap: 2px; border-radius: 9999px; background: var(--color-surface-2); }
+.share-seg .seg-option { padding: 0 14px; border-radius: 9999px; font-size: 14px; color: var(--color-text-muted); }
+.share-seg .seg-option[aria-checked=true] { background: var(--color-surface-3); color: var(--color-text); font-weight: 600; }
+.share-ports, .share-note { width: 100%; flex: none; }
+.preview-input.share-note { font-family: var(--font-sans, inherit); font-size: 15px; }
+.share-check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--color-text); }
+.share-check input { width: 18px; height: 18px; accent-color: var(--color-shell); }
+.share-foot { margin: 0; }
+.share-fold { display: flex; flex-direction: column; gap: 8px; }
+.share-fold-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-muted); min-height: 32px; }
+.share-fold-toggle svg { transition: transform .15s; }
+.share-fold-toggle .share-fold-open { transform: rotate(180deg); }
+.share-status { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-radius: 14px; background: var(--color-surface-2); border: 1px solid var(--color-line); }
+.share-status > svg { flex: none; margin-top: 2px; }
+.share-status > div { flex: 1; min-width: 0; }
+.share-status .ghost-icon-button { flex: none; width: 36px; height: 36px; min-height: 36px; margin: -6px -6px 0 0; }
+.share-status-title { font-size: 15px; font-weight: 600; color: var(--color-text); margin-bottom: 2px; }
+.share-status[data-kind=pending] > svg { color: var(--color-amber); }
+.share-status[data-kind=approved] > svg { color: var(--color-wm-green); }
+.share-status[data-kind=denied] > svg { color: var(--color-wm-red); }
+.share-status[data-kind=expired] > svg { color: var(--color-text-dim); }
+
+/* Settings → Sharing with phones / This computer */
+.share-row-detail { padding: 0 16px 14px 58px; display: flex; flex-direction: column; gap: 10px; }
+.share-row-detail .preview-muted { margin: 0; }
+.share-request { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.share-request + .share-request { border-top: 1px solid rgb(46 40 37 / 60%); }
+.share-request-title { font-size: 15px; color: var(--color-text); font-weight: 600; }
+.share-request-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.share-request-actions .btn { height: 38px; min-height: 38px; font-size: 14px; padding: 0 16px; }
+.share-for { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-for button { height: 32px; padding: 0 12px; border-radius: 9999px; font-size: 13px; background: var(--color-surface-2); color: var(--color-text-muted); border: 1px solid transparent; }
+.share-for button[aria-checked=true] { background: var(--color-surface-3); color: var(--color-text); border-color: var(--color-line); font-weight: 600; }
+.share-note-quote { font-size: 14px; color: var(--color-cream); font-style: italic; }
+.share-empty { padding: 14px 16px; font-size: 14px; color: var(--color-text-muted); }
+.share-push-toggle { height: 34px; min-height: 34px; padding: 0 12px; font-size: 13px; gap: 4px; }
+.share-push-toggle .share-fold-open { transform: rotate(180deg); }
+.share-push-card { padding: 0 12px 12px; }
+.share-push-card .preview-notice { margin-top: 0; }
+.preview-body > div > .share-card, [data-testid=preview-disabled] .share-card { margin-bottom: 16px; }

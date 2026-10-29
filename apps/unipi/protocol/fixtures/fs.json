@@ -1,0 +1,155 @@
+[
+ {
+  "name": "fs_roots basic",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_roots" } }
+ },
+ {
+  "name": "fs_list basic",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_list", "path": "/home/u/proj" } }
+ },
+ {
+  "name": "fs_list with hidden and outside flags",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_list", "path": "/etc", "hidden": true, "outside": true } }
+ },
+ {
+  "name": "fs_list empty path rejected",
+  "schema": "Control",
+  "ok": false,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_list", "path": "" } }
+ },
+ {
+  "name": "fs_read basic",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_read", "path": "/home/u/proj/a.txt" } }
+ },
+ {
+  "name": "fs_read with range",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_read", "path": "/home/u/proj/a.txt", "range": { "start": 0, "end": 99 } } }
+ },
+ {
+  "name": "fs_write basic",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_write", "path": "/home/u/proj/a.txt", "text": "hello" } }
+ },
+ {
+  "name": "fs_write with base_hash and create",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.5.0",
+   "req": {
+    "op": "fs_write",
+    "path": "/home/u/proj/new.txt",
+    "text": "hello",
+    "base_hash": "ab",
+    "create": true
+   }
+  }
+ },
+ {
+  "name": "fs_stat basic",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_stat", "path": "/home/u/proj/a.txt" } }
+ },
+ {
+  "name": "fs_search name kind",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_search", "root": "/home/u/proj", "query": "todo", "kind": "name" } }
+ },
+ {
+  "name": "fs_search content kind",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_search", "root": "/home/u/proj", "query": "todo", "kind": "content" } }
+ },
+ {
+  "name": "fs_search invalid kind rejected",
+  "schema": "Control",
+  "ok": false,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_search", "root": "/home/u/proj", "query": "todo", "kind": "contents" } }
+ },
+ {
+  "name": "fs_search empty query rejected",
+  "schema": "Control",
+  "ok": false,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_search", "root": "/home/u/proj", "query": "", "kind": "name" } }
+ },
+ {
+  "name": "fs_mkdir basic",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_mkdir", "path": "/home/u/proj/newdir" } }
+ },
+ {
+  "name": "fs_rename basic",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_rename", "from": "/home/u/proj/a.txt", "to": "/home/u/proj/b.txt" } }
+ },
+ {
+  "name": "fs_delete requires confirm (schema allows false, host enforces)",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_delete", "path": "/home/u/proj/a.txt", "confirm": true } }
+ },
+ {
+  "name": "fs_delete missing confirm defaults false",
+  "schema": "Control",
+  "ok": true,
+  "value": { "type": "hello", "proto": "1.5.0", "req": { "op": "fs_delete", "path": "/home/u/proj/a.txt" } }
+ },
+ {
+  "name": "FsListData basic",
+  "schema": "FsListData",
+  "ok": true,
+  "value": {
+   "entries": [
+    { "name": "a.txt", "kind": "file", "size": 10, "mtime": 1000, "git": "M", "ignored": false }
+   ],
+   "more": false
+  }
+ },
+ {
+  "name": "FsListData bad kind rejected",
+  "schema": "FsListData",
+  "ok": false,
+  "value": { "entries": [{ "name": "a.txt", "kind": "weird", "size": 10, "mtime": 1000 }], "more": false }
+ },
+ {
+  "name": "FsReadData basic",
+  "schema": "FsReadData",
+  "ok": true,
+  "value": { "size": 10, "hash": "ab", "mtime": 1000, "truncated": false }
+ },
+ {
+  "name": "FsWriteData basic",
+  "schema": "FsWriteData",
+  "ok": true,
+  "value": { "hash": "ab", "mtime": 1000 }
+ },
+ {
+  "name": "FsSearchData basic",
+  "schema": "FsSearchData",
+  "ok": true,
+  "value": { "results": [{ "path": "/a.txt", "line": 3, "preview": "todo: x" }], "more": false }
+ },
+ {
+  "name": "FsRootsData basic",
+  "schema": "FsRootsData",
+  "ok": true,
+  "value": { "roots": ["/home/u", "/home/u/proj"] }
+ }
+]

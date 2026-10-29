@@ -1,0 +1,22 @@
+[
+  {"name":"host_info","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.14.0","req":{"op":"host_info"}}},
+  {"name":"pair_begin default ttl","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.14.0","req":{"op":"pair_begin"}}},
+  {"name":"pair_begin 5 min","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.14.0","req":{"op":"pair_begin","ttl_secs":300}}},
+  {"name":"pair_begin ttl too long","schema":"Control","ok":false,"value":{"type":"hello","proto":"1.14.0","req":{"op":"pair_begin","ttl_secs":7200}}},
+  {"name":"pair_begin ttl too short","schema":"Control","ok":false,"value":{"type":"hello","proto":"1.14.0","req":{"op":"pair_begin","ttl_secs":5}}},
+  {"name":"pair_status","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.14.0","req":{"op":"pair_status","code":"K7QX2M9P"}}},
+  {"name":"pair_status cancel","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.14.0","req":{"op":"pair_status","code":"K7QX2M9P","cancel":true}}},
+  {"name":"pair_status bad code","schema":"Control","ok":false,"value":{"type":"hello","proto":"1.14.0","req":{"op":"pair_status","code":"no spaces!"}}},
+  {"name":"devices_list","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.14.0","req":{"op":"devices_list"}}},
+  {"name":"device_revoke prefix","schema":"Control","ok":true,"value":{"type":"hello","proto":"1.14.0","req":{"op":"device_revoke","id":"dbee6b98"}}},
+  {"name":"device_revoke not hex","schema":"Control","ok":false,"value":{"type":"hello","proto":"1.14.0","req":{"op":"device_revoke","id":"Pixel 9 phone"}}},
+  {"name":"host info data","schema":"HostInfoData","ok":true,"value":{"version":"0.4.8","proto":"1.14.0","mode":"service","pid":4242,"started_at":1760000000,"host_id":"dbee6b98b4fd1629f983bd915af56c71f85a626c67922ae0ceacbf7105c03d95","host_name":"oi-desktop","data_dir":"/home/u/.unipi/app-host","tools":{"herdr":true,"tmux":true,"pi":true,"kanboard":false},"devices":2}},
+  {"name":"host info data bad mode","schema":"HostInfoData","ok":false,"value":{"version":"0.4.8","proto":"1.14.0","mode":"daemon","pid":1,"started_at":0,"host_id":"x","host_name":"x","data_dir":"/x","tools":{"herdr":false,"tmux":false,"pi":false,"kanboard":false},"devices":0}},
+  {"name":"pair begin data","schema":"PairBeginData","ok":true,"value":{"link":"unipi://pair?t=endpointabc&c=K7QX2M9P&n=oi-desktop","code":"K7QX2M9P","expires_at":1760000600,"host_name":"oi-desktop"}},
+  {"name":"pair status waiting","schema":"PairStatusData","ok":true,"value":{"state":"waiting","expires_at":1760000600}},
+  {"name":"pair status paired","schema":"PairStatusData","ok":true,"value":{"state":"paired","device":"Redmi Note 14"}},
+  {"name":"pair status expired","schema":"PairStatusData","ok":true,"value":{"state":"expired","reason":"cancelled"}},
+  {"name":"pair status unknown state","schema":"PairStatusData","ok":false,"value":{"state":"maybe"}},
+  {"name":"devices","schema":"DevicesListData","ok":true,"value":{"devices":[{"id":"aa11bb22cc33dd44","name":"Pixel 9","paired_at":1760000000,"last_seen":1760001000},{"id":"ee55ff66","name":"iPhone","paired_at":1760000100}]}},
+  {"name":"devices empty","schema":"DevicesListData","ok":true,"value":{"devices":[]}}
+]

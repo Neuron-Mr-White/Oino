@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Desktop-only plugins (UNI-117: native notifications, remembered window state): registered under #[cfg(desktop)] in lib.rs",
+  "platforms": [
+    "linux",
+    "macOS",
+    "windows"
+  ],
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "notification:default",
+    "window-state:default"
+  ]
+}

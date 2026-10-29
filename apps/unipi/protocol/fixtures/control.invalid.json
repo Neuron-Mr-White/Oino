@@ -1,0 +1,379 @@
+[
+  {
+    "name": "hello_bad_semver",
+    "value": {
+      "type": "hello",
+      "proto": "1.0",
+      "req": {
+        "op": "list",
+        "mux": "herdr"
+      }
+    },
+    "reason": "proto is not strict semver"
+  },
+  {
+    "name": "hello_missing_req",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0"
+    },
+    "reason": "req is required"
+  },
+  {
+    "name": "hello_bad_mux",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "list",
+        "mux": "screen"
+      }
+    },
+    "reason": "mux must be herdr|tmux"
+  },
+  {
+    "name": "hello_bad_op",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "bogus"
+      }
+    },
+    "reason": "op must be a known discriminator value"
+  },
+  {
+    "name": "attach_session_too_long",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "attach",
+        "cols": 80,
+        "rows": 24,
+        "size_policy": "fit_phone",
+        "target": {
+          "mux": "herdr",
+          "session": "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss"
+        }
+      }
+    },
+    "reason": "session exceeds 128 chars"
+  },
+  {
+    "name": "attach_session_empty",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "attach",
+        "cols": 80,
+        "rows": 24,
+        "size_policy": "fit_phone",
+        "target": {
+          "mux": "herdr",
+          "session": ""
+        }
+      }
+    },
+    "reason": "session must be at least 1 char"
+  },
+  {
+    "name": "attach_cols_zero",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "attach",
+        "session": "s",
+        "cols": 0,
+        "rows": 24,
+        "size_policy": "fit_phone",
+        "target": {
+          "mux": "herdr",
+          "session": "unipi-m2",
+          "workspace_id": "w4E"
+        }
+      }
+    },
+    "reason": "cols must be >= 1"
+  },
+  {
+    "name": "attach_rows_too_large",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "attach",
+        "session": "s",
+        "cols": 80,
+        "rows": 1001,
+        "size_policy": "fit_phone",
+        "target": {
+          "mux": "herdr",
+          "session": "unipi-m2",
+          "workspace_id": "w4E"
+        }
+      }
+    },
+    "reason": "rows must be <= 1000"
+  },
+  {
+    "name": "attach_cols_not_integer",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "attach",
+        "session": "s",
+        "cols": 80.5,
+        "rows": 24,
+        "size_policy": "fit_phone",
+        "target": {
+          "mux": "herdr",
+          "session": "unipi-m2",
+          "workspace_id": "w4E"
+        }
+      }
+    },
+    "reason": "cols must be an integer"
+  },
+  {
+    "name": "attach_bad_size_policy",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "attach",
+        "session": "s",
+        "cols": 80,
+        "rows": 24,
+        "size_policy": "auto",
+        "target": {
+          "mux": "herdr",
+          "session": "unipi-m2",
+          "workspace_id": "w4E"
+        }
+      }
+    },
+    "reason": "size_policy must be fit_phone|keep_pc"
+  },
+  {
+    "name": "pair_code_too_short",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "12345"
+      }
+    },
+    "reason": "code must be at least 6 chars"
+  },
+  {
+    "name": "pair_code_too_long",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "11111111111111111111111111111111111111111111111111111111111111111"
+      }
+    },
+    "reason": "code must be at most 64 chars"
+  },
+  {
+    "name": "pair_name_empty",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "111111",
+        "name": ""
+      }
+    },
+    "reason": "name must be at least 1 char"
+  },
+  {
+    "name": "pair_name_too_long",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "pair",
+        "code": "111111",
+        "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+      }
+    },
+    "reason": "name must be at most 64 chars"
+  },
+  {
+    "name": "err_empty_message",
+    "value": {
+      "type": "err",
+      "error": {
+        "code": "E_INTERNAL",
+        "message": "",
+        "retryable": false
+      }
+    },
+    "reason": "message must not be empty"
+  },
+  {
+    "name": "err_missing_retryable",
+    "value": {
+      "type": "err",
+      "error": {
+        "code": "E_INTERNAL",
+        "message": "boom"
+      }
+    },
+    "reason": "retryable is required"
+  },
+  {
+    "name": "err_bad_code",
+    "value": {
+      "type": "err",
+      "error": {
+        "code": "E_NOT_A_CODE",
+        "message": "boom",
+        "retryable": false
+      }
+    },
+    "reason": "code must be a known AppErrorCode"
+  },
+  {
+    "name": "err_bad_path_type",
+    "value": {
+      "type": "err",
+      "error": {
+        "code": "E_SCHEMA",
+        "message": "boom",
+        "retryable": false,
+        "path": [
+          {
+            "nested": true
+          }
+        ]
+      }
+    },
+    "reason": "path entries must be string or number"
+  },
+  {
+    "name": "resize_missing_rows",
+    "value": {
+      "type": "resize",
+      "cols": 80
+    },
+    "reason": "rows is required"
+  },
+  {
+    "name": "resize_cols_out_of_range",
+    "value": {
+      "type": "resize",
+      "cols": 1001,
+      "rows": 24
+    },
+    "reason": "cols must be <= 1000"
+  },
+  {
+    "name": "exit_code_not_integer_or_null",
+    "value": {
+      "type": "exit",
+      "code": "0"
+    },
+    "reason": "code must be an integer or null"
+  },
+  {
+    "name": "title_too_long",
+    "value": {
+      "type": "title",
+      "title": "ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt"
+    },
+    "reason": "title exceeds 512 chars"
+  },
+  {
+    "name": "unknown_control_tag",
+    "value": {
+      "type": "ping"
+    },
+    "reason": "control must be a known discriminator value"
+  },
+  {
+    "name": "missing_control_tag",
+    "value": {
+      "proto": "1.0.0",
+      "req": {
+        "op": "list",
+        "mux": "herdr"
+      }
+    },
+    "reason": "control field is required"
+  },
+  {
+    "name": "mux_action unknown action",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "mux_action",
+        "action": "pane_next",
+        "session": "default"
+      }
+    },
+    "reason": "pane_next is ambiguous across muxes and not a valid action tag"
+  },
+  {
+    "name": "mux_action workspace_create empty label",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "mux_action",
+        "action": "workspace_create",
+        "session": "default",
+        "label": ""
+      }
+    },
+    "reason": "label must be 1..128 chars"
+  },
+  {
+    "name": "mux_action workspace_rename missing workspace_id",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "mux_action",
+        "action": "workspace_rename",
+        "session": "default",
+        "label": "x"
+      }
+    },
+    "reason": "workspace_id is required"
+  },
+  {
+    "name": "mux_action tmux_session_create missing name",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "mux_action",
+        "action": "tmux_session_create"
+      }
+    },
+    "reason": "name is required"
+  },
+  {
+    "name": "mux_action missing session",
+    "value": {
+      "type": "hello",
+      "proto": "1.0.0",
+      "req": {
+        "op": "mux_action",
+        "action": "tab_next"
+      }
+    },
+    "reason": "session is required"
+  }
+]

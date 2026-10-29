@@ -1,0 +1,48 @@
+/* UNI-200 — the Unicrab mascot: floating button + chat bubble (phone), header crab (desktop). */
+.unicrab { display: block; overflow: visible; image-rendering: pixelated; }
+.unicrab rect { shape-rendering: crispEdges; }
+
+.mascot-float { position: fixed; z-index: 40; width: 56px; height: 56px; touch-action: none; transition: left .22s cubic-bezier(.2, .8, .2, 1), top .22s cubic-bezier(.2, .8, .2, 1), opacity .4s ease; }
+.mascot-float[data-dragging] { transition: none; }
+.mascot-float[data-dim] { opacity: .5; }
+.mascot-button { position: relative; width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; background: rgb(20 18 16 / 72%); backdrop-filter: blur(10px); box-shadow: 0 6px 22px rgb(0 0 0 / 45%), inset 0 0 0 1px rgb(255 255 255 / 6%); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.mascot-float[data-dragging] .mascot-button { transform: scale(1.06); box-shadow: 0 10px 30px rgb(0 0 0 / 60%), inset 0 0 0 1px rgb(255 255 255 / 10%); }
+.mascot-button:focus-visible { outline: 2px solid var(--color-claw); outline-offset: 2px; }
+.mascot-badge { top: -4px; right: -4px; }
+
+/* The bubble sits beside the crab, on the screen side: fades/slides in, holds, fades out (one animation = BUBBLE_MS). */
+.mascot-bubble { position: absolute; top: 2px; width: max-content; max-width: min(260px, calc(100vw - 88px)); display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 16px; text-align: left; background: var(--color-surface-2); color: var(--color-text); box-shadow: 0 8px 26px rgb(0 0 0 / 50%), inset 0 0 0 1px var(--color-line); animation: mascot-bubble 6000ms ease both; }
+.mascot-float[data-side="right"] .mascot-bubble { right: calc(100% + 10px); border-top-right-radius: 4px; }
+.mascot-float[data-side="left"] .mascot-bubble { left: calc(100% + 10px); border-top-left-radius: 4px; }
+.mascot-bubble[data-group="waiting"] { box-shadow: 0 8px 26px rgb(0 0 0 / 50%), inset 0 0 0 1px rgb(240 120 24 / 55%); }
+.mascot-bubble-head { font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--color-claw); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mascot-bubble-text { font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+@keyframes mascot-bubble {
+  0% { opacity: 0; transform: translateY(4px) scale(.96); }
+  6% { opacity: 1; transform: none; }
+  88% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot-float { transition: none; }
+  .mascot-bubble { animation: none !important; opacity: 1; }
+}
+
+/* Desktop header: the crab in place of the bell icon. */
+.ny-bell .unicrab { margin-top: -1px; }
+
+/* Desktop mascot window (transparent, always on top): the crab + bubble only.
+   UNI-255: nothing but the crab — no tile, no shadow, no page colour. */
+html.mascot-page, html.mascot-page body, html.mascot-page #root { background: transparent !important; }
+.mascot-window { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: flex-end; gap: 8px; padding: 8px; background: transparent; }
+.mascot-window .mascot-bubble { position: static; align-self: center; animation-duration: 6000ms; }
+.mascot-window .mascot-button.mascot-crab-only { width: auto; height: auto; min-height: 0; padding: 0; border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none; cursor: grab; }
+.mascot-window .mascot-button.mascot-crab-only:active { cursor: grabbing; }
+.mascot-window .mascot-button.mascot-crab-only .mascot-badge { top: 0; right: 0; }
+
+/* Settings → Unicrab */
+.mascot-size-options { display: inline-flex; gap: 4px; padding: 3px; border-radius: 9999px; background: var(--color-surface-3); }
+.mascot-size-options button { min-height: 32px; height: 32px; padding: 0 12px; border-radius: 9999px; font-size: 13px; font-weight: 500; color: var(--color-text-muted); }
+.mascot-size-options button[aria-checked=true] { background: var(--color-surface-1); color: var(--color-text); }
+.mascot-settings-hero { display: flex; align-items: center; gap: 14px; padding: 12px 16px 4px; }
+.mascot-settings-hero p { margin: 0; }

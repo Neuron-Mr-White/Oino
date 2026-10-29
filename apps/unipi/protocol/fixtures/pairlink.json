@@ -1,0 +1,80 @@
+[
+  {
+    "name": "url",
+    "input": "unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=0123456789",
+    "ok": true
+  },
+  {
+    "name": "bare",
+    "input": "endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay 0123456789",
+    "ok": true
+  },
+  {
+    "name": "scheme",
+    "input": "https://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=0123456789",
+    "ok": false,
+    "path": [
+      "t"
+    ]
+  },
+  {
+    "name": "missing ticket",
+    "input": "unipi://pair?c=0123456789",
+    "ok": false,
+    "path": [
+      "t"
+    ]
+  },
+  {
+    "name": "missing code",
+    "input": "unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay",
+    "ok": false,
+    "path": [
+      "c"
+    ]
+  },
+  {
+    "name": "bad ticket",
+    "input": "unipi://pair?t=endpointabc&c=0123456789",
+    "ok": false,
+    "path": [
+      "t"
+    ]
+  },
+  {
+    "name": "short code",
+    "input": "unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=123",
+    "ok": false,
+    "path": [
+      "c"
+    ]
+  },
+  {
+    "name": "non Crockford",
+    "input": "unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=IIIIIIIIII",
+    "ok": false,
+    "path": [
+      "c"
+    ]
+  },
+  {
+    "name": "extra",
+    "input": "unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=0123456789&extra=ignored",
+    "ok": true
+  },
+  {
+    "name": "name",
+    "input": "unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=0123456789&n=My%20PC",
+    "ok": true
+  },
+  {
+    "name": "whitespace",
+    "input": "  unipi://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=0123456789  ",
+    "ok": true
+  },
+  {
+    "name": "uppercase scheme",
+    "input": "UNIPI://pair?t=endpointadn6424ywt6rmkpzqo6zcwxvnry7qwtcnrtzekxaz2wl64ifya6zkhiaenuhi5dqom5c6l3bobztcljrfzzgk3dbpexg4mbonfzg62bonruw42zof4aqazcdw2mzdtqcaeagi4fbj7miiaqbacqy5ermv7tqcaiavqiqaaoyqqbacafmcmaadweeaiaqblauaaa5rbacaeakyfiaahmiiaqbacwboaab3ccaeaiavqmaaaoyqqbacafmdeaadweeaiaqbla2aaa5rbacaeakygyaahmiiaqbacwbyaab3ccaeaiavqoqaaoyqqbacafmdyaadweeaiaqbla7aaa5rbacaeambkaaahmiiaqbadakqeab3ccaeaiaycudaaoyqqbacagavbaadweeaiaqbqfikaa5rbacaeambkdeoxmiiaqbadakq6qb3ccaeaiaycuiaaoyqqbacagavciadweeaiaqciabb5aatfaatqaaaaaaaaaaaaxqw4bqcajaaehuacmuacom5wshijjqmrjg6c3qgaibeaaq6qajsqajzv2ig7f4rrjqshyloay&c=0123456789",
+    "ok": true
+  }
+]

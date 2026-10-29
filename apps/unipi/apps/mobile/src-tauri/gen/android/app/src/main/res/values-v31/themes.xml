@@ -1,0 +1,13 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Android 12+ system splash: dark background + the Unicrab
+         (adaptive foreground, already inside the icon safe zone). The
+         in-app animated splash (index.html #splash) takes over from it. -->
+    <style name="Theme.unipi_mobile" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/unipi_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/unipi_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_crab</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/unipi_bg</item>
+    </style>
+</resources>

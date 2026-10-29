@@ -1,0 +1,115 @@
+/* ══ Board on the desktop shell: lanes as columns (UNI-117, UNI-218 F24–F33) ══
+   The proportions and the drag feel follow the old kanboard web UI
+   (crates/kanboard/web/src/styles.css: .lane / .card / .drop-line /
+   .lane.collapsed). Everything is scoped under html[data-shell=desktop];
+   the phone pager is untouched. Drag logic: ./cardDrag.ts. */
+
+html[data-shell=desktop] {
+  --lane-w: 288px;
+  --lane-gap: 10px;
+  --lane-strip-w: 36px;
+  --lane-bg: color-mix(in srgb, var(--color-surface-1) 62%, var(--color-bg));
+}
+
+/* Columns, not pages. The lane-pill strip is the phone's pager control: the
+   column heads replace it on the desktop (F31). */
+html[data-shell=desktop] .lane-strip { display: none; }
+html[data-shell=desktop] .lane-pager { scroll-snap-type: none; gap: var(--lane-gap); padding-top: 2px; padding-bottom: 14px; box-sizing: border-box; overflow-x: auto; }
+html[data-shell=desktop] .lane-page {
+  --lane: var(--color-text-dim);
+  flex: 0 0 var(--lane-w); width: var(--lane-w); height: auto; padding: 0 0 8px; scroll-snap-align: none;
+  border-radius: 14px; background: var(--lane-bg); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 45%);
+  scrollbar-width: auto;
+}
+html[data-shell=desktop] .lane-page::-webkit-scrollbar { display: block; width: 8px; }
+html[data-shell=desktop] .lane-page[data-lane-page=todo] { --lane: var(--s-todo); }
+html[data-shell=desktop] .lane-page[data-lane-page=in_progress] { --lane: var(--s-in_progress); }
+html[data-shell=desktop] .lane-page[data-lane-page=blocked] { --lane: var(--s-blocked); }
+html[data-shell=desktop] .lane-page[data-lane-page=in_review] { --lane: var(--s-in_review); }
+html[data-shell=desktop] .lane-page[data-lane-page=done] { --lane: var(--s-done, var(--color-gold)); }
+
+/* Column head (F30, F32): 42 px, name · count · ⓘ … quick action · ⋯, sticky. */
+html[data-shell=desktop] .lane-head-desk { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; height: 42px; min-height: 42px; padding: 0 4px 0 12px; border-radius: 14px 14px 0 0; background: var(--lane-bg); }
+.lane-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--color-text); white-space: nowrap; }
+.lane-title > span { overflow: hidden; text-overflow: ellipsis; }
+.lane-count { font-size: 13px; color: var(--color-text-muted); white-space: nowrap; }
+.lane-info-dot { display: inline-grid; place-items: center; width: 20px; height: 20px; color: var(--color-text-dim); cursor: help; }
+.lane-info-dot:hover { color: var(--color-text-muted); }
+.lane-spacer { flex: 1 1 auto; }
+html[data-shell=desktop] .lane-head-desk .lane-quick { height: 26px; min-height: 26px; padding: 0 9px; gap: 5px; border-radius: 8px; font-size: 12.5px; }
+html[data-shell=desktop] .lane-head-desk .lane-quick::after { inset: -6px 0; }
+html[data-shell=desktop] .lane-head-desk .lane-more { width: 32px; height: 32px; min-height: 32px; margin: 0; border-radius: 8px; color: var(--color-text-dim); }
+.lane-menu-info { margin: 0; padding: 10px 14px 10px; font-size: 12.5px; line-height: 18px; color: var(--color-text-muted); border-bottom: 1px solid var(--color-line); }
+
+/* Cards (F30): 8 px apart in an 8 px inset column, radius 12, padding 10/12/11. */
+html[data-shell=desktop] .lane-cards { gap: 8px; padding: 0 8px; }
+html[data-shell=desktop] .lane-cards > .bcard { gap: 5px; padding: 10px 12px 11px; border-radius: 12px; contain-intrinsic-size: auto 84px; transition: transform 140ms ease-out, opacity 140ms ease-out, background-color 140ms ease-out, box-shadow 140ms ease-out; }
+html[data-shell=desktop] .lane-cards > .bcard.compact { padding: 8px 10px; }
+html[data-shell=desktop] .lane-cards .bcard-top, .bcard-ghost .bcard-top { min-height: 18px; flex-wrap: wrap; row-gap: 4px; }
+html[data-shell=desktop] .lane-cards .bcard-id { font-size: 11px; }
+html[data-shell=desktop] .lane-cards .bcard-title { font-size: 14px; line-height: 20px; }
+html[data-shell=desktop] .lane-cards .bcard-excerpt, html[data-shell=desktop] .lane-cards .bcard-blocked { font-size: 12.5px; line-height: 17px; }
+html[data-shell=desktop] .lane-cards .btag { height: 20px; font-size: 11.5px; }
+html[data-shell=desktop] .lane-cards .bcard-top .btag.label { height: 17px; }
+html[data-shell=desktop] .lane-cards .agent-chip { height: 20px; font-size: 11.5px; }
+html[data-shell=desktop] .lane-cards .bcard-skeleton { border-radius: 12px; }
+html[data-shell=desktop] .lane-cards > .bcard[data-chain=middle], html[data-shell=desktop] .lane-cards > .bcard[data-chain=last] { margin-top: -2px; }
+html[data-shell=desktop] .lane-cards > .bcard[data-chain=first]::after, html[data-shell=desktop] .lane-cards > .bcard[data-chain=middle]::after { bottom: -19px; }
+html[data-shell=desktop] .lane-empty { padding: 22px 12px; border-radius: 12px; font-size: 13px; gap: 8px; }
+html[data-shell=desktop] .lane-add { justify-content: flex-start; min-height: 32px; height: 32px; padding: 0 8px; border: 0; border-radius: 8px; font-size: 13px; }
+@media (hover: hover) and (pointer: fine) {
+  html[data-shell=desktop] .lane-add:hover { background: rgb(245 239 230 / 5%); color: var(--color-text); }
+}
+
+/* ── Drag (cardDrag.ts) ─────────────────────────────────────────────────── */
+html[data-shell=desktop] .bcard[data-draggable] { cursor: grab; }
+html[data-card-drag], html[data-card-drag] * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+/* The source card stays in place, faded and slightly smaller (F28); beats the hover/active rules. */
+html[data-shell=desktop] .lane-cards > .bcard.dragging { opacity: .35; transform: scale(.98); }
+/* The ghost under the pointer: a clone, lifted (scale + tilt + shadow). */
+.bcard-ghost { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; will-change: transform; }
+.bcard-ghost > .bcard { margin: 0 !important; padding: 10px 12px 11px; gap: 5px; border-radius: 12px; background: var(--color-surface-2); box-shadow: inset 0 0 0 1px rgb(110 101 93 / 55%); content-visibility: visible; transform-origin: 30% 30%; transition: transform 140ms ease-out, box-shadow 140ms ease-out; }
+.bcard-ghost > .bcard::before, .bcard-ghost > .bcard::after { display: none; }
+.bcard-ghost .bcard-id { font-size: 11px; }
+.bcard-ghost .bcard-title { font-size: 14px; line-height: 20px; }
+.bcard-ghost .bcard-excerpt, .bcard-ghost .bcard-blocked { font-size: 12.5px; line-height: 17px; }
+.bcard-ghost .btag, .bcard-ghost .agent-chip { height: 20px; font-size: 11.5px; }
+.bcard-ghost[data-lifted] > .bcard { transform: rotate(1.5deg) scale(1.03); box-shadow: 0 18px 40px rgb(0 0 0 / 55%), 0 4px 12px rgb(0 0 0 / 40%), inset 0 0 0 1px rgb(110 101 93 / 70%); }
+
+/* Insert line (F26): 2 px with a hollow 8 px cap on its left end, inset to the card width. */
+html[data-shell=desktop] .drop-line { position: relative; flex: none; height: 2px; margin: -5px 4px; border-radius: 2px; background: var(--color-shell); pointer-events: none; }
+html[data-shell=desktop] .drop-line::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--lane-bg); box-shadow: inset 0 0 0 2px var(--color-shell); }
+
+/* Target lane (F27): ring + tint while hovered by a card from another lane. */
+html[data-shell=desktop] .lane-page[data-drop=ok] { background: color-mix(in srgb, var(--color-shell) 3%, var(--lane-bg)); box-shadow: inset 0 0 0 1.5px var(--color-shell); }
+html[data-shell=desktop] .lane-page[data-drop=ok] .lane-head-desk { background: color-mix(in srgb, var(--color-shell) 3%, var(--lane-bg)); box-shadow: inset 1.5px 1.5px 0 var(--color-shell), inset -1.5px 0 0 var(--color-shell); }
+html[data-shell=desktop] .lane-pager-wrap[data-dragging] .lane-add { visibility: hidden; }
+/* Room at the end so the source lane can stay pinned while lanes collapse / Backlog appears (cardDrag.ts pinWhile). */
+html[data-shell=desktop] .lane-pager::after { content: ''; flex: 0 0 var(--drag-room, 0px); margin-left: calc(var(--lane-gap) * -1); }
+
+/* Refused lanes collapse to 36 px strips with a vertical name (F24): every valid target fits on screen. */
+html[data-shell=desktop] .lane-page[data-drop=refused] { flex-basis: var(--lane-strip-w); width: var(--lane-strip-w); overflow: hidden; background: color-mix(in srgb, var(--lane-bg) 60%, var(--color-bg)); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 70%); }
+html[data-shell=desktop] .lane-page[data-drop=refused] :is(.lane-cards, .lane-count, .lane-info-dot, .lane-spacer, .lane-quick, .lane-more) { display: none; }
+html[data-shell=desktop] .lane-page[data-drop=refused] .lane-head-desk { justify-content: center; height: auto; padding: 10px 0 0; background: transparent; }
+html[data-shell=desktop] .lane-page[data-drop=refused] .lane-title { writing-mode: vertical-rl; transform: rotate(180deg); flex-direction: row-reverse; color: var(--color-text-muted); font-weight: 500; }
+html[data-shell=desktop] .lane-page[data-drop=refused] .lane-title .glyph { opacity: .7; }
+@media (prefers-reduced-motion: no-preference) {
+  html[data-shell=desktop] .lane-page { transition: flex-basis 180ms ease-out, width 180ms ease-out, opacity 160ms ease-out, background-color 140ms ease-out, box-shadow 140ms ease-out; }
+}
+
+/* New task lives in the header on the desktop (F33): no FAB over the cards. */
+.board-new-task { margin-right: 4px; }
+
+/* Narrow list column (a task open at 1000 px, F57): one column fits the list, gutters kept. */
+html[data-shell=desktop][data-detail] .board-screen { --lane-w: min(288px, calc(var(--list-w, 400px) - 2 * var(--page-gutter))); }
+
+/* Task page on the desktop (F34): 40 px head/composer buttons like the chat
+   pane, a 22/28 title, plain section counts. */
+html[data-shell=desktop] .task-head .ghost-icon-button { width: 40px; height: 40px; min-height: 40px; }
+html[data-shell=desktop] .task-crumb { height: 34px; min-height: 34px; }
+html[data-shell=desktop] .task-title-edit { font-size: 22px; line-height: 28px; font-weight: 600; }
+html[data-shell=desktop] .task-section-count { padding: 0; background: none; font-size: 12px; line-height: 16px; color: var(--color-text-dim); }
+html[data-shell=desktop] .task-composer :is(.composer-round, .composer-send) { width: 40px; height: 40px; min-height: 40px; }
+
+/* OS file drop onto a note / description / new-task field (lib/board/fileDrop.ts). */
+.drop-over { outline: 2px dashed var(--color-wm-cyan); outline-offset: -2px; background-color: color-mix(in srgb, var(--color-wm-cyan) 8%, transparent) !important; }

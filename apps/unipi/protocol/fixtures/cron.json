@@ -1,0 +1,485 @@
+[
+  {
+    "name": "cron_list",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_list"
+      }
+    }
+  },
+  {
+    "name": "cron_show",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_show",
+        "id": "daily-digest"
+      }
+    }
+  },
+  {
+    "name": "cron_show bad id (slash)",
+    "schema": "Control",
+    "ok": false,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_show",
+        "id": "a/b"
+      }
+    }
+  },
+  {
+    "name": "cron_runs without id",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_runs"
+      }
+    }
+  },
+  {
+    "name": "cron_runs with id and limit",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_runs",
+        "id": "daily-digest",
+        "limit": 10
+      }
+    }
+  },
+  {
+    "name": "cron_runs limit over the cap",
+    "schema": "Control",
+    "ok": false,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_runs",
+        "limit": 501
+      }
+    }
+  },
+  {
+    "name": "cron_log",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_log",
+        "run_id": "r1a2b3"
+      }
+    }
+  },
+  {
+    "name": "cron_add minimal",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_add",
+        "name": "daily digest",
+        "prompt": "Summarize today's inbox",
+        "schedule": "every day at 9:00",
+        "cwd": "/home/me/jobs/digest"
+      }
+    }
+  },
+  {
+    "name": "cron_add full",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_add",
+        "id": "daily-digest",
+        "name": "daily digest",
+        "prompt": "Summarize today's inbox",
+        "schedule": "0 0 9 * * *",
+        "tz": "Europe/Berlin",
+        "cwd": "/home/me/jobs/digest",
+        "model": "claude-opus",
+        "thinking": "high",
+        "enabled": true,
+        "time_limit_s": 1800,
+        "cost_cap_usd": 1.5
+      }
+    }
+  },
+  {
+    "name": "cron_add empty name rejected",
+    "schema": "Control",
+    "ok": false,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_add",
+        "name": "",
+        "prompt": "x",
+        "schedule": "daily",
+        "cwd": "/x"
+      }
+    }
+  },
+  {
+    "name": "cron_edit patch",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_edit",
+        "id": "daily-digest",
+        "patch": {
+          "enabled": false
+        }
+      }
+    }
+  },
+  {
+    "name": "cron_rm",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_rm",
+        "id": "daily-digest"
+      }
+    }
+  },
+  {
+    "name": "cron_enable",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_enable",
+        "id": "daily-digest"
+      }
+    }
+  },
+  {
+    "name": "cron_disable",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_disable",
+        "id": "daily-digest"
+      }
+    }
+  },
+  {
+    "name": "cron_run",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_run",
+        "id": "daily-digest"
+      }
+    }
+  },
+  {
+    "name": "cron_stop",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_stop",
+        "id": "daily-digest"
+      }
+    }
+  },
+  {
+    "name": "cron_pause",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_pause"
+      }
+    }
+  },
+  {
+    "name": "cron_resume",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_resume"
+      }
+    }
+  },
+  {
+    "name": "cron_status",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_status"
+      }
+    }
+  },
+  {
+    "name": "cron_parse schedule",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_parse",
+        "schedule": "every day at 9:00",
+        "tz": "Europe/Berlin"
+      }
+    }
+  },
+  {
+    "name": "cron_parse at",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_parse",
+        "at": "in 2 hours"
+      }
+    }
+  },
+  {
+    "name": "cron_settings_get",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_settings_get"
+      }
+    }
+  },
+  {
+    "name": "cron_settings_set",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.19.0",
+      "req": {
+        "op": "cron_settings_set",
+        "concurrency": 4,
+        "paused": true,
+        "ntfy_topic": "my-topic"
+      }
+    }
+  },
+  {
+    "name": "CronJob round trip",
+    "schema": "CronJob",
+    "ok": true,
+    "value": {
+      "id": "daily-digest",
+      "name": "daily digest",
+      "prompt": "Summarize today's inbox",
+      "schedule": "0 0 9 * * *",
+      "tz": "Europe/Berlin",
+      "cwd": "/home/me/jobs/digest",
+      "enabled": true,
+      "time_limit_s": 1800,
+      "created": 1,
+      "updated": 2,
+      "next_fire": "2025-01-01T09:00:00Z",
+      "running": false,
+      "last_run_status": "ok"
+    }
+  },
+  {
+    "name": "CronSettingsData defaults missing devices/ntfy",
+    "schema": "CronSettingsData",
+    "ok": true,
+    "value": {
+      "concurrency": 2,
+      "missed_window_s": 21600,
+      "retention_runs": 50,
+      "retention_days": 30,
+      "default_time_limit_s": 1800,
+      "paused": false,
+      "enabled": false
+    }
+  },
+  {
+    "name": "CronSettingsData bad type rejected",
+    "schema": "CronSettingsData",
+    "ok": false,
+    "value": {
+      "concurrency": "two",
+      "missed_window_s": 21600,
+      "retention_runs": 50,
+      "retention_days": 30,
+      "default_time_limit_s": 1800,
+      "paused": false,
+      "enabled": false
+    }
+  },
+  {
+    "name": "cron_add with notify + wake (UNI-319)",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.20.0",
+      "req": {
+        "op": "cron_add",
+        "name": "digest",
+        "prompt": "p",
+        "schedule": "0 0 9 * * *",
+        "cwd": "/tmp",
+        "notify": {
+          "events": [
+            "done",
+            "failed"
+          ],
+          "channels": [
+            "ntfy"
+          ]
+        },
+        "wake_pid": 4242
+      }
+    }
+  },
+  {
+    "name": "cron_edit notify back to defaults + wake_clear (UNI-319)",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.20.0",
+      "req": {
+        "op": "cron_edit",
+        "id": "digest",
+        "patch": {
+          "notify": {},
+          "wake_clear": true
+        }
+      }
+    }
+  },
+  {
+    "name": "cron_add wake_pid 0 rejected",
+    "schema": "Control",
+    "ok": false,
+    "value": {
+      "type": "hello",
+      "proto": "1.20.0",
+      "req": {
+        "op": "cron_add",
+        "name": "d",
+        "prompt": "p",
+        "schedule": "0 0 9 * * *",
+        "cwd": "/tmp",
+        "wake_pid": 0
+      }
+    }
+  },
+  {
+    "name": "cron_open_session (UNI-319)",
+    "schema": "Control",
+    "ok": true,
+    "value": {
+      "type": "hello",
+      "proto": "1.20.0",
+      "req": {
+        "op": "cron_open_session",
+        "run_id": "r1a2b3",
+        "target": {
+          "kind": "herdr_new_workspace",
+          "session": "main",
+          "label": "digest"
+        }
+      }
+    }
+  },
+  {
+    "name": "cron_open_session needs a target",
+    "schema": "Control",
+    "ok": false,
+    "value": {
+      "type": "hello",
+      "proto": "1.20.0",
+      "req": {
+        "op": "cron_open_session",
+        "run_id": "r1a2b3"
+      }
+    }
+  },
+  {
+    "name": "CronJob with notify + wake (UNI-319)",
+    "schema": "CronJob",
+    "ok": true,
+    "value": {
+      "id": "d",
+      "name": "d",
+      "prompt": "p",
+      "schedule": "0 0 9 * * *",
+      "tz": "UTC",
+      "cwd": "/tmp",
+      "enabled": true,
+      "time_limit_s": 1800,
+      "created": 1,
+      "updated": 2,
+      "running": false,
+      "notify": {
+        "events": [
+          "done"
+        ]
+      },
+      "wake": {
+        "session_file": "/s.jsonl",
+        "pid": 4242,
+        "session_name": "planning"
+      }
+    }
+  }
+]

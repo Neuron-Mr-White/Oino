@@ -1,0 +1,537 @@
+[
+ {
+  "name": "desktop_status request",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.9.0",
+   "req": {
+    "op": "desktop_status"
+   }
+  }
+ },
+ {
+  "name": "desktop_open minimal",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.9.0",
+   "req": {
+    "op": "desktop_open",
+    "viewport": {
+     "width": 1080,
+     "height": 2400
+    }
+   }
+  }
+ },
+ {
+  "name": "desktop_open with quality + view_only",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "hello",
+   "proto": "1.9.0",
+   "req": {
+    "op": "desktop_open",
+    "viewport": {
+     "width": 1440,
+     "height": 900
+    },
+    "quality": "low",
+    "view_only": true
+   }
+  }
+ },
+ {
+  "name": "desktop_open rejects a tiny viewport",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.9.0",
+   "req": {
+    "op": "desktop_open",
+    "viewport": {
+     "width": 8,
+     "height": 900
+    }
+   }
+  }
+ },
+ {
+  "name": "desktop_open rejects a huge viewport",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.9.0",
+   "req": {
+    "op": "desktop_open",
+    "viewport": {
+     "width": 9000,
+     "height": 900
+    }
+   }
+  }
+ },
+ {
+  "name": "desktop_open rejects an unknown quality",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.9.0",
+   "req": {
+    "op": "desktop_open",
+    "viewport": {
+     "width": 400,
+     "height": 900
+    },
+    "quality": "ultra"
+   }
+  }
+ },
+ {
+  "name": "desktop_open needs a viewport",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "hello",
+   "proto": "1.9.0",
+   "req": {
+    "op": "desktop_open"
+   }
+  }
+ },
+ {
+  "name": "cmd pointer",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "pointer",
+    "x": 0.25,
+    "y": 1
+   }
+  }
+ },
+ {
+  "name": "cmd pointer rejects x > 1",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "pointer",
+    "x": 1.5,
+    "y": 0
+   }
+  }
+ },
+ {
+  "name": "cmd pointer rejects negative y",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "pointer",
+    "x": 0.5,
+    "y": -0.1
+   }
+  }
+ },
+ {
+  "name": "cmd button right down",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "button",
+    "button": "right",
+    "down": true
+   }
+  }
+ },
+ {
+  "name": "cmd button rejects back",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "button",
+    "button": "back",
+    "down": true
+   }
+  }
+ },
+ {
+  "name": "cmd scroll",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "scroll",
+    "dy": -2.5
+   }
+  }
+ },
+ {
+  "name": "cmd scroll rejects 500 steps",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "scroll",
+    "dy": 500
+   }
+  }
+ },
+ {
+  "name": "cmd key Return",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "key",
+    "keysym": 65293,
+    "down": true
+   }
+  }
+ },
+ {
+  "name": "cmd key rejects keysym 0",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "key",
+    "keysym": 0,
+    "down": true
+   }
+  }
+ },
+ {
+  "name": "cmd key needs down",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "key",
+    "keysym": 97
+   }
+  }
+ },
+ {
+  "name": "cmd text",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "text",
+    "text": "héllo"
+   }
+  }
+ },
+ {
+  "name": "cmd text rejects 5000 chars",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "text",
+    "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  }
+ },
+ {
+  "name": "cmd keyframe",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "keyframe"
+   }
+  }
+ },
+ {
+  "name": "cmd quality",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "quality",
+    "quality": "high"
+   }
+  }
+ },
+ {
+  "name": "cmd viewport",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "viewport",
+    "viewport": {
+     "width": 2400,
+     "height": 1080
+    }
+   }
+  }
+ },
+ {
+  "name": "cmd ack",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "ack",
+    "seq": 42
+   }
+  }
+ },
+ {
+  "name": "cmd unknown op",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_cmd",
+   "cmd": {
+    "op": "clipboard"
+   }
+  }
+ },
+ {
+  "name": "event consent",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_event",
+   "event": {
+    "kind": "consent",
+    "state": "waiting"
+   }
+  }
+ },
+ {
+  "name": "event started",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_event",
+   "event": {
+    "kind": "started",
+    "backend": "portal",
+    "width": 2560,
+    "height": 1440,
+    "view_only": false
+   }
+  }
+ },
+ {
+  "name": "event config",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_event",
+   "event": {
+    "kind": "config",
+    "codec": "avc1.42e01f",
+    "width": 1280,
+    "height": 720
+   }
+  }
+ },
+ {
+  "name": "event frame",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_event",
+   "event": {
+    "kind": "frame",
+    "seq": 1,
+    "key": true,
+    "ts_ms": 0,
+    "bytes": 31000
+   }
+  }
+ },
+ {
+  "name": "event frame needs key",
+  "schema": "Control",
+  "ok": false,
+  "value": {
+   "type": "desktop_event",
+   "event": {
+    "kind": "frame",
+    "seq": 1,
+    "ts_ms": 0,
+    "bytes": 31000
+   }
+  }
+ },
+ {
+  "name": "event stats",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_event",
+   "event": {
+    "kind": "stats",
+    "fps": 24.5,
+    "kbps": 1800,
+    "quality": "auto",
+    "rtt_ms": 40
+   }
+  }
+ },
+ {
+  "name": "event closed",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "desktop_event",
+   "event": {
+    "kind": "closed",
+    "reason": "host_exit"
+   }
+  }
+ },
+ {
+  "name": "err desktop disabled",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "err",
+   "error": {
+    "code": "E_DESKTOP_DISABLED",
+    "message": "off",
+    "retryable": false,
+    "hint": "unipi-host desktop enable"
+   }
+  }
+ },
+ {
+  "name": "err desktop unavailable",
+  "schema": "Control",
+  "ok": true,
+  "value": {
+   "type": "err",
+   "error": {
+    "code": "E_DESKTOP_UNAVAILABLE",
+    "message": "no display",
+    "retryable": false,
+    "detail": {
+     "reason": "no_display"
+    }
+   }
+  }
+ },
+ {
+  "name": "status ready",
+  "schema": "DesktopStatusData",
+  "ok": true,
+  "value": {
+   "enabled": true,
+   "view_only": false,
+   "compiled": [
+    "portal",
+    "x11"
+   ],
+   "display": "wayland",
+   "backend": "portal",
+   "consent": "needed"
+  }
+ },
+ {
+  "name": "status not compiled",
+  "schema": "DesktopStatusData",
+  "ok": true,
+  "value": {
+   "enabled": true,
+   "view_only": false,
+   "compiled": [],
+   "display": "wayland",
+   "consent": "needed",
+   "reason": "not_compiled",
+   "hint": "Install the unipi-host build with desktop streaming"
+  }
+ },
+ {
+  "name": "status headless",
+  "schema": "DesktopStatusData",
+  "ok": true,
+  "value": {
+   "enabled": false,
+   "view_only": true,
+   "compiled": [
+    "x11"
+   ],
+   "display": "none",
+   "consent": "not_needed",
+   "reason": "no_display"
+  }
+ },
+ {
+  "name": "status rejects unknown display",
+  "schema": "DesktopStatusData",
+  "ok": false,
+  "value": {
+   "enabled": true,
+   "view_only": false,
+   "compiled": [
+    "portal",
+    "x11"
+   ],
+   "display": "mir",
+   "backend": "portal",
+   "consent": "needed"
+  }
+ },
+ {
+  "name": "status rejects unknown consent",
+  "schema": "DesktopStatusData",
+  "ok": false,
+  "value": {
+   "enabled": true,
+   "view_only": false,
+   "compiled": [
+    "portal",
+    "x11"
+   ],
+   "display": "wayland",
+   "backend": "portal",
+   "consent": "maybe"
+  }
+ },
+ {
+  "name": "status needs compiled",
+  "schema": "DesktopStatusData",
+  "ok": false,
+  "value": {
+   "enabled": true,
+   "view_only": false,
+   "display": "wayland",
+   "backend": "portal",
+   "consent": "needed"
+  }
+ }
+]

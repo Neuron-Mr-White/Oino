@@ -1,0 +1,23 @@
+/* UNI-214: "Incoming from <PC>" sheet. */
+.push-sheet { max-width: 560px; margin: 0 auto; }
+.push-file { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; background: var(--color-surface-2); }
+.push-file-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--color-surface-3); color: var(--color-shell-hi, #f05a3c); flex: 0 0 auto; }
+.push-file-text { display: flex; flex-direction: column; min-width: 0; }
+.push-file-name { font-size: 16px; font-weight: 600; line-height: 22px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.push-file-meta { font-size: 12.5px; color: var(--color-text-dim); }
+.push-note { margin: 10px 2px 0; font-size: 14px; line-height: 20px; color: var(--color-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.push-msg { margin: 12px 2px 0; font-size: 14px; line-height: 20px; color: var(--color-text-muted); }
+.push-dim { font-size: 12.5px; color: var(--color-text-dim); margin-top: 8px; }
+.push-progress { position: relative; height: 26px; margin-top: 14px; border-radius: 9999px; background: var(--color-surface-3); overflow: hidden; }
+.push-progress > span { position: absolute; inset: 0 auto 0 0; background: rgb(240 48 24 / 45%); transition: width .2s; }
+.push-progress > em { position: relative; display: block; text-align: center; font-style: normal; font-size: 12px; line-height: 26px; color: var(--color-text); }
+.push-alert, .push-ok { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 12px; border-radius: 14px; font-size: 13.5px; line-height: 19px; }
+.push-alert { background: rgb(240 48 24 / 12%); color: var(--color-text); }
+.push-alert svg { color: var(--color-shell-hi, #f05a3c); margin-top: 1px; }
+.push-alert strong { display: block; margin-bottom: 2px; font-size: 14px; }
+.push-alert em { font-style: normal; font-weight: 600; }
+.push-ok { background: rgb(80 200 120 / 12%); }
+.push-ok svg { color: rgb(80 200 120); margin-top: 1px; }
+.push-actions { display: flex; flex-direction: column; gap: 8px; }
+.push-dismiss { min-height: 40px; font-size: 15px; color: var(--color-text-dim); }
+.push-actions button:disabled { opacity: .6; }

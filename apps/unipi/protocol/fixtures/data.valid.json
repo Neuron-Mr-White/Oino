@@ -1,0 +1,49 @@
+[
+  {
+    "name": "list_empty_sessions",
+    "schema": "ListData",
+    "value": {
+      "sessions": []
+    }
+  },
+  {
+    "name": "list_multiple_sessions",
+    "schema": "ListData",
+    "value": {
+      "sessions": [
+        { "name": "main", "running": true, "default": true },
+        { "name": "work", "running": false, "default": false }
+      ]
+    }
+  },
+  {
+    "name": "pair_hex_host_id",
+    "schema": "PairData",
+    "value": {
+      "host_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "host_name": "My Laptop"
+    }
+  },
+  {
+    "name": "pair_z32_host_id",
+    "schema": "PairData",
+    "value": {
+      "host_id": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      "host_name": "h"
+    }
+  },
+  {
+    "name": "attach_fit_phone",
+    "schema": "AttachData",
+    "value": {
+      "effective_size_policy": "fit_phone"
+    }
+  },
+  {
+    "name": "attach_keep_pc",
+    "schema": "AttachData",
+    "value": {
+      "effective_size_policy": "keep_pc"
+    }
+  }
+]

@@ -1,0 +1,82 @@
+[
+  {
+    "name": "list_session_name_empty",
+    "schema": "ListData",
+    "value": {
+      "sessions": [{ "name": "", "running": true, "default": false }]
+    },
+    "reason": "session name must be at least 1 char"
+  },
+  {
+    "name": "list_session_name_too_long",
+    "schema": "ListData",
+    "value": {
+      "sessions": [
+        {
+          "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+          "running": true,
+          "default": false
+        }
+      ]
+    },
+    "reason": "session name must be at most 128 chars"
+  },
+  {
+    "name": "list_session_missing_running",
+    "schema": "ListData",
+    "value": {
+      "sessions": [{ "name": "main", "default": true }]
+    },
+    "reason": "running is required"
+  },
+  {
+    "name": "pair_host_id_bad_length",
+    "schema": "PairData",
+    "value": {
+      "host_id": "tooshort",
+      "host_name": "My Laptop"
+    },
+    "reason": "host_id must be 64-char hex or 52-char z32"
+  },
+  {
+    "name": "pair_host_id_uppercase_hex",
+    "schema": "PairData",
+    "value": {
+      "host_id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "host_name": "My Laptop"
+    },
+    "reason": "hex host_id must be lowercase"
+  },
+  {
+    "name": "pair_host_name_empty",
+    "schema": "PairData",
+    "value": {
+      "host_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "host_name": ""
+    },
+    "reason": "host_name must be at least 1 char"
+  },
+  {
+    "name": "pair_host_name_too_long",
+    "schema": "PairData",
+    "value": {
+      "host_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "host_name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+    },
+    "reason": "host_name must be at most 64 chars"
+  },
+  {
+    "name": "attach_bad_size_policy",
+    "schema": "AttachData",
+    "value": {
+      "effective_size_policy": "auto"
+    },
+    "reason": "effective_size_policy must be fit_phone|keep_pc"
+  },
+  {
+    "name": "attach_missing_size_policy",
+    "schema": "AttachData",
+    "value": {},
+    "reason": "effective_size_policy is required"
+  }
+]

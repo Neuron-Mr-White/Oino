@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "UniPi",
+  "version": "1.0.0",
+  "identifier": "dev.unipi.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "UniPi",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 480,
+        "minHeight": 560,
+        "center": true,
+        "resizable": true,
+        "dragDropEnabled": true,
+        "backgroundColor": "#0A0908"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": [
+      "binaries/unipi-host"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "iOS": {
+      "frameworks": [
+        "SystemConfiguration"
+      ],
+      "minimumSystemVersion": "15.0"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": [
+            "unipi"
+          ],
+          "host": "pair"
+        },
+        {
+          "scheme": [
+            "unipi"
+          ],
+          "host": "chat"
+        }
+      ]
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBMzcwQjkyRkE3NEQ3MkQKUldRdDEzVDZrZ3MzaXIzWGhtOUJKVTNZWjBpbENSaWI0dzQveDhYdjNQdlVrR3VyeEJWTUFrWDkK",
+      "endpoints": [
+        "https://unipi.nrn.one/desktop/latest.json"
+      ]
+    }
+  }
+}

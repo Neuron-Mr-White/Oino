@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UNI-213: the Preview page loads http://127.0.0.1:<port> — the app's own
+     loopback forward to a PC port over iroh (encrypted end to end). Only
+     loopback may use cleartext; everything else stays HTTPS-only. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
