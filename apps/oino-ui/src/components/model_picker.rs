@@ -624,9 +624,15 @@ fn single_body(
                 .px(px(space::S3))
                 .rounded(px(geom::PANEL_R))
                 .bg(t.bubble())
-                .child(Input::new(search))
-                // The search field registers for the automation driver.
-                .automation(Meta::labelled(Role::Input, "Search models")),
+                // The search field registers for the automation driver (id
+                // `picker-search`, value = the query, focus = the field).
+                .child(crate::automation::registry::probe_named(
+                    Input::new(search).into_any_element(),
+                    Meta::labelled(Role::Input, "Search models")
+                        .value(search.read(cx).value().to_string())
+                        .focus(search.read(cx).focus_handle(cx)),
+                    "picker-search",
+                )),
         )
         .child(
             div()
