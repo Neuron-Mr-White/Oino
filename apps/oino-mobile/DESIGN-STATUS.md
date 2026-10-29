@@ -21,6 +21,13 @@ in `apps/oino-mobile/src/platform.rs`. Screenshots: `docs/dev/v1/design/shots/mo
 
 ## §7 unipi surfaces on mobile
 
+> **Stale vs round 5 (2026-10-30, GAPS.md MB-2):** the list below predates round-5 D1 —
+> `hints`, `footer`, the app-bridge control drawer tab and their feeds are **deleted**
+> (no extension emits them any more; the surfaces render nothing). The mobile app also
+> misses every round-5 desktop change (mode switcher, model-picker modal, new-chat page,
+> Files/editor/LSP, one-card composer) — the catch-up is round 6 (MB-1/MB-2). Kept as the
+> record of what mobile rendered at alpha.1.
+
 All rows render through the shared components at touch density: hints (dock strip, tap
 cycles), header / splash (welcome hero), work tray / btw (composer-area panel), footer
 (top segments in the context header, MetaRow top-2 + overflow), process line (dock strip),

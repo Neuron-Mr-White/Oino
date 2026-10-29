@@ -72,6 +72,11 @@ background pre-compilation of components into `~/.oino/cache/wasmtime/`, show on
 
 ## 4. Mobile architecture (D16)
 
+> **Diverges from the tree (2026-10-30, GAPS.md MB-3):** the shipped mobile app **embeds
+> the core** (`apps/oino-desktop/src/embedded.rs`); the remote-only design below is the
+> round-6 target once `oino serve` exists (RM-1/RM-4), and will be rewritten with the
+> round-6 remote spec.
+
 - **Remote-only**: `RpcBackend` over TCP+TLS to `oino serve` (desktop or server). Pairing by
   scanning the `oino://` QR (modes §5.1) with the camera (gpui-mobile `deeplink` + platform
   camera intent / `AVCaptureSession` in Swift glue) or pasting the URL; tokens stored in the
@@ -167,6 +172,12 @@ Calm, dense, operational; light/dark themes from gpui-kit theme tokens mapped to
 streaming caret.
 
 ## 6. Build matrix
+
+> **Command drift (2026-10-30, GAPS.md PR-7):** `cargo xtask desktop|mobile` **do not
+> exist**. The real entry points are `apps/oino-desktop/scripts/build.sh` (also wrapped by
+> `cargo xtask remote-build <host|local>`, which syncs the repo + `extensions/dist` and
+> fetches artifacts — STATUS §7) and `apps/oino-mobile/scripts/build.sh` (G10). The table
+> below keeps the historical targets/deps.
 
 | Target | Host | Toolchain / deps | Command | Artifact |
 |---|---|---|---|---|

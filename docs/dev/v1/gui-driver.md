@@ -316,6 +316,9 @@ cargo xtask gui suite unipi --only workflow,kanboard
 | `r5-tui-removal` (round 5) | no removed extension on the Extensions page, no package tag in `/` completions, `alt+h` inert, `state.chrome` free of footer-brand segments |
 | `r5-board-inprocess` (round 5) | `kanboard_seed` files → native board, no daemon text, re-seed → watcher refresh |
 | `r5-board-drag-pc` (round 5) | card → lane drag moves the task; a refused lane takes no drop |
+| `r5-board-modal-form` (round 5) | FAB → New-task dialog fields with labels (Title/Description), creation lands on the board |
+| `r5-board-fulltext` (round 5) | long title/description render in full in the detail overlay (no ellipsis); the lane card keeps its clamp |
+| `r5-scroll-containment` (round 5) | wheel over the focused board search does not scroll the lanes under it (before/after tree + shots; D11 caveat applies) |
 | `r5-board-side-phone` (round 5) | the side-pane Board tab's phone layout: pills, one lane, inline detail |
 | `r5-files-editor` (round 5) | `seed_file` → nav → Files, open `hello.rs`, type into the editor, ⌘S saves ("Saved" toast), reopen reads the persisted buffer |
 | `r5-editor-lsp` (round 5) | a seeded crate's type error surfaces diagnostics in the auto-opened Problems strip (squiggles + rows), status bar reads `LSP rust-analyzer`, ⌘S format-on-saves the unindented file |

@@ -8,9 +8,9 @@ row #5 into [architecture.md](../architecture.md#appendix-settled-deviations-fol
 
 | # | Item | Notes |
 |---|---|---|
-| 11 | Shutdown | No mode exits on `AgentSessionRuntime::shutdown_requested()`; RPC does not refresh model catalogs in the background. |
+| 11 | Shutdown | ACP does not exit on `AgentSessionRuntime::shutdown_requested()` (client lifecycle); RPC/TUI/print/JSON do (2026-10-30). RPC does not refresh model catalogs in the background. |
 | 13 | Subcommands | `--remote`, `auth`, `mcp`, `serve`, `ext`, `sessions` are unavailable. |
 | 17 | `--offline` | `OINO_OFFLINE` is not exported to the process environment (edition 2024 `set_var` is `unsafe`). |
 | 19 | Tool context | Built-in tools keep the first session's `SessionToolContext` after `new_session` / `fork` / `switch_session`. |
 | 20 | `oino serve` | TCP+TLS transport, hub, pairing, multi-client — not implemented (blocks `--remote`, mobile remote attach). |
-| R | Remote TUI | `_oino/list_sessions`, `_oino/get_keybindings`, `_oino/render`, `_oino/topics` (desktop StatusPanel), `_oino/agents` (live child transcripts). |
+| R | Remote TUI | `_oino/list_sessions`, `_oino/get_keybindings` are not implemented (`_oino/render`, `_oino/topics`, `_oino/agents` landed 2026-10-29/30). |

@@ -29,6 +29,11 @@ summary**. This is the one complete, honest list.
 
 Top 10 (owner-visibility weighted): RM-1, RM-2, RM-4, MB-1, MB-2, RM-5, MB-6, PR-1, VF-1, RM-8.
 
+Post-audit flips: **DG-1 and DG-2 (Desktop GUI majors) closed** on 2026-10-29/30 by
+`[qa-r5-fix]` + `[round5-integration]` (see §2.5) — majors now 15, and `ti` is reachable
+again (Tailscale approved), so PR-3 shrank to the packaging/GPU re-run. STATUS.md §0 is
+the living copy of this summary.
+
 ## 2. Full gap list
 
 Severity is **for a GUI-first alpha** (blocker = breaks a promised product capability,
@@ -96,8 +101,8 @@ major = promised capability missing/broken or unverified promise, minor = parity
 
 | ID | Gap | Evidence | Sev | Surfaced | Owner / round |
 |---|---|---|---|---|---|
-| DG-1 | Round-5 P1 defects at HEAD: D-1 New-task dialog Title not focused (typed text lost), D-2 composer loses keyboard focus after a mode-command result card | qa-r5.md §6 D-1/D-2; `apps/oino-ui/src/views/board.rs`, `views/session_pane.rs` | 🔴 | yes (qa-r5) | qa-r5-fix (in flight) |
-| DG-2 | Round-5 closure open: fmt red in `oino-kanboard` (D-5), `zcode` suite manifest references deleted scenario (D-3), `unipi` suite 17/24 (stale selectors D-4/D-7), `/kanboard status` stale copy (D-6), spec'd `r5-board-modal-form`/`r5-board-fulltext`/`r5-scroll-containment` scenarios + `suites/r5.json` missing (D-9), `SETTINGS_*` dead-constant prune, alpha.5 version bump + STATUS refresh | qa-r5.md §6/§7; `docs/dev/v1/gui/suites/zcode.json` still lists `zcode-model-menu.json`; `Cargo.toml` = 1.0.0-alpha.4 | 🔴 | yes (qa-r5) | round5-integration (in flight) |
+| DG-1 | Round-5 P1 defects at HEAD: D-1 New-task dialog Title not focused (typed text lost), D-2 composer loses keyboard focus after a mode-command result card | ✅ **closed 2026-10-29/30 by `[qa-r5-fix]`** (`925b6cd`: repair_focus guard while a field-owning dialog is open; long-horizon mode status as transcript row instead of the keyboard-owning modal) — qa-r5.md §8 | ~~🔴~~ ✅ | yes (qa-r5) | closed |
+| DG-2 | Round-5 closure open: fmt red in `oino-kanboard` (D-5), `zcode` suite manifest references deleted scenario (D-3), `unipi` suite 17/24 (stale selectors D-4/D-7), `/kanboard status` stale copy (D-6), spec'd `r5-board-modal-form`/`r5-board-fulltext`/`r5-scroll-containment` scenarios + `suites/r5.json` missing (D-9), `SETTINGS_*` dead-constant prune, alpha.5 version bump + STATUS refresh | ✅ **closed 2026-10-30 by `[qa-r5-fix]` + `[round5-integration]`** (`966e2fb`: suites/r5.json + the three scenarios; SETTINGS_* pruned; alpha.5 bump + STATUS refresh; suites 24/24 · 12/12 · 5/5) | ~~🔴~~ ✅ | yes (qa-r5) | closed |
 | DG-3 | Browser WP5 leftovers: IME input, file drag-drop, site-permissions popover, Fit-to-pane, Settings → Browser section (browser settings live only in `settings.json` `browser.*`) | STATUS §5b WP5; `apps/oino-ui/src/views/settings_page.rs` has no Browser page | 🟡 | yes | browser-impl |
 | DG-4 | Custom theme files are discovered/loaded but the GUI renders built-in themes only | STATUS §3 Themes 🟡 | 🟡 | buried | gpui, next rounds |
 | DG-5 | Keyboard leftovers: StatusPanel / Queue full key tables, DiffViewer `u`, tooltips on keyboard focus | deviations/gpui-desktop open | 🟡 | buried | gpui |

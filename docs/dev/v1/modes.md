@@ -168,6 +168,11 @@ Implemented additions and differences (`_oino/get_shortcuts`, `_oino/service_cal
 
 ## 5. `oino serve` (remote and multi-client, D16)
 
+> **Superseded 2026-10-29 (owner decision, [round6-direction.md](round6-direction.md)):**
+> round 6 builds remote access on an **opt-in daemon + iroh** transport, not the TCP+TLS+token
+> design below. This §5 stays as the historical design of record until the round-6 spec
+> replaces it; nothing here is implemented (GAPS.md RM-1/RM-2).
+
 ### 5.1 Transport and security
 
 - TCP listener (setting `serve.bind`, default `127.0.0.1:7420`; non-loopback requires
