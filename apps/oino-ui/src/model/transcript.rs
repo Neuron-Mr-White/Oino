@@ -778,7 +778,7 @@ impl Transcript {
             } => vec![self.notice(NoticeTone::Error, error.clone())],
             AgentSessionEvent::AgentEnd { .. } | AgentSessionEvent::AgentSettled { .. } => {
                 // A run can end without `message_end` (abort before the first token).
-                match self.streaming.take() {
+                let mut changes = match self.streaming.take() {
                     Some(at) => {
                         if let RowKind::Assistant(row) = &mut self.rows[at].kind {
                             row.streaming = false;
@@ -788,7 +788,22 @@ impl Transcript {
                         changes
                     }
                     None => self.settle_preparing(),
+                };
+                // An aborted run leaves no `stop_reason` on the last answer (the settle
+                // can land before or after `agent_end`); mark it so the row shows the
+                // "Stopped" chip (#15).
+                if matches!(event, AgentSessionEvent::AgentSettled { aborted: true })
+                    && let Some(at) = self
+                        .rows
+                        .iter()
+                        .rposition(|r| matches!(r.kind, RowKind::Assistant(_)))
+                    && let RowKind::Assistant(row) = &mut self.rows[at].kind
+                    && row.error.is_none()
+                {
+                    row.error = Some("Aborted".to_owned());
+                    changes.push(self.touch(at));
                 }
+                changes
             }
             _ => Vec::new(),
         }

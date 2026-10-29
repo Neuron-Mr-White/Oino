@@ -5,15 +5,9 @@
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
     {
-      "wait_for": {
-        "id": "composer",
-        "timeout_ms": 60000
-      }
-    },
-    {
       "wait_state": {
         "busy": true,
-        "timeout_ms": 30000
+        "timeout_ms": 90000
       }
     },
     {

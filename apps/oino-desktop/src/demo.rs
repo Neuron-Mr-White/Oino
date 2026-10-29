@@ -775,7 +775,9 @@ impl Shared {
             .and_then(|v| v.parse().ok())
             .unwrap_or(400);
         let text = LOREM.repeat(repeat);
-        let _ = self.stream_text(&[], "", &text, 4, 8).await;
+        if !self.stream_text(&[], "", &text, 4, 8).await {
+            return self.finish(true);
+        }
         self.finish(false);
     }
 

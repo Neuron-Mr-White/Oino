@@ -9,7 +9,7 @@
   "steps": [
     {
       "wait_for": {
-        "id": "session-list",
+        "id": "list-new",
         "timeout_ms": 60000
       }
     },
