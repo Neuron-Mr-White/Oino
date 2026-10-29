@@ -341,6 +341,9 @@ impl AcpAgent {
             Ok(session) => session,
             Err(error) => return respond(responder, Err(error)),
         };
+        // Publish before responding: a client that acts on the `session/new` result
+        // (tests, MCP consumers) must already see the sticky topic (was a gate flake).
+        Self::announce_mcp_servers(&session, &request.mcp_servers);
         respond(
             responder,
             Ok(json!({
@@ -349,7 +352,6 @@ impl AcpAgent {
             })),
         );
         session.announce();
-        Self::announce_mcp_servers(&session, &request.mcp_servers);
     }
 
     /// The session file of `id` under `cwd`.

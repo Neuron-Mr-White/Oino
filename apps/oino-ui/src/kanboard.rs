@@ -5,7 +5,7 @@
 //! go through `oino_kanboard`'s commands under the same file locks the
 //! `oino-kanboard` CLI binary and the `kanboard.exec` host import take; the
 //! notify watcher broadcasts the project slug on every task write, so a view
-//! refresh triggered by [`subscribe`] also picks up CLI and agent writes —
+//! refresh triggered by `subscribe` also picks up CLI and agent writes —
 //! no daemon, no HTTP port, no SSE stream, no spawned process.
 
 use std::path::Path;

@@ -1,9 +1,9 @@
 //! The new-chat page (round5 #6, `ZCode` `ConversationDraftEmptyState`): a greeting with the
 //! Oino logo and a project picker — recent projects (`recent_cwds`), the "No project"
-//! bucket and "Choose folder…" over the native prompt. Every choice calls
-//! [`AppShell::open`] with `OpenRequest::New`, which reuses an existing empty session in
-//! that folder instead of stacking drafts (#4); the sidebar keeps the per-project `+`
-//! affordances (`ZCode` `PurposeSections`). Esc returns to the sessions.
+//! bucket and "Choose folder…" over the native prompt. Every choice opens the
+//! workspace with `OpenRequest::New` through the shell, which reuses an existing empty
+//! session in that folder instead of stacking drafts (#4); the sidebar keeps the
+//! per-project `+` affordances (`ZCode` `PurposeSections`). Esc returns to the sessions.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{

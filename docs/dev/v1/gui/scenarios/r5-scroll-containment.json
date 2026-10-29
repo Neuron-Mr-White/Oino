@@ -1,0 +1,76 @@
+{
+  "name": "r5-scroll-containment",
+  "scene": "board",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "kanboard_seed": {
+        "slug": "demo-board",
+        "next_id": 12
+      }
+    },
+    {
+      "wait_for": {
+        "id": "nav-board",
+        "timeout_ms": 40000
+      }
+    },
+    {
+      "click": {
+        "id": "nav-board"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "card-OIN-11",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "tree": {
+        "id": "lane-todo"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "r5-scroll-containment-01-before-scroll"
+      }
+    },
+    {
+      "key": {
+        "key": "/"
+      }
+    },
+    {
+      "sleep": {
+        "ms": 400
+      }
+    },
+    {
+      "screenshot": {
+        "name": "r5-scroll-containment-02-search-focused"
+      }
+    },
+    {
+      "scroll": {
+        "id": "lane-todo",
+        "dy": 6
+      }
+    },
+    {
+      "sleep": {
+        "ms": 600
+      }
+    },
+    {
+      "tree": {
+        "id": "lane-todo"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "r5-scroll-containment-03-after-scroll"
+      }
+    }
+  ]
+}

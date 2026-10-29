@@ -73,10 +73,11 @@ surrounding text is the only description — locate the element yourself in the 
 26. The unipi logo is wrong — render the real logo instead of a grey icon.
 27. The refresh button at the top of the chat [image 7] is useless now — remove it.
 
-## Status (round 5, in progress)
+## Status (round 5, closed — 1.0.0-alpha.5)
 
-Issues done: 10/27 verified on the GUI driver. Remaining issues are tracked per work
-package in [round5.md](round5.md) §7; flip the boxes as their packages land.
+Issues done: **27/27 + D1–D3 driver-verified** ([qa-r5.md](qa-r5.md) §3, 24 ✅ + 3 ⚠️ with
+recorded caveats D-9/D-11/D-12; D-1…D-8/D-10 fixed in §8). The checkboxes below were the
+in-progress tracker; qa-r5.md is the authoritative record.
 
 - [x] 5 Empty state — welcome page renders greeting + brand + suggestion cards
   (`r5-logo-real/01-welcome-logo`).

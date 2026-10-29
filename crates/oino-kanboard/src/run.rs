@@ -13,9 +13,10 @@ use crate::error::{Error, Result};
 use crate::model::{Actor, ChainGate, Priority, Status};
 use crate::store::{self, Layout};
 
-/// The environment one dispatch runs under (round 5, #7): the CLI uses
-/// [`Exec::process`], in-process hosts (`service::exec`, the board service)
-/// pass the request's env/cwd/stdin so nothing reads the host process's state.
+/// The environment one dispatch runs under (round 5, #7): the CLI goes through
+/// [`dispatch`] with the host process's env/cwd/stdin, while in-process hosts
+/// (`service::exec`, the board service) pass the request's env/cwd/stdin so
+/// nothing reads the host process's state.
 pub struct Exec<'e> {
     /// Environment lookup — the request's vars on top of the host's.
     pub var: &'e dyn Fn(&str) -> Option<String>,
@@ -35,7 +36,7 @@ impl Exec<'_> {
     }
 }
 
-/// The pid `Exec::process` falls back to: the caller's parent on unix (the
+/// The pid a CLI [`dispatch`] falls back to: the caller's parent on unix (the
 /// shell that ran the CLI outlives it), the process itself elsewhere.
 fn process_owner_pid() -> u32 {
     #[cfg(unix)]

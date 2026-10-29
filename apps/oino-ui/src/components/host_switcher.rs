@@ -73,7 +73,7 @@ impl HostsFile {
         }
     }
 
-    /// The chip label: the active host's name, else [`CURRENT_PC`].
+    /// The chip label: the active host's name, else the `Current PC` fallback.
     #[must_use]
     pub fn active_label(&self) -> &str {
         self.active

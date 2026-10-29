@@ -1,6 +1,8 @@
 # Round 5 — spec: GUI-first, ZCode UX, harness-only parity
 
-Status: decided (2026-10-30). Branch `v1-alpha`. Authoritative inputs:
+Status: **closed — released as 1.0.0-alpha.5** ([round5-integration], 2026-10-30; all 27 issues +
+D1–D3 driver-verified by [qa-r5.md](qa-r5.md) §3, defects D-1…D-8/D-10 fixed by
+[qa-r5-fix](qa-r5.md) §8; acceptance suite `cargo xtask gui suite r5`, 25 scenarios). Branch `v1-alpha`. Authoritative inputs:
 
 - Owner direction + 27 issues: [round5-feedback.md](round5-feedback.md) (verbatim owner text, D1–D4).
 - Scout reports: [round5/scout-oino.md](round5/scout-oino.md) (code map), [round5/scout-zed.md](round5/scout-zed.md)

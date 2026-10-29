@@ -16,6 +16,9 @@ use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::menu::{MenuEntry, Placement, menu, popover};
 use crate::components::page_header::{PageHeader, header_crab};
 use crate::components::toast::ToastKind;
+
+/// Content column max width (matches the settings page: `NAV_W` + `CONTENT_MAX`).
+const CONTENT_MAX: f32 = 1028.0;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
@@ -477,7 +480,7 @@ impl AppShell {
                         div()
                             .flex()
                             .flex_col()
-                            .max_w(px(size::SETTINGS_CONTENT + size::SETTINGS_NAV))
+                            .max_w(px(CONTENT_MAX))
                             .children(sections),
                     ),
             )

@@ -575,10 +575,6 @@ pub mod size {
     pub const STATUS_PANEL: f32 = 300.0;
     /// Query rail width.
     pub const QUERY_RAIL: f32 = 16.0;
-    /// Settings nav width (A2.16).
-    pub const SETTINGS_NAV: f32 = 200.0;
-    /// Settings content max width (A2.16).
-    pub const SETTINGS_CONTENT: f32 = 760.0;
     /// Kanban lane width.
     pub const LANE: f32 = 280.0;
     /// Composer max width on the welcome screen.

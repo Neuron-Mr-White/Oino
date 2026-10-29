@@ -1,0 +1,131 @@
+{
+  "name": "r5",
+  "description": "Round-5 acceptance suite (round5.md \u00a72/#1\u2013#27 + D1\u2013D3, GUI-first ZCode direction): one scenario per owner issue, driven live through the automation tree. Assembled by round5-integration from the work-package scenarios (qa-r5 \u00a73 verified 27/27; qa-r5-fix closed D-1..D-8, D-10).",
+  "scenarios": [
+    {
+      "group": "d1",
+      "file": "docs/dev/v1/gui/scenarios/r5-tui-removal.json",
+      "covers": "D1: footer/command-enchantment/input-shortcuts/app-bridge + core hints gone (extensions page rows, no package tags in / completions, no footer chrome)"
+    },
+    {
+      "group": "composer",
+      "file": "docs/dev/v1/gui/scenarios/r5-model-picker-modal.json",
+      "covers": "#1: modal picker (search + full names, pins, fusion lead/sidekick, Esc)"
+    },
+    {
+      "group": "composer",
+      "file": "docs/dev/v1/gui/scenarios/r5-mode-switcher.json",
+      "covers": "#2: five-mode switcher, Ctrl+Shift+M cycle, permission chip gone, no unipi text"
+    },
+    {
+      "group": "composer",
+      "file": "docs/dev/v1/gui/scenarios/r5-composer-context-ring.json",
+      "covers": "#3/#18: one card, context ring + hover panel inside, single glance row below"
+    },
+    {
+      "group": "chat",
+      "file": "docs/dev/v1/gui/scenarios/r5-esc-twice-stop.json",
+      "covers": "#15: Esc arms stop with toast, second Esc aborts, run chip shows Stopped"
+    },
+    {
+      "group": "chat",
+      "file": "docs/dev/v1/gui/scenarios/r5-esc-dialog-guard.json",
+      "covers": "#15 guard: Esc with a dialog open only closes the dialog"
+    },
+    {
+      "group": "chat",
+      "file": "docs/dev/v1/gui/scenarios/r5-bounce-watch.json",
+      "covers": "#16/#21: list discipline — no disappear/reappear gaps while streaming, last row bottom-most"
+    },
+    {
+      "group": "chat",
+      "file": "docs/dev/v1/gui/scenarios/r5-markdown-palette.json",
+      "covers": "#17: unipi markdown palette renders (faux markdown answer, screenshots)"
+    },
+    {
+      "group": "chat",
+      "file": "docs/dev/v1/gui/scenarios/r5-logo-real.json",
+      "covers": "#26: real unipi logo on the welcome/empty state (brand-logo)"
+    },
+    {
+      "group": "chat",
+      "file": "docs/dev/v1/gui/scenarios/r5-refresh-gone.json",
+      "covers": "#27: sessions refresh button gone; new sessions still appear"
+    },
+    {
+      "group": "shell",
+      "file": "docs/dev/v1/gui/scenarios/r5-no-dup-sessions.json",
+      "covers": "#4: rapid + keeps panes==1; new session only after content"
+    },
+    {
+      "group": "shell",
+      "file": "docs/dev/v1/gui/scenarios/r5-new-chat-page.json",
+      "covers": "#6: new-chat page (greeting, project picker, No project, Choose folder, Esc)"
+    },
+    {
+      "group": "shell",
+      "file": "docs/dev/v1/gui/scenarios/r5-icons-automations.json",
+      "covers": "#5/#13: calendar-clock icon embedded; Automations page + cron dialog shots"
+    },
+    {
+      "group": "shell",
+      "file": "docs/dev/v1/gui/scenarios/r5-host-switcher.json",
+      "covers": "#12: sidebar host switcher reads Current PC, Add host form persists, honest remote toast"
+    },
+    {
+      "group": "shell",
+      "file": "docs/dev/v1/gui/scenarios/r5-contrast-tokens.json",
+      "covers": "#25 app half: contrast floor tokens applied (sidebar/settings/board shots)"
+    },
+    {
+      "group": "board",
+      "file": "docs/dev/v1/gui/scenarios/r5-board-inprocess.json",
+      "covers": "#7: in-process board (no daemon surface, watcher refresh)"
+    },
+    {
+      "group": "board",
+      "file": "docs/dev/v1/gui/scenarios/r5-board-drag-pc.json",
+      "covers": "#8: card drag lane-to-lane moves + persists; refused lane takes no drop"
+    },
+    {
+      "group": "board",
+      "file": "docs/dev/v1/gui/scenarios/r5-board-modal-form.json",
+      "covers": "#9: New-task dialog fields with labels, creation from the FAB"
+    },
+    {
+      "group": "board",
+      "file": "docs/dev/v1/gui/scenarios/r5-board-side-phone.json",
+      "covers": "#10: side panel phone layout (lane pills, one lane); PC layout shots"
+    },
+    {
+      "group": "board",
+      "file": "docs/dev/v1/gui/scenarios/r5-board-fulltext.json",
+      "covers": "#11: detail overlay shows full title/description (no ellipsis); lane card clamps"
+    },
+    {
+      "group": "board",
+      "file": "docs/dev/v1/gui/scenarios/r5-scroll-containment.json",
+      "covers": "#23: scroll through a focused overlay does not move the board under it (before/after tree + shots)"
+    },
+    {
+      "group": "settings",
+      "file": "docs/dev/v1/gui/scenarios/r5-settings-zcode.json",
+      "covers": "#14/#19: ZCode settings layout (268px rail, search filter), Project tab labels the folder"
+    },
+    {
+      "group": "settings",
+      "file": "docs/dev/v1/gui/scenarios/r5-settings-trim.json",
+      "covers": "#20/#22: no Manage extensions row, dead keys gone, project badge, wayland restart note"
+    },
+    {
+      "group": "editor",
+      "file": "docs/dev/v1/gui/scenarios/r5-files-editor.json",
+      "covers": "#24: Files page tree + editor, edit/save persists, Saved toast"
+    },
+    {
+      "group": "editor",
+      "file": "docs/dev/v1/gui/scenarios/r5-editor-lsp.json",
+      "covers": "#24: rust-analyzer diagnostics in the Problems strip, hover, format-on-save"
+    }
+  ]
+}

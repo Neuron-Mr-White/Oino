@@ -1527,7 +1527,7 @@ dependencies = [
 
 [[package]]
 name = "oino-ai"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 dependencies = [
  "indexmap",
  "serde",
@@ -1537,7 +1537,7 @@ dependencies = [
 
 [[package]]
 name = "oino-browser-protocol"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 dependencies = [
  "base64",
  "serde",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "oino-cron"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -1565,7 +1565,7 @@ dependencies = [
 
 [[package]]
 name = "oino-extension-api"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 dependencies = [
  "futures",
  "oino-ai",
@@ -1580,7 +1580,7 @@ dependencies = [
 
 [[package]]
 name = "oino-kanboard"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 dependencies = [
  "chrono",
  "clap",
@@ -1596,7 +1596,7 @@ dependencies = [
 
 [[package]]
 name = "oino-settings"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 dependencies = [
  "dirs",
  "indexmap",
@@ -1609,7 +1609,7 @@ dependencies = [
 
 [[package]]
 name = "oino-wasm-host"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 dependencies = [
  "base64",
  "bytes",

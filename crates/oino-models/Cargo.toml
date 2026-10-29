@@ -1,6 +1,6 @@
 [package]
 name = "oino-models"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 edition = "2024"
 rust-version = "1.99"
 license.workspace = true

@@ -106,7 +106,7 @@ impl std::fmt::Debug for EditorLsp {
 
 impl EditorLsp {
     /// A bridge for workspace `root`; `events` is the view's wake channel
-    /// (paired with the [`DiagnosticsRx`]-style receiver it keeps).
+    /// (paired with the diagnostics receiver it keeps).
     ///
     /// The caller also keeps `diagnostics_rx`: `EditorLsp` wires it to the
     /// server inside `start` — diagnostics flow file → view without polling.
