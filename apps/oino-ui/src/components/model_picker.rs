@@ -885,6 +885,7 @@ pub(crate) fn modal(
     let restore_entity = cx.entity().downgrade();
     let restore = Rc::new(move |w: &mut Window, cx: &mut App| {
         let _ = restore_entity.update(cx, |p, cx| {
+            p.menu = None;
             dialog::forget_owned_focus("model-picker", cx);
             p.restore_focus(w, cx);
         });
