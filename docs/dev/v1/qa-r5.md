@@ -152,3 +152,35 @@ spec gap; P3 = polish/doc debt.
   (scenarios/manifests), `SETTINGS_*` dead-constant prune in `design/tokens.rs` (§8 of
   round5.md, still pending), `mise run gc` after heavy builds.
 - **WP-kanboard follow-up**: rustfmt pass over `crates/oino-kanboard` (D-5), status copy (D-6).
+
+## 8. Resolution (`[qa-r5-fix]`, 2026-10-29/30)
+
+Fix commits: `925b6cd` (code, scenarios, manifest, driver) and `2dcd1ca` (unipi-mcp repoint,
+workflow turn-idle guard, driver docs). Verification: every fix driven with the scenario that
+exposed it on `ti` (release build of `925b6cd`+, fresh `xtask wasm` dist synced), plus the
+charter gates in the touched workspaces (fmt/clippy pedantic/tests green in root, extensions
+and apps; `wasm` → `checksums` round-trip PASS). Suite state after the fixes: **unipi 24/24,
+qa-r4 12/12, zcode 5/5** (`target/gui-suite/*.json`).
+
+| ID | Resolution | Commit | Evidence |
+|---|---|---|---|
+| D-1 | Root cause: `AppShell::repair_focus` (the QA-1 safety net) ran on the first render after the FAB click, read the *previous* frame's tree (the dialog's Title handle not yet rendered) and stole the just-set input focus to the board page. The net now skips while a field-owning dialog is open (board New task, host form, cron edit) — every close path already restores focus. Same guard fixes the latent host-form variant (`open_host_form` focuses its Name field from the click handler). | `925b6cd` | Ad-hoc probe `target/tmp/qa-r5-fix/d1-probe.json`: FAB → type without click → Title value `typed without click` (was empty at HEAD, `qa-r5/shots/qa-r5-board-add-debug` needed the click). `board-task` PASS (in qa-r4 suite 12/12). Host probe: Add host → type → Name field fills (`target/tmp/qa-r5-fix/qa-r5-fix-host-probe/01-host-form-autofocus.png`). |
+| D-2 | Root cause: the mode-command status was a long `notify`, which opens the app-level result-card modal (GA-24); the modal owns the keyboard, so the next typed command hit the scrim and vanished. Long-horizon now sends its mode status as a transcript `unipi-response` row (unipi parity: these print in the chat). GA-24 result cards stay for the packages whose scenarios pin them (memory/kanboard/dream/compactor click `result-ok`). | `925b6cd` | Ad-hoc probe `/ralph` → `/graph` on faux: both land, composer refocused (`target/tmp/qa-r5-fix/qa-r5-fix-d2-probe/01-ralph-then-graph.png`; at HEAD the second command never reached the composer — `unipi-long-horizon` step 19). `unipi-long-horizon` PASS in the 24/24 unipi suite run. |
+| D-3 | `suites/zcode.json` drops the row referencing the deleted `zcode-model-menu.json` (replaced by `r5-model-picker-modal`, round5 #1). | `925b6cd` | `cargo xtask gui suite zcode` → **5/5 PASS** (was a hard error before any run). |
+| D-4 | Aggregate of D-1/D-2/D-6/D-7 (+ the `unipi-mcp` stale selector D-7's list missed, and a workflow model flake where a second bash call's approval dialog swallowed `/plan off` — guarded by a turn-idle wait + a "Nothing else" prompt). | `925b6cd`, `2dcd1ca` | `cargo xtask gui suite unipi` → **24/24 PASS** (was 17/24), report `target/gui-suite/unipi.json`. |
+| D-5 | `cargo fmt` over `crates/oino-kanboard` (the 7 spots) and `extensions/unipi/kanboard/src/lib.rs` (2 more the extensions workspace flagged). | `925b6cd` | `cargo fmt --all --check` green in root, extensions **and** apps. |
+| D-6 | Status copy now leads with `kanboard: project <slug> · N tasks (…)`, so the output names the board again. The stale `daemon: not running` line was **not in HEAD source**: it came from a pre-`bb853e3` `unipi.kanboard` wasm that an earlier sync had left on `ti` (contains the old daemon strings; HEAD's does not) — the fresh dist synced with the fix removes it. | `925b6cd` | `unipi-kanboard` PASS incl. step 26 `wait text "kanboard"` (was the failing step); live `/kanboard status` result card titled `kanboard: project demo-board …` with no daemon text. |
+| D-7 | Repointed: `unipi-workflow` (permission surface is `/permission` toasts + the approval card now; mode-chip was removed by #2), `unipi-notify`/`unipi-utility`/`unipi-mcp` (`settings-nav` + hub nav row), `unipi-updater` (About & updates nav row), `zcode-palette-history` (`route: board` — the palette's Board item routes the native page). `gui-driver.md` + the unipi manifest covers updated. | `925b6cd`, `2dcd1ca` | Each scenario PASS individually and in the 24/24 unipi / 5/5 zcode suite runs. |
+| D-8 | Driver hardening (nondeterministic flake, no repro in this round): `gui-drive.py` waits 60 s for the composer and then restarts the app **once** with the same scene/env before failing — a clean restart recovered it in every observed case. The first-frame cause itself stays open (see below). | `925b6cd` | `approval-deny` 3× PASS back-to-back; no flake in ~55 scenario restarts this round (unipi 24 + qa-r4 12 + zcode 5 + probes). |
+| D-10 | Extension rows register automation probes (`ext-row-<id>`, label `<name> <id>`), so the page's `absent {label "unipi.footer"}` assertions can fail on a real row. | `925b6cd` | `r5-tui-removal` PASS with the rows registered (steps 13–16 now meaningful). |
+
+Not fixed here (P3, left for their owners): **D-9** (spec'd `r5-board-*` acceptance scenarios +
+`suites/r5.json` — round5-integration), **D-11** (mid-drag `<60px` assertion needs a driver
+pause-during-drag primitive, not cheap), **D-12** (owner visual pass), **D-13** (zero-pane
+startup state), **D-14** (ti fixture model config; `rewind-real` passed 2/2 this round),
+**D-15** (docs drift — the screenshot drift from this round's suite re-runs is carried in the
+`[qa-r5-fix]` commits), **D-16** (wasm build nondeterminism; this round's rebuild kept
+`unipi.kanboard` byte-identical across machines, the other 34 did not).
+
+Also noted for round5-integration: `xtask wasm -p <crate>` rewrites `checksums.json` with only
+the filtered components (this round ran the full `wasm` afterwards to restore all 90 entries).
