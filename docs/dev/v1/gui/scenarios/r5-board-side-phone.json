@@ -11,15 +11,13 @@
     },
     {
       "wait_for": {
-        "label": "Board",
-        "role": "tab",
+        "id": "unipi.kanboard/board/strip-1",
         "timeout_ms": 40000
       }
     },
     {
       "click": {
-        "label": "Todo",
-        "role": "tab"
+        "id": "unipi.kanboard/board/strip-1"
       }
     },
     {
