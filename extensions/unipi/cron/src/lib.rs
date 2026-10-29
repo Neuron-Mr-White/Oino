@@ -7,7 +7,7 @@
 //! |---|---|
 //! | `/unipi:cron` window onto `unipi-host cron` | [`args`]: `/cron` subcommands + `add`/`edit`/`remove`, job-id completions |
 //! | `unipi-host cron` CLI | the `oino cron` CLI (crates/oino) — the same ops over the same store |
-//! | app cron UI | the desktop Automations page (apps/oino-ui) |
+//! | app cron UI | the Automations screen in the UniPi app (rebuilt on v2; docs/dev/v2/DIRECTION.md) |
 //! | skill `cron` | bundled skill, Oino wording |
 //!
 //! `export_extension!` is gated on `target_arch = "wasm32"` (native `cdylib` links fail on

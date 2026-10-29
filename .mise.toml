@@ -1,5 +1,5 @@
 [env]
-# Build-cache budget for target/, apps/target/ and extensions/target/ combined
+# Build-cache budget for target/ and extensions/target/ combined
 # (app-convention: every build cache has a size limit). Enforced by `mise run gc`.
 OINO_TARGET_BUDGET_GB = "80"
 OINO_TARGET_GC_AGE_HOURS = "6"
@@ -13,24 +13,11 @@ description = "Trim build caches back under OINO_TARGET_BUDGET_GB (stale tmp, in
 run = "scripts/target-gc.sh"
 
 [tasks.clean]
-description = "Remove all build caches of the three workspaces"
+description = "Remove all build caches of the two workspaces"
 run = [
   "cargo clean",
-  "cd apps && cargo clean",
   "cd extensions && cargo clean",
 ]
-
-[tasks.start]
-description = "Build and start Oino Desktop in the background (restarts cleanly if already running)"
-run = "scripts/desktop.sh start"
-
-[tasks.stop]
-description = "Stop the Oino Desktop started by `mise run start`"
-run = "scripts/desktop.sh stop"
-
-[tasks.desktop]
-description = "Build and run Oino Desktop in the foreground (args: --demo, --cwd DIR)"
-run = "scripts/desktop.sh run"
 
 [tasks."tui:render-test"]
 description = "Run the Ratatui markdown rendering proof-of-concept"
@@ -118,15 +105,3 @@ run = [
   "cargo test --workspace",
   "cargo doc --workspace --no-deps",
 ]
-
-[tasks.casing]
-description = "Casing spike: the unipi app casing on the oino loop (chat only; args: --faux, --model P/M)"
-run = "scripts/casing.sh run"
-
-[tasks."casing:start"]
-description = "Start the casing spike in the background (bridge + vite + app)"
-run = "scripts/casing.sh start"
-
-[tasks."casing:stop"]
-description = "Stop everything scripts/casing.sh started"
-run = "scripts/casing.sh stop"

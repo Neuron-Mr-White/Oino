@@ -2,7 +2,9 @@
 
 # Oino
 
-### A Rust coding agent: pi 1.4.0 core, WASM extensions, terminal + desktop + ACP clients.
+### A Rust coding agent: pi 1.4.0 core, WASM extensions, terminal + ACP clients.
+
+The UniPi app (Tauri) is being rebuilt on v2 — see [docs/dev/v2/DIRECTION.md](docs/dev/v2/DIRECTION.md).
 
 [Install](#install) · [Quick start](#quick-start) · [What's inside](#whats-inside) · [Docs](#documentation) · [Development](#development)
 
@@ -25,7 +27,7 @@ extension:
   background tasks, long-horizon goals, kanboard, MCP, web search, notifications, …) is ported
   to Rust WASM components and **bundled into the binary**. Installing `oino` is enough.
 - **Clients**: the terminal UI (`oino`), [ACP](docs/acp.md) for editors such as Zed
-  (`oino --mode acp`), [RPC](docs/rpc.md) on stdio, and the GPUI **Oino Desktop** app.
+  (`oino --mode acp`), and [RPC](docs/rpc.md) on stdio.
 
 ## Install
 
@@ -51,7 +53,7 @@ sh scripts/install.sh          # macOS / Linux
 The installers put `oino` and `oino-kanboard` into `~/.local/bin` (override with
 `OINO_PREFIX`). They prefer a tagged release binary and fall back to building from source
 (`cargo xtask wasm` + `cargo build --release -p oino -p oino-kanboard`). Details:
-[docs/install.md](docs/install.md). Oino Desktop: [docs/desktop.md](docs/desktop.md).
+[docs/install.md](docs/install.md).
 
 Uninstall: delete `~/.local/bin/oino` and `~/.local/bin/oino-kanboard`; `~/.oino` holds your
 settings, credentials and sessions.
@@ -78,7 +80,6 @@ bundled extensions, `/hotkeys` lists key bindings, `ctrl+d` exits.
 | WASM extension host + WIT `oino:extension@1.0.0` | `wit/`, `crates/oino-wasm-host` | [extensions](docs/extensions.md), [extension API](docs/extension-api.md) |
 | Provider components | `extensions/providers/*` | [providers](docs/providers.md), [models](docs/models.md) |
 | unipi 3.0.0 ports | `extensions/unipi/*` | [unipi](docs/unipi.md) |
-| Oino Desktop (GPUI) | `apps/` | [desktop](docs/desktop.md) |
 
 ## Documentation
 
@@ -90,15 +91,14 @@ bundled extensions, `/hotkeys` lists key bindings, `ctrl+d` exits.
 - [Extensions](docs/extensions.md) · [Extension API and WIT](docs/extension-api.md) · [Packages](docs/packages.md)
 - [Bundled unipi extensions](docs/unipi.md)
 - [RPC mode](docs/rpc.md) · [ACP mode](docs/acp.md) · [Embedding (SDK)](docs/sdk.md)
-- [Oino Desktop](docs/desktop.md)
 
 Developer specifications live in [docs/dev/v1/](docs/dev/v1/README.md) (charter, specs,
 deviations, [status](docs/dev/v1/STATUS.md)).
 
 ## Development
 
-Three cargo workspaces: the root (`crates/*`, `xtask`), `extensions/` (`wasm32-wasip2`
-components) and `apps/` (GPUI).
+Two cargo workspaces: the root (`crates/*`, `xtask`) and `extensions/` (`wasm32-wasip2`
+components).
 
 ```bash
 cargo xtask wasm                      # build every component into extensions/dist (bundled by oino-bundle)
@@ -106,7 +106,6 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
 cargo test --workspace
 (cd extensions && cargo clippy --target wasm32-wasip2 --workspace --all-targets -- -D warnings && cargo test --workspace)
-(cd apps && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace)
 sh scripts/install-smoke.sh           # install into a temp prefix and run one faux prompt
 ```
 

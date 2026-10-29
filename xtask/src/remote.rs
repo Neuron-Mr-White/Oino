@@ -25,7 +25,7 @@ use crate::root;
 
 const USAGE: &str = "usage: cargo xtask remote-build <host|local> [--os linux|macos|windows] \
 [--dir <remote dir>] [--jobs <n>] [--timeout-mins <n>] [--no-sync] [--fetch-only] \
-[-- <build-host.sh args: --universal --formats <list> --no-shot --android --serial <s> …>]";
+[-- <build-host.sh args: --universal …>]";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Os {
@@ -180,20 +180,6 @@ impl Remote {
         let (ok, _) = run_bounded(&mut cmd, limit, false)?;
         if !ok {
             bail!("scp {} → {}:{name} failed", local.display(), self.host);
-        }
-        Ok(())
-    }
-
-    /// Copies `~/<name>` on the host to `local`.
-    pub(crate) fn download(&self, name: &str, local: &Path, limit: Duration) -> Result<()> {
-        let mut cmd = Command::new("scp");
-        cmd.arg("-q")
-            .args(SSH_OPTS)
-            .arg(format!("{}:{name}", self.host))
-            .arg(local);
-        let (ok, _) = run_bounded(&mut cmd, limit, false)?;
-        if !ok {
-            bail!("scp {}:{} → {} failed", self.host, name, local.display());
         }
         Ok(())
     }

@@ -6,7 +6,7 @@
 //! | `checksums` | verifies `extensions/dist` against `checksums.json` |
 //! | `wit` | validates `wit/oino-extension` with `wasm-tools component wit` |
 //! | `remote-build <host\|local> [opts] [-- build-host args]` | release build over SSH (or locally) via `scripts/release/build-host.sh`; artifacts in `target/release-artifacts/<target>/` (see `remote.rs`) |
-//! | `ti <sync\|build\|start\|shot\|status\|soak\|stop>` | the `ti` Ubuntu box as GUI test host: private `Xvfb :93`, scratch agent dir, screenshots, soak (see `ti.rs`, docs/dev/v1/ti.md) |
+//! | `ti <sync\|build>` | release build host on the `ti` Ubuntu box: `sync` the tree there, `build` the CLI (see `ti.rs`; docs/dev/v1/ti.md is historical — its GUI-test-host commands went with the GPUI desktop app on v2) |
 //! | `gui <list\|suite> <name>` | the driver's regression suites: runs every scenario of `docs/dev/v1/gui/suites/<name>.json` through `scripts/gui-drive.py` (see `gui.rs`, docs/dev/v1/gui-driver.md) |
 
 use std::collections::BTreeMap;
@@ -247,7 +247,7 @@ fn main() -> Result<()> {
         Some("gui") => gui::gui(&args[1..]),
         _ => bail!(
             "usage: cargo xtask <wasm [--debug] [-p crate]… | checksums | wit | \
-             remote-build <host|local> … | ti <sync|build|start|shot|status|soak|stop> … | \
+             remote-build <host|local> … | ti <sync|build> … | \
              gui <list|suite> <name> …>"
         ),
     }

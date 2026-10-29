@@ -3,7 +3,7 @@
 # needs a size limit or cleanup policy).
 #
 # Usage: scripts/target-gc.sh [--budget-gb N] [--age-hours H] [--dry-run]
-#   Budget defaults to $OINO_TARGET_BUDGET_GB (80). Covers target/, apps/target/ and
+#   Budget defaults to $OINO_TARGET_BUDGET_GB (80). Covers target/ and
 #   extensions/target/. Steps, applied in order until the total is under budget:
 #     1. remove target*/tmp scratch entries older than AGE (default 6 h)
 #     2. remove incremental caches older than AGE
@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-dirs=("$root/target" "$root/apps/target" "$root/extensions/target")
+dirs=("$root/target" "$root/extensions/target")
 
 total_gb() {
   local sum=0 d
@@ -80,7 +80,7 @@ for d in "${dirs[@]}"; do
 done
 [ "$(total_gb)" -le "$budget_gb" ] && { echo "target-gc: $(total_gb) GB after stale artifact cleanup"; exit 0; }
 
-for ws in "$root" "$root/apps" "$root/extensions"; do
+for ws in "$root" "$root/extensions"; do
   run "(cd '$ws' && cargo clean --profile dev)"
 done
 echo "target-gc: $(total_gb) GB after cargo clean --profile dev"
