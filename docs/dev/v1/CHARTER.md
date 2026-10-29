@@ -14,19 +14,31 @@ This file is the shared contract for every contributor and agent. Read it first.
 2. **Everything else is a client or an extension.**
    - Providers are WASM extensions (OpenAI-compatible, OpenAI Responses, Anthropic
      Messages, Oino router). No provider code in core.
-   - The TUI is a native Rust client crate/binary over `oino-core` (like pi-coding-agent's
-     interactive mode sits on the runtime). Not a WASM plugin.
-   - All of unipi 3.0.0 is ported to Rust WASM component extensions with full feature
-     parity. Mechanisms follow how pi + unipi achieve them (events, tools, commands,
-     subprocesses, subagents, timers, UI requests).
+   - Clients: the **GPUI desktop/mobile app is the product** (GUI-first). The `oino` CLI
+     keeps pi's print / JSON / RPC modes. There is **no TUI client**: TUI parity is
+     dropped (owner direction 2026-10-29); `crates/oino-tui` is frozen — no feature work,
+     deletion candidate for a later round.
+   - unipi 3.0.0 is ported for **harness parity only**: the features that change agent
+     behaviour (tools, commands, modes, schedulers, approvals, providers of behaviour).
+     TUI-only / presentational unipi chrome is not ported, and extensions that exist only
+     for it are removed (footer, command-enchantment, input-shortcuts, app-bridge, core
+     hints — see [round5.md](round5.md) §3).
    - Extension UI is frontend-agnostic, modelled on pi's `rpc-extension-ui`: extensions
-     emit structured UI requests/widgets; each frontend (TUI, GPUI) renders natively.
+     emit structured UI requests/widgets; the GPUI frontend renders natively.
 3. **GPUI frontend for all devices, speed first.** A desktop + mobile distro built with
    GPUI (`github.com/itsbalamurali/gpui-mobile`, `github.com/longbridge/gpui-kit` /
-   gpui-component). UX learns from `github.com/zai-org/ZCode`, not from the unipi app.
-   The desktop app bundles oino-core + provider extensions + all unipi extensions, so
-   installing Oino Desktop is enough. macOS/Windows builds use hosts `coffee` (Windows,
+   gpui-component). **UX follows ZCode** (`github.com/zai-org/ZCode`) for everything that
+   is not harness behaviour — layout, interaction, motion, design — while every harness
+   feature bubbles up to the GUI; unipi remains the reference only where the owner pinned
+   it (kanboard board UX, model-picker modal shape, markdown palette, logo). The desktop
+   app bundles oino-core + provider extensions + the kept unipi extensions, so installing
+   Oino Desktop is enough. macOS/Windows builds use hosts `coffee` (Windows,
    `ssh coffee`) and `desmondgiam` (macOS); phones are plugged in for mobile.
+4. **Take from Zed / awesome-gpui only what the license allows.** Apache-2.0 / MIT code
+   (the `gpui` family, `gpui-kit` / `gpui-component` / `gpui-base`) may be used and
+   ported directly. Zed's app crates (`editor`, `project`, `picker`, `markdown`,
+   `settings_ui`, …) are GPL-3.0-or-later: **mechanism reference only — reimplement,
+   never copy** (Oino stays MIT/Apache-2.0; relicensing is not on the table).
 
 ## Settled decisions
 
@@ -38,7 +50,13 @@ This file is the shared contract for every contributor and agent. Read it first.
   pi-mcp, pi-codemode, pi-telemetry (MCP etc. may come later as extensions). Pi npm
   packages (TypeScript) are not loadable; markdown resources are.
 - Unipi reference: `/home/oi/Projects/Personal/archived/unipi` (v3.0.0, `packages/*`,
-  `crates/kanboard`). Port everything except the unipi desktop app UI.
+  `crates/kanboard`). Port the harness-affecting features only (D3, round5.md §3); the
+  unipi app stays the reference for the surfaces the owner pinned in round 5
+  (round5-feedback.md).
+- Round-5 direction (2026-10-29 owner feedback, [round5-feedback.md](round5-feedback.md)
+  D1–D4) **supersedes** the earlier "unipi-first" amendments and every TUI-parity goal:
+  GUI-first, ZCode UX, harness-only parity, license-clean reuse from Zed/awesome-gpui.
+  The round's decisions live in [round5.md](round5.md).
 - Session format: adopt pi session format **v3 exactly** (flat entries, `type`, 8-hex
   `id`, `parentId`, ISO timestamps, camelCase, pi `AgentMessage` shapes). Oino v1/v2 files
   migrate on load. Location stays `~/.oino/sessions/--<cwd>--/<ts>_<id>.jsonl`.
