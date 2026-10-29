@@ -1,0 +1,15 @@
+{
+  "name": "qa-r5-fix-d2-probe",
+  "backend": "faux",
+  "shots": "target/tmp/qa-r5-fix",
+  "steps": [
+    {"wait_for": {"id": "composer", "timeout_ms": 120000}},
+    {"type_text": {"text": "/ralph", "submit": true}},
+    {"wait_for": {"text": "ralph", "timeout_ms": 30000}},
+    {"wait_state": {"busy": false, "timeout_ms": 60000}},
+    {"type_text": {"text": "/graph", "submit": true}},
+    {"wait_for": {"text": "graph", "timeout_ms": 30000}},
+    {"assert": {"element": {"id": "composer", "role": "input", "value": ""}}},
+    {"screenshot": {"name": "01-ralph-then-graph"}}
+  ]
+}
