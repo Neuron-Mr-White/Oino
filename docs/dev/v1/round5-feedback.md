@@ -72,3 +72,22 @@ surrounding text is the only description — locate the element yourself in the 
 25. Some text can't be read [image 6] (contrast — find low-contrast text across the app).
 26. The unipi logo is wrong — render the real logo instead of a grey icon.
 27. The refresh button at the top of the chat [image 7] is useless now — remove it.
+
+## Status (round 5, in progress)
+
+Issues done: 6/27 verified on the GUI driver. Remaining issues are tracked per work
+package in [round5.md](round5.md) §7; flip the boxes as their packages land.
+
+- [x] 5 Empty state — welcome page renders greeting + brand + suggestion cards
+  (`r5-logo-real/01-welcome-logo`).
+- [x] 15 Esc twice — first Esc arms a toast "Press Esc again to stop", the second aborts
+  and the run row gains a "Stopped" chip; Esc is inert while an approval card is open
+  (`r5-esc-twice-stop`, `r5-esc-dialog-guard`).
+- [x] 17 Markdown palette — `design/syntax.rs` now holds unipi's per-language colors and
+  markdown header/fence/chrome accents (`r5-markdown-palette`).
+- [x] 21 Bounce — `r5-bounce-watch` (watch step) shows zero disappear/reappear gaps over
+  ~20 frames and the last row stays bottom-most through the settle.
+- [x] 26 Real logo — `brand.png` renders on the welcome page and session pane
+  (`brand-logo` probe).
+- [x] 27 Refresh button removed from the session list (`list-refresh` absent;
+  `r5-refresh-gone`).
