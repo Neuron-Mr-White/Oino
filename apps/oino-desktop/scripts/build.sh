@@ -104,8 +104,14 @@ cli_bin="$root/target/$profile/oino$exe"
 kanboard_bin="$root/target/$profile/oino-kanboard$exe"
 # GA-41: the WASM host resolves a bare program name against the directory of the running
 # executable, so the kanboard daemon ships next to oino-desktop (and in the tarball's bin/).
-[[ -f "$cli_bin" ]] && cp "$cli_bin" "$apps/target/$profile/"
-[[ -f "$kanboard_bin" ]] && cp "$kanboard_bin" "$apps/target/$profile/"
+# `rm` first: the destination may be a symlink into $root/target (a ti.rs-style link makes
+# `cp` fail with "same file"), and a plain copy must not follow it.
+for b in oino oino-kanboard; do
+  if [[ -f "$root/target/$profile/$b$exe" ]]; then
+    rm -f "$apps/target/$profile/$b$exe"
+    cp "$root/target/$profile/$b$exe" "$apps/target/$profile/"
+  fi
+done
 [[ $package == 0 ]] && { log "built $app_bin"; exit 0; }
 
 mkdir -p "$dist"
