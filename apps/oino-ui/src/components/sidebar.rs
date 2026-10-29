@@ -676,15 +676,10 @@ impl AppShell {
         let header = PageHeader::new("Sessions")
             .meta(meta.join(" · "))
             .tool(
-                Btn::icon_only("list-refresh", IconName::RefreshCw, "Refresh")
+                Btn::icon_only("list-new", IconName::Plus, "New chat")
                     .size(BtnSize::Xl)
-                    .on_click(cx.listener(|this, _, _, cx| this.refresh_sessions(cx))),
-            )
-            .tool(
-                Btn::icon_only("list-new", IconName::Plus, "New session")
-                    .size(BtnSize::Xl)
-                    .tooltip("New session", Some("⌘N"))
-                    .on_click(cx.listener(|this, _, window, cx| this.new_session(window, cx))),
+                    .tooltip("New chat", Some("⌘N"))
+                    .on_click(cx.listener(|this, _, window, cx| this.new_chat(window, cx))),
             )
             .tool(
                 div()
@@ -1068,6 +1063,8 @@ impl AppShell {
             .px(px(space::S2_5))
             .pb(px(space::S3))
             .child(brand)
+            // The central host switcher (round5 #12): one chip, sidebar top.
+            .child(self.render_host_switcher(&t, cx))
             .child(search)
             .child(
                 div()
@@ -1717,7 +1714,7 @@ impl AppShell {
         items.push(a("Extensions", Section::Suggested, "blocks", "extensions").keys("⌘3"));
         items.push(a("Settings", Section::Suggested, "settings", "settings").keys("⌘,"));
         items.push(a("Switch session…", Section::Suggested, "search", "switch").keys("⌘O"));
-        items.push(a("New session", Section::Chat, "square-pen", "new-session").keys("⌘N"));
+        items.push(a("New chat", Section::Chat, "square-pen", "new-session").keys("⌘N"));
         items.push(
             a(
                 "New session in folder…",
@@ -1787,12 +1784,6 @@ impl AppShell {
             Section::App,
             "circle-arrow-down",
             "check-updates",
-        ));
-        items.push(a(
-            "Refresh session list",
-            Section::App,
-            "refresh-cw",
-            "refresh",
         ));
         items.push(a("Frame-time overlay", Section::App, "zap", "frame-overlay").keys("⌃⌥⇧F"));
         items

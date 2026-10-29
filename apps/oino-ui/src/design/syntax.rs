@@ -1,6 +1,10 @@
-//! Syntax highlight theme (design.md §2.3): Zai-like colors from the palette — keywords
-//! `ansi[5]`, strings `ansi[2]`, numbers `ansi[3]`, functions `ansi[4]`, types `ansi[6]`,
-//! comments `fg_subtlest`.
+//! Syntax highlight theme (design.md §2.3, round-5 #17): the unipi token table mapped
+//! onto the ANSI palette — keyword `ansi[1]` `#F03C32`, string `ansi[2]`, number
+//! `ansi[4]` `#28BEF0`, bool/const `ansi[3]`, function `ansi[6]` `#50BEBE`, type
+//! `ansi[14]` `#96DCD2`, property `ansi[15]`, comment `ansi[8]` italic, punctuation
+//! `ansi[7]`, attribute `ansi[13]`, operator `fg_strong`; markdown emphasis/strong,
+//! list markers and links map onto `emphasis`/`emphasis.strong`/
+//! `punctuation.list_marker`/`link_uri`/`title`.
 
 use std::sync::Arc;
 
@@ -27,25 +31,28 @@ pub fn highlight_theme(t: &OinoTheme) -> Option<Arc<HighlightTheme>> {
             "editor.line_number": hex(p.fg_subtlest),
             "editor.active_line_number": hex(p.fg_subtle),
             "syntax": {
-                "keyword": style(p.ansi[5]),
+                "keyword": style(p.ansi[1]),
                 "string": style(p.ansi[2]),
                 "string.escape": style(p.ansi[6]),
-                "number": style(p.ansi[3]),
+                "number": style(p.ansi[4]),
                 "boolean": style(p.ansi[3]),
                 "constant": style(p.ansi[3]),
-                "function": style(p.ansi[4]),
-                "type": style(p.ansi[6]),
-                "constructor": style(p.ansi[6]),
-                "comment": style(p.fg_subtlest),
-                "comment.doc": style(p.fg_subtlest),
-                "property": style(p.fg),
+                "function": style(p.ansi[6]),
+                "type": style(p.ansi[14]),
+                "constructor": style(p.ansi[14]),
+                "comment": { "color": hex(p.ansi[8]), "font_style": "italic" },
+                "comment.doc": { "color": hex(p.ansi[8]), "font_style": "italic" },
+                "property": style(p.ansi[15]),
                 "variable": style(p.fg),
-                "operator": style(p.fg_subtle),
-                "punctuation": style(p.fg_subtle),
-                "attribute": style(p.ansi[5]),
+                "operator": style(p.fg_strong),
+                "punctuation": style(p.ansi[7]),
+                "punctuation.list_marker": style(p.list_marker),
+                "attribute": style(p.ansi[13]),
                 "tag": style(p.ansi[4]),
-                "title": style(p.fg),
-                "link_uri": style(p.ansi[12]),
+                "title": style(p.fg_strong),
+                "link_uri": style(p.link),
+                "emphasis": { "font_style": "italic" },
+                "emphasis.strong": { "color": hex(p.fg_strong), "font_weight": 700 },
                 "text.literal": style(p.ansi[2]),
             }
         }

@@ -114,7 +114,10 @@ pub fn log_lines(t: &OinoTheme, lines: &[String], key: &str) -> AnyElement {
             .border_1()
             .border_color(t.border())
             .text_color(t.fg_subtle())
-            .overflow_x_scroll(),
+            // Round-5 #21: the log strip never steals vertical gestures — a scroll
+            // gesture stays on the axis it started on (Zed editor-hscroll precedent).
+            .overflow_x_scroll()
+            .restrict_scroll_to_axis(),
         t,
     )
     .children(tail_window(lines, MAX_LINES).iter().map(|l| line(t, l)))

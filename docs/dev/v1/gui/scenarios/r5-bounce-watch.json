@@ -1,0 +1,54 @@
+{
+  "name": "r5-bounce-watch",
+  "scene": "stream",
+  "backend": "demo",
+  "env": [
+    "OINO_DESKTOP_DEMO_STREAM_REPEAT=30"
+  ],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-streaming"
+      }
+    },
+    {
+      "watch": {
+        "id_prefix": "row-",
+        "poll_ms": 250,
+        "duration_ms": 9000,
+        "expect_bottom": true
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-still-streaming"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "watch": {
+        "id_prefix": "row-",
+        "poll_ms": 200,
+        "duration_ms": 900,
+        "expect_bottom": true
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-settled"
+      }
+    }
+  ]
+}

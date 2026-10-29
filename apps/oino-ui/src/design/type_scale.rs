@@ -68,6 +68,26 @@ pub fn clamp_code(size: f32) -> f32 {
     size.clamp(CODE_FONT_RANGE.0, CODE_FONT_RANGE.1)
 }
 
+/// ZCode's absolute text scale (round5 §1.1): px sizes that do not track `ui_font_size` —
+/// greeting heroes, page furniture. Where a role should follow the user's font setting,
+/// use [`TextRole`] instead.
+pub mod zcode {
+    /// 18: greeting hero.
+    pub const XL: f32 = 18.0;
+    /// 16.
+    pub const LG: f32 = 16.0;
+    /// 14.
+    pub const BASE: f32 = 14.0;
+    /// 13.
+    pub const CAPTION: f32 = 13.0;
+    /// 12.
+    pub const SM: f32 = 12.0;
+    /// 10.
+    pub const XS: f32 = 10.0;
+    /// Settings page title `(size, line height)` 24/30.
+    pub const SETTINGS_TITLE: (f32, f32) = (24.0, 30.0);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,5 +105,13 @@ mod tests {
         assert_eq!(size(TextRole::Xs, 14.0), (11.0, 15.0));
         assert_eq!(clamp_ui(30.0), 18.0);
         assert_eq!(clamp_code(5.0), 10.0);
+    }
+
+    #[test]
+    fn zcode_scale_is_absolute() {
+        use super::zcode;
+        assert_eq!((zcode::XL, zcode::LG, zcode::BASE), (18.0, 16.0, 14.0));
+        assert_eq!((zcode::CAPTION, zcode::SM, zcode::XS), (13.0, 12.0, 10.0));
+        assert_eq!(zcode::SETTINGS_TITLE, (24.0, 30.0));
     }
 }

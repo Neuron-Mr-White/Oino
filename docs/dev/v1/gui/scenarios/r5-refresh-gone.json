@@ -1,0 +1,44 @@
+{
+  "name": "r5-refresh-gone",
+  "scene": "run",
+  "backend": "demo",
+  "env": [
+    "OINO_DESKTOP_DEMO_PACE=8"
+  ],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "session-list",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "assert": {
+        "absent": {
+          "id": "list-refresh"
+        }
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "list-new"
+        }
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "role": "row",
+          "label": "Make the JSON"
+        }
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-no-refresh"
+      }
+    }
+  ]
+}

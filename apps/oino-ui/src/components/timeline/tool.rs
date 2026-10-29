@@ -93,7 +93,7 @@ fn stat(t: &OinoTheme, meta: &str) -> AnyElement {
     div()
         .flex_shrink_0()
         .mono_text(t, TextRole::Xs)
-        .text_color(t.fg_subtlest())
+        .text_color(t.fg_subtle())
         .child(SharedString::from(meta.to_owned()))
         .into_any_element()
 }
@@ -141,7 +141,7 @@ impl SessionPane {
                 div()
                     .truncate()
                     .mono_text(t, TextRole::Sm)
-                    .text_color(t.fg_subtlest())
+                    .text_color(t.fg_subtle())
                     .child(SharedString::from(format!("{dir}{name}")))
                     .into_any_element(),
             ),
@@ -149,7 +149,7 @@ impl SessionPane {
                 div()
                     .truncate()
                     .mono_text(t, TextRole::Sm)
-                    .text_color(t.fg_subtlest())
+                    .text_color(t.fg_subtle())
                     .child(SharedString::from(c.clone()))
                     .into_any_element(),
             ),
@@ -332,7 +332,7 @@ impl SessionPane {
                         el.child(
                             div()
                                 .mono_text(t, TextRole::Xs)
-                                .text_color(if failed { t.danger() } else { t.fg_subtlest() })
+                                .text_color(if failed { t.danger() } else { t.fg_subtle() })
                                 .child(SharedString::from(if failed {
                                     exit.map_or_else(
                                         || "failed".to_owned(),
@@ -470,7 +470,7 @@ impl SessionPane {
                     div()
                         .flex_shrink_0()
                         .mono_text(t, TextRole::Xs)
-                        .text_color(t.fg_subtlest())
+                        .text_color(t.fg_subtle())
                         .child(SharedString::from(detail)),
                 )
             })

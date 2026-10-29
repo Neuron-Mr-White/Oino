@@ -12,6 +12,7 @@ use gpui_kit::{
 };
 
 use super::{HARNESS_BODY_MAX, row_id};
+use crate::automation::Automatable as _;
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
@@ -50,7 +51,11 @@ pub(crate) fn error_banner(
                     .text_role(t, TextRole::Xs)
                     .weight_semibold()
                     .text_color(t.amber())
-                    .child("Stopped"),
+                    .child("Stopped")
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Chip,
+                        "Stopped",
+                    )),
             )
             .into_any_element();
     }
@@ -233,7 +238,13 @@ impl SessionPane {
                 .id(row_id("harness-body", ix))
                 .max_h(px(HARNESS_BODY_MAX))
                 .overflow_y_scroll()
-                .child(TextView::markdown(row_id("custom-md", ix), body).selectable(true))
+                .child(
+                    crate::design::theme::markdown_view(
+                        TextView::markdown(row_id("custom-md", ix), body),
+                        t,
+                    )
+                    .selectable(true),
+                )
                 .into_any_element()
         });
         harness(
@@ -269,10 +280,13 @@ impl SessionPane {
                 .id(row_id("summary-body", ix))
                 .max_h(px(HARNESS_BODY_MAX))
                 .overflow_y_scroll()
-                .child(TextView::markdown(
-                    row_id("summary-md", ix),
-                    s.summary.clone(),
-                ))
+                .child(
+                    crate::design::theme::markdown_view(
+                        TextView::markdown(row_id("summary-md", ix), s.summary.clone()),
+                        t,
+                    )
+                    .selectable(true),
+                )
                 .into_any_element()
         });
         harness(
@@ -343,7 +357,7 @@ impl SessionPane {
             div()
                 .px(px(space::S1))
                 .text_role(t, TextRole::Xs)
-                .text_color(t.fg_subtlest())
+                .text_color(t.fg_subtle())
                 .child(SharedString::from(text))
                 .into_any_element(),
         )
@@ -410,7 +424,7 @@ impl SessionPane {
                             .min_w_0()
                             .truncate()
                             .mono_text(t, TextRole::Sm)
-                            .text_color(t.fg_subtlest())
+                            .text_color(t.fg_subtle())
                             .child(SharedString::from(dir)),
                     )
                     .child(

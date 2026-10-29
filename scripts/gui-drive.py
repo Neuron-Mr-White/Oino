@@ -408,6 +408,72 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
                 if time.time() >= deadline:
                     raise DriverError(f"{last} (after {int(timeout_ms)} ms)") from None
                 time.sleep(0.1)
+    if method == "watch":
+        # Streaming-visibility watch (round-5 #21): poll `tree` at most every
+        # `poll_ms` for `duration_ms`; once a row (default `id_prefix` `row-`)
+        # appears it must stay visible in every sample until a numerically
+        # newer row appears, and (with `expect_bottom`) the numerically-last
+        # visible row must be the bottom-most one in the final sample.
+        poll_s = max(float(params.get("poll_ms", 250)), 50.0) / 1000.0
+        duration_s = float(params.get("duration_ms", 6000)) / 1000.0
+        prefix = params.get("id_prefix", "row-")
+        sel = {k: v for k, v in params.items() if k in ("role", "id", "label")}
+
+        def row_num(i: str) -> int:
+            tail = i[len(prefix):].split("#")[0]
+            return int(tail) if tail.isdigit() else -1
+
+        deadline = time.time() + duration_s
+        samples: list[dict[str, dict]] = []
+        while time.time() < deadline:
+            snapshot = client.call("tree", sel)
+            samples.append({
+                n["id"]: n
+                for n in snapshot["elements"]
+                if n["id"].startswith(prefix) and n.get("visible")
+            })
+            time.sleep(poll_s)
+        if not samples:
+            raise DriverError("watch collected no samples")
+        problems = []
+        seen_order = sorted(
+            {i for s in samples for i in s}, key=lambda i: (row_num(i), i)
+        )
+        for rid in seen_order:
+            num = row_num(rid)
+            first = next(si for si, s in enumerate(samples) if rid in s)
+            newer_at = next(
+                (
+                    si
+                    for si, s in enumerate(samples)
+                    if any(row_num(o) > num for o in s)
+                ),
+                len(samples),
+            )
+            for si in range(first + 1, newer_at):
+                if rid not in samples[si]:
+                    problems.append(
+                        f"row {rid} vanished at sample {si} "
+                        f"(seen at {first}, first newer row at {newer_at})"
+                    )
+                    break
+        if params.get("expect_bottom", True):
+            bottoms = {
+                i: n["bounds"][1] + n["bounds"][3] for i, n in samples[-1].items()
+            }
+            if bottoms:
+                newest = max(bottoms, key=lambda i: (row_num(i), i))
+                lowest = max(bottoms, key=lambda i: bottoms[i])
+                if row_num(newest) != row_num(lowest):
+                    problems.append(
+                        f"last row {newest} is not the bottom-most one ({lowest} is)"
+                    )
+        if problems:
+            raise DriverError("; ".join(problems))
+        return (
+            f"{len(samples)} samples @ {poll_s * 1000:.0f} ms, "
+            f"{len(seen_order)} rows watched"
+        )
     raise DriverError(f"unknown step {method!r}")
 
 

@@ -1,6 +1,15 @@
 //! The conversation frame of a session (design.md §5.1–§5.3): header, timeline with query
 //! rail, status panel, find bar and jump-to-latest pill, the dock and the composer; the
 //! welcome layout for empty sessions; overlay panels and modal dialogs for the shell.
+//!
+//! Virtualization contract (round-5 #16/#21): the transcript is one `list()` over
+//! `ListState` with `FollowMode::Tail`. Every transcript event maps to a minimal list
+//! op — `splice` for inserts/removals, `remeasure_items` for changed rows, `reset` only
+//! on a history reload; a full `remeasure()` never fires mid-stream. Rows whose markdown
+//! is still parsing report not-ready through the list's `is_item_ready` probe, so the
+//! list retries their provisional height instead of anchoring a half-built measurement.
+//! The generating strip is a spliced trailing list item (`render_run_row`), not a fixed
+//! footer, so it introduces no layout discontinuity at the viewport edge.
 
 use std::rc::Rc;
 
@@ -12,6 +21,7 @@ use gpui_kit::{
     Styled as _, Window, canvas, div, list, px,
 };
 
+use crate::automation::Automatable as _;
 use crate::components::interaction::InteractionView;
 use crate::components::ous::{self, Ous};
 use crate::components::unicrab::unicrab;
@@ -102,7 +112,8 @@ impl SessionPane {
         let t = OinoTheme::get(cx);
         let widgets = self.render_widgets(WidgetPlacement::AboveEditor, window, cx);
         let queue = self.render_queue(&t, cx);
-        let run = self.render_run_state(&t, cx);
+        // The generating strip is a trailing list item (`render_run_row`), not a dock
+        // child (#21); the welcome edge case renders it next to the composer below.
         div()
             .relative()
             .flex()
@@ -110,7 +121,6 @@ impl SessionPane {
             .w_full()
             .gap(px(space::S1_5))
             .children(widgets)
-            .children(run)
             .children(queue)
             .into_any_element()
     }
@@ -161,16 +171,25 @@ impl SessionPane {
 
     fn render_welcome(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let t = OinoTheme::get(cx);
-        // A2.17: the splash is an EmptyState: the crab once (88) + one build line. The
-        // extension start header (setHeader) is reachable from the card in the header slot
-        // once the session has messages; it is never drawn as a second crab (GA-5).
+        // A2.17: the splash is an EmptyState: the real Oino logo once (round-5 #26; the
+        // grey CRAB_* pixel glyph only belongs to the mascot window) + one build line.
+        // The extension start header (setHeader) is reachable from the card in the header
+        // slot once the session has messages; it is never drawn as a second logo (GA-5).
         let build = self.build_line();
         let hero = div()
             .flex()
             .flex_col()
             .items_center()
             .gap(px(space::S2_5))
-            .child(unicrab(CrabState::Idle, size::CRAB_EMPTY, cx))
+            .child(
+                div()
+                    .id("brand-logo")
+                    .child(crate::design::brand::logo(size::CRAB_EMPTY))
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Other,
+                        "Oino logo",
+                    )),
+            )
             .child(
                 div()
                     .text_role(&t, TextRole::Sm)
@@ -187,6 +206,9 @@ impl SessionPane {
             );
         let dock = self.render_dock(window, cx);
         let composer = self.render_composer_slot(true, window, cx);
+        // A busy session with an empty transcript has no list for the generating row —
+        // keep the strip in the welcome composer area for that edge (round-5 #21).
+        let run = self.render_run_state(&t, cx);
         let meta = self.render_meta_row(&t, cx);
         let suggestions = self.render_suggestions(&t, cx);
         if t.touch() {
@@ -222,6 +244,7 @@ impl SessionPane {
                         .px(t.gutter())
                         .pb(px(space::S2))
                         .child(dock)
+                        .children(run)
                         .child(composer)
                         .children(meta),
                 )
@@ -248,6 +271,7 @@ impl SessionPane {
                     .w_full()
                     .max_w(px(size::COMPOSER_MAX))
                     .child(dock)
+                    .children(run)
                     .child(composer)
                     .children(meta),
             )

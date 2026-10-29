@@ -1,0 +1,53 @@
+{
+  "name": "r5-esc-dialog-guard",
+  "scene": "run",
+  "backend": "demo",
+  "env": [
+    "OINO_DESKTOP_DEMO_PACE=8"
+  ],
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_for": {
+        "id": "ap-allow",
+        "timeout_ms": 90000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-card-up"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "assert": {
+        "busy": true
+      }
+    },
+    {
+      "sleep": {
+        "ms": 400
+      }
+    },
+    {
+      "assert": {
+        "busy": true
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-esc-did-not-stop"
+      }
+    }
+  ]
+}

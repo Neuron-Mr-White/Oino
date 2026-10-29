@@ -1,0 +1,27 @@
+{
+  "name": "r5-logo-real",
+  "scene": "welcome",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "brand-logo",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "brand-logo",
+          "visible": true
+        }
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-welcome-logo"
+      }
+    }
+  ]
+}

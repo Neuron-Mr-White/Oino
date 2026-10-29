@@ -9,6 +9,11 @@
 //! incremental markdown state.
 
 use std::collections::{HashMap, HashSet};
+
+/// Transcript rows whose markdown source is longer than this parse asynchronously
+/// (gpui `MAX_SYNC_FULL_REPLACE_BYTES`), so the row is not ready to measure until the
+/// parse commit lands (round-5 #21).
+const MD_SYNC_PARSE_MAX: usize = 4 * 1024;
 use std::fmt::Write as _;
 use std::future::Future;
 use std::sync::Arc;
@@ -412,6 +417,17 @@ pub struct SessionPane {
     /// Last mode the footer showed: only a fallback while the topic has no permission mode
     /// (turning the footer off keeps it, GA-25).
     mode_seen: Option<ModeChip>,
+    /// Rows whose `TextViewState` still has a pending markdown parse: the list's
+    /// `is_item_ready` predicate reports them not-ready so the list retries their
+    /// provisional height instead of anchoring a half-built measurement (Zed's
+    /// `conversation_view.rs` `is_item_ready` gate, mechanism reimplemented — the
+    /// bounce fix, round-5 #21).
+    pending_measure: std::rc::Rc<std::cell::RefCell<HashSet<usize>>>,
+    /// Whether the trailing "generating" row is spliced into the list (kept consistent by
+    /// `sync_run_row`; the strip is a list item, not a fixed footer — #21).
+    run_row: bool,
+    /// First Escape of the double-esc stop gesture (#15); `None` when disarmed.
+    esc_armed: Option<Instant>,
     /// Window y of the composer shell's top (caps the completion menu above it).
     pub(crate) composer_top: std::rc::Rc<std::cell::Cell<f32>>,
     /// The model-picker modal's state (round5 #1); open while `menu` is
@@ -457,6 +473,9 @@ struct Loaded {
 
 /// How long a copy button shows its check mark (`ZCode` `CopyRowAction`: 1200 ms).
 pub const COPIED_MS: u64 = 1200;
+/// Grace window between the two Escape presses of the stop gesture (Zed double-esc
+/// mechanism reimplemented, round-5 #15; Zed `thread_view.rs` uses ~2 s).
+const ESC_ARM_MS: u64 = 3_000;
 /// Composer placeholder of an empty session (design.md A2.11).
 pub const PLACEHOLDER: &str = "Message Oino, / commands, @ files";
 /// Placeholder once the session has messages and is idle (`ZCode` `chat-composer-placeholder`:
@@ -481,6 +500,14 @@ impl SessionPane {
         model.file = opened.file.as_ref().map(|p| p.display().to_string());
         let list = ListState::new(0, ListAlignment::Top, px(crate::design::size::OVERDRAW));
         list.set_follow_mode(FollowMode::Tail);
+        // `pending_measure` answers the list's `is_item_ready` probe; the rows it names get
+        // provisional heights until their markdown parse commits (round-5 #21).
+        let pending_measure: std::rc::Rc<std::cell::RefCell<HashSet<usize>>> =
+            std::rc::Rc::default();
+        list.set_item_measurement_readiness({
+            let pending = std::rc::Rc::clone(&pending_measure);
+            move |ix, _| !pending.borrow().contains(&ix)
+        });
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 12)
@@ -562,6 +589,9 @@ impl SessionPane {
             picker_effort_menu: None,
             mode_armed: None,
             panel_focus: (cx.focus_handle(), None),
+            pending_measure,
+            run_row: false,
+            esc_armed: None,
             _pump: pump,
             _subscriptions: subscriptions,
         };
@@ -867,11 +897,13 @@ impl SessionPane {
                 let _ = this.update(cx, |pane, cx| {
                     if pane.run_exit.is_some() {
                         pane.run_exit = None;
+                        pane.sync_run_row();
                         cx.notify();
                     }
                 });
             });
             exit.detach();
+            self.esc_armed = None;
             self.unread = !self.focused_pane;
             if let (Some(started), Some(last)) = (
                 self.turn_started.take(),
@@ -910,6 +942,15 @@ impl SessionPane {
             match *change {
                 RowChange::Inserted { at, count } => {
                     self.list.splice(at..at, count);
+                    {
+                        // Shift the pending-measure set with the splice (indices name
+                        // post-splice positions).
+                        let mut pending = self.pending_measure.borrow_mut();
+                        *pending = pending
+                            .iter()
+                            .map(|ix| if *ix >= at { ix + count } else { *ix })
+                            .collect();
+                    }
                     // A grouped run's header row changes its label when a row joins.
                     if at > 0 {
                         self.list.remeasure_items(at - 1..at);
@@ -918,6 +959,8 @@ impl SessionPane {
                 RowChange::Updated { at } => self.list.remeasure_items(at..at + 1),
                 RowChange::Reset => {
                     self.markdown.clear();
+                    self.pending_measure.borrow_mut().clear();
+                    self.run_row = false;
                     self.list.reset(self.model.transcript.len());
                 }
             }
@@ -956,8 +999,25 @@ impl SessionPane {
         if applied.reload {
             self.reload(cx);
         }
+        self.sync_run_row();
         if applied.chrome || !applied.rows.is_empty() {
             cx.notify();
+        }
+    }
+
+    /// Keeps the trailing "generating" row (`render_run_row`) in sync with run state: it
+    /// is a spliced last list item while the run is busy or its exit line is fading — not
+    /// a fixed footer — so it introduces no layout discontinuity at the viewport edge
+    /// (round-5 #21; the mechanism mirrors Zed `thread_view.rs` `sync_generating_indicator`).
+    fn sync_run_row(&mut self) {
+        let want = self.model.is_busy() || self.run_exit.is_some();
+        let len = self.model.transcript.len();
+        if want && !self.run_row {
+            self.list.splice(len..len, 1);
+            self.run_row = true;
+        } else if !want && self.run_row {
+            self.list.splice(len..len + 1, 0);
+            self.run_row = false;
         }
     }
 
@@ -1012,14 +1072,42 @@ impl SessionPane {
                 *len = text.len();
                 state.update(cx, |s, cx| {
                     if appended {
+                        // `push_str` always parses asynchronously; the row is not-ready
+                        // until the next parse commit lands (#21).
                         s.push_str(delta, cx);
                     } else {
                         s.set_text(text, cx);
                     }
                 });
+                if (appended || text.len() > MD_SYNC_PARSE_MAX)
+                    && let Some(ix) = self.model.transcript.position(id)
+                {
+                    self.pending_measure.borrow_mut().insert(ix);
+                }
             } else {
                 let len = row.text.len();
                 let state = cx.new(|cx| TextViewState::markdown(&row.text, cx).selectable(true));
+                // While the row's markdown is still parsing the row is not ready to
+                // measure: the list retries its provisional height instead of snapping
+                // to a half-built one (the bounce gate, #21). The state's commit
+                // `notify` clears the flag and re-measures just this row.
+                {
+                    let row_id = id.clone();
+                    cx.observe(&state, move |this, _state, cx| {
+                        if let Some(ix) = this.model.transcript.position(&row_id)
+                            && this.pending_measure.borrow_mut().remove(&ix)
+                        {
+                            this.list.remeasure_items(ix..ix + 1);
+                        }
+                        cx.notify();
+                    })
+                    .detach();
+                }
+                if len > MD_SYNC_PARSE_MAX
+                    && let Some(ix) = self.model.transcript.position(id)
+                {
+                    self.pending_measure.borrow_mut().insert(ix);
+                }
                 self.markdown.insert(id.clone(), (state, len));
             }
         }
@@ -1207,8 +1295,21 @@ impl SessionPane {
             if let Ok(Some(set)) = task.await {
                 let _ = this.update(cx, |pane, cx| {
                     if pane.checkpoints != set {
+                        // Remeasure only the prompt rows whose checkpoint flag changed: a
+                        // full `remeasure()` would invalidate every cached row height and
+                        // make the tail bounce while a turn streams (#21).
+                        let changed: Vec<usize> = pane
+                            .checkpoints
+                            .symmetric_difference(&set)
+                            .copied()
+                            .collect();
                         pane.checkpoints = set;
-                        pane.list.remeasure();
+                        let prompts = pane.model.transcript.prompt_indices();
+                        for nth in changed {
+                            if let Some(&ix) = prompts.get(nth) {
+                                pane.list.remeasure_items(ix..ix + 1);
+                            }
+                        }
                         cx.notify();
                     }
                 });
@@ -1398,6 +1499,10 @@ impl SessionPane {
             let chars = text.get(..byte).map_or(0, |b| b.chars().count());
             (text, chars)
         };
+        if !text.is_empty() {
+            // Gaining text disarms the stop gesture (#15: typing is not an abort).
+            self.esc_armed = None;
+        }
         self.drafts.save(&self.model.id, &text);
         // Editor intents (debounced `changed`, immediate `cleared`).
         let intent = if text.is_empty() {
@@ -1548,9 +1653,9 @@ impl SessionPane {
         let armed = (!text.trim().is_empty())
             .then(|| self.mode_armed.take())
             .flatten()
-            .filter(|m| m.arms_prompt());
+            .filter(|m: &composer::AgentMode| composer::AgentMode::arms_prompt(*m));
         let text = match armed {
-            Some(mode) => format!("/{} {}", mode.command(), text.trim()),
+            Some(m) => format!("/{} {}", m.command(), text.trim()),
             None => text,
         };
         let intent = composer::intent(&text, self.model.is_busy(), key);
@@ -2368,12 +2473,33 @@ impl SessionPane {
                 self.submit(SubmitKey::FollowUp, cx);
                 true
             }
-            "escape" if self.model.is_busy() && text.is_empty() => {
-                self.abort(cx);
-                true
+            "escape" if self.model.ui.needs_attention() => {
+                // A card owns the answer keys while one waits (A2.11): Escape reaching the
+                // composer then never arms or aborts the run (#15).
+                self.esc_armed = None;
+                false
             }
+            "escape" if self.model.is_busy() && text.is_empty() => self.esc_or_abort(cx),
             _ => false,
         }
+    }
+
+    /// Escape while a run is active: the first press arms the stop gesture for
+    /// [`ESC_ARM_MS`] (a transient toast explains it), the second one aborts — Zed's
+    /// double-esc (`thread_view.rs` "Hit ESC again to cancel") reimplemented (#15). With
+    /// composer text or a waiting card the press does neither (the callers guard both).
+    fn esc_or_abort(&mut self, cx: &mut Context<Self>) -> bool {
+        if self
+            .esc_armed
+            .is_some_and(|t| t.elapsed() <= Duration::from_millis(ESC_ARM_MS))
+        {
+            self.esc_armed = None;
+            self.abort(cx);
+            return true;
+        }
+        self.esc_armed = Some(Instant::now());
+        self.toast("Press Esc again to stop", cx);
+        true
     }
 
     // ── interactions & panels ────────────────────────────────────────────────

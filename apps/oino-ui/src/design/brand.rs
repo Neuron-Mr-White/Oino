@@ -1,7 +1,27 @@
 //! Brand glyphs drawn from data (design.md §2.9, §4.28): the pixel Unicrab (cell grids copied
 //! as numbers from `extensions/unipi/info-screen/assets/crab.json`) and its attention states.
+//!
+//! [`logo`] is the real mark — the Oino logo PNG that packaging ships — for the surfaces
+//! unipi showed its logo on (round-5 #26): the conversation empty state and the sidebar
+//! brand row. The `CRAB_*` pixel grids are the mascot window's glyphs only.
 
 use crate::design::tokens::crab;
+
+/// The Oino logo (`apps/oino-ui/assets/brand/oino-logo.png` — the 256 px PNG the desktop
+/// packaging ships as `assets/oino-256.png`), embedded once.
+const LOGO_PNG: &[u8] = include_bytes!("../../assets/brand/oino-logo.png");
+
+/// The real Oino logo at `size` px (round-5 #26: empty state, sidebar brand row).
+#[must_use]
+pub fn logo(size: f32) -> gpui_kit::AnyElement {
+    use gpui_kit::{Image, ImageFormat, IntoElement as _, Styled as _, img, px};
+    img(std::sync::Arc::new(Image::from_bytes(
+        ImageFormat::Png,
+        LOGO_PNG.to_vec(),
+    )))
+    .size(px(size))
+    .into_any_element()
+}
 
 /// The large crab (22 × 19 cells). Hex digits are palette indices, `.` is empty.
 pub const CRAB_22: [&str; 19] = [

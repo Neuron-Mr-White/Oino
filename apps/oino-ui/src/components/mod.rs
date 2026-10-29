@@ -26,6 +26,7 @@ pub mod dialog;
 pub mod dock;
 pub mod empty;
 pub mod header;
+pub mod host_switcher;
 pub mod interaction;
 pub mod kbd;
 pub mod keys;

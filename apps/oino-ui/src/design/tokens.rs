@@ -164,11 +164,13 @@ pub const LIGHT: Palette = Palette {
     resize_handle: 0x2A1F_1A33,
     fg: 0x1C19_17FF,
     fg_subtle: 0x5E55_4DFF,
-    fg_subtlest: 0x8A80_78FF,
+    // round5 #25: AA 4.5:1 on `window` and `card` (4.59 / 4.83; was `#8A8078` at 3.61 / 3.80).
+    fg_subtlest: 0x7670_66FF,
     fg_inverse: 0xFFFF_FFFF,
     primary: 0xF030_18FF,
     primary_hover: 0xF018_18FF,
-    primary_fg: 0x1818_18FF,
+    // round5 #25: `#181818` measured 4.35:1 on the shell fill; `#100C0A` passes AA (4.76).
+    primary_fg: 0x100C_0AFF,
     secondary: 0xEAE3_DAFF,
     brand: 0xF030_18FF,
     accent: 0xF030_181A,
@@ -308,11 +310,13 @@ pub const DARK: Palette = Palette {
     resize_handle: 0xF5EF_E633,
     fg: 0xF5EF_E6FF,
     fg_subtle: 0xA39A_90FF,
-    fg_subtlest: 0x6E65_5DFF,
+    // round5 #25: AA 4.5:1 on `window` and `card` (5.15 / 4.84; was `#6E655D` at 3.49 / 3.28).
+    fg_subtlest: 0x8A80_78FF,
     fg_inverse: 0x1818_18FF,
     primary: 0xF030_18FF,
     primary_hover: 0xF018_18FF,
-    primary_fg: 0x1818_18FF,
+    // round5 #25: `#181818` measured 4.35:1 on the shell fill; `#100C0A` passes AA (4.76).
+    primary_fg: 0x100C_0AFF,
     secondary: 0x2621_1FFF,
     brand: 0xF030_18FF,
     accent: 0xF030_1826,
@@ -822,12 +826,18 @@ pub mod breakpoint {
     pub const NARROW: f32 = 720.0;
 }
 
-/// Motion durations in milliseconds (design.md §2.10).
+/// Motion durations in milliseconds (design.md §2.10, round5 §1.1 ZCode motion).
 pub mod motion {
-    /// Hover / press feedback.
+    /// Hover / press feedback (ZCode `fast`).
     pub const FAST_MS: u64 = 120;
-    /// Menu / popover / dialog enter.
+    /// Menu / popover / dialog enter (ZCode `base`).
     pub const NORMAL_MS: u64 = 180;
+    /// ZCode `base` (160) — the standard transition duration.
+    pub const BASE_MS: u64 = 160;
+    /// ZCode `enter` (200) — overlay enter.
+    pub const ENTER_MS: u64 = 200;
+    /// ZCode `ink` (320) — long, calm transitions (marks, highlights).
+    pub const INK_MS: u64 = 320;
     /// Sheet enter, status panel expand.
     pub const SLOW_MS: u64 = 280;
     /// Shared spinner ticker period (12 fps).
@@ -849,6 +859,12 @@ pub mod motion {
     /// Exit (fade out + drop) of a dismissed overlay; shorter than any enter.
     pub const EXIT_MS: u64 = 120;
 }
+
+/// The ZCode standard ease (round5 §1.1): `cubic-bezier(0.22, 0.61, 0.36, 1)` as
+/// `(x1, y1, x2, y2)` control points. Pure data so this module stays toolkit-free;
+/// build the curve with `gpui_kit::base::animation::cubic_bezier(*EASE.0 …)`.
+/// Every animated block honours `reduce_motion` (design.md §2.10).
+pub const EASE: (f32, f32, f32, f32) = (0.22, 0.61, 0.36, 1.0);
 
 /// One box shadow layer `(offset_y, blur, spread, color)`.
 pub type ShadowLayer = (f32, f32, f32, u32);
@@ -968,4 +984,48 @@ pub fn contrast(fg: u32, bg: u32) -> f64 {
     let (a, b) = (luminance(fg), luminance(bg));
     let (hi, lo) = if a > b { (a, b) } else { (b, a) };
     (hi + 0.05) / (lo + 0.05)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DARK, LIGHT, Palette, contrast, over};
+
+    /// round5 §1.2 (#25): the contrast floor. `fg_subtlest` passes AA 4.5:1 on `window` and
+    /// `card` in both themes; the semantic fg/surface pairs and the primary label pass AA;
+    /// `fg_subtle` stays at least as readable as before (it is the step above `fg_subtlest`).
+    #[test]
+    fn contrast_floor_r5() {
+        let floor = |p: &Palette, name: &str| {
+            let window = p.window;
+            for (what, bg) in [
+                ("window", window),
+                ("card", over(p.card, window)),
+                ("sidebar", over(p.sidebar, window)),
+            ] {
+                let subtlest = contrast(p.fg_subtlest, bg);
+                assert!(
+                    subtlest >= 4.5,
+                    "{name}: fg_subtlest on {what} = {subtlest:.2}"
+                );
+                let subtle = contrast(p.fg_subtle, bg);
+                assert!(subtle >= 4.5, "{name}: fg_subtle on {what} = {subtle:.2}");
+            }
+            let frame = over(p.frame, window);
+            let task_bg = over(over(p.idle_task_surface, frame), window);
+            let idle = contrast(p.idle_task, task_bg);
+            assert!(idle >= 4.5, "{name}: idle_task on its surface = {idle:.2}");
+            let attention = contrast(
+                p.attention_fg,
+                over(over(p.attention_surface, frame), window),
+            );
+            assert!(attention >= 4.5, "{name}: attention_fg = {attention:.2}");
+            let primary = contrast(p.primary_fg, p.primary);
+            assert!(primary >= 4.5, "{name}: primary_fg = {primary:.2}");
+            // The roles stay ordered: `fg_subtle` is one step stronger than `fg_subtlest`.
+            let ordered = contrast(p.fg_subtle, window) >= contrast(p.fg_subtlest, window);
+            assert!(ordered, "{name}: fg_subtle / fg_subtlest out of order");
+        };
+        floor(&LIGHT, "light");
+        floor(&DARK, "dark");
+    }
 }

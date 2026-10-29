@@ -1,0 +1,57 @@
+{
+  "name": "r5-markdown-palette",
+  "scene": "run",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-plan-streaming"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "ap-allow",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "click": {
+        "id": "ap-allow"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "assert": {
+        "text": "cargo test parser"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-answer"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-answer-table"
+      }
+    }
+  ]
+}

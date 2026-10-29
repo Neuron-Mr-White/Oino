@@ -9,7 +9,7 @@
 //! the list. There are no split panes (A2.18).
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -24,6 +24,7 @@ use gpui_kit::{
 };
 
 use crate::components::header::HeaderState;
+use crate::components::host_switcher::HostsFile;
 use crate::components::palette::{PaletteEvent, PaletteView};
 use crate::components::toast::{ToastKind, Toasts, is_long, stack};
 use crate::design::brand::CrabState;
@@ -61,6 +62,8 @@ pub enum Route {
     Cron,
     /// First-run onboarding (D13).
     Onboarding,
+    /// New-chat page: greeting + project picker (round5 #6).
+    NewChat,
 }
 
 /// Which splitter is being dragged.
@@ -160,6 +163,14 @@ pub struct AppShell {
     pub(crate) group_menu: Option<String>,
     /// Extensions page row `⋮` menu open for this id.
     pub(crate) ext_menu: Option<String>,
+    /// The central host switcher (#12): the `hosts.json` store.
+    pub(crate) hosts: HostsFile,
+    /// The host switcher menu is open.
+    pub(crate) host_menu: bool,
+    /// The "Add host…" form.
+    pub(crate) host_form: Option<crate::components::host_switcher::HostForm>,
+    /// Keyboard focus of the new-chat page (round5 #6).
+    pub(crate) new_chat_focus: FocusHandle,
     /// Sections showing every session (others show [`SECTION_ROWS`]).
     pub(crate) list_expanded: HashSet<String>,
     /// The needs-you drawer (header crab / strip ▾) is open.
@@ -251,6 +262,7 @@ impl AppShell {
         // D13 onboarding (`OINO_DESKTOP_ONBOARDING=1`, also with the demo backend).
         let onboarding = std::env::var("OINO_DESKTOP_ONBOARDING").is_ok_and(|v| v == "1");
         let list_width = px(f32::from(settings.list_width).clamp(size::LIST_MIN, size::LIST_MAX));
+        let agent_dir = host.info().agent_dir;
         let mut ws = Self {
             host,
             settings,
@@ -288,6 +300,10 @@ impl AppShell {
             pending_side: None,
             group_menu: None,
             ext_menu: None,
+            hosts: HostsFile::load(&agent_dir),
+            host_menu: false,
+            host_form: None,
+            new_chat_focus: cx.focus_handle(),
             list_expanded: HashSet::new(),
             needs_drawer: false,
             confirm: None,
@@ -517,6 +533,7 @@ impl AppShell {
                 self.route = Route::Onboarding;
                 cx.notify();
             }
+            ("new-chat", _) => self.new_chat(window, cx),
             _ => {}
         }
     }
@@ -537,6 +554,7 @@ impl AppShell {
                 Route::Extensions => "extensions",
                 Route::Cron => "cron",
                 Route::Onboarding => "onboarding",
+                Route::NewChat => "new-chat",
             }
             .to_owned(),
             session: pane.as_ref().map(|p| p.model.id.clone()),
@@ -695,6 +713,20 @@ impl AppShell {
                 .find(|p| p.entity.read(cx).model.file.as_deref() == Some(path.as_str()))
                 .map(|p| p.key)
             {
+                self.activate(key, window, cx);
+                return;
+            }
+        }
+        // round5 #4: a `New` request reuses an existing empty session in the same folder
+        // (no user messages) instead of stacking duplicate drafts — two rapid `+` presses
+        // keep one pane; after the session has content a `+` genuinely spawns.
+        if let OpenRequest::New { cwd } = &request {
+            let empty = self.panes.iter().find(|p| {
+                let model = &p.entity.read(cx).model;
+                Path::new(model.cwd.as_str()) == cwd.as_path()
+                    && !model.transcript.has_user_messages()
+            });
+            if let Some(key) = empty.map(|p| p.key) {
                 self.activate(key, window, cx);
                 return;
             }
@@ -1297,7 +1329,7 @@ impl AppShell {
 
     pub(crate) fn run_app_action(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         match id {
-            "new-session" => self.new_session(window, cx),
+            "new-session" => self.new_chat(window, cx),
             "open-folder" => self.open_folder(window, cx),
             "switch" => self.open_switch(window, cx),
             "abort" => self.with_pane(cx, SessionPane::abort),
@@ -1349,7 +1381,6 @@ impl AppShell {
             "theme-system" => self.update_settings(|s| s.theme = ThemePref::System, window, cx),
             "settings" => self.open_settings(None, window, cx),
             "shortcuts" => self.open_settings(Some("shortcuts"), window, cx),
-            "refresh" => self.refresh_sessions(cx),
             "check-updates" => self.with_pane(cx, |p, cx| p.run_prompt("/update-check", cx)),
             "frame-overlay" => {
                 perf::toggle_overlay(cx);
@@ -1604,6 +1635,9 @@ impl AppShell {
                     .get_or_insert_with(|| cx.focus_handle())
                     .clone();
                 window.focus(&focus, cx);
+            }
+            Route::NewChat => {
+                window.focus(&self.new_chat_focus, cx);
             }
             Route::Extensions | Route::Onboarding => {
                 window.focus(&self.focus, cx);
@@ -1991,6 +2025,7 @@ impl Render for AppShell {
             .then(|| self.render_sidebar(window, cx));
         let main: AnyElement = match self.route {
             Route::Sessions => self.render_sessions(window, cx),
+            Route::NewChat => self.render_new_chat(window, cx),
             Route::Settings => match &self.settings_view {
                 Some((view, _)) => div()
                     .flex()
@@ -2013,7 +2048,8 @@ impl Render for AppShell {
         let confirm = self
             .render_confirm(&t, window, cx)
             .or_else(|| self.render_result(&t, window, cx))
-            .or_else(|| self.render_readme(&t, window, cx));
+            .or_else(|| self.render_readme(&t, window, cx))
+            .or_else(|| self.render_host_form(&t, cx));
         let switch = self.render_switch(&t, cx);
         // Native browser views cover GPUI content in their bounds: show only the visible
         // session's, and only while nothing is drawn over the side pane.
@@ -2078,6 +2114,7 @@ impl Render for AppShell {
                 Route::Settings => self.settings_view.is_none(),
                 Route::Extensions => false,
                 Route::Cron => self.cron_ui.edit.is_none(),
+                Route::NewChat => false,
                 Route::Board | Route::Onboarding => true,
             };
         let columns = div()
@@ -2144,7 +2181,10 @@ impl Render for AppShell {
                     }
                 }),
             )
-            .on_action(cx.listener(|this, _: &NewSession, window, cx| this.new_session(window, cx)))
+            .on_action(cx.listener(|this, _: &NewSession, window, cx| {
+                // round5 #6: ⌘N opens the new-chat page (project picker), not a spawn.
+                this.new_chat(window, cx);
+            }))
             .on_action(cx.listener(|this, _: &OpenFolder, window, cx| this.open_folder(window, cx)))
             .on_action(cx.listener(|this, _: &SwitchSession, window, cx| {
                 this.open_switch(window, cx);

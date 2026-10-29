@@ -135,15 +135,16 @@ pub fn task_json(board: &Board<'_>, task: &Task, all: &[Task], gate: ChainGate) 
 
 // ─── project ────────────────────────────────────────────────────────────────
 
-/// `project add`: register a project (idempotent per root).
+/// `project add`: register a project (idempotent per root). `cwd` supplies the
+/// default root (its git toplevel) when `--root` is not given.
 pub fn project_add(
     layout: &Layout,
     root: Option<&std::path::Path>,
     name: Option<&str>,
     prefix: Option<&str>,
+    cwd: &std::path::Path,
 ) -> Result<Value> {
-    let cwd = std::env::current_dir()?;
-    let root = root.map_or_else(|| store::resolve_root(&cwd), std::path::Path::to_path_buf);
+    let root = root.map_or_else(|| store::resolve_root(cwd), std::path::Path::to_path_buf);
     let slug = store::slug_for(&store::canonical_root(&root)?);
     // Re-registering a project must never reset its id counter: a reset hands
     // out ids that already exist on disk and overwrites those tasks.
@@ -844,8 +845,8 @@ fn rebalance_lane(board: &Board<'_>, lane_tasks: &[Task]) -> Result<usize> {
 
 // ─── start / finish / release / reap ──────────────────────────────────────────────
 
-/// At most `max_sessions()` distinct sessions hold `in_progress` tasks.
-fn session_cap(tasks: &[Task], session: &str) -> Result<()> {
+/// At most `cap` distinct sessions hold `in_progress` tasks.
+fn session_cap(tasks: &[Task], session: &str, cap: usize) -> Result<()> {
     let mut others: Vec<&str> = Vec::new();
     for task in tasks {
         if task.status != Status::InProgress {
@@ -856,7 +857,7 @@ fn session_cap(tasks: &[Task], session: &str) -> Result<()> {
             others.push(run.session.as_str());
         }
     }
-    if others.len() >= max_sessions() {
+    if others.len() >= cap {
         return Err(Error::rule(format!(
             "{} sessions already run tasks here ({}) — wait for one to finish",
             others.len(),
@@ -970,6 +971,9 @@ pub struct StartArgs<'a> {
     pub pid: u32,
     /// Host the claiming process runs on.
     pub host: &'a str,
+    /// Per-project session cap (`max_sessions()` — the caller's environment
+    /// decides, so in-process hosts pass their request's env).
+    pub max_sessions: usize,
 }
 
 /// `start <ID>`: the agent self-claims a todo task for its session
@@ -1037,7 +1041,7 @@ pub fn start(
             blocked.describe(gate)
         )));
     }
-    session_cap(&tasks, args.session)?;
+    session_cap(&tasks, args.session, args.max_sessions)?;
     transitions::check(
         from,
         Status::InProgress,
@@ -1437,11 +1441,16 @@ fn env_usize(name: &str, default: usize, min: usize) -> usize {
         .map_or(default.max(min), |value| value.max(min))
 }
 
+/// Env var naming the per-project session cap.
+pub const SESSION_CAP_ENV: &str = "OINO_KANBOARD_MAX_SESSIONS";
+/// Default per-project session cap.
+pub const SESSION_CAP_DEFAULT: usize = 2;
+
 /// Distinct sessions that may hold `in_progress` tasks per project.
 /// `OINO_KANBOARD_MAX_SESSIONS`, default 2, minimum 1.
 #[must_use]
 pub fn max_sessions() -> usize {
-    env_usize("OINO_KANBOARD_MAX_SESSIONS", 2, 1)
+    env_usize(SESSION_CAP_ENV, SESSION_CAP_DEFAULT, 1)
 }
 
 /// This machine's host name (`unknown` when it cannot be read).
@@ -1460,7 +1469,7 @@ pub fn hostname() -> String {
 }
 
 fn pid_alive(pid: u32) -> bool {
-    crate::daemon::pid_alive(pid)
+    crate::sys::pid_alive(pid)
 }
 
 // ─── duplicate / archive / validate ─────────────────────────────────────────
@@ -1784,77 +1793,28 @@ pub fn search(
     Ok(json!({ "tasks": items }))
 }
 
-// ─── board settings + token ────────────────────────────────────────────────
+// ─── in-process status (round 5, #7) ───────────────────────────────────────
 
-/// `settings show`: how pi is invoked, the models whitelist, whether a custom
-/// summary instruction is set, and the effective limits (env or defaults).
-pub fn settings_show(layout: &Layout) -> Result<Value> {
-    let settings = crate::serve::settings::load(layout);
+/// `status`: what the agent needs to see the board is reachable — where the
+/// files live and which projects exist (the daemon health check, in-process
+/// now: `ok` means reads and writes are possible).
+pub fn board_status(layout: &Layout) -> Result<Value> {
+    let projects = layout.list_projects()?;
+    let binary = std::env::current_exe()
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned());
+    let _ = &binary;
     Ok(json!({
-        "piCommand": settings.pi_command,
-        "models": settings.models,
-        "summaryModel": settings.summary_model,
-        "summaryInstructionSet": !settings.summary_instruction.trim().is_empty(),
-        "maxSessions": max_sessions(),
-    }))
-}
-
-/// `settings set <field> <value>` — `pi-command` takes a JSON argv array,
-/// `models` a JSON array of "provider/id" strings, `summary-model` a whitelisted
-/// "provider/id" (empty clears). Agent actor refused.
-pub fn settings_set(layout: &Layout, common: &Common, field: &str, value: &str) -> Result<Value> {
-    if common.actor == Actor::Agent {
-        return Err(Error::rule("settings set is user/system only"));
-    }
-    let mut settings = crate::serve::settings::load(layout);
-    match field {
-        "pi-command" => {
-            let argv: Vec<String> = serde_json::from_str(value)
-                .map_err(|_| Error::usage("settings set pi-command takes a JSON argv array"))?;
-            settings.pi_command = argv;
-        }
-        "models" => {
-            let models: Vec<String> = serde_json::from_str(value)
-                .map_err(|_| Error::usage("settings set models takes a JSON array of strings"))?;
-            settings.models = models;
-        }
-        "summary-model" => {
-            let model = value.trim().to_string();
-            if !model.is_empty() && !settings.models.iter().any(|entry| entry == &model) {
-                return Err(Error::rule(format!(
-                    "summary-model `{model}` is not in the reported models list"
-                )));
-            }
-            settings.summary_model = model;
-        }
-        other => {
-            return Err(Error::usage(format!(
-                "settings set accepts pi-command, models or summary-model — not `{other}`"
-            )));
-        }
-    }
-    crate::serve::settings::save(layout, &settings)?;
-    Ok(json!({
-        "piCommand": settings.pi_command,
-        "models": settings.models,
-        "summaryModel": settings.summary_model,
-    }))
-}
-
-/// `rotate-token`: drop `<home>/token` so the next --keep-token start mints a
-/// fresh one. Agent actor refused.
-pub fn rotate_token(layout: &Layout, common: &Common) -> Result<Value> {
-    if common.actor == Actor::Agent {
-        return Err(Error::rule("rotate-token is user/system only"));
-    }
-    let path = crate::serve::token_path(layout);
-    let existed = path.exists();
-    if existed {
-        std::fs::remove_file(&path)?;
-    }
-    Ok(json!({
-        "rotated": existed,
-        "note": "the token rotates on the next daemon start — /kanboard close, then open",
+        "ok": true,
+        "home": layout.home.to_string_lossy(),
+        "binary": binary,
+        "hostname": sys::hostname(),
+        "projects": projects.iter().map(|project| json!({
+            "slug": project.slug,
+            "name": project.name,
+            "prefix": project.prefix,
+            "root": project.root.to_string_lossy(),
+        })).collect::<Vec<_>>(),
     }))
 }
 

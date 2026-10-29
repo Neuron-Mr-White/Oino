@@ -834,13 +834,12 @@ mod tests {
         assert_eq!(trigger("plain", 5), None);
         let groups: Vec<oino_core::session::CompletionGroup> = serde_json::from_value(serde_json::json!([
             {"source":"files","from":4,"items":[{"value":"@src/","tag":"dir","sortTier":1},{"value":"@src/parser.rs","sortTier":0}]},
-            {"source":"unipi.command-enchantment","items":[{"value":"#s1","label":"Fix parser","tone":"c3"}]}
+            {"source":"sessions","items":[{"value":"#s1","label":"Fix parser","tone":"c3"}]}
         ])).unwrap();
         let rows = merge_completions(&groups, 0, 10);
         assert_eq!(rows[0].value, "@src/parser.rs");
         assert_eq!(rows[1].tag.as_deref(), Some("dir"));
-        // De-extensioned (round5 #2): an extension-id source humanises, never raw ids.
-        assert_eq!(rows[2].section, "Command enchantment");
+        assert_eq!(rows[2].section, "Sessions");
         assert_eq!(rows[2].from, 0);
         assert_eq!(merge_completions(&groups, 0, 1).len(), 1);
         assert_eq!(
@@ -875,7 +874,7 @@ mod tests {
         assert!(builtin_completions("/new x").is_empty());
         let groups: Vec<oino_core::session::CompletionGroup> = serde_json::from_value(serde_json::json!([
             {"source":"commands","from":0,"items":[{"value":"/compact"},{"value":"/plan"},{"value":"/other"}]},
-            {"source":"unipi.command-enchantment","items":[{"value":"plan","tag":"workflow","tone":"c3"},{"value":"compact","tag":"compactor","tone":"c5"}]}
+            {"source":"mode","items":[{"value":"plan","tag":"workflow","tone":"c3"},{"value":"compact","tag":"compactor","tone":"c5"}]}
         ])).unwrap();
         let rows = merge_completions(&groups, 0, 10);
         let values: Vec<&str> = rows.iter().map(|r| r.value.as_str()).collect();

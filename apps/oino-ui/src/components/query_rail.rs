@@ -67,7 +67,7 @@ impl SessionPane {
                             .w(px(w))
                             .h(px(h))
                             .rounded(px(radius::R_FULL))
-                            .bg(if active { t.primary() } else { t.fg_subtlest() }),
+                            .bg(if active { t.primary() } else { t.fg_subtle() }),
                     )
                     .into_any_element()
             })
@@ -134,9 +134,13 @@ impl SessionPane {
         } else {
             query.to_lowercase()
         };
-        find.matches.clear();
+        let was: Vec<usize> = std::mem::take(&mut find.matches);
         find.current = 0;
         if needle.is_empty() {
+            // The old match rows repaint without their highlight (#21).
+            for ix in was {
+                self.list.remeasure_items(ix..ix + 1);
+            }
             return;
         }
         for (i, row) in self.model.transcript.rows().iter().enumerate() {
@@ -161,7 +165,15 @@ impl SessionPane {
             self.list.pause_following_tail();
             self.list.scroll_to_reveal_item(first);
         }
-        self.list.remeasure();
+        // Only the rows that had or gained a match highlight change (#21: no full
+        // `remeasure()` while a turn streams).
+        let touched: std::collections::BTreeSet<usize> = was
+            .into_iter()
+            .chain(find.matches.iter().copied())
+            .collect();
+        for ix in touched {
+            self.list.remeasure_items(ix..ix + 1);
+        }
     }
 
     fn find_step(&mut self, dir: isize, cx: &mut Context<Self>) {
@@ -169,6 +181,7 @@ impl SessionPane {
             && !find.matches.is_empty()
         {
             let n = find.matches.len();
+            let was = find.matches[find.current];
             find.current = find
                 .current
                 .checked_add_signed(dir)
@@ -176,15 +189,21 @@ impl SessionPane {
             let ix = find.matches[find.current];
             self.list.pause_following_tail();
             self.list.scroll_to_reveal_item(ix);
-            self.list.remeasure();
+            // Only the rows the active highlight moved between change (#21).
+            self.list.remeasure_items(was..was + 1);
+            self.list.remeasure_items(ix..ix + 1);
             cx.notify();
         }
     }
 
     /// Closes the find bar.
     pub fn close_find(&mut self, cx: &mut Context<Self>) {
-        self.find = None;
-        self.list.remeasure();
+        if let Some(find) = self.find.take() {
+            // The match-highlighted rows repaint without their mark (#21).
+            for ix in find.matches {
+                self.list.remeasure_items(ix..ix + 1);
+            }
+        }
         cx.notify();
     }
 

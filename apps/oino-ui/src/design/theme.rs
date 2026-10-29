@@ -590,3 +590,176 @@ fn derive(t: &OinoTheme, kit: &mut Theme) {
         kit.highlight_theme = highlight;
     }
 }
+
+/// The unipi `.md` stylesheet palette (round-5 #17): the markdown colors copied verbatim
+/// from `unipi-app`'s `style.css` (`.md` block, ~16–26/310–358). They pin what the
+/// conversation's `TextView` markdown surface must look like; [`markdown_style`] maps the
+/// per-mode palette fields onto the component's `TextViewStyle` (the dark palette fields
+/// already carry these exact values — `md_palette_matches_dark` asserts it).
+pub mod md {
+    /// Strong / heading text `#FFF8EC` (unipi weight 680 → `emphasis.strong` in syntax).
+    pub const STRONG: u32 = 0xFFF8_ECFF;
+    /// Inline code text (cream) `#F0F0A8`.
+    pub const INLINE_CODE: u32 = 0xF0F0_A8FF;
+    /// Inline code chip background (surface-3) `#26211F`.
+    pub const INLINE_CODE_BG: u32 = 0x2621_1FFF;
+    /// Link text `#28BEF0` (underlined, offset 2 px).
+    pub const LINK: u32 = 0x28BE_F0FF;
+    /// List markers `#F07818` (claw orange).
+    pub const MARKER: u32 = 0xF078_18FF;
+    /// Blockquote bar, table borders and rules (`line` `#2E2825`).
+    pub const RULE: u32 = 0x2E28_25FF;
+    /// Muted text — blockquote body `#A39A90`.
+    pub const MUTED: u32 = 0xA39A_90FF;
+    /// Table head background (surface-2) `#1C1917`.
+    pub const TABLE_HEAD: u32 = 0x1C19_17FF;
+    /// Code block background (surface-1) `#141211`.
+    pub const CODE_BG: u32 = 0x1412_11FF;
+    /// Code-block language label (text-dim) `#6E655D`.
+    pub const LANG_LABEL: u32 = 0x6E65_5DFF;
+    /// Checked task-checkbox accent `#5AD25A`.
+    pub const CHECKBOX: u32 = 0x5AD2_5AFF;
+    /// unipi `.md` sizes (px): table text 13.5 / 19, code text 12.5 / 19.
+    pub const TABLE_SIZE: f32 = 13.5;
+    /// unipi `.md` table line height.
+    pub const TABLE_LINE: f32 = 19.0;
+    /// unipi `.md` code text size.
+    pub const CODE_SIZE: f32 = 12.5;
+    /// unipi `.md` code line height.
+    pub const CODE_LINE: f32 = 19.0;
+}
+
+/// The conversation markdown surface (round-5 #17): a `TextViewStyle` carrying unipi's
+/// `.md` rules — inline code cream-on-bubble, links underlined, headings/strong on
+/// `fg_strong`, table head on the head band, code blocks on the surface-1 sheet with a
+/// hairline border. Element-level refinements it cannot express are
+/// [`markdown_inline_code`], [`markdown_list`], [`markdown_blockquote`]; the syntax token
+/// table lives in `design::syntax`.
+#[must_use]
+pub fn markdown_style(t: &OinoTheme) -> gpui_kit::component::text::TextViewStyle {
+    use gpui_kit::component::text::TextViewStyle;
+    use gpui_kit::{HighlightStyle, StyleRefinement};
+    let code_block = StyleRefinement::default()
+        .bg(if t.dark { t.sheet() } else { t.card() })
+        .rounded(px(14.))
+        .border_1()
+        .border_color(t.border().opacity(0.7))
+        .text_size(px(md::CODE_SIZE))
+        .line_height(px(md::CODE_LINE));
+    let table = StyleRefinement::default()
+        .border_color(t.border().opacity(0.7))
+        .text_size(px(md::TABLE_SIZE))
+        .line_height(px(md::TABLE_LINE));
+    let table_head = StyleRefinement::default()
+        .bg(if t.dark { t.chip() } else { t.tag() })
+        .text_color(t.fg_subtle());
+    let table_cell = StyleRefinement::default().py(px(6.)).px(px(10.));
+    // gpui-component 0.8.1 `TextViewStyle` has no link/list/blockquote/description-details
+    // or selection hooks: list and blockquote ride on the element in [`markdown_view`],
+    // `is_dark` and `heading_base_font_size` are plain fields.
+    let mut style = TextViewStyle::default()
+        .inline_code(HighlightStyle {
+            color: Some(if t.dark { t.cream() } else { t.fg_strong() }),
+            background_color: Some(if t.dark { t.bubble() } else { t.tag() }),
+            ..HighlightStyle::default()
+        })
+        .heading_font_size(|level, base| {
+            base * match level {
+                1 => 1.3,
+                2 => 1.18,
+                3 => 1.08,
+                _ => 1.0,
+            }
+        })
+        .code_block(code_block)
+        .table(table)
+        .table_head(table_head)
+        .table_cell(table_cell);
+    style.heading_base_font_size = t.text(TextRole::Prose).0;
+    style.is_dark = t.dark;
+    style
+}
+
+/// Element-level inline-code box for markdown views (unipi: 1 px × 5 px pad, radius 5,
+/// size 0.86 em): color/background are in [`markdown_style`], this adds the chip's box.
+#[must_use]
+pub fn markdown_inline_code(_t: &OinoTheme) -> gpui_kit::StyleRefinement {
+    use gpui_kit::StyleRefinement;
+    StyleRefinement::default()
+        .py(px(1.))
+        .px(px(5.))
+        .rounded(px(5.))
+        .text_size(gpui_kit::rems(0.86))
+}
+
+/// Element-level list-marker color (unipi claw `#F07818` → `list_marker` token).
+#[must_use]
+pub fn markdown_list(t: &OinoTheme) -> gpui_kit::StyleRefinement {
+    gpui_kit::StyleRefinement::default().text_color(t.list_marker())
+}
+
+/// Element-level blockquote (unipi: 2 px `line` bar on the left, muted text, 13 px gaps).
+#[must_use]
+pub fn markdown_blockquote(t: &OinoTheme) -> gpui_kit::StyleRefinement {
+    gpui_kit::StyleRefinement::default()
+        .border_l_2()
+        .border_color(if t.dark { color(md::RULE) } else { t.border() })
+        .text_color(if t.dark {
+            color(md::MUTED)
+        } else {
+            t.fg_subtle()
+        })
+        .pl(px(13.))
+        .ml(px(4.))
+}
+
+/// Applies the unipi markdown surface to a `TextView` element — the component
+/// [`markdown_style`] plus the element-level refinements the style cannot carry. The
+/// conversation's assistant/custom/summary markdown goes through this (round-5 #17).
+#[must_use]
+pub fn markdown_view(
+    view: gpui_kit::component::text::TextView,
+    t: &OinoTheme,
+) -> gpui_kit::component::text::TextView {
+    view.style(markdown_style(t))
+        .inline_code_style(markdown_inline_code(t))
+        .list_style(markdown_list(t))
+        .blockquote_style(markdown_blockquote(t))
+}
+
+#[cfg(test)]
+mod markdown_palette_tests {
+    use super::*;
+    use crate::design::tokens::LIGHT;
+
+    /// The dark palette fields the markdown surface reads must be exactly unipi's `.md`
+    /// values (round-5 #17) — a token drift that broke the unipi look fails here.
+    #[test]
+    fn md_palette_matches_dark() {
+        assert_eq!(DARK.fg_strong, md::STRONG);
+        assert_eq!(DARK.cream, md::INLINE_CODE);
+        assert_eq!(DARK.bubble, md::INLINE_CODE_BG);
+        assert_eq!(DARK.link, md::LINK);
+        assert_eq!(DARK.list_marker, md::MARKER);
+        assert_eq!(DARK.border, md::RULE);
+        assert_eq!(DARK.fg_subtle, md::MUTED);
+        assert_eq!(DARK.chip, md::TABLE_HEAD);
+        assert_eq!(DARK.sheet, md::CODE_BG);
+        assert_eq!(DARK.success, md::CHECKBOX);
+        // `LANG_LABEL` (`#6E655D`, unipi text-dim) is deliberately not a palette field:
+        // round-5 #25 raised `fg_subtlest` past the §1.2 AA floor, above text-dim.
+    }
+
+    /// The style builds for both modes without touching a window.
+    #[test]
+    fn markdown_style_builds_for_both_modes() {
+        let dark = OinoTheme::default();
+        let _ = markdown_style(&dark);
+        let light = OinoTheme {
+            dark: false,
+            p: &LIGHT,
+            ..OinoTheme::default()
+        };
+        let _ = markdown_style(&light);
+    }
+}

@@ -157,8 +157,9 @@ impl SessionPane {
     /// Whether the fold starting at row `start` is open (density settings invert it).
     pub(crate) fn fold_open(&self, start_id: &str) -> bool {
         let toggled = self.explore_open.contains(start_id);
-        let open_default =
-            self.settings.tool_density == ToolDensity::Advanced || self.settings.expand_tools;
+        // Round-5 #22: `expand_tools` is a dead settings key (no setter writes it); the
+        // fold respects the row-density setting and the user's toggle only.
+        let open_default = self.settings.tool_density == ToolDensity::Advanced;
         toggled ^ open_default
     }
 
@@ -171,7 +172,9 @@ impl SessionPane {
         let t = OinoTheme::get(cx);
         let rows = self.model.transcript.rows();
         let Some(row) = rows.get(ix) else {
-            return div().into_any_element();
+            // The last list item while a run is active (`sync_run_row` splices it in):
+            // the generating strip is a row, not a fixed footer (#21).
+            return self.render_run_row(&t, cx);
         };
         // One fold line per run of thinking + tool calls (A2.10).
         if let Some((start, end)) = timeline::fold_run(rows, ix) {
@@ -378,7 +381,12 @@ impl SessionPane {
                 if !this.explore_open.remove(&key) {
                     this.explore_open.insert(key.clone());
                 }
-                this.list.remeasure();
+                // Only this fold's run changed height (#21: no full `remeasure()` while
+                // a turn streams).
+                if let Some((first, last)) = timeline::fold_run(this.model.transcript.rows(), start)
+                {
+                    this.list.remeasure_items(first..last + 1);
+                }
                 cx.notify();
             }))
             .child(glyph)
@@ -398,7 +406,7 @@ impl SessionPane {
                     div()
                         .truncate()
                         .text_role(t, TextRole::Caption)
-                        .text_color(t.fg_subtlest())
+                        .text_color(t.fg_subtle())
                         .child(SharedString::from(format!("· {detail}"))),
                 )
             })
@@ -575,7 +583,10 @@ impl SessionPane {
                     .max_w(px(size::PROSE_MAX))
                     .text_role(t, TextRole::Prose)
                     .text_color(t.fg())
-                    .child(TextView::new(state).selectable(true))
+                    .child(
+                        crate::design::theme::markdown_view(TextView::new(state), t)
+                            .selectable(true),
+                    )
                     .into_any_element()
             });
         // Hover actions of one answer (ZCode `CopyRowAction` + `messageTimeLabel`): copy the
@@ -625,7 +636,7 @@ impl SessionPane {
                         .pl(px(space::S1))
                         .pr(px(space::S2))
                         .text_role(t, TextRole::Caption)
-                        .text_color(t.fg_subtlest())
+                        .text_color(t.fg_subtle())
                         .child(label)
                         .automation(crate::automation::Meta::labelled(
                             crate::automation::Role::Text,
@@ -647,6 +658,39 @@ impl SessionPane {
             .when_some(a.error.clone(), |el, e| {
                 el.child(error_banner(t, ix, &e, cx))
             })
+            .into_any_element()
+    }
+
+    /// The trailing "generating" list item: the run-state strip drawn inside the
+    /// reading column so it scrolls with the transcript instead of pinning a fixed
+    /// footer (round-5 #21; Zed `thread_view.rs` `sync_generating_indicator`, mechanism
+    /// reimplemented). `sync_run_row` keeps it spliced while a run is busy or its exit
+    /// line is fading; anything else out of range renders nothing.
+    fn render_run_row(&mut self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
+        let Some(strip) = self.render_run_state(t, cx) else {
+            return div().into_any_element();
+        };
+        let pad = if t.touch() {
+            t.gutter()
+        } else {
+            px(size::READING_PAD)
+        };
+        div()
+            .w_full()
+            .pl(pad)
+            .pr(pad)
+            .child(
+                div()
+                    .id("run-state")
+                    .w_full()
+                    .max_w(px(size::READING))
+                    .mx_auto()
+                    .child(strip)
+                    .automation(crate::automation::Meta::labelled(
+                        crate::automation::Role::Text,
+                        "Generating",
+                    )),
+            )
             .into_any_element()
     }
 }

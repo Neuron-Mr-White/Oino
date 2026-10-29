@@ -1,0 +1,65 @@
+{
+  "name": "r5-esc-twice-stop",
+  "scene": "stream",
+  "backend": "demo",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "assert": {
+        "busy": true,
+        "text": "Press Esc again to stop"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-esc-armed"
+      }
+    },
+    {
+      "key": {
+        "key": "escape"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "role": "chip",
+          "label": "Stopped"
+        }
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-stopped"
+      }
+    }
+  ]
+}

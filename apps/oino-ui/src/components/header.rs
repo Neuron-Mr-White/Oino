@@ -253,7 +253,7 @@ impl SessionPane {
                         .gap(px(space::S1_5))
                         .min_w_0()
                         .text_role(t, TextRole::Sm)
-                        .text_color(t.fg_subtlest())
+                        .text_color(t.fg_subtle())
                         .child(
                             div()
                                 .flex_shrink_0()
@@ -322,7 +322,7 @@ impl SessionPane {
                     .rounded(px(radius::R_FULL))
                     .cursor_pointer()
                     .text_role(t, TextRole::Sm)
-                    .text_color(t.fg_subtlest())
+                    .text_color(t.fg_subtle())
                     .hover(|s| s.bg(t.hover()))
                     .tooltip(crate::components::tooltip::tip(
                         "Model and usage",

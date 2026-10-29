@@ -36,7 +36,7 @@ impl Layout {
                 home: PathBuf::from(home),
             });
         }
-        let base = crate::serve::settings::agent_dir()
+        let base = crate::sys::agent_dir()
             .ok_or_else(|| Error::usage("neither OINO_KANBOARD_HOME nor HOME is set"))?;
         Ok(Layout {
             home: base.join("state").join("unipi.kanboard"),
@@ -337,19 +337,32 @@ pub fn resolve_root(cwd: &Path) -> PathBuf {
 }
 
 /// `--project`, else `OINO_KANBOARD_PROJECT`, else the project registered for
-/// the cwd's git toplevel.
+/// the cwd's git toplevel (process env + cwd).
 pub fn resolve_project(layout: &Layout, explicit: Option<&str>) -> Result<Project> {
+    let env_project = std::env::var(PROJECT_ENV)
+        .ok()
+        .map(|slug| slug.trim().to_string())
+        .filter(|slug| !slug.is_empty());
+    let cwd = std::env::current_dir()?;
+    resolve_project_in(layout, explicit, env_project.as_deref(), &cwd)
+}
+
+/// [`resolve_project`] with an explicit environment and working directory —
+/// in-process callers (`service::exec`, the board service) never read the
+/// process's env vars or cwd, they pass the request's.
+pub fn resolve_project_in(
+    layout: &Layout,
+    explicit: Option<&str>,
+    env_project: Option<&str>,
+    cwd: &Path,
+) -> Result<Project> {
     if let Some(slug) = explicit.filter(|value| !value.trim().is_empty()) {
         return Project::load(layout, slug);
     }
-    if let Ok(slug) = std::env::var(PROJECT_ENV) {
-        let slug = slug.trim().to_string();
-        if !slug.is_empty() {
-            return Project::load(layout, &slug);
-        }
+    if let Some(slug) = env_project {
+        return Project::load(layout, slug);
     }
-    let cwd = std::env::current_dir()?;
-    let root = canonical_root(&resolve_root(&cwd))?;
+    let root = canonical_root(&resolve_root(cwd))?;
     for project in layout.list_projects()? {
         if project.root == root {
             return Ok(project);

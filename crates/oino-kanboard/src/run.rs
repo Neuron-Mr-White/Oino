@@ -3,6 +3,7 @@
 
 use std::fmt::Write as _;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -12,14 +13,62 @@ use crate::error::{Error, Result};
 use crate::model::{Actor, ChainGate, Priority, Status};
 use crate::store::{self, Layout};
 
-/// Runs the parsed command and returns its JSON payload.
+/// The environment one dispatch runs under (round 5, #7): the CLI uses
+/// [`Exec::process`], in-process hosts (`service::exec`, the board service)
+/// pass the request's env/cwd/stdin so nothing reads the host process's state.
+pub struct Exec<'e> {
+    /// Environment lookup — the request's vars on top of the host's.
+    pub var: &'e dyn Fn(&str) -> Option<String>,
+    /// Working directory project resolution happens in.
+    pub cwd: &'e Path,
+    /// What a `-` argument reads; `None` falls back to real stdin (CLI).
+    pub stdin: Option<&'e str>,
+    /// The pid a `start` claim belongs to when neither `--pid` nor
+    /// `OINO_KANBOARD_PID` says otherwise (the host process, in-process).
+    pub owner_pid: u32,
+}
+
+impl Exec<'_> {
+    /// Trimmed env lookup.
+    fn var_string(&self, name: &str) -> Option<String> {
+        (self.var)(name).map(|value| value.trim().to_string())
+    }
+}
+
+/// The pid `Exec::process` falls back to: the caller's parent on unix (the
+/// shell that ran the CLI outlives it), the process itself elsewhere.
+fn process_owner_pid() -> u32 {
+    #[cfg(unix)]
+    {
+        std::os::unix::process::parent_id()
+    }
+    #[cfg(not(unix))]
+    {
+        std::process::id()
+    }
+}
+
+/// Runs the parsed command under the process environment.
+pub fn dispatch(cli: &Cli) -> Result<Value> {
+    let cwd = std::env::current_dir()?;
+    let exec = Exec {
+        var: &|name| std::env::var(name).ok(),
+        cwd: &cwd,
+        stdin: None,
+        owner_pid: process_owner_pid(),
+    };
+    dispatch_in(cli, &exec)
+}
+
+/// Runs the parsed command under an explicit environment and returns its JSON
+/// payload.
 #[allow(
     clippy::too_many_lines,
     reason = "one arm per subcommand: the dispatcher mirrors the CLI table"
 )]
-pub fn dispatch(cli: &Cli) -> Result<Value> {
-    let layout = Layout::from_env()?;
-    let actor = resolve_actor(cli.actor.as_deref());
+pub fn dispatch_in(cli: &Cli, exec: &Exec<'_>) -> Result<Value> {
+    let layout = layout_in(exec)?;
+    let actor = resolve_actor_in(cli.actor.as_deref(), exec);
     let gate: ChainGate = cli.gate.parse().map_err(|_| {
         Error::usage(format!(
             "unknown --gate \"{}\" (expected in_review|done)",
@@ -30,9 +79,12 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
     common.session = cli
         .session
         .clone()
-        .or_else(|| std::env::var("OINO_KANBOARD_SESSION").ok())
-        .map(|value| value.trim().to_string())
+        .or_else(|| exec.var_string("OINO_KANBOARD_SESSION"))
         .filter(|value| !value.is_empty());
+    let env_project = exec.var_string(store::PROJECT_ENV);
+    let project = |layout: &Layout, explicit: Option<&str>| -> Result<store::Project> {
+        store::resolve_project_in(layout, explicit, env_project.as_deref(), exec.cwd)
+    };
 
     match &cli.command {
         Command::Project(ProjectCommand::Add(args)) => commands::project_add(
@@ -40,6 +92,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             args.root.as_deref(),
             args.name.as_deref(),
             args.prefix.as_deref(),
+            exec.cwd,
         ),
         Command::Project(ProjectCommand::List) => commands::project_list(&layout),
         Command::Project(ProjectCommand::Archive { slug } | ProjectCommand::Unarchive { slug }) => {
@@ -53,7 +106,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             commands::project_set_archived(&layout, slug, archived)
         }
         Command::Project(ProjectCommand::Show) => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::project_show(&layout, &project)
         }
         Command::Project(ProjectCommand::Rebind { slug, root }) => {
@@ -81,7 +134,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                     attach.push(path);
                 }
             }
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let status = status
                 .as_deref()
                 .map(crate::cli::parse_status)
@@ -95,7 +148,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
                 Some(file) => Some(std::fs::read_to_string(file).map_err(|err| {
                     Error::usage(format!("cannot read {}: {err}", file.display()))
                 })?),
-                None => read_body(body.as_deref())?,
+                None => read_body(body.as_deref(), exec)?,
             };
             commands::add(
                 &layout,
@@ -113,7 +166,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::List { status, all, ready } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let statuses: Vec<Status> = match status {
                 Some(value) => vec![crate::cli::parse_status(value)?],
                 // Bare `list` shows the active lanes; `--all` is everything
@@ -131,7 +184,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::Show { id } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::show(&layout, project, id, gate)
         }
 
@@ -141,7 +194,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             comment,
             attach,
         } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let to = crate::cli::parse_status(status)?;
             commands::move_task_with(
                 &layout,
@@ -155,8 +208,8 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::Note { id, text, attach } => {
-            let text = read_body(Some(text))?.unwrap_or_default();
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let text = read_body(Some(text), exec)?.unwrap_or_default();
+            let project = project(&layout, cli.project.as_deref())?;
             commands::note_with(&layout, project, &common, id, &text, attach)
         }
 
@@ -166,7 +219,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             note,
             name,
         } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let bytes = std::fs::read(file)
                 .map_err(|err| Error::usage(format!("cannot read {}: {err}", file.display())))?;
             let original = name.clone().unwrap_or_else(|| {
@@ -185,7 +238,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::Attachments { id } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let board = crate::board::Board::open(&layout, project)?;
             let task = board.get(id)?;
             Ok(serde_json::json!(crate::attachments::list(
@@ -203,8 +256,8 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             labels,
             new_label,
         } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
-            let body = read_body(body.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
+            let body = read_body(body.as_deref(), exec)?;
             let priority = priority
                 .as_deref()
                 .map(crate::cli::parse_priority)
@@ -231,12 +284,12 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::Link { id, after } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::link(&layout, project, &common, gate, id, after, false)
         }
 
         Command::Unlink { id, after } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::link(&layout, project, &common, gate, id, after, true)
         }
 
@@ -247,7 +300,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             top,
             bottom,
         } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let target = match (before.as_deref(), after_pos.as_deref(), top, bottom) {
                 (Some(target), None, false, false) => OrderTarget::Before(target),
                 (None, Some(target), false, false) => OrderTarget::AfterPos(target),
@@ -263,14 +316,19 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::Start { id, pid } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let session = require_session(&common, "start")?;
-            let pid = owner_pid(*pid)?;
+            let pid = owner_pid(*pid, exec)?;
             let host = commands::hostname();
             let args = commands::StartArgs {
                 session: &session,
                 pid,
                 host: &host,
+                max_sessions: exec
+                    .var_string(commands::SESSION_CAP_ENV)
+                    .and_then(|value| value.parse().ok())
+                    .filter(|cap| *cap > 0)
+                    .unwrap_or(commands::SESSION_CAP_DEFAULT),
             };
             commands::start(&layout, project, gate, id, &args, common.now)
         }
@@ -280,7 +338,7 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             comment,
             attach,
         } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let session = require_session(&common, "finish")?;
             commands::finish(
                 &layout, project, gate, id, &session, comment, attach, common.now,
@@ -288,33 +346,33 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
         }
 
         Command::Next => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::next(&layout, project, gate, common.now)
         }
 
         Command::Reap { dry_run } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::reap(&layout, project, *dry_run, common.now)
         }
 
         Command::Chain { id } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::chain(&layout, project, gate, id)
         }
 
         Command::Search { text: needle, all } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::search(&layout, project, gate, needle, *all)
         }
 
         Command::Release { id, to, comment } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let to = crate::cli::parse_status(to)?;
             commands::release(&layout, project, id, to, comment, gate, common.now)
         }
 
         Command::Duplicate { id } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             commands::duplicate(&layout, project, &common, id)
         }
 
@@ -322,66 +380,28 @@ pub fn dispatch(cli: &Cli) -> Result<Value> {
             after_days,
             retention_days,
         } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let days = after_days
                 .or_else(|| {
-                    std::env::var("OINO_KANBOARD_ARCHIVE_AFTER_DAYS")
-                        .ok()
-                        .and_then(|value| value.trim().parse().ok())
+                    exec.var_string("OINO_KANBOARD_ARCHIVE_AFTER_DAYS")
+                        .and_then(|value| value.parse().ok())
                 })
                 .unwrap_or(0);
             let retention = retention_days
                 .or_else(|| {
-                    std::env::var("OINO_KANBOARD_RETENTION_DAYS")
-                        .ok()
-                        .and_then(|value| value.trim().parse().ok())
+                    exec.var_string("OINO_KANBOARD_RETENTION_DAYS")
+                        .and_then(|value| value.parse().ok())
                 })
                 .unwrap_or(0);
             commands::archive_sweep(&layout, project, days, retention, common.now)
         }
 
-        Command::Serve {
-            host,
-            port,
-            idle_min,
-            idle_secs,
-            require_auth,
-            keep_token,
-        } => {
-            let options = crate::serve::ServeOptions {
-                host: host.clone(),
-                port: *port,
-                require_auth: *require_auth,
-                keep_token: *keep_token,
-                idle: match idle_secs {
-                    Some(secs) => std::time::Duration::from_secs(*secs),
-                    None => std::time::Duration::from_secs(
-                        idle_min.unwrap_or(crate::daemon::DEFAULT_IDLE_MIN).max(1) * 60,
-                    ),
-                },
-            };
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .map_err(|err| Error::Io(format!("cannot start the async runtime: {err}")))?;
-            runtime.block_on(crate::serve::serve(layout, options))
-        }
-
-        Command::Settings { sub } => match sub {
-            crate::cli::SettingsSub::Show => commands::settings_show(&layout),
-            crate::cli::SettingsSub::Set { field, value } => {
-                commands::settings_set(&layout, &common, field, value)
-            }
-        },
-        Command::RotateToken => commands::rotate_token(&layout, &common),
-        Command::Status => crate::daemon::status(&layout),
-
-        Command::Stop { timeout } => {
-            crate::daemon::stop(&layout, std::time::Duration::from_secs(*timeout))
-        }
+        // `status`: in-process health check (round 5, #7) — there is no
+        // daemon to ask; `ok` means the files are readable and writable.
+        Command::Status => commands::board_status(&layout),
 
         Command::Validate { fix } => {
-            let project = store::resolve_project(&layout, cli.project.as_deref())?;
+            let project = project(&layout, cli.project.as_deref())?;
             let result = commands::validate(&layout, project, *fix)?;
             Ok(json!({
                 "ok": result.problems.is_empty(),
@@ -411,16 +431,33 @@ fn existing_files(paths: &[String]) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-/// `--actor`, else `$OINO_KANBOARD_ACTOR`, else `user`.
-#[must_use]
-pub fn resolve_actor(explicit: Option<&str>) -> Actor {
+/// The board home `OINO_KANBOARD_HOME`/`OINO_AGENT_DIR` resolves to — under
+/// `exec`'s environment, so in-process hosts see the request's home.
+fn layout_in(exec: &Exec<'_>) -> Result<Layout> {
+    if let Some(home) = exec.var_string(store::HOME_ENV).filter(|h| !h.is_empty()) {
+        return Ok(Layout::with_home(PathBuf::from(home)));
+    }
+    if let Some(agent) = exec
+        .var_string("OINO_AGENT_DIR")
+        .filter(|agent| !agent.is_empty())
+    {
+        let base = crate::sys::tilde_home(&agent).ok_or_else(|| {
+            Error::usage(format!("OINO_AGENT_DIR `{agent}` needs $HOME to expand"))
+        })?;
+        return Ok(Layout::with_home(base.join("state").join("unipi.kanboard")));
+    }
+    Layout::from_env()
+}
+
+/// `--actor`, else `$OINO_KANBOARD_ACTOR` (under `exec`), else `user`.
+fn resolve_actor_in(explicit: Option<&str>, exec: &Exec<'_>) -> Actor {
     if let Some(value) = explicit
         && let Ok(actor) = value.trim().parse()
     {
         return actor;
     }
-    if let Ok(value) = std::env::var(store::ACTOR_ENV)
-        && let Ok(actor) = value.trim().parse()
+    if let Some(value) = exec.var_string(store::ACTOR_ENV)
+        && let Ok(actor) = value.parse()
     {
         return actor;
     }
@@ -428,30 +465,21 @@ pub fn resolve_actor(explicit: Option<&str>) -> Actor {
 }
 
 /// The pid that owns a `start` claim: `--pid`, else `$OINO_KANBOARD_PID`
-/// (the pi extension exports its own pid), else the parent process — the
-/// shell that ran the CLI, which outlives this short-lived process.
-#[allow(clippy::unnecessary_wraps, reason = "only the non-unix arm can fail")]
-fn owner_pid(explicit: Option<u32>) -> Result<u32> {
+/// (the pi extension exports its own pid), else `exec.owner_pid` — the
+/// caller's parent for the CLI, the host process for in-process calls.
+#[allow(clippy::unnecessary_wraps, reason = "kept uniform with older fallible shape")]
+fn owner_pid(explicit: Option<u32>, exec: &Exec<'_>) -> Result<u32> {
     if let Some(pid) = explicit.filter(|pid| *pid > 0) {
         return Ok(pid);
     }
-    if let Some(pid) = std::env::var("OINO_KANBOARD_PID")
-        .ok()
-        .and_then(|value| value.trim().parse::<u32>().ok())
+    if let Some(pid) = exec
+        .var_string("OINO_KANBOARD_PID")
+        .and_then(|value| value.parse::<u32>().ok())
         .filter(|pid| *pid > 0)
     {
         return Ok(pid);
     }
-    #[cfg(unix)]
-    {
-        Ok(std::os::unix::process::parent_id())
-    }
-    #[cfg(not(unix))]
-    {
-        Err(Error::usage(
-            "start needs the owning process: pass --pid or set OINO_KANBOARD_PID",
-        ))
-    }
+    Ok(exec.owner_pid)
 }
 
 /// Session-scoped commands fail loudly without one.
@@ -463,10 +491,14 @@ fn require_session(common: &Common, command: &str) -> Result<String> {
     })
 }
 
-fn read_body(value: Option<&str>) -> Result<Option<String>> {
+/// A `-` body/text value reads `exec.stdin` (in-process) or real stdin (CLI).
+fn read_body(value: Option<&str>, exec: &Exec<'_>) -> Result<Option<String>> {
     match value {
         None => Ok(None),
         Some("-") => {
+            if let Some(text) = exec.stdin {
+                return Ok(Some(text.to_string()));
+            }
             let mut buffer = String::new();
             std::io::stdin()
                 .read_to_string(&mut buffer)

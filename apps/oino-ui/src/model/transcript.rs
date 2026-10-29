@@ -357,6 +357,15 @@ impl Transcript {
         self.rows.is_empty()
     }
 
+    /// Whether any row is a user prompt: the session has real content. `open()` reuses an
+    /// empty session instead of spawning a duplicate one (round5 #4).
+    #[must_use]
+    pub fn has_user_messages(&self) -> bool {
+        self.rows
+            .iter()
+            .any(|row| matches!(row.kind, RowKind::User(_)))
+    }
+
     /// Row by id.
     #[must_use]
     pub fn get(&self, id: &str) -> Option<&Row> {

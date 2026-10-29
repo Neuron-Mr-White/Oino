@@ -258,14 +258,15 @@ impl SessionPane {
             }
             _ => {}
         }
-        if let Some((start, _, _)) =
+        if let Some((start, end, _)) =
             crate::model::timeline::explore_run(self.model.transcript.rows(), ix)
         {
             let key = self.model.transcript.rows()[start].id.clone();
             if !self.explore_open.remove(&key) {
                 self.explore_open.insert(key);
             }
-            self.list.remeasure();
+            // Only the toggled run changed height (#21: no mid-stream full remeasure).
+            self.list.remeasure_items(start..end + 1);
             cx.notify();
         }
     }

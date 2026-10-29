@@ -43,6 +43,18 @@ build() {
   (cd "$root/apps" && cargo build --release -p oino-desktop)
 }
 
+# oino-desktop is a GPUI (Wayland/X11) app: launched from a shell that lost the desktop
+# session's env (agent terminals, old tmux panes, SSH), it starts but can never open a
+# window. Require a display target instead of failing silently.
+check_display_env() {
+  if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ]; then
+    echo "oino-desktop: neither WAYLAND_DISPLAY nor DISPLAY is set — the window would never appear." >&2
+    echo "  Run from a terminal inside the desktop session, or e.g." >&2
+    echo "  WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/\$(id -u) mise run desktop" >&2
+    exit 1
+  fi
+}
+
 seed_agent_dir() {
   if [ ! -d "$agent_dir" ]; then
     mkdir -p "$agent_dir"
@@ -67,6 +79,7 @@ args+=(--cwd "$cwd")
 case "$cmd" in
   start)
     stop >/dev/null
+    check_display_env
     build
     seed_agent_dir
     OINO_AGENT_DIR="$agent_dir" nohup "$bin" "${args[@]}" >"$logfile" 2>&1 &
@@ -81,6 +94,7 @@ case "$cmd" in
     fi
     ;;
   run)
+    check_display_env
     build
     seed_agent_dir
     OINO_AGENT_DIR="$agent_dir" exec "$bin" "${args[@]}"

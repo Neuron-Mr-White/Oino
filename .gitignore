@@ -7,3 +7,4 @@ AGENT.md
 .oino/
 .env.podman
 extensions/target/
+__pycache__/

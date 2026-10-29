@@ -2,8 +2,9 @@
 //!
 //! | Module | Screen |
 //! |---|---|
-//! | [`shell`] | A2 desktop shell: sidebar, session list, detail, routes, palette ([`AppShell`]) |
+//! | [`shell`] | A2 desktop shell: sidebar, host switcher, session list, detail, routes, palette ([`AppShell`]) |
 //! | [`session_pane`] | one session: state, pump, commands |
+//! | [`new_chat`] | new-chat page: greeting + project picker (round5 #6) |
 //! | [`settings_page`] | D8 Settings + extension settings hub |
 //! | `board`, `extensions_page`, `onboarding` | D9, D12, D13 (`impl AppShell`) |
 //! | [`soak`] | soak driver (`OINO_DESKTOP_SOAK`) |
@@ -23,6 +24,7 @@ pub mod board;
 pub mod cron;
 pub mod extensions_page;
 pub mod mascot;
+pub mod new_chat;
 pub mod onboarding;
 pub mod session_pane;
 pub mod settings_page;
