@@ -1,6 +1,7 @@
 //! The dock above the composer (design.md §4.16–§4.17, §4.9 RunStateLine): banners and
-//! `aboveEditor` widgets (`DockStrip`), unipi hints with ‹ › cycling, the `QueuePanel`, the docked
-//! interaction card and the run-state line. Stack order top → bottom as specified.
+//! `aboveEditor` widgets (`DockStrip`), ‹ › cycling for multi-line widget strips, the
+//! `QueuePanel`, the docked interaction card and the run-state line. Stack order top → bottom as
+//! specified.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -50,7 +51,6 @@ impl SessionPane {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let t = OinoTheme::get(cx);
-        let expanded_status = self.status_expanded_now();
         let widgets: Vec<(String, crate::model::ui_state::Widget)> = self
             .model
             .ui
@@ -60,10 +60,6 @@ impl SessionPane {
             .collect();
         let mut out = Vec::new();
         for (key, w) in widgets {
-            // The footer process line duplicates the StatusPanel's Run section.
-            if expanded_status && key.starts_with("unipi.footer/") && key.contains("process") {
-                continue;
-            }
             let hint = key.starts_with("unipi.core/") && key.contains("hint");
             let body = match &w.spec {
                 Some(spec) => {

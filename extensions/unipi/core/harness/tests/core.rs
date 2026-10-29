@@ -1,5 +1,5 @@
-//! `unipi.core` as a real component in the wasm host: registration, hints (startup, clear on
-//! input, cycle, browser panel, reset, persisted store) and the work tray against a producer.
+//! `unipi.core` as a real component in the wasm host: registration and the work tray against a
+//! producer (round 5 D1 removed the hints half).
 
 #![allow(
     clippy::unwrap_used,
@@ -16,8 +16,8 @@ use std::sync::{Arc, OnceLock};
 use oino_extension_api::manifest::Manifest;
 use oino_extension_api::testing::RecordingHostServices;
 use oino_extension_api::{
-    CallContext, CallKind, CancellationToken, ComponentSource, EventKind, ExtensionId,
-    ExtensionInstance, ExtensionRuntime, HostServices, InitInput, LoadedPackage, Mode, RawJson,
+    CallContext, CallKind, ComponentSource, EventKind, ExtensionId, ExtensionInstance,
+    ExtensionRuntime, HostServices, InitInput, LoadedPackage, Mode, RawJson,
 };
 use oino_wasm_host::{HostConfig, WasmRuntime, WasmRuntimeOptions};
 use serde_json::{Value, json};
@@ -134,17 +134,6 @@ impl Env {
             .map(|r| r.to_value())
     }
 
-    async fn command(&self, ext: &Arc<dyn ExtensionInstance>, name: &str, args: &str) {
-        ext.run_command(
-            name,
-            args,
-            CancellationToken::new(),
-            self.cx(CallKind::Command),
-        )
-        .await
-        .unwrap();
-    }
-
     /// `ui_fire` requests of `method` (and `widgetKey`, when given), in order.
     fn fired(&self, method: &str, widget: Option<&str>) -> Vec<Value> {
         self.host
@@ -161,11 +150,6 @@ impl Env {
             .into_iter()
             .map(|c| c.detail)
             .collect()
-    }
-
-    fn hint_store(&self) -> Value {
-        let path = self.agent.path().join("state/unipi.core/global/hints.json");
-        serde_json::from_slice(&std::fs::read(&path).unwrap_or_default()).unwrap_or(Value::Null)
     }
 }
 
@@ -190,16 +174,7 @@ async fn registration() {
         .await
         .unwrap();
 
-    let commands: Vec<(&str, bool)> = reg
-        .commands
-        .iter()
-        .map(|c| (c.name.as_str(), c.hidden))
-        .collect();
-    assert_eq!(
-        commands,
-        [("hint", false), ("hint-reset", true)]
-    );
-    assert!(reg.commands[0].completions);
+    assert!(reg.commands.is_empty(), "round 5 D1 removed /hint and /hint-reset");
     let shortcuts: Vec<(&str, &[String])> = reg
         .shortcuts
         .iter()
@@ -207,11 +182,7 @@ async fn registration() {
         .collect();
     assert_eq!(
         shortcuts,
-        [
-            ("unipi.hint.next", &["alt+h".to_owned()][..]),
-            ("unipi.hint.prev", &["alt+shift+h".to_owned()][..]),
-            ("unipi.tray.open", &["shift+down".to_owned()][..]),
-        ]
+        [("unipi.tray.open", &["shift+down".to_owned()][..])]
     );
     assert_eq!(reg.services, ["core.open-tray"]);
     let namespaces: Vec<String> = reg
@@ -219,156 +190,21 @@ async fn registration() {
         .iter()
         .map(|n| n.to_value()["namespace"].as_str().unwrap().to_owned())
         .collect();
-    assert_eq!(namespaces, ["hints", "decision-model"]);
+    assert_eq!(namespaces, ["decision-model"]);
     for kind in [
         EventKind::SessionStart,
-        EventKind::Input,
-        EventKind::ToolCall,
-        EventKind::TurnEnd,
         EventKind::OinoBus,
         EventKind::OinoEditor,
         EventKind::OinoUiAction,
-        EventKind::OinoSettingsChanged,
     ] {
         assert!(reg.events.contains(&kind), "{kind:?}");
     }
+    assert!(
+        !reg.events.contains(&EventKind::Input),
+        "no hint engine listens to input events any more"
+    );
     assert_eq!(reg.tools.len(), 0);
-    let items = ext
-        .complete_command("hint", "n", env.cx(CallKind::Command))
-        .await;
-    assert_eq!(
-        items.iter().map(|i| i.value.as_str()).collect::<Vec<_>>(),
-        ["next"]
-    );
     let _ = ExtensionId::new("unipi.core").unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn hints_lifecycle() {
-    let env = Env::new();
-    let core = env.core().await;
-    env.event(
-        &core,
-        EventKind::SessionStart,
-        json!({"type": "session_start", "reason": "startup"}),
-    )
-    .await;
-
-    let header = env.fired("setHeader", None);
-    assert_eq!(header.len(), 1);
-    assert_eq!(header[0]["spec"]["t"], "responsive");
-    assert!(header[0]["spec"].to_string().contains("Hi, I'm Unicrab."));
-    let shown = env.fired("setWidget", Some("unipi-hints"));
-    assert_eq!(shown.len(), 1);
-    assert_eq!(shown[0]["widgetPlacement"], "aboveEditor");
-    let line = shown[0]["widgetLines"][0].as_str().unwrap();
-    assert!(
-        line.contains("/settings") && line.ends_with("command · alt+h ›"),
-        "{line}"
-    );
-    let store = env.hint_store();
-    assert_eq!(store["counts"]["cmd.settings"]["count"], 1);
-    assert_eq!(store["lastSeenVersion"], "3.0.0");
-    let strip = env.fired("setWidget", Some("work-tray-strip"));
-    assert_eq!(
-        strip.last().map(|s| s.get("widgetLines").is_none()),
-        Some(true),
-        "no producers → no tray line"
-    );
-
-    env.event(
-        &core,
-        EventKind::Input,
-        json!({"type": "input", "text": "/settings", "source": "interactive"}),
-    )
-    .await;
-    let cleared = env.fired("setWidget", Some("unipi-hints"));
-    assert_eq!(cleared.len(), 2);
-    assert!(
-        cleared[1].get("widgetLines").is_none(),
-        "input clears the hint"
-    );
-    // Every hint teaching `/settings` is learned (three in the catalog).
-    let learned = env.hint_store()["learned"].clone();
-    assert!(
-        learned.as_array().unwrap().contains(&json!("cmd.settings")),
-        "{learned}"
-    );
-
-    env.command(&core, "hint", "next").await;
-    let next = env.fired("setWidget", Some("unipi-hints"));
-    assert_eq!(next.len(), 3);
-    assert!(
-        !next[2]["widgetLines"][0]
-            .as_str()
-            .unwrap()
-            .contains("/settings")
-    );
-
-    env.command(&core, "hint", "").await;
-    let panels = env.panels();
-    assert_eq!(panels.len(), 1);
-    let open = &panels[0]["open"];
-    assert_eq!(open["panelId"], "unipi.core/hints");
-    assert_eq!(open["placement"], "overlay");
-    env.event(
-        &core,
-        EventKind::OinoUiAction,
-        json!({"type": "oino_ui_action", "panelId": "panel-1", "actionId": "filter", "value": "kanboard"}),
-    )
-    .await;
-    let update = &env.panels()[1];
-    assert_eq!(update["update"], "panel-1");
-    assert!(
-        update["spec"].to_string().contains("kanboard")
-            && !update["spec"].to_string().contains("/btw")
-    );
-    env.event(
-        &core,
-        EventKind::OinoUiAction,
-        json!({"type": "oino_ui_action", "panelId": "panel-1", "actionId": "show", "value": "cmd.hint"}),
-    )
-    .await;
-    assert_eq!(env.panels()[2], json!({"close": "panel-1"}));
-    let picked = env.fired("setWidget", Some("unipi-hints"));
-    assert!(
-        picked.last().unwrap()["widgetLines"][0]
-            .as_str()
-            .unwrap()
-            .contains("/hint opens the full hint browser")
-    );
-
-    env.command(&core, "hint-reset", "").await;
-    assert_eq!(
-        env.fired("notify", None).last().unwrap()["message"],
-        "Hint history cleared — every hint is eligible again."
-    );
-    let store = env.hint_store();
-    assert_eq!(store["counts"], json!({}));
-    assert_eq!(store["learned"], json!([]));
-
-    // An event hint from a bus topic (unipi:memory:stored) in a fresh turn.
-    env.event(
-        &core,
-        EventKind::Input,
-        json!({"type": "input", "text": "go", "source": "interactive"}),
-    )
-    .await;
-    let before = env.fired("setWidget", Some("unipi-hints")).len();
-    env.event(
-        &core,
-        EventKind::OinoBus,
-        json!({"type": "oino_bus", "topic": "unipi:memory:stored", "data": {"id": "m", "title": "t", "type": "decision", "project": "p", "action": "created"}, "sticky": false, "publisher": "unipi.memory"}),
-    )
-    .await;
-    let after = env.fired("setWidget", Some("unipi-hints"));
-    assert_eq!(after.len(), before + 1, "memory hint shown");
-    assert!(
-        after.last().unwrap()["widgetLines"][0]
-            .as_str()
-            .unwrap()
-            .contains("Memory stored!")
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

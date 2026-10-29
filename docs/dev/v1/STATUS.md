@@ -382,12 +382,13 @@ components (`unipi_settings.rs`); both ran in the gates.
 
 ## 4. Parity matrix — unipi 3.0.0
 
-All 23 packages plus `unipi.app-bridge` are ported and bundled (load order
-`unipi_kit::suite::LOAD_ORDER`), and cron is ported as an Oino-native feature (owner
-decision 2026-10-28, superseding D22): crate `oino-cron`, extension `unipi.cron`, the
-`oino cron` CLI (serve/install/…), `/cron`, and the desktop Automations page
-(unipi-port §3.24). Not ported by decision (D22): browser skills/state, app push
-encryption, Herdr, the unipi desktop app.
+20 packages are ported and bundled (load order `unipi_kit::suite::LOAD_ORDER`), and cron is
+ported as an Oino-native feature (owner decision 2026-10-28, superseding D22): crate
+`oino-cron`, extension `unipi.cron`, the `oino cron` CLI (serve/install/…), `/cron`, and the
+desktop Automations page (unipi-port §3.24). Round 5 (D1) deleted the presentational
+packages `unipi.footer`, `unipi.command-enchantment`, `unipi.input-shortcuts` and
+`unipi.app-bridge` and the `hints` half of `unipi.core` (round5.md §3). Not ported by
+decision (D22): browser skills/state, app push encryption, Herdr, the unipi desktop app.
 Since `unipi-native`: feature commands have plain names (no `unipi:` prefix, no aliases;
 `/settings` and `/changelog` merged into the core built-ins, the Fusion picker is `/fusion`,
 [commands.md](commands.md)) and there is no legacy unipi support (no `~/.unipi` reads,

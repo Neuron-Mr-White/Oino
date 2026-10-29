@@ -1,8 +1,8 @@
 //! Page data and renderers (unipi `pages/*.ts`, `core-groups.ts`) as OUS nodes.
 //!
 //! Built-in pages: `session`, `usage`, `tools`, `skills`, `extensions` (Modules). Module pages
-//! (`mcp`, `compactor`, `memory`, `web-api`, `updater`, `input-shortcuts`) arrive as data from
-//! the `info-screen.groups` fan-out and are drawn here, keyed by page id, like unipi
+//! (`mcp`, `compactor`, `memory`, `web-api`, `updater`) arrive as data from the
+//! `info-screen.groups` fan-out and are drawn here, keyed by page id, like unipi
 //! (`MODULE_RENDERERS`); unknown pages fall back to their visible stats as key/value rows.
 
 use serde_json::{Map, Value, json};
@@ -1300,41 +1300,6 @@ fn render_memory(r: &Value) -> Value {
     page(out)
 }
 
-fn keycaps(combo: &str) -> Vec<Value> {
-    let mut v = Vec::new();
-    for (i, k) in combo.split('+').enumerate() {
-        if i > 0 {
-            v.push(dim("+"));
-        }
-        v.push(json!({"text": format!(" {k} "), "code": true}));
-    }
-    v
-}
-
-fn render_keys(r: &Value) -> Value {
-    let mut out = vec![section("keys", vec![], None)];
-    for (k, what) in [
-        (s(r, "chordKey"), "open the shortcuts overlay"),
-        (s(r, "tabInsertKey"), "insert a literal tab"),
-    ] {
-        let mut sp = vec![span("  ", None)];
-        sp.extend(keycaps(k));
-        sp.push(span(format!("   {what}"), Some("muted")));
-        out.push(line(sp));
-    }
-    out.push(section("stash", vec![], None));
-    let n = f(r, "stash");
-    out.push(line(vec![
-        span("  ● ", Some(health(if n > 0.0 { "ok" } else { "off" }))),
-        if n > 0.0 {
-            span(format!("{n} chars stashed"), None)
-        } else {
-            dim("empty")
-        },
-    ]));
-    page(out)
-}
-
 /// Generic page: visible stats as key/value rows (unipi default view).
 #[must_use]
 pub fn render_generic(
@@ -1375,7 +1340,6 @@ pub fn render_module(
         "updater" => render_updater(r, now),
         "web-api" => render_web(r),
         "memory" => render_memory(r),
-        "input-shortcuts" => render_keys(r),
         _ => return None,
     })
 }
@@ -1470,7 +1434,7 @@ mod tests {
         let t = texts(&render_inventory(&d, "tools", "none", Some(Scope::Session)));
         assert!(t.contains("ALL TOOLS s") && t.contains("1 switched off") && t.contains("○ "));
         assert_eq!(
-            source_label(&json!({"source": "extension:unipi.footer"})),
+            source_label(&json!({"source": "extension:unipi.memory"})),
             "unipi"
         );
         assert_eq!(source_label(&json!({"source": "builtin"})), "built-in");
@@ -1509,15 +1473,6 @@ mod tests {
                 && t.contains("412ms")
                 && t.contains("other extensions".to_uppercase().as_str())
         );
-        let keys = group_data(
-            &[],
-            json!({"chordKey": "alt+s", "tabInsertKey": "alt+i", "stash": 0}),
-        );
-        let t =
-            texts(&render_module("input-shortcuts", &keys, &Value::Null, 0).unwrap_or_default());
-        assert!(
-            t.contains(" alt ") && t.contains("open the shortcuts overlay") && t.contains("empty")
-        );
         let mem = group_data(
             &[],
             json!({"total": 10, "projectCount": 4, "project": "p", "types": {"decision": 3}, "recall": true, "write": false, "pending": 0}),
@@ -1540,7 +1495,7 @@ mod tests {
             t.find("SESSION").unwrap_or(0),
         );
         assert!(g < p && p < s, "tile order global < project < session");
-        assert!(render_module("zzz", &keys, &Value::Null, 0).is_none());
+        assert!(render_module("zzz", &mem, &Value::Null, 0).is_none());
         let generic = render_generic(
             &group_data(&[("a", "1".into())], json!({})),
             &[StatInfo {

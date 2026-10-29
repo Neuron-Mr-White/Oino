@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-description = "unipi.core: Unicrab hints, start screen, work tray, hints and decision-model settings"
+description = "unipi.core: work tray and the shared decision-model settings"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

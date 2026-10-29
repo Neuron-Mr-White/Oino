@@ -71,8 +71,6 @@ topics! {
     SUBAGENTS_LIST = "unipi:subagents:list";
     /// Oino: graph-run completion `{runId, result}`.
     SUBAGENTS_RUN_DONE = "unipi:subagents:run-done";
-    /// Oino: live tokens per second, sticky (replaces `unipi.footer.shared-tps`).
-    FOOTER_TPS = "unipi:footer:tps";
     /// Oino: "a work-tray tab may have changed" (one-shot, any payload).
     WORK_TRAY_CHANGED = "unipi:work-tray:changed";
 }
@@ -87,7 +85,6 @@ pub const STICKY: &[&str] = &[
     WORKFLOW_STATUS,
     BG_TASKS,
     SUBAGENTS_LIST,
-    FOOTER_TPS,
 ];
 
 /// Foreign channels kept as bus topics (unipi `pi.events` names; `herdr:*` dropped, D22).
@@ -487,8 +484,8 @@ mod tests {
 
     #[test]
     fn unipi_event_names_and_sticky_set() {
-        // 24 UNIPI_EVENTS + 5 Oino topics.
-        assert_eq!(ALL.len(), 29);
+        // 24 UNIPI_EVENTS + 4 Oino topics.
+        assert_eq!(ALL.len(), 28);
         assert!(ALL.iter().all(|t| t.starts_with("unipi:")));
         let unipi_sticky = [
             LH_STATE,

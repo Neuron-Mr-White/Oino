@@ -4,6 +4,9 @@
 //! exist, in what order they load, which settings namespace each owns) becomes this static
 //! table. The bundle (`oino-bundle`) and the info screen read it; packages use it to name
 //! their peers without string literals.
+//!
+//! Round 5 (D1) removed the presentational packages `footer`, `command-enchantment`,
+//! `input-shortcuts` and `app-bridge`; they are listed in [`NOT_PORTED`] with their reasons.
 
 /// unipi release the ports track.
 pub const UNIPI_VERSION: &str = "3.0.0";
@@ -63,7 +66,7 @@ macro_rules! packages {
 }
 
 packages! {
-    CORE = "unipi.core", "core", "@pi-unipi/core", ["hints", "decision-model"], B1;
+    CORE = "unipi.core", "core", "@pi-unipi/core", ["decision-model"], B1;
     WORKFLOW = "unipi.workflow", "workflow", "@pi-unipi/workflow", ["permission"], B3;
     LONG_HORIZON = "unipi.long-horizon", "long-horizon", "@pi-unipi/long-horizon", ["long-horizon"], B3;
     MEMORY = "unipi.memory", "memory", "@pi-unipi/memory", ["memory"], B3;
@@ -79,24 +82,35 @@ packages! {
     MCP = "unipi.mcp", "mcp", "@pi-unipi/mcp", ["mcp"], B3;
     NOTIFY = "unipi.notify", "notify", "@pi-unipi/notify", ["notify"], B1;
     KANBOARD = "unipi.kanboard", "kanboard", "@pi-unipi/kanboard", ["kanboard"], B3;
-    COMMAND_ENCHANTMENT = "unipi.command-enchantment", "command-enchantment", "@pi-unipi/command-enchantment", ["command-enchantment"], B1;
     COMPACTOR = "unipi.compactor", "compactor", "@pi-unipi/compactor", ["compactor"], B3;
-    FOOTER = "unipi.footer", "footer", "@pi-unipi/footer", ["footer"], B4;
     UPDATER = "unipi.updater", "updater", "@pi-unipi/updater", ["updater"], B4;
-    INPUT_SHORTCUTS = "unipi.input-shortcuts", "input-shortcuts", "@pi-unipi/input-shortcuts", ["input-shortcuts"], B1;
     FUSION = "unipi.fusion", "fusion", "@pi-unipi/fusion", ["fusion"], B2;
     WATCHDOG = "unipi.watchdog", "watchdog", "@pi-unipi/watchdog", ["watchdog"], B2;
-    APP_BRIDGE = "unipi.app-bridge", "app-bridge", "@pi-unipi/app-bridge", ["app-bridge"], B1;
     CRON = "unipi.cron", "cron", "Oino-native (unipi-port §3.24)", ["cron"], B2;
 }
 
-/// unipi packages that are deliberately not ported (D22, unipi-port §1). `app-bridge` was
-/// ported after all as the GPUI control centre (deviations/unipi-integrations.md #1).
+/// unipi packages that are deliberately not ported (D22, unipi-port §1; round 5 D1).
 pub const NOT_PORTED: &[(&str, &str)] = &[
     ("@pi-unipi/unipi", "replaced by bundling and LOAD_ORDER"),
     (
         "@pi-unipi/kanboard-bin",
         "replaced by the Oino installer shipping `oino-kanboard`",
+    ),
+    (
+        "unipi.footer",
+        "D1: TUI status-line chrome; the native glance line and header carry its data",
+    ),
+    (
+        "unipi.command-enchantment",
+        "D1: `/`-completion eye-candy; core completions work without it",
+    ),
+    (
+        "unipi.input-shortcuts",
+        "D1: TUI editor intents; the desktop binds chords natively",
+    ),
+    (
+        "unipi.app-bridge",
+        "D1: presentational control centre; its tabs have native surfaces",
     ),
 ];
 
@@ -152,14 +166,10 @@ mod tests {
                 "mcp",
                 "notify",
                 "kanboard",
-                "command-enchantment",
                 "compactor",
-                "footer",
                 "updater",
-                "input-shortcuts",
                 "fusion",
                 "watchdog",
-                "app-bridge",
                 "cron",
             ]
         );
@@ -181,20 +191,16 @@ mod tests {
         all.sort_unstable();
         all.dedup();
         assert_eq!(all.len(), n, "a namespace has two owners");
-        // unipi 3.0.0 namespaces minus `cron` (dropped, D22).
+        // unipi 3.0.0 namespaces minus `cron` (dropped, D22) and the round-5 removals (D1).
         for ns in [
             "ask-user",
             "background-tasks",
-            "command-enchantment",
             "compactor",
             "decision-model",
             "dream",
-            "footer",
             "fusion",
-            "hints",
             "image",
             "info-screen",
-            "input-shortcuts",
             "kanboard",
             "long-horizon",
             "mcp",
@@ -210,7 +216,20 @@ mod tests {
         ] {
             assert!(namespace_owner(ns).is_some(), "{ns}");
         }
-        assert_eq!(namespace_owner("hints").map(|p| p.id), Some("unipi.core"));
+        for ns in [
+            "hints",
+            "footer",
+            "command-enchantment",
+            "input-shortcuts",
+            "app-bridge",
+        ] {
+            assert!(namespace_owner(ns).is_none(), "{ns} is removed (D1)");
+        }
+        assert_eq!(
+            namespace_owner("decision-model").map(|p| p.id),
+            Some("unipi.core"),
+            "the shared decision-model namespace stays with core"
+        );
         assert_eq!(
             namespace_owner("cron").map(|p| p.id),
             Some("unipi.cron"),
@@ -221,11 +240,11 @@ mod tests {
     #[test]
     fn lookups() {
         assert_eq!(load_index("unipi.core"), Some(0));
-        assert_eq!(load_index("unipi.watchdog"), Some(22));
+        assert_eq!(load_index("unipi.watchdog"), Some(19));
         assert!(is_unipi("unipi.btw"));
-        assert!(is_unipi("unipi.app-bridge"));
+        assert!(!is_unipi("unipi.app-bridge"));
         assert!(is_unipi("unipi.cron"));
-        assert_eq!(load_index("unipi.cron"), Some(24));
+        assert_eq!(load_index("unipi.cron"), Some(20));
         assert_eq!(by_id("unipi.fusion").map(|p| p.batch), Some(Batch::B2));
     }
 }

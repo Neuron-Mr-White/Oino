@@ -56,7 +56,6 @@ pub const PAGE_STYLES: &[(&str, &str, &str, i32)] = &[
     ("memory", "Memory", "c3", 80),
     ("web-api", "Web", "c4", 90),
     ("updater", "Updates", "c2", 100),
-    ("input-shortcuts", "Keys", "c9", 115),
 ];
 
 /// Snapshot scope of a page.
@@ -396,17 +395,17 @@ mod tests {
 
     #[test]
     fn provider_groups() {
-        let v = json!({"id": "input-shortcuts", "name": "Input Shortcuts", "icon": "⌨️", "priority": 115,
-            "config": {"showByDefault": true, "stats": [{"id": "chordKey", "label": "Chord key", "show": true}]},
-            "data": {"chordKey": {"value": "alt+s"}}});
-        let out = decode_reply("unipi.input-shortcuts", &json!([v.clone(), {"bad": 1}]));
+        let v = json!({"id": "compactor", "name": "Compactor", "icon": "🗜️", "priority": 115,
+            "config": {"showByDefault": true, "stats": [{"id": "ratio", "label": "Ratio", "show": true}]},
+            "data": {"ratio": {"value": "39k→13k"}}});
+        let out = decode_reply("unipi.compactor", &json!([v.clone(), {"bad": 1}]));
         assert_eq!(out.len(), 1);
         let (g, d) = &out[0];
         assert_eq!(
             (g.short.as_str(), g.owner.as_deref()),
-            ("Keys", Some("unipi.input-shortcuts"))
+            ("Compactor", Some("unipi.compactor"))
         );
-        assert_eq!(d["chordKey"]["value"], "alt+s");
+        assert_eq!(d["ratio"]["value"], "39k→13k");
         assert_eq!(decode_reply("x", &v).len(), 1);
     }
 

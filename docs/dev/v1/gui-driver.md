@@ -254,9 +254,8 @@ cargo xtask gui suite unipi --only workflow,kanboard
 
 | Scenario | Covers |
 |---|---|
-| `unipi-core` | hint strip + `alt+h`, `/hint` browser panel, work tray (`↓`) |
+| `unipi-core` | the work tray: an empty composer's `↓` opens `unipi.core/tray`, close |
 | `unipi-info-screen` | `/info` dashboard tabs, `r` refresh, close |
-| `unipi-footer` | glance frame + stats strip, `/footer` off/on |
 | `unipi-workflow` | mode chip + menu, `/permission ask`, approval card → allow, `/plan on\|off` |
 | `unipi-ask-user` | `ask_user` (enabled through `settings`) → question card → answer |
 | `unipi-long-horizon` | `/goal` + Goal status, `/visualize-progress`, `/regular` clears it, ralph/graph/swarm |
@@ -270,16 +269,14 @@ cargo xtask gui suite unipi --only workflow,kanboard
 | `unipi-mcp` | `/mcp-status`, settings hub MCP page |
 | `unipi-notify` | `/notify-event` list + toggle, settings hub Notify page |
 | `unipi-kanboard` | `/kanboard onboard`, native Board, FAB task, `/kanboard status` |
-| `unipi-command-enchantment` | `/` completions with package tags, filter, Tab accept |
 | `unipi-compactor` | `/compact-stats`, `/compact-doctor`, `/session-recall`, `/compact-vcc`, `/compact-by-llm` |
 | `unipi-updater` | `/readme`, `/changelog`, Settings → About & updates |
-| `unipi-input-shortcuts` | `alt+h`, `alt+m` cycle, `alt+p` plan toggle, `/ho` completion |
 | `unipi-fusion` | `/fusion` lead→effort→confirm, `/fusion-stats` |
 | `unipi-watchdog` | `/bg-detach` adopts a running bash call into the tray |
-| `unipi-app-bridge` | `/app` control-centre side tab and its four tabs |
 | `unipi-utility` | `/doctor`, `/cleanup`, `/move`, `/answer`, settings hub |
 | `unipi-cron` | `/cron` status, Automations page, new-job dialog |
 | `unipi-browser` | `/browser`, `browser_open` tool row |
+| `r5-tui-removal` (round 5) | no removed extension on the Extensions page, no package tag in `/` completions, `alt+h` inert, `state.chrome` free of footer-brand segments |
 
 ## 5. `ti` specifics
 

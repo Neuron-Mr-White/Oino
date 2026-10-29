@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Runs the unipi-integrations wasm-host harness tests (notify, web-api, mcp, updater,
-# app-bridge). Reuses the root workspace's lock file and target dir so wasmtime is not rebuilt.
+# Runs the unipi-integrations wasm-host harness tests (notify, web-api, mcp, updater).
+# Reuses the root workspace's lock file and target dir so wasmtime is not rebuilt.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)

@@ -15,17 +15,22 @@ the approximate counts in audit-unipi §0 are the floor.
 
 Bundled load order (= umbrella order, with `unipi.core` first): core, workflow, long-horizon,
 memory, dream, utility, skill-registry, info-screen, subagents, background-tasks, btw,
-web-api, ask-user, mcp, notify, kanboard, command-enchantment, compactor, footer, updater,
-input-shortcuts, fusion, watchdog.
+web-api, ask-user, mcp, notify, kanboard, compactor, updater, fusion, watchdog.
+
+**Removed in round 5 (D1, [round5.md](round5.md) §3).** `unipi.footer`,
+`unipi.command-enchantment`, `unipi.input-shortcuts` and `unipi.app-bridge` are deleted
+crates: TUI status-line chrome, `/`-completion eye-candy, TUI editor intents and a
+presentational control centre — the desktop keeps native surface for each (glance line,
+core completions, key bindings, side-pane tabs). `unipi.core` lost its `hints` module, the
+hint widget, the start header and the `hints` namespace with them; the work tray and the
+`unipi-migrate` skill stay. Settings namespaces `footer`, `hints`, `command-enchantment`,
+`input-shortcuts` and `app-bridge` no longer exist.
 
 | Package | Extension id | Dir (`extensions/unipi/…`) | Owner | Batch |
 |---|---|---|---|---|
 | core (subset) | `unipi.core` | `core` | unipi-core | B1 |
 | utility | `unipi.utility` | `utility` | unipi-core | B1 (part A), B4 (part B) |
-| command-enchantment | `unipi.command-enchantment` | `command-enchantment` | unipi-ux | B1 |
-| input-shortcuts | `unipi.input-shortcuts` | `input-shortcuts` | unipi-ux | B1 |
 | ask-user | `unipi.ask-user` | `ask-user` | unipi-ux | B1 |
-| footer | `unipi.footer` | `footer` | unipi-ux | B4 |
 | info-screen | `unipi.info-screen` | `info-screen` | unipi-ux | B4 |
 | notify | `unipi.notify` | `notify` | unipi-integrations | B1 |
 | web-api | `unipi.web-api` | `web-api` | unipi-integrations | B1 |
@@ -45,9 +50,10 @@ input-shortcuts, fusion, watchdog.
 | kanboard | `unipi.kanboard` (+ crate `oino-kanboard`) | `kanboard` | unipi-kanboard | B3 |
 | cron (Oino-native) | `unipi.cron` (+ crate `oino-cron`) | `cron` | cron | B2 |
 
-Not ported (D22): `app-bridge` (replaced by `oino serve` multi-client + mobile app),
-`unipi` umbrella (replaced by bundling + load order above), `kanboard-bin` (replaced by the
-Oino installer shipping `oino-kanboard`). **Cron is ported after all** (owner decision
+Not ported: `unipi` umbrella (replaced by bundling + load order above), `kanboard-bin`
+(replaced by the Oino installer shipping `oino-kanboard`), and (round 5, D1) `footer`,
+`command-enchantment`, `input-shortcuts`, `app-bridge` — see [`unipi_kit::suite::NOT_PORTED`]
+for the one-line reasons. **Cron is ported after all** (owner decision
 2026-10-28): the unipi host scheduler's behaviour is Oino-native as `crates/oino-cron` +
 extension `unipi.cron` (§3.24) — the D22 drop of `/cron` is superseded.
 
@@ -99,7 +105,6 @@ Within a work item, follow batch order.
 | `unipi.fusion.api` | services `fusion.status`, `fusion.set-pair` |
 | `unipi.btw.api` | service `btw.ask{question}` |
 | `unipi.dream.api` | services `dream.status`, `dream.run`, `dream.stop` + tray tab |
-| `unipi.footer.shared-tps` | sticky topic `unipi:footer:tps` |
 | `__unipi_info_registry` | service fan-out `info-screen.groups` → page/group specs |
 | kanboard `captureToBacklog` | service `kanboard.capture{title, body?, priority?}` |
 | `__unipi_load_times`, contributions | `_oino/extensions` (load time + registration counts recorded by the runner) |
@@ -184,15 +189,13 @@ web form via loopback `http.listener`), attachments (paste detection → `insert
 `sessions-list`/core `import`), rename runner `rename-now`. Drops `/cron`,
 browser state.
 
-### 3.3 `unipi.command-enchantment` (unipi-ux, B1)
-Perms: none. Caps: C17 (guest `complete-input`). Namespace `command-enchantment`
-(`autocompleteEnhanced`). Provides tagged/colored completion groups.
+### 3.3 `unipi.command-enchantment` — removed (round 5, D1)
+Was: tagged/colored completion groups. Native core completions keep working; the
+"unipi"-look package tags are dropped with it (`round5.md` §2 #2, §3).
 
-### 3.4 `unipi.input-shortcuts` (unipi-ux, B1)
-Perms: `clipboard.write`, `services.call: ["unipi.kanboard/kanboard.capture"]`. Caps: C5 C17
-C20. Shortcuts `unipi.chord` (`alt+s`), `unipi.tab-insert` (`alt+i`); chord legend as
-`custom` dialog; `Y` yank → `clipboard-write-text`; capture-to-backlog via kanboard service.
-Namespace `input-shortcuts`.
+### 3.4 `unipi.input-shortcuts` — removed (round 5, D1)
+Was: the `alt+s` chord and `alt+i` tab insert. The desktop binds chords natively; the
+round-5 mode switcher supersedes the chord legend (`round5.md` §2 #2, §3).
 
 ### 3.5 `unipi.ask-user` (unipi-ux, B1)
 Perms: `osNotify`, `clipboard.read`. Caps: C2 C17 C20. Tool `ask_user` (schema exact) →
@@ -201,12 +204,10 @@ tool `terminate`; `action: new_session` → tool `terminate` + `control.command-
 "ask-user-new-session", prefill)` (hidden command; queued until idle per runtime §7.4)
 which calls `control.new-session` then `ui.editor-set(prefill)`; `notifyOnAsk` → os-notify. Replaces Oino `ask-user`.
 
-### 3.6 `unipi.footer` (unipi-ux, B4)
-Perms: `process.spawn` (`git`), `fs.project: read`. Caps: C16 C17 C29. Frame segments via
-`setFrame` (model, thinking, cwd, branch, context %, cost, tps, PLAN/mode badges from sticky
-topics `unipi:workflow:status`, `unipi:long-horizon:state`, `unipi:kanboard:status`,
-`unipi:fusion:status`, `unipi:bg:tasks`), stats line via `setFooter`; `/footer
-[on|off]`; publishes `unipi:footer:tps`. Replaces Oino `footer-status`.
+### 3.6 `unipi.footer` — removed (round 5, D1)
+Was: glance frame segments, stats strip via `setFooter`, `/footer`. The native glance line
+(`meta_row`) is the single bottom row now; `state.chrome` carries no footer segments
+(`round5.md` §2 #18, §3).
 
 ### 3.7 `unipi.info-screen` (unipi-ux, B4)
 Perms: `sessions.readAll`, `process.spawn` (`git`), `fs.project: read`. Caps: C7 C16 C17.
@@ -408,7 +409,7 @@ phone sharing (`enabled`/`devices`/ntfy topic) is dropped (no unipi phone app).
 | vcc | `unipi.compactor` |
 | notify | `unipi.notify` |
 | ask-user | `unipi.ask-user` |
-| footer-status | `unipi.footer` (+ `unipi.info-screen`) |
+| footer-status | native glance line (`components/meta_row.rs`) + `unipi.info-screen` |
 | craft-skill | `unipi.dream` bundled skill |
 | mode-sandbox | `unipi.workflow` + `unipi.subagents` profiles |
 | budget | `unipi.watchdog` session caps |
@@ -553,7 +554,7 @@ Sources: `deviations/unipi-{core,ux,agents,context,integrations,kanboard}.md` an
 | 23 | audit §2.3 (cards, renderers) | Memory cards, reminder badges and the session/save cards are OUS `card`s (rail `harness`/`success`/`warning`/`error`); search hits use `meter` nodes. | ui-protocol §6. | — |
 | 24 | Oino addition (opt-in skills) | Skills with front matter `default-enabled: false` (core `Skill.defaultEnabled`; core reports the effective `enabled` in `systemPromptOptions.skills`) are off by default: not judged, not indexed, not listed, but never blocked for `/skill:name` unless a state sets `enabled: false`. The editor shows them as `<source> · opt-in` with **E** off; `enabled`/`mustShow` true turns them on with the proxy on or off (core reads the same `extensionSettings.skills.states`). States only in the fallback local store do not reach core. | Owner decision `unipi-migrate-skill`: the bundled `unipi-migrate` skill is opt-in. | — |
 
-### notify, web-api, mcp, updater, app-bridge (unipi-integrations)
+### notify, web-api, mcp, updater (unipi-integrations)
 
 | # | Section | Change | Reason | Impact |
 |---|---|---|---|---|

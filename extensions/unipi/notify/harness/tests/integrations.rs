@@ -1,7 +1,7 @@
 //! The unipi-integrations components in the real wasm host: registration, and one end-to-end
 //! behaviour per package (notify dispatch + finished/input-needed flows, MCP stdio server and
 //! dynamic tools, web-api smart fetch + wigolo search over a local HTTP server, updater docs
-//! browsers, app-bridge control centre).
+//! browsers).
 
 #![allow(
     clippy::unwrap_used,
@@ -35,7 +35,7 @@ fn extensions_dir() -> PathBuf {
     harness_dir().join("../../..").canonicalize().unwrap()
 }
 
-/// Builds the five components once (release, wasm32-wasip2).
+/// Builds the components once (release, wasm32-wasip2).
 fn components() -> &'static PathBuf {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     BUILT.get_or_init(|| {
@@ -43,7 +43,7 @@ fn components() -> &'static PathBuf {
         let mut cmd = Command::new(cargo);
         cmd.current_dir(extensions_dir())
             .args(["build", "-j", "2", "--release", "--target", "wasm32-wasip2"])
-            .args(["-p", "unipi-notify", "-p", "unipi-updater", "-p", "unipi-mcp", "-p", "unipi-web-api", "-p", "unipi-app-bridge"]);
+            .args(["-p", "unipi-notify", "-p", "unipi-updater", "-p", "unipi-mcp", "-p", "unipi-web-api"]);
         for var in ["CARGO_TARGET_DIR", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "CARGO_BUILD_TARGET", "CARGO_MANIFEST_DIR"] {
             cmd.env_remove(var);
         }
@@ -598,62 +598,4 @@ async fn updater_docs_browsers() {
         .to_value();
     assert_eq!(group["id"], "updater");
     assert_eq!(group["data"]["status"]["value"], "checking");
-}
-
-// ── app-bridge ──────────────────────────────────────────────────────────────
-
-#[tokio::test(flavor = "multi_thread")]
-async fn app_bridge_control_centre() {
-    let env = Env::new();
-    let (ext, reg) = env.load("app-bridge", "unipi_app_bridge.wasm", json!({})).await;
-    let (tools, commands, ns) = names(&reg);
-    assert!(tools.is_empty());
-    assert_eq!(commands, [("app".to_owned(), false)]);
-    assert_eq!(ns, ["app-bridge"]);
-    assert_eq!(reg.services, ["app-bridge.snapshot", "app-bridge.action"]);
-    assert_eq!(reg.shortcuts[0].id, "unipi.app.open");
-
-    env.event(&ext, EventKind::SessionStart, json!({"type": "session_start", "reason": "startup"})).await;
-    assert!(env.details("ui_panel").is_empty(), "no GPUI frontend attached (rpc only) → no auto-open");
-
-    env.command(&ext, "app", "modes").await;
-    let open = env.details("ui_panel").last().unwrap()["open"].clone();
-    assert_eq!(open["panelId"], "unipi.app-bridge/control");
-    assert_eq!(open["placement"], "sidePane");
-    assert_eq!(open["spec"]["t"], "tabs");
-    assert_eq!(open["spec"]["active"], "modes");
-    let tab_ids: Vec<&str> = open["spec"]["tabs"].as_array().unwrap().iter().map(|t| t["id"].as_str().unwrap()).collect();
-    assert_eq!(tab_ids, ["session", "work", "modes", "btw", "info"]);
-    assert!(open["spec"].to_string().contains("Fusion is off."));
-
-    env.event(&ext, EventKind::OinoUiAction, json!({"type": "oino_ui_action", "panelId": "panel-1", "actionId": "$tab", "value": "session"})).await;
-    assert_eq!(env.details("ui_panel").last().unwrap()["spec"]["spec"]["active"], "session");
-    env.event(&ext, EventKind::OinoUiAction, json!({"type": "oino_ui_action", "panelId": "panel-1", "actionId": "set_lh_mode", "value": "plan"})).await;
-    assert_eq!(env.fired("notify").last().unwrap()["message"], "set_lh_mode.mode must be goal|ralph|swarm|graph|none");
-    env.event(&ext, EventKind::OinoUiAction, json!({"type": "oino_ui_action", "panelId": "panel-1", "actionId": "abort"})).await;
-    assert!(env.details("control").iter().any(|c| c == "abort"));
-
-    // Sticky state from other packages shows up.
-    env.host.bus_publish(&ExtensionId::new("unipi.fusion").unwrap(), &env.cx(CallKind::Event), "unipi:fusion:status", RawJson::from(json!({"leadName": "Opus", "leadEffort": "high", "sidekickName": "Haiku", "sidekickEffort": "low"})), true);
-    let snap = ext
-        .handle_service("app-bridge.snapshot", RawJson::from(json!({})), &ExtensionId::new("oino.desktop").unwrap(), env.cx(CallKind::Service))
-        .await
-        .unwrap()
-        .to_value();
-    assert_eq!(snap["fusion"]["leadName"], "Opus");
-    assert!(snap["state"]["runState"].is_string());
-    assert_eq!(snap["work"], json!([]));
-    let r = ext
-        .handle_service("app-bridge.action", RawJson::from(json!({"action": "nope"})), &ExtensionId::new("oino.desktop").unwrap(), env.cx(CallKind::Service))
-        .await
-        .unwrap()
-        .to_value();
-    assert_eq!(r, json!({"ok": false, "message": "Unknown action \"nope\"."}));
-
-    env.event(&ext, EventKind::OinoUiAction, json!({"type": "oino_ui_action", "panelId": "panel-1", "actionId": "$close"})).await;
-    let n = env.details("ui_panel").len();
-    env.event(&ext, EventKind::TurnEnd, json!({"type": "turn_end"})).await;
-    tokio::time::sleep(Duration::from_millis(1300)).await;
-    assert_eq!(env.details("ui_panel").len(), n, "closed panel is not refreshed");
-    let _ = Path::new("/");
 }

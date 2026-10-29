@@ -2,7 +2,7 @@
 //! session. Until the sticky-topic feed exists (design.md §10 R3) the sources are the
 //! session's own state: long-horizon / ralph statuses (Goal), the workflow's approved plan
 //! (Progress — never arbitrary assistant lists, GA-10), running tool calls, subagents and
-//! the footer process line (Run), and the footer frame's branch segment (Git).
+//! background-task widgets (Run), and the `oino:git` topic or a frame branch segment (Git).
 //! [`StatusModel::ingest_topic`] accepts topic payloads for when the feed lands.
 
 use oino_ai::JsonValue;
@@ -268,9 +268,7 @@ impl StatusModel {
             model.run.push(RunItem::agent(&info.id, kind, label));
         }
         for (key, widget) in session.ui.widgets_keyed() {
-            let process = key.starts_with("unipi.footer/") && key.contains("process")
-                || key.starts_with("unipi.background-tasks/");
-            if process {
+            if key.starts_with("unipi.background-tasks/") {
                 for (i, line) in widget.lines.iter().enumerate() {
                     model.run.push(RunItem {
                         id: format!("{key}#{i}"),
@@ -431,7 +429,6 @@ impl StatusModel {
                     self.changed = usize::try_from(changed).unwrap_or(usize::MAX);
                 }
             }
-            "unipi:footer:git" => self.branch = s("branch"),
             _ => {}
         }
     }
@@ -479,12 +476,9 @@ mod tests {
             ev(json!({"type":"message_start","message":{"role":"user","content":"Implement the approved plan below.\n\n# Fix\n## Implementation\n1. Locate\n2. Patch\n3. Verify","timestamp":0}})),
             ev(json!({"type":"tool_execution_start","toolCallId":"t1","toolName":"bash","args":{"command":"cargo test"}})),
             ev(json!({"type":"tool_execution_start","toolCallId":"t2","toolName":"run_subagent","args":{"agent":"explorer","task":"map deps"}})),
-            ev(json!({"type":"extension_ui_request","id":"1","method":"setFrame","frameKey":"f","extensionId":"unipi.footer",
-                "bottom":[{"id":"branch","text":"⎇ v1-alpha","priority":3,"align":"left"}]})),
             ev(json!({"type":"extension_ui_request","id":"2","method":"setStatus","statusKey":"goal","statusText":"Ship trailing commas","extensionId":"unipi.long-horizon"})),
         ]);
         let m = StatusModel::from_session(&s);
-        assert_eq!(m.branch.as_deref(), Some("v1-alpha"));
         assert_eq!(m.goal.as_ref().unwrap().text, "Ship trailing commas");
         assert_eq!(m.progress(), (0, 3));
         assert_eq!(m.run.len(), 2);

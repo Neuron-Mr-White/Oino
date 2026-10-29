@@ -273,12 +273,10 @@ enum Launch {
     Terminal,
 }
 
-/// Icon of an extension panel tab (kanboard `kanban`, app-bridge `smartphone`, else `blocks`).
+/// Icon of an extension panel tab (kanboard `kanban`, else `blocks`).
 fn panel_icon(id: &str) -> IconName {
     if id.starts_with("unipi.kanboard") {
         IconName::Kanban
-    } else if id.starts_with("unipi.app-bridge") {
-        IconName::Smartphone
     } else {
         IconName::Blocks
     }

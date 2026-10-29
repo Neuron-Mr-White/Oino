@@ -31,12 +31,11 @@ use oino_wasm_host::core_bridge::{CoreLoader, SourcedPackage};
 use oino_wasm_host::{HostConfig, WasmRuntime, WasmRuntimeOptions};
 use serde_json::json;
 
-const IDS: [&str; 5] = [
+const IDS: [&str; 4] = [
     "unipi.core",
     "unipi.workflow",
     "unipi.skill-registry",
     "unipi.notify",
-    "unipi.footer",
 ];
 
 fn dist() -> PathBuf {
@@ -99,11 +98,6 @@ async fn unipi_state_files_move_into_settings() {
             json!({"ntfy": {"enabled": true, "topic": "builds"}}),
         )]),
     );
-    write(
-        &state("unipi.footer").join("kv.json"),
-        &kv(&[("enabledOverride", json!(false))]),
-    );
-
     let wasm =
         Arc::new(WasmRuntime::new(WasmRuntimeOptions::new(HostConfig::new(&agent, &cwd))).unwrap());
     let packages = IDS
@@ -169,7 +163,6 @@ async fn unipi_state_files_move_into_settings() {
         ("permission", "unipi.workflow"),
         ("skills", "unipi.skill-registry"),
         ("notify", "unipi.notify"),
-        ("footer", "unipi.footer"),
     ] {
         assert!(
             owners.contains(&(ns.to_owned(), owner.to_owned())),
@@ -186,7 +179,6 @@ async fn unipi_state_files_move_into_settings() {
         if es["permission"]["rules"].is_array()
             && es["skills"]["states"].is_object()
             && es["notify"]["ntfy"]["topic"].is_string()
-            && es["footer"]["enabled"].is_boolean()
         {
             assert_eq!(es["permission"]["rules"][0]["pattern"], "make deploy*");
             assert_eq!(es["skills"]["states"]["alpha"]["mustShow"], true);
@@ -194,7 +186,6 @@ async fn unipi_state_files_move_into_settings() {
                 es["notify"]["ntfy"],
                 json!({"enabled": true, "topic": "builds"})
             );
-            assert_eq!(es["footer"]["enabled"], false);
             break;
         }
         assert!(tokio::time::Instant::now() < deadline, "global: {global}");

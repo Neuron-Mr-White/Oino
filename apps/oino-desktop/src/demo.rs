@@ -297,10 +297,6 @@ fn settings_schema() -> JsonValue {
             {"id": "mode", "title": "Permissions", "fields": [
                 {"key": "mode", "type": "enum", "label": "Mode here", "options": ["ask", "auto", "full"], "default": "auto"},
                 {"key": "judge.timeoutMs", "type": "number", "label": "Judge timeout", "min": 1000, "max": 60000, "default": 15000}]}]},
-        {"namespace": "footer", "title": "Footer", "extensionId": "unipi.footer", "sections": [
-            {"id": "strip", "title": "Stats strip", "fields": [
-                {"key": "enabled", "type": "boolean", "label": "Show the stats strip", "default": true},
-                {"key": "icons", "type": "enum", "label": "Icons", "options": ["nerd", "unicode", "text"], "default": "unicode"}]}]},
         {"namespace": "memory", "title": "Memory", "extensionId": "unipi.memory", "sections": [
             {"id": "recall", "title": "Recall", "fields": [{"key": "recall.limit", "type": "number", "label": "Memories per turn", "default": 5}]}]}
     ])
@@ -500,7 +496,8 @@ impl Shared {
         );
     }
 
-    /// Ambient unipi chrome every demo session shows.
+    /// Ambient chrome every demo session shows (the startup splash; the glance line and the
+    /// extension chrome come from the kept packages' topics and statuses).
     fn ambient(&self, cwd: &str, splash_on: bool) {
         if splash_on {
             self.ui(
@@ -509,34 +506,6 @@ impl Shared {
                 "unipi.info-screen",
             );
         }
-        self.ui(
-            "setWidget",
-            json!({"widgetKey": "hints", "widgetPlacement": "aboveEditor", "widgetLines": [
-            "Press alt+h for the next tip · ↓ in an empty composer opens the work tray",
-            "Mention files with @, run skills with $, slash commands with /",
-            "Alt+Enter queues a follow-up while Oino is working"]}),
-            "unipi.core",
-        );
-        self.ui("setFrame", json!({"frameKey": "frame",
-            "top": [{"id": "branch", "text": "v1-alpha", "icon": "branch", "tone": "muted", "priority": 6, "align": "left"},
-                    {"id": "permission", "text": "ask", "tone": "success", "priority": 4, "align": "right"}],
-            "bottom": [{"id": "workspace", "text": "json-lite", "icon": "folder", "tone": "muted", "priority": 5, "align": "left"},
-                       {"id": "branch", "text": "v1-alpha", "icon": "branch", "tone": "c2", "priority": 4, "align": "left"}]}), "unipi.footer");
-        self.footer(4, 18_400, 950, 0.07);
-        self.ui("setShortcuts", json!({"shortcuts": [
-            {"id": "unipi.workflow.plan", "keys": "alt+p", "description": "Toggle plan mode", "extensionId": "unipi.workflow"},
-            {"id": "unipi.core.hint", "keys": "alt+h", "description": "Next tip", "extensionId": "unipi.core"},
-            {"id": "unipi.info-screen.open", "keys": "alt+i", "description": "Session dashboard", "extensionId": "unipi.info-screen"}]}), "unipi.input-shortcuts");
-    }
-
-    fn footer(&self, ctx: u64, input: u64, output: u64, cost: f64) {
-        self.ui("setFooter", json!({"key": "strip", "spec": {"t": "text", "value": format!("ctx {ctx}%")},
-            "segments": [
-                {"id": "ctx", "text": format!("ctx {ctx}%"), "priority": 7, "command": "compact", "spans": [{"text": "ctx ", "dim": true}, {"text": format!("{ctx}%"), "tone": "success"}]},
-                {"id": "tokens", "text": format!("↑{}k ↓{}", input / 1000, output), "priority": 6},
-                {"id": "cost", "text": format!("${cost:.2}"), "priority": 5, "spans": [{"text": format!("${cost:.2}"), "tone": "c4"}]},
-                {"id": "tps", "text": "52 tok/s", "priority": 3, "spans": [{"text": "52 tok/s", "dim": true}]},
-                {"id": "model", "text": "Oino Large", "priority": 4}]}), "unipi.footer");
     }
 
     async fn stream_text(
@@ -607,11 +576,6 @@ impl Shared {
             json!({"statusKey": "mem", "statusText": "memory 12", "tone": "muted"}),
             "unipi.memory",
         );
-        self.ui(
-            "setWorkingMessage",
-            json!({"message": "Planning the change…"}),
-            "unipi.footer",
-        );
         let start = assistant(&json!([]), "stop", &usage(0, 0));
         self.emit(json!({"type": "message_start", "message": start}));
         let thinking = "The user wants trailing commas accepted. The array loop breaks on ']' only; a comma followed by ']' fails in expect_comma_or_end. Patch the peek match and add a lookahead.";
@@ -625,11 +589,6 @@ impl Shared {
         if scene == Scene::Question {
             let end = assistant(&json!(content), "stop", &usage(18_400, 400));
             self.emit(json!({"type": "message_end", "message": end}));
-            self.ui(
-                "setWorkingMessage",
-                json!({"message": "Waiting for your answer…"}),
-                "unipi.footer",
-            );
             let _ = self.wait_dialog("form", json!({"title": "Questions", "questions": [
                 {"id": "scope", "header": "Scope", "question": "Which containers should accept trailing commas?", "options": [
                     {"label": "Arrays and objects", "description": "Matches JSON5 behaviour"},
@@ -642,10 +601,6 @@ impl Shared {
         if scene == Scene::Plan {
             let end = assistant(&json!(content), "stop", &usage(18_400, 400));
             self.emit(json!({"type": "message_end", "message": end}));
-            self.ui("setFrame", json!({"frameKey": "frame",
-                "top": [{"id": "branch", "text": "v1-alpha", "icon": "branch", "tone": "muted", "priority": 6, "align": "left"},
-                        {"id": "plan", "text": "PLAN", "tone": "warning", "priority": 5, "align": "right"}],
-                "bottom": [{"id": "workspace", "text": "json-lite", "icon": "folder", "tone": "muted", "priority": 5, "align": "left"}]}), "unipi.footer");
             let _ = self.wait_dialog("custom", json!({"title": "Review plan  .oino/plans/trailing-commas.md", "size": "large", "spec": {"t": "stack", "direction": "vertical", "gap": 1, "children": [
                 {"t": "split", "direction": "horizontal", "children": [
                     {"t": "section", "title": "Summary", "body": {"t": "markdown", "value": "Accept a trailing `,` before `]` and `}` in `parse_array` / `parse_object`."}},
@@ -723,11 +678,6 @@ impl Shared {
         self.emit(json!({"type": "tool_execution_end", "toolCallId": "call_edit", "toolName": "edit",
             "result": {"content": [{"type": "text", "text": "Successfully replaced 1 block in src/parser.rs."}], "details": {"patch": PATCH, "firstChangedLine": 44}},
             "isError": false, "durationMs": 12}));
-        self.ui(
-            "setWorkingMessage",
-            json!({"message": "Waiting for approval…"}),
-            "unipi.footer",
-        );
         let approval = json!({
             "title": "Run shell command?", "toolCallId": "call_bash", "toolName": "bash", "summary": "cargo test parser",
             "detail": {"t": "code", "value": "$ cargo test parser", "language": "sh"},
@@ -760,11 +710,6 @@ impl Shared {
             .wait_dialog("approval", approval, "unipi.workflow")
             .await;
         let allowed = matches!(&answer, UiAnswer::Value(v) if v.get("optionId").and_then(JsonValue::as_str).is_some_and(|o| o == "allow" || o == "always"));
-        self.ui(
-            "setWorkingMessage",
-            json!({"message": "Running tests…"}),
-            "unipi.footer",
-        );
         self.emit(json!({"type": "tool_execution_start", "toolCallId": "call_bash", "toolName": "bash", "args": {"command": "cargo test parser"}}));
         if allowed {
             let lines = [
@@ -813,7 +758,6 @@ impl Shared {
         );
         self.emit(json!({"type": "message_end", "message": end}));
         self.emit(json!({"type": "message_start", "message": {"role": "custom", "customType": "unipi:memory-save", "content": "Saved **json-lite: trailing commas accepted in arrays and objects** to project memory.", "display": true, "details": {"oinoProvenance": {"source": "memory"}}, "timestamp": 0}}));
-        self.footer(10, 39_700, 1560, 0.12);
         self.ui(
             "notify",
             json!({"message": "Tests passed — 14/14", "notifyType": "info"}),
@@ -836,11 +780,6 @@ impl Shared {
     }
 
     fn finish(&self, aborted: bool) {
-        self.ui(
-            "setWorkingMessage",
-            json!({"visible": false}),
-            "unipi.footer",
-        );
         self.emit(json!({"type": "agent_end", "messages": [], "willRetry": false}));
         self.emit(json!({"type": "agent_settled", "aborted": aborted}));
         self.busy.store(false, Ordering::SeqCst);
@@ -922,8 +861,6 @@ impl Shared {
             Some('$') => json!([{"source": "skills", "from": from, "items": [
                 {"value": "$tdd", "description": "Red-green-refactor loop", "tag": "skill", "tone": "c8"},
                 {"value": "$rust-best-practices", "description": "Idiomatic Rust checklist", "tag": "skill", "tone": "c8"}]}]),
-            Some('#') => json!([{"source": "unipi.command-enchantment", "from": from, "items": [
-                {"value": "#kanboard-todo", "label": "Kanboard TODO summary", "tag": "session", "tone": "c11"}]}]),
             Some('/') => json!([{"source": "commands", "from": 0, "items": [
                 {"value": "/compact", "description": "Compact the context"}, {"value": "/info", "description": "Session dashboard", "tag": "info", "tone": "c8"},
                 {"value": "/kanboard", "description": "Open the board", "tag": "kanboard", "tone": "c10"}, {"value": "/skill:tdd", "description": "TDD skill", "tag": "skill", "tone": "c8"}]}]),
@@ -991,7 +928,7 @@ impl SessionBackend for DemoBackend {
                                 shared.ui(
                                     "notify",
                                     json!({"message": format!("Shortcut {shortcut_id}")}),
-                                    "unipi.input-shortcuts",
+                                    "unipi.core",
                                 );
                             }
                             None
@@ -1153,7 +1090,6 @@ fn demo_name(id: &str) -> String {
         "oino.router" => "Oino Router".into(),
         "unipi.core" => "Core".into(),
         "unipi.workflow" => "Workflow".into(),
-        "unipi.footer" => "Footer".into(),
         "unipi.info-screen" => "Info screen".into(),
         "unipi.kanboard" => "Kanboard".into(),
         "unipi.memory" => "Memory".into(),
@@ -1382,7 +1318,6 @@ impl SessionHost for DemoHost {
             ("oino.router", "provider", None),
             ("unipi.core", "extension", None),
             ("unipi.workflow", "extension", None),
-            ("unipi.footer", "extension", None),
             ("unipi.info-screen", "extension", None),
             ("unipi.kanboard", "extension", None),
             ("unipi.memory", "extension", None),
@@ -1488,7 +1423,12 @@ mod tests {
         assert!(model.transcript.get("call_bash").is_some());
         assert!(model.transcript.get("call_agent").is_some());
         assert_eq!(model.ui.statuses().len(), 2);
-        assert!(model.ui.footer_segments().count() >= 4);
+        assert_eq!(
+            model.ui.frame_segments().count(),
+            0,
+            "round 5 (D1) removed the footer extension: no frame segments, no stats strip"
+        );
+        assert_eq!(model.ui.footer_segments().count(), 0);
         assert!(model.usage.output > 0);
     }
 

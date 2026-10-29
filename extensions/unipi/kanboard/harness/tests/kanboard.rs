@@ -341,7 +341,7 @@ async fn capture_service_and_claims_nudge() {
         .handle_service(
             "kanboard.capture",
             RawJson::from(json!({"text": "later"})),
-            &ExtensionId::new("unipi.input-shortcuts").unwrap(),
+            &ExtensionId::new("unipi.btw").unwrap(),
             env.cx(CallKind::Service),
         )
         .await
@@ -353,7 +353,7 @@ async fn capture_service_and_claims_nudge() {
         .handle_service(
             "kanboard.capture",
             RawJson::from(json!({"text": "remember to rotate keys"})),
-            &ExtensionId::new("unipi.input-shortcuts").unwrap(),
+            &ExtensionId::new("unipi.btw").unwrap(),
             env.cx(CallKind::Service),
         )
         .await

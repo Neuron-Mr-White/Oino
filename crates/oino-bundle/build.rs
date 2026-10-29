@@ -52,14 +52,10 @@ const UNIPI_LOAD_ORDER: &[&str] = &[
     "notify",
     "cron",
     "kanboard",
-    "command-enchantment",
     "compactor",
-    "footer",
     "updater",
-    "input-shortcuts",
     "fusion",
     "watchdog",
-    "app-bridge",
 ];
 
 /// Bundle position: providers, then unipi in load order, then everything else (by id).

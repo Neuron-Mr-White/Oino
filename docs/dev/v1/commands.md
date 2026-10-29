@@ -18,11 +18,12 @@ types (e.g. `unipi:kanboard-next`, `unipi:plan-mode`) and settings namespaces ar
    name is either **merged** into the built-in (its surface moves there) or **renamed** to a
    short, clear, non-prefixed name.
 2. **Feature commands are unique among themselves** (one owner per name).
-3. Hidden runner commands (settings-hub actions, app-bridge/long-horizon runners) follow the
+3. Hidden runner commands (settings-hub actions, updater/long-horizon runners) follow the
    same naming; they do not appear in the `/` menu.
-4. `unipi.command-enchantment` tags feature commands by package (its static registry,
-   `extensions/unipi/command-enchantment/src/registry.rs`); a test asserts that no registry
-   entry collides with a built-in. On a tie, built-ins sort before feature commands.
+4. Feature commands come from the extensions' own registrations (`command:<name>` groups);
+   a test asserts that no registered name collides with a built-in. On a tie, built-ins sort
+   before feature commands. (Round 5 D1 removed `unipi.command-enchantment`, which used to
+   add package tags to these groups.)
 
 ## 2. Collisions and decisions
 
@@ -88,10 +89,8 @@ Visible commands:
 | `/unipi:kanboard-add` | `/kanboard-add` | unipi.kanboard | Capture a task into Backlog |
 | `/unipi:kanboard-do` | `/kanboard-do` | unipi.kanboard | Grant the agent task slots + a write budget |
 | `/unipi:kanboard-autowork` | `/kanboard-autowork` | unipi.kanboard | Work ready tasks one by one (`start\|stop`) |
-| `/unipi:footer` | `/footer` | unipi.footer | Toggle the footer |
 | `/unipi:readme` | `/readme` | unipi.updater | Browse bundled README files |
 | `/unipi:changelog` | `/changelog` (core) | unipi.updater → core | Merged (§2) |
-| `/unipi:app` | `/app` | unipi.app-bridge | Session control centre (Desktop/Mobile side pane) |
 | `/unipi:cron` | `/cron` | unipi.cron | Scheduled, unattended Oino runs — list/show/runs/run/stop/enable/disable/pause/resume/status/add/edit/remove ([docs/cron.md](../../../docs/cron.md)) |
 
 `/cron` is an Oino-native feature (owner decision 2026-10-28, superseding D22's drop): the

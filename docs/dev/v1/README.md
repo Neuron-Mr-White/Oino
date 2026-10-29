@@ -89,8 +89,8 @@ their rules are in §4.2. Anything else is a "Request for other work" in the ite
 | `modes` | `crates/oino-rpc/`, `crates/oino-client/`, `crates/oino/` (bin: CLI, print, JSON, mode dispatch, `serve`, `update`, package subcommands) | RPC server/codec/transports, typed RPC client, `SessionBackend` |
 | `tui-client` | `crates/oino-tui/`, `crates/oino-view/` | interactive terminal mode; frontend-agnostic view models (transcript rows, UI state reducer) |
 | `providers-v1` | `extensions/sdk/oino-provider-kit/`, `extensions/providers/` (`openai-compat`, `openai-responses`, `anthropic`, `router`) | provider components + catalogs |
-| `unipi-core` | `extensions/sdk/unipi-kit/`, `extensions/unipi/core/`, `extensions/unipi/utility/` | shared guest kit, hints, work-tray model, utility |
-| `unipi-ux` | `extensions/unipi/{ask-user,command-enchantment,input-shortcuts,footer,info-screen}/` | — |
+| `unipi-core` | `extensions/sdk/unipi-kit/`, `extensions/unipi/core/`, `extensions/unipi/utility/` | shared guest kit, work-tray model, utility |
+| `unipi-ux` | `extensions/unipi/{ask-user,info-screen}/` | round 5 (D1) removed `command-enchantment`, `input-shortcuts`, `footer`, `app-bridge` |
 | `unipi-agents` | `extensions/unipi/{background-tasks,watchdog,subagents,fusion,btw,long-horizon}/` | `read_subagent`, graph-run service, bg service topics |
 | `unipi-context` | `extensions/unipi/{compactor,memory,dream,skill-registry,workflow}/` | — |
 | `unipi-integrations` | `extensions/unipi/{web-api,notify,mcp,updater}/` | — |

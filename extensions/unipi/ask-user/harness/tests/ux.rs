@@ -9,7 +9,7 @@
     reason = "tests assert by unwrapping"
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, OnceLock};
 
@@ -25,9 +25,6 @@ use serde_json::{Value, json};
 
 const CRATES: &[(&str, &str)] = &[
     ("ask-user", "unipi_ask_user"),
-    ("command-enchantment", "unipi_command_enchantment"),
-    ("input-shortcuts", "unipi_input_shortcuts"),
-    ("footer", "unipi_footer"),
     ("info-screen", "unipi_info_screen"),
 ];
 
@@ -38,7 +35,7 @@ fn extensions_dir() -> PathBuf {
         .unwrap()
 }
 
-/// Builds all five components once (release, wasm32-wasip2).
+/// Builds the components once (release, wasm32-wasip2).
 fn built() -> &'static PathBuf {
     static OUT: OnceLock<PathBuf> = OnceLock::new();
     OUT.get_or_init(|| {
@@ -161,12 +158,6 @@ impl Env {
         .unwrap();
     }
 
-    async fn shortcut(&self, ext: &Arc<dyn ExtensionInstance>, id: &str) {
-        ext.run_shortcut(id, self.cx(CallKind::Shortcut))
-            .await
-            .unwrap();
-    }
-
     fn fired(&self, method: &str) -> Vec<Value> {
         self.host
             .calls_named("ui_fire")
@@ -183,135 +174,6 @@ impl Env {
             .map(|c| c.detail)
             .collect()
     }
-}
-
-fn find_file(root: &Path, name: &str) -> Option<PathBuf> {
-    for e in std::fs::read_dir(root).ok()?.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            if let Some(f) = find_file(&p, name) {
-                return Some(f);
-            }
-        } else if p.file_name().is_some_and(|n| n == name) {
-            return Some(p);
-        }
-    }
-    None
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn command_enchantment_completes_unipi_commands() {
-    let env = Env::new();
-    let (ext, reg) = env.load("command-enchantment", json!({})).await;
-    assert!(reg.tools.is_empty() && reg.commands.is_empty());
-    let ns: Vec<Value> = reg.settings.iter().map(RawJson::to_value).collect();
-    assert_eq!(ns[0]["namespace"], "command-enchantment");
-    let out = ext
-        .complete_input(
-            RawJson::from(json!({"text": "/pl", "cursor": 9})),
-            env.cx(CallKind::Event),
-        )
-        .await
-        .unwrap()
-        .to_value();
-    let group = &out[0];
-    assert_eq!(group["source"], "unipi.command-enchantment");
-    assert_eq!(group["replaces"], "commands");
-    assert_eq!(group["items"][0]["value"], "plan");
-    assert_eq!(group["items"][0]["tag"], "[workflow]");
-    assert!(
-        ext.complete_input(
-            RawJson::from(json!({"text": "hello", "cursor": 5})),
-            env.cx(CallKind::Event)
-        )
-        .await
-        .is_none()
-    );
-    // Off ⇒ pure pass-through.
-    let env2 = Env::new();
-    let (off, _) = env2
-        .load(
-            "command-enchantment",
-            json!({"command-enchantment": {"autocompleteEnhanced": false}}),
-        )
-        .await;
-    assert!(
-        off.complete_input(
-            RawJson::from(json!({"text": "/pl"})),
-            env2.cx(CallKind::Event)
-        )
-        .await
-        .is_none()
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn input_shortcuts_stash_round_trip() {
-    let env = Env::new();
-    let (ext, reg) = env.load("input-shortcuts", json!({})).await;
-    let shortcuts: Vec<(&str, &str)> = reg
-        .shortcuts
-        .iter()
-        .map(|s| (s.id.as_str(), s.default_keys[0].as_str()))
-        .collect();
-    assert_eq!(
-        shortcuts,
-        [("unipi.chord", "alt+s"), ("unipi.tab-insert", "alt+i")]
-    );
-    assert_eq!(reg.services, ["info-screen.groups"]);
-    assert_eq!(reg.renderers.len(), 1);
-
-    env.shortcut(&ext, "unipi.tab-insert").await;
-    let editor = env.calls("ui_editor");
-    assert!(
-        editor.iter().any(|e| e.as_str() == Some("Set(\"\\t\")")),
-        "{editor:?}"
-    );
-
-    env.host
-        .queue_dialog_answer(json!({"value": {"actionId": "stash"}}));
-    env.shortcut(&ext, "unipi.chord").await;
-    let dialog = &env.calls("ui_dialog")[0];
-    assert_eq!(dialog["method"], "custom");
-    assert_eq!(dialog["title"], "Input Shortcuts");
-    let status = env.fired("setStatus");
-    assert_eq!(status.last().unwrap()["statusText"], "✓ stash saved");
-    let file = find_file(
-        &env.agent.path().join("state/unipi.input-shortcuts"),
-        "input-shortcuts.json",
-    )
-    .unwrap();
-    let saved: Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
-    assert_eq!(saved, json!({"stash": "\t"}));
-
-    env.host
-        .queue_dialog_answer(json!({"value": {"actionId": "stash"}}));
-    env.shortcut(&ext, "unipi.chord").await;
-    assert_eq!(
-        env.fired("setStatus").last().unwrap()["statusText"],
-        "✓ stash restored"
-    );
-
-    // Ctrl+C-style clear keeps the text as a custom entry.
-    env.event(
-        &ext,
-        EventKind::OinoEditor,
-        json!({"type": "oino_editor", "intent": "changed", "text": "draft idea"}),
-    )
-    .await;
-    env.event(
-        &ext,
-        EventKind::OinoEditor,
-        json!({"type": "oino_editor", "intent": "cleared", "text": "", "reason": "interrupt"}),
-    )
-    .await;
-    let kept = env
-        .host
-        .entries()
-        .into_iter()
-        .find(|e| e["customType"] == "unipi-cleared-input")
-        .unwrap();
-    assert_eq!(kept["data"]["text"], "draft idea");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -388,41 +250,6 @@ async fn ask_user_asks_and_answers() {
         "ask_user is turned off in settings — ask in your reply instead."
     );
     assert_eq!(env2.calls("ui_dialog"), Vec::<Value>::new());
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn footer_paints_and_toggles() {
-    let env = Env::new();
-    let (ext, reg) = env.load("footer", json!({})).await;
-    assert_eq!(reg.commands[0].name, "footer");
-    assert!(
-        reg.events.contains(&EventKind::MessageUpdate)
-            && reg.events.contains(&EventKind::OinoTimer)
-    );
-    env.event(
-        &ext,
-        EventKind::SessionStart,
-        json!({"type": "session_start", "reason": "startup"}),
-    )
-    .await;
-    let frame = env.fired("setFrame");
-    assert_eq!(frame[0]["frameKey"], "glance");
-    assert_eq!(frame[0]["top"][0]["id"], "brand");
-    assert_eq!(frame[0]["bottom"][1]["text"], "?%");
-    env.command(&ext, "footer", "off").await;
-    assert_eq!(
-        env.fired("notify").last().unwrap()["message"],
-        "Footer disabled"
-    );
-    assert!(
-        env.fired("setFrame").last().unwrap().get("top").is_none(),
-        "frame cleared"
-    );
-    env.command(&ext, "footer", "on").await;
-    assert_eq!(
-        env.fired("notify").last().unwrap()["message"],
-        "Footer enabled"
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

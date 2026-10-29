@@ -498,7 +498,7 @@ async fn disabled_extensions_are_not_loaded() {
 async fn shortcuts_frontends_and_shutdown_reach_frontends() {
     let dir = tempfile::tempdir().unwrap();
     let keys: Arc<dyn ExtensionInstance> = Arc::new(FakeExtension::new(
-        "unipi.input-shortcuts",
+        "test.keys",
         Registration {
             shortcuts: vec![ShortcutSpec {
                 id: "plan-toggle".into(),
@@ -525,7 +525,7 @@ async fn shortcuts_frontends_and_shutdown_reach_frontends() {
         .expect("setShortcuts retained");
     assert_eq!(
         shortcuts.params["shortcuts"],
-        json!([{"id": "plan-toggle", "keys": ["alt+p"], "description": "Toggle plan mode", "extensionId": "unipi.input-shortcuts"}])
+        json!([{"id": "plan-toggle", "keys": ["alt+p"], "description": "Toggle plan mode", "extensionId": "test.keys"}])
     );
     session.register_frontend("oino-desktop");
     let frontends = services

@@ -4,7 +4,7 @@
   "name": "unipi core",
   "version": "3.0.0",
   "kind": "extension",
-  "description": "Unicrab hints, the start screen and the work tray; owns the hints and decision-model settings.",
+  "description": "The work tray; owns the shared decision-model settings.",
   "license": "MIT",
   "resources": { "skills": ["skills"] },
   "permissions": {
