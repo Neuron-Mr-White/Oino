@@ -1,0 +1,315 @@
+/* UNI-241 (plan S3): the first-run "Set up this PC" takeover, the Settings →
+   This computer → Components rows and the banner the takeover leaves behind. */
+
+.setup-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px 48px;
+  overflow: auto;
+  background: var(--color-bg, #0a0908);
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.setup-crab {
+  width: 84px;
+  height: 84px;
+  image-rendering: pixelated;
+}
+
+.setup-head h1 {
+  margin: 4px 0 0;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.setup-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--color-text-muted);
+  max-width: 42ch;
+}
+
+.setup-note,
+.setup-offline,
+.setup-fine,
+.setup-error-message {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-text-muted);
+}
+
+.setup-fine {
+  display: block;
+  text-align: center;
+}
+
+.setup-offline {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgb(240 160 40 / 12%);
+  color: var(--color-text);
+}
+
+.setup-error-message {
+  font-size: 13px;
+  color: var(--color-wm-red);
+}
+
+.setup-list,
+.setup-steps,
+.setup-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The consent list: one row per component, ticked = the install will touch it. */
+.setup-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.setup-row:disabled {
+  opacity: 0.62;
+}
+
+.setup-row[data-ticked='true'] {
+  background: rgb(240 48 24 / 10%);
+  box-shadow: inset 0 0 0 1px rgb(240 48 24 / 34%);
+}
+
+.setup-check {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 6px;
+  background: var(--color-surface-3);
+}
+
+.setup-row[data-ticked='true'] .setup-check {
+  background: var(--color-shell-hi, #f03018);
+  color: #fff;
+}
+
+.setup-row-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.setup-row-label {
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.setup-row-action {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-shell-hi, #f03018);
+}
+
+/* The status chip. Neutral for ordinary installs and for work already done;
+   red is reserved for `broken` — a normal install is not an alarm. */
+.setup-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.setup-badge[data-badge='update'], .setup-badge[data-badge='install'] { background: rgb(240 48 24 / 13%); color: var(--color-text); }
+.setup-badge[data-badge='newer'] { background: rgb(90 210 90 / 14%); color: var(--color-text); }
+.setup-badge[data-badge='broken'] { background: var(--color-wm-red); color: #fff; }
+
+.setup-row-note { font-size: 12px; line-height: 17px; color: var(--color-text-dim); }
+
+/* A manual row's own actions (decision 8's chain, then the command). */
+.setup-row-actions { display: flex; gap: 6px; padding: 0 0 2px 30px; }
+
+.setup-row-detail {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--color-text-muted);
+}
+
+.setup-consent {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* Progress rows: waiting / running / done / failed / skipped. */
+.setup-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--color-surface-2);
+  font-size: 13px;
+}
+
+.setup-step-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-line);
+}
+
+.setup-steps li[data-tone='running'] .setup-step-dot { background: var(--color-shell-hi, #f03018); }
+.setup-steps li[data-tone='done'] .setup-step-dot { background: #35a853; }
+.setup-steps li[data-tone='failed'] .setup-step-dot { background: var(--color-wm-red); }
+.setup-steps li[data-tone='skipped'] .setup-step-dot { background: var(--color-text-dim); }
+
+.setup-step-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.setup-step-label { font-weight: 500; }
+.setup-step-state { font-size: 11px; color: var(--color-text-muted); }
+.setup-steps li[data-tone='failed'] .setup-step-state { color: var(--color-wm-red); }
+
+.setup-spin { animation: refresh-spin 0.8s linear infinite; }
+.setup-flip { transform: rotate(90deg); }
+
+.setup-log,
+.setup-log-toggle {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.setup-log {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 200px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.setup-log-toggle {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* --------------------------------------------- Settings → Components rows */
+
+.setup-components { display: flex; flex-direction: column; gap: 8px; }
+
+.setup-components-intro { margin: -4px 0 4px; font-size: 12px; line-height: 17px; color: var(--color-text-dim); }
+
+.setup-components-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.setup-components-row:last-child { border-bottom: 0; }
+
+.setup-components-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.setup-components-label { font-size: 14px; }
+.setup-components-detail { font-style: normal; font-size: 12px; color: var(--color-text-muted); }
+.setup-components-note { font-size: 11px; line-height: 16px; color: var(--color-text-dim); }
+.setup-components-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+/* The action bar closes the card, so it needs the card's own bottom padding —
+   `overflow: hidden` on .settings-group clips anything running past it. */
+.setup-components-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px -16px -16px; padding: 12px 16px 16px; border-top: 1px solid var(--color-line); background: var(--color-surface-2); }
+.setup-components-hint { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-text-muted); }
+.btn-sm { height: 32px; min-height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* The banner the takeover leaves behind once "Not now" has been pressed. */
+.setup-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(240 48 24 / 10%);
+  box-shadow: inset 0 0 0 1px rgb(240 48 24 / 30%);
+}
+
+.setup-banner p { margin: 0; font-size: 13px; }
+
+/* The versions block's own heading, inside the This computer section (it is not
+   a settings section of its own: a nested <section> would be hidden by the
+   desktop shell's one-section-at-a-time rule). */
+.setup-components-title { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; }
+
+/* UNI-253: the "Turn off" affordances in Preview and Settings. */
+.preview-leave { display: flex; justify-content: center; padding: 14px 0 2px; }
+.browser-leave { display: flex; justify-content: center; padding: 12px 0 2px; }

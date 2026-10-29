@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  UNI-259: merged by `cargo tauri ios build/dev` into gen/apple/…/Info.plist on
+  every build (tauri-cli reads src-tauri/Info.ios.plist), so a fresh
+  `cargo tauri ios init` keeps these keys. iOS kills an app that touches a
+  privacy-protected resource without its usage string: the QR scan
+  (barcode-scanner plugin, AVCaptureDevice) crashed at once without
+  NSCameraUsageDescription.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>UniPi uses the camera to scan the pairing QR code from your computer and to take photos you attach to chats and tasks.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>UniPi lets you pick photos and videos to attach to chats and tasks.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>UniPi saves images and files you download from your computer to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>UniPi uses the microphone when you record a video to attach to a chat or task.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>UniPi connects directly to your computers on the local network for faster, private connections.</string>
+</dict>
+</plist>

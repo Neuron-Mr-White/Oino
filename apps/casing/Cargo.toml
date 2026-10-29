@@ -1,0 +1,11 @@
+# Casing spike workspace (round 6): the unipi app "casing" (SolidJS + Tauri 2)
+# plus the oino bridge. Deliberately NOT part of apps/Cargo.toml (GPUI apps
+# workspace) nor the root workspace — this is a self-contained web stack.
+[workspace]
+resolver = "2"
+members = ["src-tauri", "bridge", "proto"]
+
+[profile.dev]
+debug = "line-tables-only"
+[profile.dev.package."*"]
+debug = false
