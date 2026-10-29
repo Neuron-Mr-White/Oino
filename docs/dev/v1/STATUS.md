@@ -1,9 +1,12 @@
-# Oino v1.0.0-alpha.3 — status
+# Oino v1.0.0-alpha.4 — status
 
-Date: 2026-10-29 · branch `v1-alpha` · round 3 + `harness-gaps` (`round3-integration`: gui-qa + gui-qa-fix,
-stability, browser-impl, unipi-native + commands, cron, mempalace-rs, cross-platform smoke;
-on top of round 2 `integration-2`: core-agents, core-settings, frontend-cmds, providers-more,
-unipi-utility, design-spec / design-desktop(-fix) / design-mobile, release-builds).
+Date: 2026-10-30 · branch `v1-alpha` · round 4 (`round4-integration`: version bump, all gates,
+desktop launcher, alpha.4 release builds local+coffee+mac; on top of round 3 + `harness-gaps`
+(`round3-integration`: gui-qa + gui-qa-fix, stability, browser-impl, unipi-native + commands,
+cron, mempalace-rs, cross-platform smoke; on top of round 2 `integration-2`: core-agents,
+core-settings, frontend-cmds, providers-more, unipi-utility, design-spec / design-desktop(-fix)
+/ design-mobile, release-builds), and the QA round 4 + fix (`qa-r4` / `qa-r4-fix`, see
+[qa-r4.md](qa-r4.md)).
 Parity targets: `@earendil-works/pi-coding-agent` **1.4.0**, unipi **3.0.0**, ZCode design
 ([design.md](design.md)).
 Legend: ✅ done · 🟡 partial · ❌ missing · ⛔ diverges by design. Settled deviations are folded
@@ -11,20 +14,41 @@ into the appendix of each spec; open items per work item stay in [deviations/](d
 
 ## 1. Gates (this commit)
 
-All run locally with `TMPDIR=$PWD/target/tmp`, `nice -n 10`, `-j 4`; components rebuilt with
-rustc 1.99.1. Script: `scripts/round3/gates.sh` (log `target/gate-round3.log`).
+All run locally with `TMPDIR=$PWD/target/tmp`, `nice -n 10`, `-j 4`. Script:
+`scripts/round4/gates.sh` (log `target/gate-round4.log`). Test counts sum every `test result`
+line (lib + integration + doc-tests), 0 failures across all three workspaces.
 
 | Workspace | fmt | clippy `-D warnings` (pedantic) | tests | other |
 |---|---|---|---|---|
-| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ **826 passed** (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components; +10 by `harness-gaps`) | ✅ rustdoc `-D warnings` (`RUSTDOCFLAGS`); ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh` (source install + faux prompt); all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
-| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ **679 native** (4 ignored); ✅ 7 wasm-host harness suites, **36 passed** (`extensions/unipi/*/harness/run.sh`: ask-user 5, core 3, kanboard 3, notify 5, subagents 5, utility 9, workflow 6) | ✅ `cargo xtask wasm` (39 components: 8 providers + `oino.browser`, 24 unipi incl. `unipi.cron`, 5 fixtures) + `cargo xtask checksums` |
-| `apps/` (GPUI) | ✅ | ✅ | ✅ **136 passed** (`cargo test --workspace`, incl. the automation, status-topic, agent-feed and chord-parsing tests added by `[gui-wiring]` / `[unipi-live]`) | ✅ the unipi suite on `ti`: `cargo xtask gui suite unipi` (§1b.10) |
+| root (`crates/*`, `xtask`) | ✅ | ✅ | ✅ **1,683 passed** (`cargo test --workspace`, incl. `crates/oino/tests/bundled.rs`, wasm-host e2e with the real unipi agents / settings components) | ✅ rustdoc `-D warnings` (`RUSTDOCFLAGS`); ✅ `cargo xtask wit`; ✅ `scripts/docs-check.sh`; ✅ `scripts/install-smoke.sh` (source install + faux prompt); all crates except `oino-wasm-host` / `xtask` on `[lints] workspace = true` |
+| `extensions/` | ✅ | ✅ (`--target wasm32-wasip2`) | ✅ **680 native** (4 ignored); ✅ 7 wasm-host harness suites (`extensions/unipi/*/harness/run.sh`: ask-user, core, kanboard, notify, subagents, utility, workflow) | ✅ `cargo xtask wasm` (39 components at 1.0.0-alpha.4: 8 providers + `oino.browser`, 24 unipi, 5 fixtures) + `cargo xtask checksums` |
+| `apps/` (GPUI) | ✅ | ✅ | ✅ **141 passed** (`cargo test --workspace`, incl. the automation, status-topic, agent-feed, chord-parsing and qa-r4-fix tests) | ✅ **rustdoc `-D warnings` now gates apps too** (new this round: fixed broken/private doc links + `doc_markdown` in `oino-ui`/`oino-mobile`); ✅ the unipi suite re-verified in [qa-r4.md](qa-r4.md) §9 |
 
-Red gates found and fixed this round: the doc gate (`cargo doc … -- -D warnings` no longer
-passes trailing args on cargo 1.99 → `RUSTDOCFLAGS`), three rustdoc links/HTML tags in
-`oino-cron`, and the notify harness's updater command assertion (the updater's hidden
-`changelog` runner added by `7525d3d` was missing). `cargo xtask layering` and `cargo deny`
-(quality §1, §6) still do not exist.
+Red gates found and fixed this round: an `extensions/` fmt drift from `[qa-r4-fix]`, the
+never-before-gated `apps/` rustdoc (`-D warnings`), and — found by the **coffee** release
+build — the automation Unix-socket server was not `cfg(unix)`-gated, so the Windows desktop
+binary did not compile (fixed; Windows gets a no-op `install`, see [§1a](#1a-round-4-summary)).
+`cargo xtask layering` and `cargo deny` (quality §1, §6) still do not exist.
+
+## 1a. Round 4 summary (work id `round4-integration`, 2026-10-30, `v1-alpha`, version **1.0.0-alpha.4**)
+
+Round 4 is the alpha.4 consolidation round: version bump across all three workspaces,
+every gate green (incl. two new ones), the `mise` desktop launcher verified, and the alpha.4
+release artifacts built and smoked locally + on `coffee` and `desmondgiam`. Product code is
+unchanged except the Windows build fix; the functional baseline is the QA round-4 verification
+of HEAD (`qa-r4` + `qa-r4-fix`, all defects fixed and driver-verified).
+
+| Area | State |
+|---|---|
+| unipi in desktop (live) | **24 ✅ live · 0 🟡 · 0 ❌** ([§1b.1](#1b1-unipi-300-in-the-desktop-app-incl-cron) table unchanged); driver suite `unipi` **28/28 PASS** with the real model at HEAD, re-verified by `[qa-r4-fix]` (qa-r4.md §9) after the QA-8 + H-1…H-5 fixes; the same scenario files also pass on the charter local fallback (Xvfb+lavapipe) |
+| ZCode checklist | desktop **52 ✅ · 1 ⛔ (#50 ZCode product features) · 1 n/a (#51 mobile)**; `zcode` driver suite **6/6 PASS** incl. the previously failing `zcode-row-actions` (H-3 fix); counts per `apps/oino-desktop/DESIGN-STATUS.md` |
+| perf / soak | 30-min faux soak **PASS** (2566 steps, RSS slope **1.07 MB/min**, limit 8; threads 233→232, fds 438→430, 0 crash/stall) and 4-pane perf **PASS** (run p99 **4.50 ms**, budget 10; keystroke→paint 7.6 ms; idle CPU 0.80 % UI thread) — qa-r4.md §9, Xvfb+lavapipe numbers |
+| harness gaps | **closed**: pointer injection + semantic tree ([gui-driver.md](gui-driver.md), §1b.7 items 1–2), host-neutral scenarios (H-1/H-2/H-4), click racing at turn end (H-3), local faux lifecycle (H-5). **Remaining**: H-6 panel-body OUS nodes never register in the tree (assert the panel title instead); D11 synthetic wheel-scroll not accepted by GPUI's list hitbox; no mouse drag / touch / multi-window / webview content |
+| test tooling | `cargo xtask gui suite unipi\|zcode\|qa-r4` manifests + `scripts/gui-drive.py` (SSH-bridged automation socket); charter local fallback `apps/oino-desktop/scripts/local-app.sh` (demo/faux/real, minimal-PATH isolation) + `docs/dev/v1/qa-r4/local-suite.py`; `scripts/round4/gates.sh` (all gates, incl. new apps rustdoc); host suites in `extensions/unipi/*/harness/run.sh` |
+| `mise` launcher | `mise run desktop\|start\|stop` (`scripts/desktop.sh`) verified on a private Xvfb :97 (never the owner's display): `start` builds + backgrounds the release app with a scratch config, `stop` stops it cleanly, `desktop` runs foreground (`--demo` exercised; 100 KB rendered screenshot kept under `target/` during the check) |
+| Windows build | the `[gui-driver]` automation Unix-socket server broke the Windows desktop build (never compiled there before); now `cfg(unix)` with a no-op install on Windows — the alpha.4 `coffee` build proves it |
+| release artifacts | 1.0.0-alpha.4 built on this PC (Linux CLI+desktop), `coffee` (NSIS + CLI smoke) and `desmondgiam` (.app/.dmg + CLI smoke) — [§7](#7-release-builds-10000-alpha4-2026-10-30-v1-alpha--845d31e-not-tagged-or-published); AppImage/deb assigned to `ti`, which stayed **Tailscale-blocked** the whole round (fresh approval URL per attempt, surfaced to the owner), so the Linux packages were built with the charter's `remote-build local` fallback and the `ti` re-run (suites + soak/perf on the reference host) stays outstanding |
+| gates | all green at `845d31e` — see [§1](#1-gates-this-commit) |
 
 ## 1b. Round 3 summary (work id `round3-integration`, 2026-10-28, `v1-alpha`)
 
@@ -300,11 +324,11 @@ Open gaps (recorded, not fixed here):
 
 ## 2. End-to-end smoke (release `oino` 1.0.0-alpha.2, temp agent dir, bundle of 33 packages)
 
-Re-checked on **1.0.0-alpha.3** (2026-10-28, local release build): `oino --version`,
-`oino-kanboard --version`, `oino-desktop --version` → `1.0.0-alpha.3`; faux print run →
-`Hello from faux.`; `oino cron status` → "scheduler not running …"; `oino-desktop --demo` on a
-private Xvfb :98 + lavapipe stayed up 20 s with a rendered screenshot (110 KB). The table below
-is the round-2 record and stays valid.
+Re-checked on **1.0.0-alpha.4** (2026-10-30, local release build): `oino --version`,
+`oino-kanboard --version`, `oino-desktop --version` → `1.0.0-alpha.4`; faux print run →
+`Hello from faux.` (`scripts/install-smoke.sh` locally, plus every host's smoke.txt);
+`oino-desktop --demo` verified through `mise run start` on a private Xvfb :97 + lavapipe
+(rendered screenshot). The table below is the round-2 record and stays valid.
 
 | Area | Result | How |
 |---|---|---|
@@ -462,8 +486,10 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
     limit of SSH / `nohup` shells every bundled component fails to init (`os error 24`). Works
     with `ulimit -n 4096` (§7).
 11. **Desktop perf**: four streaming panes do not reliably meet the 10 ms p99 budget.
-12. **Release artifacts** in §7 are 1.0.0-alpha.3, built locally and (smoke only) on `coffee`
-    and `desmondgiam`; the host build outputs stay on the hosts in `~/oino-release`. Nothing is
+12. **Release artifacts** in §7 are 1.0.0-alpha.4 (2026-10-30, `845d31e`), built locally
+    (Linux CLI+desktop+AppImage/deb) and on `coffee` (NSIS) and `desmondgiam` (.app/.dmg),
+    each with its host smoke; the host build outputs stay on the hosts in `~/oino-release`.
+    The `ti` packaging + GUI re-run is blocked by the Tailscale check (see §7). Nothing is
     signed, tagged or published.
 13. **Desktop GUI QA**: the round-3 defects QA-1…QA-7 and GA-45 are fixed and live-verified
     ([gui-qa.md](gui-qa.md) Resolution; commits `d94a75f`…`1e1242c`); the 30-min faux soak passes
@@ -496,7 +522,7 @@ Verified end to end: `oino -p` with `oino/deepseek/deepseek-flash` opened a loca
 | GA-45 | ✅ | `ExtensionMode::Desktop` / `Mobile`; `host-info.frontends` from mode + `_oino/hello` | none — `embedded.rs` passes `Desktop` and registers `oino-desktop` ([gui-qa-fix] `1e1242c`, verified via `/doctor`) |
 | GA-46 | ✅ | no refresh loop when idle (scoped ticker ends one tick after the last animation) | measured 2026-10-29: idle CPU 0.8–1.0 % UI thread after settle, threads 180 / fds 43 flat across idle ↔ 2 streaming sessions (64 llvmpipe + 32 GPUI + 84 app threads), 12-min faux soak PASS (threads 233→231, RSS slope −0.1 MB/min) — [zcode-perf], DESIGN-STATUS perf section |
 
-## 7. Release builds (1.0.0-alpha.3, 2026-10-27/28, `v1-alpha` @ `f934b81`, not tagged or published)
+## 7. Release builds (1.0.0-alpha.4, 2026-10-30, `v1-alpha` @ `845d31e`, not tagged or published)
 
 Local builds (this machine, `nice -n 10`, `-j 4`):
 
@@ -522,42 +548,53 @@ and `build-info.txt` per target.
 
 Commands used: `cargo xtask remote-build coffee --os windows --jobs 4 -- --formats nsis`;
 `cargo xtask remote-build mac --os macos --jobs 4 -- --formats app,dmg` (thin x86_64 — a
-universal build needs ~6 GB more than the 17 GB free on that host).
+universal build needs ~6 GB more than the ~10 GB free on that host after cleanup);
+`cargo xtask remote-build local --jobs 4 -- --formats appimage,deb` — the AppImage/deb run
+on `ti` could not run (Tailscale check never approved this round either), so the Linux
+packages come from the same script locally (charter fallback, built at `781fb00`, one commit
+after the hosts: a `build.sh` packaging fix only, no product change).
 
 | Target | Artifact | Size |
 |---|---|---|
-| x86_64-unknown-linux-gnu (local) | `oino` | 83.5 MiB |
-| | `oino-kanboard` | 5.6 MiB |
+| x86_64-unknown-linux-gnu (local) | `oino` | 83.6 MiB |
+| | `oino-kanboard` | 5.5 MiB |
 | | `oino-desktop` | 139.1 MiB |
-| x86_64-pc-windows-msvc (`coffee`) | `oino.exe` | 66.4 MiB |
+| x86_64-pc-windows-msvc (`coffee`) | `oino.exe` | 66.7 MiB |
 | | `oino-kanboard.exe` | 4.2 MiB |
-| | `oino-desktop.exe` | 93.0 MiB |
-| | `oino-desktop_1.0.0-alpha.3_x64-setup.exe` (NSIS, per-user) | 28.8 MiB |
-| x86_64-apple-darwin (`mac`) | `oino` | 74.0 MiB |
+| | `oino-desktop.exe` | 93.7 MiB |
+| | `oino-desktop_1.0.0-alpha.4_x64-setup.exe` (NSIS, per-user) | 28.9 MiB |
+| x86_64-apple-darwin (`mac`) | `oino` | 74.2 MiB |
 | | `oino-kanboard` | 4.8 MiB |
-| | `oino-desktop` | 100.7 MiB |
-| | `Oino.app` (ad-hoc signed, not notarized) | 102 MiB |
-| | `Oino_1.0.0-alpha.3_x64.dmg` | 44.6 MiB |
+| | `oino-desktop` | 101.5 MiB |
+| | `Oino.app` (ad-hoc signed, not notarized) | 103 MiB |
+| | `Oino_1.0.0-alpha.4_x64.dmg` | 44.9 MiB |
 
-Smoke results (see §1b.6 and `target/release-artifacts/<target>/smoke.txt`): Linux ✅ (print,
-`cron status`, desktop `--demo` 20 s on Xvfb :98 + lavapipe with a screenshot); Windows ✅ CLI /
-🟡 desktop alive but the console is locked; macOS ✅ CLI and desktop rendering (screenshot).
+Smoke results (see `target/release-artifacts/<target>/smoke.txt`): Windows ✅ CLI (`--version`,
+faux print with 35 bundled packages) / 🟡 desktop alive but the console is locked (PARTIAL, as
+in round 3); macOS ✅ CLI + `.app` bundle version / 🟡 desktop alive after 20 s but no
+screenshot this time (no Screen Recording grant over SSH / display asleep); Linux ✅ (local
+run: `--version` ×3, faux print, desktop `--demo` 20 s on its own Xvfb with a screenshot).
 
-Problems found: the macOS **desktop** build aborted in `apps/oino-desktop/scripts/build.sh`
-(`target_args[@]: unbound variable` — macOS `/bin/bash` 3.2 with `set -u`), fixed with the
-`${arr[@]+"${arr[@]}"}` idiom used by the mobile script. Still open: no signing/notarisation
-(Windows SmartScreen, macOS Gatekeeper), no Android build this round, `create-dmg` still needs
-Finder over a GUI session (this run succeeded; the `hdiutil` fallback stays for SSH).
+Problems found: the **Windows desktop build failed** on the automation server's Unix-only
+imports (`std::os::unix`, never compiled on Windows before the `[gui-driver]` round) — fixed
+with a `cfg(unix)` gate and a no-op install on Windows (`845d31e`); `ti` stayed
+Tailscale-blocked all round, so the Linux AppImage/deb come from the local fallback run and
+the `ti` re-run (build + `unipi` suite + soak/perf on the reference host) is outstanding.
+Still open: no signing/notarisation (Windows SmartScreen, macOS Gatekeeper), no Android build
+this round, `create-dmg` still needs Finder over a GUI session (this run used the `hdiutil`
+fallback). The host build outputs stay on `coffee`/`mac` in `~/oino-release` for reuse; the
+mac was trimmed back to ~10 GB free (stale `target/debug`, `aarch64-apple-darwin`, old
+artifacts removed).
 
 ## 8. Next steps
 
-0. **ZCode parity round** — desktop side done ([zcode-perf], 2026-10-29): every §8 row that
-   was 🟡 is closed (motion 6, performance 52), the `zcode` GUI suite covers the round
-   (docs/dev/v1/gui/suites/zcode.json) and docs/dev/v1/zcode-details.md maps each behaviour to
-   its ZCode spec. Remaining from the old list: mobile tablet layout, i18n + Windows/macOS
-   rendering checks, re-running the `zcode`/`unipi` suites and `perf.sh`/`soak.sh` on `ti`
-   once its Tailscale re-auth is approved (this round's numbers are Xvfb+lavapipe local
-   fallback), and real-provider scenario runs once the router balance allows (§1b.9).
+0. **`ti` re-run (blocked since 2026-10-29)** — once the owner approves the Tailscale check:
+  `cargo xtask ti sync && cargo xtask ti build`, the `unipi`/`zcode`/`qa-r4` suites, `perf.sh`/
+  `soak.sh` and the `remote-build ti@ti --dir oino-test/oino --jobs 6 -- --formats appimage,deb`
+  packaging on the reference host (all local numbers since are Xvfb+lavapipe fallback). The
+  ZCode desktop rows are otherwise done ([zcode-perf], `zcode` suite 6/6); remaining from the
+  old list: mobile tablet layout, i18n + Windows/macOS rendering checks, real-provider
+  scenario runs once the router balance allows (§1b.9).
 1. **core-runtime**: `agents.agent.set-ui-policy` + depth on `call-context`; `control.move-project-state`
    (trust.json + sessions dir) and tmp GC. (Bash detach, file checkpoints, single-item queue
    commands, `disabledExtensions`, topic / agent feeds, built-in render overrides,
