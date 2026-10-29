@@ -1306,6 +1306,24 @@ fn render_node(
                 )
                 .into_any_element()
         }
+        OusNode::GotoEditor { path, label } => {
+            // Client-side navigation: the pane special-cases "goto-editor"
+            // into PaneEvent::GotoEditor instead of `extension_ui_action`.
+            let cb = Rc::clone(&o.on_action);
+            let value = serde_json::json!({"path": path.clone()});
+            let label = label.clone().unwrap_or_else(|| path.clone());
+            div()
+                .flex()
+                .child(
+                    Btn::new(ElementId::Name(format!("{key}/goto/{path}").into()))
+                        .label(SharedString::from(label))
+                        .icon(IconName::FilePen)
+                        .variant(Variant::Secondary)
+                        .size(BtnSize::Sm)
+                        .on_click(move |_, _, cx| cb("goto-editor", value.clone(), cx)),
+                )
+                .into_any_element()
+        }
         OusNode::Empty { message } => match message {
             Some(m) => crate::components::empty::empty_compact(
                 &t,

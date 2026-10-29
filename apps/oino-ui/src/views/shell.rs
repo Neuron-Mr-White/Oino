@@ -42,7 +42,7 @@ use crate::views::session_pane::{BottomTab, PaneEvent, PaneMenu, SessionPane, Si
 use crate::views::settings_page::{SettingsEvent, SettingsSection, SettingsView};
 use crate::views::{
     Abort, CloseFind, CommandPalette, CycleThinking, FindInConversation, FocusComposer, GoBoard,
-    GoCron, GoExtensions, GoSessions, NewSession, OpenFolder, OpenSettings, PickModel,
+    GoCron, GoExtensions, GoFiles, GoSessions, NewSession, OpenFolder, OpenSettings, PickModel,
     PickThinking, SwitchSession, ToggleBottom, ToggleFrameOverlay, ToggleSidePane, ToggleSidebar,
     ToggleStatusPanel, ToggleTheme, TreeView,
 };
@@ -64,6 +64,8 @@ pub enum Route {
     Onboarding,
     /// New-chat page: greeting + project picker (round5 #6).
     NewChat,
+    /// Files page: tree + code editor + LSP (round5 #24, WP-editor additive).
+    Files,
 }
 
 /// Which splitter is being dragged.
@@ -148,6 +150,9 @@ pub struct AppShell {
     pub(crate) palette: Option<(Entity<PaletteView>, Subscription)>,
     pub(crate) switch: Option<SwitchSheet>,
     pub(crate) settings_view: Option<(Entity<SettingsView>, Subscription)>,
+    /// The Files page, kept alive across routes so buffer, tree and LSP persist
+    /// (round5 #24, WP-editor additive).
+    pub(crate) files_view: Option<(Entity<crate::views::files::FilesView>, Subscription)>,
     pub(crate) extensions: Vec<ExtensionInfo>,
     toasts: Toasts,
     toast_task: Option<Task<()>>,
@@ -289,6 +294,7 @@ impl AppShell {
             palette: None,
             switch: None,
             settings_view: None,
+            files_view: None,
             extensions: Vec::new(),
             toasts: Toasts::default(),
             toast_task: None,
@@ -392,6 +398,7 @@ impl AppShell {
             ("settings", ns) => self.open_settings((!ns.is_empty()).then_some(ns), window, cx),
             ("board", _) => self.open_board(window, cx),
             ("cron", _) => self.open_cron(window, cx),
+            ("files-page", _) => self.open_files(window, cx),
             ("extensions", _) => self.run_app_action("extensions", window, cx),
             ("model", _) => self.with_pane(cx, |p, cx| p.toggle_menu(PaneMenu::Model, cx)),
             ("needs", _) => {
@@ -555,6 +562,7 @@ impl AppShell {
                 Route::Cron => "cron",
                 Route::Onboarding => "onboarding",
                 Route::NewChat => "new-chat",
+                Route::Files => "files",
             }
             .to_owned(),
             session: pane.as_ref().map(|p| p.model.id.clone()),
@@ -1039,6 +1047,23 @@ impl AppShell {
                 self.bottom_open = !self.bottom_open;
                 cx.notify();
             }
+            PaneEvent::GotoEditor(path) => {
+                // An OUS file reference: cwd-relative for the pane it came
+                // from (round5 #24).
+                let full = {
+                    let cwd = PathBuf::from(&pane.read(cx).model.cwd);
+                    let candidate = Path::new(path);
+                    if candidate.is_absolute() {
+                        candidate.to_path_buf()
+                    } else {
+                        cwd.join(candidate)
+                    }
+                };
+                self.open_files(window, cx);
+                if let Some((view, _)) = &self.files_view {
+                    view.update(cx, |v, cx| v.open_file(full, window, cx));
+                }
+            }
         }
     }
 
@@ -1370,6 +1395,7 @@ impl AppShell {
             }
             "board" => self.open_board(window, cx),
             "cron" => self.open_cron(window, cx),
+            "files-page" => self.open_files(window, cx),
             "extensions" => {
                 self.route = Route::Extensions;
                 self.settings_view = None;
@@ -1569,6 +1595,39 @@ impl AppShell {
         cx.notify();
     }
 
+    /// The Files page (round5 #24): creates the view once — buffer, tree and the
+    /// language server survive route switches. Rooted at the visible session's
+    /// project, else the default cwd.
+    pub(crate) fn open_files(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.files_view.is_none() {
+            let root = self
+                .active_pane()
+                .map(|p| PathBuf::from(&p.read(cx).model.cwd))
+                .filter(|p| p.is_dir())
+                .unwrap_or_else(|| self.default_cwd());
+            let agent_dir = self.host.info().agent_dir.clone();
+            let view =
+                cx.new(|cx| crate::views::files::FilesView::new(root, agent_dir, window, cx));
+            let sub = cx.subscribe_in(
+                &view,
+                window,
+                |this, _view, event: &crate::views::files::FilesEvent, _window, cx| match event {
+                    crate::views::files::FilesEvent::Toast(text) => {
+                        this.toast(ToastKind::Info, None, text.clone(), cx);
+                    }
+                },
+            );
+            self.files_view = Some((view, sub));
+        }
+        self.settings_view = None;
+        self.route = Route::Files;
+        if let Some((view, _)) = &self.files_view {
+            let handle = Focusable::focus_handle(view.read(cx), cx);
+            window.focus(&handle, cx);
+        }
+        cx.notify();
+    }
+
     /// An app-level overlay (result card, confirm, readme) closed (QA-1): return focus to
     /// the visible route's surface instead of leaving it on the removed dialog.
     pub(crate) fn refocus_after_overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1635,6 +1694,14 @@ impl AppShell {
             }
             Route::NewChat => {
                 window.focus(&self.new_chat_focus, cx);
+            }
+            Route::Files => {
+                if let Some((view, _)) = &self.files_view {
+                    let handle = Focusable::focus_handle(view.read(cx), cx);
+                    window.focus(&handle, cx);
+                } else {
+                    window.focus(&self.focus, cx);
+                }
             }
             Route::Extensions | Route::Onboarding => {
                 window.focus(&self.focus, cx);
@@ -2034,6 +2101,10 @@ impl Render for AppShell {
             },
             Route::Board => self.render_board(window, cx),
             Route::Cron => self.render_cron(window, cx),
+            Route::Files => match &self.files_view {
+                Some((view, _)) => view.clone().into_any_element(),
+                None => self.render_sessions(window, cx),
+            },
             Route::Extensions => self.render_extensions(window, cx),
             Route::Onboarding => self.render_onboarding(window, cx),
         };
@@ -2111,7 +2182,7 @@ impl Render for AppShell {
                 Route::Settings => self.settings_view.is_none(),
                 Route::Cron => self.cron_ui.edit.is_none(),
                 Route::Extensions => false,
-                Route::NewChat | Route::Board | Route::Onboarding => true,
+                Route::NewChat | Route::Board | Route::Onboarding | Route::Files => true,
             };
         let columns = div()
             .absolute()
@@ -2193,6 +2264,9 @@ impl Render for AppShell {
             }))
             .on_action(cx.listener(|this, _: &GoBoard, window, cx| {
                 this.open_board(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GoFiles, window, cx| {
+                this.open_files(window, cx);
             }))
             .on_action(cx.listener(|this, _: &GoExtensions, window, cx| {
                 this.run_app_action("extensions", window, cx);

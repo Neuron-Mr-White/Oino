@@ -23,6 +23,7 @@
 pub mod board;
 pub mod cron;
 pub mod extensions_page;
+pub mod files;
 pub mod mascot;
 pub mod new_chat;
 pub mod onboarding;
@@ -49,6 +50,8 @@ gpui_kit::actions!(
         GoSessions,
         /// Board screen.
         GoBoard,
+        /// Files page (tree + editor, round5 #24).
+        GoFiles,
         /// Extensions screen.
         GoExtensions,
         /// Automations (cron) screen.
@@ -126,6 +129,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new(primary!("2"), GoBoard, None),
         KeyBinding::new(primary!("3"), GoExtensions, None),
         KeyBinding::new(primary!("4"), GoCron, None),
+        KeyBinding::new(primary!("5"), GoFiles, None),
         KeyBinding::new(primary!("b"), ToggleSidebar, None),
         KeyBinding::new(primary!("j"), ToggleSidePane, None),
         KeyBinding::new(primary!("`"), ToggleBottom, None),
@@ -143,4 +147,5 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("ctrl-alt-shift-f", ToggleFrameOverlay, None),
         KeyBinding::new(primary!("q"), Quit, None),
     ]);
+    files::init(cx);
 }

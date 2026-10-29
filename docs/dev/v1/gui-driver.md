@@ -238,6 +238,19 @@ file-watch refresh (`r5-board-inprocess` does). Drag between lanes goes
 `{"drag": {"id": "card-OIN-11", "to_id": "lane-in_progress"}}` — lane ids are
 `lane-<status>` and their probe label is `lane <Title>`.
 
+`seed_file` (round-5 #24 — the Files page roots at the app cwd) writes plain
+files under the project root: `{"path": "src/x.rs", "content": "…"}` or
+`{"files": [{"path", "content"}, …]}`; `root` defaults to `~/oino-test/project`
+on `ti` and `target/tmp/local-run/project` locally. A seeded crate must declare
+`[workspace]` in its `Cargo.toml` — a scratch project nested inside a checkout
+otherwise trips cargo's "believes it's in a workspace" error and the language
+server sees a detached file (no diagnostics).
+
+`wait_for` pitfalls the Files scenarios hit: a `label` selector matching
+several rows is an error, so wait on `text` (any-element contains) instead; and
+every automation-probed row needs a distinct probe name or the registry
+deduplicates identical paths (`automation_named`).
+
 ### Shipped scenarios
 
 | File | Covers |
@@ -304,6 +317,8 @@ cargo xtask gui suite unipi --only workflow,kanboard
 | `r5-board-inprocess` (round 5) | `kanboard_seed` files → native board, no daemon text, re-seed → watcher refresh |
 | `r5-board-drag-pc` (round 5) | card → lane drag moves the task; a refused lane takes no drop |
 | `r5-board-side-phone` (round 5) | the side-pane Board tab's phone layout: pills, one lane, inline detail |
+| `r5-files-editor` (round 5) | `seed_file` → nav → Files, open `hello.rs`, type into the editor, ⌘S saves ("Saved" toast), reopen reads the persisted buffer |
+| `r5-editor-lsp` (round 5) | a seeded crate's type error surfaces diagnostics in the auto-opened Problems strip (squiggles + rows), status bar reads `LSP rust-analyzer`, ⌘S format-on-saves the unindented file |
 
 ## 5. `ti` specifics
 

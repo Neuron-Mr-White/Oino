@@ -6123,6 +6123,7 @@ name = "oino-ui"
 version = "1.0.0-alpha.4"
 dependencies = [
  "alacritty_terminal",
+ "anyhow",
  "chrono",
  "futures",
  "gpui-kit",
@@ -6130,6 +6131,7 @@ dependencies = [
  "image",
  "indexmap",
  "lb-wry",
+ "lsp-types",
  "oino-agent",
  "oino-ai",
  "oino-client",

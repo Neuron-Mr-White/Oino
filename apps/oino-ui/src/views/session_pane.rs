@@ -97,6 +97,9 @@ pub enum PaneEvent {
     ClosePane,
     /// A destructive pane action waits for confirmation (`SessionPane::pending_confirm`).
     Confirm,
+    /// An OUS `goto-editor` node was clicked: open the Files page at this
+    /// (cwd-relative) path (round5 #24).
+    GotoEditor(String),
 }
 
 /// A destructive pane action waiting for the shell's confirmation dialog (app-convention).
@@ -1167,6 +1170,17 @@ impl SessionPane {
         value: JsonValue,
         cx: &mut Context<Self>,
     ) {
+        if action == "goto-editor" {
+            // Client-side navigation (round5 #24): a `goto-editor` OUS node
+            // opens the Files page instead of reaching the extension.
+            if let Some(path) = value.get("path").and_then(JsonValue::as_str) {
+                let path = path.to_owned();
+                cx.emit(PaneEvent::GotoEditor(path));
+            } else {
+                cx.emit(PaneEvent::Toast("goto-editor needs a path".to_owned()));
+            }
+            return;
+        }
         let (panel, action) = (panel.to_owned(), action.to_owned());
         let value = (!value.is_null()).then_some(value);
         self.frontend(cx, move |b| async move {

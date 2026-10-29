@@ -54,10 +54,13 @@ log = "0.4"
 anyhow = "1"
 futures = "0.3"
 indexmap = "2"
+# LSP wire types for the Files editor's language-server client (round5 #24); the same
+# version and feature set `gpui-base` requires, so no second copy lands in the lock.
+lsp-types = { version = "0.97.0", features = ["proposed"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros", "process", "io-util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 

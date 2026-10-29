@@ -52,6 +52,8 @@ pub mod automation;
 #[cfg(feature = "views")]
 pub mod components;
 pub mod design;
+#[cfg(feature = "views")]
+pub mod editor;
 pub mod host;
 pub mod kanboard;
 #[cfg(feature = "mobile")]

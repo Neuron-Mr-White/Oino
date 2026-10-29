@@ -362,6 +362,12 @@ pub enum OusNode {
         tone: Tone,
         primary: bool,
     },
+    /// A clickable file reference: navigates the shell to the Files page with
+    /// `path` open (round5 #24 — a client-side action, not extension-bound).
+    GotoEditor {
+        path: String,
+        label: Option<String>,
+    },
     Empty {
         message: Option<String>,
     },
@@ -685,6 +691,10 @@ impl OusNode {
                 tone: Tone::of(value.get("tone")),
                 primary: flag(value, "primary", false),
             },
+            "goto-editor" => Self::GotoEditor {
+                path: st(value, "path").unwrap_or_default(),
+                label: st(value, "label"),
+            },
             "empty" => Self::Empty {
                 message: st(value, "message"),
             },
@@ -773,6 +783,9 @@ impl OusNode {
                     .join("  "),
             ),
             Self::Button { label, .. } => out.push(format!("[ {label} ]")),
+            Self::GotoEditor { path, label } => {
+                out.push(format!("[ {} ]", label.as_deref().unwrap_or(path)));
+            }
             Self::Empty { message } => out.extend(message.clone()),
             Self::Sparkline { label, .. } => out.extend(label.clone()),
             Self::BarChart { bars, .. } => {
@@ -1030,6 +1043,17 @@ mod tests {
             node.to_lines(),
             vec!["Info", "ok plain", "Model: gpt", "ctx 3/4", "fb"]
         );
+    }
+
+    #[test]
+    fn goto_editor_parses_path() {
+        let node = OusNode::parse(
+            &json!({"t":"goto-editor","path":"src/broken.rs","label":"open broken.rs"}),
+        );
+        assert!(matches!(
+            node,
+            OusNode::GotoEditor { ref path, .. } if path == "src/broken.rs"
+        ));
     }
 
     #[test]

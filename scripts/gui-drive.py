@@ -462,6 +462,32 @@ def run_step(client: Client, scenario: Scenario, method: str, params: dict, args
         # (round-5 #7: the board is in-process — a scenario seeds files, the
         # app's file watcher picks them up).
         return kanboard_seed(client, params)
+    if method == "seed_file":
+        # Writes file(s) under the app cwd (round-5 #24 — the Files page roots
+        # at the project dir). `root` defaults to `~/oino-test/project` on `ti`
+        # and `target/tmp/local-run/project` locally; `files` is a list of
+        # `{path, content}` (or the shorthand `path`+`content` params).
+        remote = bool(client.host)
+        root = params.get("root") or (
+            "/home/ti/oino-test/project" if remote else str(LOCAL_RUN / "project")
+        )
+        files = params.get("files") or [
+            {"path": params.get("path", "seed.txt"), "content": params.get("content", "")}
+        ]
+        for f in files:
+            rel = f["path"].lstrip("/")
+            if remote:
+                target = f"{root}/{rel}"
+                subprocess.run(
+                    ["ssh", client.host, f"mkdir -p $(dirname {shlex.quote(target)}) && cat > {shlex.quote(target)}"],
+                    input=f["content"].encode(),
+                    check=True,
+                )
+            else:
+                target = Path(root) / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(f["content"])
+        return f"{len(files)} file(s) under {root}"
     if method == "screenshot":
         name = params.get("name", f"{scenario.step:02d}-{scenario.name}")
         path = scenario.shots / f"{name}.png"

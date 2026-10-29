@@ -637,6 +637,7 @@ impl MobileShell {
             | PaneEvent::Focused
             | PaneEvent::ToggleSidebar
             | PaneEvent::ToggleBottom
+            | PaneEvent::GotoEditor(_) // no Files page on mobile (round5 #24)
             | PaneEvent::ClosePane => cx.notify(),
         }
     }

@@ -1094,6 +1094,27 @@ impl AppShell {
                             .selected(route == Route::Sessions),
                         ),
                     )
+                    // The Files page (round5 #24, WP-editor additive hunk).
+                    .child(
+                        nav_item(
+                            &t,
+                            "nav-files",
+                            IconName::FolderTree,
+                            "Files",
+                            Some("\u{2318}5"),
+                            route == Route::Files,
+                        )
+                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                            this.open_files(window, cx);
+                        }))
+                        .automation(
+                            crate::automation::Meta::labelled(
+                                crate::automation::Role::Row,
+                                "Files",
+                            )
+                            .selected(route == Route::Files),
+                        ),
+                    )
                     .when(has_board, |el| {
                         el.child(
                             nav_item(
@@ -1742,6 +1763,16 @@ impl AppShell {
         items.push(a("Terminal", Section::Panels, "panel-bottom", "toggle-bottom").keys("⌘`"));
         items.push(a("Review changes", Section::Panels, "file", "review"));
         items.push(a("Files", Section::Panels, "folder-open", "files"));
+        // The Files page (round5 #24, WP-editor additive hunk).
+        items.push(
+            a(
+                "Files page",
+                Section::Suggested,
+                "folder-open",
+                "files-page",
+            )
+            .keys("\u{2318}5"),
+        );
         if let Some(p) = pane {
             for s in &p.model.ui.shortcuts {
                 items.push(
