@@ -4,27 +4,141 @@
   "backend": "demo",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "list-new", "timeout_ms": 60000}},
-    {"assert": {"route": "sessions", "panes": 1}},
-    {"click": {"id": "list-new"}},
-    {"wait_state": {"route": "new-chat", "timeout_ms": 20000}},
-    {"click": {"id": "list-new"}},
-    {"wait_state": {"route": "new-chat", "timeout_ms": 20000}},
-    {"assert": {"panes": 1}},
-    {"screenshot": {"name": "01-second-plus-still-page"}},
-    {"click": {"id": "new-chat-none"}},
-    {"wait_state": {"route": "sessions", "timeout_ms": 20000}},
-    {"assert": {"panes": 1}},
-    {"screenshot": {"name": "02-empty-reused"}},
-    {"click": {"id": "composer"}},
-    {"type_text": {"text": "count the rows in Cargo.toml", "submit": true}},
-    {"wait_state": {"busy": true, "timeout_ms": 30000}},
-    {"wait_state": {"busy": false, "timeout_ms": 180000}},
-    {"click": {"id": "list-new"}},
-    {"wait_state": {"route": "new-chat", "timeout_ms": 20000}},
-    {"click": {"id": "new-chat-none"}},
-    {"wait_state": {"route": "sessions", "timeout_ms": 20000}},
-    {"assert": {"panes": 2}},
-    {"screenshot": {"name": "03-content-spawns-new"}}
+    {
+      "wait_for": {
+        "id": "list-new",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "assert": {
+        "route": "sessions",
+        "panes": 1
+      }
+    },
+    {
+      "click": {
+        "id": "list-new"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "new-chat",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "key": {
+        "key": "secondary-n"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "new-chat",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "panes": 1
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-second-plus-still-page"
+      }
+    },
+    {
+      "click": {
+        "id": "new-chat-none"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "sessions",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "panes": 1
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-empty-reused"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "count the rows in Cargo.toml",
+        "submit": true
+      }
+    },
+    {
+      "wait_state": {
+        "busy": true,
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-turn-running"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "ap-allow",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "click": {
+        "id": "ap-allow"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "list-new"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "new-chat",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "id": "new-chat-none"
+      }
+    },
+    {
+      "wait_state": {
+        "route": "sessions",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "panes": 2
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-content-spawns-new"
+      }
+    }
   ]
 }

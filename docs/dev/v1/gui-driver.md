@@ -216,7 +216,7 @@ label/value), `any_text` (any of several needles
 — for features with two legitimate rendered states, e.g. the updater changelog body when the
 GitHub API quota is spent), `chrome`/`chrome_absent` (substring of any status, widget or frame
 segment text), `open` (substring of `state.open`), `element` (`{"id", "role", "label",
-"checked", "selected", …}`), `absent`. `wait_for` takes selectors
+"checked", "selected", "enabled", "bounds": {"width_min"/"width_max"/…}, …}`), `absent`. `wait_for` takes selectors
 (`id`/`role`/`label`, `absent`, `text`), `assert`/`wait_state` take the state-level ones. A failed
 step takes a `FAIL-<n>.png` screenshot and prints `state`; the run continues unless
 `--stop-on-failure` was passed. `--no-restart` reuses a running app, `--scene` overrides the
@@ -226,16 +226,29 @@ scenario's demo scene.
 `question`, `plan`, `board`, `info`, `stream`), so scenarios are deterministic and free
 (`apps/oino-desktop/src/demo.rs`). With a real backend, drop `scene` and the same steps apply.
 
+`kanboard_seed` (round-5 #7 — the board is in-process, so a scenario seeds
+**files** and the app's watcher picks them up) writes
+`<home>/projects/<slug>/project.json` plus one `.md` per task on the app host:
+`{"slug", "prefix" (default `OIN`), "root" (default the app cwd — `~/oino-test/project`
+on `ti`, `$PWD` locally), "home" (default `~/oino-test/agent/state/unipi.kanboard`
+on `ti`, `$OINO_KANBOARD_HOME`/`~/.oino/state/unipi.kanboard` locally),
+`next_id`, `tasks: [{id, title, status, priority?, order?, deps?, labels?, body?}]}`.
+Run it before opening the board; run it again mid-scenario to prove the
+file-watch refresh (`r5-board-inprocess` does). Drag between lanes goes
+`{"drag": {"id": "card-OIN-11", "to_id": "lane-in_progress"}}` — lane ids are
+`lane-<status>` and their probe label is `lane <Title>`.
+
 ### Shipped scenarios
 
 | File | Covers |
 |---|---|
 | `new-session-prompt.json` | click the composer, type a prompt, Enter, the assistant plan streams |
-| `r5-no-dup-sessions.json` | round5 #4 — `+`/⌘N route to the new-chat page; two rapid `+` presses keep one pane; "No project" reuses the empty startup session (`panes == 1`); after the turn has content, `+` + "No project" spawns a genuinely new session (`panes == 2`) |
+| `r5-no-dup-sessions.json` | round5 #4 — `+`/⌘N route to the new-chat page; a `+` then a rapid ⌘N keep one pane; "No project" reuses the empty startup session (`panes == 1`); after the turn has content, `+` + "No project" spawns a genuinely new session (`panes == 2`) |
 | `r5-new-chat-page.json` | round5 #6 — the new-chat page: greeting + `brand-logo`, project picker rows from `recent_cwds`, "No project", "Choose folder…"; picking a project opens its session; Esc returns |
 | `r5-host-switcher.json` | round5 #12 — the sidebar chip reads exactly "Current PC" with no hosts; "Add host…" form (name + SSH target) persists into the menu; selecting a host toasts the honest `oino serve` scope; back to "Current PC" |
 | `r5-icons-automations.json` | round5 #5/#13 — the sidebar Automations row renders its `CalendarClock` icon (the `IconName`-vs-assets unit test is the assertion); nav → Automations page screenshots |
 | `r5-contrast-tokens.json` | round5 #25 — screenshots of sidebar, Settings and Board on the raised contrast floor (the AA-ratio unit test over the token table is the assertion) |
+| `r5-settings-zcode.json` | round5 #14/#19 — the ZCode settings layout: ~268 px nav rail (element `bounds` range assertion), search "theme" hides non-matching nav rows and content rows, mascot toggle regression |
 | `r5-model-picker-modal.json` (real) | round5 #1 — the model-picker modal: ⌘M opens `model-picker`, search filters over name + full `provider/id`, pin → Pinned section after close+reopen, pick + Apply switches the model, Fusion tab picks any lead+sidekick and Apply auto-answers the `/fusion` dialogs → chip reads `Lead ◆ Sidekick`, Esc closes |
 | `r5-mode-switcher.json` | round5 #2 — the agent-mode switcher: five modes, Goal arms the chip without a command, Ctrl+Shift+M cycles, no `mode-chip`, no "unipi" text in the composer |
 | `r5-composer-context-ring.json` | round5 #3/#18 — the one-card composer: no project row, `context-ring` with its hover panel (sources, Compact), model + thought selects, Stop while busy |
@@ -245,6 +258,7 @@ scenario's demo scene.
 | `side-pane-tabs.json` | `hdr-side`, the `+` launcher menu, opening Files and Tree tabs, switching tabs |
 | `board-task.json` | nav → Board, the FAB dialog (create), card select, the task detail's move button |
 | `settings-switches.json` | settings nav → Unicrab, `toggle` of the mascot and native-Wayland switches |
+| `r5-settings-trim.json` (faux) | round5 #20/#22 — no "Manage extensions" row or dead setting rows, no footer namespace page, the Wayland row's next-launch note, the sidebar Extensions route still works, `Project · <folder>` scope label and the "Set in project" badge after a project-layer write |
 | `agents-live.json` | AgentRow live status, the Agent tab's read-only child timeline (`_oino/agents` + `agent_messages`), Stop agent, and the `btw` child opened from the StatusPanel's Run row |
 | `status-panel.json` | the StatusPanel fed by the sticky topics (Goal `turn 2/5`, tasks, sidekick, kanboard claims, git), header click → focus, ↓ + Enter → child Agent tab, Delete → stop confirm, ⌘⇧S collapse/expand |
 | `turn-undo.json` | the turn footer's Undo: confirmation, files restored toast, checkpoint still offered |
@@ -287,6 +301,9 @@ cargo xtask gui suite unipi --only workflow,kanboard
 | `unipi-cron` | `/cron` status, Automations page, new-job dialog |
 | `unipi-browser` | `/browser`, `browser_open` tool row |
 | `r5-tui-removal` (round 5) | no removed extension on the Extensions page, no package tag in `/` completions, `alt+h` inert, `state.chrome` free of footer-brand segments |
+| `r5-board-inprocess` (round 5) | `kanboard_seed` files → native board, no daemon text, re-seed → watcher refresh |
+| `r5-board-drag-pc` (round 5) | card → lane drag moves the task; a refused lane takes no drop |
+| `r5-board-side-phone` (round 5) | the side-pane Board tab's phone layout: pills, one lane, inline detail |
 
 ## 5. `ti` specifics
 

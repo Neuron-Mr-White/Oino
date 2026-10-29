@@ -252,7 +252,11 @@ impl AppShell {
                             .text_role(&t, TextRole::Display)
                             .weight_semibold()
                             .text_color(t.fg())
-                            .child("What should we work on?"),
+                            .child("What should we work on?")
+                            .automation(crate::automation::Meta::labelled(
+                                crate::automation::Role::Text,
+                                "What should we work on?",
+                            )),
                     )
                     .child(
                         div()

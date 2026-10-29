@@ -12,6 +12,7 @@
     {"screenshot": {"name": "02-menu"}},
     {"click": {"role": "menu_row", "label": "Add host"}},
     {"wait_for": {"id": "host-form-name", "timeout_ms": 20000}},
+    {"click": {"id": "host-form-name"}},
     {"type_text": {"text": "ti-box"}},
     {"click": {"id": "host-form-target"}},
     {"type_text": {"text": "oi@100.64.0.9"}},

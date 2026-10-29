@@ -17,9 +17,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, InteractiveElement as _,
-    IntoElement, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Window, div, px,
+    AnyElement, App, AppContext as _, ClickEvent, Context, Entity, Focusable as _,
+    InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use serde::{Deserialize, Serialize};
 
@@ -275,7 +275,16 @@ impl AppShell {
             });
         });
         let cancel = Rc::clone(&close);
-        let labeled = |label: &str, input: &Entity<InputState>| {
+        let labeled = |label: &str, input: &Entity<InputState>, id: &'static str, cx: &App| {
+            // Registered for the driver (the dialog owns the keyboard, so a scenario
+            // clicks the field it types into; docs/dev/v1/gui-driver.md §2).
+            let field = crate::automation::registry::probe_named(
+                Input::new(input).into_any_element(),
+                crate::automation::Meta::labelled(crate::automation::Role::Input, label)
+                    .value(input.read(cx).value().to_string())
+                    .focus(input.read(cx).focus_handle(cx)),
+                id,
+            );
             div()
                 .flex()
                 .flex_col()
@@ -287,14 +296,14 @@ impl AppShell {
                         .text_color(t.fg_subtle())
                         .child(label.to_owned()),
                 )
-                .child(Input::new(input))
+                .child(field)
         };
         let body = div()
             .flex()
             .flex_col()
             .gap(px(space::S3))
-            .child(labeled("Name", &form.name))
-            .child(labeled("SSH target", &form.target))
+            .child(labeled("Name", &form.name, "host-form-name", cx))
+            .child(labeled("SSH target", &form.target, "host-form-target", cx))
             .child(
                 div()
                     .text_role(t, TextRole::Sm)
