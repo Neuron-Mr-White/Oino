@@ -408,7 +408,7 @@ run --no-restart` after `apps/oino-desktop/scripts/local-app.sh start <backend> 
 | Scenario | Steps | Result |
 |---|---|---|
 | `zcode-model-menu` | 18 | **PASS** until round 5 — **replaced by `r5-model-picker-modal`** (round5 #1 deleted the popover drill-down for the modal picker); the historical row records the round-3 proof of the ⌘M / chip read-back path the modal inherits |
-| `zcode-thinking-cycle` | 14 | **PASS** — level menu sets Off, `alt-t` steps Off→Minimal→Low, menu shows Low checked |
+| `zcode-thinking-cycle` | 14 | **PASS** — level menu sets Off (opened via the `thought-trigger` chip since round 5: Ctrl+Shift+M now cycles the agent mode, round5 #2), `alt-t` steps Off→Minimal→Low, menu shows Low checked |
 | `zcode-palette-history` | 18 | **PASS** — ⌘K search “board” + pick records history, chip `History board` on the empty query, ⌥1 applies it, per-chip × forgets it (persisted), palette stays open |
 | `zcode-row-actions` | 11 | **PASS** — `Thought for` label, hover bar with the arrival time, Copy → check glyph for 1.2 s |
 | `zcode-session-menu` | 13 | **PASS** — right-click a session row: Pin / Mark as unread / Copy session id / Copy session path / Reveal / Delete; Mark as unread ↔ Mark read toggles |

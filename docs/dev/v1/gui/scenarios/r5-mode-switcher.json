@@ -1,6 +1,6 @@
 {
   "name": "r5-mode-switcher",
-  "scene": "run",
+  "scene": "welcome",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
     {
@@ -12,6 +12,13 @@
     {
       "click": {
         "id": "composer"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "agent-mode",
+        "label": "Regular",
+        "timeout_ms": 5000
       }
     },
     {
@@ -51,6 +58,13 @@
       }
     },
     {
+      "wait_for": {
+        "id": "agent-mode",
+        "label": "Goal",
+        "timeout_ms": 5000
+      }
+    },
+    {
       "assert": {
         "element": {
           "id": "agent-mode",
@@ -59,7 +73,16 @@
       }
     },
     {
-      "key": "secondary-shift-m"
+      "key": {
+        "key": "secondary-shift-m"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "agent-mode",
+        "label": "Graph",
+        "timeout_ms": 5000
+      }
     },
     {
       "assert": {
@@ -70,7 +93,16 @@
       }
     },
     {
-      "key": "secondary-shift-m"
+      "key": {
+        "key": "secondary-shift-m"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "agent-mode",
+        "label": "Ralph",
+        "timeout_ms": 5000
+      }
     },
     {
       "assert": {
@@ -81,7 +113,16 @@
       }
     },
     {
-      "key": "secondary-shift-m"
+      "key": {
+        "key": "secondary-shift-m"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "agent-mode",
+        "label": "Regular",
+        "timeout_ms": 5000
+      }
     },
     {
       "assert": {
@@ -92,14 +133,8 @@
       }
     },
     {
-      "key": "secondary-shift-m"
-    },
-    {
-      "assert": {
-        "element": {
-          "id": "agent-mode",
-          "label": "Plan"
-        }
+      "key": {
+        "key": "secondary-shift-m"
       }
     },
     {
@@ -127,6 +162,12 @@
       "type_text": {
         "text": "say MODE-SWITCHER-OK",
         "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Ran /goal",
+        "timeout_ms": 20000
       }
     },
     {
