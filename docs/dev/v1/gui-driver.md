@@ -293,7 +293,7 @@ cargo xtask gui suite unipi --only workflow,kanboard
 |---|---|
 | `unipi-core` | the work tray: an empty composer's `↓` opens `unipi.core/tray`, close |
 | `unipi-info-screen` | `/info` dashboard tabs, `r` refresh, close |
-| `unipi-workflow` | mode chip + menu, `/permission ask`, approval card → allow, `/plan on\|off` |
+| `unipi-workflow` | `/permission status/ask/auto` toasts, approval card → allow, `/plan on/off` (the permission mode chip is gone — round5 #2; QA-r5 D-7 repoint) |
 | `unipi-ask-user` | `ask_user` (enabled through `settings`) → question card → answer |
 | `unipi-long-horizon` | `/goal` + Goal status, `/visualize-progress`, `/regular` clears it, ralph/graph/swarm |
 | `unipi-memory` | `/memory`, `/memory-search`, `memory_store` tool, `/memory-consolidate` |
@@ -331,6 +331,11 @@ scene). The client restarts the app itself in `run` mode:
    port and no `socat` is needed.
 3. Screenshots land under `~/oino-test/run` (or the scenario's `--remote-path-prefix`) on `ti`
    and are fetched back into `docs/dev/v1/design/shots/gui/<scenario>/`.
+
+If the composer probe never appears within 60 s (the QA-r5 D-8 startup flake: occasionally the
+app's first frames never publish the pane probes), the client restarts the app **once** with
+the same scene/env before failing the run — a clean restart has recovered it every time so
+far.
 
 `scripts/gui-drive.py --ti quit` (or `cargo xtask ti stop`) leaves nothing running on the host.
 

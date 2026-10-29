@@ -34,7 +34,7 @@
     },
     {
       "wait_for": {
-        "id": "set-ns-0",
+        "id": "settings-nav",
         "timeout_ms": 30000
       }
     },

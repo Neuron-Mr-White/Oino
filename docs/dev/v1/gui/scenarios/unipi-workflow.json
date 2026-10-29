@@ -3,28 +3,140 @@
   "backend": "real",
   "shots": "docs/dev/v1/design/shots/desktop",
   "steps": [
-    {"wait_for": {"id": "composer", "timeout_ms": 180000}},
-    {"type_text": {"text": "/permission status", "submit": true}},
-    {"wait_for": {"text": "Permission mode:", "timeout_ms": 30000}},
-    {"screenshot": {"name": "01-permission-status"}},
-    {"type_text": {"text": "/permission ask", "submit": true}},
-    {"wait_for": {"text": "Permission mode: ask", "timeout_ms": 30000}},
-    {"screenshot": {"name": "02-permission-ask"}},
-    {"click": {"id": "composer"}},
-    {"type_text": {"text": "Run the shell command `echo approval-probe-ok` with the bash tool, then reply DONE.", "submit": true}},
-    {"wait_for": {"id": "ap-allow_once", "timeout_ms": 120000}},
-    {"assert": {"dialogs": "approval"}},
-    {"screenshot": {"name": "03-approval-card"}},
-    {"click": {"id": "ap-allow_once"}},
-    {"wait_for": {"text": "approval-probe-ok", "timeout_ms": 120000}},
-    {"screenshot": {"name": "04-tool-ran"}},
-    {"type_text": {"text": "/plan on", "submit": true}},
-    {"wait_for": {"text": "Plan mode on", "timeout_ms": 30000}},
-    {"screenshot": {"name": "05-plan-mode"}},
-    {"type_text": {"text": "/plan off", "submit": true}},
-    {"wait_for": {"text": "Plan mode off", "timeout_ms": 30000}},
-    {"type_text": {"text": "/permission auto", "submit": true}},
-    {"wait_for": {"text": "Permission mode: auto", "timeout_ms": 30000}},
-    {"screenshot": {"name": "06-back-to-auto"}}
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/permission status",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Permission mode:",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-permission-status"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/permission ask",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Permission mode: ask",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-permission-ask"
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "type_text": {
+        "text": "Run the shell command `echo approval-probe-ok` with the bash tool, then reply DONE. Nothing else \u2014 no other tools or commands.",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "ap-allow_once",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "assert": {
+        "dialogs": "approval"
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-approval-card"
+      }
+    },
+    {
+      "click": {
+        "id": "ap-allow_once"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "approval-probe-ok",
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-tool-ran"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/plan on",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Plan mode on",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "05-plan-mode"
+      }
+    },
+    {
+      "type_text": {
+        "text": "/plan off",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Plan mode off",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "type_text": {
+        "text": "/permission auto",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Permission mode: auto",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "06-back-to-auto"
+      }
+    }
   ]
 }
