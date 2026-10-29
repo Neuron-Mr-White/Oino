@@ -1134,6 +1134,19 @@ impl AppShell {
             UiEffect::OpenSettings { namespace } => {
                 self.open_settings(namespace.as_deref(), window, cx);
             }
+            UiEffect::PinModel { key, pinned } => {
+                // round5 #1: picker pins persist in `desktop.json`.
+                self.update_settings(
+                    |s| {
+                        s.favorite_models.retain(|k| k != &key);
+                        if pinned {
+                            s.favorite_models.insert(0, key.clone());
+                        }
+                    },
+                    window,
+                    cx,
+                );
+            }
             _ => {}
         }
     }

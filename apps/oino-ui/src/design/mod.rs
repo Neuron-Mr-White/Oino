@@ -14,6 +14,7 @@
 //! | `ticker` (views) | shared 12 fps spinner ticker |
 
 pub mod brand;
+pub mod composer;
 pub mod perf;
 pub mod tokens;
 pub mod tones;

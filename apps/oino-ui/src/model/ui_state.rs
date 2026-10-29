@@ -211,6 +211,14 @@ pub enum UiEffect {
     DialogOpened,
     /// A panel requested focus.
     FocusPanel(String),
+    /// Pin (or unpin) a model of the picker: persists `desktop.json` `favorite_models`
+    /// (round5 #1).
+    PinModel {
+        /// The model's `provider/id` key.
+        key: String,
+        /// Whether it is now pinned.
+        pinned: bool,
+    },
 }
 
 /// Extension UI state of one session.

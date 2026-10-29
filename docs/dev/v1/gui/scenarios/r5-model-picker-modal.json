@@ -1,0 +1,197 @@
+{
+  "name": "r5-model-picker-modal",
+  "backend": "real",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 180000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "key": "secondary-m"
+    },
+    {
+      "wait_for": {
+        "id": "model-picker",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "picker-search",
+          "role": "input"
+        }
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "picker-row-0"
+        }
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-picker"
+      }
+    },
+    {
+      "click": {
+        "id": "picker-row-0-pin"
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "picker-row-0",
+          "checked": true
+        }
+      }
+    },
+    {
+      "key": "escape"
+    },
+    {
+      "wait_for": {
+        "id": "model-picker",
+        "absent": true,
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "key": "secondary-m"
+    },
+    {
+      "wait_for": {
+        "text": "Pinned",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "picker-row-0",
+          "checked": true
+        }
+      }
+    },
+    {
+      "click": {
+        "id": "picker-search"
+      }
+    },
+    {
+      "type_text": {
+        "text": "anth"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "picker-row-0",
+        "label": "anthropic/",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-search-full-names"
+      }
+    },
+    {
+      "click": {
+        "id": "picker-row-0"
+      }
+    },
+    {
+      "click": {
+        "id": "picker-apply"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "model-picker",
+        "absent": true,
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Switched from",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "model-trigger",
+          "label": "Claude"
+        }
+      }
+    },
+    {
+      "key": "secondary-m"
+    },
+    {
+      "wait_for": {
+        "id": "model-picker",
+        "timeout_ms": 20000
+      }
+    },
+    {
+      "click": {
+        "id": "picker-tabs-1"
+      }
+    },
+    {
+      "wait_for": {
+        "id": "picker-lead-0",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-fusion-tab"
+      }
+    },
+    {
+      "click": {
+        "id": "picker-lead-0"
+      }
+    },
+    {
+      "click": {
+        "id": "picker-sidekick-1"
+      }
+    },
+    {
+      "click": {
+        "id": "picker-apply"
+      }
+    },
+    {
+      "wait_state": {
+        "dialogs": 0,
+        "timeout_ms": 90000
+      }
+    },
+    {
+      "wait_for": {
+        "text": "◆",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "04-fusion-applied"
+      }
+    }
+  ]
+}

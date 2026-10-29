@@ -1,0 +1,151 @@
+{
+  "name": "r5-mode-switcher",
+  "scene": "run",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "agent-mode",
+          "label": "Regular"
+        }
+      }
+    },
+    {
+      "assert": {
+        "absent": {
+          "id": "mode-chip"
+        }
+      }
+    },
+    {
+      "click": {
+        "id": "agent-mode"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Ralph",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-switcher-menu"
+      }
+    },
+    {
+      "click": {
+        "label": "Goal"
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "agent-mode",
+          "label": "Goal"
+        }
+      }
+    },
+    {
+      "key": "secondary-shift-m"
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "agent-mode",
+          "label": "Graph"
+        }
+      }
+    },
+    {
+      "key": "secondary-shift-m"
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "agent-mode",
+          "label": "Ralph"
+        }
+      }
+    },
+    {
+      "key": "secondary-shift-m"
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "agent-mode",
+          "label": "Regular"
+        }
+      }
+    },
+    {
+      "key": "secondary-shift-m"
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "agent-mode",
+          "label": "Plan"
+        }
+      }
+    },
+    {
+      "click": {
+        "id": "agent-mode"
+      }
+    },
+    {
+      "click": {
+        "label": "Goal"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "armed",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-goal-armed"
+      }
+    },
+    {
+      "type_text": {
+        "text": "say MODE-SWITCHER-OK",
+        "submit": true
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-after-goal-prompt"
+      }
+    },
+    {
+      "wait_for": {
+        "label": "unipi.",
+        "absent": true,
+        "timeout_ms": 2000
+      }
+    }
+  ]
+}

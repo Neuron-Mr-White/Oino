@@ -19,6 +19,39 @@ pub struct UsageTotals {
     pub cost: f64,
     /// Context tokens of the last assistant reply (input + cache + output).
     pub context_tokens: u64,
+    /// Context breakdown of the last assistant reply: input part.
+    pub context_input: u64,
+    /// Context breakdown of the last assistant reply: cache-read part.
+    pub context_cache_read: u64,
+    /// Context breakdown of the last assistant reply: cache-write part.
+    pub context_cache_write: u64,
+    /// Context breakdown of the last assistant reply: output part.
+    pub context_output: u64,
+}
+
+/// The context breakdown of the last assistant reply (round5 #3: the composer's context
+/// hover panel sources).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ContextBreakdown {
+    /// Input tokens.
+    pub input: u64,
+    /// Cache-read tokens.
+    pub cache_read: u64,
+    /// Cache-write tokens.
+    pub cache_write: u64,
+    /// Output tokens.
+    pub output: u64,
+}
+
+impl ContextBreakdown {
+    /// Total tokens of the breakdown.
+    #[must_use]
+    pub const fn total(self) -> u64 {
+        self.input
+            .saturating_add(self.cache_read)
+            .saturating_add(self.cache_write)
+            .saturating_add(self.output)
+    }
 }
 
 /// Result of applying a batch of events (views redraw only what changed).
@@ -240,7 +273,22 @@ impl SessionModel {
             let context = u.input + u.cache_read + u.cache_write + u.output;
             if context > 0 {
                 self.usage.context_tokens = context;
+                self.usage.context_input = u.input;
+                self.usage.context_cache_read = u.cache_read;
+                self.usage.context_cache_write = u.cache_write;
+                self.usage.context_output = u.output;
             }
+        }
+    }
+
+    /// The context breakdown of the last assistant reply.
+    #[must_use]
+    pub const fn context_breakdown(&self) -> ContextBreakdown {
+        ContextBreakdown {
+            input: self.usage.context_input,
+            cache_read: self.usage.context_cache_read,
+            cache_write: self.usage.context_cache_write,
+            output: self.usage.context_output,
         }
     }
 

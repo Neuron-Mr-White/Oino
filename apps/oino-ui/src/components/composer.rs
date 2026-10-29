@@ -1,6 +1,12 @@
-//! `Composer` (design.md §4.11): `R_2XL` shell with optional context header, the token-aware
-//! editor, toolbar (attach, mode chip, model, thinking, context ring, send/stop) and the
-//! completion menu. Editor-replace panels (work tray, btw) take the shell's place (D11).
+//! `Composer` (round5 #2/#3, `ZCode` `ChatPromptEditor` + `V4ComposerModeControls`): **one
+//! rounded card** (radius 16, 12 px padding, focus brighten) containing the token-aware
+//! editor and the inner footer — mode switcher (left) + context ring, model, thought,
+//! stop/send (right). The old context header (project button, memory count) and every strip
+//! below the card except the native glance row are gone; context lives inside the input as
+//! a ring gauge with a hover panel. The permission chip is removed (approvals live in the
+//! conversation; the level stays settable via `/permission`), and the model chip opens the
+//! model-picker modal ([`crate::components::model_picker`]). Editor-replace panels (work
+//! tray, btw) take the shell's place (D11).
 
 use std::rc::Rc;
 
@@ -8,36 +14,28 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{self, Textarea};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, ElementId, Focusable as _, InteractiveElement as _,
-    IntoElement, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Window, div, px,
+    AnyElement, App, ClickEvent, Context, ElementId, Focusable as _, Hsla, InteractiveElement as _,
+    IntoElement, ParentElement as _, PathBuilder, Pixels, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, canvas, deferred, div, point, px,
 };
 use oino_ai::JsonValue;
 
 use crate::automation::Automatable as _;
 use crate::components::badge::kbd;
 use crate::components::button::{Btn, BtnSize, Variant};
-use crate::components::controls::{LEVELS, context_ring, level_label, thinking_bars};
-use crate::components::menu::{MenuEntry, Placement, menu, popover, popover_key};
+use crate::components::controls::{LEVELS, level_label, thinking_bars};
+use crate::components::menu::{MenuEntry, Placement, menu, popover};
 use crate::components::ous::{self, Ous};
+use crate::design::composer as geom;
 use crate::design::icons::icon;
 use crate::design::theme::{OinoTheme, TextExt as _};
 use crate::design::{TextRole, radius, size, space};
-use crate::model::composer::{COMPRESS_BELOW, ModeChip};
-use crate::model::sessions::workspace_label;
+use crate::model::composer::{COMPRESS_BELOW, SubmitKey};
 use crate::model::ui_state::{Panel, PanelPlacement};
+use crate::views::PickThinking;
 use crate::views::session_pane::{PaneEvent, PaneMenu, SessionPane};
 
-fn mode_icon(mode: ModeChip) -> IconName {
-    match mode {
-        ModeChip::Ask => IconName::Hand,
-        ModeChip::Plan => IconName::ListChecks,
-        ModeChip::Auto => IconName::Sparkles,
-        ModeChip::Full => IconName::ShieldOff,
-    }
-}
-
-fn token_color(t: &OinoTheme, text: &str) -> (gpui_kit::Hsla, gpui_kit::Hsla, IconName) {
+fn token_color(t: &OinoTheme, text: &str) -> (Hsla, Hsla, IconName) {
     if text.starts_with('@') {
         (t.file_node(), t.file_node_fg(), IconName::FileText)
     } else if text.starts_with('$') || text.starts_with("/skill:") {
@@ -59,16 +57,6 @@ fn token_color(t: &OinoTheme, text: &str) -> (gpui_kit::Hsla, gpui_kit::Hsla, Ic
     }
 }
 
-/// Mode tint (A2.2): Ask `fg_subtle`, Plan `gold`, Auto `claw`, Full `danger`.
-fn mode_tint(t: &OinoTheme, mode: ModeChip) -> gpui_kit::Hsla {
-    match mode {
-        ModeChip::Ask => t.fg_subtle(),
-        ModeChip::Plan => t.gold(),
-        ModeChip::Auto => t.working(),
-        ModeChip::Full => t.danger(),
-    }
-}
-
 /// A 30 px toolbar pill (A2.11 capsule items).
 fn capsule_pill(t: &OinoTheme, id: &'static str) -> gpui_kit::Stateful<gpui_kit::Div> {
     div()
@@ -86,11 +74,89 @@ fn capsule_pill(t: &OinoTheme, id: &'static str) -> gpui_kit::Stateful<gpui_kit:
         .weight_medium()
 }
 
+/// The 14 px context ring gauge (round5 #3; `ZCode` `context.tsx`): track at 25 % opacity,
+/// arc `strokeDashoffset = C·(1−used)`, rotated −90°; tones healthy / normal / urgent.
+fn ring14(t: &OinoTheme, ratio: f32) -> AnyElement {
+    let ratio = ratio.clamp(0.0, 1.0);
+    let fill = if ratio >= 0.95 {
+        t.danger()
+    } else if ratio >= 0.8 {
+        t.warning()
+    } else if ratio >= 0.5 {
+        t.fg_subtle()
+    } else {
+        t.success()
+    };
+    let track = t.border();
+    let d = geom::RING;
+    canvas(
+        |_, _, _| (),
+        move |bounds: gpui_kit::Bounds<Pixels>, (), window: &mut Window, _| {
+            let r = (d / 2.0) - 1.0;
+            let c = bounds.center();
+            let paint = |from: f32, to: f32, color: Hsla, window: &mut Window| {
+                if to - from <= 0.0001 {
+                    return;
+                }
+                let mut b = PathBuilder::stroke(px(geom::RING_STROKE));
+                let steps = 32;
+                #[allow(clippy::cast_precision_loss, reason = "≤ 32 steps")]
+                for s in 0..=steps {
+                    let a = from + (to - from) * (s as f32 / steps as f32);
+                    let ang = a * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+                    let p = point(c.x + px(r * ang.cos()), c.y + px(r * ang.sin()));
+                    if s == 0 {
+                        b.move_to(p);
+                    } else {
+                        b.line_to(p);
+                    }
+                }
+                if let Ok(path) = b.build() {
+                    window.paint_path(path, color);
+                }
+            };
+            paint(0.0, 1.0, track.opacity(0.5), window);
+            paint(0.0, ratio, fill, window);
+        },
+    )
+    .size(px(d))
+    .flex_shrink_0()
+    .into_any_element()
+}
+
+/// One source row of the context hover panel: colour square, label, mono % right.
+fn source_row(t: &OinoTheme, color: Hsla, label: &str, pct: u8) -> AnyElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(space::S2))
+        .child(
+            div()
+                .size(px(geom::SWATCH))
+                .rounded(px(radius::R_CODE / 2.0))
+                .bg(color),
+        )
+        .child(
+            div()
+                .flex_1()
+                .text_role(t, TextRole::Sm)
+                .text_color(t.fg_subtle())
+                .child(SharedString::from(label)),
+        )
+        .child(
+            div()
+                .mono_text(t, TextRole::Sm)
+                .text_color(t.fg_subtle())
+                .child(format!("{pct}%")),
+        )
+        .into_any_element()
+}
+
 impl SessionPane {
     /// The composer area: shell (or editor-replace panel) plus completion menu.
     pub(crate) fn render_composer(
         &mut self,
-        welcome: bool,
+        _welcome: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -112,9 +178,6 @@ impl SessionPane {
         let narrow = self.width < px(COMPRESS_BELOW);
         let empty = self.composer.read(cx).value().is_empty();
         let blocked = self.model.ui.needs_attention();
-        let frame_top: Vec<_> = self.model.ui.frame().top;
-        let header = (welcome || !frame_top.is_empty())
-            .then(|| self.render_context_header(welcome, &frame_top, &t, cx));
         let completion = (!self.completion.rows.is_empty()).then(|| self.render_completion(&t, cx));
         let (prose, _) = t.text(TextRole::Prose);
         // Automation (`gui-driver.md`): the composer is the session's only text input.
@@ -127,7 +190,6 @@ impl SessionPane {
             .id("composer")
             .w_full()
             .min_h(px(size::CONTROL_LG))
-            .pl(px(space::S2_5))
             .text_size(prose)
             // Touch: editable text is 16 (no zoom-on-focus sizes, design.md §6).
             .when(t.touch(), |el| {
@@ -135,6 +197,12 @@ impl SessionPane {
             })
             .text_color(t.fg())
             .capture_key_down(cx.listener(Self::on_composer_key))
+            // Ctrl+Shift+M cycles the agent mode while the composer has focus (ZCode's
+            // toolbar shortcut, round5 #2); outside the composer the chord keeps its
+            // global meaning (thinking menu).
+            .capture_action(cx.listener(|this, _: &PickThinking, w, cx| {
+                this.cycle_agent_mode(w, cx);
+            }))
             // The editor binds ↑ ↓ Tab Esc as actions, which GPUI dispatches before key-down
             // listeners: intercept them in the capture phase (GA-21, completion keys).
             .capture_action(cx.listener(|this, _: &input::MoveUp, w, cx| {
@@ -170,34 +238,45 @@ impl SessionPane {
             }));
         let editor = crate::automation::probe(editor, automation);
         let toolbar = self.render_toolbar(busy, empty, blocked, narrow, &t, cx);
-        // A2.11 shell: input (surface-2), radius 26, padding 8 8 8 0, inset line at 80 %,
-        // composer elevation. The editor has no inner border.
+        // One rounded card (round5 #3, `ZCode` `ChatPromptEditor`): radius 16, 12 px padding,
+        // the border brightens while the editor has focus.
+        let focused = self
+            .composer
+            .read(cx)
+            .focus_handle(cx)
+            .contains_focused(window, cx);
+        let card = div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .gap(px(space::S2))
+            .p(px(space::S3))
+            .rounded(px(radius::R_FLOAT))
+            .bg(t.input())
+            .border_1()
+            .border_color(if focused {
+                t.input_border_focus()
+            } else {
+                t.input_border()
+            })
+            .shadow(t.e_composer())
+            .child(editor)
+            .child(toolbar);
+        // The model picker is a window-level modal, drawn deferred from here (its owner).
+        let picker = (self.menu == Some(PaneMenu::Model))
+            .then(|| crate::components::model_picker::modal(self, &t, window, cx));
+        if self.menu != Some(PaneMenu::Model) {
+            self.picker_close();
+        }
         div()
             .relative()
             .w_full()
             .children(completion)
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .w_full()
-                    .gap(px(space::S1_5))
-                    .pt(px(space::S2))
-                    .pr(px(space::S2))
-                    .pb(px(space::S2))
-                    .pl(px(space::S2))
-                    .rounded(px(radius::R_COMPOSER))
-                    .bg(t.input())
-                    .border_1()
-                    .border_color(t.border().opacity(0.8))
-                    .shadow(t.e_composer())
-                    .children(header)
-                    .child(editor)
-                    .child(toolbar),
-            )
+            .child(card)
+            .when_some(picker, |el, p| el.child(deferred(p)))
             .child({
                 let top = Rc::clone(&self.composer_top);
-                gpui_kit::canvas(
+                canvas(
                     move |bounds, _, _| top.set(f32::from(bounds.origin.y)),
                     |_, (), _, _| {},
                 )
@@ -207,106 +286,164 @@ impl SessionPane {
             .into_any_element()
     }
 
-    fn render_context_header(
-        &self,
-        welcome: bool,
-        top: &[crate::model::ui_state::Segment],
-        t: &OinoTheme,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let project = workspace_label(&self.model.cwd);
-        let branch = self.status.branch.clone();
-        let open = self.menu == Some(PaneMenu::Project);
-        let cwd = self.model.cwd.clone();
-        let project_btn = popover(
-            Btn::new("ctx-project")
-                .label(SharedString::from(project))
-                .icon(IconName::Folder)
-                .trailing(IconName::ChevronDown)
-                .variant(Variant::Ghost)
-                .size(BtnSize::Sm)
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Project, cx))),
-            open,
-            Placement::BelowStart,
-            || {
-                let copy = cwd.clone();
-                menu(
-                    "project-menu",
-                    t,
-                    size::MENU_MIN * 1.25,
-                    vec![
-                        MenuEntry::Label(SharedString::from(cwd.clone()), None),
-                        MenuEntry::item("Copy path", move |_, cx| {
-                            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(
-                                copy.clone(),
-                            ));
-                        })
-                        .icon(IconName::Copy),
-                    ],
-                )
-                .into_any_element()
-            },
-            {
-                let this = cx.entity().downgrade();
-                move |_, cx| {
-                    let _ = this.update(cx, |p, cx| {
-                        p.menu = None;
-                        cx.notify();
-                    });
-                }
-            },
-        );
-        // Glance top segments (setFrame top): Sm, dim, 1 px `line` dividers, one line.
-        let segments: Vec<AnyElement> = top
-            .iter()
-            .filter(|s| s.id.as_deref() != Some("branch") || !welcome)
-            .enumerate()
-            .flat_map(|(i, s)| {
-                let divider = (i > 0).then(|| {
-                    div()
-                        .w(px(size::HAIRLINE))
-                        .h(px(space::S3))
-                        .bg(t.border())
-                        .into_any_element()
-                });
-                let seg = div()
-                    .flex_shrink_0()
-                    .text_role(t, TextRole::Sm)
-                    .text_color(match s.tone {
-                        crate::model::ous::Tone::Default => t.fg_subtlest(),
-                        tone => t.tone_fg(tone),
-                    })
-                    // gui-fix-unipi U5: spans, tones and the wordmark brand.
-                    .child(crate::components::meta_row::segment_body(t, s))
-                    .into_any_element();
-                divider.into_iter().chain(std::iter::once(seg))
-            })
-            .collect();
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .overflow_hidden()
-            .gap(px(space::S2))
-            .pl(px(space::S2))
-            .when(welcome, |el| el.child(project_btn))
-            .when_some(branch.filter(|_| welcome), |el, b| {
-                el.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(space::S1))
-                        .text_role(t, TextRole::Sm)
-                        .text_color(t.fg_subtle())
-                        .child(icon(IconName::GitBranch, size::ICON_SM, t.fg_subtlest()))
-                        .child(SharedString::from(b)),
-                )
-            })
-            .children(segments)
-            .into_any_element()
+    /// Marks the picker as closed (its open-time reset is keyed off this).
+    fn picker_close(&mut self) {
+        self.picker.was_open = false;
+        self.picker_effort_menu = None;
     }
 
-    #[allow(clippy::too_many_lines, reason = "toolbar capsule with its menus")]
+    /// The context cluster of the inner footer: the ring gauge with its hover panel
+    /// (round5 #3; `ZCode` `contextUsage.tsx`, without its business logic — the sources are
+    /// the session's own context breakdown).
+    fn render_context_ring(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
+        let ratio = self.model.context_percent().map(|p| f32::from(p) / 100.0);
+        let percent = self.model.context_percent();
+        let usage = self.model.usage;
+        let breakdown = self.model.context_breakdown();
+        let ctx_window = self.model.model.as_ref().map_or(0, |m| m.context_window);
+        let compact = crate::components::meta_row::compact;
+        let close = {
+            let this = cx.entity().downgrade();
+            move |_: &mut Window, cx: &mut App| {
+                let _ = this.update(cx, |p, cx| {
+                    p.menu = None;
+                    cx.notify();
+                });
+            }
+        };
+        let Some(ratio) = ratio else {
+            return div().into_any_element();
+        };
+        let theme = *t;
+        let compact_entity = cx.entity().downgrade();
+        let panel =
+            move || {
+                let t = &theme;
+                let label = if ctx_window > 0 {
+                    format!(
+                        "{} / {}",
+                        compact(usage.context_tokens),
+                        compact(ctx_window)
+                    )
+                } else {
+                    compact(usage.context_tokens)
+                };
+                let total = breakdown.total().max(1);
+                #[allow(clippy::cast_precision_loss, reason = "token ratios")]
+                let segments: [(Hsla, f32, u8, &str); 4] = [
+                    (
+                        t.info(),
+                        grow(breakdown.input, total),
+                        pct(breakdown.input, total),
+                        "Input",
+                    ),
+                    (
+                        t.success(),
+                        grow(breakdown.cache_read, total),
+                        pct(breakdown.cache_read, total),
+                        "Cache read",
+                    ),
+                    (
+                        t.working(),
+                        grow(breakdown.cache_write, total),
+                        pct(breakdown.cache_write, total),
+                        "Cache write",
+                    ),
+                    (
+                        t.accent(),
+                        grow(breakdown.output, total),
+                        pct(breakdown.output, total),
+                        "Output",
+                    ),
+                ];
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(space::S2))
+                    .w(px(geom::PANEL))
+                    .p(px(space::S3))
+                    .rounded(px(geom::PANEL_R))
+                    .bg(t.sheet())
+                    .border_1()
+                    .border_color(t.border())
+                    .shadow(t.e_menu())
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(space::S2))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_role(t, TextRole::Sm)
+                                    .weight_semibold()
+                                    .child("Context usage"),
+                            )
+                            .child(
+                                div()
+                                    .mono_text(t, TextRole::Sm)
+                                    .text_color(t.fg_subtle())
+                                    .child(SharedString::from(label)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .h(px(geom::BAR))
+                            .overflow_hidden()
+                            .rounded(px(radius::R_FULL))
+                            .bg(t.bubble())
+                            .children(segments.iter().map(|(color, portion, _, _)| {
+                                div().flex_grow(*portion).bg(*color)
+                            })),
+                    )
+                    .children(
+                        segments
+                            .iter()
+                            .map(|(color, _, share, name)| source_row(t, *color, name, *share))
+                            .collect::<Vec<_>>(),
+                    )
+                    .child(
+                        Btn::new("ctx-compact")
+                            .label("Compact")
+                            .icon(IconName::Minimize2)
+                            .size(BtnSize::Sm)
+                            .variant(Variant::Secondary)
+                            .on_click(move |_, _, cx: &mut App| {
+                                let _ = compact_entity.update(cx, |p, cx| {
+                                    p.run_prompt("/compact", cx);
+                                });
+                            }),
+                    )
+                    .into_any_element()
+            };
+        popover(
+            div()
+                .id("context-ring")
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(size::CONTROL))
+                .rounded(px(radius::R_LG))
+                .cursor_pointer()
+                .hover(|s| s.bg(t.bubble()))
+                .tooltip(crate::components::tooltip::tip("Context usage", None))
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Context, cx)))
+                .child(ring14(t, ratio))
+                // Read-back for scenarios: the ring's value is the context percent.
+                .automation(
+                    crate::automation::Meta::labelled(crate::automation::Role::Chip, "Context")
+                        .value(percent.map(|p| format!("{p}%")).unwrap_or_default()),
+                ),
+            self.menu == Some(PaneMenu::Context),
+            Placement::AboveEnd,
+            panel,
+            close,
+        )
+        .into_any_element()
+    }
+
+    #[allow(clippy::too_many_lines, reason = "inner footer with its menus")]
     fn render_toolbar(
         &self,
         busy: bool,
@@ -381,141 +518,78 @@ impl SessionPane {
             },
             close.clone(),
         );
-        // Mode chip: the workflow permission mode, tinted (A2.2), from the
-        // `unipi:workflow:status` topic (GA-25).
-        let mode = self.mode();
-        let mode_el = mode.map(|m| {
-            let entity = cx.entity().downgrade();
-            let tint = mode_tint(t, m);
-            popover(
-                capsule_pill(t, "mode-chip")
-                    .bg(tint.opacity(0.13))
-                    .border_1()
-                    .border_color(tint.opacity(0.45))
-                    .text_color(tint)
-                    .tooltip(crate::components::tooltip::tip(
-                        "Permission mode",
-                        Some("alt+m".into()),
-                    ))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Mode, cx)))
-                    .child(icon(mode_icon(m), size::ICON_MD, tint))
-                    .when(!narrow, |el| el.child(m.label()))
-                    .child(icon(IconName::ChevronDown, size::ICON_SM, tint))
-                    // Read-back for scenarios: the workflow permission mode the chip shows.
-                    .automation(crate::automation::Meta::labelled(
-                        crate::automation::Role::Chip,
-                        m.label(),
-                    )),
-                self.menu == Some(PaneMenu::Mode),
-                Placement::AboveStart,
-                || {
-                    menu(
-                        "mode-menu",
-                        t,
-                        size::MENU_MIN * 1.25,
-                        ModeChip::ALL
-                            .iter()
-                            .map(|choice| {
-                                let e = entity.clone();
-                                let choice = *choice;
-                                MenuEntry::item(choice.label(), move |_, cx| {
-                                    let _ = e.update(cx, |p, cx| {
-                                        p.menu = None;
-                                        let current = p.mode();
-                                        for c in choice.commands(current) {
-                                            p.run_prompt(&c, cx);
-                                        }
-                                    });
-                                })
-                                .icon(mode_icon(choice))
-                                .checked(choice == m)
-                            })
-                            .collect(),
-                    )
-                    .into_any_element()
-                },
-                close.clone(),
-            )
-        });
-        // Model chip: context ring + % + model name + thinking level (A2.11).
-        let model_label = self.model.model_label();
-        let model_label_text = self.model.model_label();
-        let reasoning = self.model.model.as_ref().is_some_and(|m| m.reasoning);
-        let level = self.model.thinking;
-        let ratio = self.model.context_percent().map(|p| f32::from(p) / 100.0);
-        let percent = self.model.context_percent();
-        // The model menu is a drill-down: ←/Esc at a provider level goes back one level
-        // first (design.md §4.26); at the top level they close. Clicks outside always close.
-        let model_key: Rc<dyn Fn(&str, &mut Window, &mut App)> = {
-            let this = cx.entity().downgrade();
-            Rc::new(move |_: &str, _, cx| {
-                let _ = this.update(cx, |p, cx| {
-                    if p.menu == Some(PaneMenu::Model) && p.menu_sub.is_some() {
-                        p.open_model_sub(None, cx);
-                    } else {
-                        p.menu = None;
-                        p.menu_sub = None;
-                        cx.notify();
-                    }
-                });
-            })
+        // Model chip: opens the model-picker modal (round5 #1) — click or ⌘M.
+        let fusion = self
+            .model
+            .topic("unipi:fusion:status")
+            .filter(|f| f.get("leadKey").and_then(JsonValue::as_str).is_some());
+        let model_label = match fusion {
+            Some(f) => format!(
+                "{} ◆ {}",
+                f.get("leadName")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or("Lead"),
+                f.get("sidekickName")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or("Sidekick"),
+            ),
+            None => self.model.model_label(),
         };
-        let model_el = popover_key(
-            capsule_pill(t, "model-trigger")
-                .bg(t.card())
-                .text_color(t.fg())
-                .hover(|s| s.bg(t.bubble()))
-                .tooltip(crate::components::tooltip::tip(
-                    "Model and context",
-                    Some("⌘M".into()),
-                ))
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Model, cx)))
-                .when_some(ratio, |el, r| el.child(context_ring(t, r)))
-                .when_some(percent.filter(|_| !narrow), |el, p| {
-                    el.child(
-                        div()
-                            .text_role(t, TextRole::Xs)
-                            .text_color(t.fg_subtlest())
-                            .child(format!("{p}%")),
-                    )
-                })
-                .when(!narrow, |el| {
-                    el.child(
-                        div()
-                            .max_w(px(size::MENU_MIN))
-                            .truncate()
-                            .child(SharedString::from(model_label)),
-                    )
-                })
-                .when(reasoning && !narrow, |el| {
-                    el.child(
-                        div()
-                            .text_color(t.fg_subtlest())
-                            .child(level_label(level).to_lowercase()),
-                    )
-                })
-                .child(icon(IconName::ChevronDown, size::ICON_SM, t.fg_subtlest()))
-                // Read-back for scenarios: the model and thinking level the composer shows.
-                .automation(
-                    crate::automation::Meta::labelled(
-                        crate::automation::Role::Chip,
-                        model_label_text,
-                    )
+        let model_label_text = model_label.clone();
+        let level = self.model.thinking;
+        let model_el = capsule_pill(t, "model-trigger")
+            .bg(t.card())
+            .text_color(t.fg())
+            .hover(|s| s.bg(t.bubble()))
+            .tooltip(crate::components::tooltip::tip(
+                "Model — picker",
+                Some("⌘M".into()),
+            ))
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Model, cx)))
+            .when(!narrow, |el| {
+                el.child(
+                    div()
+                        .max_w(px(size::MENU_MIN * 1.4))
+                        .truncate()
+                        .child(SharedString::from(model_label)),
+                )
+            })
+            .child(icon(IconName::ChevronDown, size::ICON_SM, t.fg_subtlest()))
+            // Read-back for scenarios: the model (or fusion pair) and thinking level.
+            .automation(
+                crate::automation::Meta::labelled(crate::automation::Role::Chip, model_label_text)
                     .value(level_label(level).to_lowercase()),
-                ),
-            self.menu == Some(PaneMenu::Model),
-            Placement::AboveEnd,
-            || crate::components::model_menu::model_menu(self, t, cx),
-            close.clone(),
-            Some(model_key),
-        );
-        let thinking_el = (reasoning && self.menu == Some(PaneMenu::Thinking)).then(|| {
-            let entity = cx.entity().downgrade();
+            );
+        // Thought chip: the thinking-level menu of a reasoning model.
+        let reasoning = self.model.model.as_ref().is_some_and(|m| m.reasoning);
+        let thought_open = reasoning && self.menu == Some(PaneMenu::Thinking);
+        let thought_el = reasoning.then(|| {
+            let e = cx.entity().downgrade();
             popover(
-                div(),
-                true,
+                capsule_pill(t, "thought-trigger")
+                    .bg(t.card())
+                    .text_color(t.fg_subtle())
+                    .hover(|s| s.bg(t.bubble()))
+                    .tooltip(crate::components::tooltip::tip(
+                        "Thinking level",
+                        Some("alt+t".into()),
+                    ))
+                    .on_click(
+                        cx.listener(|this, _, _, cx| this.toggle_menu(PaneMenu::Thinking, cx)),
+                    )
+                    .child(icon(IconName::Lightbulb, size::ICON_MD, t.fg_subtle()))
+                    .when(!narrow, |el| el.child(level_label(level).to_lowercase()))
+                    .child(icon(IconName::ChevronDown, size::ICON_SM, t.fg_subtlest()))
+                    .automation(
+                        crate::automation::Meta::labelled(
+                            crate::automation::Role::Chip,
+                            "Thinking",
+                        )
+                        .value(level_label(level).to_lowercase()),
+                    ),
+                thought_open,
                 Placement::AboveEnd,
-                || {
+                move || {
                     menu(
                         "thinking-menu",
                         t,
@@ -523,7 +597,7 @@ impl SessionPane {
                         LEVELS
                             .iter()
                             .map(|l| {
-                                let e = entity.clone();
+                                let e = e.clone();
                                 let l = *l;
                                 MenuEntry::item(level_label(l), move |_, cx| {
                                     let _ = e.update(cx, |p, cx| p.set_thinking(l, cx));
@@ -569,7 +643,7 @@ impl SessionPane {
                 if stop {
                     this.abort(cx);
                 } else if !disabled {
-                    this.submit(crate::model::composer::SubmitKey::Enter, cx);
+                    this.submit(SubmitKey::Enter, cx);
                 }
             }))
             .child(icon(
@@ -613,14 +687,14 @@ impl SessionPane {
                             MenuEntry::item("Steer now", move |_, cx| {
                                 let _ = e1.update(cx, |p, cx| {
                                     p.menu = None;
-                                    p.submit(crate::model::composer::SubmitKey::Enter, cx);
+                                    p.submit(SubmitKey::Enter, cx);
                                 });
                             })
                             .keys("↵"),
                             MenuEntry::item("Queue after this run", move |_, cx| {
                                 let _ = e2.update(cx, |p, cx| {
                                     p.menu = None;
-                                    p.submit(crate::model::composer::SubmitKey::FollowUp, cx);
+                                    p.submit(SubmitKey::FollowUp, cx);
                                 });
                             })
                             .keys("Ctrl+↵"),
@@ -631,16 +705,21 @@ impl SessionPane {
                 close.clone(),
             )
         });
+        // Inner footer (round5 #3): mode switcher left; context ring, model, thought,
+        // stop/send right — all inside the one card.
         div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(space::S1_5))
             .child(attach)
-            .children(mode_el)
+            .child(crate::components::mode_switcher::switcher(
+                self, narrow, t, cx,
+            ))
             .child(div().flex_1())
+            .child(self.render_context_ring(t, cx))
             .child(model_el)
-            .children(thinking_el)
+            .children(thought_el)
             .when(narrow && reasoning, |el| el.child(thinking_bars(t, level)))
             .children(choice)
             .child(send)
@@ -648,7 +727,8 @@ impl SessionPane {
     }
 
     /// Completion menu (A2.11): a `sheet` popover, radius 16, 360 wide, rows 40 radius 10,
-    /// at most 8 visible; section labels; package tags as colour pills (GA-4).
+    /// at most 8 visible; section labels; package tags as colour pills (GA-4). Section
+    /// titles are never raw extension ids (round5 #2).
     fn render_completion(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
         let mut last_section: Option<&str> = None;
         let mut rows: Vec<AnyElement> = Vec::new();
@@ -1085,4 +1165,20 @@ impl SessionPane {
     pub(crate) fn toast(&self, text: &str, cx: &mut Context<Self>) {
         cx.emit(PaneEvent::Toast(text.to_owned()));
     }
+}
+
+/// Percent of `total`, clamped to 100.
+fn pct(part: u64, total: u64) -> u8 {
+    u8::try_from(part.saturating_mul(100) / total.max(1)).unwrap_or(100)
+}
+
+/// Flex-grow portion of `part` over `total` (never collapses a visible segment).
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "token counts as ratios; truncation is irrelevant"
+)]
+fn grow(part: u64, total: u64) -> f32 {
+    #[allow(clippy::cast_precision_loss, reason = "token counts as ratios")]
+    let ratio = part as f32 / total.max(1) as f32;
+    ratio.max(0.01)
 }

@@ -272,6 +272,8 @@ pub enum PaneMenu {
     MetaOverflow,
     /// Send chevron: Steer / Queue (A2.11).
     Send,
+    /// Context-ring hover panel (round5 #3).
+    Context,
 }
 
 /// Backend completion state of the composer.
@@ -330,9 +332,6 @@ pub struct SessionPane {
     pub(crate) settings: AppSettings,
     pub(crate) focus: FocusHandle,
     pub(crate) menu: Option<PaneMenu>,
-    /// Provider opened inside the model menu (its models are listed instead of the provider
-    /// list; `None` = the top level). Reset whenever a menu opens or closes.
-    pub(crate) menu_sub: Option<String>,
     pub(crate) completion: Completion,
     pub(crate) find: Option<Find>,
     pub(crate) status: StatusModel,
@@ -415,6 +414,14 @@ pub struct SessionPane {
     mode_seen: Option<ModeChip>,
     /// Window y of the composer shell's top (caps the completion menu above it).
     pub(crate) composer_top: std::rc::Rc<std::cell::Cell<f32>>,
+    /// The model-picker modal's state (round5 #1); open while `menu` is
+    /// [`PaneMenu::Model`].
+    pub(crate) picker: crate::components::model_picker::ModelPicker,
+    /// The open effort select of the picker's fusion tab (`picker-lead-effort` / …).
+    pub(crate) picker_effort_menu: Option<String>,
+    /// An armed agent mode (round5 #2): the next prompt is submitted as
+    /// `/mode <prompt>`.
+    pub(crate) mode_armed: Option<composer::AgentMode>,
     /// Focus of an `editorReplace` panel in the composer slot, and the panel it was given to.
     pub(crate) panel_focus: (FocusHandle, Option<String>),
     _pump: Task<()>,
@@ -504,7 +511,6 @@ impl SessionPane {
             settings,
             focus: cx.focus_handle(),
             menu: None,
-            menu_sub: None,
             completion: Completion::default(),
             find: None,
             status: StatusModel::default(),
@@ -552,6 +558,9 @@ impl SessionPane {
             turn_cost_start: 0.0,
             mode_seen: None,
             composer_top: std::rc::Rc::default(),
+            picker: crate::components::model_picker::ModelPicker::default(),
+            picker_effort_menu: None,
+            mode_armed: None,
             panel_focus: (cx.focus_handle(), None),
             _pump: pump,
             _subscriptions: subscriptions,
@@ -1534,6 +1543,16 @@ impl SessionPane {
                     .collect::<Vec<_>>(),
             )
         };
+        // round5 #2: an armed agent mode (Goal / Graph / Ralph) routes the prompt through
+        // the mode's own command, so the owner engages on the first prompt under it.
+        let armed = (!text.trim().is_empty())
+            .then(|| self.mode_armed.take())
+            .flatten()
+            .filter(|m| m.arms_prompt());
+        let text = match armed {
+            Some(mode) => format!("/{} {}", mode.command(), text.trim()),
+            None => text,
+        };
         let intent = composer::intent(&text, self.model.is_busy(), key);
         if intent == Intent::Nothing {
             return;
@@ -1618,7 +1637,6 @@ impl SessionPane {
     /// Selects a model.
     pub fn set_model(&mut self, provider: String, model_id: String, cx: &mut Context<Self>) {
         self.menu = None;
-        self.menu_sub = None;
         // `ZCode` `model-switch-toast`: "Switched from X to Y" once the switch is asked for.
         let from = self.model.model_label();
         let to = self
@@ -1656,7 +1674,6 @@ impl SessionPane {
     /// Sets the thinking level.
     pub fn set_thinking(&mut self, level: ThinkingLevel, cx: &mut Context<Self>) {
         self.menu = None;
-        self.menu_sub = None;
         self.model.thinking = level;
         self.send(PiCommand::SetThinkingLevel { level }.into(), cx);
         cx.notify();
@@ -2379,6 +2396,12 @@ impl SessionPane {
             .map(|d| d.read(cx).dialog().id.clone());
         match front {
             Some(dialog) if current.as_deref() != Some(dialog.id.as_str()) => {
+                // round5 #1: a fusion Apply auto-answers the `/fusion` dialog sequence —
+                // those dialogs never reach the user.
+                if let Some(response) = self.answer_fusion_dialog(&dialog, cx) {
+                    self.respond(response, cx);
+                    return;
+                }
                 if interaction::kind(&dialog) == InteractionKind::PlanReview
                     && self.width
                         >= px(crate::design::tokens::breakpoint::WIDE - crate::design::size::SIDEBAR)
@@ -2608,15 +2631,6 @@ impl SessionPane {
         } else {
             Some(menu)
         };
-        self.menu_sub = None;
-        cx.notify();
-    }
-
-    /// Opens the model menu at one provider's model list (`None` = the provider list). The
-    /// submenu keeps the model menu open, so a pick from it cannot close the wrong level.
-    pub fn open_model_sub(&mut self, provider: Option<String>, cx: &mut Context<Self>) {
-        self.menu = Some(PaneMenu::Model);
-        self.menu_sub = provider;
         cx.notify();
     }
 

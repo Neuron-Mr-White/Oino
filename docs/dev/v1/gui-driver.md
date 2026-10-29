@@ -229,6 +229,9 @@ scenario's demo scene.
 | File | Covers |
 |---|---|
 | `new-session-prompt.json` | click the composer, type a prompt, Enter, the assistant plan streams |
+| `r5-model-picker-modal.json` (real) | round5 #1 — the model-picker modal: ⌘M opens `model-picker`, search filters over name + full `provider/id`, pin → Pinned section after close+reopen, pick + Apply switches the model, Fusion tab picks any lead+sidekick and Apply auto-answers the `/fusion` dialogs → chip reads `Lead ◆ Sidekick`, Esc closes |
+| `r5-mode-switcher.json` | round5 #2 — the agent-mode switcher: five modes, Goal arms the chip without a command, Ctrl+Shift+M cycles, no `mode-chip`, no "unipi" text in the composer |
+| `r5-composer-context-ring.json` | round5 #3/#18 — the one-card composer: no project row, `context-ring` with its hover panel (sources, Compact), model + thought selects, Stop while busy |
 | `approval-allow.json` | the docked approval card: allow, the bash tool runs, the turn finishes |
 | `approval-deny.json` | the docked approval card: reject, the tool is blocked, the turn still finishes |
 | `ask-user-form.json` | the `ask_user` form: pick an option per step, Next, Submit |
@@ -380,7 +383,7 @@ run --no-restart` after `apps/oino-desktop/scripts/local-app.sh start <backend> 
 
 | Scenario | Steps | Result |
 |---|---|---|
-| `zcode-model-menu` | 18 | **PASS** — ⌘M opens the menu (pinned provider with its checked models, provider submenu rows, Manage models), Anthropic drill-down (`All providers` back row), ← goes back one level, re-enter + pick `Claude Sonnet 4.6` → `Switched from Oino Large to Claude Sonnet 4.6` toast + chip read-back |
+| `zcode-model-menu` | 18 | **PASS** until round 5 — **replaced by `r5-model-picker-modal`** (round5 #1 deleted the popover drill-down for the modal picker); the historical row records the round-3 proof of the ⌘M / chip read-back path the modal inherits |
 | `zcode-thinking-cycle` | 14 | **PASS** — level menu sets Off, `alt-t` steps Off→Minimal→Low, menu shows Low checked |
 | `zcode-palette-history` | 18 | **PASS** — ⌘K search “board” + pick records history, chip `History board` on the empty query, ⌥1 applies it, per-chip × forgets it (persisted), palette stays open |
 | `zcode-row-actions` | 11 | **PASS** — `Thought for` label, hover bar with the arrival time, Copy → check glyph for 1.2 s |

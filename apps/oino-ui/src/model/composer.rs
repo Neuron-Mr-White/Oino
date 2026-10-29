@@ -326,6 +326,138 @@ impl ModeChip {
     }
 }
 
+/// Agent mode of the composer's mode switcher (round5 #2, after `ZCode`
+/// `V4ComposerModeControls`): the surface the next prompt runs under. `Plan` is the
+/// workflow plan mode (`/plan`), `Goal`, `Graph` and `Ralph` the long-horizon routing
+/// modes, `Regular` none of them.
+///
+/// Picking a long-horizon mode **arms** it: the switcher label shows the mode at once and
+/// the next non-empty prompt is submitted as `/mode <prompt>`, which is how the extension
+/// engages the owner (its `/goal` without a prompt only prints status — there is no
+/// argument-less engage command, so arming composes the command the user would have
+/// typed, the exact `/goal` `/graph` `/ralph` path of round5.md §2 #2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentMode {
+    /// No owner, no plan: plain prompts.
+    Regular,
+    /// Workflow plan mode (`/plan on`).
+    Plan,
+    /// Long-horizon goal loop (`/goal <prompt>`).
+    Goal,
+    /// Long-horizon agent graph (`/graph <prompt>`).
+    Graph,
+    /// Long-horizon ralph loop (`/ralph <prompt>`).
+    Ralph,
+}
+
+impl AgentMode {
+    /// Menu order.
+    pub const ALL: [Self; 5] = [
+        Self::Regular,
+        Self::Plan,
+        Self::Goal,
+        Self::Graph,
+        Self::Ralph,
+    ];
+
+    /// Label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Regular => "Regular",
+            Self::Plan => "Plan",
+            Self::Goal => "Goal",
+            Self::Graph => "Graph",
+            Self::Ralph => "Ralph",
+        }
+    }
+
+    /// One-line menu description.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Regular => "Plain prompts, no owner",
+            Self::Plan => "Plan first, approve before changes",
+            Self::Goal => "Work a goal across turns",
+            Self::Graph => "Delegate across an agent graph",
+            Self::Ralph => "Loop a checklist until done",
+        }
+    }
+
+    /// The mode's own slash command (without arguments).
+    #[must_use]
+    pub const fn command(self) -> &'static str {
+        match self {
+            Self::Regular => "regular",
+            Self::Plan => "plan",
+            Self::Goal => "goal",
+            Self::Graph => "graph",
+            Self::Ralph => "ralph",
+        }
+    }
+
+    /// Whether picking the mode arms the composer (the next prompt is submitted as
+    /// `/command <prompt>`) instead of running a command right away.
+    #[must_use]
+    pub const fn arms_prompt(self) -> bool {
+        matches!(self, Self::Goal | Self::Graph | Self::Ralph)
+    }
+
+    /// The mode from the sticky `unipi:workflow:status` (`planMode`) and
+    /// `unipi:long-horizon:state` (`mode`) topics.
+    #[must_use]
+    pub fn from_topics(plan: bool, lh_mode: Option<&str>) -> Self {
+        if plan {
+            return Self::Plan;
+        }
+        match lh_mode {
+            Some("goal") => Self::Goal,
+            Some("ralph") => Self::Ralph,
+            Some("graph") => Self::Graph,
+            _ => Self::Regular,
+        }
+    }
+
+    /// The commands to run when switching to `self` from `current` (the armed modes park a
+    /// running owner themselves when their first prompt lands).
+    #[must_use]
+    pub fn commands_from(self, current: Self) -> Vec<String> {
+        let mut out = Vec::new();
+        if current == Self::Plan && self != Self::Plan {
+            out.push("/plan off".to_owned());
+        }
+        match self {
+            Self::Regular => {
+                if current.arms_prompt() {
+                    out.push("/regular".to_owned());
+                }
+            }
+            Self::Plan => {
+                if current.arms_prompt() {
+                    out.push("/regular".to_owned());
+                }
+                if current != Self::Plan {
+                    out.push("/plan on".to_owned());
+                }
+            }
+            _ => {}
+        }
+        out
+    }
+
+    /// The next mode in switch order (Ctrl+Shift+M).
+    #[must_use]
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::Regular => Self::Plan,
+            Self::Plan => Self::Goal,
+            Self::Goal => Self::Graph,
+            Self::Graph => Self::Ralph,
+            Self::Ralph => Self::Regular,
+        }
+    }
+}
+
 /// Width below which the composer toolbar compresses (design.md §4.11).
 pub const COMPRESS_BELOW: f32 = 520.0;
 
@@ -372,8 +504,26 @@ fn section_of(source: &str) -> String {
         "prompts" | "templates" => "Prompts".to_owned(),
         "sessions" => "Sessions".to_owned(),
         s if s.starts_with("command:") => format!("/{}", &s["command:".len()..]),
-        other => other.to_owned(),
+        // Extension-id sources never surface as raw ids (round5 #2: no "unipi" text in
+        // the composer): keep the package's own stem, humanised.
+        other => de_extension(other),
     }
+}
+
+/// `unipi.command-enchantment` → `Command enchantment`, `oino.browser` → `Browser`.
+fn de_extension(source: &str) -> String {
+    let stem = source.rsplit('.').next().unwrap_or(source);
+    let mut out = String::with_capacity(stem.len());
+    for (i, ch) in stem.chars().enumerate() {
+        if ch == '-' || ch == '_' {
+            out.push(' ');
+        } else if i == 0 {
+            out.extend(ch.to_uppercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Merges `_oino/get_completions` groups into rows (sorted by tier within a group, at most
@@ -689,7 +839,8 @@ mod tests {
         let rows = merge_completions(&groups, 0, 10);
         assert_eq!(rows[0].value, "@src/parser.rs");
         assert_eq!(rows[1].tag.as_deref(), Some("dir"));
-        assert_eq!(rows[2].section, "unipi.command-enchantment");
+        // De-extensioned (round5 #2): an extension-id source humanises, never raw ids.
+        assert_eq!(rows[2].section, "Command enchantment");
         assert_eq!(rows[2].from, 0);
         assert_eq!(merge_completions(&groups, 0, 1).len(), 1);
         assert_eq!(
@@ -742,6 +893,67 @@ mod tests {
         assert_eq!(
             ModeChip::from_topic(&serde_json::json!({"planMode": false})),
             None
+        );
+    }
+
+    #[test]
+    fn agent_modes_compose_the_switch_commands() {
+        assert_eq!(
+            AgentMode::from_topics(false, Some("ralph")),
+            AgentMode::Ralph
+        );
+        assert_eq!(
+            AgentMode::from_topics(false, Some("swarm")),
+            AgentMode::Regular
+        );
+        assert_eq!(AgentMode::from_topics(true, Some("goal")), AgentMode::Plan);
+        assert_eq!(AgentMode::from_topics(false, None), AgentMode::Regular);
+        // Arming a long-horizon mode only clears plan; the prompt parks the old owner.
+        assert!(AgentMode::Goal.commands_from(AgentMode::Ralph).is_empty());
+        assert_eq!(
+            AgentMode::Goal.commands_from(AgentMode::Plan),
+            vec!["/plan off"]
+        );
+        assert_eq!(
+            AgentMode::Regular.commands_from(AgentMode::Ralph),
+            vec!["/regular"]
+        );
+        assert_eq!(
+            AgentMode::Plan.commands_from(AgentMode::Goal),
+            vec!["/regular", "/plan on"]
+        );
+        assert_eq!(
+            AgentMode::Regular.commands_from(AgentMode::Regular),
+            Vec::<String>::new()
+        );
+        assert!(AgentMode::Goal.arms_prompt());
+        assert!(!AgentMode::Plan.arms_prompt());
+        assert_eq!(AgentMode::Graph.cycle(), AgentMode::Ralph);
+        assert_eq!(AgentMode::Ralph.cycle(), AgentMode::Regular);
+    }
+
+    #[test]
+    fn completion_sections_are_never_raw_extension_ids() {
+        assert_eq!(
+            merge_completions(
+                &[oino_core::session::CompletionGroup {
+                    source: "unipi.command-enchantment".to_owned(),
+                    from: Some(0),
+                    items: vec![oino_core::session::CompletionEntry {
+                        value: "#s1".to_owned(),
+                        label: Some("Fix parser".to_owned()),
+                        description: None,
+                        tag: None,
+                        tone: None,
+                        sort_tier: None,
+                    }],
+                }],
+                0,
+                10,
+            )
+            .first()
+            .map(|r| r.section.clone()),
+            Some("Command enchantment".to_owned())
         );
     }
 

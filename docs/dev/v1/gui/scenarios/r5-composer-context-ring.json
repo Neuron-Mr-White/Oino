@@ -1,0 +1,121 @@
+{
+  "name": "r5-composer-context-ring",
+  "scene": "run",
+  "shots": "docs/dev/v1/design/shots/desktop",
+  "steps": [
+    {
+      "wait_for": {
+        "id": "composer",
+        "timeout_ms": 60000
+      }
+    },
+    {
+      "click": {
+        "id": "composer"
+      }
+    },
+    {
+      "assert": {
+        "absent": {
+          "id": "ctx-project"
+        }
+      }
+    },
+    {
+      "assert": {
+        "absent": {
+          "id": "mode-chip"
+        }
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "model-trigger"
+        }
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "thought-trigger"
+        }
+      }
+    },
+    {
+      "assert": {
+        "absent": {
+          "id": "context-ring"
+        }
+      }
+    },
+    {
+      "type_text": {
+        "text": "hello",
+        "submit": true
+      }
+    },
+    {
+      "wait_for": {
+        "id": "send",
+        "label": "Stop",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "01-stop-while-busy"
+      }
+    },
+    {
+      "wait_state": {
+        "busy": false,
+        "timeout_ms": 120000
+      }
+    },
+    {
+      "wait_for": {
+        "id": "context-ring",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "screenshot": {
+        "name": "02-composer-card"
+      }
+    },
+    {
+      "click": {
+        "id": "context-ring"
+      }
+    },
+    {
+      "wait_for": {
+        "text": "Context usage",
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "assert": {
+        "element": {
+          "id": "ctx-compact"
+        }
+      }
+    },
+    {
+      "screenshot": {
+        "name": "03-context-panel"
+      }
+    },
+    {
+      "key": "escape"
+    },
+    {
+      "assert": {
+        "absent": {
+          "id": "ctx-project"
+        }
+      }
+    }
+  ]
+}

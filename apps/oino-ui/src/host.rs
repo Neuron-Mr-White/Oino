@@ -286,6 +286,8 @@ pub struct AppSettings {
     pub sidebar_pinned: Vec<String>,
     /// Sidebar unread marks (`SessionList::marked_unread_ids`).
     pub sidebar_unread: Vec<String>,
+    /// Pinned models of the picker (round5 #1), `provider/id` keys, most recent pin first.
+    pub favorite_models: Vec<String>,
 }
 
 impl Default for AppSettings {
@@ -315,6 +317,7 @@ impl Default for AppSettings {
             reopen_last: true,
             sidebar_pinned: Vec::new(),
             sidebar_unread: Vec::new(),
+            favorite_models: Vec::new(),
         }
     }
 }
