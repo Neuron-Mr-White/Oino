@@ -198,10 +198,12 @@ impl SessionPane {
             .text_color(t.fg())
             .capture_key_down(cx.listener(Self::on_composer_key))
             // Ctrl+Shift+M cycles the agent mode while the composer has focus (ZCode's
-            // toolbar shortcut, round5 #2); outside the composer the chord keeps its
-            // global meaning (thinking menu).
+            // toolbar shortcut, round5 #2); the chord is intercepted here so the global
+            // thinking-menu binding does not also fire — outside the composer it keeps its
+            // global meaning.
             .capture_action(cx.listener(|this, _: &PickThinking, w, cx| {
                 this.cycle_agent_mode(w, cx);
+                cx.stop_propagation();
             }))
             // The editor binds ↑ ↓ Tab Esc as actions, which GPUI dispatches before key-down
             // listeners: intercept them in the capture phase (GA-21, completion keys).
