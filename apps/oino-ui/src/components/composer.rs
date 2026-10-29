@@ -16,7 +16,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, ElementId, Focusable as _, Hsla, InteractiveElement as _,
     IntoElement, ParentElement as _, PathBuilder, Pixels, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, canvas, deferred, div, point, px,
+    StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point, px,
 };
 use oino_ai::JsonValue;
 
@@ -264,9 +264,8 @@ impl SessionPane {
             .shadow(t.e_composer())
             .child(editor)
             .child(toolbar);
-        // The model picker is a window-level modal, drawn deferred from here (its owner).
-        let picker = (self.menu == Some(PaneMenu::Model))
-            .then(|| crate::components::model_picker::modal(self, &t, window, cx));
+        // The picker's open-time reset is keyed off the composer render (the modal itself
+        // is mounted by `render_modal` at window level, conversation.rs).
         if self.menu != Some(PaneMenu::Model) {
             self.picker_close();
         }
@@ -275,7 +274,6 @@ impl SessionPane {
             .w_full()
             .children(completion)
             .child(card)
-            .when_some(picker, |el, p| el.child(deferred(p)))
             .child({
                 let top = Rc::clone(&self.composer_top);
                 canvas(

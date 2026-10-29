@@ -506,6 +506,12 @@ impl SessionPane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        // The model-picker modal (round5 #1): a real modal, mounted at window level like
+        // the interaction modals below (owned by WP-composer; this branch is its mount).
+        if self.menu == Some(crate::views::session_pane::PaneMenu::Model) {
+            let t = OinoTheme::get(cx);
+            return Some(crate::components::model_picker::modal(self, &t, window, cx));
+        }
         if let Some(view) = self.interaction.as_ref().filter(|v| v.read(cx).is_modal()) {
             return Some(view.clone().into_any_element());
         }
