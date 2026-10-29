@@ -557,7 +557,6 @@ impl MobileShell {
                 this.update_settings(
                     |s| {
                         s.thinking_blocks = v;
-                        s.hide_thinking = v != ThinkingBlocks::Expanded;
                     },
                     window,
                     cx,

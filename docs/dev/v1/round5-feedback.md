@@ -75,7 +75,7 @@ surrounding text is the only description — locate the element yourself in the 
 
 ## Status (round 5, in progress)
 
-Issues done: 6/27 verified on the GUI driver. Remaining issues are tracked per work
+Issues done: 10/27 verified on the GUI driver. Remaining issues are tracked per work
 package in [round5.md](round5.md) §7; flip the boxes as their packages land.
 
 - [x] 5 Empty state — welcome page renders greeting + brand + suggestion cards
@@ -91,3 +91,13 @@ package in [round5.md](round5.md) §7; flip the boxes as their packages land.
   (`brand-logo` probe).
 - [x] 27 Refresh button removed from the session list (`list-refresh` absent;
   `r5-refresh-gone`).
+- [x] 14 Settings layout — 268 px nav rail (driver `bounds` assertion), search "theme"
+  hides non-matching nav rows and content rows, hairline `rounded-xl` cards, 24/30 titles
+  (`r5-settings-zcode`).
+- [x] 19 Project tab — scope reads `Project · <folder>` from the session cwd
+  (`r5-settings-trim/03-project-label`).
+- [x] 20 No Extensions page in Settings — "Manage extensions" row absent, the sidebar
+  ⌘3 route still works (`r5-settings-trim/02-extensions-route`).
+- [x] 22 Every setting does something — dead keys gone (`sidebar_compact`, `compact`,
+  `hide_thinking`, `expand_tools`), Wayland row carries the next-launch note, project
+  writes mark rows "Set in project" on the Global view (`r5-settings-trim`).

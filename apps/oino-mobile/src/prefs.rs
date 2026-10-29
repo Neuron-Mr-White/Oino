@@ -82,7 +82,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("oino-mobile-prefs-{}", std::process::id()));
         assert_eq!(load(&dir).ui_font_size, 15);
         let mut s = AppSettings {
-            hide_thinking: false,
+            native_wayland: true,
             ..AppSettings::default()
         };
         s.touch_cwd("/w");

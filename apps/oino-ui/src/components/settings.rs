@@ -1,39 +1,93 @@
-//! Settings parts (design.md A2.16): page title, section labels, grouped cards (radius 16,
-//! inset dividers at 58) and `SettingRow`s (min 56, padding 12 16, optional 28 icon tile,
-//! label 15/500, description 12.5 dim, control on the right).
+//! Settings parts (round5 #14, `ZCode` `SettingsPage` grammar): 24/30 section titles and
+//! `rounded-xl` cards of hairline-divided rows — `px-4 py-3`, label 14 medium,
+//! description the same size in the subtle colour, control right-aligned
+//! ([scout-ref A(#14)](../../../../../docs/dev/v1/round5/scout-ref.md)). Rows and their
+//! descriptions register for the automation driver (`gui-driver.md` §2) so scenarios can
+//! assert presence, absence and the Wayland restart note.
 
-use gpui_kit::assets::IconName;
+use gpui_kit::InteractiveElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
 };
 
-use crate::design::icons::icon;
+use crate::automation::{Automatable as _, Meta, Role};
 use crate::design::theme::{OinoTheme, TextExt as _};
+use crate::design::type_scale;
 use crate::design::{TextRole, radius, size, space};
 
-/// The page title (`Display`/600).
-pub fn page_title(t: &OinoTheme, text: impl Into<SharedString>) -> Div {
+/// Row horizontal padding (`ZCode` `px-4`).
+pub const ROW_PX: f32 = 16.0;
+/// Row vertical padding (`ZCode` `py-3`).
+pub const ROW_PY: f32 = 12.0;
+/// Group card corner radius (`ZCode` `rounded-xl`).
+pub const CARD_R: f32 = 12.0;
+/// Minimum row height (one 14/20 label line plus `py-3`).
+pub const ROW_MIN_H: f32 = 44.0;
+
+/// A section title: 24/30 semibold (`ZCode` `text-ui-settings-title`,
+/// `type_scale::zcode::SETTINGS_TITLE`).
+pub fn title(t: &OinoTheme, text: impl Into<SharedString>) -> Div {
     div()
-        .pb(px(space::S4))
-        .text_role(t, TextRole::Display)
+        .text_size(px(type_scale::zcode::SETTINGS_TITLE.0))
+        .line_height(px(type_scale::zcode::SETTINGS_TITLE.1))
         .weight_semibold()
         .text_color(t.fg())
         .child(text.into())
 }
 
-/// A section title: an uppercase section label (A2.15) above a grouped card.
-pub fn section_title(t: &OinoTheme, text: impl Into<SharedString>) -> Div {
-    crate::components::section_label::section_row(t, text, false, None)
+/// A section title with an aside on the right (the hub scope control, a count).
+pub fn title_row(t: &OinoTheme, text: impl Into<SharedString>, aside: AnyElement) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(space::S4))
+        .pb(px(space::S3))
+        .child(title(t, text))
+        .child(div().flex_shrink_0().child(aside))
 }
 
-/// A grouped card of rows (radius 16, `card` fill, inset dividers).
+/// A grouped card of rows: `rounded-xl`, hairline dividers between rows inset by the row
+/// padding (`ZCode` `SettingsGroupCard` + `border-t` rows).
 #[must_use]
 pub fn group(t: &OinoTheme, rows: Vec<AnyElement>) -> Div {
-    crate::components::card::grouped(t, rows, size::ROW_DIVIDER_INSET)
+    let n = rows.len();
+    let line = t.row_divider();
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .rounded(px(CARD_R))
+        .bg(t.card())
+        .border_1()
+        .border_color(t.border())
+        .overflow_hidden()
+        .children(rows.into_iter().enumerate().map(move |(i, r)| {
+            div().relative().child(r).when(i + 1 < n, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .bottom_0()
+                        .left(px(ROW_PX))
+                        .right_0()
+                        .h(px(size::HAIRLINE))
+                        .bg(line),
+                )
+            })
+        }))
 }
 
-/// One row without an icon tile: label (+ modified dot), description, control.
+/// [`group`] only when at least one row survived the search filter (a query that hides
+/// every row hides the page's card entirely, like `ZCode`'s filtered groups).
+#[must_use]
+pub fn group_if(t: &OinoTheme, rows: Vec<AnyElement>) -> Option<Div> {
+    (!rows.is_empty()).then(|| group(t, rows))
+}
+
+/// One row: label (+ modified dot, + optional badge) and description on the left, the
+/// control right-aligned. The row registers as `role: row` with the label, the
+/// description as a `text` node, so driver scenarios can select and assert them.
 pub fn row(
     t: &OinoTheme,
     label: impl Into<SharedString>,
@@ -41,52 +95,29 @@ pub fn row(
     modified: bool,
     control: AnyElement,
 ) -> AnyElement {
-    row_with(t, None, label, description, modified, control)
+    row_with_badge(t, label, description, modified, None, control)
 }
 
-/// One row with a 28 px icon tile (radius 8, surface-2, icon 16 muted).
-pub fn row_icon(
+/// [`row`] with a small badge after the label (the hub's "Set in project" scope badge,
+/// round5 #22e).
+pub fn row_with_badge(
     t: &OinoTheme,
-    glyph: IconName,
     label: impl Into<SharedString>,
     description: Option<SharedString>,
     modified: bool,
+    badge: Option<AnyElement>,
     control: AnyElement,
 ) -> AnyElement {
-    row_with(t, Some(glyph), label, description, modified, control)
-}
-
-/// The 28 px settings icon tile.
-#[must_use]
-pub fn tile(t: &OinoTheme, glyph: IconName) -> Div {
+    let label_text: SharedString = label.into();
     div()
-        .flex()
-        .items_center()
-        .justify_center()
-        .flex_shrink_0()
-        .size(px(size::SETTING_TILE))
-        .rounded(px(radius::R_TILE_SM))
-        .bg(t.chip())
-        .child(icon(glyph, size::ICON, t.fg_subtle()))
-}
-
-fn row_with(
-    t: &OinoTheme,
-    glyph: Option<IconName>,
-    label: impl Into<SharedString>,
-    description: Option<SharedString>,
-    modified: bool,
-    control: AnyElement,
-) -> AnyElement {
-    div()
+        .id(label_text.clone())
         .flex()
         .flex_row()
         .items_center()
-        .gap(px(space::S3_5))
-        .min_h(px(size::SETTING_ROW))
-        .py(px(space::S3))
-        .px(px(space::S4))
-        .when_some(glyph, |el, g| el.child(tile(t, g)))
+        .gap(px(space::S4))
+        .min_h(px(ROW_MIN_H))
+        .px(px(ROW_PX))
+        .py(px(ROW_PY))
         .child(
             div()
                 .flex()
@@ -99,15 +130,16 @@ fn row_with(
                         .flex()
                         .items_center()
                         .gap(px(space::S1_5))
-                        .text_role(t, TextRole::Prose)
-                        .line_height(t.text(TextRole::Base).1)
+                        .flex_wrap()
+                        .text_role(t, TextRole::Base)
                         .weight_medium()
                         .text_color(t.fg())
-                        .child(label.into())
+                        .child(label_text.clone())
+                        .when_some(badge, Div::child)
                         .when(modified, |el| {
                             el.child(
                                 div()
-                                    .size(px(size::DOT))
+                                    .size(px(space::S1_5))
                                     .rounded(px(radius::R_FULL))
                                     .bg(t.brand()),
                             )
@@ -116,9 +148,11 @@ fn row_with(
                 .when_some(description, |el, d| {
                     el.child(
                         div()
-                            .text_role(t, TextRole::Sm)
-                            .text_color(t.fg_subtlest())
-                            .child(d),
+                            .id(SharedString::from(format!("{label_text}-desc")))
+                            .text_role(t, TextRole::Base)
+                            .text_color(t.fg_subtle())
+                            .child(d.clone())
+                            .automation(Meta::labelled(Role::Text, d.to_string())),
                     )
                 }),
         )
@@ -128,5 +162,6 @@ fn row_with(
                 .max_w(px(size::SIDE_PANE_MIN))
                 .child(control),
         )
+        .automation(Meta::labelled(Role::Row, label_text.to_string()))
         .into_any_element()
 }

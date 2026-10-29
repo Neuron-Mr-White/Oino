@@ -235,12 +235,6 @@ pub enum ThinkingBlocks {
 pub struct AppSettings {
     /// Theme.
     pub theme: ThemePref,
-    /// Collapse thinking blocks (pi `hideThinkingBlock`).
-    pub hide_thinking: bool,
-    /// Dense rows.
-    pub compact: bool,
-    /// Expand tool rows by default.
-    pub expand_tools: bool,
     /// Recently used working directories (most recent first).
     pub recent_cwds: Vec<String>,
     /// UI font size in px (12–18).
@@ -266,8 +260,6 @@ pub struct AppSettings {
     pub mascot_window: bool,
     /// Mascot crab size in px: 72 / 96 / 128.
     pub mascot_size: u8,
-    /// Sidebar row density: compact rows when `true`.
-    pub sidebar_compact: bool,
     /// Session list column width in px (A2.8: 280–560, default 400).
     pub list_width: u16,
     /// The session file shown last; reopened at startup instead of a new empty session
@@ -294,9 +286,6 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: ThemePref::System,
-            hide_thinking: true,
-            compact: false,
-            expand_tools: false,
             recent_cwds: Vec::new(),
             ui_font_size: 14,
             code_font_size: 12,
@@ -309,7 +298,6 @@ impl Default for AppSettings {
             native_wayland: false,
             mascot_window: false,
             mascot_size: 96,
-            sidebar_compact: false,
             list_width: 400,
             last_session: None,
             last_session_cwd: None,
@@ -407,11 +395,18 @@ pub trait SessionHost: Send + Sync + 'static {
 mod tests {
     use super::*;
 
+    /// Sidebar row density was `sidebar_compact` (round5 #22: dead — no consumer outside
+    /// the settings row); with it died `compact`, `hide_thinking` (mobile-only writer,
+    /// no desktop reader) and `expand_tools` (dead OR-read removed with it). Old
+    /// `desktop.json` files with those keys load: unknown fields are ignored.
     #[test]
     fn settings_defaults_and_recent_cwds() {
-        let parsed: AppSettings = serde_json::from_str(r#"{"theme":"light"}"#).unwrap();
+        let parsed: AppSettings = serde_json::from_str(
+            r#"{"theme":"light","compact":true,"hideThinking":false,"expandTools":true,"sidebarCompact":true}"#,
+        )
+        .unwrap();
         assert_eq!(parsed.theme, ThemePref::Light);
-        assert!(parsed.hide_thinking);
+        assert!(parsed.reopen_last);
         assert_eq!(parsed.ui_font_size, 14);
         assert_eq!(AppSettings::default().theme, ThemePref::System);
         let mut h = AppSettings::default();

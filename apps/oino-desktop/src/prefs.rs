@@ -67,7 +67,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("oino-prefs-{}", std::process::id()));
         assert_eq!(load(&dir), AppSettings::default());
         let mut s = AppSettings {
-            compact: true,
+            native_wayland: true,
             ..AppSettings::default()
         };
         s.touch_cwd("/w");

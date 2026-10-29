@@ -1506,6 +1506,7 @@ impl AppShell {
             Some(ns) => SettingsSection::Extension(ns.to_owned()),
         };
         let backend = self.active_pane().map(|p| Arc::clone(p.read(cx).backend()));
+        let cwd = self.active_pane().map(|p| p.read(cx).model.cwd.clone());
         let models = self
             .active_pane()
             .map(|p| p.read(cx).models.clone())
@@ -1519,7 +1520,7 @@ impl AppShell {
         let extensions = self.extensions.clone();
         let view = cx.new(|cx| {
             SettingsView::new(
-                settings, backend, models, shortcuts, extensions, info, section, window, cx,
+                settings, backend, cwd, models, shortcuts, extensions, info, section, window, cx,
             )
         });
         let page_focus = Focusable::focus_handle(view.read(cx), cx);
@@ -1540,10 +1541,6 @@ impl AppShell {
                     this.with_pane(cx, |p, cx| p.run_prompt(&command, cx));
                 }
                 SettingsEvent::Toast(text) => this.toast(ToastKind::Info, None, text.clone(), cx),
-                SettingsEvent::OpenExtensions => {
-                    this.settings_view = None;
-                    this.run_app_action("extensions", window, cx);
-                }
             },
         );
         self.settings_view = Some((view, sub));

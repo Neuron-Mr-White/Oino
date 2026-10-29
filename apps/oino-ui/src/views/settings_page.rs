@@ -1,11 +1,23 @@
-//! D8 Settings (design.md A2.16): `PageHeader` "Settings" with a search tool (⌘F), then a
-//! 200 px section nav and the content (max 760): each section is a section label with an
-//! icon over a grouped card of rows (icon tile 28, label 15/500, description, control).
+//! Settings (round5 #14–#22, `ZCode` layout — [scout-ref A(#14)]):
+//! a 268 px labelled nav rail with a search field on top, scrollable below, and a
+//! scrolling content column of 24/30 section titles over `rounded-xl` cards of
+//! hairline-divided rows. Layout constants live here, not in `design/tokens.rs`.
+//!
+//! The page structure mirrors gpui-component's `setting/` framework
+//! (`Settings` → `SettingPage` → `SettingGroup` → `SettingItem`), which is the reference
+//! for the grammar; it renders through oino's own components because the crate's render
+//! paths are `pub(crate)` and its `Sidebar`/menu items would not register for the
+//! automation driver — the hub scenarios (`unipi-notify` …) and this round's acceptance
+//! steps drive the nav rows, the search field and the switches through it.
+//!
 //! General and Sessions edit core settings over `_oino/get_settings` / `set_setting`
-//! (GA-37); Models & Providers signs in over `_oino/auth_providers|login|logout`; Keyboard
-//! shortcuts lists app and extension shortcuts (GA-16); the extension settings hub runs over
-//! `_oino/get_settings_schema` / `get_extension_settings` / `set_extension_setting`
-//! (ui-protocol §6.6); Permissions is the `unipi.workflow` hub namespace (GA-33).
+//! (GA-37); Models & Providers signs in over `_oino/auth_providers|login|logout`;
+//! Keyboard shortcuts lists app and extension shortcuts (GA-16); the extension settings
+//! hub runs over `_oino/get_settings_schema` / `get_extension_settings` /
+//! `set_extension_setting` (ui-protocol §6.6); Permissions is the `unipi.workflow` hub
+//! namespace (GA-33). The scope control is `Global | Project · <folder>` (#19), disabled
+//! with a hint when no session is open; a project-layer value that shadows the global one
+//! marks its row "Set in project" (#22e).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -13,7 +25,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::Focusable as _;
-
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -30,16 +41,15 @@ use oino_core::session::AuthProviderInfo;
 use oino_view::settings_hub::{self, FieldKind, HubField, HubNamespace};
 
 use crate::automation::Automatable as _;
-
+use crate::automation::{Meta, Role};
 use crate::components::badge::{badge, kbd};
 use crate::components::button::{Btn, BtnSize, Variant};
 use crate::components::controls::{segmented, switch};
 use crate::components::empty::empty_state;
 use crate::components::page_header::PageHeader;
-use crate::components::section_label::with_icon;
-use crate::components::settings::{group, row, row_icon};
+use crate::components::settings::{self, group, group_if, row};
 use crate::design::theme::{OinoTheme, TextExt as _};
-use crate::design::{TextRole, radius, size, space};
+use crate::design::{TextRole, icons, size, space};
 use crate::host::{
     AppSettings, ExtensionInfo, HostInfo, ReduceMotion, StatusPanelMode, ThemePref, ThinkingBlocks,
     ToolDensity,
@@ -48,6 +58,19 @@ use crate::model::ous::Tone;
 use crate::model::ui_state::Shortcut;
 use crate::rt::Tokio;
 
+// ---- Layout constants (round5 #14: local to this page, not `design/tokens.rs`) ----
+
+/// Nav rail width (`ZCode` `grid-cols-[268px_1fr]`).
+const NAV_W: f32 = 268.0;
+/// Content column max width.
+const CONTENT_MAX: f32 = 760.0;
+/// Nav row height (`ZCode` `h-8`).
+const NAV_ROW_H: f32 = 32.0;
+/// Nav row horizontal padding (`ZCode` `px-2.5`).
+const NAV_ROW_PX: f32 = 10.0;
+/// Search field height in the rail.
+const SEARCH_H: f32 = 32.0;
+
 /// Settings pages.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
@@ -55,6 +78,8 @@ pub enum SettingsSection {
     General,
     /// Appearance.
     Appearance,
+    /// Unicrab (mascot window, crab size).
+    Unicrab,
     /// Models & Providers.
     Models,
     /// Sessions.
@@ -65,8 +90,6 @@ pub enum SettingsSection {
     Shortcuts,
     /// Extension settings namespace.
     Extension(String),
-    /// Unicrab (mascot window, crab size).
-    Unicrab,
     /// About & updates.
     About,
 }
@@ -86,6 +109,49 @@ impl SettingsSection {
             Self::About => ("About & updates", IconName::Info),
         }
     }
+
+    /// Search keywords: the row labels of the section, so a query that matches a row
+    /// keeps the section's nav row visible (#14). Keep in sync with the page builders.
+    fn keywords(&self) -> &'static [&'static str] {
+        match self {
+            Self::General => &[
+                "Default model",
+                "Default thinking",
+                "Default folder",
+                "Reopen the last session",
+                "startup",
+            ],
+            Self::Appearance => &[
+                "Theme",
+                "Interface size",
+                "Code font size",
+                "Reduce motion",
+                "Tool rows",
+                "Thinking blocks",
+                "Status panel",
+            ],
+            Self::Unicrab => &["Mascot window", "Crab size", "Native Wayland", "restart"],
+            Self::Models => &["provider", "model", "Available models", "licence"],
+            Self::Sessions => &[
+                "Session folder",
+                "Steering messages",
+                "Follow-ups",
+                "Auto-compact",
+                "Retry on errors",
+            ],
+            Self::Permissions => &["permission", "mode", "workflow"],
+            Self::Shortcuts => &["shortcut", "keyboard", "command"],
+            Self::Extension(_) => &[],
+            Self::About => &[
+                "version",
+                "update",
+                "readme",
+                "changelog",
+                "licence",
+                "agent",
+            ],
+        }
+    }
 }
 
 /// Emitted to the workspace.
@@ -99,12 +165,21 @@ pub enum SettingsEvent {
     Command(String),
     /// Show a toast.
     Toast(String),
-    /// Open the Extensions page (D12).
-    OpenExtensions,
 }
 
 /// Thinking levels of Settings → General (`defaultThinkingLevel`).
 const LEVELS: [&str; 4] = ["off", "low", "medium", "high"];
+
+/// The folder name of the active session's working directory (#19), when there is one.
+fn project_name(cwd: Option<&str>) -> Option<String> {
+    let cwd = cwd?.trim();
+    if cwd.is_empty() {
+        return None;
+    }
+    std::path::Path::new(cwd)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+}
 
 /// A `−  n  +` stepper for small integer ranges (font sizes).
 fn stepper(
@@ -152,10 +227,43 @@ fn stepper(
         .into_any_element()
 }
 
+/// One buildable settings row (label + description + control), so page builders can
+/// filter rows by the search query before rendering them.
+struct RowSpec {
+    label: SharedString,
+    description: Option<SharedString>,
+    control: AnyElement,
+}
+
+impl RowSpec {
+    fn new(
+        label: impl Into<SharedString>,
+        description: Option<SharedString>,
+        control: AnyElement,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            description,
+            control,
+        }
+    }
+
+    fn matches(&self, query: &str) -> bool {
+        query.is_empty()
+            || self.label.to_lowercase().contains(query)
+            || self
+                .description
+                .as_ref()
+                .is_some_and(|d| d.to_lowercase().contains(query))
+    }
+}
+
 /// The settings page.
 pub struct SettingsView {
     settings: AppSettings,
     backend: Option<Arc<dyn SessionBackend>>,
+    /// Working directory of the session the page was opened from (#19).
+    cwd: Option<String>,
     models: Vec<Model>,
     shortcuts: Vec<Shortcut>,
     extensions: Vec<ExtensionInfo>,
@@ -163,7 +271,10 @@ pub struct SettingsView {
     section: SettingsSection,
     schema: Vec<JsonValue>,
     namespaces: Vec<HubNamespace>,
-    values: HashMap<String, JsonValue>,
+    /// Hub values per namespace, per layer: the effective value of a key is the project
+    /// one when set, else the global one (deep-merge semantics, #22e).
+    global_values: HashMap<String, JsonValue>,
+    project_values: HashMap<String, JsonValue>,
     scope: SettingsScope,
     providers: Vec<AuthProviderInfo>,
     inputs: HashMap<String, (Entity<InputState>, Subscription)>,
@@ -192,6 +303,7 @@ impl SettingsView {
     pub fn new(
         settings: AppSettings,
         backend: Option<Arc<dyn SessionBackend>>,
+        cwd: Option<String>,
         models: Vec<Model>,
         shortcuts: Vec<Shortcut>,
         extensions: Vec<ExtensionInfo>,
@@ -209,6 +321,7 @@ impl SettingsView {
         let view = Self {
             settings,
             backend,
+            cwd,
             models,
             shortcuts,
             extensions,
@@ -216,7 +329,8 @@ impl SettingsView {
             section,
             schema: Vec::new(),
             namespaces: Vec::new(),
-            values: HashMap::new(),
+            global_values: HashMap::new(),
+            project_values: HashMap::new(),
             scope: SettingsScope::Global,
             providers: Vec::new(),
             inputs: HashMap::new(),
@@ -231,6 +345,11 @@ impl SettingsView {
         view.load_providers(cx);
         view.load_core(cx);
         if let SettingsSection::Extension(ns) = view.section.clone() {
+            view.load_values(&ns, cx);
+        }
+        if view.section == SettingsSection::Permissions
+            && let Some(ns) = view.permissions_ns()
+        {
             view.load_values(&ns, cx);
         }
         view
@@ -328,33 +447,56 @@ impl SettingsView {
         .detach();
     }
 
-    fn layer(&self) -> SettingsLayer {
-        match self.scope {
-            SettingsScope::Global => SettingsLayer::Global,
-            SettingsScope::Project => SettingsLayer::Project,
-        }
-    }
-
+    /// Loads both layers of namespace `ns`: the active one for editing, the other for the
+    /// shadow badge (#22e).
     fn load_values(&self, ns: &str, cx: &mut Context<Self>) {
         let Some(backend) = self.backend.clone() else {
             return;
         };
-        let (ns, layer) = (ns.to_owned(), self.layer());
-        let key = ns.clone();
-        let task = Tokio::spawn(
-            cx,
-            async move { backend.extension_settings(&ns, layer).await },
-        );
+        let (ns_global, ns_project) = (ns.to_owned(), ns.to_owned());
+        let (backend_global, backend_project) = (Arc::clone(&backend), Arc::clone(&backend));
+        let global = Tokio::spawn(cx, async move {
+            backend_global
+                .extension_settings(&ns_global, SettingsLayer::Global)
+                .await
+        });
+        let project = Tokio::spawn(cx, async move {
+            backend_project
+                .extension_settings(&ns_project, SettingsLayer::Project)
+                .await
+        });
+        let ns_key = ns.to_owned();
         cx.spawn(async move |this, cx| {
-            if let Ok(Ok(values)) = task.await {
+            if let (Ok(Ok(g)), Ok(Ok(p))) = (global.await, project.await) {
                 let _ = this.update(cx, |v, cx| {
-                    v.values.insert(key, values);
+                    v.global_values.insert(ns_key.clone(), g);
+                    v.project_values.insert(ns_key, p);
                     v.inputs.clear();
                     cx.notify();
                 });
             }
         })
         .detach();
+    }
+
+    /// The effective values of `ns` for display: project keys shadow global ones
+    /// (the deep-merge semantics of the values reader, scout-oino §3.3).
+    fn effective_values(&self, ns: &str) -> JsonValue {
+        let global = self
+            .global_values
+            .get(ns)
+            .cloned()
+            .unwrap_or(JsonValue::Null);
+        let Some(project) = self.project_values.get(ns) else {
+            return global;
+        };
+        let mut merged = global;
+        if let (Some(target), Some(source)) = (merged.as_object_mut(), project.as_object()) {
+            for (k, v) in source {
+                target.insert(k.clone(), v.clone());
+            }
+        }
+        merged
     }
 
     fn set_section(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
@@ -390,6 +532,35 @@ impl SettingsView {
         );
         out.push(SettingsSection::About);
         out
+    }
+
+    /// Whether the section's nav row survives the search query (#14): the label, a row
+    /// keyword or — for hub namespaces — any field label matches.
+    fn section_matches(&self, section: &SettingsSection, query: &str) -> bool {
+        if query.is_empty() {
+            return true;
+        }
+        let label = section.label().0.to_lowercase();
+        if label.contains(query)
+            || section
+                .keywords()
+                .iter()
+                .any(|k| k.to_lowercase().contains(query))
+        {
+            return true;
+        }
+        let permissions = self.permissions_ns();
+        let ns = match section {
+            SettingsSection::Extension(ns) => ns.as_str(),
+            SettingsSection::Permissions => permissions.as_deref().unwrap_or(""),
+            _ => return false,
+        };
+        settings_hub::fields(&self.schema, ns).iter().any(|f| {
+            f.label.to_lowercase().contains(query)
+                || f.description
+                    .as_ref()
+                    .is_some_and(|d| d.to_lowercase().contains(query))
+        })
     }
 
     /// Settings keys (design.md §4 D8): ⌘F search, ↑/↓ previous / next page, Esc back.
@@ -432,6 +603,8 @@ impl SettingsView {
 
     fn write(&mut self, ns: &str, key: &str, value: Option<JsonValue>, cx: &mut Context<Self>) {
         let Some(backend) = self.backend.clone() else {
+            // Round5 #22d: no silent no-op — say what is missing.
+            cx.emit(SettingsEvent::Toast("Needs an open session".into()));
             return;
         };
         let (ns_owned, key_owned, scope) = (ns.to_owned(), key.to_owned(), self.scope);
@@ -508,6 +681,9 @@ impl SettingsView {
         state
     }
 
+    /// The nav rail (#14): search on top, scrollable nav below; 268 px wide, `h-8`
+    /// `rounded-xl` rows with 16 px icons, active row selected. The rail and the search
+    /// field register for the automation driver.
     fn nav(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
         let item = |id: ElementId,
                     label: SharedString,
@@ -519,44 +695,35 @@ impl SettingsView {
                 .id(id)
                 .flex()
                 .items_center()
-                .gap(px(space::S2_5))
-                .h(px(size::NAV_ITEM))
-                .px(px(space::S2_5))
-                .rounded(px(radius::R_ROW))
+                .gap(px(space::S2))
+                .h(px(NAV_ROW_H))
+                .w_full()
+                .px(px(NAV_ROW_PX))
+                .rounded(px(settings::CARD_R))
                 .cursor_pointer()
                 .text_role(t, TextRole::Base)
                 .weight_medium()
                 .text_color(if active { t.fg() } else { t.fg_subtle() })
-                .when(active, |el| {
-                    el.bg(t.selected())
-                        .border_1()
-                        .border_color(t.selected_border())
-                })
+                .when(active, |el| el.bg(t.selected()))
                 .when(!active, |el| el.hover(|s| s.bg(t.hover())))
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                     this.set_section(section.clone(), cx);
                 }))
                 .when_some(glyph, |el, g| {
-                    el.child(crate::design::icons::icon(
+                    el.child(icons::icon(
                         g,
                         size::ICON,
-                        if active { t.fg() } else { t.fg_subtlest() },
+                        if active { t.fg() } else { t.fg_subtle() },
                     ))
                 })
                 .child(div().flex_1().min_w_0().truncate().child(label.clone()))
-                .automation(
-                    crate::automation::Meta::labelled(
-                        crate::automation::Role::Row,
-                        label.to_string(),
-                    )
-                    .selected(active),
-                )
+                .automation(Meta::labelled(Role::Row, label.to_string()).selected(active))
                 .into_any_element()
         };
         let s = &self.section;
         let query = self.search.read(cx).value().to_lowercase();
         let mut rows: Vec<AnyElement> = Vec::new();
-        for (i, section) in [
+        for section in [
             SettingsSection::General,
             SettingsSection::Appearance,
             SettingsSection::Unicrab,
@@ -564,18 +731,17 @@ impl SettingsView {
             SettingsSection::Sessions,
             SettingsSection::Permissions,
             SettingsSection::Shortcuts,
-        ]
-        .into_iter()
-        .enumerate()
-        {
+        ] {
+            if !self.section_matches(&section, &query) {
+                continue;
+            }
             let (label, glyph) = section.label();
-            let active = *s == section;
             rows.push(item(
-                ElementId::NamedInteger("set-core".into(), i as u64),
+                ElementId::Name(label.into()),
                 label.into(),
                 Some(glyph),
-                section,
-                active,
+                section.clone(),
+                *s == section,
                 cx,
             ));
         }
@@ -585,27 +751,28 @@ impl SettingsView {
             .iter()
             .filter(|n| Some(&n.namespace) != permissions.as_ref())
             .filter(|n| {
-                query.is_empty()
-                    || n.title.to_lowercase().contains(&query)
-                    || n.namespace.contains(&query)
+                self.section_matches(&SettingsSection::Extension(n.namespace.clone()), &query)
             })
             .cloned()
             .collect();
-        rows.push(
-            div()
-                .px(px(space::S2_5))
-                .child(crate::components::section_label::section_row(
-                    t,
-                    "Extension settings",
-                    false,
-                    None,
-                ))
-                .into_any_element(),
-        );
+        let any_namespaces = !namespaces.is_empty() || self.backend.is_some();
+        if any_namespaces {
+            rows.push(
+                div()
+                    .px(px(NAV_ROW_PX))
+                    .pt(px(space::S3))
+                    .pb(px(space::S1))
+                    .text_role(t, TextRole::Sm)
+                    .weight_medium()
+                    .text_color(t.fg_subtlest())
+                    .child("Extension settings")
+                    .into_any_element(),
+            );
+        }
         if namespaces.is_empty() {
             rows.push(
                 div()
-                    .px(px(space::S2_5))
+                    .px(px(NAV_ROW_PX))
                     .text_role(t, TextRole::Sm)
                     .text_color(t.fg_subtlest())
                     .child(if self.backend.is_some() {
@@ -616,10 +783,10 @@ impl SettingsView {
                     .into_any_element(),
             );
         }
-        for (i, ns) in namespaces.into_iter().enumerate() {
+        for ns in namespaces {
             let active = matches!(s, SettingsSection::Extension(n) if *n == ns.namespace);
             rows.push(item(
-                ElementId::NamedInteger("set-ns".into(), i as u64),
+                ElementId::Name(ns.title.clone().into()),
                 SharedString::from(ns.title.clone()),
                 None,
                 SettingsSection::Extension(ns.namespace.clone()),
@@ -627,59 +794,142 @@ impl SettingsView {
                 cx,
             ));
         }
-        rows.push(
-            div()
-                .id("set-extensions")
-                .flex()
-                .items_center()
-                .gap(px(space::S2))
-                .h(px(size::NAV_ITEM))
-                .px(px(space::S2_5))
-                .rounded(px(radius::R_ROW))
-                .cursor_pointer()
-                .text_role(t, TextRole::Base)
-                .text_color(t.fg_subtle())
-                .hover(|s| s.bg(t.hover()))
-                .on_click(
-                    cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(SettingsEvent::OpenExtensions)),
-                )
-                .child(div().flex_1().child("Manage extensions"))
-                .child(crate::design::icons::icon(
-                    IconName::ChevronRight,
-                    size::ICON_SM,
-                    t.fg_subtlest(),
-                ))
-                .into_any_element(),
-        );
-        rows.push(div().h(px(space::S4)).into_any_element());
-        let (about, about_icon) = SettingsSection::About.label();
-        rows.push(item(
-            ElementId::Name("set-about".into()),
-            about.into(),
-            Some(about_icon),
-            SettingsSection::About,
-            *s == SettingsSection::About,
-            cx,
-        ));
-        div()
+        if self.section_matches(&SettingsSection::About, &query) {
+            let (about, about_icon) = SettingsSection::About.label();
+            rows.push(div().h(px(space::S4)).into_any_element());
+            rows.push(item(
+                ElementId::Name(about.into()),
+                about.into(),
+                Some(about_icon),
+                SettingsSection::About,
+                *s == SettingsSection::About,
+                cx,
+            ));
+        }
+        let search = self.search.clone();
+        let search_value = self.search.read(cx).value().to_string();
+        let search_focus = self.search.read(cx).focus_handle(cx);
+        let search_field = div()
+            .flex()
+            .items_center()
+            .h(px(SEARCH_H))
+            .px(px(space::S2_5))
+            .rounded(px(settings::CARD_R))
+            .bg(t.chip())
+            // The search field registers for the automation driver (id `settings-search`,
+            // value = the query, focus = the field).
+            .child(crate::automation::registry::probe_named(
+                Input::new(&search)
+                    .prefix(icons::icon(IconName::Search, size::ICON, t.fg_subtlest()))
+                    .into_any_element(),
+                Meta::labelled(Role::Input, "Search settings")
+                    .value(search_value)
+                    .focus(search_focus),
+                "settings-search",
+            ));
+        let rail = div()
             .id("settings-nav")
             .flex()
             .flex_col()
-            .w(px(size::SETTINGS_NAV))
+            .w(px(NAV_W))
             .flex_shrink_0()
             .h_full()
-            .pl(px(size::PAGE_GUTTER - space::S2_5))
-            .pb(px(space::S4))
-            .gap(px(space::HALF))
-            .overflow_y_scroll()
-            .children(rows)
+            .pl(px(space::S3))
+            .pr(px(space::S2))
+            .pb(px(space::S3))
+            .gap(px(space::S2))
+            .child(search_field)
+            .child(
+                div()
+                    .id("settings-nav-scroll")
+                    .flex()
+                    .flex_col()
+                    .gap(px(space::HALF))
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .children(rows),
+            )
+            .automation_named(Meta::labelled(Role::Other, "settings-nav"), "settings-nav");
+        rail.into_any_element()
+    }
+
+    /// A section head: the 24/30 title (`ZCode` `text-ui-settings-title`).
+    fn head(t: &OinoTheme, section: &SettingsSection) -> AnyElement {
+        let (label, _) = section.label();
+        div()
+            .pb(px(space::S3))
+            .child(settings::title(t, label))
             .into_any_element()
     }
 
-    /// A section head: section label with an icon (A2.16).
-    fn head(t: &OinoTheme, section: &SettingsSection, first: bool) -> AnyElement {
-        let (label, glyph) = section.label();
-        with_icon(t, glyph, label, first).into_any_element()
+    /// The scope control (#19): `Global | Project · <folder>`; Project is disabled with a
+    /// hint when no session backend exists (also the #22 no-session fix).
+    fn scope_control(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
+        let no_session = self.backend.is_none();
+        let project = match project_name(self.cwd.as_deref()) {
+            Some(name) => format!("Project · {name}"),
+            None => "Project".to_owned(),
+        };
+        let global_label: SharedString = "Global".into();
+        let project_label: SharedString = SharedString::from(project);
+        let e = cx.entity().downgrade();
+        div()
+            .flex()
+            .flex_col()
+            .items_end()
+            .gap(px(space::S1))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(space::S1))
+                    .child(
+                        Btn::new("scope-global")
+                            .label(global_label)
+                            .size(BtnSize::Sm)
+                            .variant(Variant::Secondary)
+                            .selected(self.scope == SettingsScope::Global)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.scope = SettingsScope::Global;
+                                if let SettingsSection::Extension(ns) = this.section.clone() {
+                                    this.load_values(&ns, cx);
+                                }
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Btn::new("scope-project")
+                            .label(project_label.clone())
+                            .size(BtnSize::Sm)
+                            .variant(Variant::Secondary)
+                            .selected(self.scope == SettingsScope::Project)
+                            .disabled(no_session)
+                            .on_click(move |_, _, cx| {
+                                let _ = e.update(cx, |this, cx| {
+                                    this.scope = SettingsScope::Project;
+                                    if let SettingsSection::Extension(ns) = this.section.clone() {
+                                        this.load_values(&ns, cx);
+                                    }
+                                    cx.notify();
+                                });
+                            }),
+                    ),
+            )
+            .when(no_session, |el| {
+                el.child(
+                    div()
+                        .id("scope-hint")
+                        .text_role(t, TextRole::Sm)
+                        .text_color(t.fg_subtle())
+                        .child("Project scope needs an open session")
+                        .automation(Meta::labelled(
+                            Role::Text,
+                            "Project scope needs an open session",
+                        )),
+                )
+            })
+            .into_any_element()
     }
 
     /// Settings → General (GA-37): default model and thinking, default folder, startup.
@@ -820,47 +1070,37 @@ impl SettingsView {
             },
         );
         let rows = vec![
-            row_icon(
-                t,
-                IconName::Sparkles,
+            RowSpec::new(
                 "Default model",
                 Some("New sessions start with this model.".into()),
-                model.is_some(),
                 picker.into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::Brain,
-                "Default thinking",
-                None,
-                level != "off",
-                thinking.into_any_element(),
-            ),
-            row_icon(
-                t,
-                IconName::FolderOpen,
+            RowSpec::new("Default thinking", None, thinking.into_any_element()),
+            RowSpec::new(
                 "Default folder",
                 Some("Where new sessions start. Press Enter to save.".into()),
-                self.settings.default_cwd.is_some(),
                 div()
                     .w(px(size::SIDEBAR + space::S10))
                     .child(Input::new(&folder_input))
                     .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::RotateCcw,
+            RowSpec::new(
                 "Reopen the last session",
                 Some("At startup, instead of a new empty session.".into()),
-                !self.settings.reopen_last,
                 reopen.into_any_element(),
             ),
         ];
+        let query = self.search.read(cx).value().to_lowercase();
+        let kept: Vec<AnyElement> = rows
+            .into_iter()
+            .filter(|r| r.matches(&query))
+            .map(|r| row(t, r.label, r.description, false, r.control))
+            .collect();
         div()
             .flex()
             .flex_col()
-            .child(Self::head(t, &SettingsSection::General, true))
-            .child(group(t, rows))
+            .child(Self::head(t, &SettingsSection::General))
+            .children(group_if(t, kept))
             .into_any_element()
     }
 
@@ -930,12 +1170,9 @@ impl SettingsView {
         };
         let reveal = PathBuf::from(&shown);
         let rows = vec![
-            row_icon(
-                t,
-                IconName::FolderOpen,
+            RowSpec::new(
                 "Session folder",
                 Some("Where session files are written. Press Enter to save.".into()),
-                dir.is_some(),
                 div()
                     .flex()
                     .items_center()
@@ -947,44 +1184,38 @@ impl SettingsView {
                     )
                     .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::CornerDownRight,
+            RowSpec::new(
                 "Steering messages",
                 Some("How messages typed during a run are delivered.".into()),
-                self.core_at("steeringMode").is_some(),
                 queue("steeringMode", self),
             ),
-            row_icon(
-                t,
-                IconName::ListTree,
+            RowSpec::new(
                 "Follow-ups",
                 Some("How queued follow-ups are delivered after a run.".into()),
-                self.core_at("followUpMode").is_some(),
                 queue("followUpMode", self),
             ),
-            row_icon(
-                t,
-                IconName::Archive,
+            RowSpec::new(
                 "Auto-compact",
                 Some("Summarise old turns when the context fills up.".into()),
-                self.core_at("compaction.enabled").is_some(),
                 flag("compaction.enabled", "set-compaction", self),
             ),
-            row_icon(
-                t,
-                IconName::RefreshCw,
+            RowSpec::new(
                 "Retry on errors",
                 Some("Retry provider errors such as rate limits.".into()),
-                self.core_at("retry.enabled").is_some(),
                 flag("retry.enabled", "set-retry", self),
             ),
         ];
+        let query = self.search.read(cx).value().to_lowercase();
+        let kept: Vec<AnyElement> = rows
+            .into_iter()
+            .filter(|r| r.matches(&query))
+            .map(|r| row(t, r.label, r.description, false, r.control))
+            .collect();
         div()
             .flex()
             .flex_col()
-            .child(Self::head(t, &SettingsSection::Sessions, true))
-            .child(group(t, rows))
+            .child(Self::head(t, &SettingsSection::Sessions))
+            .children(group_if(t, kept))
             .into_any_element()
     }
 
@@ -1000,15 +1231,12 @@ impl SettingsView {
                 .into_any_element()
         };
         let rows = vec![
-            row_icon(
-                t,
-                IconName::Info,
+            RowSpec::new(
                 SharedString::from(format!("Oino {}", self.info.version)),
                 Some(SharedString::from(format!(
                     "Backend: {}",
                     self.info.backend
                 ))),
-                false,
                 Btn::new("about-check")
                     .label("Check for updates")
                     .icon(IconName::CircleArrowDown)
@@ -1020,12 +1248,9 @@ impl SettingsView {
                     }))
                     .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::BookOpen,
+            RowSpec::new(
                 "Readme and changelog",
                 Some("Package READMEs, including Oino's own.".into()),
-                false,
                 Btn::new("about-readme")
                     .label("Open")
                     .variant(Variant::Secondary)
@@ -1036,40 +1261,33 @@ impl SettingsView {
                     }))
                     .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::FolderOpen,
+            RowSpec::new(
                 "Agent folder",
                 None,
-                false,
                 value(self.info.agent_dir.display().to_string()),
             ),
-            row_icon(
-                t,
-                IconName::Blocks,
-                "Extensions",
-                None,
-                false,
-                value(self.extensions.len().to_string()),
-            ),
-            row_icon(
-                t,
-                IconName::FileText,
+            RowSpec::new("Extensions", None, value(self.extensions.len().to_string())),
+            RowSpec::new(
                 "Licences",
                 Some(
                     "Lucide (ISC), Inter (OFL 1.1), JetBrains Mono (OFL 1.1), gpui-kit \
                      (Apache-2.0)"
                         .into(),
                 ),
-                false,
                 div().into_any_element(),
             ),
         ];
+        let query = self.search.read(cx).value().to_lowercase();
+        let kept: Vec<AnyElement> = rows
+            .into_iter()
+            .filter(|r| r.matches(&query))
+            .map(|r| row(t, r.label, r.description, false, r.control))
+            .collect();
         div()
             .flex()
             .flex_col()
-            .child(Self::head(t, &SettingsSection::About, true))
-            .child(group(t, rows))
+            .child(Self::head(t, &SettingsSection::About))
+            .children(group_if(t, kept))
             .child(
                 div()
                     .pt(px(space::S5))
@@ -1096,12 +1314,9 @@ impl SettingsView {
             ThemePref::Dark => 2,
         };
         let rows = vec![
-            row_icon(
-                t,
-                IconName::Palette,
+            RowSpec::new(
                 "Theme",
                 Some("Follows the system appearance by default.".into()),
-                s.theme != ThemePref::System,
                 segmented(
                     "set-theme",
                     t,
@@ -1113,53 +1328,29 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::ALargeSmall,
+            RowSpec::new(
                 "Interface size",
                 Some("UI text size in px (12–18).".into()),
-                s.ui_font_size != 14,
                 stepper("set-ui-size", t, s.ui_font_size, (12, 18), {
                     let e = e.clone();
-                    Rc::new(move |v, cx: &mut App| {
+                    Rc::new(move |v, cx| {
                         let _ = e.update(cx, |view, cx| view.change(|s| s.ui_font_size = v, cx));
                     })
                 }),
             ),
-            row_icon(
-                t,
-                IconName::Code,
+            RowSpec::new(
                 "Code font size",
                 Some("Code, diffs, logs and the terminal (10–20).".into()),
-                s.code_font_size != 12,
                 stepper("set-code-size", t, s.code_font_size, (10, 20), {
                     let e = e.clone();
-                    Rc::new(move |v, cx: &mut App| {
+                    Rc::new(move |v, cx| {
                         let _ = e.update(cx, |view, cx| view.change(|s| s.code_font_size = v, cx));
                     })
                 }),
             ),
-            row_icon(
-                t,
-                IconName::PanelLeft,
-                "Sidebar density",
-                None,
-                s.sidebar_compact,
-                segmented(
-                    "set-sidebar-density",
-                    t,
-                    &["Comfortable", "Compact"],
-                    usize::from(s.sidebar_compact),
-                    pick(|s, i| s.sidebar_compact = i == 1),
-                )
-                .into_any_element(),
-            ),
-            row_icon(
-                t,
-                IconName::Zap,
+            RowSpec::new(
                 "Reduce motion",
-                None,
-                s.reduce_motion != ReduceMotion::FollowOs,
+                Some("Static spinners, no animation.".into()),
                 segmented(
                     "set-motion",
                     t,
@@ -1176,12 +1367,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::Wrench,
+            RowSpec::new(
                 "Tool rows",
                 Some("How much of each tool call the timeline shows.".into()),
-                s.tool_density != ToolDensity::Simple,
                 segmented(
                     "set-density",
                     t,
@@ -1201,12 +1389,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::Brain,
+            RowSpec::new(
                 "Thinking blocks",
-                None,
-                s.thinking_blocks != ThinkingBlocks::Collapsed,
+                Some("Collapsed, expanded or hidden in the timeline.".into()),
                 segmented(
                     "set-thinking",
                     t,
@@ -1226,12 +1411,9 @@ impl SettingsView {
                 )
                 .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::PanelRight,
+            RowSpec::new(
                 "Status panel",
-                None,
-                s.status_panel != StatusPanelMode::Auto,
+                Some("The status column right of the transcript.".into()),
                 segmented(
                     "set-status",
                     t,
@@ -1252,11 +1434,17 @@ impl SettingsView {
                 .into_any_element(),
             ),
         ];
+        let query = self.search.read(cx).value().to_lowercase();
+        let kept: Vec<AnyElement> = rows
+            .into_iter()
+            .filter(|r| r.matches(&query))
+            .map(|r| row(t, r.label, r.description, false, r.control))
+            .collect();
         div()
             .flex()
             .flex_col()
-            .child(Self::head(t, &SettingsSection::Appearance, true))
-            .child(group(t, rows))
+            .child(Self::head(t, &SettingsSection::Appearance))
+            .children(group_if(t, kept))
             .into_any_element()
     }
 
@@ -1277,21 +1465,15 @@ impl SettingsView {
             }
         };
         let mut rows = vec![
-            row_icon(
-                t,
-                IconName::AppWindow,
+            RowSpec::new(
                 "Mascot window",
                 Some("A floating Unicrab above other windows. It shows the overall state and pops a bubble when a session needs you or finishes.".into()),
-                s.mascot_window,
                 switch("set-mascot", t, s.mascot_window, toggle(|s, on| s.mascot_window = on))
                     .into_any_element(),
             ),
-            row_icon(
-                t,
-                IconName::Maximize,
+            RowSpec::new(
                 "Crab size",
                 None,
-                s.mascot_size != 96,
                 segmented(
                     "set-mascot-size",
                     t,
@@ -1307,21 +1489,24 @@ impl SettingsView {
             ),
         ];
         if cfg!(target_os = "linux") {
-            rows.push(row_icon(
-                t,
-                IconName::Monitor,
+            rows.push(RowSpec::new(
                 "Native Wayland",
-                Some("Run on Wayland instead of XWayland. Turns off the embedded browser (WebKitGTK embeds into X11 windows only). Takes effect after a restart.".into()),
-                s.native_wayland,
+                Some("Run on Wayland instead of XWayland. Turns off the embedded browser (WebKitGTK embeds into X11 windows only). Applies at next launch.".into()),
                 switch("set-wayland", t, s.native_wayland, toggle(|s, on| s.native_wayland = on))
                     .into_any_element(),
             ));
         }
+        let query = self.search.read(cx).value().to_lowercase();
+        let kept: Vec<AnyElement> = rows
+            .into_iter()
+            .filter(|r| r.matches(&query))
+            .map(|r| row(t, r.label, r.description, false, r.control))
+            .collect();
         div()
             .flex()
             .flex_col()
-            .child(Self::head(t, &SettingsSection::Unicrab, true))
-            .child(group(t, rows))
+            .child(Self::head(t, &SettingsSection::Unicrab))
+            .children(group_if(t, kept))
             .into_any_element()
     }
 
@@ -1438,7 +1623,7 @@ impl SettingsView {
         div()
             .flex()
             .flex_col()
-            .child(Self::head(t, &SettingsSection::Models, true))
+            .child(Self::head(t, &SettingsSection::Models))
             .child(if providers.is_empty() {
                 empty_state(
                     t,
@@ -1466,7 +1651,7 @@ impl SettingsView {
 
     /// Settings → Keyboard shortcuts: app keys, then extension shortcuts (`setShortcuts`,
     /// GA-16) with their action id.
-    fn shortcuts_page(&self, t: &OinoTheme) -> AnyElement {
+    fn shortcuts_page(&self, t: &OinoTheme, cx: &mut Context<Self>) -> AnyElement {
         let app = [
             ("⌘K", "Search and commands"),
             ("⌘O", "Switch session"),
@@ -1491,13 +1676,20 @@ impl SettingsView {
             ("Shift+Enter", "New line"),
             ("Ctrl+Alt+Shift+F", "Frame-time overlay"),
         ];
+        let query = self.search.read(cx).value().to_lowercase();
         let rows: Vec<AnyElement> = app
             .iter()
+            .filter(|(_, d)| query.is_empty() || d.to_lowercase().contains(&query))
             .map(|(k, d)| row(t, *d, None, false, kbd(t, *k).into_any_element()))
             .collect();
         let ext: Vec<AnyElement> = self
             .shortcuts
             .iter()
+            .filter(|s| {
+                query.is_empty()
+                    || s.description.to_lowercase().contains(&query)
+                    || s.id.to_lowercase().contains(&query)
+            })
             .map(|s| {
                 row(
                     t,
@@ -1512,7 +1704,7 @@ impl SettingsView {
         div()
             .flex()
             .flex_col()
-            .child(Self::head(t, &SettingsSection::Shortcuts, true))
+            .child(Self::head(t, &SettingsSection::Shortcuts))
             .child(group(t, rows))
             .child(crate::components::section_label::section_row(
                 t,
@@ -1536,6 +1728,9 @@ impl SettingsView {
             .into_any_element()
     }
 
+    /// A hub namespace page (extension settings / Permissions) under the `ZCode` layout:
+    /// 24/30 title, scope control, section groups of rows. A project-layer value that
+    /// shadows the global one marks the row "Set in project" while Global is shown (#22e).
     #[allow(clippy::too_many_lines, reason = "one arm per field type")]
     fn hub(
         &mut self,
@@ -1550,28 +1745,15 @@ impl SettingsView {
             .iter()
             .find(|n| n.namespace == ns)
             .map_or_else(|| ns.to_owned(), |n| n.title.clone());
-        let values = self.values.get(ns).cloned().unwrap_or(JsonValue::Null);
+        let values = self.effective_values(ns);
+        let project_set = |this: &Self, key: &str| -> bool {
+            this.project_values
+                .get(ns)
+                .and_then(|v| settings_hub::value_at(v, key))
+                .is_some()
+        };
         let query = self.search.read(cx).value().to_lowercase();
-        let scope_ix = usize::from(self.scope == SettingsScope::Project);
-        let e = cx.entity().downgrade();
-        let ns_owned = ns.to_owned();
-        let scope = segmented(
-            "hub-scope",
-            t,
-            &["Global", "Project"],
-            scope_ix,
-            Rc::new(move |i, _, cx| {
-                let ns = ns_owned.clone();
-                let _ = e.update(cx, |v, cx| {
-                    v.scope = if i == 0 {
-                        SettingsScope::Global
-                    } else {
-                        SettingsScope::Project
-                    };
-                    v.load_values(&ns, cx);
-                });
-            }),
-        );
+        let scope = self.scope_control(t, cx);
         let mut sections: Vec<(String, Vec<AnyElement>)> = Vec::new();
         for field in fields
             .into_iter()
@@ -1579,6 +1761,7 @@ impl SettingsView {
         {
             let value = settings_hub::value_at(&values, &field.key).cloned();
             let modified = value.is_some() && value != field.default;
+            let shadowed = self.scope == SettingsScope::Global && project_set(self, &field.key);
             let key = field.key.clone();
             let ns_s = ns.to_owned();
             let control: AnyElement = match &field.kind {
@@ -1725,11 +1908,20 @@ impl SettingsView {
                 })
                 .child(control)
                 .into_any_element();
-            let el = row(
+            let badge = shadowed.then(|| {
+                crate::automation::registry::probe_named(
+                    badge(t, Tone::Warning, "Set in project"),
+                    Meta::labelled(Role::Chip, "Set in project"),
+                    "set-in-project",
+                )
+                .into_any_element()
+            });
+            let el = settings::row_with_badge(
                 t,
                 SharedString::from(field.label.clone()),
                 field.description.clone().map(SharedString::from),
                 modified,
+                badge,
                 control,
             );
             match sections.iter_mut().find(|(s, _)| *s == field.section) {
@@ -1740,15 +1932,7 @@ impl SettingsView {
         div()
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .pb(px(space::S2_5))
-                    .child(with_icon(t, IconName::Blocks, title, true))
-                    .child(scope),
-            )
+            .child(settings::title_row(t, title, scope))
             .when(sections.is_empty(), |el| {
                 el.child(empty_state(
                     t,
@@ -1785,7 +1969,7 @@ impl Render for SettingsView {
             SettingsSection::Appearance => self.appearance(&t, cx),
             SettingsSection::Unicrab => self.unicrab(&t, cx),
             SettingsSection::Models => self.models_page(&t, cx),
-            SettingsSection::Shortcuts => self.shortcuts_page(&t),
+            SettingsSection::Shortcuts => self.shortcuts_page(&t, cx),
             SettingsSection::Extension(ns) => self.hub(&ns, &t, window, cx),
             SettingsSection::Sessions => self.sessions_page(&t, window, cx),
             SettingsSection::Permissions => match self.permissions_ns() {
@@ -1793,7 +1977,7 @@ impl Render for SettingsView {
                 None => div()
                     .flex()
                     .flex_col()
-                    .child(Self::head(&t, &SettingsSection::Permissions, true))
+                    .child(Self::head(&t, &SettingsSection::Permissions))
                     .child(empty_state(
                         &t,
                         IconName::Shield,
@@ -1815,15 +1999,6 @@ impl Render for SettingsView {
             SettingsSection::About => self.about(&t, cx),
         };
         let header = PageHeader::new("Settings")
-            .tool(
-                div()
-                    .w(px(size::SIDEBAR))
-                    .child(Input::new(&self.search).prefix(crate::design::icons::icon(
-                        IconName::Search,
-                        size::ICON,
-                        t.fg_subtlest(),
-                    ))),
-            )
             .window_controls(window, &t)
             .render(&t);
         div()
@@ -1842,16 +2017,65 @@ impl Render for SettingsView {
                         .min_w_0()
                         .h_full()
                         .overflow_y_scroll()
-                        .px(px(size::PAGE_GUTTER + space::S2))
+                        .px(px(space::S6))
                         .pb(px(space::S8))
                         .child(
                             div()
-                                .max_w(px(size::SETTINGS_CONTENT))
+                                .max_w(px(CONTENT_MAX))
                                 .flex()
                                 .flex_col()
+                                .gap(px(space::S2))
                                 .child(body),
                         ),
                 ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_name_labels_the_folder() {
+        assert_eq!(
+            project_name(Some("/home/oi/Projects/llm/oino")),
+            Some("oino".into())
+        );
+        assert_eq!(project_name(Some("/")), None, "root has no folder name");
+        assert_eq!(project_name(Some("  ")), None);
+        assert_eq!(project_name(None), None);
+    }
+
+    #[test]
+    fn every_core_section_has_search_keywords() {
+        for section in [
+            SettingsSection::General,
+            SettingsSection::Appearance,
+            SettingsSection::Unicrab,
+            SettingsSection::Models,
+            SettingsSection::Sessions,
+            SettingsSection::Permissions,
+            SettingsSection::Shortcuts,
+            SettingsSection::About,
+        ] {
+            assert!(
+                !section.keywords().is_empty(),
+                "{section:?} lost its search keywords",
+            );
+        }
+    }
+
+    #[test]
+    fn row_spec_matches_label_and_description() {
+        let row = RowSpec::new(
+            "Theme",
+            Some("Follows the system appearance".into()),
+            div().into_any_element(),
+        );
+        assert!(row.matches(""));
+        assert!(row.matches("theme"));
+        assert!(row.matches("appearance"));
+        assert!(!row.matches("mascot"));
     }
 }
