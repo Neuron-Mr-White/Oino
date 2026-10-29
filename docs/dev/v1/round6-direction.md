@@ -20,8 +20,8 @@ TCP + TLS + token transport in [modes.md §5](modes.md) for remote use.
    `_oino/*` frontend API over iroh streams, plus a same-user local socket for apps on the
    same machine (works offline).
 4. **Service install** per OS: systemd user service + linger on Linux (polkit asks once),
-   LaunchAgent on macOS, a per-user startup task/service on Windows; or desktop-app sidecar
-   with restart backoff while the toggle is off-but-app-open is not needed.
+   LaunchAgent on macOS, a per-user startup task/service on Windows; supervised with restart
+   backoff (1, 2, 4 … 30 s).
 5. **Pairing**: QR + link with a minimal endpoint ticket (id + relay URL), short-lived
    pairing code with lockout, paired-devices list with revoke, in Settings → Remote access.
 6. **Clients**: the central host switcher (desktop) and the phone attach through it;
