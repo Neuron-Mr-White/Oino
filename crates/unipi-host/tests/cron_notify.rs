@@ -8,12 +8,13 @@
 #![allow(clippy::await_holding_lock)]
 #![cfg(unix)]
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use unipi_cron::model::{CronSettings, Job, NotifySpec, Run, RunStatus};
-use unipi_host::cron_notify::{dispatch, Channels};
+use unipi_host::cron_notify::{dispatch, notify_sink, Channels};
 use unipi_host::data_dir::HostPaths;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -290,4 +291,80 @@ async fn a_failing_channel_is_recorded_not_fatal() {
 
     std::env::remove_var("UNIPI_NOTIFY_CONFIG_JSON");
     std::env::remove_var("UNIPI_NOTIFY_ENDPOINTS_JSON");
+}
+
+/// The scheduler's notify sink is the host's: a real (faux) run finishing sends through
+/// [`unipi_host::cron_notify`] (the E2E channels), not the library's plain sender.
+#[tokio::test]
+async fn a_finished_run_sends_through_the_hosts_notify_sink() {
+    use std::os::unix::fs::PermissionsExt;
+    use unipi_cron::{scheduler::Scheduler, store, CronPaths};
+
+    let _guard = ENV_LOCK.lock().unwrap();
+    let tmp = tempfile::tempdir().unwrap();
+    let host = HostPaths::from_dir(tmp.path().join("host"));
+    host.ensure_dir().unwrap();
+    let cron_paths = CronPaths::new(tmp.path().join("agent"));
+    let (addr, rx) = fake_server("200 OK").await;
+    let config_path = tmp.path().join("notify-config.json");
+    write_notify_config(
+        &config_path,
+        &format!(
+            r#"{{"gotify":{{"enabled":true,"serverUrl":"http://{addr}","appToken":"tok_g"}}}}"#
+        ),
+    );
+    std::env::set_var("UNIPI_NOTIFY_CONFIG_JSON", &config_path);
+
+    let bin_dir = tempfile::tempdir().unwrap();
+    let bin = bin_dir.path().join("oino");
+    std::fs::write(&bin, "#!/bin/sh\necho done\nexit 0\n").unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let previous_bin = std::env::var("OINO_CRON_BIN").ok();
+    std::env::set_var("OINO_CRON_BIN", &bin);
+
+    let scheduler = Scheduler::with_paths(cron_paths.clone())
+        .with_notify_sink(notify_sink(Arc::new(host.clone())));
+    let mut j = job(Some(NotifySpec {
+        channels: Some(vec!["gotify".to_string()]),
+        events: Some(vec!["done".to_string()]),
+    }));
+    j.schedule = "at:2000-01-01T00:00:00Z".into();
+    j.cwd = tmp.path().to_string_lossy().into_owned();
+    store::save_jobs(&cron_paths, std::slice::from_ref(&j)).unwrap();
+    let run_id = scheduler.run_now(&j).await.unwrap();
+
+    let request = tokio::time::timeout(Duration::from_secs(10), rx)
+        .await
+        .expect("the run notification should arrive")
+        .unwrap();
+    assert!(request.starts_with("POST /message"), "request: {request}");
+    assert!(
+        request.contains("Cron: daily digest ok"),
+        "request: {request}"
+    );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let run = store::load_run(&cron_paths, "digest", &run_id)
+            .unwrap()
+            .unwrap();
+        if run.status.is_finished() {
+            assert!(
+                run.notify_errors.is_empty(),
+                "errors: {:?}",
+                run.notify_errors
+            );
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the run never finished"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    match previous_bin {
+        Some(value) => std::env::set_var("OINO_CRON_BIN", value),
+        None => std::env::remove_var("OINO_CRON_BIN"),
+    }
+    std::env::remove_var("UNIPI_NOTIFY_CONFIG_JSON");
 }
