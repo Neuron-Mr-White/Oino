@@ -27,6 +27,7 @@ import { UpdateBanner } from '../UpdateCard';
 import { FloatingBell } from '../FloatingBell';
 import { NeedsYouFeed } from '../NeedsYouBell';
 import { Toasts } from '../Toasts';
+import { TooltipHost } from '../Tooltip';
 import { NotifyInitRunner } from '../NotifyInitRunner';
 import { IncomingPushRunner } from '../IncomingPush';
 import { SharingRequestsRunner } from '../SharingSettings';
@@ -334,6 +335,8 @@ export function AppShell(props: ParentProps) {
         <LinkAnchorMenu />
         <CommandCenter />
         <Toasts />
+        {/* Z-116: the one tooltip bubble for every icon-only control. */}
+        <TooltipHost />
         <SessionModalLayer />
         <Show when={desktop()}>
           <ShortcutsDialog />

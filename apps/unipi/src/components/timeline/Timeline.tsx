@@ -52,7 +52,7 @@ function perf(name: string, start: number): void {
   (window.__UNIPI_PERF__ ??= []).push({ name, ms });
 }
 
-export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10: the `header` slot band (scrolls with the transcript). */ header?: JSX.Element; /** U10: the `overlay` slot host (below the dock, §6.4). */ overlay?: JSX.Element }) {
+export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10: the `header` slot band (scrolls with the transcript). */ header?: JSX.Element; /** U10: the `overlay` slot host (below the dock, §6.4). */ overlay?: JSX.Element; /** Z-87: the new-chat empty state (supplied by `Conversation`, which knows the host). */ empty?: JSX.Element }) {
   const session = () => props.ctx.session;
   const turns = () => session().turns();
   /** The running turn (outside the list); everything before it is virtualized. */
@@ -341,7 +341,7 @@ export function Timeline(props: { ctx: TimelineCtx; dock?: JSX.Element; /** U10:
         </Show>
         <Show when={empty()}>
           <div class="tl-empty" data-testid="tl-empty">
-            <p>Say hi — the first message starts the session.</p>
+            {props.empty ?? <p>Say hi — the first message starts the session.</p>}
           </div>
         </Show>
         <Show when={scrollEl()} keyed>

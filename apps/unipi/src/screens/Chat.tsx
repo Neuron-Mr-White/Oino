@@ -37,7 +37,7 @@ export default function Chat() {
               type="button"
               class="ghost-icon-button"
               aria-label="New chat"
-              title="New chat"
+              data-tip="New chat"
               data-testid="chat-new"
               onClick={() => navigate(`/new/${encodeURIComponent(newChatHost())}`)}
             >
@@ -48,7 +48,7 @@ export default function Chat() {
                 type="button"
                 class="ghost-icon-button"
                 aria-label="More"
-                title="Cron and extension pages"
+                data-tip="Cron and extension pages"
                 data-testid="chat-more"
                 onClick={(e) => setMoreAnchor((e.currentTarget as HTMLElement).getBoundingClientRect())}
               >

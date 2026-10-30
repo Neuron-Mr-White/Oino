@@ -236,6 +236,21 @@ button:disabled { opacity:.4; }
 @keyframes popover-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 [data-menu-open] .recent-card { box-shadow: 0 0 0 2px rgb(240 48 24 / 55%); }
 
+/* ── Exit motion (Z-91, WP-A28) ─────────────────────────────────────────
+   Removals used to be instant while entrances animated. Anything on its
+   way out marks itself `data-leaving` (lib/motion.ts `createExit` /
+   `createPresence`) and gets the same 160 ms the way in has; the global
+   `prefers-reduced-motion` rule above drops the keyframes, the media query
+   below hides the element at once instead of leaving it on screen. ── */
+:root { --exit-ms: 160ms; }
+@keyframes exit-fade { to { opacity: 0; transform: translateY(-3px); } }
+[data-leaving] { animation: exit-fade var(--exit-ms) cubic-bezier(0.4, 0, 1, 1) both; pointer-events: none; }
+@keyframes popover-out { to { opacity: 0; transform: scale(.97); } }
+.recent-popover[data-leaving] { animation: popover-out var(--exit-ms) cubic-bezier(0.4, 0, 1, 1) both; }
+@keyframes tab-out { to { opacity: 0; max-width: 0; padding-inline: 0; margin-inline-end: 0; } }
+.pane-tab[data-leaving] { animation: tab-out var(--exit-ms) ease-out both; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { [data-leaving] { animation: none !important; opacity: 0; } }
+
 /* Empty-state "Add a host": compact pill (the generic .bg-shell is 52px). */
 .empty-add.bg-shell { min-height: 40px; height: 40px; padding: 0 22px; margin-top: 8px; font-size: 15px; position: relative; }
 .empty-add.bg-shell::after { content: ''; position: absolute; inset: -4px 0; }

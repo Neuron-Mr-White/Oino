@@ -27,6 +27,7 @@ import { settingsExtensions, settingsNav, settingsSafeMode, settingsSearch } fro
 import { needsYou, toastsScenario, unread } from './notify';
 import { cronBadge, cronForm, cronList } from './cron';
 import { rendererCards, toolsGroups, toolsMix } from './tools';
+import { emptyChat, motionExits } from './empty-chat';
 import { tabBtw, tabBtwPhone, tabDiff, tabDiffPhone, tabDiffSplit, tabSubagent, tabSubagentPhone, tabTree, tabTreePhone } from './tabs';
 
 export const SCENARIOS: Record<string, MockScenario> = {
@@ -66,6 +67,8 @@ export const SCENARIOS: Record<string, MockScenario> = {
   'tools-mix': toolsMix,
   'tools-groups': toolsGroups,
   'renderer-cards': rendererCards,
+  'empty-chat': emptyChat,
+  'motion-exits': motionExits,
   'tab-diff': tabDiff,
   'tab-diff-split': tabDiffSplit,
   'tab-tree': tabTree,

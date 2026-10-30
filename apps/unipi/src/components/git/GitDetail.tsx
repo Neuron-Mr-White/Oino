@@ -145,7 +145,7 @@ export function GitDiffDetail(props: {
         </button>
       </Show>
       <Show when={props.onOpen}>
-        <button type="button" class="ghost-icon-button" aria-label="Open in editor" title="Open in editor" disabled={props.change.status === 'D'} onClick={props.onOpen}>
+        <button type="button" class="ghost-icon-button" aria-label="Open in editor" data-tip="Open in editor" disabled={props.change.status === 'D'} onClick={props.onOpen}>
           <ExternalLink size={19} />
         </button>
       </Show>
@@ -210,7 +210,7 @@ export function GitCommitDetail(props: { hostId: string; repo: string; hash: str
           type="button"
           class="ghost-icon-button"
           aria-label="Copy commit hash"
-          title="Copy hash"
+          data-tip="Copy hash"
           onClick={() => void navigator.clipboard?.writeText(props.hash)}
         >
           <Copy size={18} />

@@ -270,7 +270,7 @@ export function UserBubble(props: {
             class="tl-act"
             data-testid="tl-user-edit"
             aria-label="Edit message"
-            title="Edit"
+            data-tip="Edit"
             onClick={(event) => props.onEdit?.(event.currentTarget.getBoundingClientRect())}
           >
             <Pencil size={14} />

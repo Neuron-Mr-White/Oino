@@ -3582,7 +3582,9 @@ exports[`golden — desktop shell > Toggle.json 1`] = `
     >
       <input
         aria-checked="true"
+        aria-label="Verbose"
         data-checked=""
+        data-tip="Verbose"
         id="switch-id0-input"
         name="switch-cl-19"
         role="switch"
@@ -7472,7 +7474,9 @@ exports[`golden — phone shell > Toggle.json 1`] = `
     >
       <input
         aria-checked="true"
+        aria-label="Verbose"
         data-checked=""
+        data-tip="Verbose"
         id="switch-id0-input"
         name="switch-cl-40"
         role="switch"

@@ -87,7 +87,7 @@ export function Capsule(props: { hostId: string; sessionId?: string; cwd?: strin
   return (
     <Show when={branch() || lh() || running()}>
       <div class="status-capsule" data-testid="status-capsule">
-        <button type="button" class="status-capsule-btn" aria-label="Open the status pane" title="Git, long-horizon, todos, running" onClick={open}>
+        <button type="button" class="status-capsule-btn" aria-label="Open the status pane" data-tip="Git, long-horizon, todos, running" onClick={open}>
           <Show when={branch()}>
             {(b) => (
               <span class="cap-seg cap-branch" data-testid="cap-branch">

@@ -14,6 +14,7 @@ import { createSignal, onCleanup, Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 import { Brain, ChevronRight } from 'lucide-solid';
 import { formatDuration, toolCategory, type ToolCategory } from '../../lib/chat/model';
+import { createPresence } from '../../lib/motion';
 import { expansionOpen, toggleExpansion } from '../../lib/timeline/expansion';
 import { workingMessageOf } from '../../ui/slots/effects';
 import type { Segment } from '../../lib/session/turns';
@@ -47,6 +48,8 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
     return last && last.kind === 'tool' ? toolCategory(last.tool.name) : 'think';
   };
   const anyError = () => props.segment.work.some((w) => (w.kind === 'tool' && w.tool.state === 'error') || w.kind === 'error');
+  // Z-91: closing the fold fades the body out (160 ms) instead of dropping it.
+  const body = createPresence(open);
   return (
     <div class="proc tl-fold" data-live={running() ? '' : undefined} data-open={open() ? '' : undefined} data-state={fold().state} data-testid="tl-fold">
       <button type="button" class="proc-head" aria-expanded={open()} onClick={toggle}>
@@ -67,8 +70,8 @@ export function SegmentFold(props: { segment: Segment; ctx: TimelineCtx }) {
           <ChevronRight size={15} class="proc-chev" />
         </Show>
       </button>
-      <Show when={open()}>
-        <div class="proc-body tl-fold-body">
+      <Show when={body.mounted()}>
+        <div class="proc-body tl-fold-body" data-leaving={body.leaving() ? '' : undefined}>
           <WorkNodes nodes={props.segment.nodes} ctx={props.ctx} live={running()} />
         </div>
       </Show>

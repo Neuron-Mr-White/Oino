@@ -9,6 +9,7 @@
 import { Show, createSignal, onCleanup } from 'solid-js';
 import { ChevronUp, SendHorizonal, Square, Zap } from 'lucide-solid';
 import { followUpMode, modeLabel, setFollowUpMode } from '../../lib/composer/sendMode';
+import { Tooltip } from '../Tooltip';
 import './sendButton.css';
 
 export function SendButton(props: {
@@ -16,6 +17,11 @@ export function SendButton(props: {
   /** No input text: Send is disabled (Stop never is). */
   empty?: boolean;
   disabled?: boolean;
+  /** Send is held for another reason (WP-A13: attachments still uploading) —
+   *  it disables Send only, never Stop. */
+  blocked?: boolean;
+  /** Why Send is held (tooltip). */
+  blockedReason?: string;
   onSend(): void;
   onStop(): void;
   /** "Send now (stops run)": abort, then send the text as a prompt. */
@@ -23,6 +29,8 @@ export function SendButton(props: {
 }) {
   const [menu, setMenu] = createSignal(false);
   const close = () => setMenu(false);
+  /** Z-116: a disabled Send still explains itself ("Type something to send"). */
+  const sendTip = () => (props.running ? 'Stop this run' : props.empty ? 'Type something to send' : props.blocked ? (props.blockedReason ?? 'Send is held') : 'Send');
 
   // A pointerdown elsewhere closes the menu (capture phase, so it wins over
   // the menu's own clicks travelling up).
@@ -89,23 +97,25 @@ export function SendButton(props: {
         </div>
       </Show>
       <div class="send-btn-main">
-        {props.running ? (
-          <button type="button" class="tl-composer-send tl-composer-stop" aria-label="Stop" onClick={() => props.onStop()} disabled={props.disabled} data-testid="send-stop">
-            <Square size={15} fill="currentColor" />
-          </button>
-        ) : (
-          <button
-            type="button"
-            class="tl-composer-send"
-            aria-label="Send"
-            title={props.empty ? 'Type something to send' : undefined}
-            onClick={() => props.onSend()}
-            disabled={props.disabled || props.empty}
-            data-testid="send-send"
-          >
-            <SendHorizonal size={17} />
-          </button>
-        )}
+        {/* The wrapper keeps the tip alive on the disabled state (Z-116: tooltips work on disabled controls). */}
+        <Tooltip label={sendTip()}>
+          {props.running ? (
+            <button type="button" class="tl-composer-send tl-composer-stop" aria-label="Stop" onClick={() => props.onStop()} disabled={props.disabled} data-testid="send-stop">
+              <Square size={15} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              class="tl-composer-send"
+              aria-label="Send"
+              onClick={() => props.onSend()}
+              disabled={props.disabled || props.empty || props.blocked}
+              data-testid="send-send"
+            >
+              <SendHorizonal size={17} />
+            </button>
+          )}
+        </Tooltip>
         <button type="button" class="send-btn-chevron" aria-label="Send options" aria-haspopup="menu" aria-expanded={menu()} onClick={() => setMenu(!menu())} data-testid="send-chevron">
           <ChevronUp size={14} />
         </button>

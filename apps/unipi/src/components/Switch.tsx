@@ -11,7 +11,9 @@ export function SwitchField(props: { checked: boolean; onChange: (v: boolean) =>
       aria-label={props.label}
       data-testid={props.testId}
     >
-      <KSwitch.Input />
+      {/* Z-116: the native input is the focusable switch — it carries the name,
+          not only the Kobalte root (screen readers announce the input). */}
+      <KSwitch.Input aria-label={props.label} data-tip={props.label} />
       {/* The thumb is centred on both axes: flex centring vertically
           (it used to sit at the top, UNI-128), an equal 3px inset
           horizontally in both states (44 - 20 - 3 = 21). */}

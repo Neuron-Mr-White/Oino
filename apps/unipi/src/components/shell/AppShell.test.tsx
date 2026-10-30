@@ -164,7 +164,8 @@ describe('frame toggles', () => {
       const tab = screen.getByRole('tab', { name: /Demo/ });
       expect(tab).toHaveAttribute('aria-selected', 'true');
       fireEvent.click(within(tab).getByLabelText('Close Demo'));
-      expect(screen.queryByTestId('side-pane')).toBeNull();
+      // Z-91: the tab collapses out for 160 ms before the pane hides.
+      await waitFor(() => expect(screen.queryByTestId('side-pane')).toBeNull());
       key('t', { shiftKey: true });
       expect(await screen.findByText('demo body')).toBeInTheDocument();
     } finally {

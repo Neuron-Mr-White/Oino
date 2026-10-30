@@ -109,7 +109,7 @@ export function EditorArea(props: { root?: () => string | undefined; onBinary: (
                   type="button"
                   class="ftree-tool"
                   aria-label="Open in external editor"
-                  title="Open in external editor"
+                  data-tip="Open in external editor"
                   data-testid="files-editor-external"
                   onClick={() => openExternal(EXTERNAL_EDITORS[0]!.url)}
                 >

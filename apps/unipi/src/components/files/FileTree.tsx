@@ -354,14 +354,14 @@ export function FileTree(props: {
       }}
     >
       <div class="ftree-bar" role="toolbar" aria-label="Files tools">
-        <button type="button" class={`ftree-tool${changedOnly() ? ' on' : ''}`} aria-pressed={changedOnly()} aria-label="Only changed files" title="Only changed files" data-testid="files-changed" onClick={() => setChangedOnly((v) => !v)}>
+        <button type="button" class={`ftree-tool${changedOnly() ? ' on' : ''}`} aria-pressed={changedOnly()} aria-label="Only changed files" data-tip="Only changed files" data-testid="files-changed" onClick={() => setChangedOnly((v) => !v)}>
           <GitBranch size={15} />
         </button>
-        <button type="button" class="ftree-tool" aria-label="Search files" title="Search files (name and content)" data-testid="files-search" onClick={() => setSearch(true)}>
+        <button type="button" class="ftree-tool" aria-label="Search files" data-tip="Search files (name and content)" data-testid="files-search" onClick={() => setSearch(true)}>
           <Search size={15} />
         </button>
         <span class="ftree-bar-fill" />
-        <button type="button" class="ftree-tool" aria-label="More files actions" title="New file, new folder, upload" data-testid="files-tools" onClick={(e) => setToolsMenu((e.currentTarget as HTMLElement).getBoundingClientRect())}>
+        <button type="button" class="ftree-tool" aria-label="More files actions" data-tip="New file, new folder, upload" data-testid="files-tools" onClick={(e) => setToolsMenu((e.currentTarget as HTMLElement).getBoundingClientRect())}>
           <Ellipsis size={16} />
         </button>
       </div>

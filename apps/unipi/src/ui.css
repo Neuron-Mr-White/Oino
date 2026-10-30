@@ -252,3 +252,55 @@ html[data-shell=desktop] .settings-nav { margin-top: -8px; }
   .picker-preview-label { display: none; }
   .picker-preview-btn { width: 48px; padding: 0; justify-content: center; }
 }
+
+/* Settings › Editor › Language servers (WP-A21) */
+.lsp-list { display: flex; flex-direction: column; gap: 2px; margin: 0 0 6px; padding: 0; list-style: none; }
+.lsp-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 8px; }
+.lsp-row:hover { background: var(--color-surface-2); }
+.lsp-lang { width: 88px; font-family: var(--font-mono); font-size: 12px; color: var(--color-text-muted); }
+.lsp-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; color: var(--color-text); }
+.lsp-state { display: flex; align-items: center; gap: 4px; font-size: 11.5px; }
+.lsp-state.ok { color: var(--color-text-muted); }
+.lsp-state.missing { max-width: 55%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-warn, #d9a13b); }
+.lsp-note { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--color-text-dim); }
+.lsp-note code { font-family: var(--font-mono); font-size: 10.5px; }
+
+/* ── New-chat empty state (Z-87, WP-A28) ────────────────────────────────── */
+.empty-chat { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 540px; padding: 20px 8px 8px; text-align: center; }
+.empty-chat-crab { flex: 0 0 auto; image-rendering: pixelated; }
+.empty-chat-greeting { margin: 4px 0 0; font-size: 24px; line-height: 31px; font-weight: 600; color: var(--color-text); text-wrap: balance; }
+.empty-chat-hint { margin: 0; max-width: 460px; font-size: 14px; line-height: 20px; color: var(--color-text-muted); text-wrap: pretty; }
+.empty-chat-lore { margin: 4px 0 0; max-width: 430px; font-size: 12px; line-height: 17px; color: var(--color-text-dim); text-wrap: pretty; }
+.empty-chat[data-compact] { gap: 6px; padding-top: 12px; }
+.empty-chat[data-compact] .empty-chat-greeting { font-size: 20px; line-height: 26px; }
+.empty-chat[data-compact] .empty-chat-hint { font-size: 13px; line-height: 18px; }
+@media (max-width: 480px) {
+  .empty-chat-greeting { font-size: 21px; line-height: 27px; }
+  .empty-chat-hint { font-size: 13px; line-height: 18px; }
+}
+
+/* ── Tooltip (Z-116, WP-A28): one bubble, 300 ms, per trigger ───────────── */
+.tip { display: inline-flex; align-items: center; }
+.tip-bubble {
+  position: fixed;
+  z-index: 92;
+  max-width: 260px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--color-surface-3);
+  box-shadow: 0 0 0 1px rgb(46 40 37 / 85%), 0 8px 24px rgb(0 0 0 / 55%);
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  pointer-events: none;
+  animation: tip-in 120ms ease-out both;
+}
+.tip-bubble[data-side='top'] { transform: translateY(-100%); }
+.tip-bubble[data-leaving] { animation: tip-out 120ms ease-out both; }
+@keyframes tip-in { from { opacity: 0; } }
+@keyframes tip-out { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .tip-bubble, .tip-bubble[data-leaving] { animation: none !important; }
+  .tip-bubble[data-leaving] { opacity: 0; }
+}

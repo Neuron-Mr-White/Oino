@@ -9,6 +9,7 @@ import { Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 import { ChevronRight } from 'lucide-solid';
 import { diffStat, toolCategory, toolSubject } from '../../../lib/chat/model';
+import { createPresence } from '../../../lib/motion';
 import { expansionOpen, toggleExpansion } from '../../../lib/timeline/expansion';
 import type { ToolRun } from '../../../lib/session/turns';
 import type { TimelineCtx } from '../context';
@@ -24,6 +25,8 @@ export function ToolRow(props: { tool: ToolRun; ctx: TimelineCtx; itemKey: strin
   const errLine = () => (t().state === 'error' ? (t().output ?? '').split('\n').find((l) => l.trim()) : undefined);
   const stat = () => diffStat({ name: t().name, args: t().args });
   const subject = () => errLine() ?? (t().state === 'preparing' ? 'preparing…' : toolSubject({ name: t().name, args: t().args }, props.ctx.cwd()) || t().name);
+  // Z-91: the body fades out (160 ms) when the row folds instead of vanishing.
+  const body = createPresence(open);
   return (
     <div class="tool tl-tool" data-state={t().state}>
       <button
@@ -53,8 +56,8 @@ export function ToolRow(props: { tool: ToolRun; ctx: TimelineCtx; itemKey: strin
         {/* Z-37: the chevron shows on hover (always on phone / when open) */}
         <ChevronRight size={15} class="proc-chev" data-open={open() ? '' : undefined} />
       </button>
-      <Show when={open()}>
-        <ToolBody tool={t()} ctx={props.ctx} />
+      <Show when={body.mounted()}>
+        <ToolBody tool={t()} ctx={props.ctx} leaving={body.leaving()} />
       </Show>
     </div>
   );

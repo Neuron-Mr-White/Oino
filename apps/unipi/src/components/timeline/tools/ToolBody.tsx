@@ -16,7 +16,7 @@ import { EditBody, HeadBody, IoBody, McpBody, RunBody, TodoBody, WriteBody } fro
 
 const isTodo = (name: string) => /todo/i.test(name);
 
-export function ToolBody(props: { tool: ToolRun; ctx: TimelineCtx }) {
+export function ToolBody(props: { tool: ToolRun; ctx: TimelineCtx; /** Z-91: the row is folding shut. */ leaving?: boolean }) {
   const t = () => props.tool;
   const cat = () => toolCategory(t().name);
   const render = () =>
@@ -25,7 +25,7 @@ export function ToolBody(props: { tool: ToolRun; ctx: TimelineCtx }) {
       { density: 'advanced', expanded: true, running: t().state === 'running' || t().state === 'preparing', data: toolRenderData(t()) },
     )();
   return (
-    <div class="tool-body">
+    <div class="tool-body" data-leaving={props.leaving ? '' : undefined}>
       <Switch>
         <Match when={render()} keyed>
           {(node) => (

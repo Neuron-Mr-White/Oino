@@ -6,8 +6,9 @@
  * `lead` renders before the tabs (full view's "Chat" tab, sidebar reveal),
  * `tools` after the overview button (full view / hide pane).
  */
-import { createSignal, For, Show, type JSX } from 'solid-js';
+import { createSignal, For, onCleanup, Show, type JSX } from 'solid-js';
 import { ChevronDown, Plus, X } from 'lucide-solid';
+import { EXIT_MS, prefersReducedMotion } from '../../lib/motion';
 import { paneKind, tabTitle } from '../../lib/panes/kinds';
 import type { PaneTab } from '../../lib/panes';
 
@@ -29,6 +30,34 @@ export function TabStrip(props: {
 }) {
   const [dragId, setDragId] = createSignal<string | undefined>();
   const [dropAt, setDropAt] = createSignal<{ id: string; after: boolean } | undefined>();
+  // Z-91: a closing tab collapses out (160 ms) before the strip reflows; the
+  // close itself is deferred by the same time (none under reduced motion).
+  const [closing, setClosing] = createSignal<ReadonlySet<string>>(new Set());
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  onCleanup(() => {
+    for (const t of timers.values()) clearTimeout(t);
+    timers.clear();
+  });
+  const requestClose = (id: string) => {
+    if (timers.has(id)) return;
+    if (prefersReducedMotion()) {
+      props.onClose(id);
+      return;
+    }
+    setClosing((prev) => new Set(prev).add(id));
+    timers.set(
+      id,
+      setTimeout(() => {
+        timers.delete(id);
+        setClosing((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        props.onClose(id);
+      }, EXIT_MS),
+    );
+  };
   const onKey = (e: KeyboardEvent, index: number) => {
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!step) return;
@@ -57,6 +86,7 @@ export function TabStrip(props: {
                 data-kind={tab.kind}
                 data-drop={dropAt()?.id === tab.id ? (dropAt()!.after ? 'after' : 'before') : undefined}
                 data-dragging={dragId() === tab.id ? '' : undefined}
+                data-leaving={closing().has(tab.id) ? '' : undefined}
                 title={tabTitle(tab)}
                 draggable={true}
                 onClick={() => props.onActivate(tab.id)}
@@ -64,7 +94,7 @@ export function TabStrip(props: {
                 onAuxClick={(e) => {
                   if (e.button !== 1) return;
                   e.preventDefault();
-                  props.onClose(tab.id);
+                  requestClose(tab.id);
                 }}
                 onMouseDown={(e) => e.button === 1 && e.preventDefault()}
                 onDragStart={(e) => {
@@ -106,7 +136,7 @@ export function TabStrip(props: {
                   tabindex={-1}
                   onClick={(e) => {
                     e.stopPropagation();
-                    props.onClose(tab.id);
+                    requestClose(tab.id);
                   }}
                 >
                   <X size={13} />
@@ -116,11 +146,11 @@ export function TabStrip(props: {
           }}
         </For>
       </div>
-      <button type="button" class="shell-icon-btn tab-strip-btn" aria-label="Open a tab" title="Open a tab" onClick={(e) => props.onLauncher(e.currentTarget.getBoundingClientRect())} data-testid="pane-launcher-btn">
+      <button type="button" class="shell-icon-btn tab-strip-btn" aria-label="Open a tab" data-tip="Open a tab" onClick={(e) => props.onLauncher(e.currentTarget.getBoundingClientRect())} data-testid="pane-launcher-btn">
         <Plus size={16} />
       </button>
       <span class="tab-strip-fill" />
-      <button type="button" class="shell-icon-btn tab-strip-btn" aria-label="All tabs" title="All tabs" onClick={(e) => props.onOverview(e.currentTarget.getBoundingClientRect())} data-testid="pane-overview-btn">
+      <button type="button" class="shell-icon-btn tab-strip-btn" aria-label="All tabs" data-tip="All tabs" onClick={(e) => props.onOverview(e.currentTarget.getBoundingClientRect())} data-testid="pane-overview-btn">
         <ChevronDown size={16} />
       </button>
       {props.tools}

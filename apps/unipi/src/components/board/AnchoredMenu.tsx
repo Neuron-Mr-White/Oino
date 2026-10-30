@@ -8,6 +8,7 @@
 import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { pushBack } from '../../lib/back';
+import { createExit } from '../../lib/motion';
 
 export function AnchoredMenu(props: {
   anchor: DOMRect;
@@ -19,6 +20,9 @@ export function AnchoredMenu(props: {
   children: JSX.Element;
 }) {
   let menu: HTMLDivElement | undefined;
+  // Z-91: an outside click / Escape / resize fades the menu out before it leaves.
+  const leave = createExit(() => props.onDismiss());
+  const dismiss = () => leave.begin();
   const width = () => props.width ?? 240;
   const GAP = 8;
   const leftFor = () => {
@@ -42,31 +46,33 @@ export function AnchoredMenu(props: {
       origin = above >= GAP ? 'bottom' : 'center';
     }
     setPos({ left: leftFor(), top, origin: `${origin} ${props.alignEnd ? 'right' : 'left'}` });
-    onCleanup(pushBack(() => props.onDismiss()));
-    window.addEventListener('resize', props.onDismiss);
-    onCleanup(() => window.removeEventListener('resize', props.onDismiss));
+    onCleanup(pushBack(() => dismiss()));
+    window.addEventListener('resize', dismiss);
+    onCleanup(() => window.removeEventListener('resize', dismiss));
   });
   return (
     <Portal>
       <div
         class="recent-popover-backdrop"
+        data-leaving={leave.leaving() ? '' : undefined}
         data-testid="anchored-menu-backdrop"
         onClick={(event) => {
           event.stopPropagation();
-          props.onDismiss();
+          dismiss();
         }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          props.onDismiss();
+          dismiss();
         }}
-        onTouchMove={() => props.onDismiss()}
+        onTouchMove={() => dismiss()}
       />
       <div
         ref={menu}
         role="menu"
         aria-label={props.label}
         class="recent-popover board-menu"
+        data-leaving={leave.leaving() ? '' : undefined}
         style={{ left: `${pos().left}px`, top: `${pos().top}px`, width: `${width()}px`, 'transform-origin': pos().origin }}
         onClick={(event) => event.stopPropagation()}
         onContextMenu={(event) => {

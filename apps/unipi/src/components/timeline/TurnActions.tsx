@@ -117,17 +117,17 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
             data-testid="tl-copy"
             data-copied={copy.copied() ? '' : undefined}
             aria-label={copy.copied() ? 'Copied' : 'Copy turn'}
-            title={copy.copied() ? 'Copied' : 'Copy turn'}
+            data-tip={copy.copied() ? 'Copied' : 'Copy turn'}
             onClick={() => void copy.copy()}
           >
             <Show when={copy.copied()} fallback={<Copy size={15} />}>
               <Check size={15} class="tl-act-check" />
             </Show>
           </button>
-          <button type="button" class="tl-act" data-testid="tl-quote" aria-label="Quote this turn" title="Quote" onClick={quote}>
+          <button type="button" class="tl-act" data-testid="tl-quote" aria-label="Quote this turn" data-tip="Quote" onClick={quote}>
             <Quote size={15} />
           </button>
-          <button type="button" class="tl-act" data-testid="tl-fork" aria-label="Fork from this turn" title="Fork from here" onClick={() => void fork()}>
+          <button type="button" class="tl-act" data-testid="tl-fork" aria-label="Fork from this turn" data-tip="Fork from here" onClick={() => void fork()}>
             <SquareStack size={15} />
           </button>
           <Show when={props.last}>
@@ -136,7 +136,7 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
               class="tl-act"
               data-testid="tl-retry"
               aria-label="Retry this turn"
-              title="Retry"
+              data-tip="Retry"
               disabled={running()}
               onClick={() => void retry()}
             >
@@ -148,7 +148,7 @@ export function TurnActions(props: { turn: Turn; ctx: TimelineCtx; last?: boolea
             class="tl-act"
             data-testid="tl-more"
             aria-label="More turn actions"
-            title="More"
+            data-tip="More"
             onClick={(event) => setMore(event.currentTarget.getBoundingClientRect())}
           >
             <Ellipsis size={15} />

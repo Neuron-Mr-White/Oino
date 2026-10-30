@@ -17,6 +17,7 @@ import { connBanner, sessionCwd } from '../../lib/session/selectors';
 import { sessionRefChat } from '../../lib/timeline/refChat';
 import { layout } from '../../lib/layout';
 import type { RefChat } from '../../lib/chat/pathStat';
+import { useHostsOptional } from '../../hosts/context';
 import { dialogResponse } from '../../ui/dialogs/adapter';
 import { installUiSinks, sessionUi } from '../../ui/registries';
 import { installConversationSlots } from '../../ui/slots';
@@ -30,7 +31,7 @@ import { parseExtShortcutSpecs, setExtensionShortcuts } from '../../lib/shortcut
 import { commandNames, type TimelineCtx } from '../timeline/context';
 import { Timeline } from '../timeline/Timeline';
 import { FileRefMenu } from '../chat/FileRefMenu';
-import { EmptyState } from '../EmptyState';
+import { EmptyChat } from '../EmptyChat';
 import { ConversationBoundary } from '../ErrorBoundaries';
 import { BottomDock } from '../dock/BottomDock';
 import { Composer } from '../composer/Composer';
@@ -79,6 +80,12 @@ function Banners(props: { session: SessionHandle }) {
 
 export function Conversation(props: { hostId: string; sessionId?: string; cwd?: string }) {
   const navigate = useNavigate();
+  const hosts = useHostsOptional();
+  /** A paired PC's name for the empty state's hint (Z-87); This computer has none. */
+  const hostName = () => {
+    const h = hosts?.hosts().find((x) => x.id === props.hostId);
+    return h && h.transport !== 'local' ? h.name : undefined;
+  };
   const hub = createMemo(() => hubs().ensure(props.hostId));
   const session = createMemo(() => (props.sessionId ? sessions().ensure(props.hostId, props.sessionId) : undefined));
   // Pin the session against LRU eviction while shown; release on change/unmount.
@@ -163,7 +170,11 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
     <div class="conv-tl" data-testid="conversation">
       <Show
         when={props.sessionId}
-        fallback={<EmptyState title="New chat" body="Start a chat in a project folder on this PC." testId="draft-empty" />}
+        fallback={
+          <div class="tl-empty" data-testid="draft-empty">
+            <EmptyChat cwd={props.cwd} hostName={hostName()} />
+          </div>
+        }
       >
         <Show when={session()}>
           {(s) => (
@@ -177,6 +188,7 @@ export function Conversation(props: { hostId: string; sessionId?: string; cwd?: 
                       {(_sid) => (
                         <Timeline
                           ctx={c()}
+                          empty={<EmptyChat cwd={cwd()} hostName={hostName()} />}
                           header={<HeaderBand entries={headerEntries()} target={target()} />}
                           overlay={<SlotModal stack={overlayStack()} target={target()} phone={!layout().desktop()} />}
                           dock={
