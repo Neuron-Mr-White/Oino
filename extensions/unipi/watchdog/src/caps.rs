@@ -5,10 +5,17 @@
 //! At `turn_end` the first reached cap aborts the run; with `summaryTurn` one follow-up user
 //! message asks for a wrap-up, and that summary run is aborted at its own first `turn_end`
 //! if it keeps working.
+//!
+//! Resolution order (WP-A17/G-16): a per-session pin set through the `caps.set` service beats
+//! the CLI flags, which beat the `watchdog.sessionCaps` settings. Pins persist as a
+//! [`CAPS_ENTRY`] custom entry, so they survive a restart.
 
 use serde_json::Value;
 
 use crate::settings::NAMESPACE;
+
+/// Custom entry type that carries this session's pinned caps (`caps.set`, WP-A17).
+pub const CAPS_ENTRY: &str = "watchdog.session-caps";
 
 /// Cap limits (`None` = off).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -72,6 +79,79 @@ impl Caps {
             && self.max_wall_minutes.is_none()
             && self.max_consecutive_tool_errors.is_none()
     }
+
+    /// Applies a session's pinned caps ([`CAPS_ENTRY`] data): a pinned number replaces the
+    /// resolved value, a pinned `null`/absent key leaves it. `summaryTurn` pins the same way.
+    #[must_use]
+    pub fn with_pins(mut self, pins: &Value) -> Self {
+        let Value::Object(pins) = pins else {
+            return self;
+        };
+        // `pin` yields the pinned positive number, or `None` to keep the resolved value.
+        let pin = |key: &str| positive(pins.get(key).filter(|v| !v.is_null()));
+        self.max_turns = count(pin("maxTurns")).or(self.max_turns);
+        self.max_cost_usd = pin("maxCostUsd").or(self.max_cost_usd);
+        self.max_wall_minutes = pin("maxWallMinutes").or(self.max_wall_minutes);
+        self.max_consecutive_tool_errors =
+            count(pin("maxConsecutiveToolErrors")).or(self.max_consecutive_tool_errors);
+        if let Some(summary) = pins.get("summaryTurn").and_then(Value::as_bool) {
+            self.summary_turn = summary;
+        }
+        self
+    }
+
+    /// Resolved with a session's pins applied.
+    #[must_use]
+    pub fn resolve_with_pins(
+        settings: &Value,
+        pins: &Value,
+        flag: impl Fn(&str) -> Option<Value>,
+    ) -> Self {
+        Self::resolve(settings, flag).with_pins(pins)
+    }
+
+    /// The `caps.get` / `caps.set` wire shape (`null` = off; counts stay integers).
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "maxTurns": self.max_turns,
+            "maxCostUsd": self.max_cost_usd,
+            "maxWallMinutes": self.max_wall_minutes,
+            "maxConsecutiveToolErrors": self.max_consecutive_tool_errors,
+            "summaryTurn": self.summary_turn,
+        })
+    }
+}
+
+/// Sanitizes a `caps.set` payload into [`CAPS_ENTRY`] data: only the five known keys, numbers
+/// coerced to positive finite floats, `null`/absent kept as `null` (pin off), `summaryTurn`
+/// defaulted to `true`. Unknown keys are dropped so the entry never grows foreign data.
+#[must_use]
+pub fn sanitize_pins(payload: &Value) -> Value {
+    let get = |key: &str| {
+        positive(payload.get(key)).map_or(Value::Null, |n| match key {
+            "maxTurns" | "maxConsecutiveToolErrors" => {
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "positive counts, ceil-ed"
+                )]
+                let n = n.ceil() as u64;
+                Value::from(n)
+            }
+            _ => Value::from(n),
+        })
+    };
+    serde_json::json!({
+        "maxTurns": get("maxTurns"),
+        "maxCostUsd": get("maxCostUsd"),
+        "maxWallMinutes": get("maxWallMinutes"),
+        "maxConsecutiveToolErrors": get("maxConsecutiveToolErrors"),
+        "summaryTurn": payload
+            .get("summaryTurn")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
+    })
 }
 
 /// Run counters.
@@ -222,6 +302,70 @@ mod tests {
         assert_eq!(caps.max_wall_minutes, None);
         assert!(!caps.summary_turn);
         assert!(Caps::resolve(&json!({}), |_| None).inert());
+    }
+
+    #[test]
+    fn pins_win_over_flags_and_settings() {
+        let settings = json!({"sessionCaps": {"maxCostUsd": 9.0}});
+        let flags = |n: &str| (n == "max-wall").then(|| json!(30));
+        let caps = Caps::resolve_with_pins(
+            &settings,
+            &json!({"maxTurns": 4, "maxCostUsd": null, "maxConsecutiveToolErrors": 2, "summaryTurn": false}),
+            flags,
+        );
+        assert_eq!(caps.max_turns, Some(4));
+        assert_eq!(
+            caps.max_cost_usd,
+            Some(9.0),
+            "a null pin leaves the resolved value"
+        );
+        assert_eq!(caps.max_wall_minutes, Some(30.0));
+        assert_eq!(caps.max_consecutive_tool_errors, Some(2));
+        assert!(!caps.summary_turn);
+        // Non-object pins (no entry) change nothing.
+        assert_eq!(
+            Caps::resolve_with_pins(&settings, &Value::Null, flags),
+            Caps::resolve(&settings, flags)
+        );
+    }
+
+    #[test]
+    fn wire_shape_round_trips_and_sanitizes() {
+        let caps = Caps {
+            max_turns: Some(12),
+            max_cost_usd: Some(1.5),
+            summary_turn: true,
+            ..Caps::default()
+        };
+        assert_eq!(
+            caps.to_json(),
+            json!({
+                "maxTurns": 12,
+                "maxCostUsd": 1.5,
+                "maxWallMinutes": null,
+                "maxConsecutiveToolErrors": null,
+                "summaryTurn": true,
+            })
+        );
+        let pins = sanitize_pins(&json!({"maxTurns": "2", "maxCostUsd": -1, "junk": 5}));
+        assert_eq!(
+            pins,
+            json!({
+                "maxTurns": 2,
+                "maxCostUsd": null,
+                "maxWallMinutes": null,
+                "maxConsecutiveToolErrors": null,
+                "summaryTurn": true,
+            })
+        );
+        assert_eq!(
+            Caps::default().with_pins(&pins),
+            Caps {
+                max_turns: Some(2),
+                summary_turn: true,
+                ..Caps::default()
+            }
+        );
     }
 
     #[test]

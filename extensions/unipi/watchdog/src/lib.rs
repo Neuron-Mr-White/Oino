@@ -44,7 +44,7 @@ use oino_extension::wit::session::{Provenance, UserMessageOptions};
 use unipi_kit::jev;
 use unipi_kit::settings::Store;
 
-use crate::caps::{Caps, RunState, Verdict};
+use crate::caps::{CAPS_ENTRY, Caps, RunState, Verdict};
 use crate::decide::{BashCheck, Expect, evaluate_tick, js_round};
 use crate::sample::{ProcSample, Stat};
 use crate::settings::{Action, EXTENSION_ID, NAMESPACE, OtherTools, Settings};
@@ -121,6 +121,8 @@ struct State {
     checked: HashMap<String, i64>,
     warned: HashSet<String>,
     run: RunState,
+    /// This session's pinned caps ([`CAPS_ENTRY`] data; `Null` = none pinned).
+    caps_pins: Value,
 }
 
 /// The extension.
@@ -799,12 +801,30 @@ impl Watchdog {
 
     // ── session caps ────────────────────────────────────────────────────────
 
-    fn caps(&self) -> Caps {
-        Caps::resolve(&self.settings.get(NAMESPACE).0, get_flag)
+    fn caps(&self, cx: &Ctx) -> Caps {
+        let pins = self.sessions.with(cx.session_id(), |s| s.caps_pins.clone());
+        Caps::resolve_with_pins(&self.settings.get(NAMESPACE).0, &pins, get_flag)
+    }
+
+    /// Reloads this session's pinned caps from the last [`CAPS_ENTRY`] entry
+    /// (`SessionStart`; the pins survive restarts because they live in the session file).
+    fn load_caps_pins(&self, cx: &Ctx) {
+        let pins = session::entries()
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .iter()
+                    .rev()
+                    .filter(|e| e.get("type").and_then(Value::as_str) == Some("custom"))
+                    .filter(|e| e.get("customType").and_then(Value::as_str) == Some(CAPS_ENTRY))
+                    .find_map(|e| e.get("data").filter(|d| d.is_object()).cloned())
+            })
+            .unwrap_or(Value::Null);
+        self.sessions.with(cx.session_id(), |s| s.caps_pins = pins);
     }
 
     async fn on_turn_end(&self, ev: &Event, cx: &Ctx) {
-        let caps = self.caps();
+        let caps = self.caps(cx);
         let now = timers::now_ms();
         let (verdict, run) = self.sessions.with(cx.session_id(), |st| {
             (st.run.turn_end(&caps, &ev.payload, now), st.run.clone())
@@ -867,8 +887,30 @@ impl Extension for Watchdog {
                     Ok(())
                 }),
         );
-        cx.on(EventKind::SessionStart, |ext, _ev, _cx| async move {
+        // Session caps for the app's Session modal › Info › Limits (WP-A17, G-16):
+        // `caps.get` → `{caps, pinned}`; `caps.set` pins for this session and persists
+        // the pins as a `watchdog.session-caps` custom entry.
+        cx.service("caps.get", |ext, _payload, _caller, cx| async move {
+            let pinned = ext
+                .sessions
+                .with(cx.session_id(), |s| s.caps_pins.is_object());
+            Ok(json!({"caps": ext.caps(&cx).to_json(), "pinned": pinned}))
+        });
+        cx.service("caps.set", |ext, payload, _caller, cx| async move {
+            let pins = caps::sanitize_pins(&payload);
+            session::append_entry(CAPS_ENTRY, Some(&pins))?;
+            ext.sessions.with(cx.session_id(), |s| s.caps_pins = pins);
+            let caps = ext.caps(&cx);
+            Ok(
+                json!({"caps": caps.to_json(), "pinned": caps.max_turns.is_some()
+                || caps.max_cost_usd.is_some()
+                || caps.max_wall_minutes.is_some()
+                || caps.max_consecutive_tool_errors.is_some()}),
+            )
+        });
+        cx.on(EventKind::SessionStart, |ext, _ev, cx| async move {
             ext.start_timer();
+            ext.load_caps_pins(&cx);
             Ok(())
         });
         cx.on(EventKind::SessionShutdown, |ext, _ev, cx| async move {
