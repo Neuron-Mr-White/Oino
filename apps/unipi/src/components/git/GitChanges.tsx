@@ -5,7 +5,7 @@
  * expanded inline under its row (lazy per-file diff; the Branch and
  * Last-turn sources pass the row's own diff along).
  */
-import { createEffect, createMemo, on, For, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, on, onCleanup, For, Show, type JSX } from 'solid-js';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { Minus, Plus, RefreshCw } from 'lucide-solid';
 import type { GitDiffData } from '@unipi/protocol';
@@ -41,6 +41,9 @@ export function GitChanges(props: {
   children?: JSX.Element;
 }) {
   let scroll: HTMLDivElement | null = null;
+  /** Inline diff rows by diff key: re-measured when the lazy diff body settles. */
+  const diffRows = new Map<string, HTMLElement>();
+  onCleanup(() => diffRows.clear());
 
   const items = createMemo<Item[]>(() => {
     const out: Item[] = [];
@@ -74,8 +77,13 @@ export function GitChanges(props: {
     },
   });
 
-  /** A diff body grew after its lazy fetch: re-measure the rows below it. */
-  const remeasure = () => requestAnimationFrame(() => virtualizer.measure());
+  /** A diff body grew after its lazy fetch: re-measure that row (not the list,
+   *  which would fall back to the 320 px estimate and leave a gap). */
+  const remeasure = (key: string) =>
+    requestAnimationFrame(() => {
+      const el = diffRows.get(key);
+      if (el) virtualizer.measureElement(el);
+    });
 
   // Follow the keyboard selection (↑/↓): centre the row in the window.
   createEffect(
@@ -134,7 +142,14 @@ export function GitChanges(props: {
                   }
                   if (it.t === 'diff') {
                     return (
-                      <div class="git-vrow git-inline-diff" ref={rowRef} data-index={v.index}>
+                      <div
+                        class="git-vrow git-inline-diff"
+                        ref={(el) => {
+                          diffRows.set(it.key, el);
+                          rowRef(el);
+                        }}
+                        data-index={v.index}
+                      >
                         <GitDiffDetail
                           hostId={props.hostId}
                           repo={props.repo}
@@ -142,7 +157,7 @@ export function GitChanges(props: {
                           tick={props.tick}
                           preloaded={props.preloaded?.(it.row.diffKey)}
                           areaLabel={props.preloaded?.(it.row.diffKey) ? props.sourceLabel : undefined}
-                          onSettled={remeasure}
+                          onSettled={() => remeasure(it.key)}
                           inline
                           onClose={() => props.onExpand(undefined)}
                           onToggle={props.canStage ? () => props.onToggleStage(it.row.change) : undefined}

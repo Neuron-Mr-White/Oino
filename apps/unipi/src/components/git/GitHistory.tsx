@@ -3,7 +3,7 @@
  * `git log` list with ref pills, virtualized like the changes list, paged
  * 50 at a time ("Load more"). No commit graph (Z-99: skipped).
  */
-import { createMemo, For, Show, type JSX } from 'solid-js';
+import { For, Show, type JSX } from 'solid-js';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { GitCommitHorizontal } from 'lucide-solid';
 import { refPills, relativeTime, type GitCommitInfo } from '../../lib/git';
@@ -28,7 +28,6 @@ export function GitHistory(props: {
     estimateSize: () => (desktopShell() ? 56 : 64),
     overscan: 10,
   });
-  const rowHeight = createMemo(() => (desktopShell() ? 56 : 64));
   return (
     <div
       class="git-list-scroll git-virtual"
@@ -50,9 +49,9 @@ export function GitHistory(props: {
                   <div
                     ref={(el: HTMLElement) => {
                       el.style.transform = `translateY(${v.start}px)`;
-                      el.style.height = `${rowHeight()}px`;
                       virtualizer.measureElement(el);
                     }}
+                    data-index={v.index}
                     class="git-commit-row git-vrow"
                     data-testid="git-commit-row"
                     data-git-commit={commit.hash}
