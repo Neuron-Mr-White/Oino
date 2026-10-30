@@ -35,11 +35,12 @@ function ticks(axis: Axis | undefined, [lo, hi]: [number, number]): string[] {
 }
 
 export function Chart(props: NodeProps<ChartNode>) {
-  let el!: HTMLDivElement;
-  const [width, setWidth] = createSignal(0);
-  onMount(() => onCleanup(observeSize(el, (s) => setWidth(s.width))));
-  const W = () => (width() > 0 ? width() : 480);
-  const H = () => Math.max(160, 12 * rowPx());
+  let plot!: HTMLDivElement;
+  const [box, setBox] = createSignal({ width: 0, height: 0 });
+  onMount(() => onCleanup(observeSize(plot, setBox)));
+  const W = () => (box().width > 0 ? box().width : 480);
+  /** Auto: 12 rows (≥ 160 px); definite: whatever the plot box got (≥ 120 px). */
+  const H = () => (props.mode === 'definite' && box().height > 0 ? Math.max(120, box().height) : Math.max(160, 12 * rowPx()));
   const datasets = () => (Array.isArray(props.node.datasets) ? props.node.datasets : []);
   const xb = createMemo(() => bounds(props.node.xAxis, datasets().flatMap((d) => (d.data ?? []).map((p) => p[0]))));
   const yb = createMemo(() => bounds(props.node.yAxis, datasets().flatMap((d) => (d.data ?? []).map((p) => p[1]))));
@@ -75,10 +76,11 @@ export function Chart(props: NodeProps<ChartNode>) {
   );
 
   return (
-    <div ref={el} class={cx('ui-chart', baseStyle(props.node).class)} style={baseStyle(props.node).style} role="img" aria-label={label()}>
+    <div class={cx('ui-chart', baseStyle(props.node).class)} data-mode={props.mode} style={baseStyle(props.node).style} role="img" aria-label={label()}>
       <Show when={legend()?.startsWith('Top') || legend() === 'Left'}>
         <Legend />
       </Show>
+      <div ref={plot} class="ui-chart-plot">
       <svg width="100%" height={H()} viewBox={`0 0 ${W()} ${H()}`} aria-hidden="true" class="ui-chart-svg">
         <g class="ui-chart-axes">
           <line x1={PAD.l} y1={PAD.t + plotH()} x2={PAD.l + plotW()} y2={PAD.t + plotH()} />
@@ -142,6 +144,7 @@ export function Chart(props: NodeProps<ChartNode>) {
           }}
         </For>
       </svg>
+      </div>
       <Show when={props.node.xAxis?.title || props.node.yAxis?.title}>
         <div class="ui-chart-titles">
           <Show when={props.node.yAxis?.title}>

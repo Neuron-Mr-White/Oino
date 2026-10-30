@@ -103,7 +103,9 @@ export function solveAxis(spec: AxisSpec, size: number): Segment[] {
     cache.set(key, hit);
     return hit;
   }
-  const out = solveUncached(spec.constraints.map(normConstraint), flex, spacing * scale, scale, Math.max(0, size));
+  const cs = spec.constraints.map(normConstraint);
+  const spacingPx = spacing * scale;
+  const out = solveFast(cs, flex, spacingPx, scale, Math.max(0, size)) ?? solveUncached(cs, flex, spacingPx, scale, Math.max(0, size));
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
   cache.set(key, out);
   return out;
@@ -116,6 +118,50 @@ export function clearSolveCache(): void {
 
 type El = { s: Variable; e: Variable };
 const sizeOf = (el: El) => new Expression(el.e, [-1, el.s]);
+
+/** Fill weight floor, mirroring the kiwi path's `Math.max(c.n, 1e-6)`. */
+const growW = (n: number) => Math.max(n, 1e-6);
+
+/**
+ * Closed form for the dominant case — `flex: "Start"`, constraints from
+ * {Length, Percentage, Fill} only, and the constraints fit the axis — the
+ * §13.5 solve budget (≤ 0.2 ms for 16 children) is unreachable through a
+ * cold Cassowary solve, and this case needs no arbitration: spacing is
+ * satisfied first (SPACER_SIZE_EQ > LENGTH_SIZE_EQ), fixed and percentage
+ * segments take their sizes, fills share the remainder by weight, and the
+ * trailing spacer absorbs any slack. Returns `null` for anything the solver
+ * must decide (Min/Max/Ratio, other flex, over-constrained) so the kiwi
+ * formulation stays the single authority for those.
+ */
+function solveFast(cs: Norm[], flex: Flex, spacingPx: number, scale: number, size: number): Segment[] | null {
+  if (flex !== 'Start' || cs.length === 0) return null;
+  let fixed = 0;
+  let pct = 0;
+  let fills: number[] = [];
+  for (const c of cs) {
+    if (c.k === 'Length') fixed += c.n * scale;
+    else if (c.k === 'Percentage') pct += (c.n / 100) * size;
+    else if (c.k === 'Fill') fills.push(growW(c.n));
+    else return null;
+  }
+  const usable = size - spacingPx * (cs.length - 1);
+  const rest = usable - fixed - pct;
+  if (rest < -1e-9) return null; // over-constrained: let the solver relax strengths
+  const totalW = fills.reduce((a, b) => a + b, 0);
+  if (fills.length > 0 && totalW <= 0) return null;
+  let x = 0;
+  const segs: Segment[] = [];
+  for (const c of cs) {
+    let s: number;
+    if (c.k === 'Length') s = c.n * scale;
+    else if (c.k === 'Percentage') s = (c.n / 100) * size;
+    else s = (rest * (fills.shift() ?? 0)) / (totalW || 1);
+    const start = Math.round(x);
+    segs.push([start, Math.max(0, Math.round(x + s) - start)]);
+    x += s + spacingPx;
+  }
+  return segs;
+}
 
 function solveUncached(cs: Norm[], flex: Flex, spacingPx: number, scale: number, size: number): Segment[] {
   if (cs.length === 0) return [];

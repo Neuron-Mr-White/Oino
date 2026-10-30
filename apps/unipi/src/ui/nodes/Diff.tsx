@@ -121,11 +121,18 @@ export function Diff(props: NodeProps<DiffNode>) {
   const counts = createMemo(() => {
     let add = 0;
     let del = 0;
-    for (const f of parsed().files) for (const h of f.hunks) for (const l of h.lines) l.kind === 'add' ? add++ : l.kind === 'del' && del++;
-    return { add, del };
+    let lines = 0;
+    for (const f of parsed().files)
+      for (const h of f.hunks)
+        for (const l of h.lines) {
+          lines++;
+          if (l.kind === 'add') add++;
+          else if (l.kind === 'del') del++;
+        }
+    return { add, del, lines };
   });
   return (
-    <div ref={el} class={cx('ui-diff', baseStyle(props.node).class)} data-mode={props.mode} data-split={split() ? '' : undefined} style={baseStyle(props.node).style}>
+    <div ref={el} class={cx('ui-diff', baseStyle(props.node).class)} data-mode={props.mode} data-split={split() ? '' : undefined} data-big={counts().lines > 2000 ? '' : undefined} style={baseStyle(props.node).style}>
       <div class="diffview" role="group" aria-label={`Diff${props.node.path ? ` of ${props.node.path}` : ''}: ${counts().add} added, ${counts().del} removed`}>
         <For each={parsed().files}>
           {(file) => (

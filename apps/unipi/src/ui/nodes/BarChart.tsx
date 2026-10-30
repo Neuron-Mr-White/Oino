@@ -61,22 +61,21 @@ export function BarChart(props: NodeProps<BarChartNode>) {
                           b,
                           gi(),
                           bi(),
-                          <div class="ui-bar-col" style={{ width: `max(${unit(props.node.barWidth, 1)}, 10px)` }}>
-                            <span class={cx('ui-bar-value', valueCss(b).class)} style={valueCss(b).style}>
-                              {valueText(b)}
-                            </span>
-                            <div class="ui-bar" style={{ height: `${(Math.min(b.value, max()) / max()) * 100}%`, background: color(b) }} />
-                            <Show when={b.label}>
-                              <InlineLine line={b.label} class={cx('ui-bar-label', labelCss().class)} />
-                            </Show>
+                          <div class="ui-bar-col" style={{ '--ui-bar-w': `max(${unit(props.node.barWidth, 1)}, 10px)` } as JSX.CSSProperties}>
+                            <div class="ui-bar-well">
+                              <span class={cx('ui-bar-value', valueCss(b).class)} style={valueCss(b).style}>
+                                {valueText(b)}
+                              </span>
+                              <div class="ui-bar" style={{ height: `calc((100% - 16px) * ${Math.min(b.value, max()) / max()})`, background: color(b) }} />
+                            </div>
+                            {/* Always one label row, so every group shares the baseline. */}
+                            <InlineLine line={b.label ?? '\u00a0'} class={cx('ui-bar-label', labelCss().class)} />
                           </div>,
                         )
                       }
                     </For>
                   </div>
-                  <Show when={g.label}>
-                    <InlineLine line={g.label} class={cx('ui-bar-group-label', labelCss().class)} />
-                  </Show>
+                  <InlineLine line={g.label ?? '\u00a0'} class={cx('ui-bar-group-label', labelCss().class)} />
                 </div>
               )}
             </For>

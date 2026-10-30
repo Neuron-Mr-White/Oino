@@ -81,7 +81,7 @@ export function Image(props: NodeProps<ImageNode>) {
         }
       >
         <button type="button" class="ui-image-btn" onClick={open} aria-label={`Open image: ${props.node.alt}`}>
-          <img src={url()} alt={props.node.alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+          <img src={url()} alt={props.node.alt} loading="lazy" decoding="async" on:error={() => setFailed(true)} />
         </button>
       </Show>
     </div>

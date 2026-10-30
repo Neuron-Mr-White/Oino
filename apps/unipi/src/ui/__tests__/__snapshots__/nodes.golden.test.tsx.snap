@@ -79,18 +79,22 @@ exports[`golden — desktop shell > BarChart-vertical.json 1`] = `
           >
             <div
               class="ui-bar-col"
-              style="width: max(calc(2 * var(--ui-col)), 10px);"
+              style="--ui-bar-w: max(calc(2 * var(--ui-col)), 10px);"
             >
-              <span
-                class="ui-bar-value"
-                style="color: var(--ui-text);"
-              >
-                4
-              </span>
               <div
-                class="ui-bar"
-                style="height: 40%; background: var(--ui-c1);"
-              />
+                class="ui-bar-well"
+              >
+                <span
+                  class="ui-bar-value"
+                  style="color: var(--ui-text);"
+                >
+                  4
+                </span>
+                <div
+                  class="ui-bar"
+                  style="height: calc(0.4 * (100% - 16px)); background: var(--ui-c1);"
+                />
+              </div>
               <span
                 class="ui-bar-label"
               >
@@ -107,18 +111,22 @@ exports[`golden — desktop shell > BarChart-vertical.json 1`] = `
           >
             <div
               class="ui-bar-col"
-              style="width: max(calc(2 * var(--ui-col)), 10px);"
+              style="--ui-bar-w: max(calc(2 * var(--ui-col)), 10px);"
             >
-              <span
-                class="ui-bar-value"
-                style="color: var(--ui-text);"
-              >
-                7
-              </span>
               <div
-                class="ui-bar"
-                style="height: 70%; background: var(--ui-accent);"
-              />
+                class="ui-bar-well"
+              >
+                <span
+                  class="ui-bar-value"
+                  style="color: var(--ui-text);"
+                >
+                  7
+                </span>
+                <div
+                  class="ui-bar"
+                  style="height: calc(0.7 * (100% - 16px)); background: var(--ui-accent);"
+                />
+              </div>
               <span
                 class="ui-bar-label"
               >
@@ -150,23 +158,39 @@ exports[`golden — desktop shell > BarChart-vertical.json 1`] = `
           >
             <div
               class="ui-bar-col"
-              style="width: max(calc(2 * var(--ui-col)), 10px);"
+              style="--ui-bar-w: max(calc(2 * var(--ui-col)), 10px);"
             >
-              <span
-                class="ui-bar-value"
-                style="color: var(--ui-text);"
-              >
-                2
-              </span>
               <div
-                class="ui-bar"
-                style="height: 20%; background: var(--ui-accent);"
-              />
-              
+                class="ui-bar-well"
+              >
+                <span
+                  class="ui-bar-value"
+                  style="color: var(--ui-text);"
+                >
+                  2
+                </span>
+                <div
+                  class="ui-bar"
+                  style="height: calc(0.2 * (100% - 16px)); background: var(--ui-accent);"
+                />
+              </div>
+              <span
+                class="ui-bar-label"
+              >
+                <span>
+                   
+                </span>
+              </span>
             </div>
           </button>
         </div>
-        
+        <span
+          class="ui-bar-group-label"
+        >
+          <span>
+             
+          </span>
+        </span>
       </div>
     </div>
   </div>
@@ -569,108 +593,113 @@ exports[`golden — desktop shell > Chart-line-legend-NULL.json 1`] = `
   <div
     aria-label="Chart: ctx (2 points)"
     class="ui-chart"
+    data-mode="auto"
     role="img"
   >
     
-    <svg
-      aria-hidden="true"
-      class="ui-chart-svg"
-      height="240"
-      viewBox="0 0 480 240"
-      width="100%"
+    <div
+      class="ui-chart-plot"
     >
-      <g
-        class="ui-chart-axes"
+      <svg
+        aria-hidden="true"
+        class="ui-chart-svg"
+        height="240"
+        viewBox="0 0 480 240"
+        width="100%"
       >
-        <line
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
+        <g
+          class="ui-chart-axes"
+        >
+          <line
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <line
+            x1="44"
+            x2="44"
+            y1="10"
+            y2="214"
+          />
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="214"
+          >
+            0
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="112"
+            y2="112"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="112"
+          >
+            0.5
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="10"
+            y2="10"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="10"
+          >
+            1
+          </text>
+          <text
+            text-anchor="start"
+            x="44"
+            y="230"
+          >
+            0
+          </text>
+          <text
+            text-anchor="middle"
+            x="256"
+            y="230"
+          >
+            0.5
+          </text>
+          <text
+            text-anchor="end"
+            x="468"
+            y="230"
+          >
+            1
+          </text>
+        </g>
+        <polyline
+          fill="none"
+          points="44.0,112.0 468.0,30.4"
+          stroke="var(--ui-c1)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          vector-effect="non-scaling-stroke"
         />
-        <line
-          x1="44"
-          x2="44"
-          y1="10"
-          y2="214"
-        />
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="214"
-        >
-          0
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="112"
-          y2="112"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="112"
-        >
-          0.5
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="10"
-          y2="10"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="10"
-        >
-          1
-        </text>
-        <text
-          text-anchor="start"
-          x="44"
-          y="230"
-        >
-          0
-        </text>
-        <text
-          text-anchor="middle"
-          x="256"
-          y="230"
-        >
-          0.5
-        </text>
-        <text
-          text-anchor="end"
-          x="468"
-          y="230"
-        >
-          1
-        </text>
-      </g>
-      <polyline
-        fill="none"
-        points="44.0,112.0 468.0,30.4"
-        stroke="var(--ui-c1)"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="2"
-        vector-effect="non-scaling-stroke"
-      />
-    </svg>
+      </svg>
+    </div>
     
     
   </div>
@@ -686,6 +715,7 @@ exports[`golden — desktop shell > Chart-scatter.json 1`] = `
   <div
     aria-label="Chart: tok/s (3 points)"
     class="ui-chart"
+    data-mode="auto"
     role="img"
   >
     <div
@@ -706,107 +736,111 @@ exports[`golden — desktop shell > Chart-scatter.json 1`] = `
         </span>
       </span>
     </div>
-    <svg
-      aria-hidden="true"
-      class="ui-chart-svg"
-      height="240"
-      viewBox="0 0 480 240"
-      width="100%"
+    <div
+      class="ui-chart-plot"
     >
-      <g
-        class="ui-chart-axes"
+      <svg
+        aria-hidden="true"
+        class="ui-chart-svg"
+        height="240"
+        viewBox="0 0 480 240"
+        width="100%"
       >
-        <line
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
-        />
-        <line
-          x1="44"
-          x2="44"
-          y1="10"
-          y2="214"
-        />
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="214"
+        <g
+          class="ui-chart-axes"
         >
-          0
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="112"
-          y2="112"
+          <line
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <line
+            x1="44"
+            x2="44"
+            y1="10"
+            y2="214"
+          />
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="214"
+          >
+            0
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="112"
+            y2="112"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="112"
+          >
+            2.5
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="10"
+            y2="10"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="10"
+          >
+            5
+          </text>
+          <text
+            text-anchor="start"
+            x="44"
+            y="230"
+          >
+            0
+          </text>
+          <text
+            text-anchor="end"
+            x="468"
+            y="230"
+          >
+            2
+          </text>
+        </g>
+        <circle
+          cx="44"
+          cy="173.2"
+          fill="var(--ui-c2)"
+          r="2.5"
         />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="112"
-        >
-          2.5
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="10"
-          y2="10"
+        <circle
+          cx="256"
+          cy="50.79999999999998"
+          fill="var(--ui-c2)"
+          r="2.5"
         />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="10"
-        >
-          5
-        </text>
-        <text
-          text-anchor="start"
-          x="44"
-          y="230"
-        >
-          0
-        </text>
-        <text
-          text-anchor="end"
-          x="468"
-          y="230"
-        >
-          2
-        </text>
-      </g>
-      <circle
-        cx="44"
-        cy="173.2"
-        fill="var(--ui-c2)"
-        r="2.5"
-      />
-      <circle
-        cx="256"
-        cy="50.79999999999998"
-        fill="var(--ui-c2)"
-        r="2.5"
-      />
-      <circle
-        cx="468"
-        cy="71.20000000000002"
-        fill="var(--ui-c2)"
-        r="2.5"
-      />
-    </svg>
+        <circle
+          cx="468"
+          cy="71.20000000000002"
+          fill="var(--ui-c2)"
+          r="2.5"
+        />
+      </svg>
+    </div>
     <div
       class="ui-chart-titles"
     >
@@ -2912,45 +2946,42 @@ exports[`golden — desktop shell > Sparkline.json 1`] = `
       aria-hidden="true"
       height="100%"
       preserveAspectRatio="none"
-      viewBox="0 0 5 100"
+      viewBox="0 0 320 100"
       width="100%"
     >
       <rect
         fill="var(--ui-accent)"
         height="10"
-        rx="0"
-        width="0.76"
-        x="0.12"
+        width="6"
+        x="0"
         y="90"
       />
       <rect
         fill="var(--ui-dim)"
         height="2"
-        width="0.4"
-        x="1.3"
+        width="6"
+        x="8"
         y="98"
       />
       <rect
         fill="var(--ui-accent)"
         height="30"
-        rx="0"
-        width="0.76"
-        x="2.12"
+        width="6"
+        x="16"
         y="70"
       />
       <rect
         fill="var(--ui-dim)"
         height="2"
-        width="0.4"
-        x="3.3"
+        width="6"
+        x="24"
         y="98"
       />
       <rect
         fill="var(--ui-accent)"
         height="50"
-        rx="0"
-        width="0.76"
-        x="4.12"
+        width="6"
+        x="32"
         y="50"
       />
     </svg>
@@ -2973,31 +3004,28 @@ exports[`golden — desktop shell > Sparkline-rtl-three.json 1`] = `
       aria-hidden="true"
       height="100%"
       preserveAspectRatio="none"
-      viewBox="0 0 3 100"
+      viewBox="0 0 320 100"
       width="100%"
     >
       <rect
         fill="var(--ui-accent)"
         height="100"
-        rx="0"
-        width="0.76"
-        x="0.12"
+        width="6"
+        x="296"
         y="0"
       />
       <rect
         fill="var(--ui-accent)"
         height="0"
-        rx="0"
-        width="0.76"
-        x="1.12"
+        width="6"
+        x="304"
         y="100"
       />
       <rect
         fill="var(--ui-accent)"
         height="25"
-        rx="0"
-        width="0.76"
-        x="2.12"
+        width="6"
+        x="312"
         y="75"
       />
     </svg>
@@ -3953,18 +3981,22 @@ exports[`golden — phone shell > BarChart-vertical.json 1`] = `
           >
             <div
               class="ui-bar-col"
-              style="width: max(calc(2 * var(--ui-col)), 10px);"
+              style="--ui-bar-w: max(calc(2 * var(--ui-col)), 10px);"
             >
-              <span
-                class="ui-bar-value"
-                style="color: var(--ui-text);"
-              >
-                4
-              </span>
               <div
-                class="ui-bar"
-                style="height: 40%; background: var(--ui-c1);"
-              />
+                class="ui-bar-well"
+              >
+                <span
+                  class="ui-bar-value"
+                  style="color: var(--ui-text);"
+                >
+                  4
+                </span>
+                <div
+                  class="ui-bar"
+                  style="height: calc(0.4 * (100% - 16px)); background: var(--ui-c1);"
+                />
+              </div>
               <span
                 class="ui-bar-label"
               >
@@ -3981,18 +4013,22 @@ exports[`golden — phone shell > BarChart-vertical.json 1`] = `
           >
             <div
               class="ui-bar-col"
-              style="width: max(calc(2 * var(--ui-col)), 10px);"
+              style="--ui-bar-w: max(calc(2 * var(--ui-col)), 10px);"
             >
-              <span
-                class="ui-bar-value"
-                style="color: var(--ui-text);"
-              >
-                7
-              </span>
               <div
-                class="ui-bar"
-                style="height: 70%; background: var(--ui-accent);"
-              />
+                class="ui-bar-well"
+              >
+                <span
+                  class="ui-bar-value"
+                  style="color: var(--ui-text);"
+                >
+                  7
+                </span>
+                <div
+                  class="ui-bar"
+                  style="height: calc(0.7 * (100% - 16px)); background: var(--ui-accent);"
+                />
+              </div>
               <span
                 class="ui-bar-label"
               >
@@ -4024,23 +4060,39 @@ exports[`golden — phone shell > BarChart-vertical.json 1`] = `
           >
             <div
               class="ui-bar-col"
-              style="width: max(calc(2 * var(--ui-col)), 10px);"
+              style="--ui-bar-w: max(calc(2 * var(--ui-col)), 10px);"
             >
-              <span
-                class="ui-bar-value"
-                style="color: var(--ui-text);"
-              >
-                2
-              </span>
               <div
-                class="ui-bar"
-                style="height: 20%; background: var(--ui-accent);"
-              />
-              
+                class="ui-bar-well"
+              >
+                <span
+                  class="ui-bar-value"
+                  style="color: var(--ui-text);"
+                >
+                  2
+                </span>
+                <div
+                  class="ui-bar"
+                  style="height: calc(0.2 * (100% - 16px)); background: var(--ui-accent);"
+                />
+              </div>
+              <span
+                class="ui-bar-label"
+              >
+                <span>
+                   
+                </span>
+              </span>
             </div>
           </button>
         </div>
-        
+        <span
+          class="ui-bar-group-label"
+        >
+          <span>
+             
+          </span>
+        </span>
       </div>
     </div>
   </div>
@@ -4443,108 +4495,113 @@ exports[`golden — phone shell > Chart-line-legend-NULL.json 1`] = `
   <div
     aria-label="Chart: ctx (2 points)"
     class="ui-chart"
+    data-mode="auto"
     role="img"
   >
     
-    <svg
-      aria-hidden="true"
-      class="ui-chart-svg"
-      height="240"
-      viewBox="0 0 480 240"
-      width="100%"
+    <div
+      class="ui-chart-plot"
     >
-      <g
-        class="ui-chart-axes"
+      <svg
+        aria-hidden="true"
+        class="ui-chart-svg"
+        height="240"
+        viewBox="0 0 480 240"
+        width="100%"
       >
-        <line
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
+        <g
+          class="ui-chart-axes"
+        >
+          <line
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <line
+            x1="44"
+            x2="44"
+            y1="10"
+            y2="214"
+          />
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="214"
+          >
+            0
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="112"
+            y2="112"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="112"
+          >
+            0.5
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="10"
+            y2="10"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="10"
+          >
+            1
+          </text>
+          <text
+            text-anchor="start"
+            x="44"
+            y="230"
+          >
+            0
+          </text>
+          <text
+            text-anchor="middle"
+            x="256"
+            y="230"
+          >
+            0.5
+          </text>
+          <text
+            text-anchor="end"
+            x="468"
+            y="230"
+          >
+            1
+          </text>
+        </g>
+        <polyline
+          fill="none"
+          points="44.0,112.0 468.0,30.4"
+          stroke="var(--ui-c1)"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          vector-effect="non-scaling-stroke"
         />
-        <line
-          x1="44"
-          x2="44"
-          y1="10"
-          y2="214"
-        />
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="214"
-        >
-          0
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="112"
-          y2="112"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="112"
-        >
-          0.5
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="10"
-          y2="10"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="10"
-        >
-          1
-        </text>
-        <text
-          text-anchor="start"
-          x="44"
-          y="230"
-        >
-          0
-        </text>
-        <text
-          text-anchor="middle"
-          x="256"
-          y="230"
-        >
-          0.5
-        </text>
-        <text
-          text-anchor="end"
-          x="468"
-          y="230"
-        >
-          1
-        </text>
-      </g>
-      <polyline
-        fill="none"
-        points="44.0,112.0 468.0,30.4"
-        stroke="var(--ui-c1)"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="2"
-        vector-effect="non-scaling-stroke"
-      />
-    </svg>
+      </svg>
+    </div>
     
     
   </div>
@@ -4560,6 +4617,7 @@ exports[`golden — phone shell > Chart-scatter.json 1`] = `
   <div
     aria-label="Chart: tok/s (3 points)"
     class="ui-chart"
+    data-mode="auto"
     role="img"
   >
     <div
@@ -4580,107 +4638,111 @@ exports[`golden — phone shell > Chart-scatter.json 1`] = `
         </span>
       </span>
     </div>
-    <svg
-      aria-hidden="true"
-      class="ui-chart-svg"
-      height="240"
-      viewBox="0 0 480 240"
-      width="100%"
+    <div
+      class="ui-chart-plot"
     >
-      <g
-        class="ui-chart-axes"
+      <svg
+        aria-hidden="true"
+        class="ui-chart-svg"
+        height="240"
+        viewBox="0 0 480 240"
+        width="100%"
       >
-        <line
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
-        />
-        <line
-          x1="44"
-          x2="44"
-          y1="10"
-          y2="214"
-        />
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="214"
-          y2="214"
-        />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="214"
+        <g
+          class="ui-chart-axes"
         >
-          0
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="112"
-          y2="112"
+          <line
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <line
+            x1="44"
+            x2="44"
+            y1="10"
+            y2="214"
+          />
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="214"
+            y2="214"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="214"
+          >
+            0
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="112"
+            y2="112"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="112"
+          >
+            2.5
+          </text>
+          <line
+            class="ui-chart-grid"
+            x1="44"
+            x2="468"
+            y1="10"
+            y2="10"
+          />
+          <text
+            dominant-baseline="middle"
+            text-anchor="end"
+            x="38"
+            y="10"
+          >
+            5
+          </text>
+          <text
+            text-anchor="start"
+            x="44"
+            y="230"
+          >
+            0
+          </text>
+          <text
+            text-anchor="end"
+            x="468"
+            y="230"
+          >
+            2
+          </text>
+        </g>
+        <circle
+          cx="44"
+          cy="173.2"
+          fill="var(--ui-c2)"
+          r="2.5"
         />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="112"
-        >
-          2.5
-        </text>
-        <line
-          class="ui-chart-grid"
-          x1="44"
-          x2="468"
-          y1="10"
-          y2="10"
+        <circle
+          cx="256"
+          cy="50.79999999999998"
+          fill="var(--ui-c2)"
+          r="2.5"
         />
-        <text
-          dominant-baseline="middle"
-          text-anchor="end"
-          x="38"
-          y="10"
-        >
-          5
-        </text>
-        <text
-          text-anchor="start"
-          x="44"
-          y="230"
-        >
-          0
-        </text>
-        <text
-          text-anchor="end"
-          x="468"
-          y="230"
-        >
-          2
-        </text>
-      </g>
-      <circle
-        cx="44"
-        cy="173.2"
-        fill="var(--ui-c2)"
-        r="2.5"
-      />
-      <circle
-        cx="256"
-        cy="50.79999999999998"
-        fill="var(--ui-c2)"
-        r="2.5"
-      />
-      <circle
-        cx="468"
-        cy="71.20000000000002"
-        fill="var(--ui-c2)"
-        r="2.5"
-      />
-    </svg>
+        <circle
+          cx="468"
+          cy="71.20000000000002"
+          fill="var(--ui-c2)"
+          r="2.5"
+        />
+      </svg>
+    </div>
     <div
       class="ui-chart-titles"
     >
@@ -6769,45 +6831,42 @@ exports[`golden — phone shell > Sparkline.json 1`] = `
       aria-hidden="true"
       height="100%"
       preserveAspectRatio="none"
-      viewBox="0 0 5 100"
+      viewBox="0 0 320 100"
       width="100%"
     >
       <rect
         fill="var(--ui-accent)"
         height="10"
-        rx="0"
-        width="0.76"
-        x="0.12"
+        width="6"
+        x="0"
         y="90"
       />
       <rect
         fill="var(--ui-dim)"
         height="2"
-        width="0.4"
-        x="1.3"
+        width="6"
+        x="8"
         y="98"
       />
       <rect
         fill="var(--ui-accent)"
         height="30"
-        rx="0"
-        width="0.76"
-        x="2.12"
+        width="6"
+        x="16"
         y="70"
       />
       <rect
         fill="var(--ui-dim)"
         height="2"
-        width="0.4"
-        x="3.3"
+        width="6"
+        x="24"
         y="98"
       />
       <rect
         fill="var(--ui-accent)"
         height="50"
-        rx="0"
-        width="0.76"
-        x="4.12"
+        width="6"
+        x="32"
         y="50"
       />
     </svg>
@@ -6830,31 +6889,28 @@ exports[`golden — phone shell > Sparkline-rtl-three.json 1`] = `
       aria-hidden="true"
       height="100%"
       preserveAspectRatio="none"
-      viewBox="0 0 3 100"
+      viewBox="0 0 320 100"
       width="100%"
     >
       <rect
         fill="var(--ui-accent)"
         height="100"
-        rx="0"
-        width="0.76"
-        x="0.12"
+        width="6"
+        x="296"
         y="0"
       />
       <rect
         fill="var(--ui-accent)"
         height="0"
-        rx="0"
-        width="0.76"
-        x="1.12"
+        width="6"
+        x="304"
         y="100"
       />
       <rect
         fill="var(--ui-accent)"
         height="25"
-        rx="0"
-        width="0.76"
-        x="2.12"
+        width="6"
+        x="312"
         y="75"
       />
     </svg>

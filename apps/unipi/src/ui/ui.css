@@ -83,12 +83,15 @@ html[data-shell=desktop] { --ui-row-h: 32px; }
 .ui-block[data-rail] { padding-left: calc(var(--ui-pad-l, 0px) + 12px); }
 .ui-block[data-rail]::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 3px 0 0 3px; background: var(--ui-rail); }
 .ui-block[data-rail]:not([data-bordered])::before { border-radius: 2px; }
-.ui-block-title { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; min-height: calc(var(--ui-row) - 1px); font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ui-text); }
+.ui-block-title { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 0; min-height: calc(var(--ui-row) - 1px); font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ui-text); }
 .ui-block-t { min-width: 0; display: flex; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ui-block-t-center { justify-content: center; }
 .ui-block-t-right { justify-content: flex-end; }
-.ui-block-t:empty { display: none; }
-.ui-block-title:has(.ui-block-t-center:empty) { grid-template-columns: auto minmax(0, 1fr) auto; }
+.ui-block-title > .ui-block-toggle { grid-column: 1; margin-right: 4px; }
+.ui-block-t-center:not(:empty) { padding: 0 8px; }
+.ui-block-t-left { grid-column: 2; }
+.ui-block-t-center { grid-column: 3; }
+.ui-block-t-right { grid-column: 4; }
 .ui-block-title-bottom { font-weight: 500; color: var(--ui-muted); font-size: 12px; }
 .ui-block[data-bordered] > .ui-block-title:first-child { margin-bottom: 4px; }
 .ui-block-body { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
@@ -162,7 +165,8 @@ html:not([data-shell=desktop]) .ui-tree-twisty { width: 36px; height: 36px; }
 .ui-tab { display: inline-flex; align-items: center; gap: 6px; height: calc(var(--chip-h) - 6px); min-height: 0; padding: 0 14px; border-radius: 9999px; background: transparent; color: var(--ui-muted); font-size: 13.5px; font-weight: 500; white-space: nowrap; }
 .ui-tab[aria-selected=true] { background: var(--ui-surface3); color: var(--ui-text); box-shadow: inset 0 0 0 1px var(--ui-border); }
 .ui-tab-badge { font-size: 11.5px; color: var(--ui-muted); }
-.ui-tabs-divider { color: var(--ui-dim); }
+/* The segmented strip already separates tabs; a TUI divider glyph would double it. */
+.ui-tabs-divider { display: none; }
 .ui-tabs-pane { min-width: 0; min-height: 0; }
 .ui-tabs[data-mode=definite] .ui-tabs-pane { flex: 1 1 auto; }
 html:not([data-shell=desktop]) .ui-tab { height: var(--chip-h); }
@@ -187,8 +191,11 @@ html:not([data-shell=desktop]) .ui-tab { height: var(--chip-h); }
 .ui-bars-v { display: flex; align-items: flex-end; gap: var(--ui-group-gap); height: calc(8 * var(--ui-row)); overflow-x: auto; }
 .ui-bars-v .ui-bar-group { display: flex; flex-direction: column; align-items: center; height: 100%; gap: 4px; }
 .ui-bar-cols { flex: 1 1 auto; display: flex; align-items: stretch; gap: var(--ui-bar-gap); min-height: 0; }
-.ui-bar-col { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; gap: 2px; }
-.ui-bars-v .ui-bar { width: 100%; min-height: 2px; border-radius: 4px 4px 0 0; }
+.ui-bar-col { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; gap: 2px; min-width: var(--ui-bar-w); }
+.ui-bar-col > .ui-bar-label { flex: 0 0 auto; }
+.ui-bar-well { flex: 1 1 0; min-height: 0; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; }
+.ui-bar-well > .ui-bar-value { flex: 0 0 auto; line-height: 14px; }
+.ui-bars-v .ui-bar { width: var(--ui-bar-w); min-height: 2px; border-radius: 4px 4px 0 0; }
 .ui-bar-value { font-variant-numeric: tabular-nums; color: var(--ui-text); font-size: 11.5px; }
 .ui-bar-label, .ui-bar-group-label { white-space: nowrap; }
 .ui-bar-group-label { font-weight: 600; color: var(--ui-text); }
@@ -201,6 +208,11 @@ html:not([data-shell=desktop]) .ui-tab { height: var(--chip-h); }
 .ui-bar-hit:focus-visible > * { outline: 2px solid var(--ui-primary); outline-offset: 2px; border-radius: 4px; }
 .ui-chart { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .ui-chart-svg { display: block; overflow: visible; }
+.ui-chart-plot { min-width: 0; }
+.ui-chart[data-mode=definite] { height: 100%; min-height: 0; }
+.ui-chart[data-mode=definite] .ui-chart-plot { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.ui-chart[data-mode=definite] .ui-chart-svg { position: absolute; }
+.ui-chart[data-mode=definite] .ui-chart-plot { position: relative; }
 .ui-chart-axes line { stroke: var(--ui-border); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .ui-chart-axes .ui-chart-grid { stroke: rgb(46 40 37 / 55%); stroke-dasharray: 2 4; }
 .ui-chart-axes text { fill: var(--ui-dim); font: 500 11px var(--font-sans); font-variant-numeric: tabular-nums; }
@@ -238,7 +250,7 @@ html:not([data-shell=desktop]) .ui-chart-svg { min-height: 160px; }
 .ui-code-chunk { display: block; content-visibility: auto; contain-intrinsic-size: auto 9500px; }
 .ui-code .cb.wrapped .ui-code-line { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ui-diff { min-width: 0; border-radius: 12px; background: var(--md-cb-bg); box-shadow: inset 0 0 0 1px rgb(46 40 37 / 80%); padding: 6px 0; overflow: hidden; }
-.ui-diff .diff-hunk { content-visibility: auto; contain-intrinsic-size: auto 400px; }
+.ui-diff[data-big] .diff-hunk { content-visibility: auto; contain-intrinsic-size: auto 400px; }
 .ui-diff-counts { margin-left: 10px; font-weight: 500; }
 .ui-diff-add { color: var(--ui-success); }
 .ui-diff-del { color: var(--ui-error); }
@@ -270,7 +282,11 @@ html:not([data-shell=desktop]) .ui-chart-svg { min-height: 160px; }
 .ui-hint { display: inline-flex; align-items: center; gap: 6px; min-height: var(--ui-row); }
 .ui-keys { display: inline-flex; gap: 3px; }
 .ui-hint-action { min-height: 0; padding: 2px 8px 2px 4px; margin: -2px -4px; border-radius: 8px; background: transparent; color: var(--ui-text); }
-html:not([data-shell=desktop]) .ui-hint-action { min-height: 44px; padding: 0 14px; margin: 0; border-radius: 9999px; background: var(--ui-surface2); }
+/* Phone: tappable chips; 28 px visible (fits cell rows) with a 44 px hit slop (DESIGN §1.4). */
+html:not([data-shell=desktop]) .ui-hint-action { position: relative; min-height: 28px; height: 28px; padding: 0 12px; margin: 0; border-radius: 9999px; background: var(--ui-surface2); }
+html:not([data-shell=desktop]) .ui-hint-action::after { content: ''; position: absolute; inset: -8px -4px; }
+html:not([data-shell=desktop]) .ui-keyhints { gap: 8px; }
+.ui-layout-item[data-mode=definite]:has(> .ui-keyhints) { overflow: visible; }
 html:not([data-shell=desktop]) .ui-keys { display: none; }
 
 /* ── Form controls ──────────────────────────────────────────────────── */
