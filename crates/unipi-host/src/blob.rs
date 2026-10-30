@@ -52,6 +52,8 @@ fn blob_file(blobs_dir: &Path, sha256: &str) -> PathBuf {
 
 /// Handles one `blob_put` stream (see module docs). `blobs_dir` is
 /// created on demand.
+// v2 H1: pre-existing 8-arg blob upload entry point; reshaped with the H7 port
+#[allow(clippy::too_many_arguments)]
 pub async fn serve_put<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     blobs_dir: &Path,
     read: &mut R,
@@ -81,16 +83,38 @@ pub async fn serve_put<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     if let Ok(meta) = std::fs::metadata(&path) {
         if meta.len() == size {
             // Already have the exact blob: dedup, no bytes needed.
-            write_control(write, &Control::Ok { data: Some(serde_json::to_value(BlobPutData { have: true, path: path_str }).map_err(internal)?) })
-                .await
-                .map_err(internal)?;
+            write_control(
+                write,
+                &Control::Ok {
+                    data: Some(
+                        serde_json::to_value(BlobPutData {
+                            have: true,
+                            path: path_str,
+                        })
+                        .map_err(internal)?,
+                    ),
+                },
+            )
+            .await
+            .map_err(internal)?;
             let _ = touch(&path);
             return Ok(());
         }
     }
-    write_control(write, &Control::Ok { data: Some(serde_json::to_value(BlobPutData { have: false, path: path_str }).map_err(internal)?) })
-        .await
-        .map_err(internal)?;
+    write_control(
+        write,
+        &Control::Ok {
+            data: Some(
+                serde_json::to_value(BlobPutData {
+                    have: false,
+                    path: path_str,
+                })
+                .map_err(internal)?,
+            ),
+        },
+    )
+    .await
+    .map_err(internal)?;
 
     let start = offset.unwrap_or(0);
     if start > size {
@@ -105,6 +129,7 @@ pub async fn serve_put<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             .create(true)
             .read(true)
             .write(true)
+            .truncate(false)
             .open(&tmp_path)
             .map_err(internal)?;
         #[cfg(unix)]
@@ -135,7 +160,13 @@ pub async fn serve_put<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         while written < size {
             let (kind, bytes) = tokio::time::timeout(BODY_FRAME_TIMEOUT, read_frame(read))
                 .await
-                .map_err(|_| AppErrorDto::new(AppErrorCode::E_TIMEOUT, "Upload stalled for 30 seconds", true))?
+                .map_err(|_| {
+                    AppErrorDto::new(
+                        AppErrorCode::E_TIMEOUT,
+                        "Upload stalled for 30 seconds",
+                        true,
+                    )
+                })?
                 .map_err(|e| rejected(format!("upload ended early: {e}")))?;
             if kind != FrameKind::Input as u8 {
                 return Err(rejected("blob bytes must be kind-2 frames"));
@@ -253,7 +284,12 @@ pub fn registered_paths(bridge_dir: &Path) -> HashSet<PathBuf> {
 /// opened from the Files screen) any path in `scope` (`$HOME` + the extra
 /// safe roots like `/tmp`, UNI-220) once canonicalized — same scope rule
 /// as `fs_read`.
-pub fn path_allowed(path: &Path, blobs_dir: &Path, bridge_dir: Option<&Path>, scope: Option<&FsScope>) -> bool {
+pub fn path_allowed(
+    path: &Path,
+    blobs_dir: &Path,
+    bridge_dir: Option<&Path>,
+    scope: Option<&FsScope>,
+) -> bool {
     if path.starts_with(blobs_dir) {
         return true;
     }
@@ -284,7 +320,10 @@ pub async fn serve_get<W: AsyncWrite + Unpin>(
     path: Option<&BlobPath>,
     range: Option<BlobRange>,
 ) -> Result<(), AppErrorDto> {
-    serve_get_with(blobs_dir, bridge_dir, scope, None, write, sha256, path, range).await
+    serve_get_with(
+        blobs_dir, bridge_dir, scope, None, write, sha256, path, range,
+    )
+    .await
 }
 
 /// [`serve_get`] plus one extra exactly-allowed path (UNI-214: a file
@@ -301,10 +340,15 @@ pub async fn serve_get_with<W: AsyncWrite + Unpin>(
     range: Option<BlobRange>,
 ) -> Result<(), AppErrorDto> {
     let (resolved, mime_guess): (PathBuf, &str) = if let Some(sha) = sha256 {
-        (blob_file(blobs_dir, sha.as_str()), "application/octet-stream")
+        (
+            blob_file(blobs_dir, sha.as_str()),
+            "application/octet-stream",
+        )
     } else if let Some(p) = path {
         let candidate = PathBuf::from(p.as_str());
-        if pushed != Some(candidate.as_path()) && !path_allowed(&candidate, blobs_dir, bridge_dir, scope) {
+        if pushed != Some(candidate.as_path())
+            && !path_allowed(&candidate, blobs_dir, bridge_dir, scope)
+        {
             return Err(unauthorized("That path isn't available to the phone"));
         }
         let mime = mime_guess_from_ext(&candidate);
@@ -312,14 +356,14 @@ pub async fn serve_get_with<W: AsyncWrite + Unpin>(
     } else {
         return Err(rejected("blob_get needs sha256 or path"));
     };
-    let mut file = tokio::fs::File::open(&resolved)
-        .await
-        .map_err(|e| AppErrorDto::new(AppErrorCode::E_NOT_FOUND, format!("blob not found: {e}"), false))?;
-    let total = file
-        .metadata()
-        .await
-        .map_err(internal)?
-        .len();
+    let mut file = tokio::fs::File::open(&resolved).await.map_err(|e| {
+        AppErrorDto::new(
+            AppErrorCode::E_NOT_FOUND,
+            format!("blob not found: {e}"),
+            false,
+        )
+    })?;
+    let total = file.metadata().await.map_err(internal)?.len();
     let (start, end) = match range {
         Some(r) => {
             if r.start > r.end || r.end >= total {
@@ -332,15 +376,22 @@ pub async fn serve_get_with<W: AsyncWrite + Unpin>(
     let len = if total == 0 { 0 } else { end - start + 1 };
     use tokio::io::AsyncSeekExt;
     if start > 0 {
-        file.seek(std::io::SeekFrom::Start(start)).await.map_err(internal)?;
+        file.seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(internal)?;
     }
     let data = BlobGetData {
         size: len,
         mime: mime_guess.to_string(),
     };
-    write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-        .await
-        .map_err(internal)?;
+    write_control(
+        write,
+        &Control::Ok {
+            data: Some(serde_json::to_value(data).map_err(internal)?),
+        },
+    )
+    .await
+    .map_err(internal)?;
     let mut remaining = len;
     let mut buf = vec![0u8; CHUNK];
     while remaining > 0 {
@@ -361,7 +412,11 @@ pub async fn serve_get_with<W: AsyncWrite + Unpin>(
 }
 
 fn mime_guess_from_ext(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()) {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+    {
         Some(ext) => match ext.as_str() {
             "png" => "image/png",
             "jpg" | "jpeg" => "image/jpeg",
@@ -418,7 +473,17 @@ mod tests {
         let blobs1 = blobs.clone();
         let mime1 = mime.clone();
         let task = tokio::spawn(async move {
-            serve_put(&blobs1, &mut client, &mut server, &d1, p1.len() as u64, &mime1, None, None).await
+            serve_put(
+                &blobs1,
+                &mut client,
+                &mut server,
+                &d1,
+                p1.len() as u64,
+                &mime1,
+                None,
+                None,
+            )
+            .await
         });
         // We need the other end to read/write; swap roles below using a second pair.
         drop(task);
@@ -432,7 +497,17 @@ mod tests {
         let blobs2 = blobs.clone();
         let payload2 = payload.clone();
         let server_task = tokio::spawn(async move {
-            serve_put(&blobs2, &mut from_phone, &mut to_phone, &d, payload2.len() as u64, &m, None, None).await
+            serve_put(
+                &blobs2,
+                &mut from_phone,
+                &mut to_phone,
+                &d,
+                payload2.len() as u64,
+                &m,
+                None,
+                None,
+            )
+            .await
         });
         // Read first ok (have:false)
         let ok1 = read_control(&mut from_host).await;
@@ -441,7 +516,10 @@ mod tests {
             other => panic!("{other:?}"),
         }
         // Send body as kind-2 frames.
-        to_host.write_all(&encode(FrameKind::Input, &payload)).await.unwrap();
+        to_host
+            .write_all(&encode(FrameKind::Input, &payload))
+            .await
+            .unwrap();
         let exit = read_control(&mut from_host).await;
         assert!(matches!(exit, Control::Exit { code: Some(0) }));
         server_task.await.unwrap().unwrap();
@@ -456,7 +534,17 @@ mod tests {
         let blobs3 = blobs.clone();
         let len = payload.len() as u64;
         let server_task2 = tokio::spawn(async move {
-            serve_put(&blobs3, &mut from_phone2, &mut to_phone2, &d2, len, &m2, None, None).await
+            serve_put(
+                &blobs3,
+                &mut from_phone2,
+                &mut to_phone2,
+                &d2,
+                len,
+                &m2,
+                None,
+                None,
+            )
+            .await
         });
         let ok2 = read_control(&mut from_host2).await;
         match ok2 {
@@ -470,7 +558,9 @@ mod tests {
         let (mut to_phone3, mut from_host3) = duplex(1 << 16);
         let d3 = sha(&digest);
         let blobs4 = blobs.clone();
-        let get_task = tokio::spawn(async move { serve_get(&blobs4, None, None, &mut to_phone3, Some(&d3), None, None).await });
+        let get_task = tokio::spawn(async move {
+            serve_get(&blobs4, None, None, &mut to_phone3, Some(&d3), None, None).await
+        });
         let ok3 = read_control(&mut from_host3).await;
         let size = match ok3 {
             Control::Ok { data } => data.unwrap()["size"].as_u64().unwrap(),
@@ -481,7 +571,9 @@ mod tests {
         let mut got = Vec::new();
         loop {
             let mut buf = [0u8; 4096];
-            let n = tokio::io::AsyncReadExt::read(&mut from_host3, &mut buf).await.unwrap();
+            let n = tokio::io::AsyncReadExt::read(&mut from_host3, &mut buf)
+                .await
+                .unwrap();
             if n == 0 {
                 break;
             }
@@ -497,9 +589,11 @@ mod tests {
                     _ => {}
                 }
             }
-            if got.len() == payload.len() as usize {
+            if got.len() == payload.len() {
                 // Drain the trailing exit control frame.
-                let n2 = tokio::io::AsyncReadExt::read(&mut from_host3, &mut buf).await.unwrap_or(0);
+                let n2 = tokio::io::AsyncReadExt::read(&mut from_host3, &mut buf)
+                    .await
+                    .unwrap_or(0);
                 if n2 > 0 {
                     decoder.push(&buf[..n2]).unwrap();
                 }
@@ -523,10 +617,23 @@ mod tests {
         let len = payload.len() as u64;
         let wrong_for_task = wrong.clone();
         let server_task = tokio::spawn(async move {
-            serve_put(&blobs2, &mut from_phone, &mut to_phone, &wrong_for_task, len, &mime, None, None).await
+            serve_put(
+                &blobs2,
+                &mut from_phone,
+                &mut to_phone,
+                &wrong_for_task,
+                len,
+                &mime,
+                None,
+                None,
+            )
+            .await
         });
         let _ = read_control(&mut from_host).await; // have:false
-        to_host.write_all(&encode(FrameKind::Input, &payload)).await.unwrap();
+        to_host
+            .write_all(&encode(FrameKind::Input, &payload))
+            .await
+            .unwrap();
         drop(to_host);
         let result = server_task.await.unwrap();
         assert!(result.is_err());
@@ -554,10 +661,23 @@ mod tests {
         let len = full.len() as u64;
         let rest = full[8..].to_vec();
         let server_task = tokio::spawn(async move {
-            serve_put(&blobs2, &mut from_phone, &mut to_phone, &d, len, &mime, None, Some(8)).await
+            serve_put(
+                &blobs2,
+                &mut from_phone,
+                &mut to_phone,
+                &d,
+                len,
+                &mime,
+                None,
+                Some(8),
+            )
+            .await
         });
         let _ = read_control(&mut from_host).await; // have:false
-        to_host.write_all(&encode(FrameKind::Input, &rest)).await.unwrap();
+        to_host
+            .write_all(&encode(FrameKind::Input, &rest))
+            .await
+            .unwrap();
         let exit = read_control(&mut from_host).await;
         assert!(matches!(exit, Control::Exit { code: Some(0) }));
         server_task.await.unwrap().unwrap();
@@ -571,7 +691,17 @@ mod tests {
         let mime = BlobMime::try_from("application/octet-stream".to_string()).unwrap();
         let d = sha(&"1".repeat(64));
         let (mut r, mut w) = duplex(16);
-        let result = serve_put(&blobs, &mut r, &mut w, &d, BLOB_MAX_SIZE + 1, &mime, None, None).await;
+        let result = serve_put(
+            &blobs,
+            &mut r,
+            &mut w,
+            &d,
+            BLOB_MAX_SIZE + 1,
+            &mime,
+            None,
+            None,
+        )
+        .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, AppErrorCode::E_BLOB_REJECTED);
     }
@@ -580,12 +710,18 @@ mod tests {
     fn evicts_oldest_first_until_under_cap() {
         let dir = tempfile::tempdir().unwrap();
         let blobs = dir.path();
-        for (name, size, age_secs) in [("a", 100usize, 3000u64), ("b", 100, 2000), ("c", 100, 1000)] {
+        for (name, size, age_secs) in [("a", 100usize, 3000u64), ("b", 100, 2000), ("c", 100, 1000)]
+        {
             let path = blobs.join(name);
             std::fs::write(&path, vec![0u8; size]).unwrap();
             let past = SystemTime::now() - std::time::Duration::from_secs(age_secs);
             let times = std::fs::FileTimes::new().set_modified(past);
-            std::fs::OpenOptions::new().write(true).open(&path).unwrap().set_times(times).unwrap();
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(times)
+                .unwrap();
         }
         evict_lru(blobs, 150);
         assert!(!blobs.join("a").exists(), "oldest evicted first");
@@ -599,17 +735,29 @@ mod tests {
         let blobs = dir.path();
         std::fs::write(blobs.join("old"), vec![0u8; 100]).unwrap();
         let past = SystemTime::now() - std::time::Duration::from_secs(3600);
-        std::fs::OpenOptions::new().write(true).open(blobs.join("old")).unwrap().set_times(std::fs::FileTimes::new().set_modified(past)).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(blobs.join("old"))
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(past))
+            .unwrap();
         std::fs::write(blobs.join("big-new"), vec![0u8; 1000]).unwrap();
         evict_lru(blobs, 150);
         assert!(!blobs.join("old").exists());
-        assert!(blobs.join("big-new").exists(), "over the cap on its own, but fresh: kept");
+        assert!(
+            blobs.join("big-new").exists(),
+            "over the cap on its own, but fresh: kept"
+        );
     }
 
     #[test]
     fn registered_paths_reads_every_bridge_files_json() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("111.files.json"), r#"["/tmp/a.png","/tmp/b.png"]"#).unwrap();
+        std::fs::write(
+            dir.path().join("111.files.json"),
+            r#"["/tmp/a.png","/tmp/b.png"]"#,
+        )
+        .unwrap();
         std::fs::write(dir.path().join("222.files.json"), r#"["/tmp/c.png"]"#).unwrap();
         std::fs::write(dir.path().join("333.json"), r#"not a files list"#).unwrap();
         let paths = registered_paths(dir.path());
@@ -626,9 +774,24 @@ mod tests {
         let bridge = dir.path().join("bridge");
         std::fs::create_dir_all(&bridge).unwrap();
         std::fs::write(bridge.join("1.files.json"), r#"["/tmp/allowed.png"]"#).unwrap();
-        assert!(path_allowed(&blobs.join("abc"), &blobs, Some(&bridge), None));
-        assert!(path_allowed(Path::new("/tmp/allowed.png"), &blobs, Some(&bridge), None));
-        assert!(!path_allowed(Path::new("/tmp/not-allowed.png"), &blobs, Some(&bridge), None));
+        assert!(path_allowed(
+            &blobs.join("abc"),
+            &blobs,
+            Some(&bridge),
+            None
+        ));
+        assert!(path_allowed(
+            Path::new("/tmp/allowed.png"),
+            &blobs,
+            Some(&bridge),
+            None
+        ));
+        assert!(!path_allowed(
+            Path::new("/tmp/not-allowed.png"),
+            &blobs,
+            Some(&bridge),
+            None
+        ));
         assert!(!path_allowed(Path::new("/etc/passwd"), &blobs, None, None));
     }
 
@@ -664,14 +827,28 @@ mod tests {
         std::fs::write(&shot, "x").unwrap();
         let secret = outside.join("s.txt");
         std::fs::write(&secret, "s").unwrap();
-        let scope = FsScope { home: home.clone(), extra: vec![extra.canonicalize().unwrap()], deny: vec![] };
+        let scope = FsScope {
+            home: home.clone(),
+            extra: vec![extra.canonicalize().unwrap()],
+            deny: vec![],
+        };
         assert!(path_allowed(&shot, &blobs, None, Some(&scope)));
         assert!(!path_allowed(&secret, &blobs, None, Some(&scope)));
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(&secret, extra.join("link.txt")).unwrap();
-            assert!(!path_allowed(&extra.join("link.txt"), &blobs, None, Some(&scope)));
+            assert!(!path_allowed(
+                &extra.join("link.txt"),
+                &blobs,
+                None,
+                Some(&scope)
+            ));
         }
-        assert!(!path_allowed(Path::new("/etc/passwd"), &blobs, None, Some(&scope)));
+        assert!(!path_allowed(
+            Path::new("/etc/passwd"),
+            &blobs,
+            None,
+            Some(&scope)
+        ));
     }
 }

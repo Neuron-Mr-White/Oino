@@ -19,7 +19,11 @@ fn fake_pi(paths: &HostPaths, script: &str) -> tempfile::TempDir {
     let pi = bin_dir.path().join("pi");
     std::fs::write(&pi, script).unwrap();
     std::fs::set_permissions(&pi, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path_list = format!("{}:{}", bin_dir.path().display(), std::env::var("PATH").unwrap_or_default());
+    let path_list = format!(
+        "{}:{}",
+        bin_dir.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
     std::fs::write(paths.root.join("env"), format!("PATH={path_list}\n")).unwrap();
     bin_dir
 }
@@ -45,7 +49,10 @@ fn job(id: &str, schedule: &str, cwd: &str, time_limit_s: u64) -> Job {
 }
 
 fn job_with_cap(id: &str, schedule: &str, cwd: &str, time_limit_s: u64, cost_cap_usd: f64) -> Job {
-    Job { cost_cap_usd: Some(cost_cap_usd), ..job(id, schedule, cwd, time_limit_s) }
+    Job {
+        cost_cap_usd: Some(cost_cap_usd),
+        ..job(id, schedule, cwd, time_limit_s)
+    }
 }
 
 async fn wait_for<F: Fn() -> bool>(cond: F, timeout: Duration) -> bool {
@@ -76,7 +83,12 @@ exit 0
     );
 
     let scheduler = Scheduler::new(paths.clone());
-    let j = job("every2s", "*/2 * * * * *", &cwd.path().to_string_lossy(), 10);
+    let j = job(
+        "every2s",
+        "*/2 * * * * *",
+        &cwd.path().to_string_lossy(),
+        10,
+    );
     unipi_host::cron::store::save_jobs(&paths, &[j]).unwrap();
 
     // Drive the scheduler's ticks concurrently with the wait.
@@ -90,7 +102,11 @@ exit 0
         })
     };
     let found = wait_for(
-        || unipi_host::cron::store::load_runs(&paths, "every2s").map(|r| r.iter().any(|r| r.status == RunStatus::Ok)).unwrap_or(false),
+        || {
+            unipi_host::cron::store::load_runs(&paths, "every2s")
+                .map(|r| r.iter().any(|r| r.status == RunStatus::Ok))
+                .unwrap_or(false)
+        },
         Duration::from_secs(10),
     )
     .await;
@@ -98,9 +114,19 @@ exit 0
     assert!(found, "the job should have fired and completed within 10s");
 
     let runs = unipi_host::cron::store::load_runs(&paths, "every2s").unwrap();
-    let ok = runs.iter().find(|r| r.status == RunStatus::Ok).expect("an ok run");
+    let ok = runs
+        .iter()
+        .find(|r| r.status == RunStatus::Ok)
+        .expect("an ok run");
     assert_eq!(ok.exit_code, Some(0));
-    assert!(ok.summary.as_deref().unwrap_or("").contains("did the thing"), "summary: {:?}", ok.summary);
+    assert!(
+        ok.summary
+            .as_deref()
+            .unwrap_or("")
+            .contains("did the thing"),
+        "summary: {:?}",
+        ok.summary
+    );
     let log = unipi_host::cron::store::read_log(&paths, "every2s", &ok.id).expect("log exists");
     assert!(String::from_utf8_lossy(&log).contains("did the thing"));
 }
@@ -118,15 +144,28 @@ async fn exceeding_time_limit_times_out_and_kills_the_process() {
     );
     let _bin = fake_pi(&paths, &script);
 
-    let job = job("slowjob", "at:2000-01-01T00:00:00Z", &cwd.path().to_string_lossy(), 2);
+    let job = job(
+        "slowjob",
+        "at:2000-01-01T00:00:00Z",
+        &cwd.path().to_string_lossy(),
+        2,
+    );
     // Run it directly (bypassing the schedule) via run_now.
     let scheduler = Scheduler::new(paths.clone());
     unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&job)).unwrap();
     let run_id = scheduler.run_now(&job).await.unwrap();
 
-    assert!(wait_for(|| marker.exists(), Duration::from_secs(5)).await, "the fake pi should have started");
+    assert!(
+        wait_for(|| marker.exists(), Duration::from_secs(5)).await,
+        "the fake pi should have started"
+    );
     let timed_out = wait_for(
-        || unipi_host::cron::store::load_run(&paths, "slowjob", &run_id).unwrap().map(|r| r.status == RunStatus::Timeout).unwrap_or(false),
+        || {
+            unipi_host::cron::store::load_run(&paths, "slowjob", &run_id)
+                .unwrap()
+                .map(|r| r.status == RunStatus::Timeout)
+                .unwrap_or(false)
+        },
         Duration::from_secs(8),
     )
     .await;
@@ -134,10 +173,20 @@ async fn exceeding_time_limit_times_out_and_kills_the_process() {
     // The process group was killed: the marker file (removed only by the
     // normal sleep-then-continue path) must still be there, i.e. it never
     // reached the `rm`, and no "pi" process from this test is left running.
-    assert!(marker.exists(), "the script never got past `sleep 10`, consistent with being killed");
+    assert!(
+        marker.exists(),
+        "the script never got past `sleep 10`, consistent with being killed"
+    );
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let still_alive = std::process::Command::new("pgrep").args(["-f", &cwd.path().to_string_lossy()]).output().map(|o| !o.stdout.is_empty()).unwrap_or(false);
-    assert!(!still_alive, "the sleep process should be gone after the timeout kill");
+    let still_alive = std::process::Command::new("pgrep")
+        .args(["-f", &cwd.path().to_string_lossy()])
+        .output()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false);
+    assert!(
+        !still_alive,
+        "the sleep process should be gone after the timeout kill"
+    );
 }
 
 /// A second fire while the first is still running → `skipped`.
@@ -149,13 +198,23 @@ async fn overlapping_fire_is_skipped() {
     let _bin = fake_pi(&paths, "#!/bin/sh\nsleep 3\necho done\n");
 
     let scheduler = Scheduler::new(paths.clone());
-    let j = job("overlap", "at:2000-01-01T00:00:00Z", &cwd.path().to_string_lossy(), 10);
+    let j = job(
+        "overlap",
+        "at:2000-01-01T00:00:00Z",
+        &cwd.path().to_string_lossy(),
+        10,
+    );
     unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
 
     let first = scheduler.run_now(&j).await.unwrap();
     // Give it a moment to actually start before trying to overlap it.
     wait_for(
-        || unipi_host::cron::store::load_run(&paths, "overlap", &first).unwrap().map(|r| r.status == RunStatus::Running).unwrap_or(false),
+        || {
+            unipi_host::cron::store::load_run(&paths, "overlap", &first)
+                .unwrap()
+                .map(|r| r.status == RunStatus::Running)
+                .unwrap_or(false)
+        },
         Duration::from_secs(2),
     )
     .await;
@@ -167,7 +226,12 @@ async fn overlapping_fire_is_skipped() {
     // level (scheduler::tests::overlap_fire_is_recorded_skipped); here we
     // confirm the control-level `run_now` guard too, end to end.
     wait_for(
-        || unipi_host::cron::store::load_run(&paths, "overlap", &first).unwrap().map(|r| r.status == RunStatus::Ok).unwrap_or(false),
+        || {
+            unipi_host::cron::store::load_run(&paths, "overlap", &first)
+                .unwrap()
+                .map(|r| r.status == RunStatus::Ok)
+                .unwrap_or(false)
+        },
         Duration::from_secs(6),
     )
     .await;
@@ -188,19 +252,36 @@ exit 0
 "#,
     );
 
-    let j = job_with_cap("capped", "at:2000-01-01T00:00:00Z", &cwd.path().to_string_lossy(), 10, 1.0);
+    let j = job_with_cap(
+        "capped",
+        "at:2000-01-01T00:00:00Z",
+        &cwd.path().to_string_lossy(),
+        10,
+        1.0,
+    );
     let scheduler = Scheduler::new(paths.clone());
     unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
     let run_id = scheduler.run_now(&j).await.unwrap();
 
     let failed = wait_for(
-        || unipi_host::cron::store::load_run(&paths, "capped", &run_id).unwrap().map(|r| r.status == RunStatus::Failed).unwrap_or(false),
+        || {
+            unipi_host::cron::store::load_run(&paths, "capped", &run_id)
+                .unwrap()
+                .map(|r| r.status == RunStatus::Failed)
+                .unwrap_or(false)
+        },
         Duration::from_secs(5),
     )
     .await;
     assert!(failed, "a run over the cost cap should be recorded failed");
-    let run = unipi_host::cron::store::load_run(&paths, "capped", &run_id).unwrap().unwrap();
-    assert!(run.reason.as_deref().unwrap_or("").contains("cost cap"), "reason: {:?}", run.reason);
+    let run = unipi_host::cron::store::load_run(&paths, "capped", &run_id)
+        .unwrap()
+        .unwrap();
+    assert!(
+        run.reason.as_deref().unwrap_or("").contains("cost cap"),
+        "reason: {:?}",
+        run.reason
+    );
     assert_eq!(run.cost_usd, Some(5.0));
 }
 
@@ -212,17 +293,36 @@ async fn missing_pi_fails_clearly() {
     std::fs::write(paths.root.join("env"), "PATH=/does/not/exist\n").unwrap();
     let cwd = tempfile::tempdir().unwrap();
     let scheduler = Scheduler::new(paths.clone());
-    let j = job("nopi", "at:2000-01-01T00:00:00Z", &cwd.path().to_string_lossy(), 10);
+    let j = job(
+        "nopi",
+        "at:2000-01-01T00:00:00Z",
+        &cwd.path().to_string_lossy(),
+        10,
+    );
     unipi_host::cron::store::save_jobs(&paths, std::slice::from_ref(&j)).unwrap();
     let run_id = scheduler.run_now(&j).await.unwrap();
     wait_for(
-        || unipi_host::cron::store::load_run(&paths, "nopi", &run_id).unwrap().map(|r| r.status == RunStatus::Failed).unwrap_or(false),
+        || {
+            unipi_host::cron::store::load_run(&paths, "nopi", &run_id)
+                .unwrap()
+                .map(|r| r.status == RunStatus::Failed)
+                .unwrap_or(false)
+        },
         Duration::from_secs(5),
     )
     .await;
-    let run = unipi_host::cron::store::load_run(&paths, "nopi", &run_id).unwrap().unwrap();
+    let run = unipi_host::cron::store::load_run(&paths, "nopi", &run_id)
+        .unwrap()
+        .unwrap();
     assert_eq!(run.status, RunStatus::Failed);
-    assert!(run.reason.as_deref().unwrap_or("").contains("pi not found on PATH"), "reason: {:?}", run.reason);
+    assert!(
+        run.reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("pi not found on PATH"),
+        "reason: {:?}",
+        run.reason
+    );
 }
 
 /// `Clock::fixed` lets a test move the wall clock without a real sleep —
@@ -246,9 +346,21 @@ async fn missed_run_catches_up_once_after_a_clock_jump() {
     // latest missed midnight should run once.
     *clock.lock().await = "2024-01-03T01:00:00Z".parse().unwrap();
     scheduler.tick().await;
-    let ran = wait_for(|| unipi_host::cron::store::load_runs(&paths, "daily").map(|r| !r.is_empty()).unwrap_or(false), Duration::from_secs(5)).await;
+    let ran = wait_for(
+        || {
+            unipi_host::cron::store::load_runs(&paths, "daily")
+                .map(|r| !r.is_empty())
+                .unwrap_or(false)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
     assert!(ran, "the missed run should have fired once");
     let runs = unipi_host::cron::store::load_runs(&paths, "daily").unwrap();
-    assert_eq!(runs.len(), 1, "only the latest missed fire runs, not every missed midnight");
+    assert_eq!(
+        runs.len(),
+        1,
+        "only the latest missed fire runs, not every missed midnight"
+    );
     assert!(runs[0].missed);
 }

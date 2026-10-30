@@ -12,7 +12,10 @@ use unipi_host::{
     devices::DeviceStore,
     protocol::{read_frame, Handler, Peer},
 };
-use unipi_proto::{frame::{encode, FrameKind}, AppErrorCode, Control, PROTO_VERSION};
+use unipi_proto::{
+    frame::{encode, FrameKind},
+    AppErrorCode, Control, PROTO_VERSION,
+};
 
 fn handler(paths: HostPaths) -> Handler {
     Handler {
@@ -21,17 +24,22 @@ fn handler(paths: HostPaths) -> Handler {
         host_id: iroh::SecretKey::generate().public(),
         host_name: "Test".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        protected: std::sync::Arc::new(vec![]),
-        board: Default::default(),
     }
 }
 
 fn hello(req: serde_json::Value) -> Vec<u8> {
-    encode(FrameKind::Control, &serde_json::to_vec(&serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":req})).unwrap())
+    encode(
+        FrameKind::Control,
+        &serde_json::to_vec(&serde_json::json!({"type":"hello","proto":PROTO_VERSION,"req":req}))
+            .unwrap(),
+    )
 }
 
 async fn next_control<R: AsyncRead + Unpin>(read: &mut R) -> Control {
-    let (kind, bytes) = tokio::time::timeout(Duration::from_secs(10), read_frame(read)).await.expect("timed out").expect("frame");
+    let (kind, bytes) = tokio::time::timeout(Duration::from_secs(10), read_frame(read))
+        .await
+        .expect("timed out")
+        .expect("frame");
     assert_eq!(kind, 0);
     serde_json::from_slice(&bytes).unwrap()
 }
@@ -44,13 +52,17 @@ fn err_code(c: &Control) -> Option<AppErrorCode> {
 }
 
 fn data<T: serde::de::DeserializeOwned>(reply: Control) -> T {
-    let Control::Ok { data: Some(data) } = reply else { panic!("{reply:?}") };
+    let Control::Ok { data: Some(data) } = reply else {
+        panic!("{reply:?}")
+    };
     serde_json::from_value(data).unwrap()
 }
 
 /// One op over `app.sock` (`Peer::Local`: this PC's own app — always allowed).
 async fn local_op(paths: &HostPaths, req: serde_json::Value) -> (Control, UnixStream) {
-    let mut stream = UnixStream::connect(paths.app_socket()).await.expect("connect app.sock");
+    let mut stream = UnixStream::connect(paths.app_socket())
+        .await
+        .expect("connect app.sock");
     stream.write_all(&hello(req)).await.unwrap();
     let reply = next_control(&mut stream).await;
     (reply, stream)
@@ -110,7 +122,11 @@ async fn local_app_always_has_cron_even_when_the_feature_is_off_for_phones() {
     assert_eq!(shown["job"]["id"], id);
     assert_eq!(shown["runs"].as_array().unwrap().len(), 0);
 
-    let (reply, _) = local_op(&paths, serde_json::json!({"op":"cron_parse","schedule":"every day at 9:00","tz":"UTC"})).await;
+    let (reply, _) = local_op(
+        &paths,
+        serde_json::json!({"op":"cron_parse","schedule":"every day at 9:00","tz":"UTC"}),
+    )
+    .await;
     let parsed: serde_json::Value = data(reply);
     assert_eq!(parsed["expression"], "0 0 9 * * *");
     assert_eq!(parsed["next_fires"].as_array().unwrap().len(), 3);
@@ -120,7 +136,11 @@ async fn local_app_always_has_cron_even_when_the_feature_is_off_for_phones() {
     assert_eq!(settings["concurrency"], 2);
     assert_eq!(settings["enabled"], false);
 
-    let (reply, _) = local_op(&paths, serde_json::json!({"op":"cron_settings_set","concurrency":5,"paused":true})).await;
+    let (reply, _) = local_op(
+        &paths,
+        serde_json::json!({"op":"cron_settings_set","concurrency":5,"paused":true}),
+    )
+    .await;
     let settings: serde_json::Value = data(reply);
     assert_eq!(settings["concurrency"], 5);
     assert_eq!(settings["paused"], true);
@@ -137,7 +157,9 @@ async fn phone_needs_the_cron_feature_for_every_op_including_read_only() {
     let paths = HostPaths::from_dir(dir.path());
     paths.ensure_dir().unwrap();
     let phone = iroh::SecretKey::generate().public();
-    DeviceStore::new(paths.devices()).add(&phone, "Pixel".into()).unwrap();
+    DeviceStore::new(paths.devices())
+        .add(&phone, "Pixel".into())
+        .unwrap();
     let h = handler(paths.clone());
 
     // Off by default: every op, including the read-only ones, is refused.
@@ -148,7 +170,11 @@ async fn phone_needs_the_cron_feature_for_every_op_including_read_only() {
         serde_json::json!({"op":"cron_settings_get"}),
     ] {
         let reply = phone_op(&h, phone, req.clone()).await;
-        assert_eq!(err_code(&reply), Some(AppErrorCode::E_UNAUTHORIZED), "{req}: {reply:?}");
+        assert_eq!(
+            err_code(&reply),
+            Some(AppErrorCode::E_UNAUTHORIZED),
+            "{req}: {reply:?}"
+        );
     }
 
     // The owner shares cron with this phone (same pattern as push/forward/browser).
@@ -158,7 +184,13 @@ async fn phone_needs_the_cron_feature_for_every_op_including_read_only() {
 
     // A second, unlisted phone still can't.
     let other = iroh::SecretKey::generate().public();
-    DeviceStore::new(paths.devices()).add(&other, "Other".into()).unwrap();
+    DeviceStore::new(paths.devices())
+        .add(&other, "Other".into())
+        .unwrap();
     let reply = phone_op(&h, other, serde_json::json!({"op":"cron_list"})).await;
-    assert_eq!(err_code(&reply), Some(AppErrorCode::E_UNAUTHORIZED), "{reply:?}");
+    assert_eq!(
+        err_code(&reply),
+        Some(AppErrorCode::E_UNAUTHORIZED),
+        "{reply:?}"
+    );
 }

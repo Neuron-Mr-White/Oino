@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The wire protocol version implemented by this crate.
-pub const PROTO_VERSION: &str = "1.20.0";
+pub const PROTO_VERSION: &str = "2.0.0";
 
 /// Returns true if `s` is a strict semver string: `MAJOR.MINOR.PATCH`
 /// with optional `-prerelease` and `+build` metadata (SemVer 2.0.0),

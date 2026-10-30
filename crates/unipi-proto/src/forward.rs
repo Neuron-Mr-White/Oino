@@ -93,6 +93,9 @@ mod tests {
     fn port_bounds() {
         assert!(serde_json::from_str::<ForwardPort>("0").is_err());
         assert!(serde_json::from_str::<ForwardPort>("65536").is_err());
-        assert_eq!(serde_json::from_str::<ForwardPort>("5173").unwrap().value(), 5173);
+        assert_eq!(
+            serde_json::from_str::<ForwardPort>("5173").unwrap().value(),
+            5173
+        );
     }
 }

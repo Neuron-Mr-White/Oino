@@ -18,7 +18,11 @@ fn git(dir: &Path, args: &[&str]) -> String {
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .output()
         .unwrap();
-    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
@@ -45,7 +49,11 @@ fn p(s: &str) -> GitPath {
     GitPath::try_from(s.to_string()).unwrap()
 }
 
-async fn run(dir: &Path, scope: &FsScope, cmd: GitCmd) -> Result<serde_json::Value, unipi_proto::AppErrorDto> {
+async fn run(
+    dir: &Path,
+    scope: &FsScope,
+    cmd: GitCmd,
+) -> Result<serde_json::Value, unipi_proto::AppErrorDto> {
     unipi_host::git::handle(dir, scope, false, cmd).await
 }
 
@@ -85,49 +93,175 @@ async fn repo_status_diff_stage_commit_log_show() {
     std::fs::write(dir.join("c d.md"), "x\ny").unwrap();
     let st = run(&dir, &scope, GitCmd::Status).await.unwrap();
     let files = st["files"].as_array().unwrap();
-    let find = |path: &str, area: &str| files.iter().find(|f| f["path"] == path && f["area"] == area).cloned();
+    let find = |path: &str, area: &str| {
+        files
+            .iter()
+            .find(|f| f["path"] == path && f["area"] == area)
+            .cloned()
+    };
     let a = find("a.txt", "unstaged").expect("a.txt unstaged");
-    assert_eq!((a["status"].as_str(), a["add"].as_u64(), a["del"].as_u64()), (Some("M"), Some(1), Some(1)));
+    assert_eq!(
+        (a["status"].as_str(), a["add"].as_u64(), a["del"].as_u64()),
+        (Some("M"), Some(1), Some(1))
+    );
     let b = find("b.txt", "staged").expect("b.txt staged");
-    assert_eq!((b["status"].as_str(), b["add"].as_u64()), (Some("A"), Some(1)));
+    assert_eq!(
+        (b["status"].as_str(), b["add"].as_u64()),
+        (Some("A"), Some(1))
+    );
     let c = find("c d.md", "untracked").expect("untracked");
     assert_eq!(c["add"].as_u64(), Some(2));
 
     // Diffs: worktree, staged, untracked.
-    let d = run(&dir, &scope, GitCmd::Diff { file: p("a.txt"), staged: false, untracked: false }).await.unwrap();
+    let d = run(
+        &dir,
+        &scope,
+        GitCmd::Diff {
+            file: p("a.txt"),
+            staged: false,
+            untracked: false,
+        },
+    )
+    .await
+    .unwrap();
     assert!(d["text"].as_str().unwrap().contains("-two\n+TWO"), "{d}");
-    let d = run(&dir, &scope, GitCmd::Diff { file: p("b.txt"), staged: true, untracked: false }).await.unwrap();
+    let d = run(
+        &dir,
+        &scope,
+        GitCmd::Diff {
+            file: p("b.txt"),
+            staged: true,
+            untracked: false,
+        },
+    )
+    .await
+    .unwrap();
     assert!(d["text"].as_str().unwrap().contains("+b"), "{d}");
-    let d = run(&dir, &scope, GitCmd::Diff { file: p("c d.md"), staged: false, untracked: true }).await.unwrap();
+    let d = run(
+        &dir,
+        &scope,
+        GitCmd::Diff {
+            file: p("c d.md"),
+            staged: false,
+            untracked: true,
+        },
+    )
+    .await
+    .unwrap();
     assert!(d["text"].as_str().unwrap().contains("+x\n+y"), "{d}");
     // Binary diff is flagged.
     std::fs::write(dir.join("bin.dat"), [0u8, 1, 2, 3, 0, 255]).unwrap();
-    let d = run(&dir, &scope, GitCmd::Diff { file: p("bin.dat"), staged: false, untracked: true }).await.unwrap();
+    let d = run(
+        &dir,
+        &scope,
+        GitCmd::Diff {
+            file: p("bin.dat"),
+            staged: false,
+            untracked: true,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(d["binary"], true, "{d}");
     std::fs::remove_file(dir.join("bin.dat")).unwrap();
 
     // Stage one, unstage one, stage all.
-    run(&dir, &scope, GitCmd::Stage { paths: vec![p("a.txt")], all: false }).await.unwrap();
+    run(
+        &dir,
+        &scope,
+        GitCmd::Stage {
+            paths: vec![p("a.txt")],
+            all: false,
+        },
+    )
+    .await
+    .unwrap();
     assert!(git(&dir, &["diff", "--cached", "--name-only"]).contains("a.txt"));
-    run(&dir, &scope, GitCmd::Unstage { paths: vec![p("b.txt")], all: false }).await.unwrap();
+    run(
+        &dir,
+        &scope,
+        GitCmd::Unstage {
+            paths: vec![p("b.txt")],
+            all: false,
+        },
+    )
+    .await
+    .unwrap();
     assert!(!git(&dir, &["diff", "--cached", "--name-only"]).contains("b.txt"));
-    run(&dir, &scope, GitCmd::Stage { paths: vec![], all: true }).await.unwrap();
+    run(
+        &dir,
+        &scope,
+        GitCmd::Stage {
+            paths: vec![],
+            all: true,
+        },
+    )
+    .await
+    .unwrap();
     let staged = git(&dir, &["diff", "--cached", "--name-only"]);
-    assert!(staged.contains("b.txt") && staged.contains("c d.md"), "{staged}");
-    run(&dir, &scope, GitCmd::Unstage { paths: vec![], all: true }).await.unwrap();
+    assert!(
+        staged.contains("b.txt") && staged.contains("c d.md"),
+        "{staged}"
+    );
+    run(
+        &dir,
+        &scope,
+        GitCmd::Unstage {
+            paths: vec![],
+            all: true,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(git(&dir, &["diff", "--cached", "--name-only"]).trim(), "");
-    run(&dir, &scope, GitCmd::Stage { paths: vec![], all: true }).await.unwrap();
+    run(
+        &dir,
+        &scope,
+        GitCmd::Stage {
+            paths: vec![],
+            all: true,
+        },
+    )
+    .await
+    .unwrap();
 
     // Commit, then amend.
     let msg = GitMessage::try_from("second\n\nbody line".to_string()).unwrap();
-    let c = run(&dir, &scope, GitCmd::Commit { message: msg, amend: false }).await.unwrap();
+    let c = run(
+        &dir,
+        &scope,
+        GitCmd::Commit {
+            message: msg,
+            amend: false,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(c["subject"], "second");
     let msg = GitMessage::try_from("second (amended)".to_string()).unwrap();
-    let c = run(&dir, &scope, GitCmd::Commit { message: msg, amend: true }).await.unwrap();
+    let c = run(
+        &dir,
+        &scope,
+        GitCmd::Commit {
+            message: msg,
+            amend: true,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(c["subject"], "second (amended)");
     // Nothing to commit → E_GIT with a hint.
     let msg = GitMessage::try_from("empty".to_string()).unwrap();
-    let e = run(&dir, &scope, GitCmd::Commit { message: msg, amend: false }).await.unwrap_err();
+    let e = run(
+        &dir,
+        &scope,
+        GitCmd::Commit {
+            message: msg,
+            amend: false,
+        },
+    )
+    .await
+    .unwrap_err();
     assert_eq!(e.code, AppErrorCode::E_GIT);
     assert!(e.hint.is_some(), "{e:?}");
 
@@ -136,14 +270,36 @@ async fn repo_status_diff_stage_commit_log_show() {
         std::fs::write(dir.join("a.txt"), format!("v{i}\n")).unwrap();
         git(&dir, &["commit", "-q", "-am", &format!("c{i}")]);
     }
-    let log = run(&dir, &scope, GitCmd::Log { skip: 0, limit: Some(3) }).await.unwrap();
+    let log = run(
+        &dir,
+        &scope,
+        GitCmd::Log {
+            skip: 0,
+            limit: Some(3),
+        },
+    )
+    .await
+    .unwrap();
     let commits = log["commits"].as_array().unwrap();
     assert_eq!(commits.len(), 3);
     assert_eq!(log["more"], true);
     assert_eq!(commits[0]["subject"], "c4");
     assert_eq!(commits[0]["author"], "Test Person");
-    assert!(commits[0]["refs"].as_array().unwrap().iter().any(|r| r.as_str().unwrap().contains("main")));
-    let log = run(&dir, &scope, GitCmd::Log { skip: 6, limit: Some(3) }).await.unwrap();
+    assert!(commits[0]["refs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r.as_str().unwrap().contains("main")));
+    let log = run(
+        &dir,
+        &scope,
+        GitCmd::Log {
+            skip: 6,
+            limit: Some(3),
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(log["commits"].as_array().unwrap().len(), 1);
     assert_eq!(log["more"], false);
     assert_eq!(log["commits"][0]["subject"], "init");
@@ -158,7 +314,13 @@ async fn repo_status_diff_stage_commit_log_show() {
     assert_eq!(show["files"][0]["add"], 3);
     assert!(show["diff"].as_str().unwrap().contains("+one"));
     let rev = GitRefName::try_from("deadbeef".to_string()).unwrap();
-    assert_eq!(run(&dir, &scope, GitCmd::Show { rev }).await.unwrap_err().code, AppErrorCode::E_GIT);
+    assert_eq!(
+        run(&dir, &scope, GitCmd::Show { rev })
+            .await
+            .unwrap_err()
+            .code,
+        AppErrorCode::E_GIT
+    );
 }
 
 #[tokio::test]
@@ -176,7 +338,15 @@ async fn shortstat_counts_staged_unstaged_and_untracked() {
     let dir = repo(temp.path(), "r");
     // Clean.
     let data = run(&dir, &scope, GitCmd::Shortstat).await.unwrap();
-    assert_eq!((data["repo"].as_bool(), data["files"].as_u64(), data["add"].as_u64(), data["del"].as_u64()), (Some(true), Some(0), Some(0), Some(0)));
+    assert_eq!(
+        (
+            data["repo"].as_bool(),
+            data["files"].as_u64(),
+            data["add"].as_u64(),
+            data["del"].as_u64()
+        ),
+        (Some(true), Some(0), Some(0), Some(0))
+    );
     // a.txt: one line changed and staged, then another changed unstaged → vs HEAD +2 -2.
     std::fs::write(dir.join("a.txt"), "ONE\ntwo\nthree\n").unwrap();
     git(&dir, &["add", "a.txt"]);
@@ -204,8 +374,17 @@ async fn shortstat_before_the_first_commit() {
     std::fs::write(dir.join("a.txt"), "1\n2\n").unwrap();
     git(&dir, &["add", "a.txt"]);
     std::fs::write(dir.join("u.txt"), "u\n").unwrap();
-    let data = run(&dir.canonicalize().unwrap(), &scope, GitCmd::Shortstat).await.unwrap();
-    assert_eq!((data["files"].as_u64(), data["add"].as_u64(), data["del"].as_u64()), (Some(2), Some(3), Some(0)));
+    let data = run(&dir.canonicalize().unwrap(), &scope, GitCmd::Shortstat)
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            data["files"].as_u64(),
+            data["add"].as_u64(),
+            data["del"].as_u64()
+        ),
+        (Some(2), Some(3), Some(0))
+    );
 }
 
 #[test]
@@ -218,11 +397,20 @@ fn shortstat_caps_untracked_files() {
         z.extend_from_slice(name.as_bytes());
         z.push(0);
     }
-    let tracked = std::collections::HashMap::from([("x".to_string(), Some((4, 1))), ("img.png".to_string(), None)]);
+    let tracked = std::collections::HashMap::from([
+        ("x".to_string(), Some((4, 1))),
+        ("img.png".to_string(), None),
+    ]);
     let data = unipi_host::git::sum_shortstat(temp.path(), &tracked, &z);
     assert!(data.capped);
-    assert_eq!(data.files as usize, 2 + unipi_proto::GIT_SHORTSTAT_UNTRACKED_MAX + 5);
-    assert_eq!(data.add as usize, 4 + unipi_proto::GIT_SHORTSTAT_UNTRACKED_MAX);
+    assert_eq!(
+        data.files as usize,
+        2 + unipi_proto::GIT_SHORTSTAT_UNTRACKED_MAX + 5
+    );
+    assert_eq!(
+        data.add as usize,
+        4 + unipi_proto::GIT_SHORTSTAT_UNTRACKED_MAX
+    );
     assert_eq!(data.del, 1);
 }
 
@@ -236,34 +424,98 @@ async fn discard_branches_switch_stash() {
     std::fs::write(dir.join("a.txt"), "changed\n").unwrap();
     std::fs::write(dir.join("junk.txt"), "junk\n").unwrap();
     // Without confirm: refused, nothing touched.
-    let e = run(&dir, &scope, GitCmd::Discard { paths: vec![p("a.txt")], confirm: false }).await.unwrap_err();
+    let e = run(
+        &dir,
+        &scope,
+        GitCmd::Discard {
+            paths: vec![p("a.txt")],
+            confirm: false,
+        },
+    )
+    .await
+    .unwrap_err();
     assert_eq!(e.code, AppErrorCode::E_SCHEMA);
-    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "changed\n");
-    run(&dir, &scope, GitCmd::Discard { paths: vec![p("a.txt"), p("junk.txt")], confirm: true }).await.unwrap();
-    assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\ntwo\nthree\n");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+        "changed\n"
+    );
+    run(
+        &dir,
+        &scope,
+        GitCmd::Discard {
+            paths: vec![p("a.txt"), p("junk.txt")],
+            confirm: true,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+        "one\ntwo\nthree\n"
+    );
     assert!(!dir.join("junk.txt").exists());
 
     // Branches: create + switch, list, switch back.
     let feat = GitRefName::try_from("feat/x".to_string()).unwrap();
-    run(&dir, &scope, GitCmd::Switch { branch: feat.clone(), create: true }).await.unwrap();
+    run(
+        &dir,
+        &scope,
+        GitCmd::Switch {
+            branch: feat.clone(),
+            create: true,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(git(&dir, &["branch", "--show-current"]).trim(), "feat/x");
     let list = run(&dir, &scope, GitCmd::Branches).await.unwrap();
-    let names: Vec<&str> = list["branches"].as_array().unwrap().iter().map(|b| b["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = list["branches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names[0], "feat/x", "current first: {names:?}");
     assert!(names.contains(&"main"));
     assert_eq!(list["branches"][0]["current"], true);
     let main = GitRefName::try_from("main".to_string()).unwrap();
-    run(&dir, &scope, GitCmd::Switch { branch: main.clone(), create: false }).await.unwrap();
+    run(
+        &dir,
+        &scope,
+        GitCmd::Switch {
+            branch: main.clone(),
+            create: false,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(git(&dir, &["branch", "--show-current"]).trim(), "main");
     // Creating an existing branch is a plain E_GIT.
-    let e = run(&dir, &scope, GitCmd::Switch { branch: feat, create: true }).await.unwrap_err();
+    let e = run(
+        &dir,
+        &scope,
+        GitCmd::Switch {
+            branch: feat,
+            create: true,
+        },
+    )
+    .await
+    .unwrap_err();
     assert_eq!(e.code, AppErrorCode::E_GIT);
     assert!(e.message.as_str().contains("already exists"), "{e:?}");
 
     // Stash push / pop (incl. untracked).
     std::fs::write(dir.join("a.txt"), "wip\n").unwrap();
     std::fs::write(dir.join("new.txt"), "n\n").unwrap();
-    run(&dir, &scope, GitCmd::StashPush { message: Some(GitMessage::try_from("wip".to_string()).unwrap()) }).await.unwrap();
+    run(
+        &dir,
+        &scope,
+        GitCmd::StashPush {
+            message: Some(GitMessage::try_from("wip".to_string()).unwrap()),
+        },
+    )
+    .await
+    .unwrap();
     assert!(!dir.join("new.txt").exists());
     let info = run(&dir, &scope, GitCmd::Repo).await.unwrap();
     assert_eq!(info["stashes"], 1);
@@ -278,7 +530,17 @@ async fn remote_fetch_pull_push_and_plain_errors() {
     let temp = tempfile::tempdir().unwrap();
     let scope = scope_for(temp.path());
     let origin = temp.path().join("origin.git");
-    git(temp.path(), &["init", "-q", "--bare", "-b", "main", origin.to_str().unwrap()]);
+    git(
+        temp.path(),
+        &[
+            "init",
+            "-q",
+            "--bare",
+            "-b",
+            "main",
+            origin.to_str().unwrap(),
+        ],
+    );
     let a = repo(temp.path(), "a");
     git(&a, &["remote", "add", "origin", origin.to_str().unwrap()]);
 
@@ -286,11 +548,17 @@ async fn remote_fetch_pull_push_and_plain_errors() {
     run(&a, &scope, GitCmd::Push).await.unwrap();
     let info = run(&a, &scope, GitCmd::Repo).await.unwrap();
     assert_eq!(info["upstream"], "origin/main");
-    assert_eq!((info["ahead"].as_u64(), info["behind"].as_u64()), (Some(0), Some(0)));
+    assert_eq!(
+        (info["ahead"].as_u64(), info["behind"].as_u64()),
+        (Some(0), Some(0))
+    );
 
     // A second clone pushes; `a` fetches and sees "behind 1", then pulls (ff-only).
     let b = temp.path().join("b");
-    git(temp.path(), &["clone", "-q", origin.to_str().unwrap(), b.to_str().unwrap()]);
+    git(
+        temp.path(),
+        &["clone", "-q", origin.to_str().unwrap(), b.to_str().unwrap()],
+    );
     git(&b, &["config", "user.name", "B"]);
     git(&b, &["config", "user.email", "b@example.com"]);
     std::fs::write(b.join("b.txt"), "b\n").unwrap();
@@ -300,7 +568,9 @@ async fn remote_fetch_pull_push_and_plain_errors() {
     run(&a, &scope, GitCmd::Fetch).await.unwrap();
     let info = run(&a, &scope, GitCmd::Repo).await.unwrap();
     assert_eq!(info["behind"], 1);
-    run(&a, &scope, GitCmd::Pull { rebase: false }).await.unwrap();
+    run(&a, &scope, GitCmd::Pull { rebase: false })
+        .await
+        .unwrap();
     assert!(a.join("b.txt").exists());
 
     // Diverged: ff-only pull fails plainly with a hint; push is rejected with one too.
@@ -311,18 +581,28 @@ async fn remote_fetch_pull_push_and_plain_errors() {
     git(&a, &["commit", "-q", "-am", "a2"]);
     let e = run(&a, &scope, GitCmd::Push).await.unwrap_err();
     assert_eq!(e.code, AppErrorCode::E_GIT);
-    assert!(e.hint.as_deref().unwrap_or("").contains("Pull first"), "{e:?}");
+    assert!(
+        e.hint.as_deref().unwrap_or("").contains("Pull first"),
+        "{e:?}"
+    );
     run(&a, &scope, GitCmd::Fetch).await.unwrap();
-    let e = run(&a, &scope, GitCmd::Pull { rebase: false }).await.unwrap_err();
+    let e = run(&a, &scope, GitCmd::Pull { rebase: false })
+        .await
+        .unwrap_err();
     assert_eq!(e.code, AppErrorCode::E_GIT);
     assert!(e.hint.is_some(), "{e:?}");
     // Rebase pull resolves it.
-    run(&a, &scope, GitCmd::Pull { rebase: true }).await.unwrap();
+    run(&a, &scope, GitCmd::Pull { rebase: true })
+        .await
+        .unwrap();
     run(&a, &scope, GitCmd::Push).await.unwrap();
 
     // An https remote that wants credentials fails fast, no prompt.
     let c = repo(temp.path(), "c");
-    git(&c, &["remote", "add", "origin", "https://127.0.0.1:9/nope.git"]);
+    git(
+        &c,
+        &["remote", "add", "origin", "https://127.0.0.1:9/nope.git"],
+    );
     let started = std::time::Instant::now();
     let e = run(&c, &scope, GitCmd::Fetch).await.unwrap_err();
     assert_eq!(e.code, AppErrorCode::E_GIT);
@@ -355,62 +635,106 @@ async fn scope_is_enforced() {
     assert_eq!(e.code, AppErrorCode::E_SCOPE);
     // A file path resolves to its folder.
     let scope = scope_for(temp.path());
-    let dir = unipi_host::git::resolve_dir(r.join("a.txt").to_str().unwrap(), &scope, false).unwrap();
+    let dir =
+        unipi_host::git::resolve_dir(r.join("a.txt").to_str().unwrap(), &scope, false).unwrap();
     assert_eq!(dir, r);
 }
 
 /// End to end: a paired phone sends `{op:"git"}` over a real iroh stream.
 #[tokio::test]
 async fn git_over_the_wire() {
-    use iroh::{endpoint::{presets, RelayMode}, Endpoint};
-    use unipi_host::{data_dir::HostPaths, endpoint::ALPN, pairing::{now_unix, PairingStore}, protocol::{read_frame, Handler}};
+    use iroh::{
+        endpoint::{presets, RelayMode},
+        Endpoint,
+    };
+    use unipi_host::{
+        data_dir::HostPaths,
+        endpoint::ALPN,
+        pairing::{now_unix, PairingStore},
+        protocol::{read_frame, Handler},
+    };
     use unipi_proto::Control;
     isolate_env();
     let temp = tempfile::tempdir().unwrap();
     let paths = HostPaths::from_dir(temp.path().join("host"));
     paths.ensure_dir().unwrap();
     // /tmp is a default extra safe root: put the repo there.
-    let base = tempfile::Builder::new().prefix("uni217-").tempdir_in("/tmp").unwrap();
+    let base = tempfile::Builder::new()
+        .prefix("uni217-")
+        .tempdir_in("/tmp")
+        .unwrap();
     let dir = repo(base.path(), "wire");
     std::fs::write(dir.join("a.txt"), "x\n").unwrap();
 
-    let host = Endpoint::builder(presets::N0).relay_mode(RelayMode::Disabled).clear_address_lookup().alpns(vec![ALPN.to_vec()]).bind().await.unwrap();
+    let host = Endpoint::builder(presets::N0)
+        .relay_mode(RelayMode::Disabled)
+        .clear_address_lookup()
+        .alpns(vec![ALPN.to_vec()])
+        .bind()
+        .await
+        .unwrap();
     let handler = Handler {
         paths: paths.clone(),
         host_id: host.id(),
         host_name: "git-test-pc".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        protected: std::sync::Arc::new(vec![]),
-        board: Default::default(),
         cron: unipi_host::cron::Scheduler::new(paths.clone()),
     };
-    let _router = iroh::protocol::Router::builder(host.clone()).accept(ALPN, handler).spawn();
-    let phone = Endpoint::builder(presets::N0).relay_mode(RelayMode::Disabled).clear_address_lookup().bind().await.unwrap();
+    let _router = iroh::protocol::Router::builder(host.clone())
+        .accept(ALPN, handler)
+        .spawn();
+    let phone = Endpoint::builder(presets::N0)
+        .relay_mode(RelayMode::Disabled)
+        .clear_address_lookup()
+        .bind()
+        .await
+        .unwrap();
     let conn = phone.connect(host.addr(), ALPN).await.unwrap();
     let request = |req: serde_json::Value| {
         let conn = conn.clone();
         async move {
-            let value = serde_json::json!({"type":"hello","proto":unipi_proto::PROTO_VERSION,"req":req});
+            let value =
+                serde_json::json!({"type":"hello","proto":unipi_proto::PROTO_VERSION,"req":req});
             let (mut send, mut recv) = conn.open_bi().await.unwrap();
-            send.write_all(&unipi_proto::frame::encode(unipi_proto::FrameKind::Control, &serde_json::to_vec(&value).unwrap())).await.unwrap();
+            send.write_all(&unipi_proto::frame::encode(
+                unipi_proto::FrameKind::Control,
+                &serde_json::to_vec(&value).unwrap(),
+            ))
+            .await
+            .unwrap();
             send.finish().unwrap();
-            let (_, bytes) = tokio::time::timeout(Duration::from_secs(20), read_frame(&mut recv)).await.unwrap().unwrap();
+            let (_, bytes) = tokio::time::timeout(Duration::from_secs(20), read_frame(&mut recv))
+                .await
+                .unwrap()
+                .unwrap();
             serde_json::from_slice::<Control>(&bytes).unwrap()
         }
     };
-    let state = PairingStore::new(paths.pairing()).start(now_unix()).unwrap();
-    assert!(matches!(request(serde_json::json!({"op":"pair","code":state.code,"name":"Pixel"})).await, Control::Ok { .. }));
+    let state = PairingStore::new(paths.pairing())
+        .start(now_unix())
+        .unwrap();
+    assert!(matches!(
+        request(serde_json::json!({"op":"pair","code":state.code,"name":"Pixel"})).await,
+        Control::Ok { .. }
+    ));
 
     let reply = request(serde_json::json!({"op":"git","path":dir,"cmd":{"action":"status"}})).await;
-    let Control::Ok { data: Some(data) } = reply else { panic!("{reply:?}") };
+    let Control::Ok { data: Some(data) } = reply else {
+        panic!("{reply:?}")
+    };
     assert_eq!(data["branch"], "main");
     assert_eq!(data["files"][0]["path"], "a.txt");
     // A system folder stays out of scope.
-    let reply = request(serde_json::json!({"op":"git","path":"/etc","cmd":{"action":"repo"}})).await;
-    let Control::Err { error } = reply else { panic!("{reply:?}") };
+    let reply =
+        request(serde_json::json!({"op":"git","path":"/etc","cmd":{"action":"repo"}})).await;
+    let Control::Err { error } = reply else {
+        panic!("{reply:?}")
+    };
     assert_eq!(error.code, AppErrorCode::E_SCOPE);
     // Bad shape (stage with nothing) is E_SCHEMA.
     let reply = request(serde_json::json!({"op":"git","path":dir,"cmd":{"action":"stage"}})).await;
-    let Control::Err { error } = reply else { panic!("{reply:?}") };
+    let Control::Err { error } = reply else {
+        panic!("{reply:?}")
+    };
     assert_eq!(error.code, AppErrorCode::E_SCHEMA);
 }

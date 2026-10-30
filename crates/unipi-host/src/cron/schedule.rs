@@ -18,13 +18,15 @@ pub enum Schedule {
 }
 
 /// An example shown in validation errors.
-pub const CRON_EXAMPLE: &str = "0 30 9 * * MON-FRI (9:30 every weekday, seconds first) or at:2025-12-01T09:00:00Z";
+pub const CRON_EXAMPLE: &str =
+    "0 30 9 * * MON-FRI (9:30 every weekday, seconds first) or at:2025-12-01T09:00:00Z";
 
 impl Schedule {
     pub fn parse(schedule: &str) -> Result<Schedule, String> {
         if let Some(rest) = schedule.strip_prefix("at:") {
-            let at = DateTime::parse_from_rfc3339(rest)
-                .map_err(|e| format!("bad `at:` time {rest:?}: {e} — example: at:2025-12-01T09:00:00Z"))?;
+            let at = DateTime::parse_from_rfc3339(rest).map_err(|e| {
+                format!("bad `at:` time {rest:?}: {e} — example: at:2025-12-01T09:00:00Z")
+            })?;
             return Ok(Schedule::At(at.with_timezone(&Utc)));
         }
         let fields = schedule.split_whitespace().count();
@@ -48,7 +50,12 @@ impl Schedule {
     /// The next fire time strictly after `after` (exclusive), or the `at`
     /// time itself if it is still in the future (or equal to `after`, when
     /// `inclusive`).
-    pub fn next_after(&self, tz: Tz, after: DateTime<Utc>, inclusive: bool) -> Option<DateTime<Utc>> {
+    pub fn next_after(
+        &self,
+        tz: Tz,
+        after: DateTime<Utc>,
+        inclusive: bool,
+    ) -> Option<DateTime<Utc>> {
         match self {
             Schedule::At(at) => {
                 let ok = if inclusive { *at >= after } else { *at > after };
@@ -56,7 +63,9 @@ impl Schedule {
             }
             Schedule::Cron(cron) => {
                 let local = after.with_timezone(&tz);
-                cron.find_next_occurrence(&local, inclusive).ok().map(|dt| dt.with_timezone(&Utc))
+                cron.find_next_occurrence(&local, inclusive)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
             }
         }
     }
@@ -69,7 +78,9 @@ impl Schedule {
             Schedule::At(scheduled) => (*scheduled <= at).then_some(*scheduled),
             Schedule::Cron(cron) => {
                 let local = at.with_timezone(&tz);
-                cron.find_previous_occurrence(&local, true).ok().map(|dt| dt.with_timezone(&Utc))
+                cron.find_previous_occurrence(&local, true)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
             }
         }
     }
@@ -131,14 +142,22 @@ pub fn parse_human(input: &str, tz: Tz, now: DateTime<Utc>) -> Result<String, St
         }
         // "every <weekday> H[:MM]" / "every <weekday> at H[:MM]"
         if let Some(day) = words.first().and_then(|w| weekday_abbrev(w)) {
-            let time_word = if words.get(1) == Some(&"at") { words.get(2) } else { words.get(1) };
+            let time_word = if words.get(1) == Some(&"at") {
+                words.get(2)
+            } else {
+                words.get(1)
+            };
             if let Some((h, m)) = time_word.and_then(|w| parse_time(w)) {
                 return Ok(format!("0 {m} {h} * * {day}"));
             }
         }
         // "every weekday at H[:MM]" (Mon-Fri), singular "weekday".
         if words.first() == Some(&"weekday") {
-            let time_word = if words.get(1) == Some(&"at") { words.get(2) } else { words.get(1) };
+            let time_word = if words.get(1) == Some(&"at") {
+                words.get(2)
+            } else {
+                words.get(1)
+            };
             if let Some((h, m)) = time_word.and_then(|w| parse_time(w)) {
                 return Ok(format!("0 {m} {h} * * MON-FRI"));
             }
@@ -169,7 +188,10 @@ pub fn parse_human(input: &str, tz: Tz, now: DateTime<Utc>) -> Result<String, St
                 };
                 if let Some(delta) = delta {
                     let at = now + delta;
-                    return Ok(format!("at:{}", at.to_rfc3339_opts(SecondsFormat::Secs, true)));
+                    return Ok(format!(
+                        "at:{}",
+                        at.to_rfc3339_opts(SecondsFormat::Secs, true)
+                    ));
                 }
             }
         }
@@ -181,12 +203,19 @@ pub fn parse_human(input: &str, tz: Tz, now: DateTime<Utc>) -> Result<String, St
         if let Some((h, m)) = parse_time(rest.trim()) {
             let local_now = now.with_timezone(&tz);
             let tomorrow = local_now.date_naive() + chrono::Days::new(1);
-            let naive = tomorrow.and_hms_opt(h as u32, m as u32, 0).ok_or_else(|| human_error(trimmed))?;
+            let naive = tomorrow
+                .and_hms_opt(h as u32, m as u32, 0)
+                .ok_or_else(|| human_error(trimmed))?;
             let local_at = tz
                 .from_local_datetime(&naive)
                 .single()
                 .ok_or_else(|| format!("{naive} doesn't exist or is ambiguous in {tz} (a DST transition) — try a different time"))?;
-            return Ok(format!("at:{}", local_at.with_timezone(&Utc).to_rfc3339_opts(SecondsFormat::Secs, true)));
+            return Ok(format!(
+                "at:{}",
+                local_at
+                    .with_timezone(&Utc)
+                    .to_rfc3339_opts(SecondsFormat::Secs, true)
+            ));
         }
         return Err(human_error(trimmed));
     }
@@ -230,12 +259,19 @@ fn weekday_abbrev(word: &str) -> Option<&'static str> {
 /// The next `count` fire times (UTC, formatted RFC3339) for display, e.g.
 /// after `cron add`/`edit`. Empty for an `at:` schedule once it has fired
 /// (there is no "next" after that).
-pub fn next_fires(schedule: &Schedule, tz: Tz, after: DateTime<Utc>, count: usize) -> Vec<DateTime<Utc>> {
+pub fn next_fires(
+    schedule: &Schedule,
+    tz: Tz,
+    after: DateTime<Utc>,
+    count: usize,
+) -> Vec<DateTime<Utc>> {
     let mut out = Vec::with_capacity(count);
     let mut cursor = after;
     let mut inclusive = true;
     for _ in 0..count {
-        let Some(next) = schedule.next_after(tz, cursor, inclusive) else { break };
+        let Some(next) = schedule.next_after(tz, cursor, inclusive) else {
+            break;
+        };
         out.push(next);
         cursor = next;
         inclusive = false;
@@ -246,12 +282,17 @@ pub fn next_fires(schedule: &Schedule, tz: Tz, after: DateTime<Utc>, count: usiz
 /// Resolves a job's `tz` field. Empty/`"local"`/`"system"` means the
 /// system zone (from `iana_time_zone`, falling back to UTC).
 pub fn resolve_tz(tz: &str) -> Result<Tz, String> {
-    let name = if tz.trim().is_empty() || tz.eq_ignore_ascii_case("local") || tz.eq_ignore_ascii_case("system") {
+    let name = if tz.trim().is_empty()
+        || tz.eq_ignore_ascii_case("local")
+        || tz.eq_ignore_ascii_case("system")
+    {
         system_tz_name()
     } else {
         tz.to_string()
     };
-    name.parse::<Tz>().map_err(|_| format!("unknown IANA time zone {name:?} — example: Europe/Berlin, America/New_York, UTC"))
+    name.parse::<Tz>().map_err(|_| {
+        format!("unknown IANA time zone {name:?} — example: Europe/Berlin, America/New_York, UTC")
+    })
 }
 
 /// The system's IANA zone name, or `"UTC"` if it can't be determined.
@@ -268,7 +309,9 @@ pub fn validate_cwd(cwd: &str) -> Result<(), String> {
     match std::fs::metadata(path) {
         Ok(meta) if meta.is_dir() => Ok(()),
         Ok(_) => Err(format!("cwd {cwd:?} exists but is not a directory")),
-        Err(e) => Err(format!("cwd {cwd:?} doesn't exist or can't be read: {e}. Create the folder first.")),
+        Err(e) => Err(format!(
+            "cwd {cwd:?} doesn't exist or can't be read: {e}. Create the folder first."
+        )),
     }
 }
 
@@ -343,9 +386,18 @@ mod tests {
     #[test]
     fn human_every_n_units() {
         let utc: Tz = "UTC".parse().unwrap();
-        assert_eq!(parse_human("every 5 minutes", utc, now()).unwrap(), "0 */5 * * * *");
-        assert_eq!(parse_human("every 30 seconds", utc, now()).unwrap(), "*/30 * * * * *");
-        assert_eq!(parse_human("every 2 hours", utc, now()).unwrap(), "0 0 */2 * * *");
+        assert_eq!(
+            parse_human("every 5 minutes", utc, now()).unwrap(),
+            "0 */5 * * * *"
+        );
+        assert_eq!(
+            parse_human("every 30 seconds", utc, now()).unwrap(),
+            "*/30 * * * * *"
+        );
+        assert_eq!(
+            parse_human("every 2 hours", utc, now()).unwrap(),
+            "0 0 */2 * * *"
+        );
     }
 
     #[test]
@@ -359,15 +411,27 @@ mod tests {
     #[test]
     fn human_every_day_at_and_weekdays_at() {
         let utc: Tz = "UTC".parse().unwrap();
-        assert_eq!(parse_human("every day at 9:00", utc, now()).unwrap(), "0 0 9 * * *");
-        assert_eq!(parse_human("weekdays at 18:30", utc, now()).unwrap(), "0 30 18 * * MON-FRI");
+        assert_eq!(
+            parse_human("every day at 9:00", utc, now()).unwrap(),
+            "0 0 9 * * *"
+        );
+        assert_eq!(
+            parse_human("weekdays at 18:30", utc, now()).unwrap(),
+            "0 30 18 * * MON-FRI"
+        );
     }
 
     #[test]
     fn human_every_weekday_name() {
         let utc: Tz = "UTC".parse().unwrap();
-        assert_eq!(parse_human("every monday 08:00", utc, now()).unwrap(), "0 0 8 * * MON");
-        assert_eq!(parse_human("every friday at 17:45", utc, now()).unwrap(), "0 45 17 * * FRI");
+        assert_eq!(
+            parse_human("every monday 08:00", utc, now()).unwrap(),
+            "0 0 8 * * MON"
+        );
+        assert_eq!(
+            parse_human("every friday at 17:45", utc, now()).unwrap(),
+            "0 45 17 * * FRI"
+        );
     }
 
     #[test]
@@ -389,8 +453,14 @@ mod tests {
     #[test]
     fn human_machine_forms_pass_through_unchanged() {
         let utc: Tz = "UTC".parse().unwrap();
-        assert_eq!(parse_human("0 30 9 * * MON-FRI", utc, now()).unwrap(), "0 30 9 * * MON-FRI");
-        assert_eq!(parse_human("at:2030-01-01T00:00:00Z", utc, now()).unwrap(), "at:2030-01-01T00:00:00Z");
+        assert_eq!(
+            parse_human("0 30 9 * * MON-FRI", utc, now()).unwrap(),
+            "0 30 9 * * MON-FRI"
+        );
+        assert_eq!(
+            parse_human("at:2030-01-01T00:00:00Z", utc, now()).unwrap(),
+            "at:2030-01-01T00:00:00Z"
+        );
     }
 
     #[test]

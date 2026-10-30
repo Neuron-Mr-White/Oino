@@ -25,13 +25,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use unipi_proto::{
-    AppErrorCode, AppErrorDto, FeatureKind, FeatureLeaveData, FeatureLeaveScope, FeatureRequestItem,
-    FeatureRequestStatus, FeatureScope,
+    AppErrorCode, AppErrorDto, FeatureKind, FeatureLeaveData, FeatureLeaveScope,
+    FeatureRequestItem, FeatureRequestStatus, FeatureScope,
 };
 
 use crate::browser::BrowserConfig;
 use crate::data_dir::HostPaths;
-use crate::desktop::{BackendPref, DesktopConfig};
 use crate::forward::{HostConfig, PortRule};
 use crate::push::{matches_device, now_ms};
 
@@ -62,8 +61,14 @@ pub struct ForwardEnable {
 }
 
 pub fn forward_enable(paths: &HostPaths, change: ForwardEnable) -> anyhow::Result<HostConfig> {
-    anyhow::ensure!(change.any || !change.ports.is_empty(), "pick --any or at least one --port <n>");
-    anyhow::ensure!(change.ports.iter().all(|p| *p != 0), "port must be 1..65535");
+    anyhow::ensure!(
+        change.any || !change.ports.is_empty(),
+        "pick --any or at least one --port <n>"
+    );
+    anyhow::ensure!(
+        change.ports.iter().all(|p| *p != 0),
+        "port must be 1..65535"
+    );
     let path = paths.config();
     let mut config = HostConfig::load(&path)?;
     config.forwarding.enabled = true;
@@ -125,32 +130,10 @@ pub fn browser_enable(paths: &HostPaths, change: BrowserEnable) -> anyhow::Resul
     Ok(config)
 }
 
-/// What `desktop enable` changes (`None` = keep).
-#[derive(Debug, Clone, Default)]
-pub struct DesktopEnable {
-    pub view_only: Option<bool>,
-    pub backend: Option<BackendPref>,
-    pub devices: Option<Vec<String>>,
-}
-
-pub fn desktop_enable(paths: &HostPaths, change: DesktopEnable) -> anyhow::Result<DesktopConfig> {
-    let path = paths.config();
-    let mut config = DesktopConfig::load(&path)?;
-    config.enabled = true;
-    if let Some(view_only) = change.view_only {
-        config.view_only = view_only;
-    }
-    if let Some(backend) = change.backend {
-        config.backend = backend;
-    }
-    if let Some(devices) = change.devices {
-        config.devices = devices;
-    }
-    config.save(&path)?;
-    Ok(config)
-}
-
-pub fn push_enable(paths: &HostPaths, devices: Option<Vec<String>>) -> anyhow::Result<crate::push::PushConfig> {
+pub fn push_enable(
+    paths: &HostPaths,
+    devices: Option<Vec<String>>,
+) -> anyhow::Result<crate::push::PushConfig> {
     let path = paths.config();
     let mut config = HostConfig::load(&path)?;
     config.push.enabled = true;
@@ -164,7 +147,10 @@ pub fn push_enable(paths: &HostPaths, devices: Option<Vec<String>>) -> anyhow::R
 /// UNI-317: switches `cron` on for phones (the PC's own app always has it).
 /// Like `push_enable`, this only grants the sharing feature — it has
 /// nothing to do with `cron pause`/`cron resume` (which stop/start runs).
-pub fn cron_enable(paths: &HostPaths, devices: Option<Vec<String>>) -> anyhow::Result<crate::cron::CronSettings> {
+pub fn cron_enable(
+    paths: &HostPaths,
+    devices: Option<Vec<String>>,
+) -> anyhow::Result<crate::cron::CronSettings> {
     let path = paths.config();
     let mut settings = crate::cron::store::load_settings(&path)?;
     settings.enabled = true;
@@ -193,11 +179,7 @@ pub fn disable(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<()> {
             config.enabled = false;
             config.save(&path)?;
         }
-        FeatureKind::Desktop => {
-            let mut config = DesktopConfig::load(&path)?;
-            config.enabled = false;
-            config.save(&path)?;
-        }
+        FeatureKind::Desktop => anyhow::bail!("desktop streaming was removed in v2"),
         FeatureKind::Cron => {
             let mut settings = crate::cron::store::load_settings(&path)?;
             settings.enabled = false;
@@ -224,10 +206,7 @@ fn feature_state(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<(boo
             let b = BrowserConfig::load(&path)?;
             (b.enabled, b.devices)
         }
-        FeatureKind::Desktop => {
-            let d = DesktopConfig::load(&path)?;
-            (d.enabled, d.devices)
-        }
+        FeatureKind::Desktop => (false, Vec::new()),
         FeatureKind::Cron => {
             let c = crate::cron::store::load_settings(&path)?;
             (c.enabled, c.devices)
@@ -236,25 +215,42 @@ fn feature_state(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<(boo
 }
 
 /// Is `feature` switched on for this device right now?
-pub fn allowed_for(paths: &HostPaths, feature: FeatureKind, device_id: &str, device_name: Option<&str>) -> bool {
+pub fn allowed_for(
+    paths: &HostPaths,
+    feature: FeatureKind,
+    device_id: &str,
+    device_name: Option<&str>,
+) -> bool {
     // UNI-301: the browser works out of the box for the PC's own app
     // (`Peer::Local`) unless the owner explicitly disabled it — the one
     // feature with that default. Everything else still needs `enabled: true`.
     if feature == FeatureKind::Browser && device_id == crate::protocol::LOCAL_DEVICE_ID {
         return match BrowserConfig::load(&paths.config()) {
-            Ok(config) => config.is_enabled_for(device_id) && config.device_allowed(device_id, device_name),
+            Ok(config) => {
+                config.is_enabled_for(device_id) && config.device_allowed(device_id, device_name)
+            }
             Err(_) => false,
         };
     }
     match feature_state(paths, feature) {
         Ok((enabled, devices)) => {
-            enabled && (devices.is_empty() || device_id == crate::protocol::LOCAL_DEVICE_ID || devices.iter().any(|e| matches_device(e, device_id, device_name)))
+            enabled
+                && (devices.is_empty()
+                    || device_id == crate::protocol::LOCAL_DEVICE_ID
+                    || devices
+                        .iter()
+                        .any(|e| matches_device(e, device_id, device_name)))
         }
         Err(_) => false,
     }
 }
 
-fn set_devices(paths: &HostPaths, feature: FeatureKind, enabled: bool, devices: Vec<String>) -> anyhow::Result<()> {
+fn set_devices(
+    paths: &HostPaths,
+    feature: FeatureKind,
+    enabled: bool,
+    devices: Vec<String>,
+) -> anyhow::Result<()> {
     let path = paths.config();
     match feature {
         FeatureKind::Forward | FeatureKind::Push => {
@@ -274,12 +270,7 @@ fn set_devices(paths: &HostPaths, feature: FeatureKind, enabled: bool, devices: 
             config.devices = devices;
             config.save(&path)
         }
-        FeatureKind::Desktop => {
-            let mut config = DesktopConfig::load(&path)?;
-            config.enabled = enabled;
-            config.devices = devices;
-            config.save(&path)
-        }
+        FeatureKind::Desktop => anyhow::bail!("desktop streaming was removed in v2"),
         FeatureKind::Cron => {
             let mut settings = crate::cron::store::load_settings(&path)?;
             settings.enabled = enabled;
@@ -356,10 +347,11 @@ pub fn ask(
     sweep_list(paths, &mut list, now)?;
     if allowed_for(paths, feature, device_id, Some(device_name)) {
         // Already on: say so (a stale phone screen), and close any pending ask.
-        let existing = list
-            .iter_mut()
-            .rev()
-            .find(|r| r.device_id == device_id && r.item.feature == feature && r.item.status == FeatureRequestStatus::Pending);
+        let existing = list.iter_mut().rev().find(|r| {
+            r.device_id == device_id
+                && r.item.feature == feature
+                && r.item.status == FeatureRequestStatus::Pending
+        });
         let item = match existing {
             Some(r) => {
                 r.item.status = FeatureRequestStatus::Approved;
@@ -379,18 +371,25 @@ pub fn ask(
             },
         };
         save(paths, &list)?;
-        return Ok(Asked { item, notify: false });
+        return Ok(Asked {
+            item,
+            notify: false,
+        });
     }
-    let pending = list
-        .iter_mut()
-        .find(|r| r.device_id == device_id && r.item.feature == feature && r.item.status == FeatureRequestStatus::Pending);
+    let pending = list.iter_mut().find(|r| {
+        r.device_id == device_id
+            && r.item.feature == feature
+            && r.item.status == FeatureRequestStatus::Pending
+    });
     let (item, notify) = match pending {
         Some(r) => {
             r.item.scope = scope;
             r.item.note = note;
             r.item.device_name = device_name.to_string();
             r.item.created_at = now;
-            let notify = r.notified_at.is_none_or(|t| now.saturating_sub(t) >= RENOTIFY_MS);
+            let notify = r
+                .notified_at
+                .is_none_or(|t| now.saturating_sub(t) >= RENOTIFY_MS);
             if notify {
                 r.notified_at = Some(now);
             }
@@ -408,7 +407,12 @@ pub fn ask(
                 decided_at: None,
                 until: None,
             };
-            list.push(StoredRequest { item: item.clone(), device_id: device_id.to_string(), grant: None, notified_at: Some(now) });
+            list.push(StoredRequest {
+                item: item.clone(),
+                device_id: device_id.to_string(),
+                grant: None,
+                notified_at: Some(now),
+            });
             (item, true)
         }
     };
@@ -423,13 +427,20 @@ fn new_id(now: u64) -> String {
 
 fn trim(list: &mut Vec<StoredRequest>) {
     while list.len() > MAX_STORED {
-        let at = list.iter().position(|r| r.item.status != FeatureRequestStatus::Pending).unwrap_or(0);
+        let at = list
+            .iter()
+            .position(|r| r.item.status != FeatureRequestStatus::Pending)
+            .unwrap_or(0);
         list.remove(at);
     }
 }
 
 /// This device's latest request per feature (newest first).
-pub fn for_device(paths: &HostPaths, device_id: &str, now: u64) -> anyhow::Result<Vec<FeatureRequestItem>> {
+pub fn for_device(
+    paths: &HostPaths,
+    device_id: &str,
+    now: u64,
+) -> anyhow::Result<Vec<FeatureRequestItem>> {
     let list = all(paths, now)?;
     let mut out: Vec<FeatureRequestItem> = Vec::new();
     for r in list.iter().rev().filter(|r| r.device_id == device_id) {
@@ -459,14 +470,20 @@ pub fn sweep(paths: &HostPaths, now: u64) -> anyhow::Result<Vec<FeatureRequestIt
     if sweep_list(paths, &mut list, now)? {
         save(paths, &list)?;
     }
-    Ok(list.iter().filter(|r| !before.contains(r)).map(|r| r.item.clone()).collect())
+    Ok(list
+        .iter()
+        .filter(|r| !before.contains(r))
+        .map(|r| r.item.clone())
+        .collect())
 }
 
 fn sweep_list(paths: &HostPaths, list: &mut Vec<StoredRequest>, now: u64) -> anyhow::Result<bool> {
     let mut changed = false;
     for r in list.iter_mut() {
         match r.item.status {
-            FeatureRequestStatus::Pending if now.saturating_sub(r.item.created_at) >= PENDING_TTL_MS => {
+            FeatureRequestStatus::Pending
+                if now.saturating_sub(r.item.created_at) >= PENDING_TTL_MS =>
+            {
                 r.item.status = FeatureRequestStatus::Expired;
                 r.item.decided_at = Some(now);
                 changed = true;
@@ -482,12 +499,20 @@ fn sweep_list(paths: &HostPaths, list: &mut Vec<StoredRequest>, now: u64) -> any
         }
     }
     let len = list.len();
-    list.retain(|r| r.item.status == FeatureRequestStatus::Pending || now.saturating_sub(r.item.decided_at.unwrap_or(r.item.created_at)) < KEEP_DONE_MS);
+    list.retain(|r| {
+        r.item.status == FeatureRequestStatus::Pending
+            || now.saturating_sub(r.item.decided_at.unwrap_or(r.item.created_at)) < KEEP_DONE_MS
+    });
     Ok(changed || list.len() != len)
 }
 
 /// Undo one time-limited grant.
-fn revoke(paths: &HostPaths, feature: FeatureKind, device_id: &str, grant: &Grant) -> anyhow::Result<()> {
+fn revoke(
+    paths: &HostPaths,
+    feature: FeatureKind,
+    device_id: &str,
+    grant: &Grant,
+) -> anyhow::Result<()> {
     let (enabled, devices) = feature_state_raw(paths, feature)?;
     if grant.was_off {
         // Back to how the owner left it: off, with the old list. If the owner
@@ -508,7 +533,10 @@ fn revoke(paths: &HostPaths, feature: FeatureKind, device_id: &str, grant: &Gran
     }
 }
 
-fn feature_state_raw(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<(bool, Vec<String>)> {
+fn feature_state_raw(
+    paths: &HostPaths,
+    feature: FeatureKind,
+) -> anyhow::Result<(bool, Vec<String>)> {
     let path = paths.config();
     Ok(match feature {
         FeatureKind::Forward => {
@@ -521,11 +549,19 @@ fn feature_state_raw(paths: &HostPaths, feature: FeatureKind) -> anyhow::Result<
 
 /// The owner says yes: switch `feature` on for that device (with the asked
 /// scope), until `until` (unix ms) or until it is turned off.
-pub fn approve(paths: &HostPaths, id: &str, until: Option<u64>, now: u64) -> anyhow::Result<FeatureRequestItem> {
+pub fn approve(
+    paths: &HostPaths,
+    id: &str,
+    until: Option<u64>,
+    now: u64,
+) -> anyhow::Result<FeatureRequestItem> {
     let _guard = lock();
     let mut list = load(paths)?;
     sweep_list(paths, &mut list, now)?;
-    let r = list.iter_mut().find(|r| r.item.id == id).ok_or_else(|| not_found(id))?;
+    let r = list
+        .iter_mut()
+        .find(|r| r.item.id == id)
+        .ok_or_else(|| not_found(id))?;
     anyhow::ensure!(
         r.item.status == FeatureRequestStatus::Pending,
         "request {id} is already {} — ask the device to send it again",
@@ -540,11 +576,23 @@ pub fn approve(paths: &HostPaths, id: &str, until: Option<u64>, now: u64) -> any
     let scope = r.item.scope.clone();
     // Open it for this one device. Already on for everyone → nothing to add.
     let grant = if !enabled {
-        Grant { was_off: true, prev_devices: devices.clone(), added_device: false }
+        Grant {
+            was_off: true,
+            prev_devices: devices.clone(),
+            added_device: false,
+        }
     } else if devices.is_empty() {
-        Grant { was_off: false, prev_devices: Vec::new(), added_device: false }
+        Grant {
+            was_off: false,
+            prev_devices: Vec::new(),
+            added_device: false,
+        }
     } else {
-        Grant { was_off: false, prev_devices: devices.clone(), added_device: !devices.iter().any(|d| d == &device) }
+        Grant {
+            was_off: false,
+            prev_devices: devices.clone(),
+            added_device: !devices.iter().any(|d| d == &device),
+        }
     };
     let new_devices = if grant.was_off {
         Some(vec![device.clone()])
@@ -558,13 +606,34 @@ pub fn approve(paths: &HostPaths, id: &str, until: Option<u64>, now: u64) -> any
     match feature {
         FeatureKind::Forward => {
             let current = HostConfig::load(&paths.config())?.forwarding;
-            let any = scope.any_port == Some(true) || (scope.ports.is_empty() && !grant.was_off && current.ports == PortRule::Any);
-            let ports = if scope.ports.is_empty() && !any { vec![] } else { scope.ports.clone() };
+            let any = scope.any_port == Some(true)
+                || (scope.ports.is_empty() && !grant.was_off && current.ports == PortRule::Any);
+            let ports = if scope.ports.is_empty() && !any {
+                vec![]
+            } else {
+                scope.ports.clone()
+            };
             if any || !ports.is_empty() {
-                forward_enable(paths, ForwardEnable { any, ports, replace: false, devices: new_devices })?;
+                forward_enable(
+                    paths,
+                    ForwardEnable {
+                        any,
+                        ports,
+                        replace: false,
+                        devices: new_devices,
+                    },
+                )?;
             } else if matches!(current.ports, PortRule::None) {
                 // Nothing asked and nothing allowed yet: any port (what the switch defaults to).
-                forward_enable(paths, ForwardEnable { any: true, ports: vec![], replace: false, devices: new_devices })?;
+                forward_enable(
+                    paths,
+                    ForwardEnable {
+                        any: true,
+                        ports: vec![],
+                        replace: false,
+                        devices: new_devices,
+                    },
+                )?;
             } else {
                 let mut config = HostConfig::load(&paths.config())?;
                 config.forwarding.enabled = true;
@@ -576,14 +645,16 @@ pub fn approve(paths: &HostPaths, id: &str, until: Option<u64>, now: u64) -> any
         }
         FeatureKind::Browser => {
             let headless = grant.was_off.then(|| scope.headed != Some(true));
-            browser_enable(paths, BrowserEnable { headless, devices: new_devices, ..Default::default() })?;
+            browser_enable(
+                paths,
+                BrowserEnable {
+                    headless,
+                    devices: new_devices,
+                    ..Default::default()
+                },
+            )?;
         }
-        FeatureKind::Desktop => {
-            // Watch-only asked: honour it when switching on; never turn an
-            // owner's view-only setting into control.
-            let view_only = if grant.was_off { Some(scope.view_only == Some(true)) } else if scope.view_only == Some(true) { Some(true) } else { None };
-            desktop_enable(paths, DesktopEnable { view_only, devices: new_devices, ..Default::default() })?;
-        }
+        FeatureKind::Desktop => anyhow::bail!("desktop streaming was removed in v2"),
         FeatureKind::Push => {
             push_enable(paths, new_devices)?;
         }
@@ -591,7 +662,10 @@ pub fn approve(paths: &HostPaths, id: &str, until: Option<u64>, now: u64) -> any
             cron_enable(paths, new_devices)?;
         }
     }
-    let r = list.iter_mut().find(|r| r.item.id == id).expect("found above");
+    let r = list
+        .iter_mut()
+        .find(|r| r.item.id == id)
+        .expect("found above");
     r.item.status = FeatureRequestStatus::Approved;
     r.item.decided_at = Some(now);
     r.item.until = until;
@@ -605,8 +679,15 @@ pub fn deny(paths: &HostPaths, id: &str, now: u64) -> anyhow::Result<FeatureRequ
     let _guard = lock();
     let mut list = load(paths)?;
     sweep_list(paths, &mut list, now)?;
-    let r = list.iter_mut().find(|r| r.item.id == id).ok_or_else(|| not_found(id))?;
-    anyhow::ensure!(r.item.status == FeatureRequestStatus::Pending, "request {id} is already {}", r.item.status.as_str());
+    let r = list
+        .iter_mut()
+        .find(|r| r.item.id == id)
+        .ok_or_else(|| not_found(id))?;
+    anyhow::ensure!(
+        r.item.status == FeatureRequestStatus::Pending,
+        "request {id} is already {}",
+        r.item.status.as_str()
+    );
     r.item.status = FeatureRequestStatus::Denied;
     r.item.decided_at = Some(now);
     let item = r.item.clone();
@@ -621,12 +702,19 @@ fn end_grants(paths: &HostPaths, feature: FeatureKind, now: u64) -> anyhow::Resu
     let _guard = lock();
     let mut list = load(paths)?;
     let mut changed = false;
-    for r in list.iter_mut().filter(|r| r.item.feature == feature && r.item.status == FeatureRequestStatus::Approved) {
+    for r in list
+        .iter_mut()
+        .filter(|r| r.item.feature == feature && r.item.status == FeatureRequestStatus::Approved)
+    {
         if let Some(grant) = r.grant.take() {
             if grant.was_off || grant.added_device {
                 let (_, devices) = feature_state_raw(paths, feature)?;
                 let rest: Vec<String> = devices.into_iter().filter(|d| d != &r.device_id).collect();
-                let restored = if grant.was_off && rest.is_empty() { grant.prev_devices.clone() } else { rest };
+                let restored = if grant.was_off && rest.is_empty() {
+                    grant.prev_devices.clone()
+                } else {
+                    rest
+                };
                 set_devices(paths, feature, false, restored)?;
             }
         }
@@ -657,8 +745,16 @@ pub fn parse_duration_ms(text: &str) -> Option<u64> {
 
 /// Plain words for a request: "Pixel asks for desktop streaming (watch only)".
 pub fn describe(item: &FeatureRequestItem) -> String {
-    let scope = item.scope.describe(item.feature).map(|s| format!(" ({s})")).unwrap_or_default();
-    format!("{} asks for {}{scope}", item.device_name, item.feature.label())
+    let scope = item
+        .scope
+        .describe(item.feature)
+        .map(|s| format!(" ({s})"))
+        .unwrap_or_default();
+    format!(
+        "{} asks for {}{scope}",
+        item.device_name,
+        item.feature.label()
+    )
 }
 
 /// Tell the owner (ntfy topic + registered UnifiedPush endpoints, encrypted
@@ -750,26 +846,52 @@ pub fn leave(
     if scope == FeatureLeaveScope::All {
         anyhow::ensure!(
             allowed_for(paths, feature, device_id, device_name),
-            Refused { error: not_allowed(feature) }
+            Refused {
+                error: not_allowed(feature)
+            }
         );
         disable(paths, feature)?;
         end_own_grants(paths, feature, device_id, now)?;
         let (_, devices) = feature_state_raw(paths, feature)?;
-        return Ok(FeatureLeaveData { feature, left: true, now_enabled: false, devices });
+        return Ok(FeatureLeaveData {
+            feature,
+            left: true,
+            now_enabled: false,
+            devices,
+        });
     }
     // Off already: nothing to undo, and never a reason to switch it on.
     if !enabled {
-        return Ok(FeatureLeaveData { feature, left: false, now_enabled: false, devices });
+        return Ok(FeatureLeaveData {
+            feature,
+            left: false,
+            now_enabled: false,
+            devices,
+        });
     }
     // This PC's own app is the owner: it turns features off, it doesn't leave.
     if device_id == crate::protocol::LOCAL_DEVICE_ID {
         let (now_enabled, devices) = feature_state(paths, feature)?;
-        return Ok(FeatureLeaveData { feature, left: false, now_enabled, devices });
+        return Ok(FeatureLeaveData {
+            feature,
+            left: false,
+            now_enabled,
+            devices,
+        });
     }
     // Not on for this device (the allow-list doesn't name it): still a success.
-    if !devices.is_empty() && !devices.iter().any(|e| matches_device(e, device_id, device_name)) {
+    if !devices.is_empty()
+        && !devices
+            .iter()
+            .any(|e| matches_device(e, device_id, device_name))
+    {
         let (now_enabled, devices) = feature_state(paths, feature)?;
-        return Ok(FeatureLeaveData { feature, left: false, now_enabled, devices });
+        return Ok(FeatureLeaveData {
+            feature,
+            left: false,
+            now_enabled,
+            devices,
+        });
     }
     let kept: Vec<String> = if devices.is_empty() {
         // "Every paired device": spell out who is left instead of leaving an
@@ -782,18 +904,32 @@ pub fn leave(
             .filter(|id| id != device_id)
             .collect()
     } else {
-        devices.iter().filter(|e| !matches_device(e, device_id, device_name)).cloned().collect()
+        devices
+            .iter()
+            .filter(|e| !matches_device(e, device_id, device_name))
+            .cloned()
+            .collect()
     };
     if kept.is_empty() {
         // Nobody is left on the allow-list: off for everyone, grants reverted.
         disable(paths, feature)?;
         let (_, devices) = feature_state_raw(paths, feature)?;
-        return Ok(FeatureLeaveData { feature, left: true, now_enabled: false, devices });
+        return Ok(FeatureLeaveData {
+            feature,
+            left: true,
+            now_enabled: false,
+            devices,
+        });
     }
     set_devices(paths, feature, enabled, kept)?;
     end_own_grants(paths, feature, device_id, now)?;
     let (now_enabled, devices) = feature_state(paths, feature)?;
-    Ok(FeatureLeaveData { feature, left: true, now_enabled, devices })
+    Ok(FeatureLeaveData {
+        feature,
+        left: true,
+        now_enabled,
+        devices,
+    })
 }
 
 /// The device that just left: its approvals of `feature` are over, so
@@ -809,7 +945,9 @@ fn end_own_grants(
     let mut list = load(paths)?;
     let mut changed = false;
     for r in list.iter_mut().filter(|r| {
-        r.item.feature == feature && r.device_id == device_id && r.item.status == FeatureRequestStatus::Approved
+        r.item.feature == feature
+            && r.device_id == device_id
+            && r.item.status == FeatureRequestStatus::Approved
     }) {
         r.grant = None;
         r.item.status = FeatureRequestStatus::Expired;
@@ -850,16 +988,6 @@ pub struct BrowserStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct DesktopStatus {
-    pub enabled: bool,
-    pub view_only: bool,
-    pub devices: Vec<String>,
-    pub display: unipi_proto::DisplayKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct PushStatus {
     pub enabled: bool,
     pub devices: Vec<String>,
@@ -895,7 +1023,6 @@ pub struct SharingStatus {
     pub host_id: Option<String>,
     pub forward: ForwardStatus,
     pub browser: BrowserStatus,
-    pub desktop: DesktopStatus,
     pub push: PushStatus,
     pub cron: CronShareStatus,
     pub devices: Vec<PairedDevice>,
@@ -912,8 +1039,6 @@ pub fn status(paths: &HostPaths, now: u64) -> anyhow::Result<SharingStatus> {
     let path = paths.config();
     let host = HostConfig::load(&path)?;
     let browser = BrowserConfig::load(&path)?;
-    let desktop = DesktopConfig::load(&path)?;
-    let display = crate::desktop::status(paths, &desktop);
     let requests = all(paths, now)?;
     let host_id = crate::data_dir::read_json::<crate::endpoint::EndpointCache>(&paths.endpoint())
         .ok()
@@ -944,25 +1069,33 @@ pub fn status(paths: &HostPaths, now: u64) -> anyhow::Result<SharingStatus> {
             stealth: crate::browser::would_use(&browser).2,
             devices: browser.devices.clone(),
         },
-        desktop: DesktopStatus {
-            enabled: desktop.enabled,
-            view_only: desktop.view_only,
-            devices: desktop.devices.clone(),
-            display: display.display,
-            reason: display.reason,
+        push: PushStatus {
+            enabled: host.push.enabled,
+            devices: host.push.devices.clone(),
         },
-        push: PushStatus { enabled: host.push.enabled, devices: host.push.devices.clone() },
         cron: {
             let cron = crate::cron::store::load_settings(&path).unwrap_or_default();
-            CronShareStatus { enabled: cron.enabled, devices: cron.devices }
+            CronShareStatus {
+                enabled: cron.enabled,
+                devices: cron.devices,
+            }
         },
         devices: crate::devices::DeviceStore::new(paths.devices())
             .list()
             .unwrap_or_default()
             .into_iter()
-            .map(|d| PairedDevice { id: d.id, name: d.name })
+            .map(|d| PairedDevice {
+                id: d.id,
+                name: d.name,
+            })
             .collect(),
-        requests: requests.into_iter().map(|r| RequestView { item: r.item, device_id: r.device_id }).collect(),
+        requests: requests
+            .into_iter()
+            .map(|r| RequestView {
+                item: r.item,
+                device_id: r.device_id,
+            })
+            .collect(),
         linger: current_user().and_then(|u| linger_enabled(&u)),
         update: crate::update::status(paths),
     })
@@ -992,14 +1125,22 @@ pub fn linger_enabled(user: &str) -> Option<bool> {
 /// The polkit-prompted command that keeps the user's services running after
 /// logout and at boot (needs root once): `pkexec loginctl enable-linger <user>`.
 pub fn linger_enable_argv(user: &str) -> Vec<String> {
-    vec!["pkexec".into(), "loginctl".into(), "enable-linger".into(), user.into()]
+    vec![
+        "pkexec".into(),
+        "loginctl".into(),
+        "enable-linger".into(),
+        user.into(),
+    ]
 }
 
 pub fn current_user() -> Option<String> {
-    std::env::var("USER").ok().filter(|u| !u.is_empty()).or_else(|| {
-        let out = std::process::Command::new("id").arg("-un").output().ok()?;
-        Some(String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|u| !u.is_empty())
-    })
+    std::env::var("USER")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .or_else(|| {
+            let out = std::process::Command::new("id").arg("-un").output().ok()?;
+            Some(String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|u| !u.is_empty())
+        })
 }
 
 #[cfg(test)]
@@ -1021,56 +1162,144 @@ mod tests {
     #[test]
     fn browser_allowed_for_local_by_default_unlike_phones() {
         let (_t, p) = paths();
-        assert!(allowed_for(&p, FeatureKind::Browser, crate::protocol::LOCAL_DEVICE_ID, None));
+        assert!(allowed_for(
+            &p,
+            FeatureKind::Browser,
+            crate::protocol::LOCAL_DEVICE_ID,
+            None
+        ));
         assert!(!allowed_for(&p, FeatureKind::Browser, PIXEL, Some("Pixel")));
-        browser_enable(&p, BrowserEnable { devices: Some(vec![PIXEL.into()]), ..Default::default() }).unwrap();
+        browser_enable(
+            &p,
+            BrowserEnable {
+                devices: Some(vec![PIXEL.into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(allowed_for(&p, FeatureKind::Browser, PIXEL, Some("Pixel")));
-        assert!(allowed_for(&p, FeatureKind::Browser, crate::protocol::LOCAL_DEVICE_ID, None));
+        assert!(allowed_for(
+            &p,
+            FeatureKind::Browser,
+            crate::protocol::LOCAL_DEVICE_ID,
+            None
+        ));
         disable(&p, FeatureKind::Browser).unwrap();
-        assert!(!allowed_for(&p, FeatureKind::Browser, crate::protocol::LOCAL_DEVICE_ID, None));
+        assert!(!allowed_for(
+            &p,
+            FeatureKind::Browser,
+            crate::protocol::LOCAL_DEVICE_ID,
+            None
+        ));
         assert!(!allowed_for(&p, FeatureKind::Browser, PIXEL, Some("Pixel")));
     }
 
     #[test]
     fn ask_stores_one_pending_per_device_and_feature() {
         let (_t, p) = paths();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Desktop, FeatureScope { view_only: Some(true), ..Default::default() }, None, 1_000).unwrap();
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            1_000,
+        )
+        .unwrap();
         assert!(a.notify);
         assert_eq!(a.item.status, FeatureRequestStatus::Pending);
         // Asking again refreshes the same request and doesn't re-notify yet.
-        let b = ask(&p, PIXEL, "Pixel", FeatureKind::Desktop, FeatureScope::default(), Some("please".into()), 2_000).unwrap();
+        let b = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            Some("please".into()),
+            2_000,
+        )
+        .unwrap();
         assert_eq!(a.item.id, b.item.id);
         assert!(!b.notify);
         assert_eq!(b.item.note.as_deref(), Some("please"));
         // …but does after RENOTIFY_MS.
-        assert!(ask(&p, PIXEL, "Pixel", FeatureKind::Desktop, FeatureScope::default(), None, 1_000 + RENOTIFY_MS).unwrap().notify);
+        assert!(
+            ask(
+                &p,
+                PIXEL,
+                "Pixel",
+                FeatureKind::Push,
+                FeatureScope::default(),
+                None,
+                1_000 + RENOTIFY_MS
+            )
+            .unwrap()
+            .notify
+        );
         // Another feature / device is its own request.
-        ask(&p, PIXEL, "Pixel", FeatureKind::Push, FeatureScope::default(), None, 3_000).unwrap();
-        ask(&p, TAB, "Tab", FeatureKind::Desktop, FeatureScope::default(), None, 3_000).unwrap();
+        ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Browser,
+            FeatureScope::default(),
+            None,
+            3_000,
+        )
+        .unwrap();
+        ask(
+            &p,
+            TAB,
+            "Tab",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            3_000,
+        )
+        .unwrap();
         assert_eq!(all(&p, 4_000).unwrap().len(), 3);
         assert_eq!(for_device(&p, PIXEL, 4_000).unwrap().len(), 2);
         // Never switched on by asking.
-        assert!(!allowed_for(&p, FeatureKind::Desktop, PIXEL, Some("Pixel")));
-        assert!(!DesktopConfig::load(&p.config()).unwrap().enabled);
+        assert!(!allowed_for(&p, FeatureKind::Push, PIXEL, Some("Pixel")));
+        assert!(!HostConfig::load(&p.config()).unwrap().push.enabled);
     }
 
     #[test]
     fn approve_switches_on_for_that_device_only() {
         let (_t, p) = paths();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Desktop, FeatureScope { view_only: Some(true), ..Default::default() }, None, 1_000).unwrap();
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            1_000,
+        )
+        .unwrap();
         let item = approve(&p, &a.item.id, None, 2_000).unwrap();
         assert_eq!(item.status, FeatureRequestStatus::Approved);
         assert!(item.until.is_none());
-        let config = DesktopConfig::load(&p.config()).unwrap();
-        assert!(config.enabled && config.view_only);
+        let config = HostConfig::load(&p.config()).unwrap().push;
+        assert!(config.enabled);
         assert_eq!(config.devices, vec![PIXEL.to_string()]);
-        assert!(allowed_for(&p, FeatureKind::Desktop, PIXEL, None));
-        assert!(!allowed_for(&p, FeatureKind::Desktop, TAB, None));
+        assert!(allowed_for(&p, FeatureKind::Push, PIXEL, None));
+        assert!(!allowed_for(&p, FeatureKind::Push, TAB, None));
         // Answered twice → refused.
         assert!(approve(&p, &a.item.id, None, 3_000).is_err());
         assert!(deny(&p, &a.item.id, 3_000).is_err());
         // Asking once it's on → approved straight away, nothing pending.
-        let again = ask(&p, PIXEL, "Pixel", FeatureKind::Desktop, FeatureScope::default(), None, 4_000).unwrap();
+        let again = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            4_000,
+        )
+        .unwrap();
         assert_eq!(again.item.status, FeatureRequestStatus::Approved);
         assert!(!again.notify);
     }
@@ -1078,12 +1307,33 @@ mod tests {
     #[test]
     fn approve_forward_ports_and_any() {
         let (_t, p) = paths();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Forward, FeatureScope { ports: vec![5173], ..Default::default() }, None, 1).unwrap();
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Forward,
+            FeatureScope {
+                ports: vec![5173],
+                ..Default::default()
+            },
+            None,
+            1,
+        )
+        .unwrap();
         approve(&p, &a.item.id, None, 2).unwrap();
         let f = HostConfig::load(&p.config()).unwrap().forwarding;
         assert!(f.enabled);
         assert_eq!(f.ports, PortRule::List(vec![5173]));
-        let b = ask(&p, TAB, "Tab", FeatureKind::Forward, FeatureScope::default(), None, 3).unwrap();
+        let b = ask(
+            &p,
+            TAB,
+            "Tab",
+            FeatureKind::Forward,
+            FeatureScope::default(),
+            None,
+            3,
+        )
+        .unwrap();
         approve(&p, &b.item.id, None, 4).unwrap();
         let f = HostConfig::load(&p.config()).unwrap().forwarding;
         // Tab added to the list; ports kept.
@@ -1091,20 +1341,56 @@ mod tests {
         assert_eq!(f.ports, PortRule::List(vec![5173]));
         // A fresh PC, no scope → any port.
         let (_t2, q) = paths();
-        let c = ask(&q, PIXEL, "Pixel", FeatureKind::Forward, FeatureScope::default(), None, 1).unwrap();
+        let c = ask(
+            &q,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Forward,
+            FeatureScope::default(),
+            None,
+            1,
+        )
+        .unwrap();
         approve(&q, &c.item.id, None, 2).unwrap();
-        assert_eq!(HostConfig::load(&q.config()).unwrap().forwarding.ports, PortRule::Any);
+        assert_eq!(
+            HostConfig::load(&q.config()).unwrap().forwarding.ports,
+            PortRule::Any
+        );
     }
 
     #[test]
     fn deny_and_pending_expiry() {
         let (_t, p) = paths();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Browser, FeatureScope::default(), None, 1_000).unwrap();
-        assert_eq!(deny(&p, &a.item.id, 2_000).unwrap().status, FeatureRequestStatus::Denied);
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Browser,
+            FeatureScope::default(),
+            None,
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(
+            deny(&p, &a.item.id, 2_000).unwrap().status,
+            FeatureRequestStatus::Denied
+        );
         assert!(!BrowserConfig::load(&p.config()).unwrap().enabled);
-        assert_eq!(for_device(&p, PIXEL, 3_000).unwrap()[0].status, FeatureRequestStatus::Denied);
+        assert_eq!(
+            for_device(&p, PIXEL, 3_000).unwrap()[0].status,
+            FeatureRequestStatus::Denied
+        );
         // A new ask after a denial is a new pending request.
-        let b = ask(&p, PIXEL, "Pixel", FeatureKind::Browser, FeatureScope::default(), None, 4_000).unwrap();
+        let b = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Browser,
+            FeatureScope::default(),
+            None,
+            4_000,
+        )
+        .unwrap();
         assert_ne!(a.item.id, b.item.id);
         assert_eq!(b.item.status, FeatureRequestStatus::Pending);
         // Nobody answers for a day → expired.
@@ -1118,7 +1404,16 @@ mod tests {
     #[test]
     fn time_limited_approval_switches_back_off() {
         let (_t, p) = paths();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Push, FeatureScope::default(), None, 1_000).unwrap();
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            1_000,
+        )
+        .unwrap();
         let item = approve(&p, &a.item.id, Some(1_000 + 3_600_000), 1_000).unwrap();
         assert_eq!(item.until, Some(3_601_000));
         assert!(allowed_for(&p, FeatureKind::Push, PIXEL, None));
@@ -1130,19 +1425,47 @@ mod tests {
         assert!(!push.enabled);
         assert!(push.devices.is_empty());
         // In the past → refused.
-        let b = ask(&p, PIXEL, "Pixel", FeatureKind::Push, FeatureScope::default(), None, 5_000_000).unwrap();
+        let b = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            5_000_000,
+        )
+        .unwrap();
         assert!(approve(&p, &b.item.id, Some(4_000_000), 5_000_000).is_err());
     }
 
     #[test]
     fn time_limited_grant_on_an_allow_list_removes_only_that_device() {
         let (_t, p) = paths();
-        desktop_enable(&p, DesktopEnable { devices: Some(vec![TAB.into()]), ..Default::default() }).unwrap();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Desktop, FeatureScope::default(), None, 1).unwrap();
+        browser_enable(
+            &p,
+            BrowserEnable {
+                devices: Some(vec![TAB.into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Browser,
+            FeatureScope::default(),
+            None,
+            1,
+        )
+        .unwrap();
         approve(&p, &a.item.id, Some(100), 2).unwrap();
-        assert_eq!(DesktopConfig::load(&p.config()).unwrap().devices, vec![TAB.to_string(), PIXEL.to_string()]);
+        assert_eq!(
+            BrowserConfig::load(&p.config()).unwrap().devices,
+            vec![TAB.to_string(), PIXEL.to_string()]
+        );
         sweep(&p, 100).unwrap();
-        let config = DesktopConfig::load(&p.config()).unwrap();
+        let config = BrowserConfig::load(&p.config()).unwrap();
         assert!(config.enabled);
         assert_eq!(config.devices, vec![TAB.to_string()]);
     }
@@ -1150,7 +1473,19 @@ mod tests {
     #[test]
     fn turning_off_ends_approvals() {
         let (_t, p) = paths();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Browser, FeatureScope { headed: Some(true), ..Default::default() }, None, 1).unwrap();
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Browser,
+            FeatureScope {
+                headed: Some(true),
+                ..Default::default()
+            },
+            None,
+            1,
+        )
+        .unwrap();
         approve(&p, &a.item.id, None, 2).unwrap();
         let b = BrowserConfig::load(&p.config()).unwrap();
         assert!(b.enabled && !b.headless);
@@ -1160,29 +1495,58 @@ mod tests {
         assert!(!b.enabled);
         // The approval's device left the list: turning it on again means "every paired device", as before.
         assert!(b.devices.is_empty());
-        assert_eq!(for_device(&p, PIXEL, 3).unwrap()[0].status, FeatureRequestStatus::Expired);
+        assert_eq!(
+            for_device(&p, PIXEL, 3).unwrap()[0].status,
+            FeatureRequestStatus::Expired
+        );
     }
 
     #[test]
     fn switches_keep_other_keys() {
         let (_t, p) = paths();
-        std::fs::write(p.config(), r#"{"fs":{"allow":["/srv"]},"push":{"enabled":true}}"#).unwrap();
-        forward_enable(&p, ForwardEnable { ports: vec![8080, 5173], ..Default::default() }).unwrap();
-        forward_enable(&p, ForwardEnable { ports: vec![3000], replace: true, ..Default::default() }).unwrap();
-        browser_enable(&p, BrowserEnable { headless: Some(false), path: Some("/opt/b".into()), ..Default::default() }).unwrap();
-        desktop_enable(&p, DesktopEnable { view_only: Some(true), ..Default::default() }).unwrap();
+        std::fs::write(
+            p.config(),
+            r#"{"fs":{"allow":["/srv"]},"push":{"enabled":true}}"#,
+        )
+        .unwrap();
+        forward_enable(
+            &p,
+            ForwardEnable {
+                ports: vec![8080, 5173],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        forward_enable(
+            &p,
+            ForwardEnable {
+                ports: vec![3000],
+                replace: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        browser_enable(
+            &p,
+            BrowserEnable {
+                headless: Some(false),
+                path: Some("/opt/b".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         disable(&p, FeatureKind::Push).unwrap();
-        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(p.config()).unwrap()).unwrap();
+        let raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(p.config()).unwrap()).unwrap();
         assert_eq!(raw["fs"]["allow"][0], "/srv");
         assert_eq!(raw["forwarding"]["ports"], serde_json::json!([3000]));
         assert_eq!(raw["browser"]["headless"], false);
         assert_eq!(raw["browser"]["path"], "/opt/b");
-        assert_eq!(raw["desktop"]["view_only"], true);
         assert_eq!(raw["push"]["enabled"], false);
         assert!(forward_enable(&p, ForwardEnable::default()).is_err());
         let s = status(&p, 1).unwrap();
         assert!(s.forward.enabled && !s.forward.any && s.forward.ports == vec![3000]);
-        assert!(s.desktop.view_only && !s.push.enabled);
+        assert!(!s.push.enabled);
     }
 
     // ------------------------------------------------------------ leave (UNI-253)
@@ -1196,25 +1560,37 @@ mod tests {
         crate::data_dir::write_json(&p.devices(), &list).unwrap();
     }
 
-    fn leave_self(p: &HostPaths, feature: FeatureKind, id: &str, name: Option<&str>) -> FeatureLeaveData {
+    fn leave_self(
+        p: &HostPaths,
+        feature: FeatureKind,
+        id: &str,
+        name: Option<&str>,
+    ) -> FeatureLeaveData {
         leave(p, feature, FeatureLeaveScope::OnlySelf, id, name, 1_000).unwrap()
     }
 
     #[test]
     fn leave_self_removes_only_this_device() {
         let (_t, p) = paths();
-        desktop_enable(&p, DesktopEnable { devices: Some(vec![PIXEL.into(), TAB.into()]), ..Default::default() }).unwrap();
-        let left = leave_self(&p, FeatureKind::Desktop, PIXEL, Some("Pixel"));
+        browser_enable(
+            &p,
+            BrowserEnable {
+                devices: Some(vec![PIXEL.into(), TAB.into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let left = leave_self(&p, FeatureKind::Browser, PIXEL, Some("Pixel"));
         assert!(left.left);
         assert!(left.now_enabled);
         assert_eq!(left.devices, vec![TAB.to_string()]);
-        let config = DesktopConfig::load(&p.config()).unwrap();
-        assert!(config.enabled && !config.view_only);
+        let config = BrowserConfig::load(&p.config()).unwrap();
+        assert!(config.enabled);
         assert_eq!(config.devices, vec![TAB.to_string()]);
-        assert!(!allowed_for(&p, FeatureKind::Desktop, PIXEL, Some("Pixel")));
-        assert!(allowed_for(&p, FeatureKind::Desktop, TAB, Some("Tab")));
+        assert!(!allowed_for(&p, FeatureKind::Browser, PIXEL, Some("Pixel")));
+        assert!(allowed_for(&p, FeatureKind::Browser, TAB, Some("Tab")));
         // Leaving again changes nothing (and says so).
-        let again = leave_self(&p, FeatureKind::Desktop, PIXEL, Some("Pixel"));
+        let again = leave_self(&p, FeatureKind::Browser, PIXEL, Some("Pixel"));
         assert!(!again.left);
         assert!(again.now_enabled);
         assert_eq!(again.devices, vec![TAB.to_string()]);
@@ -1223,14 +1599,29 @@ mod tests {
     #[test]
     fn leaving_ends_the_devices_own_approval() {
         let (_t, p) = paths();
-        desktop_enable(&p, DesktopEnable { devices: Some(vec![TAB.into()]), ..Default::default() }).unwrap();
-        let a = ask(&p, PIXEL, "Pixel", FeatureKind::Desktop, FeatureScope::default(), None, 1).unwrap();
+        push_enable(&p, Some(vec![TAB.into()])).unwrap();
+        let a = ask(
+            &p,
+            PIXEL,
+            "Pixel",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            1,
+        )
+        .unwrap();
         approve(&p, &a.item.id, None, 2).unwrap();
-        assert_eq!(for_device(&p, PIXEL, 3).unwrap()[0].status, FeatureRequestStatus::Approved);
-        // Leaving it behind → its approval is over, and Tab keeps desktop.
-        leave_self(&p, FeatureKind::Desktop, PIXEL, Some("Pixel"));
-        assert_eq!(for_device(&p, PIXEL, 4).unwrap()[0].status, FeatureRequestStatus::Expired);
-        assert!(allowed_for(&p, FeatureKind::Desktop, TAB, Some("Tab")));
+        assert_eq!(
+            for_device(&p, PIXEL, 3).unwrap()[0].status,
+            FeatureRequestStatus::Approved
+        );
+        // Leaving it behind → its approval is over, and Tab keeps push.
+        leave_self(&p, FeatureKind::Push, PIXEL, Some("Pixel"));
+        assert_eq!(
+            for_device(&p, PIXEL, 4).unwrap()[0].status,
+            FeatureRequestStatus::Expired
+        );
+        assert!(allowed_for(&p, FeatureKind::Push, TAB, Some("Tab")));
     }
 
     #[test]
@@ -1243,9 +1634,21 @@ mod tests {
         assert_eq!(left.devices, vec![TAB.to_string()]);
         // Tab was granted push (the owner said yes): the only device with it.
         disable(&p, FeatureKind::Push).unwrap();
-        let a = ask(&p, TAB, "Tab", FeatureKind::Push, FeatureScope::default(), None, 1).unwrap();
+        let a = ask(
+            &p,
+            TAB,
+            "Tab",
+            FeatureKind::Push,
+            FeatureScope::default(),
+            None,
+            1,
+        )
+        .unwrap();
         approve(&p, &a.item.id, None, 2).unwrap();
-        assert_eq!(HostConfig::load(&p.config()).unwrap().push.devices, vec![TAB.to_string()]);
+        assert_eq!(
+            HostConfig::load(&p.config()).unwrap().push.devices,
+            vec![TAB.to_string()]
+        );
         // The last device allowed leaves → off for everyone, the grant with it.
         let left = leave_self(&p, FeatureKind::Push, TAB, Some("Tab"));
         assert!(left.left);
@@ -1255,7 +1658,10 @@ mod tests {
         let push = HostConfig::load(&p.config()).unwrap().push;
         assert!(!push.enabled);
         assert_eq!(push.devices, vec![TAB.to_string()]);
-        assert_eq!(for_device(&p, TAB, 3).unwrap()[0].status, FeatureRequestStatus::Expired);
+        assert_eq!(
+            for_device(&p, TAB, 3).unwrap()[0].status,
+            FeatureRequestStatus::Expired
+        );
         assert!(!allowed_for(&p, FeatureKind::Push, TAB, Some("Tab")));
     }
 
@@ -1264,7 +1670,14 @@ mod tests {
         let (_t, p) = paths();
         // On for every paired device (empty list), two of them paired.
         pair(&p, &[(PIXEL, "Pixel"), (TAB, "Tab")]);
-        browser_enable(&p, BrowserEnable { devices: Some(Vec::new()), ..Default::default() }).unwrap();
+        browser_enable(
+            &p,
+            BrowserEnable {
+                devices: Some(Vec::new()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let left = leave_self(&p, FeatureKind::Browser, PIXEL, Some("Pixel"));
         assert!(left.left);
         assert!(left.now_enabled);
@@ -1274,30 +1687,62 @@ mod tests {
         // Not "every paired device" any more: the phone that pairs later stays out.
         assert_eq!(config.devices, vec![TAB.to_string()]);
         assert!(allowed_for(&p, FeatureKind::Browser, TAB, Some("Tab")));
-        assert!(!allowed_for(&p, FeatureKind::Browser, "cccccccccccccccc3333", Some("Later")));
+        assert!(!allowed_for(
+            &p,
+            FeatureKind::Browser,
+            "cccccccccccccccc3333",
+            Some("Later")
+        ));
     }
 
     #[test]
     fn leave_all_needs_the_feature_and_switches_it_off() {
         let (_t, p) = paths();
         // Off: a phone that doesn't have it can't turn it off for everyone.
-        let refused = leave(&p, FeatureKind::Desktop, FeatureLeaveScope::All, PIXEL, Some("Pixel"), 1).unwrap_err();
+        let refused = leave(
+            &p,
+            FeatureKind::Push,
+            FeatureLeaveScope::All,
+            PIXEL,
+            Some("Pixel"),
+            1,
+        )
+        .unwrap_err();
         let refused = refused.downcast_ref::<Refused>().expect("a Refused");
         assert_eq!(refused.error.code, AppErrorCode::E_UNAUTHORIZED);
-        assert!(!DesktopConfig::load(&p.config()).unwrap().enabled);
+        assert!(!HostConfig::load(&p.config()).unwrap().push.enabled);
         // On, but only for Tab.
-        desktop_enable(&p, DesktopEnable { devices: Some(vec![TAB.into()]), ..Default::default() }).unwrap();
-        assert!(leave(&p, FeatureKind::Desktop, FeatureLeaveScope::All, PIXEL, Some("Pixel"), 1).is_err());
-        assert_eq!(DesktopConfig::load(&p.config()).unwrap().devices, vec![TAB.to_string()]);
+        push_enable(&p, Some(vec![TAB.into()])).unwrap();
+        assert!(leave(
+            &p,
+            FeatureKind::Push,
+            FeatureLeaveScope::All,
+            PIXEL,
+            Some("Pixel"),
+            1
+        )
+        .is_err());
+        assert_eq!(
+            HostConfig::load(&p.config()).unwrap().push.devices,
+            vec![TAB.to_string()]
+        );
         // Pixel has it: it may, and Tab loses it too (the feature is off).
-        desktop_enable(&p, DesktopEnable { devices: Some(vec![TAB.into(), PIXEL.into()]), ..Default::default() }).unwrap();
-        let left = leave(&p, FeatureKind::Desktop, FeatureLeaveScope::All, PIXEL, Some("Pixel"), 5).unwrap();
+        push_enable(&p, Some(vec![TAB.into(), PIXEL.into()])).unwrap();
+        let left = leave(
+            &p,
+            FeatureKind::Push,
+            FeatureLeaveScope::All,
+            PIXEL,
+            Some("Pixel"),
+            5,
+        )
+        .unwrap();
         assert!(left.left && !left.now_enabled);
-        let config = DesktopConfig::load(&p.config()).unwrap();
+        let config = HostConfig::load(&p.config()).unwrap().push;
         assert!(!config.enabled);
-        // The owner's allow-list is kept, as `unipi-host desktop disable` does.
+        // The owner's allow-list is kept, as `unipi-host push disable` does.
         assert_eq!(config.devices, vec![TAB.to_string(), PIXEL.to_string()]);
-        assert!(!allowed_for(&p, FeatureKind::Desktop, TAB, Some("Tab")));
+        assert!(!allowed_for(&p, FeatureKind::Push, TAB, Some("Tab")));
     }
 
     #[test]
@@ -1306,14 +1751,38 @@ mod tests {
         // Off: nothing to undo, and it stays off.
         let left = leave_self(&p, FeatureKind::Forward, PIXEL, Some("Pixel"));
         assert!(!left.left && !left.now_enabled && left.devices.is_empty());
-        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(p.config()).unwrap_or_default()).unwrap_or_default();
+        let raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(p.config()).unwrap_or_default())
+                .unwrap_or_default();
         assert!(raw.get("forwarding").is_none(), "no config written: {raw}");
         // The owner's own client never "leaves" either (it turns features off).
-        forward_enable(&p, ForwardEnable { any: true, ..Default::default() }).unwrap();
-        let left = leave(&p, FeatureKind::Forward, FeatureLeaveScope::OnlySelf, crate::protocol::LOCAL_DEVICE_ID, None, 1).unwrap();
+        forward_enable(
+            &p,
+            ForwardEnable {
+                any: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let left = leave(
+            &p,
+            FeatureKind::Forward,
+            FeatureLeaveScope::OnlySelf,
+            crate::protocol::LOCAL_DEVICE_ID,
+            None,
+            1,
+        )
+        .unwrap();
         assert!(!left.left && left.now_enabled);
-        assert_eq!(HostConfig::load(&p.config()).unwrap().forwarding.ports, PortRule::Any);
-        assert!(HostConfig::load(&p.config()).unwrap().forwarding.devices.is_empty());
+        assert_eq!(
+            HostConfig::load(&p.config()).unwrap().forwarding.ports,
+            PortRule::Any
+        );
+        assert!(HostConfig::load(&p.config())
+            .unwrap()
+            .forwarding
+            .devices
+            .is_empty());
     }
 
     #[test]
@@ -1327,7 +1796,10 @@ mod tests {
         let item = FeatureRequestItem {
             id: "r1".into(),
             feature: FeatureKind::Forward,
-            scope: FeatureScope { ports: vec![5173, 8080], ..Default::default() },
+            scope: FeatureScope {
+                ports: vec![5173, 8080],
+                ..Default::default()
+            },
             device_name: "Pixel".into(),
             note: None,
             status: FeatureRequestStatus::Pending,
@@ -1335,7 +1807,13 @@ mod tests {
             decided_at: None,
             until: None,
         };
-        assert_eq!(describe(&item), "Pixel asks for web app forwarding (ports 5173, 8080)");
-        assert_eq!(linger_enable_argv("me"), vec!["pkexec", "loginctl", "enable-linger", "me"]);
+        assert_eq!(
+            describe(&item),
+            "Pixel asks for web app forwarding (ports 5173, 8080)"
+        );
+        assert_eq!(
+            linger_enable_argv("me"),
+            vec!["pkexec", "loginctl", "enable-linger", "me"]
+        );
     }
 }

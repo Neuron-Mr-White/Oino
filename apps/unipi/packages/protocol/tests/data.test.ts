@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import {
-  ListDataSchema,
-  PairDataSchema,
-  AttachDataSchema,
-} from "../src/control.js";
+import { PairDataSchema } from "../src/control.js";
 
 const fixturesDir = path.resolve(
   fileURLToPath(new URL("../../../protocol/fixtures", import.meta.url)),
@@ -33,9 +29,7 @@ const invalidFixtures: InvalidFixture[] = JSON.parse(
 );
 
 const schemasByName = {
-  ListData: ListDataSchema,
   PairData: PairDataSchema,
-  AttachData: AttachDataSchema,
 } as const;
 
 function schemaFor(name: string) {

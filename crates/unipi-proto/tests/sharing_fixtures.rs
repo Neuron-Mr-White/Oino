@@ -15,23 +15,32 @@ struct Fixture {
 
 #[test]
 fn shared_sharing_fixtures_agree() {
-    let fixtures: Vec<Fixture> =
-        serde_json::from_str(include_str!("../../../apps/unipi/protocol/fixtures/sharing.json")).unwrap();
+    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
+        "../../../apps/unipi/protocol/fixtures/sharing.json"
+    ))
+    .unwrap();
     assert!(fixtures.len() >= 24);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {
             "Control" => serde_json::from_value::<Control>(fixture.value.clone())
                 .map_err(|e| e.to_string())
                 .and_then(|control| control.validate().map_err(|e| e.to_string())),
-            "FeatureRequestsData" => serde_json::from_value::<FeatureRequestsData>(fixture.value.clone())
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
+            "FeatureRequestsData" => {
+                serde_json::from_value::<FeatureRequestsData>(fixture.value.clone())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }
             "FeatureLeaveData" => serde_json::from_value::<FeatureLeaveData>(fixture.value.clone())
                 .map(|_| ())
                 .map_err(|e| e.to_string()),
             other => panic!("unknown schema {other}"),
         };
-        assert_eq!(result.is_ok(), fixture.ok, "fixture `{}`: {result:?}", fixture.name);
+        assert_eq!(
+            result.is_ok(),
+            fixture.ok,
+            "fixture `{}`: {result:?}",
+            fixture.name
+        );
     }
 }
 
@@ -40,8 +49,12 @@ fn feature_leave_round_trips() {
     let hello = r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"forward","scope":"self"}}"#;
     let control: Control = serde_json::from_str(hello).expect("parse");
     control.validate().expect("valid");
-    let Control::Hello { req, .. } = &control else { panic!("expected hello") };
-    let Request::FeatureLeave { feature, scope } = req else { panic!("expected FeatureLeave") };
+    let Control::Hello { req, .. } = &control else {
+        panic!("expected hello")
+    };
+    let Request::FeatureLeave { feature, scope } = req else {
+        panic!("expected FeatureLeave")
+    };
     assert_eq!(feature.as_str(), "forward");
     assert_eq!(*scope, FeatureLeaveScope::OnlySelf);
     // Serialised back out (and re-parsed) it says the same thing: `self`
@@ -53,15 +66,29 @@ fn feature_leave_round_trips() {
     assert!(again.validate().is_ok());
 
     // `scope` is optional and means `self`; `all` is the other value.
-    let bare: Control =
-        serde_json::from_str(r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"push"}}"#).unwrap();
-    let Control::Hello { req: Request::FeatureLeave { scope, .. }, .. } = &bare else { panic!("expected FeatureLeave") };
+    let bare: Control = serde_json::from_str(
+        r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"push"}}"#,
+    )
+    .unwrap();
+    let Control::Hello {
+        req: Request::FeatureLeave { scope, .. },
+        ..
+    } = &bare
+    else {
+        panic!("expected FeatureLeave")
+    };
     assert!(scope.is_self());
     let all: Control = serde_json::from_str(
         r#"{"type":"hello","proto":"1.15.0","req":{"op":"feature_leave","feature":"desktop","scope":"all"}}"#,
     )
     .unwrap();
-    let Control::Hello { req: Request::FeatureLeave { scope, .. }, .. } = &all else { panic!("expected FeatureLeave") };
+    let Control::Hello {
+        req: Request::FeatureLeave { scope, .. },
+        ..
+    } = &all
+    else {
+        panic!("expected FeatureLeave")
+    };
     assert_eq!(scope.as_str(), "all");
     // A scope nobody knows is a schema error, not a silent default.
     assert!(serde_json::from_str::<Control>(
@@ -78,15 +105,15 @@ fn older_host_rejection_is_representable() {
     let reply = r#"{"type":"err","error":{"code":"E_SCHEMA","message":"unknown op `feature_leave`","retryable":false}}"#;
     let control: Control = serde_json::from_str(reply).expect("parse");
     control.validate().expect("valid");
-    let Control::Err { error } = control else { panic!("expected err") };
+    let Control::Err { error } = control else {
+        panic!("expected err")
+    };
     assert_eq!(error.code, AppErrorCode::E_SCHEMA);
     assert!(error.message.as_str().contains("feature_leave"));
     assert!(!error.retryable);
     // …and the app's own copy of the same rejection parses too.
-    let error: unipi_proto::AppErrorDto = serde_json::from_value(
-        serde_json::to_value(&error).unwrap(),
-    )
-    .unwrap();
+    let error: unipi_proto::AppErrorDto =
+        serde_json::from_value(serde_json::to_value(&error).unwrap()).unwrap();
     assert_eq!(error.code, AppErrorCode::E_SCHEMA);
 }
 
@@ -101,5 +128,8 @@ fn leave_data_mirrors_the_host_answer() {
     assert!(!data.now_enabled);
     assert_eq!(data.devices, ["Pixel 8"]);
     // Same value back out, byte for byte in the fields the app reads.
-    assert_eq!(serde_json::to_value(&data).unwrap(), serde_json::from_str::<Value>(json).unwrap());
+    assert_eq!(
+        serde_json::to_value(&data).unwrap(),
+        serde_json::from_str::<Value>(json).unwrap()
+    );
 }

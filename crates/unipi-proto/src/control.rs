@@ -1,64 +1,13 @@
-//! Control (JSON, frame kind 0) message types for `unipi/app/1`.
+//! Control (JSON, frame kind 0) message types for `unipi/oino/1`.
 //!
 //! Mirrors `packages/protocol/src/control.ts`.
 
 use serde::{Deserialize, Serialize};
 
 use crate::blob::{BlobMime, BlobName, BlobPath, BlobRange, BlobSize, Sha256Hex};
-use crate::board::{BoardMethod, BoardPath, BoardProject, BodyLen, ContentType};
 use crate::error::{AppErrorDto, ProtoError};
 use crate::fs::{FsPath, SearchKind, SearchQuery};
 use crate::version::Semver;
-
-/// Multiplexer kind: herdr (first-party) or tmux.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MuxKind {
-    Herdr,
-    Tmux,
-}
-
-/// How the terminal reacts to the phone's own viewport size.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SizePolicy {
-    FitPhone,
-    KeepPc,
-}
-
-/// A validated session identifier: 1..=128 characters.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
-pub struct SessionId(String);
-
-impl SessionId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for SessionId {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let len = value.chars().count();
-        if (1..=128).contains(&len) {
-            Ok(SessionId(value))
-        } else {
-            Err(format!("session must be 1..=128 characters, got {len}"))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for SessionId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = String::deserialize(deserializer)?;
-        SessionId::try_from(raw).map_err(serde::de::Error::custom)
-    }
-}
 
 /// A validated dimension (cols or rows): integer, 1..=1000.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
@@ -258,55 +207,6 @@ impl<'de> Deserialize<'de> for HostName {
     }
 }
 
-/// A validated session display name (as returned in `ListData`):
-/// 1..=128 characters.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
-pub struct SessionName(String);
-
-impl SessionName {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for SessionName {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let len = value.chars().count();
-        if (1..=128).contains(&len) {
-            Ok(SessionName(value))
-        } else {
-            Err(format!("name must be 1..=128 characters, got {len}"))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for SessionName {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = String::deserialize(deserializer)?;
-        SessionName::try_from(raw).map_err(serde::de::Error::custom)
-    }
-}
-
-/// One session entry returned by a `list` request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionSummary {
-    pub name: SessionName,
-    pub running: bool,
-    pub default: bool,
-}
-
-/// `ok.data` payload for a successful `list` request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ListData {
-    pub sessions: Vec<SessionSummary>,
-}
-
 /// `ok.data` payload for a successful `pair` request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairData {
@@ -343,45 +243,6 @@ pub enum NotifyAppDetail {
     Full,
 }
 
-/// `ok.data` payload for a successful `attach` request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AttachData {
-    pub effective_size_policy: SizePolicy,
-}
-
-/// Validated `lines` for a `preview` request: 1..=200.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
-pub struct Lines(u16);
-
-impl Lines {
-    pub fn value(self) -> u16 {
-        self.0
-    }
-}
-
-impl TryFrom<u16> for Lines {
-    type Error = String;
-
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        if (1..=200).contains(&value) {
-            Ok(Lines(value))
-        } else {
-            Err(format!("lines must be 1..=200, got {value}"))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Lines {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = u16::deserialize(deserializer)?;
-        Lines::try_from(raw).map_err(serde::de::Error::custom)
-    }
-}
-
 /// A validated title: at most 512 characters (may be empty).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -416,553 +277,12 @@ impl<'de> Deserialize<'de> for Title {
     }
 }
 
-/// A herdr identifier (`w4E`, `w4E:t16`, `w4E:p18`): 1..=128 chars,
-/// no whitespace or control characters (mirrors `HerdrIdSchema`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
-pub struct HerdrId(String);
-
-impl HerdrId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for HerdrId {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let len = value.chars().count();
-        if !(1..=128).contains(&len) {
-            return Err(format!("herdr id must be 1..=128 characters, got {len}"));
-        }
-        if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
-            return Err("herdr id must not contain whitespace or control characters".to_string());
-        }
-        Ok(HerdrId(value))
-    }
-}
-
-impl<'de> Deserialize<'de> for HerdrId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = String::deserialize(deserializer)?;
-        HerdrId::try_from(raw).map_err(serde::de::Error::custom)
-    }
-}
-
-/// A tmux identifier with its kind: `$3` (session), `@5` (window) or
-/// `%7` (pane). One type covers all three so a struct can name the
-/// field, and the regex pins the shape.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
-pub struct TmuxId<const KIND: char>(String);
-
-impl<const KIND: char> TmuxId<KIND> {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl<const KIND: char> TryFrom<String> for TmuxId<KIND> {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let digits = value
-            .strip_prefix(KIND)
-            .ok_or_else(|| format!("tmux id must start with {KIND}, got {value:?}"))?;
-        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(format!(
-                "tmux id must look like {KIND}<digits>, got {value:?}"
-            ));
-        }
-        Ok(TmuxId(value))
-    }
-}
-
-impl<'de, const KIND: char> Deserialize<'de> for TmuxId<KIND> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = String::deserialize(deserializer)?;
-        TmuxId::<KIND>::try_from(raw).map_err(serde::de::Error::custom)
-    }
-}
-
-pub type TmuxSessionId = TmuxId<'$'>;
-pub type TmuxWindowId = TmuxId<'@'>;
-pub type TmuxPaneId = TmuxId<'%'>;
-
-/// Where in a multiplexer to attach/focus/preview (DESIGN.md §5.6).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "mux", rename_all = "snake_case")]
-pub enum AttachTarget {
-    Herdr {
-        session: SessionId,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        workspace_id: Option<HerdrId>,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        tab_id: Option<HerdrId>,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        pane_id: Option<HerdrId>,
-    },
-    Tmux {
-        session: SessionId,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        window_id: Option<TmuxWindowId>,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        pane_id: Option<TmuxPaneId>,
-    },
-}
-
-/// The pi (or other agent) bound to one pane (DESIGN.md §5.6).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneAgent {
-    pub name: String,
-    pub status: AgentStatus,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub session: Option<AgentSessionRef>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentSessionRef {
-    pub kind: String,
-    pub value: String,
-}
-
-/// herdr's own status enum is `idle|working|blocked|done|unknown`
-/// (`herdr api schema --json`, `AgentStatus`), which is exactly our
-/// proto enum, so the mapping is identity; anything unrecognised
-/// maps to `unknown` (see `agent_status_from`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentStatus {
-    Idle,
-    Working,
-    Blocked,
-    Done,
-    Unknown,
-}
-
-impl AgentStatus {
-    /// Maps an arbitrary herdr status string onto the proto enum.
-    /// Unrecognised values become `Unknown`.
-    pub fn from_herdr(raw: &str) -> Self {
-        match raw {
-            "idle" => AgentStatus::Idle,
-            "working" => AgentStatus::Working,
-            "blocked" => AgentStatus::Blocked,
-            "done" => AgentStatus::Done,
-            _ => AgentStatus::Unknown,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HerdrPane {
-    pub id: HerdrId,
-    pub focused: bool,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub terminal_title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub cwd: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub agent: Option<PaneAgent>,
-    /// The chat bridge of the pi in this pane, when one is reachable
-    /// (`chat_list` only; DESIGN §3.4).
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub chat: Option<ChatBridgeRef>,
-}
-
-/// A pi chat bridge found on the host (`~/.unipi/bridge/<pid>.json`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ChatBridgeRef {
-    pub pid: u32,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub session_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub cwd: Option<String>,
-    /// Set while this pi is waiting on the user (UNI-161 "needs you"): an
-    /// open dialog, or idle right after an `agent_end` the phone hasn't seen
-    /// yet. Cleared once answered/opened.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub waiting: Option<ChatWaiting>,
-    /// pi's own run state from the bridge record (UNI-212) — herdr's pane
-    /// `agent_status` can miss a run; absent from older bridges.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub running: Option<bool>,
-    /// UNI-221: wake-capable work still pending while pi is idle (a bg task
-    /// that will wake it, a background subagent, a fusion handoff) — e.g.
-    /// "bg: npm test · 2 subagents working". The app shows "Working…", not
-    /// idle/finished. Absent when nothing is pending / older bridges.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub pending_work: Option<String>,
-    /// UNI-269: the long-horizon working mode (`goal`, `ralph`, `swarm`,
-    /// `graph`) — the list's mode badge. Absent = regular / older bridges.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub lh_mode: Option<String>,
-    /// UNI-269: the mode of a parked long-horizon owner ("Graph · paused").
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub lh_paused: Option<String>,
-}
-
-/// What a waiting pi is waiting on (`BridgeRecord.waiting` → `ChatBridgeRef.waiting`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ChatWaiting {
-    pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub title: Option<String>,
-    /// ms since epoch.
-    pub since: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HerdrTab {
-    pub id: HerdrId,
-    pub label: String,
-    pub number: u32,
-    pub focused: bool,
-    pub agent_status: AgentStatus,
-    pub panes: Vec<HerdrPane>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HerdrWorkspace {
-    pub id: HerdrId,
-    pub label: String,
-    pub number: u32,
-    pub focused: bool,
-    pub agent_status: AgentStatus,
-    pub tab_count: u32,
-    pub pane_count: u32,
-    pub tabs: Vec<HerdrTab>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HerdrSession {
-    pub name: SessionName,
-    pub running: bool,
-    pub default: bool,
-    pub workspaces: Vec<HerdrWorkspace>,
-    /// Set when this session's snapshot could not be read.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct HerdrState {
-    pub available: bool,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub sessions: Option<Vec<HerdrSession>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TmuxPane {
-    pub id: TmuxPaneId,
-    pub index: u32,
-    pub active: bool,
-    pub current_command: String,
-    pub cwd: String,
-    pub pid: u32,
-    pub title: String,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub agent: Option<PaneAgent>,
-    /// UNI-260: the pi chat bridge running in this pane (`chat_list` only).
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub chat: Option<ChatBridgeRef>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TmuxWindow {
-    pub id: TmuxWindowId,
-    pub index: u32,
-    pub name: String,
-    pub active: bool,
-    pub panes: Vec<TmuxPane>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TmuxSession {
-    pub id: TmuxSessionId,
-    pub name: String,
-    pub attached: u32,
-    pub window_count: u32,
-    pub created: u64,
-    pub activity: u64,
-    pub windows: Vec<TmuxWindow>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct TmuxState {
-    pub available: bool,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub sessions: Option<Vec<TmuxSession>>,
-}
-
-fn validate_state(available: bool, reason: &Option<String>, sessions: &bool) -> Result<(), String> {
-    if available {
-        if reason.is_some() {
-            return Err("available state must not carry a reason".into());
-        }
-        if !*sessions {
-            return Err("available state must carry sessions".into());
-        }
-    } else if reason.is_none() || *sessions {
-        return Err("unavailable state must carry a reason and no sessions".into());
-    }
-    Ok(())
-}
-
-impl<'de> Deserialize<'de> for HerdrState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Raw {
-            available: bool,
-            #[serde(default)]
-            reason: Option<String>,
-            #[serde(default)]
-            sessions: Option<Vec<HerdrSession>>,
-        }
-        let raw = Raw::deserialize(deserializer)?;
-        validate_state(raw.available, &raw.reason, &raw.sessions.is_some())
-            .map_err(serde::de::Error::custom)?;
-        Ok(HerdrState {
-            available: raw.available,
-            reason: raw.reason,
-            sessions: raw.sessions,
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for TmuxState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Raw {
-            available: bool,
-            #[serde(default)]
-            reason: Option<String>,
-            #[serde(default)]
-            sessions: Option<Vec<TmuxSession>>,
-        }
-        let raw = Raw::deserialize(deserializer)?;
-        validate_state(raw.available, &raw.reason, &raw.sessions.is_some())
-            .map_err(serde::de::Error::custom)?;
-        Ok(TmuxState {
-            available: raw.available,
-            reason: raw.reason,
-            sessions: raw.sessions,
-        })
-    }
-}
-
-/// `ok.data` for a `tree` request (DESIGN.md §5.6).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TreeData {
-    /// Session names the host protects (`--protect`); the app dims
-    /// their rows and refuses to open them.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub protected: Vec<SessionName>,
-    pub herdr: HerdrState,
-    pub tmux: TmuxState,
-}
-
-/// ANSI-kept pane text for a `preview` reply, capped at 64 KiB
-/// (mirrors `PreviewDataSchema`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
-pub struct PreviewText(String);
-
-impl PreviewText {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    pub fn into_inner(self) -> String {
-        self.0
-    }
-}
-
-impl TryFrom<String> for PreviewText {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.len() <= 64 * 1024 {
-            Ok(PreviewText(value))
-        } else {
-            Err(format!(
-                "preview text must be at most 64 KiB, got {} bytes",
-                value.len()
-            ))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for PreviewText {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = String::deserialize(deserializer)?;
-        PreviewText::try_from(raw).map_err(serde::de::Error::custom)
-    }
-}
-
-/// `ok.data` for a `preview` request: pane text with ANSI kept.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PreviewData {
-    pub text: PreviewText,
-}
-
-/// One entry of the shortcuts panel: a named action and the key
-/// (with prefix shown separately) that triggers it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ShortcutKey {
-    pub name: String,
-    pub key: String,
-}
-
-/// The shortcuts panel data for one multiplexer (DESIGN.md §3.3).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ShortcutMux {
-    pub prefix: String,
-    pub keys: Vec<ShortcutKey>,
-}
-
-/// Reply payload for the `shortcuts` request.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ShortcutsData {
-    pub herdr: ShortcutMux,
-    pub tmux: ShortcutMux,
-}
-
-/// A multiplexer tree mutation or navigation, sent as a `mux_action`
-/// request. Tagged on `action`; herdr and tmux pane cycling get
-/// mux-prefixed tags because the payloads would otherwise be
-/// identical and a session name can exist in both multiplexers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case")]
-pub enum MuxAction {
-    WorkspaceCreate {
-        session: SessionName,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        label: Option<SessionName>,
-    },
-    WorkspaceRename {
-        session: SessionName,
-        workspace_id: HerdrId,
-        label: SessionName,
-    },
-    WorkspaceClose {
-        session: SessionName,
-        workspace_id: HerdrId,
-    },
-    TabNext {
-        session: SessionName,
-    },
-    TabPrev {
-        session: SessionName,
-    },
-    HerdrPaneNext {
-        session: SessionName,
-    },
-    HerdrPanePrev {
-        session: SessionName,
-    },
-    TmuxSessionCreate {
-        name: SessionName,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        cwd: Option<String>,
-    },
-    TmuxSessionRename {
-        session: SessionName,
-        name: SessionName,
-    },
-    TmuxSessionKill {
-        session: SessionName,
-    },
-    WindowNext {
-        session: SessionName,
-    },
-    WindowPrev {
-        session: SessionName,
-    },
-    TmuxPaneNext {
-        session: SessionName,
-    },
-    TmuxPanePrev {
-        session: SessionName,
-    },
-}
-
-impl MuxAction {
-    /// The session the action mutates or navigates in; protected
-    /// sessions reject every action.
-    pub fn session(&self) -> &str {
-        match self {
-            MuxAction::WorkspaceCreate { session, .. }
-            | MuxAction::WorkspaceRename { session, .. }
-            | MuxAction::WorkspaceClose { session, .. }
-            | MuxAction::TabNext { session }
-            | MuxAction::TabPrev { session }
-            | MuxAction::HerdrPaneNext { session }
-            | MuxAction::HerdrPanePrev { session }
-            | MuxAction::TmuxSessionRename { session, .. }
-            | MuxAction::TmuxSessionKill { session }
-            | MuxAction::WindowNext { session }
-            | MuxAction::WindowPrev { session }
-            | MuxAction::TmuxPaneNext { session }
-            | MuxAction::TmuxPanePrev { session } => session.as_str(),
-            MuxAction::TmuxSessionCreate { name, .. } => name.as_str(),
-        }
-    }
-}
-
 /// The request carried in a `hello` control message. Internally
 /// tagged on `op`, matching the TypeScript `RequestSchema`
 /// discriminated union.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
-    List {
-        mux: MuxKind,
-    },
-    Attach {
-        target: AttachTarget,
-        cols: Dimension,
-        rows: Dimension,
-        size_policy: SizePolicy,
-    },
-    Tree,
-    Shortcuts,
-    MuxAction {
-        #[serde(flatten)]
-        action: MuxAction,
-    },
-    Shell {
-        cols: Dimension,
-        rows: Dimension,
-    },
-    Preview {
-        target: AttachTarget,
-        lines: Lines,
-    },
     Pair {
         code: PairCode,
         #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -970,25 +290,6 @@ pub enum Request {
     },
     /// Forward one HTTP request to the host's kanboard daemon (see
     /// `crate::board` for the stream layout).
-    BoardHttp {
-        method: BoardMethod,
-        path: BoardPath,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        content_type: Option<ContentType>,
-        #[serde(skip_serializing_if = "BodyLen::is_zero", default)]
-        body_len: BodyLen,
-    },
-    /// Subscribe to a project's kanboard SSE revision stream.
-    BoardSse {
-        project: BoardProject,
-    },
-    /// The herdr tree with each pi pane's chat bridge (DESIGN §3.4).
-    ChatList,
-    /// Open a live chat with the pi whose bridge has this pid; then
-    /// `chat{line}` controls both ways (docs/m5/PROTOCOL.md).
-    ChatOpen {
-        pid: u32,
-    },
     /// Upload a blob (see `crate::blob`). The body (`size - offset`
     /// bytes) follows in kind-2 frames unless the host answers
     /// `ok{data:{have:true}}` first (dedup: already has this sha256).
@@ -1155,7 +456,9 @@ pub enum Request {
     /// (`show: true`) or run it without one. Saved like the owner's
     /// "Show its window on this PC"; a running browser relaunches with the
     /// same tabs. `ok{data: BrowserStatusData}`.
-    BrowserWindow { show: bool },
+    BrowserWindow {
+        show: bool,
+    },
     /// UNI-296 (proto 1.17.0): the host's browser profiles (read only).
     /// `ok{data: BrowserProfilesData}`.
     BrowserProfiles,
@@ -1168,24 +471,14 @@ pub enum Request {
         profile: Option<crate::browser::BrowserProfile>,
     },
     /// UNI-216: can this PC stream its desktop to this device?
-    DesktopStatus,
-    /// UNI-216: stream the PC's desktop (H.264) with control (see `crate::desktop`).
-    DesktopOpen {
-        viewport: crate::desktop::DesktopViewport,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        quality: Option<crate::desktop::DesktopQuality>,
-        /// Ask for view-only even when control is allowed.
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        view_only: Option<bool>,
-        /// UNI-271: which monitor (`desktop_status.displays[].id`); default primary.
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        display: Option<String>,
-    },
     /// UNI-248: ask the PC's owner to switch a feature on for this device
     /// (stored as pending; never enabled by itself). → `FeatureRequestItem`.
     FeatureRequest {
         feature: crate::sharing::FeatureKind,
-        #[serde(default, skip_serializing_if = "crate::sharing::FeatureScope::is_empty")]
+        #[serde(
+            default,
+            skip_serializing_if = "crate::sharing::FeatureScope::is_empty"
+        )]
         scope: crate::sharing::FeatureScope,
         #[serde(skip_serializing_if = "Option::is_none", default)]
         note: Option<crate::sharing::FeatureNote>,
@@ -1198,30 +491,13 @@ pub enum Request {
     /// → `FeatureLeaveData`.
     FeatureLeave {
         feature: crate::sharing::FeatureKind,
-        #[serde(default, skip_serializing_if = "crate::sharing::FeatureLeaveScope::is_self")]
+        #[serde(
+            default,
+            skip_serializing_if = "crate::sharing::FeatureLeaveScope::is_self"
+        )]
         scope: crate::sharing::FeatureLeaveScope,
     },
     /// UNI-260: start pi in a new herdr tab / tmux window. → `ChatNewData`.
-    ChatNew {
-        target: crate::chat::ChatNewTarget,
-        /// Folder pi starts in (Files scope); `~` = home. Default: home.
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        cwd: Option<FsPath>,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        outside: Option<bool>,
-    },
-    /// UNI-260: stop a pi (and close its tab/window). → `ChatCloseData`.
-    ChatClose {
-        pid: std::num::NonZeroU32,
-        #[serde(default)]
-        close_tab: bool,
-    },
-    /// UNI-260: the PC's chat launcher. → `ChatConfigData`.
-    ChatConfig,
-    /// UNI-260: set the launcher (`""` = default). → `ChatConfigData`.
-    ChatConfigSet {
-        launcher: crate::chat::ChatLauncher,
-    },
     /// UNI-232: local-only (this PC's own app over `app.sock`; iroh peers get
     /// E_UNAUTHORIZED). What runs here. → `HostInfoData`.
     HostInfo,
@@ -1247,7 +523,9 @@ pub enum Request {
     /// whether `cron pause` is in effect. → `CronJobsData`.
     CronList,
     /// UNI-317: one job's detail plus its run history. → `CronShowData`.
-    CronShow { id: crate::cron::CronJobId },
+    CronShow {
+        id: crate::cron::CronJobId,
+    },
     /// UNI-317: run history, newest first; every job's when `id` is
     /// omitted. → `CronRunsData`.
     CronRuns {
@@ -1257,7 +535,9 @@ pub enum Request {
         limit: Option<crate::cron::CronRunsLimit>,
     },
     /// UNI-317: one run's captured output (found by run id alone). → `CronLogData`.
-    CronLog { run_id: crate::cron::CronRunId },
+    CronLog {
+        run_id: crate::cron::CronRunId,
+    },
     /// UNI-317: add a job. → `CronJob`.
     CronAdd(crate::cron::CronAddRequest),
     /// UNI-317: patch a job (only given fields change). → `CronJob`.
@@ -1266,13 +546,23 @@ pub enum Request {
         patch: crate::cron::CronEditRequest,
     },
     /// UNI-317: delete a job (and its run history). → `ok{data:null}`.
-    CronRm { id: crate::cron::CronJobId },
-    CronEnable { id: crate::cron::CronJobId },
-    CronDisable { id: crate::cron::CronJobId },
+    CronRm {
+        id: crate::cron::CronJobId,
+    },
+    CronEnable {
+        id: crate::cron::CronJobId,
+    },
+    CronDisable {
+        id: crate::cron::CronJobId,
+    },
     /// UNI-317: run now, bypassing the schedule. → `CronRunStartedData`.
-    CronRun { id: crate::cron::CronJobId },
+    CronRun {
+        id: crate::cron::CronJobId,
+    },
     /// UNI-317: kill a running run. → `CronStoppedData`.
-    CronStop { id: crate::cron::CronJobId },
+    CronStop {
+        id: crate::cron::CronJobId,
+    },
     /// UNI-317: stop new runs starting; running ones finish. → `ok{data:null}`.
     #[serde(rename = "cron_pause")]
     CronPauseAll,
@@ -1298,10 +588,6 @@ pub enum Request {
     /// UNI-319: open a run's saved session as a live chat: a pi already on
     /// it, else `<launcher> --session <file>` started at `target` in the
     /// job's folder. → `CronOpenSessionData`.
-    CronOpenSession {
-        run_id: crate::cron::CronRunId,
-        target: crate::chat::ChatNewTarget,
-    },
     /// UNI-318: the `cron` block of `config.json`. → `CronSettingsData`.
     CronSettingsGet,
     /// UNI-318: patch the `cron` block (validated). → `CronSettingsData`.
@@ -1325,7 +611,10 @@ impl TryFrom<String> for NotifyEndpoint {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() || value.len() > 2048 {
-            return Err(format!("endpoint must be 1..=2048 characters, got {}", value.len()));
+            return Err(format!(
+                "endpoint must be 1..=2048 characters, got {}",
+                value.len()
+            ));
         }
         if !value.starts_with("https://") {
             return Err("endpoint must be an https:// URL".to_string());
@@ -1344,7 +633,7 @@ impl<'de> Deserialize<'de> for NotifyEndpoint {
     }
 }
 
-/// The control (JSON, kind 0) message envelope for `unipi/app/1`.
+/// The control (JSON, kind 0) message envelope for `unipi/oino/1`.
 /// Internally tagged on `control`, matching the TypeScript
 /// `ControlSchema` discriminated union.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1371,16 +660,6 @@ pub enum Control {
     Title {
         title: Title,
     },
-    /// One bridge message (a JSON line) on a `chat_open` stream, either way.
-    Chat {
-        line: String,
-    },
-    /// One SSE message from the kanboard daemon (`board_sse` streams).
-    BoardEvent {
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        event: Option<String>,
-        data: String,
-    },
     /// UNI-215: phone → host input/navigation on a `browser_open` stream.
     BrowserCmd {
         cmd: crate::browser::BrowserCmd,
@@ -1389,15 +668,6 @@ pub enum Control {
     /// event is followed by one kind-1 frame with the JPEG).
     BrowserEvent {
         event: crate::browser::BrowserEvent,
-    },
-    /// UNI-216: phone → host input/quality/acks on a `desktop_open` stream.
-    DesktopCmd {
-        cmd: crate::desktop::DesktopCmd,
-    },
-    /// UNI-216: host → phone event on a `desktop_open` stream (a `frame`
-    /// event is followed by kind-1 frames with the H.264 access unit).
-    DesktopEvent {
-        event: crate::desktop::DesktopEvent,
     },
 }
 
@@ -1419,26 +689,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hello_list_round_trips() {
-        let json = r#"{"type":"hello","proto":"1.0.0","req":{"op":"list","mux":"herdr"}}"#;
+    fn hello_pair_round_trips() {
+        let json = r#"{"type":"hello","proto":"2.0.0","req":{"op":"pair","code":"123456"}}"#;
         let parsed: Control = serde_json::from_str(json).expect("parse");
         match parsed {
             Control::Hello { proto, req } => {
-                assert_eq!(proto.as_str(), "1.0.0");
+                assert_eq!(proto.as_str(), "2.0.0");
                 match req {
-                    Request::List { mux } => assert_eq!(mux, MuxKind::Herdr),
-                    _ => panic!("expected List"),
+                    Request::Pair { code, name } => {
+                        assert_eq!(code.as_str(), "123456");
+                        assert_eq!(name, None);
+                    }
+                    _ => panic!("expected Pair"),
                 }
             }
             _ => panic!("expected Hello"),
         }
-    }
-
-    #[test]
-    fn attach_rejects_out_of_range_cols() {
-        let json = r#"{"type":"hello","proto":"1.0.0","req":{"op":"attach","mux":"tmux","session":"s","cols":0,"rows":24,"size_policy":"fit_phone"}}"#;
-        let parsed: Result<Control, _> = serde_json::from_str(json);
-        assert!(parsed.is_err());
     }
 
     #[test]

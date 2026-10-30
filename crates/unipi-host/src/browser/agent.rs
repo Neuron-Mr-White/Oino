@@ -52,7 +52,10 @@ pub const TAKEN_OVER_CODE: i64 = -32000;
 /// `Target.*`) keep working, so an agent can still look and wait.
 pub fn is_driving(method: &str) -> bool {
     method.starts_with("Input.")
-        || matches!(method, "Page.navigate" | "Page.reload" | "Page.navigateToHistoryEntry" | "Page.stopLoading")
+        || matches!(
+            method,
+            "Page.navigate" | "Page.reload" | "Page.navigateToHistoryEntry" | "Page.stopLoading"
+        )
 }
 
 #[derive(Debug, Default)]
@@ -198,16 +201,23 @@ impl AgentGate {
 }
 
 fn driving(state: &State, now: Instant) -> bool {
-    state.last_input.is_some_and(|t| now.saturating_duration_since(t) < DRIVING_WINDOW)
+    state
+        .last_input
+        .is_some_and(|t| now.saturating_duration_since(t) < DRIVING_WINDOW)
 }
 
 /// Ends a take-over idle for [`TAKEOVER_IDLE`]; true when it just ended.
 fn expire(state: &mut State, now: Instant) -> bool {
-    let Some(since) = state.takeover else { return false };
+    let Some(since) = state.takeover else {
+        return false;
+    };
     let active = state.last_user_input.map_or(since, |t| t.max(since));
     if now.saturating_duration_since(active) >= TAKEOVER_IDLE {
         state.takeover = None;
-        tracing::info!(op = "browser", "take-over ended after 10 min idle: the agent can drive again");
+        tracing::info!(
+            op = "browser",
+            "take-over ended after 10 min idle: the agent can drive again"
+        );
         return true;
     }
     false
@@ -219,10 +229,24 @@ mod tests {
 
     #[test]
     fn only_input_and_navigation_are_driving() {
-        for m in ["Input.dispatchMouseEvent", "Input.insertText", "Input.dispatchKeyEvent", "Page.navigate", "Page.reload", "Page.navigateToHistoryEntry"] {
+        for m in [
+            "Input.dispatchMouseEvent",
+            "Input.insertText",
+            "Input.dispatchKeyEvent",
+            "Page.navigate",
+            "Page.reload",
+            "Page.navigateToHistoryEntry",
+        ] {
             assert!(is_driving(m), "{m}");
         }
-        for m in ["Runtime.evaluate", "DOM.getDocument", "Page.captureScreenshot", "Target.getTargets", "Page.enable", "Accessibility.getFullAXTree"] {
+        for m in [
+            "Runtime.evaluate",
+            "DOM.getDocument",
+            "Page.captureScreenshot",
+            "Target.getTargets",
+            "Page.enable",
+            "Accessibility.getFullAXTree",
+        ] {
             assert!(!is_driving(m), "{m}");
         }
     }
@@ -232,20 +256,37 @@ mod tests {
         let gate = AgentGate::new();
         let t0 = Instant::now();
         let _agent = gate.client();
-        assert_eq!(gate.snapshot_at(t0, 0), BrowserAgent { connected: true, driving: false, taken_over: false });
+        assert_eq!(
+            gate.snapshot_at(t0, 0),
+            BrowserAgent {
+                connected: true,
+                driving: false,
+                taken_over: false
+            }
+        );
         // Reads don't drive.
         gate.check_at("DOM.getDocument", t0).unwrap();
         assert!(!gate.snapshot_at(t0, 0).driving);
         gate.check_at("Input.dispatchMouseEvent", t0).unwrap();
-        assert!(gate.snapshot_at(t0 + Duration::from_millis(2900), 0).driving);
-        assert!(!gate.snapshot_at(t0 + Duration::from_millis(3000), 0).driving);
+        assert!(
+            gate.snapshot_at(t0 + Duration::from_millis(2900), 0)
+                .driving
+        );
+        assert!(
+            !gate
+                .snapshot_at(t0 + Duration::from_millis(3000), 0)
+                .driving
+        );
     }
 
     #[test]
     fn clients_count_while_connected() {
         let gate = AgentGate::new();
         assert!(!gate.snapshot(0).connected);
-        assert!(gate.snapshot(1).connected, "a direct DevTools client counts too");
+        assert!(
+            gate.snapshot(1).connected,
+            "a direct DevTools client counts too"
+        );
         let a = gate.client();
         let b = gate.client();
         assert_eq!(gate.clients(), 2);
@@ -261,11 +302,20 @@ mod tests {
         let t0 = Instant::now();
         gate.check_at("Input.dispatchKeyEvent", t0).unwrap();
         let s = gate.set_takeover_at(true, t0);
-        assert!(s.taken_over && !s.driving, "taking over stops showing the agent as driving");
-        assert_eq!(gate.check_at("Input.dispatchMouseEvent", t0), Err(TAKEN_OVER_MESSAGE));
+        assert!(
+            s.taken_over && !s.driving,
+            "taking over stops showing the agent as driving"
+        );
+        assert_eq!(
+            gate.check_at("Input.dispatchMouseEvent", t0),
+            Err(TAKEN_OVER_MESSAGE)
+        );
         assert_eq!(gate.check_at("Page.navigate", t0), Err(TAKEN_OVER_MESSAGE));
         assert_eq!(gate.check_at("Runtime.evaluate", t0), Ok(()));
-        assert!(!gate.snapshot_at(t0, 0).driving, "refused input is not driving");
+        assert!(
+            !gate.snapshot_at(t0, 0).driving,
+            "refused input is not driving"
+        );
         let s = gate.set_takeover_at(false, t0);
         assert!(!s.taken_over);
         assert_eq!(gate.check_at("Input.dispatchMouseEvent", t0), Ok(()));
@@ -276,7 +326,9 @@ mod tests {
         let gate = AgentGate::new();
         let t0 = Instant::now();
         gate.set_takeover_at(true, t0);
-        assert!(gate.check_at("Input.insertText", t0 + Duration::from_secs(9 * 60)).is_err());
+        assert!(gate
+            .check_at("Input.insertText", t0 + Duration::from_secs(9 * 60))
+            .is_err());
         // The user's own input (now) moves the idle clock.
         gate.note_user_input();
         let later = Instant::now() + Duration::from_secs(9 * 60);

@@ -32,7 +32,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{broadcast, watch};
-use unipi_proto::{AppErrorCode, AppErrorDto, PushId, PushItem, PushListData, PushOutcome, Sha256Hex};
+use unipi_proto::{
+    AppErrorCode, AppErrorDto, PushId, PushItem, PushListData, PushOutcome, Sha256Hex,
+};
 
 use crate::data_dir::HostPaths;
 use crate::devices::Device;
@@ -63,7 +65,10 @@ impl PushConfig {
         self.enabled
             && (self.devices.is_empty()
                 || device_id == crate::protocol::LOCAL_DEVICE_ID
-                || self.devices.iter().any(|entry| matches_device(entry, device_id, device_name)))
+                || self
+                    .devices
+                    .iter()
+                    .any(|entry| matches_device(entry, device_id, device_name)))
     }
 }
 
@@ -108,7 +113,12 @@ pub fn sha256_file(path: &Path) -> std::io::Result<(String, u64)> {
 /// MIME type from the file extension (what the phone uses to pick
 /// Install vs Save/Open).
 pub fn mime_for(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("apk") => "application/vnd.android.package-archive",
         Some("pdf") => "application/pdf",
         Some("png") => "image/png",
@@ -154,11 +164,21 @@ pub struct PendingPush {
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum ControlEvent {
     /// The push is recorded; `devices` are the target names.
-    Queued { id: String, devices: Vec<String>, notified: bool },
+    Queued {
+        id: String,
+        devices: Vec<String>,
+        notified: bool,
+    },
     /// A target device started downloading it.
     Fetching { id: String, device: String },
     /// A target device answered.
-    Done { id: String, device: String, outcome: PushOutcome, #[serde(skip_serializing_if = "Option::is_none", default)] detail: Option<String> },
+    Done {
+        id: String,
+        device: String,
+        outcome: PushOutcome,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        detail: Option<String>,
+    },
     /// Every target answered (or the push was cancelled/expired).
     Finished { id: String },
     /// Reply to `list`.
@@ -169,7 +189,11 @@ pub enum ControlEvent {
     Browser { data: serde_json::Value },
     /// UNI-314: reply to `cron` (the action's JSON result).
     Cron { data: serde_json::Value },
-    Error { message: String, #[serde(skip_serializing_if = "Option::is_none", default)] hint: Option<String> },
+    Error {
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        hint: Option<String>,
+    },
 }
 
 impl ControlEvent {
@@ -187,6 +211,8 @@ impl ControlEvent {
 /// One JSON line from the CLI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
+// v2 H1: pre-existing wire enum; the H7 port revisits it
+#[allow(clippy::large_enum_variant)]
 pub enum ControlRequest {
     /// Record a push. The host re-checks the file and config; `sha256`
     /// and `size` are what the CLI hashed (re-verified here).
@@ -212,9 +238,13 @@ pub enum ControlRequest {
     },
     /// UNI-292: `unipi-host browser start|stop|profiles` — the serve owns the
     /// browsers so the app's viewer and the agent share them.
-    Browser { request: crate::browser::BrowserControl },
+    Browser {
+        request: crate::browser::BrowserControl,
+    },
     /// UNI-314: `unipi-host cron ...` — the serve owns the scheduler.
-    Cron { request: crate::cron::CronControl },
+    Cron {
+        request: crate::cron::CronControl,
+    },
 }
 
 #[derive(Default)]
@@ -253,14 +283,20 @@ impl PushHub {
     pub fn new(store: Option<PathBuf>) -> Self {
         let (tx, _) = watch::channel(0u64);
         let (events, _) = broadcast::channel(256);
-        PushHub { state: Arc::new(Mutex::new(HubState::default())), changed: Arc::new(tx), events, store }
+        PushHub {
+            state: Arc::new(Mutex::new(HubState::default())),
+            changed: Arc::new(tx),
+            events,
+            store,
+        }
     }
 
     /// The one hub for a host dir (persisted under `<host dir>/pushes.json`),
     /// shared by the iroh `Handler` and the control socket of the same
     /// `serve` process — a registry so `Handler` needs no extra field.
     pub fn shared(paths: &HostPaths) -> Self {
-        static HUBS: std::sync::OnceLock<Mutex<HashMap<PathBuf, PushHub>>> = std::sync::OnceLock::new();
+        static HUBS: std::sync::OnceLock<Mutex<HashMap<PathBuf, PushHub>>> =
+            std::sync::OnceLock::new();
         let hubs = HUBS.get_or_init(Default::default);
         let mut hubs = hubs.lock().unwrap_or_else(|e| e.into_inner());
         hubs.entry(paths.root.clone())
@@ -306,7 +342,8 @@ impl PushHub {
         let before = state.pushes.len();
         let mut gone = Vec::new();
         state.pushes.retain(|p| {
-            let keep = now.saturating_sub(p.item.created_at) < PUSH_TTL_MS && !p.remaining.is_empty();
+            let keep =
+                now.saturating_sub(p.item.created_at) < PUSH_TTL_MS && !p.remaining.is_empty();
             if !keep {
                 gone.push(p.item.id.as_str().to_string());
             }
@@ -326,7 +363,10 @@ impl PushHub {
         let state = self.lock();
         devices.iter().any(|d| {
             state.waiting.get(d).copied().unwrap_or(0) > 0
-                || state.last_poll.get(d).is_some_and(|t| now.saturating_sub(*t) <= LIVE_WINDOW_MS)
+                || state
+                    .last_poll
+                    .get(d)
+                    .is_some_and(|t| now.saturating_sub(*t) <= LIVE_WINDOW_MS)
         })
     }
 
@@ -338,7 +378,10 @@ impl PushHub {
         let id = format!("p{:x}{:04x}", now, rand::random::<u16>());
         item.id = PushId::try_from(id.clone()).expect("generated id is valid");
         item.created_at = now;
-        state.pushes.push(PendingPush { item, remaining: device_ids.into_iter().collect() });
+        state.pushes.push(PendingPush {
+            item,
+            remaining: device_ids.into_iter().collect(),
+        });
         self.save(&state);
         drop(state);
         self.bump();
@@ -375,7 +418,11 @@ impl PushHub {
         if !first.is_empty() || wait.is_zero() {
             return first;
         }
-        *self.lock().waiting.entry(device_id.to_string()).or_default() += 1;
+        *self
+            .lock()
+            .waiting
+            .entry(device_id.to_string())
+            .or_default() += 1;
         let deadline = tokio::time::Instant::now() + wait;
         let result = loop {
             match tokio::time::timeout_at(deadline, rx.changed()).await {
@@ -407,13 +454,23 @@ impl PushHub {
             .map(|p| p.item.id.as_str().to_string());
         drop(state);
         if let Some(id) = &hit {
-            self.emit(ControlEvent::Fetching { id: id.clone(), device: device_name.to_string() });
+            self.emit(ControlEvent::Fetching {
+                id: id.clone(),
+                device: device_name.to_string(),
+            });
         }
         hit.is_some()
     }
 
     /// The phone's answer. Unknown ids are fine (already answered/expired).
-    pub fn done(&self, device_id: &str, device_name: &str, id: &str, outcome: PushOutcome, detail: Option<String>) {
+    pub fn done(
+        &self,
+        device_id: &str,
+        device_name: &str,
+        id: &str,
+        outcome: PushOutcome,
+        detail: Option<String>,
+    ) {
         let mut state = self.lock();
         let Some(index) = state.pushes.iter().position(|p| p.item.id.as_str() == id) else {
             return;
@@ -427,7 +484,12 @@ impl PushHub {
         }
         self.save(&state);
         drop(state);
-        self.emit(ControlEvent::Done { id: id.to_string(), device: device_name.to_string(), outcome, detail });
+        self.emit(ControlEvent::Done {
+            id: id.to_string(),
+            device: device_name.to_string(),
+            outcome,
+            detail,
+        });
         if finished {
             self.emit(ControlEvent::Finished { id: id.to_string() });
         }
@@ -468,18 +530,31 @@ pub async fn list_for_device(
         // Off (the default) is not an error: the phone just shows nothing.
         // Still remember the poll so the host knows the app is live.
         hub.lock().last_poll.insert(device_id.to_string(), now_ms());
-        return PushListData { enabled: false, host_name: host_name.to_string(), pushes: Vec::new() };
+        return PushListData {
+            enabled: false,
+            host_name: host_name.to_string(),
+            pushes: Vec::new(),
+        };
     }
     let pushes = hub.list(device_id, wait).await;
-    PushListData { enabled: true, host_name: host_name.to_string(), pushes }
+    PushListData {
+        enabled: true,
+        host_name: host_name.to_string(),
+        pushes,
+    }
 }
 
 fn push_error(message: impl Into<String>) -> ControlEvent {
-    ControlEvent::Error { message: message.into(), hint: None }
+    ControlEvent::Error {
+        message: message.into(),
+        hint: None,
+    }
 }
 
 /// Validates a `push` control request against the file on disk, the
 /// config and the paired devices; returns the item and target devices.
+// v2 H1: pre-existing 9-arg push entry point; reshaped with the H7 port
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_push(
     paths: &HostPaths,
     config: &PushConfig,
@@ -492,31 +567,48 @@ pub fn prepare_push(
     size: u64,
 ) -> Result<(PushItem, Vec<Device>), ControlEvent> {
     if !config.enabled {
-        return Err(ControlEvent::Error { message: "Push is off on this PC.".into(), hint: Some(ENABLE_HINT.into()) });
+        return Err(ControlEvent::Error {
+            message: "Push is off on this PC.".into(),
+            hint: Some(ENABLE_HINT.into()),
+        });
     }
     let file = PathBuf::from(path);
     if !file.is_absolute() {
         return Err(push_error("The path must be absolute."));
     }
-    let meta = std::fs::metadata(&file).map_err(|e| push_error(format!("Can't read {path}: {e}")))?;
+    let meta =
+        std::fs::metadata(&file).map_err(|e| push_error(format!("Can't read {path}: {e}")))?;
     if !meta.is_file() {
         return Err(push_error(format!("{path} is not a regular file.")));
     }
     if meta.len() == 0 {
         return Err(push_error(format!("{path} is empty.")));
     }
-    let (digest, actual) = sha256_file(&file).map_err(|e| push_error(format!("Can't read {path}: {e}")))?;
+    let (digest, actual) =
+        sha256_file(&file).map_err(|e| push_error(format!("Can't read {path}: {e}")))?;
     if actual != size || digest != sha256 {
-        return Err(push_error("The file changed while it was being pushed; run the command again."));
+        return Err(push_error(
+            "The file changed while it was being pushed; run the command again.",
+        ));
     }
-    let allowed: Vec<Device> = devices.iter().filter(|d| config.device_allowed(&d.id, Some(&d.name))).cloned().collect();
+    let allowed: Vec<Device> = devices
+        .iter()
+        .filter(|d| config.device_allowed(&d.id, Some(&d.name)))
+        .cloned()
+        .collect();
     if devices.is_empty() {
-        return Err(ControlEvent::Error { message: "No phone is paired with this PC.".into(), hint: Some("Run `unipi-host pair` and scan the QR code with UniPi.".into()) });
+        return Err(ControlEvent::Error {
+            message: "No phone is paired with this PC.".into(),
+            hint: Some("Run `unipi-host pair` and scan the QR code with UniPi.".into()),
+        });
     }
     if allowed.is_empty() {
         return Err(ControlEvent::Error {
             message: "None of the paired phones may receive pushes.".into(),
-            hint: Some(format!("Allowed: {}. Change it with `unipi-host push enable --device <name>`.", config.devices.join(", "))),
+            hint: Some(format!(
+                "Allowed: {}. Change it with `unipi-host push enable --device <name>`.",
+                config.devices.join(", ")
+            )),
         });
     }
     let targets: Vec<Device> = if filters.is_empty() {
@@ -524,7 +616,11 @@ pub fn prepare_push(
     } else {
         let picked: Vec<Device> = allowed
             .iter()
-            .filter(|d| filters.iter().any(|f| matches_device(f, &d.id, Some(&d.name))))
+            .filter(|d| {
+                filters
+                    .iter()
+                    .any(|f| matches_device(f, &d.id, Some(&d.name)))
+            })
             .cloned()
             .collect();
         if picked.is_empty() {
@@ -540,7 +636,13 @@ pub fn prepare_push(
         .filter(|n| !n.is_empty())
         .or_else(|| file.file_name().map(|n| n.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "file".into());
-    let name: String = name.rsplit(['/', '\\']).next().unwrap_or("file").chars().take(200).collect();
+    let name: String = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("file")
+        .chars()
+        .take(200)
+        .collect();
     let item = PushItem {
         id: PushId::try_from("pending".to_string()).expect("valid"),
         name,
@@ -548,7 +650,9 @@ pub fn prepare_push(
         sha256: Sha256Hex::try_from(sha256.to_string()).map_err(push_error)?,
         mime: mime_for(&file).to_string(),
         path: path.to_string(),
-        note: note.map(|n| n.chars().take(500).collect()).filter(|n: &String| !n.trim().is_empty()),
+        note: note
+            .map(|n| n.chars().take(500).collect())
+            .filter(|n: &String| !n.trim().is_empty()),
         created_at: 0,
     };
     let _ = paths;
@@ -610,7 +714,10 @@ pub async fn serve_control(ctx: ControlContext) -> anyhow::Result<tokio::task::J
     let path = socket_path(&ctx.paths);
     if path.exists() {
         if UnixStream::connect(&path).await.is_ok() {
-            anyhow::bail!("another `unipi-host serve` is already using {}", path.display());
+            anyhow::bail!(
+                "another `unipi-host serve` is already using {}",
+                path.display()
+            );
         }
         let _ = std::fs::remove_file(&path);
     }
@@ -621,7 +728,9 @@ pub async fn serve_control(ctx: ControlContext) -> anyhow::Result<tokio::task::J
     }
     Ok(tokio::spawn(async move {
         loop {
-            let Ok((stream, _)) = listener.accept().await else { continue };
+            let Ok((stream, _)) = listener.accept().await else {
+                continue;
+            };
             let ctx = ctx.clone();
             tokio::spawn(async move {
                 if let Err(error) = handle_control(ctx, stream).await {
@@ -650,14 +759,20 @@ pub async fn serve_control(ctx: ControlContext) -> anyhow::Result<tokio::task::J
     if ClientOptions::new().open(&name).is_ok() {
         anyhow::bail!("another `unipi-host serve` is already using {name}");
     }
-    let mut server = ServerOptions::new().first_pipe_instance(true).reject_remote_clients(true).create(&name)?;
+    let mut server = ServerOptions::new()
+        .first_pipe_instance(true)
+        .reject_remote_clients(true)
+        .create(&name)?;
     Ok(tokio::spawn(async move {
         loop {
             if server.connect().await.is_err() {
                 continue;
             }
             let connected = server;
-            server = match ServerOptions::new().reject_remote_clients(true).create(&name) {
+            server = match ServerOptions::new()
+                .reject_remote_clients(true)
+                .create(&name)
+            {
                 Ok(next) => next,
                 Err(error) => {
                     tracing::warn!(%error, "control pipe: can't create the next instance");
@@ -681,10 +796,14 @@ where
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     let (read, mut write) = tokio::io::split(stream);
     let mut lines = BufReader::new(read).lines();
-    let Some(line) = tokio::time::timeout(Duration::from_secs(10), lines.next_line()).await?? else {
+    let Some(line) = tokio::time::timeout(Duration::from_secs(10), lines.next_line()).await??
+    else {
         return Ok(());
     };
-    async fn send<W: tokio::io::AsyncWrite + Unpin>(write: &mut W, event: &ControlEvent) -> anyhow::Result<()> {
+    async fn send<W: tokio::io::AsyncWrite + Unpin>(
+        write: &mut W,
+        event: &ControlEvent,
+    ) -> anyhow::Result<()> {
         let mut bytes = serde_json::to_vec(event)?;
         bytes.push(b'\n');
         write.write_all(&bytes).await?;
@@ -699,7 +818,15 @@ where
         }
     };
     match request {
-        ControlRequest::List => send(&mut write, &ControlEvent::Pending { pushes: ctx.hub.all() }).await?,
+        ControlRequest::List => {
+            send(
+                &mut write,
+                &ControlEvent::Pending {
+                    pushes: ctx.hub.all(),
+                },
+            )
+            .await?
+        }
         ControlRequest::Cancel { id } => {
             let ids = ctx.hub.cancel(id.as_deref());
             send(&mut write, &ControlEvent::Cancelled { ids }).await?
@@ -707,23 +834,45 @@ where
         ControlRequest::Browser { request } => {
             let event = match crate::browser::control(&ctx.paths, request).await {
                 Ok(data) => ControlEvent::Browser { data },
-                Err(error) => ControlEvent::Error { message: error.message.as_str().to_string(), hint: error.hint.clone() },
+                Err(error) => ControlEvent::Error {
+                    message: error.message.as_str().to_string(),
+                    hint: error.hint.clone(),
+                },
             };
             send(&mut write, &event).await?
         }
         ControlRequest::Cron { request } => {
             let event = match ctx.cron.control(request).await {
                 Ok(data) => ControlEvent::Cron { data },
-                Err(message) => ControlEvent::Error { message, hint: None },
+                Err(message) => ControlEvent::Error {
+                    message,
+                    hint: None,
+                },
             };
             send(&mut write, &event).await?
         }
-        ControlRequest::Push { path, name, note, devices: filters, sha256, size, follow } => {
-            let config = crate::forward::HostConfig::load(&ctx.paths.config()).unwrap_or_default().push;
-            let devices = crate::devices::DeviceStore::new(ctx.paths.devices()).list().unwrap_or_default();
+        ControlRequest::Push {
+            path,
+            name,
+            note,
+            devices: filters,
+            sha256,
+            size,
+            follow,
+        } => {
+            let config = crate::forward::HostConfig::load(&ctx.paths.config())
+                .unwrap_or_default()
+                .push;
+            let devices = crate::devices::DeviceStore::new(ctx.paths.devices())
+                .list()
+                .unwrap_or_default();
             let prepared = tokio::task::spawn_blocking({
                 let paths = ctx.paths.clone();
-                move || prepare_push(&paths, &config, &devices, &path, name, note, &filters, &sha256, size)
+                move || {
+                    prepare_push(
+                        &paths, &config, &devices, &path, name, note, &filters, &sha256, size,
+                    )
+                }
             })
             .await?;
             let (item, targets) = match prepared {
@@ -737,11 +886,26 @@ where
             let target_ids: Vec<String> = targets.iter().map(|d| d.id.clone()).collect();
             let live = ctx.hub.any_live(&target_ids, now_ms());
             let id = ctx.hub.add(item.clone(), target_ids);
-            tracing::info!(op = "push", id, name = item.name, size = item.size, live, "queued");
-            let notified = if !live && ctx.notify { notify_push(&ctx.paths, &ctx.host_name, &item).await } else { false };
+            tracing::info!(
+                op = "push",
+                id,
+                name = item.name,
+                size = item.size,
+                live,
+                "queued"
+            );
+            let notified = if !live && ctx.notify {
+                notify_push(&ctx.paths, &ctx.host_name, &item).await
+            } else {
+                false
+            };
             send(
                 &mut write,
-                &ControlEvent::Queued { id: id.clone(), devices: targets.iter().map(|d| d.name.clone()).collect(), notified },
+                &ControlEvent::Queued {
+                    id: id.clone(),
+                    devices: targets.iter().map(|d| d.name.clone()).collect(),
+                    notified,
+                },
             )
             .await?;
             if !follow {
@@ -769,16 +933,23 @@ where
 }
 
 /// The CLI's end of the control channel.
-pub type ControlLines = tokio::io::Lines<tokio::io::BufReader<Box<dyn tokio::io::AsyncRead + Send + Unpin>>>;
+pub type ControlLines =
+    tokio::io::Lines<tokio::io::BufReader<Box<dyn tokio::io::AsyncRead + Send + Unpin>>>;
 pub type ControlWrite = Box<dyn tokio::io::AsyncWrite + Send + Unpin>;
 
 /// CLI side: sends one request and returns the event stream reader.
-pub async fn connect_control(paths: &HostPaths, request: &ControlRequest) -> anyhow::Result<(ControlLines, ControlWrite)> {
+pub async fn connect_control(
+    paths: &HostPaths,
+    request: &ControlRequest,
+) -> anyhow::Result<(ControlLines, ControlWrite)> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     #[cfg(unix)]
     let (where_, stream) = {
         let path = socket_path(paths);
-        (path.display().to_string(), tokio::net::UnixStream::connect(&path).await)
+        (
+            path.display().to_string(),
+            tokio::net::UnixStream::connect(&path).await,
+        )
     };
     #[cfg(windows)]
     let (where_, stream) = {
@@ -803,7 +974,12 @@ pub async fn connect_control(paths: &HostPaths, request: &ControlRequest) -> any
 
 /// Gating error for `push_done` from a device that may not use push.
 pub fn not_allowed() -> AppErrorDto {
-    AppErrorDto::new(AppErrorCode::E_UNAUTHORIZED, "Push is off for this phone on this PC", false).with_hint(ENABLE_HINT)
+    AppErrorDto::new(
+        AppErrorCode::E_UNAUTHORIZED,
+        "Push is off for this phone on this PC",
+        false,
+    )
+    .with_hint(ENABLE_HINT)
 }
 
 #[cfg(test)]
@@ -824,21 +1000,39 @@ mod tests {
     }
 
     fn device(id: &str, name: &str) -> Device {
-        Device { id: id.into(), name: name.into(), paired_at: 0, last_seen: None }
+        Device {
+            id: id.into(),
+            name: name.into(),
+            paired_at: 0,
+            last_seen: None,
+        }
     }
 
     #[test]
     fn config_gating_is_off_by_default_and_matches_devices() {
         let off = PushConfig::default();
         assert!(!off.device_allowed("abc", Some("Pixel")));
-        let all = PushConfig { enabled: true, devices: vec![] };
+        let all = PushConfig {
+            enabled: true,
+            devices: vec![],
+        };
         assert!(all.device_allowed("abc", None));
-        let pixel = PushConfig { enabled: true, devices: vec!["Pixel".into()] };
+        let pixel = PushConfig {
+            enabled: true,
+            devices: vec!["Pixel".into()],
+        };
         assert!(pixel.device_allowed("abc", Some("Pixel")));
         assert!(!pixel.device_allowed("abc", Some("Redmi")));
-        let prefix = PushConfig { enabled: true, devices: vec!["abcdef12".into()] };
+        let prefix = PushConfig {
+            enabled: true,
+            devices: vec!["abcdef12".into()],
+        };
         assert!(prefix.device_allowed("abcdef1234", None));
-        assert!(!PushConfig { enabled: true, devices: vec!["abc".into()] }.device_allowed("abcdef", None));
+        assert!(!PushConfig {
+            enabled: true,
+            devices: vec!["abc".into()]
+        }
+        .device_allowed("abcdef", None));
     }
 
     #[test]
@@ -848,9 +1042,16 @@ mod tests {
         std::fs::write(&path, r#"{"forwarding":{"enabled":true,"ports":"any"},"push":{"enabled":true,"devices":["Pixel"]},"other":1}"#).unwrap();
         let config = crate::forward::HostConfig::load(&path).unwrap();
         assert!(config.forwarding.enabled);
-        assert_eq!(config.push, PushConfig { enabled: true, devices: vec!["Pixel".into()] });
+        assert_eq!(
+            config.push,
+            PushConfig {
+                enabled: true,
+                devices: vec!["Pixel".into()]
+            }
+        );
         config.save(&path).unwrap();
-        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(raw["other"], 1);
         assert_eq!(raw["push"]["enabled"], true);
     }
@@ -866,15 +1067,39 @@ mod tests {
         assert!(hub.authorize_fetch("phone-a", "A", "/tmp/x.apk"));
         assert!(!hub.authorize_fetch("phone-c", "C", "/tmp/x.apk"));
         assert!(!hub.authorize_fetch("phone-a", "A", "/tmp/other"));
-        assert!(matches!(events.recv().await.unwrap(), ControlEvent::Fetching { .. }));
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            ControlEvent::Fetching { .. }
+        ));
         hub.done("phone-a", "A", &id, PushOutcome::Installed, None);
-        assert!(matches!(events.recv().await.unwrap(), ControlEvent::Done { outcome: PushOutcome::Installed, .. }));
-        assert!(hub.pending_for("phone-a").is_empty(), "answered: gone for A");
-        assert!(!hub.authorize_fetch("phone-a", "A", "/tmp/x.apk"), "answered: no more fetching");
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            ControlEvent::Done {
+                outcome: PushOutcome::Installed,
+                ..
+            }
+        ));
+        assert!(
+            hub.pending_for("phone-a").is_empty(),
+            "answered: gone for A"
+        );
+        assert!(
+            !hub.authorize_fetch("phone-a", "A", "/tmp/x.apk"),
+            "answered: no more fetching"
+        );
         assert_eq!(hub.pending_for("phone-b").len(), 1, "B still has it");
         hub.done("phone-b", "B", &id, PushOutcome::Dismissed, None);
-        assert!(matches!(events.recv().await.unwrap(), ControlEvent::Done { outcome: PushOutcome::Dismissed, .. }));
-        assert!(matches!(events.recv().await.unwrap(), ControlEvent::Finished { .. }));
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            ControlEvent::Done {
+                outcome: PushOutcome::Dismissed,
+                ..
+            }
+        ));
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            ControlEvent::Finished { .. }
+        ));
         assert!(hub.all().is_empty());
         // Idempotent: a second answer is ignored.
         hub.done("phone-b", "B", &id, PushOutcome::Saved, None);
@@ -891,11 +1116,17 @@ mod tests {
             async move { hub.list("p", Duration::from_secs(10)).await }
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
-        assert!(hub.any_live(&["p".into()], now_ms()), "a long-poll counts as live");
+        assert!(
+            hub.any_live(&["p".into()], now_ms()),
+            "a long-poll counts as live"
+        );
         // A push for someone else doesn't wake it with results…
         hub.add(item("/tmp/a"), vec!["other".into()]);
         hub.add(item("/tmp/b"), vec!["p".into()]);
-        let got = tokio::time::timeout(Duration::from_secs(2), waiter).await.unwrap().unwrap();
+        let got = tokio::time::timeout(Duration::from_secs(2), waiter)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].path, "/tmp/b");
     }
@@ -904,9 +1135,28 @@ mod tests {
     async fn disabled_config_lists_nothing_without_error() {
         let hub = PushHub::default();
         hub.add(item("/tmp/a"), vec!["p".into()]);
-        let off = list_for_device(&hub, &PushConfig::default(), "p", None, "pc", Duration::ZERO).await;
+        let off = list_for_device(
+            &hub,
+            &PushConfig::default(),
+            "p",
+            None,
+            "pc",
+            Duration::ZERO,
+        )
+        .await;
         assert!(!off.enabled && off.pushes.is_empty());
-        let on = list_for_device(&hub, &PushConfig { enabled: true, devices: vec![] }, "p", None, "pc", Duration::ZERO).await;
+        let on = list_for_device(
+            &hub,
+            &PushConfig {
+                enabled: true,
+                devices: vec![],
+            },
+            "p",
+            None,
+            "pc",
+            Duration::ZERO,
+        )
+        .await;
         assert!(on.enabled && on.pushes.len() == 1);
     }
 
@@ -919,7 +1169,8 @@ mod tests {
         let again = PushHub::new(Some(store.clone()));
         assert_eq!(again.all()[0].item.id.as_str(), id, "survives a restart");
         // Age it past the TTL.
-        let mut pushes: Vec<PendingPush> = serde_json::from_slice(&std::fs::read(&store).unwrap()).unwrap();
+        let mut pushes: Vec<PendingPush> =
+            serde_json::from_slice(&std::fs::read(&store).unwrap()).unwrap();
         pushes[0].item.created_at = now_ms() - PUSH_TTL_MS - 1;
         std::fs::write(&store, serde_json::to_vec(&pushes).unwrap()).unwrap();
         assert!(PushHub::new(Some(store)).all().is_empty());
@@ -944,34 +1195,158 @@ mod tests {
         std::fs::write(&file, b"apk").unwrap();
         let (sha, size) = sha256_file(&file).unwrap();
         let path = file.to_string_lossy().into_owned();
-        let devices = vec![device("aaaaaaaaaaaa", "Pixel"), device("bbbbbbbbbbbb", "Redmi")];
-        let on = PushConfig { enabled: true, devices: vec![] };
+        let devices = vec![
+            device("aaaaaaaaaaaa", "Pixel"),
+            device("bbbbbbbbbbbb", "Redmi"),
+        ];
+        let on = PushConfig {
+            enabled: true,
+            devices: vec![],
+        };
         // Off by default.
-        let err = prepare_push(&paths, &PushConfig::default(), &devices, &path, None, None, &[], &sha, size).unwrap_err();
-        assert!(matches!(err, ControlEvent::Error { hint: Some(ref h), .. } if h.contains("push enable")));
+        let err = prepare_push(
+            &paths,
+            &PushConfig::default(),
+            &devices,
+            &path,
+            None,
+            None,
+            &[],
+            &sha,
+            size,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, ControlEvent::Error { hint: Some(ref h), .. } if h.contains("push enable"))
+        );
         // Happy path, all devices, apk mime.
-        let (item, targets) = prepare_push(&paths, &on, &devices, &path, None, Some("hi".into()), &[], &sha, size).unwrap();
-        assert_eq!((item.name.as_str(), item.mime.as_str(), targets.len()), ("app.apk", "application/vnd.android.package-archive", 2));
+        let (item, targets) = prepare_push(
+            &paths,
+            &on,
+            &devices,
+            &path,
+            None,
+            Some("hi".into()),
+            &[],
+            &sha,
+            size,
+        )
+        .unwrap();
+        assert_eq!(
+            (item.name.as_str(), item.mime.as_str(), targets.len()),
+            ("app.apk", "application/vnd.android.package-archive", 2)
+        );
         assert_eq!(item.note.as_deref(), Some("hi"));
         // --device filter.
-        let (_, targets) = prepare_push(&paths, &on, &devices, &path, None, None, &["Redmi".into()], &sha, size).unwrap();
+        let (_, targets) = prepare_push(
+            &paths,
+            &on,
+            &devices,
+            &path,
+            None,
+            None,
+            &["Redmi".into()],
+            &sha,
+            size,
+        )
+        .unwrap();
         assert_eq!(targets[0].name, "Redmi");
-        assert!(prepare_push(&paths, &on, &devices, &path, None, None, &["Nope".into()], &sha, size).is_err());
+        assert!(prepare_push(
+            &paths,
+            &on,
+            &devices,
+            &path,
+            None,
+            None,
+            &["Nope".into()],
+            &sha,
+            size
+        )
+        .is_err());
         // Config device grant narrows the targets.
-        let pixel_only = PushConfig { enabled: true, devices: vec!["Pixel".into()] };
-        let (_, targets) = prepare_push(&paths, &pixel_only, &devices, &path, None, None, &[], &sha, size).unwrap();
+        let pixel_only = PushConfig {
+            enabled: true,
+            devices: vec!["Pixel".into()],
+        };
+        let (_, targets) = prepare_push(
+            &paths,
+            &pixel_only,
+            &devices,
+            &path,
+            None,
+            None,
+            &[],
+            &sha,
+            size,
+        )
+        .unwrap();
         assert_eq!(targets.len(), 1);
-        assert!(prepare_push(&paths, &pixel_only, &devices, &path, None, None, &["Redmi".into()], &sha, size).is_err());
+        assert!(prepare_push(
+            &paths,
+            &pixel_only,
+            &devices,
+            &path,
+            None,
+            None,
+            &["Redmi".into()],
+            &sha,
+            size
+        )
+        .is_err());
         // No paired phones.
         assert!(prepare_push(&paths, &on, &[], &path, None, None, &[], &sha, size).is_err());
         // The file changed after the CLI hashed it.
-        assert!(prepare_push(&paths, &on, &devices, &path, None, None, &[], &"0".repeat(64), size).is_err());
+        assert!(prepare_push(
+            &paths,
+            &on,
+            &devices,
+            &path,
+            None,
+            None,
+            &[],
+            &"0".repeat(64),
+            size
+        )
+        .is_err());
         // Not a file / relative / empty.
-        assert!(prepare_push(&paths, &on, &devices, &dir.path().to_string_lossy(), None, None, &[], &sha, size).is_err());
-        assert!(prepare_push(&paths, &on, &devices, "app.apk", None, None, &[], &sha, size).is_err());
+        assert!(prepare_push(
+            &paths,
+            &on,
+            &devices,
+            &dir.path().to_string_lossy(),
+            None,
+            None,
+            &[],
+            &sha,
+            size
+        )
+        .is_err());
+        assert!(prepare_push(
+            &paths,
+            &on,
+            &devices,
+            "app.apk",
+            None,
+            None,
+            &[],
+            &sha,
+            size
+        )
+        .is_err());
         let empty = dir.path().join("empty");
         std::fs::write(&empty, b"").unwrap();
-        assert!(prepare_push(&paths, &on, &devices, &empty.to_string_lossy(), None, None, &[], &sha, 0).is_err());
+        assert!(prepare_push(
+            &paths,
+            &on,
+            &devices,
+            &empty.to_string_lossy(),
+            None,
+            None,
+            &[],
+            &sha,
+            0
+        )
+        .is_err());
     }
 
     #[test]
@@ -979,7 +1354,10 @@ mod tests {
         assert_eq!(human_size(12 * 1024 * 1024), "12.0 MB");
         assert_eq!(human_size(640 * 1024), "640 KB");
         assert_eq!(human_size(12), "12 B");
-        assert_eq!(mime_for(Path::new("/x/A.APK")), "application/vnd.android.package-archive");
+        assert_eq!(
+            mime_for(Path::new("/x/A.APK")),
+            "application/vnd.android.package-archive"
+        );
         assert_eq!(mime_for(Path::new("/x/y")), "application/octet-stream");
     }
 }

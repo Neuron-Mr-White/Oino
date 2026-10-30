@@ -15,9 +15,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
+pub use crate::fs_scope::FsScope;
 use sha2::{Digest, Sha256};
 use tokio::process::Command;
-pub use crate::fs_scope::FsScope;
 use unipi_proto::{
     AppErrorCode, AppErrorDto, EntryKind, FsConflictDetail, FsEntry, FsListData, FsReadData,
     FsRootsData, FsSearchData, FsSearchResult, FsStatData, FsWriteData, SearchKind, SearchQuery,
@@ -65,7 +65,11 @@ pub fn resolve_request_path(raw: &str, home: &Path) -> Result<PathBuf, AppErrorD
 }
 
 /// [`resolve_request_path`] + [`canonicalize_scoped`] for existing paths.
-pub fn scoped_for_request(raw: &str, scope: &FsScope, outside: bool) -> Result<PathBuf, AppErrorDto> {
+pub fn scoped_for_request(
+    raw: &str,
+    scope: &FsScope,
+    outside: bool,
+) -> Result<PathBuf, AppErrorDto> {
     canonicalize_scoped(&resolve_request_path(raw, &scope.home)?, scope, outside)
 }
 
@@ -113,7 +117,11 @@ fn home_missing_message() -> &'static str {
 /// is set. Returns the canonical path. The path must already exist
 /// (callers that need to create a new file use [`canonicalize_for_write`]
 /// instead).
-pub fn canonicalize_scoped(path: &Path, scope: &FsScope, outside: bool) -> Result<PathBuf, AppErrorDto> {
+pub fn canonicalize_scoped(
+    path: &Path,
+    scope: &FsScope,
+    outside: bool,
+) -> Result<PathBuf, AppErrorDto> {
     let canon = dunce::canonicalize(path)
         .map_err(|e| not_found(format!("can't resolve {}: {e}", path.display())))?;
     check_scope(&canon, scope, outside)?;
@@ -136,29 +144,31 @@ fn check_scope(canon: &Path, allowed: &FsScope, outside: bool) -> Result<(), App
     }
 }
 
-/// A live pi session's working directory (bridge discovery records) is in
-/// scope too, wherever it is: `fs_roots` offers it, so it must open
-/// (e.g. a project under /tmp or /srv). `$HOME` itself is never the only
-/// gate for the user's own sessions.
-fn under_session_cwd(canon: &Path) -> bool {
-    let Some(dir) = crate::chat::bridge_dir() else { return false };
-    crate::chat::read_bridges(&dir).into_iter().filter_map(|r| r.cwd).any(|cwd| {
-        let cwd = PathBuf::from(cwd);
-        let cwd = dunce::canonicalize(&cwd).unwrap_or(cwd);
-        // Never widen to "/" (a session started at the filesystem root).
-        cwd.components().count() > 1 && canon.starts_with(&cwd)
-    })
+/// A live session's working directory is in scope too, wherever it is:
+/// `fs_roots` offers it, so it must open (e.g. a project under /tmp or
+/// /srv). `$HOME` itself is never the only gate for the user's own
+/// sessions. The app-bridge discovery is gone with v2; hub session cwds
+/// rejoin this gate when the session hub lands (host.md §9.1).
+fn under_session_cwd(_canon: &Path) -> bool {
+    false
 }
 
 /// Resolves `path` for a write/create/rename/mkdir target: the parent
 /// directory is canonicalized and scope-checked (so a symlinked parent
 /// can't be used to escape the scope), then the final component is
 /// joined back on verbatim — the target itself need not exist yet.
-pub fn canonicalize_for_write(path: &Path, scope: &FsScope, outside: bool) -> Result<PathBuf, AppErrorDto> {
+pub fn canonicalize_for_write(
+    path: &Path,
+    scope: &FsScope,
+    outside: bool,
+) -> Result<PathBuf, AppErrorDto> {
     let name = path
         .file_name()
         .ok_or_else(|| scope_err("path has no file name"))?;
-    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     let canon_parent = dunce::canonicalize(parent)
         .map_err(|e| not_found(format!("can't resolve {}: {e}", parent.display())))?;
     check_scope(&canon_parent, scope, outside)?;
@@ -275,7 +285,8 @@ fn matches_ignore(name: &str, is_dir: bool, patterns: &[String]) -> bool {
 /// at [`FS_LIST_CAP`] with `more`; git status when the directory is
 /// inside a repo.
 pub async fn list(dir: &Path, hidden: bool) -> Result<FsListData, AppErrorDto> {
-    let read_dir = std::fs::read_dir(dir).map_err(|e| not_found(format!("can't list {}: {e}", dir.display())))?;
+    let read_dir = std::fs::read_dir(dir)
+        .map_err(|e| not_found(format!("can't list {}: {e}", dir.display())))?;
     let patterns = gitignore_patterns(dir);
     let repo_root = repo_root_of(dir);
     let git_map = if let Some(root) = &repo_root {
@@ -333,11 +344,16 @@ pub async fn list(dir: &Path, hidden: bool) -> Result<FsListData, AppErrorDto> {
     rows.sort_by(|a, b| {
         let a_dir = matches!(a.kind, EntryKind::Dir);
         let b_dir = matches!(b.kind, EntryKind::Dir);
-        b_dir.cmp(&a_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        b_dir
+            .cmp(&a_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     let more = rows.len() > FS_LIST_CAP;
     rows.truncate(FS_LIST_CAP);
-    Ok(FsListData { entries: rows, more })
+    Ok(FsListData {
+        entries: rows,
+        more,
+    })
 }
 
 fn hex_digest(bytes: &[u8]) -> String {
@@ -359,9 +375,13 @@ fn hex_digest(bytes: &[u8]) -> String {
 /// (invalid sequences become U+FFFD) and returned as those replacement
 /// bytes -- still capped by `FS_READ_CAP` like any other read.
 pub fn read_text(path: &Path, as_text: bool) -> Result<(Vec<u8>, FsReadData), AppErrorDto> {
-    let meta = std::fs::metadata(path).map_err(|e| not_found(format!("can't stat {}: {e}", path.display())))?;
+    let meta = std::fs::metadata(path)
+        .map_err(|e| not_found(format!("can't stat {}: {e}", path.display())))?;
     if meta.is_dir() {
-        return Err(err(AppErrorCode::E_UNSUPPORTED, "That's a directory, not a file"));
+        return Err(err(
+            AppErrorCode::E_UNSUPPORTED,
+            "That's a directory, not a file",
+        ));
     }
     let size = meta.len();
     let truncated = size > FS_READ_CAP;
@@ -393,7 +413,8 @@ pub fn read_text(path: &Path, as_text: bool) -> Result<(Vec<u8>, FsReadData), Ap
 
 fn read_head(path: &Path, cap: u64) -> Result<Vec<u8>, AppErrorDto> {
     use std::io::Read;
-    let mut file = std::fs::File::open(path).map_err(|e| internal(format!("can't read {}: {e}", path.display())))?;
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| internal(format!("can't read {}: {e}", path.display())))?;
     let mut buf = vec![0u8; cap as usize];
     let n = file.read(&mut buf).map_err(internal)?;
     buf.truncate(n);
@@ -412,7 +433,10 @@ pub fn write_text(
 ) -> Result<FsWriteData, AppErrorDto> {
     let existing = std::fs::metadata(path).ok();
     if existing.is_none() && !create {
-        return Err(not_found(format!("{} doesn't exist (pass create:true to make it)", path.display())));
+        return Err(not_found(format!(
+            "{} doesn't exist (pass create:true to make it)",
+            path.display()
+        )));
     }
     if let Some(expected) = base_hash {
         match &existing {
@@ -421,20 +445,26 @@ pub fn write_text(
                 let current_hash = hex_digest(&current);
                 if current_hash != expected {
                     let meta = std::fs::metadata(path).map_err(internal)?;
-                    return Err(err(AppErrorCode::E_CONFLICT, "The file changed since you read it")
-                        .with_detail(
-                            serde_json::to_value(FsConflictDetail {
-                                hash: current_hash,
-                                mtime: mtime_ms(&meta),
-                            })
-                            .map_err(internal)?,
-                        ));
+                    return Err(err(
+                        AppErrorCode::E_CONFLICT,
+                        "The file changed since you read it",
+                    )
+                    .with_detail(
+                        serde_json::to_value(FsConflictDetail {
+                            hash: current_hash,
+                            mtime: mtime_ms(&meta),
+                        })
+                        .map_err(internal)?,
+                    ));
                 }
             }
             None => {
                 // base_hash given but file doesn't exist: treat as a
                 // conflict too (someone deleted it since the read).
-                return Err(err(AppErrorCode::E_CONFLICT, "The file was deleted since you read it"));
+                return Err(err(
+                    AppErrorCode::E_CONFLICT,
+                    "The file was deleted since you read it",
+                ));
             }
         }
     }
@@ -443,9 +473,15 @@ pub fn write_text(
         use std::os::unix::fs::PermissionsExt;
         m.permissions().mode()
     });
-    let dir = path.parent().ok_or_else(|| internal("path has no parent"))?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| internal("path has no parent"))?;
     std::fs::create_dir_all(dir).map_err(internal)?;
-    let tmp = dir.join(format!(".tmp-{}-{:016x}", std::process::id(), rand::random::<u64>()));
+    let tmp = dir.join(format!(
+        ".tmp-{}-{:016x}",
+        std::process::id(),
+        rand::random::<u64>()
+    ));
     {
         use std::io::Write;
         let mut options = std::fs::OpenOptions::new();
@@ -469,7 +505,8 @@ pub fn write_text(
 
 /// `fs_stat`.
 pub async fn stat(path: &Path) -> Result<FsStatData, AppErrorDto> {
-    let symlink_meta = std::fs::symlink_metadata(path).map_err(|e| not_found(format!("can't stat {}: {e}", path.display())))?;
+    let symlink_meta = std::fs::symlink_metadata(path)
+        .map_err(|e| not_found(format!("can't stat {}: {e}", path.display())))?;
     let is_symlink = symlink_meta.is_symlink();
     let meta = if is_symlink {
         std::fs::metadata(path).unwrap_or_else(|_| symlink_meta.clone())
@@ -479,7 +516,9 @@ pub async fn stat(path: &Path) -> Result<FsStatData, AppErrorDto> {
     let kind = entry_kind(&meta, is_symlink);
     let git = if let Some(root) = repo_root_of(path.parent().unwrap_or(path)) {
         let map = git_status(&root).await;
-        path.strip_prefix(&root).ok().and_then(|rel| map.get(rel).cloned())
+        path.strip_prefix(&root)
+            .ok()
+            .and_then(|rel| map.get(rel).cloned())
     } else {
         None
     };
@@ -496,7 +535,11 @@ const SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// `fs_search`: prefers `fd`/`rg` if on `PATH`, otherwise a bounded
 /// manual walk; capped at [`FS_SEARCH_CAP`] results and `SEARCH_TIMEOUT`.
-pub async fn search(root: &Path, query: &SearchQuery, kind: SearchKind) -> Result<FsSearchData, AppErrorDto> {
+pub async fn search(
+    root: &Path,
+    query: &SearchQuery,
+    kind: SearchKind,
+) -> Result<FsSearchData, AppErrorDto> {
     match kind {
         SearchKind::Name => search_name(root, query.as_str()).await,
         SearchKind::Content => search_content(root, query.as_str()).await,
@@ -504,12 +547,15 @@ pub async fn search(root: &Path, query: &SearchQuery, kind: SearchKind) -> Resul
 }
 
 async fn tool_available(name: &str) -> bool {
-    tokio::time::timeout(Duration::from_secs(2), Command::new(name).arg("--version").output())
-        .await
-        .ok()
-        .and_then(|r| r.ok())
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        Command::new(name).arg("--version").output(),
+    )
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .map(|o| o.status.success())
+    .unwrap_or(false)
 }
 
 async fn search_name(root: &Path, query: &str) -> Result<FsSearchData, AppErrorDto> {
@@ -532,7 +578,11 @@ async fn search_name(root: &Path, query: &str) -> Result<FsSearchData, AppErrorD
                 let results: Vec<FsSearchResult> = text
                     .lines()
                     .take(FS_SEARCH_CAP)
-                    .map(|line| FsSearchResult { path: line.to_string(), line: None, preview: None })
+                    .map(|line| FsSearchResult {
+                        path: line.to_string(),
+                        line: None,
+                        preview: None,
+                    })
                     .collect();
                 let more = text.lines().count() > FS_SEARCH_CAP;
                 return Ok(FsSearchData { results, more });
@@ -558,7 +608,9 @@ fn walk_name(root: &Path, query: &str) -> Result<FsSearchData, AppErrorDto> {
         if depth > 24 {
             continue;
         }
-        let Ok(read_dir) = std::fs::read_dir(&dir) else { continue };
+        let Ok(read_dir) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for item in read_dir.flatten() {
             let name = item.file_name().to_string_lossy().into_owned();
             if name == ".git" || name == "node_modules" || name == "target" {
@@ -566,7 +618,11 @@ fn walk_name(root: &Path, query: &str) -> Result<FsSearchData, AppErrorDto> {
             }
             let path = item.path();
             if name.to_lowercase().contains(&query_lower) {
-                results.push(FsSearchResult { path: path.to_string_lossy().into_owned(), line: None, preview: None });
+                results.push(FsSearchResult {
+                    path: path.to_string_lossy().into_owned(),
+                    line: None,
+                    preview: None,
+                });
                 if results.len() >= FS_SEARCH_CAP {
                     more = true;
                     break;
@@ -604,7 +660,11 @@ async fn search_content(root: &Path, query: &str) -> Result<FsSearchData, AppErr
                 for line in text.lines().take(FS_SEARCH_CAP) {
                     // path:line:text
                     let mut parts = line.splitn(3, ':');
-                    let (Some(path), Some(lineno), Some(preview)) = (parts.next(), parts.next(), parts.next()) else { continue };
+                    let (Some(path), Some(lineno), Some(preview)) =
+                        (parts.next(), parts.next(), parts.next())
+                    else {
+                        continue;
+                    };
                     results.push(FsSearchResult {
                         path: path.to_string(),
                         line: lineno.parse().ok(),
@@ -632,7 +692,9 @@ fn walk_content(root: &Path, query: &str) -> Result<FsSearchData, AppErrorDto> {
         if depth > 24 {
             continue;
         }
-        let Ok(read_dir) = std::fs::read_dir(&dir) else { continue };
+        let Ok(read_dir) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for item in read_dir.flatten() {
             let name = item.file_name().to_string_lossy().into_owned();
             if name == ".git" || name == "node_modules" || name == "target" {
@@ -648,7 +710,9 @@ fn walk_content(root: &Path, query: &str) -> Result<FsSearchData, AppErrorDto> {
             if meta.len() > 2 * 1024 * 1024 {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
             for (i, line) in text.lines().enumerate() {
                 if line.contains(query) {
                     results.push(FsSearchResult {
@@ -674,12 +738,19 @@ fn walk_content(root: &Path, query: &str) -> Result<FsSearchData, AppErrorDto> {
 
 /// `fs_mkdir`.
 pub fn mkdir(path: &Path) -> Result<(), AppErrorDto> {
-    std::fs::create_dir_all(path).map_err(|e| internal(format!("can't create {}: {e}", path.display())))
+    std::fs::create_dir_all(path)
+        .map_err(|e| internal(format!("can't create {}: {e}", path.display())))
 }
 
 /// `fs_rename`.
 pub fn rename(from: &Path, to: &Path) -> Result<(), AppErrorDto> {
-    std::fs::rename(from, to).map_err(|e| internal(format!("can't rename {} to {}: {e}", from.display(), to.display())))
+    std::fs::rename(from, to).map_err(|e| {
+        internal(format!(
+            "can't rename {} to {}: {e}",
+            from.display(),
+            to.display()
+        ))
+    })
 }
 
 /// `fs_import` (UNI-199): copies an already-uploaded blob
@@ -687,20 +758,35 @@ pub fn rename(from: &Path, to: &Path) -> Result<(), AppErrorDto> {
 /// overwrite an existing file unless `overwrite:true`. `create_parent`
 /// is set by the caller only for the default uploads folder (so a
 /// typo'd "this folder" destination never silently creates a new tree).
-pub fn import_blob(blobs_dir: &Path, sha256: &str, to: &Path, overwrite: bool, create_parent: bool) -> Result<(), AppErrorDto> {
+pub fn import_blob(
+    blobs_dir: &Path,
+    sha256: &str,
+    to: &Path,
+    overwrite: bool,
+    create_parent: bool,
+) -> Result<(), AppErrorDto> {
     let source = blobs_dir.join(sha256);
     if !source.is_file() {
         return Err(not_found(format!("no uploaded blob {sha256}")));
     }
     if to.exists() && !overwrite {
-        return Err(err(AppErrorCode::E_CONFLICT, format!("{} already exists", to.display())));
+        return Err(err(
+            AppErrorCode::E_CONFLICT,
+            format!("{} already exists", to.display()),
+        ));
     }
     if create_parent {
         if let Some(dir) = to.parent() {
             std::fs::create_dir_all(dir).map_err(internal)?;
         }
     }
-    std::fs::copy(&source, to).map_err(|e| internal(format!("can't copy {} to {}: {e}", source.display(), to.display())))?;
+    std::fs::copy(&source, to).map_err(|e| {
+        internal(format!(
+            "can't copy {} to {}: {e}",
+            source.display(),
+            to.display()
+        ))
+    })?;
     Ok(())
 }
 
@@ -711,17 +797,20 @@ pub fn delete(path: &Path, home: &Path, roots: &[PathBuf]) -> Result<(), AppErro
     if path == home || roots.iter().any(|r| r == path) {
         return Err(scope_err("Can't delete a root directory"));
     }
-    let meta = std::fs::symlink_metadata(path).map_err(|e| not_found(format!("can't stat {}: {e}", path.display())))?;
+    let meta = std::fs::symlink_metadata(path)
+        .map_err(|e| not_found(format!("can't stat {}: {e}", path.display())))?;
     if meta.is_dir() && !meta.is_symlink() {
-        std::fs::remove_dir_all(path).map_err(|e| internal(format!("can't delete {}: {e}", path.display())))
+        std::fs::remove_dir_all(path)
+            .map_err(|e| internal(format!("can't delete {}: {e}", path.display())))
     } else {
-        std::fs::remove_file(path).map_err(|e| internal(format!("can't delete {}: {e}", path.display())))
+        std::fs::remove_file(path)
+            .map_err(|e| internal(format!("can't delete {}: {e}", path.display())))
     }
 }
 
 /// `fs_roots`: `$HOME`, then the extra safe roots in effect (`/tmp`, …;
-/// UNI-220), then every live pi/herdr/tmux pane's cwd (deduplicated,
-/// canonicalized where possible, home listed first).
+/// UNI-220), deduplicated and canonicalized where possible, home first.
+/// Hub session cwds join this list with the session hub (host.md §9.1).
 pub async fn roots(scope: &FsScope) -> Result<FsRootsData, AppErrorDto> {
     let home = scope.home.clone();
     let mut seen: HashSet<PathBuf> = HashSet::new();
@@ -735,45 +824,6 @@ pub async fn roots(scope: &FsScope) -> Result<FsRootsData, AppErrorDto> {
     push(home.clone());
     for extra in &scope.extra {
         push(extra.clone());
-    }
-
-    // Bridges (pi chat sessions): their recorded cwd.
-    if let Some(dir) = crate::chat::bridge_dir() {
-        for record in crate::chat::read_bridges(&dir) {
-            if let Some(cwd) = record.cwd {
-                push(PathBuf::from(cwd));
-            }
-        }
-    }
-
-    // herdr panes' cwd, cheaply (best-effort: herdr may not be installed).
-    if let Ok(state) = crate::mux::herdr::tree().await {
-        if let Some(sessions) = state.sessions {
-            for session in sessions {
-                for workspace in session.workspaces {
-                    for tab in workspace.tabs {
-                        for pane in tab.panes {
-                            if let Some(cwd) = pane.cwd {
-                                push(PathBuf::from(cwd));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // tmux panes' cwd.
-    if let Ok(state) = crate::mux::tmux::tree().await {
-        if let Some(sessions) = state.sessions {
-            for session in sessions {
-                for window in session.windows {
-                    for pane in window.panes {
-                        push(PathBuf::from(pane.cwd));
-                    }
-                }
-            }
-        }
     }
 
     Ok(FsRootsData { roots: out })
@@ -825,11 +875,21 @@ mod tests {
     fn resolve_request_path_expands_tilde_and_rejects_relative() {
         let home = std::path::Path::new("/home/u");
         assert_eq!(resolve_request_path("~", home).unwrap(), home);
-        assert_eq!(resolve_request_path("~/proj/a.ts", home).unwrap(), std::path::Path::new("/home/u/proj/a.ts"));
-        assert_eq!(resolve_request_path("/etc/hosts", home).unwrap(), std::path::Path::new("/etc/hosts"));
+        assert_eq!(
+            resolve_request_path("~/proj/a.ts", home).unwrap(),
+            std::path::Path::new("/home/u/proj/a.ts")
+        );
+        assert_eq!(
+            resolve_request_path("/etc/hosts", home).unwrap(),
+            std::path::Path::new("/etc/hosts")
+        );
         let err = resolve_request_path("src/a.ts", home).unwrap_err();
         assert_eq!(err.code, AppErrorCode::E_SCHEMA);
-        assert!(err.message.as_str().contains("path must be absolute"), "{}", err.message.as_str());
+        assert!(
+            err.message.as_str().contains("path must be absolute"),
+            "{}",
+            err.message.as_str()
+        );
     }
 
     #[test]
@@ -878,10 +938,15 @@ mod tests {
         fs::create_dir_all(&home).unwrap();
         fs::create_dir_all(extra.join("sub")).unwrap();
         let file = write(&extra.join("sub"), "a.txt", "x");
-        let scope = FsScope { home: home.clone(), extra: vec![extra.canonicalize().unwrap()], deny: vec![] };
+        let scope = FsScope {
+            home: home.clone(),
+            extra: vec![extra.canonicalize().unwrap()],
+            deny: vec![],
+        };
         assert!(canonicalize_scoped(&file, &scope, false).is_ok());
         assert!(canonicalize_scoped(&extra, &scope, false).is_ok());
-        let target = canonicalize_for_write(&extra.join("sub").join("new.txt"), &scope, false).unwrap();
+        let target =
+            canonicalize_for_write(&extra.join("sub").join("new.txt"), &scope, false).unwrap();
         write_text(&target, "hi", None, true).unwrap();
         assert_eq!(fs::read_to_string(extra.join("sub/new.txt")).unwrap(), "hi");
         // A sibling of the extra root is still out of scope.
@@ -889,7 +954,11 @@ mod tests {
         fs::create_dir_all(&other).unwrap();
         let err = canonicalize_scoped(&write(&other, "o.txt", "o"), &scope, false).unwrap_err();
         assert_eq!(err.code, AppErrorCode::E_SCOPE);
-        assert!(err.message.as_str().contains("unipi-host fs allow"), "{}", err.message.as_str());
+        assert!(
+            err.message.as_str().contains("unipi-host fs allow"),
+            "{}",
+            err.message.as_str()
+        );
         assert!(canonicalize_for_write(&other.join("n.txt"), &scope, false).is_err());
     }
 
@@ -908,11 +977,17 @@ mod tests {
         std::os::unix::fs::symlink(&secret, extra.join("link.txt")).unwrap();
         std::os::unix::fs::symlink(&outside, extra.join("dirlink")).unwrap();
         std::os::unix::fs::symlink("/etc", extra.join("etc")).unwrap();
-        let scope = FsScope { home, extra: vec![extra.canonicalize().unwrap()], deny: vec![] };
+        let scope = FsScope {
+            home,
+            extra: vec![extra.canonicalize().unwrap()],
+            deny: vec![],
+        };
         assert!(canonicalize_scoped(&extra.join("link.txt"), &scope, false).is_err());
         assert!(canonicalize_scoped(&extra.join("dirlink"), &scope, false).is_err());
         assert!(canonicalize_scoped(&extra.join("etc/hostname"), &scope, false).is_err());
-        assert!(canonicalize_for_write(&extra.join("dirlink").join("x.txt"), &scope, false).is_err());
+        assert!(
+            canonicalize_for_write(&extra.join("dirlink").join("x.txt"), &scope, false).is_err()
+        );
         // `..` spelled through the root is judged by where it lands.
         assert!(canonicalize_scoped(&extra.join("../outside/secret.txt"), &scope, false).is_err());
     }
@@ -924,10 +999,20 @@ mod tests {
         let extra = tmp.path().join("scratch");
         fs::create_dir_all(&home).unwrap();
         fs::create_dir_all(&extra).unwrap();
-        let scope = FsScope { home: home.canonicalize().unwrap(), extra: vec![extra.canonicalize().unwrap()], deny: vec![] };
+        let scope = FsScope {
+            home: home.canonicalize().unwrap(),
+            extra: vec![extra.canonicalize().unwrap()],
+            deny: vec![],
+        };
         let data = roots(&scope).await.unwrap();
-        assert_eq!(data.roots[0], home.canonicalize().unwrap().to_string_lossy());
-        assert_eq!(data.roots[1], extra.canonicalize().unwrap().to_string_lossy());
+        assert_eq!(
+            data.roots[0],
+            home.canonicalize().unwrap().to_string_lossy()
+        );
+        assert_eq!(
+            data.roots[1],
+            extra.canonicalize().unwrap().to_string_lossy()
+        );
     }
 
     #[test]
@@ -998,7 +1083,10 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, AppErrorCode::E_CONFLICT);
         // Still readable afterwards (write was refused, no partial state).
-        assert_eq!(fs::read_to_string(&path).unwrap(), "changed by someone else");
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "changed by someone else"
+        );
     }
 
     #[test]
@@ -1033,7 +1121,7 @@ mod tests {
         let root2 = tmp.path().join("root2");
         fs::create_dir_all(&root2).unwrap();
         assert!(delete(&home, &home, &[]).is_err());
-        assert!(delete(&root2, &home, &[root2.clone()]).is_err());
+        assert!(delete(&root2, &home, std::slice::from_ref(&root2)).is_err());
         let file = write(&home, "ok.txt", "x");
         assert!(delete(&file, &home, &[]).is_ok());
         assert!(!file.exists());
@@ -1056,9 +1144,13 @@ mod tests {
         let root = tmp.path();
         write(root, "needle.txt", "x");
         write(root, "other.txt", "x");
-        let data = search(root, &SearchQuery::try_from("needle".to_string()).unwrap(), SearchKind::Name)
-            .await
-            .unwrap();
+        let data = search(
+            root,
+            &SearchQuery::try_from("needle".to_string()).unwrap(),
+            SearchKind::Name,
+        )
+        .await
+        .unwrap();
         assert!(data.results.iter().any(|r| r.path.contains("needle.txt")));
         assert!(!data.results.iter().any(|r| r.path.contains("other.txt")));
     }
@@ -1069,10 +1161,17 @@ mod tests {
         let root = tmp.path();
         write(root, "a.txt", "nothing here");
         write(root, "b.txt", "line one\nTODO: fix this\nline three");
-        let data = search(root, &SearchQuery::try_from("TODO".to_string()).unwrap(), SearchKind::Content)
-            .await
-            .unwrap();
-        assert!(data.results.iter().any(|r| r.path.ends_with("b.txt") && r.line == Some(2)));
+        let data = search(
+            root,
+            &SearchQuery::try_from("TODO".to_string()).unwrap(),
+            SearchKind::Content,
+        )
+        .await
+        .unwrap();
+        assert!(data
+            .results
+            .iter()
+            .any(|r| r.path.ends_with("b.txt") && r.line == Some(2)));
     }
 
     #[test]

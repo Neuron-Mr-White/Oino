@@ -57,7 +57,10 @@ pub fn serve(handler: Handler) -> std::io::Result<tokio::task::JoinHandle<()>> {
             let handler = handler.clone();
             tokio::spawn(async move {
                 let (read, write) = stream.into_split();
-                if let Err(error) = handler.handle(read, write, crate::protocol::Peer::Local).await {
+                if let Err(error) = handler
+                    .handle(read, write, crate::protocol::Peer::Local)
+                    .await
+                {
                     tracing::debug!(%error, "local stream ended");
                 }
             });

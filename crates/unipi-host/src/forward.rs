@@ -136,15 +136,23 @@ impl ForwardingConfig {
     }
 
     /// The gate every forwarding request goes through.
-    pub fn check_device(&self, device_id: &str, device_name: Option<&str>) -> Result<(), AppErrorDto> {
+    pub fn check_device(
+        &self,
+        device_id: &str,
+        device_name: Option<&str>,
+    ) -> Result<(), AppErrorDto> {
         if !self.enabled {
             return Err(disabled("Port forwarding is off on this PC"));
         }
         if matches!(self.ports, PortRule::None) {
-            return Err(disabled("Port forwarding is on but no ports are allowed on this PC"));
+            return Err(disabled(
+                "Port forwarding is on but no ports are allowed on this PC",
+            ));
         }
         if !self.device_allowed(device_id, device_name) {
-            return Err(disabled("This phone is not allowed to forward ports on this PC"));
+            return Err(disabled(
+                "This phone is not allowed to forward ports on this PC",
+            ));
         }
         Ok(())
     }
@@ -158,7 +166,9 @@ impl ForwardingConfig {
                 format!("Port {port} is not in this PC's forwarding allow-list"),
                 false,
             )
-            .with_hint(format!("On the PC run `unipi-host forward enable --port {port}`.")))
+            .with_hint(format!(
+                "On the PC run `unipi-host forward enable --port {port}`."
+            )))
         }
     }
 }
@@ -221,7 +231,10 @@ pub fn loopback_reachable(addr: &IpAddr) -> bool {
         IpAddr::V6(v6) => {
             v6.is_loopback()
                 || v6.is_unspecified()
-                || v6.to_ipv4_mapped().map(|v4| v4.is_loopback() || v4.is_unspecified()).unwrap_or(false)
+                || v6
+                    .to_ipv4_mapped()
+                    .map(|v4| v4.is_loopback() || v4.is_unspecified())
+                    .unwrap_or(false)
         }
     }
 }
@@ -230,18 +243,72 @@ pub fn loopback_reachable(addr: &IpAddr) -> bool {
 /// probing: poking arbitrary services with HTTP can upset them).
 pub fn looks_http(port: u16, process: Option<&str>, cmd: Option<&str>) -> bool {
     const PROCS: &[&str] = &[
-        "node", "deno", "bun", "vite", "next", "nuxt", "python", "python3", "uvicorn", "gunicorn",
-        "flask", "django", "ruby", "rails", "puma", "php", "php-fpm", "nginx", "caddy", "httpd",
-        "apache2", "lighttpd", "hugo", "jekyll", "java", "dotnet", "esbuild", "webpack", "astro",
-        "storybook", "jupyter", "code-server", "grafana", "miniserve", "http-server", "serve",
+        "node",
+        "deno",
+        "bun",
+        "vite",
+        "next",
+        "nuxt",
+        "python",
+        "python3",
+        "uvicorn",
+        "gunicorn",
+        "flask",
+        "django",
+        "ruby",
+        "rails",
+        "puma",
+        "php",
+        "php-fpm",
+        "nginx",
+        "caddy",
+        "httpd",
+        "apache2",
+        "lighttpd",
+        "hugo",
+        "jekyll",
+        "java",
+        "dotnet",
+        "esbuild",
+        "webpack",
+        "astro",
+        "storybook",
+        "jupyter",
+        "code-server",
+        "grafana",
+        "miniserve",
+        "http-server",
+        "serve",
     ];
     const CMD_HINTS: &[&str] = &[
-        "vite", "next dev", "next start", "http.server", "webpack", "runserver", "uvicorn", "astro",
-        "storybook", "jupyter", "hugo server", "http-server", "rails s", "flask run", "nuxt",
-        "npm run dev", "pnpm dev", "yarn dev", "bun dev", "mkdocs serve", "docusaurus",
+        "vite",
+        "next dev",
+        "next start",
+        "http.server",
+        "webpack",
+        "runserver",
+        "uvicorn",
+        "astro",
+        "storybook",
+        "jupyter",
+        "hugo server",
+        "http-server",
+        "rails s",
+        "flask run",
+        "nuxt",
+        "npm run dev",
+        "pnpm dev",
+        "yarn dev",
+        "bun dev",
+        "mkdocs serve",
+        "docusaurus",
     ];
-    let proc_hit = process.map(|p| PROCS.contains(&p.to_ascii_lowercase().as_str())).unwrap_or(false);
-    let cmd_hit = cmd.map(|c| CMD_HINTS.iter().any(|hint| c.contains(hint))).unwrap_or(false);
+    let proc_hit = process
+        .map(|p| PROCS.contains(&p.to_ascii_lowercase().as_str()))
+        .unwrap_or(false);
+    let cmd_hit = cmd
+        .map(|c| CMD_HINTS.iter().any(|hint| c.contains(hint)))
+        .unwrap_or(false);
     let port_hit = matches!(port, 80 | 443 | 1420 | 3000..=3010 | 4000 | 4200 | 4321 | 5173..=5180 | 6006 | 8000 | 8080..=8089 | 8443 | 8787..=8799 | 8888);
     proc_hit || cmd_hit || port_hit
 }
@@ -250,14 +317,29 @@ pub fn looks_http(port: u16, process: Option<&str>, cmd: Option<&str>) -> bool {
 /// processes are readable; others just stay unnamed).
 fn socket_owners(proc_root: &Path, wanted: &std::collections::HashSet<u64>) -> HashMap<u64, u32> {
     let mut owners = HashMap::new();
-    let Ok(entries) = std::fs::read_dir(proc_root) else { return owners };
+    let Ok(entries) = std::fs::read_dir(proc_root) else {
+        return owners;
+    };
     for entry in entries.flatten() {
-        let Some(pid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else { continue };
-        let Ok(fds) = std::fs::read_dir(entry.path().join("fd")) else { continue };
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|s| s.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let Ok(fds) = std::fs::read_dir(entry.path().join("fd")) else {
+            continue;
+        };
         for fd in fds.flatten() {
-            let Ok(target) = std::fs::read_link(fd.path()) else { continue };
+            let Ok(target) = std::fs::read_link(fd.path()) else {
+                continue;
+            };
             let target = target.to_string_lossy();
-            if let Some(inode) = target.strip_prefix("socket:[").and_then(|s| s.strip_suffix(']')) {
+            if let Some(inode) = target
+                .strip_prefix("socket:[")
+                .and_then(|s| s.strip_suffix(']'))
+            {
                 if let Ok(inode) = inode.parse::<u64>() {
                     if wanted.contains(&inode) {
                         owners.insert(inode, pid);
@@ -273,7 +355,10 @@ fn socket_owners(proc_root: &Path, wanted: &std::collections::HashSet<u64>) -> H
 }
 
 fn read_trimmed(path: &Path) -> Option<String> {
-    std::fs::read(path).ok().map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string()).filter(|s| !s.is_empty())
+    std::fs::read(path)
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Builds the `ports_list` answer from a `/proc`-shaped root (tests pass a
@@ -286,14 +371,23 @@ pub fn list_ports(proc_root: &Path, config: &ForwardingConfig) -> PortsListData 
         }
     }
     rows.retain(|row| loopback_reachable(&row.addr));
-    let wanted = rows.iter().map(|row| row.inode).filter(|inode| *inode != 0).collect();
+    let wanted = rows
+        .iter()
+        .map(|row| row.inode)
+        .filter(|inode| *inode != 0)
+        .collect();
     let owners = socket_owners(proc_root, &wanted);
     let mut by_port: BTreeMap<u16, ListeningPort> = BTreeMap::new();
     for row in rows {
         let pid = owners.get(&row.inode).copied();
         let argv: Vec<String> = pid
             .and_then(|pid| read_trimmed(&proc_root.join(pid.to_string()).join("cmdline")))
-            .map(|raw| raw.split('\0').filter(|s| !s.is_empty()).map(str::to_string).collect())
+            .map(|raw| {
+                raw.split('\0')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default();
         let cmd = (!argv.is_empty()).then(|| argv.join(" ").chars().take(200).collect::<String>());
         // argv[0]'s basename beats `comm`: node renames its main thread
@@ -303,7 +397,9 @@ pub fn list_ports(proc_root: &Path, config: &ForwardingConfig) -> PortsListData 
             .and_then(|arg0| arg0.rsplit('/').next())
             .map(str::to_string)
             .filter(|name| !name.is_empty())
-            .or_else(|| pid.and_then(|pid| read_trimmed(&proc_root.join(pid.to_string()).join("comm"))));
+            .or_else(|| {
+                pid.and_then(|pid| read_trimmed(&proc_root.join(pid.to_string()).join("comm")))
+            });
         let entry = by_port.entry(row.port).or_insert_with(|| ListeningPort {
             port: row.port,
             bind: row.addr.to_string(),
@@ -345,8 +441,16 @@ pub fn list_ports(proc_root: &Path, config: &ForwardingConfig) -> PortsListData 
 /// Connects to the loopback port, IPv4 first then IPv6.
 pub async fn connect_loopback(port: u16) -> Result<tokio::net::TcpStream, AppErrorDto> {
     let mut last = None;
-    for ip in [IpAddr::V4(Ipv4Addr::LOCALHOST), IpAddr::V6(Ipv6Addr::LOCALHOST)] {
-        match tokio::time::timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(SocketAddr::new(ip, port))).await {
+    for ip in [
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(Ipv6Addr::LOCALHOST),
+    ] {
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::net::TcpStream::connect(SocketAddr::new(ip, port)),
+        )
+        .await
+        {
             Ok(Ok(stream)) => {
                 let _ = stream.set_nodelay(true);
                 return Ok(stream);
@@ -432,7 +536,14 @@ mod tests {
     fn parses_listen_rows_v4_and_v6() {
         let v4 = parse_proc_net_tcp(TCP);
         assert_eq!(v4.len(), 3, "{v4:?}");
-        assert_eq!(v4[0], ProcListen { addr: "127.0.0.1".parse().unwrap(), port: 8047, inode: 111 });
+        assert_eq!(
+            v4[0],
+            ProcListen {
+                addr: "127.0.0.1".parse().unwrap(),
+                port: 8047,
+                inode: 111
+            }
+        );
         assert_eq!(v4[1].addr, "0.0.0.0".parse::<IpAddr>().unwrap());
         assert_eq!(v4[1].port, 22);
         assert_eq!(v4[2].addr, "192.168.1.1".parse::<IpAddr>().unwrap());
@@ -447,7 +558,14 @@ mod tests {
 
     #[test]
     fn loopback_reachability() {
-        for ok in ["127.0.0.1", "127.0.0.53", "0.0.0.0", "::1", "::", "::ffff:127.0.0.1"] {
+        for ok in [
+            "127.0.0.1",
+            "127.0.0.53",
+            "0.0.0.0",
+            "::1",
+            "::",
+            "::ffff:127.0.0.1",
+        ] {
             assert!(loopback_reachable(&ok.parse().unwrap()), "{ok}");
         }
         for no in ["192.168.1.1", "10.0.0.2", "fe80::1"] {
@@ -475,8 +593,16 @@ mod tests {
         std::os::unix::fs::symlink("socket:[555]", fd.join("7")).unwrap();
         std::os::unix::fs::symlink("/dev/null", fd.join("0")).unwrap();
         std::fs::write(root.join("4242/comm"), "MainThread\n").unwrap();
-        std::fs::write(root.join("4242/cmdline"), "node\0/x/node_modules/.bin/vite\0--port\05173\0").unwrap();
-        let config = ForwardingConfig { enabled: true, ports: PortRule::List(vec![5173]), devices: vec![] };
+        std::fs::write(
+            root.join("4242/cmdline"),
+            "node\x00/x/node_modules/.bin/vite\x00--port\x005173\x00",
+        )
+        .unwrap();
+        let config = ForwardingConfig {
+            enabled: true,
+            ports: PortRule::List(vec![5173]),
+            devices: vec![],
+        };
         let data = list_ports(root, &config);
         let ports: Vec<u16> = data.ports.iter().map(|p| p.port).collect();
         // 8000 bound to 192.168.1.1 is not reachable over loopback.
@@ -484,7 +610,10 @@ mod tests {
         let vite = data.ports.iter().find(|p| p.port == 5173).unwrap();
         assert_eq!(vite.pid, Some(4242));
         assert_eq!(vite.process.as_deref(), Some("node"));
-        assert_eq!(vite.cmd.as_deref(), Some("node /x/node_modules/.bin/vite --port 5173"));
+        assert_eq!(
+            vite.cmd.as_deref(),
+            Some("node /x/node_modules/.bin/vite --port 5173")
+        );
         assert!(vite.http);
         assert!(vite.allowed);
         let ssh = data.ports.iter().find(|p| p.port == 22).unwrap();
@@ -500,14 +629,20 @@ mod tests {
         let off = HostConfig::default();
         assert!(!off.forwarding.enabled);
         assert!(off.forwarding.check_device("abc", None).is_err());
-        let any: HostConfig = serde_json::from_str(r#"{"forwarding":{"enabled":true,"ports":"any"},"other":1}"#).unwrap();
+        let any: HostConfig =
+            serde_json::from_str(r#"{"forwarding":{"enabled":true,"ports":"any"},"other":1}"#)
+                .unwrap();
         assert_eq!(any.forwarding.ports, PortRule::Any);
         assert!(any.forwarding.check_device("abc", None).is_ok());
         assert!(any.forwarding.check_port(1).is_ok());
         // Unknown keys survive a rewrite.
         let text = serde_json::to_string(&any).unwrap();
-        assert!(text.contains("\"other\":1") && text.contains("\"any\""), "{text}");
-        let list: HostConfig = serde_json::from_str(r#"{"forwarding":{"enabled":true,"ports":[5173]}}"#).unwrap();
+        assert!(
+            text.contains("\"other\":1") && text.contains("\"any\""),
+            "{text}"
+        );
+        let list: HostConfig =
+            serde_json::from_str(r#"{"forwarding":{"enabled":true,"ports":[5173]}}"#).unwrap();
         assert!(list.forwarding.check_port(5173).is_ok());
         let denied = list.forwarding.check_port(22).unwrap_err();
         assert_eq!(denied.code, AppErrorCode::E_UNAUTHORIZED);
@@ -521,7 +656,9 @@ mod tests {
 
     #[test]
     fn disabled_error_explains_how_to_enable() {
-        let error = ForwardingConfig::default().check_device("abc", None).unwrap_err();
+        let error = ForwardingConfig::default()
+            .check_device("abc", None)
+            .unwrap_err();
         assert_eq!(error.code, AppErrorCode::E_FORWARD_DISABLED);
         assert!(error.hint.unwrap().contains("unipi-host forward enable"));
     }
@@ -533,26 +670,48 @@ mod tests {
             ports: PortRule::Any,
             devices: vec!["Pixel".into(), "abcdef12".into()],
         };
-        assert!(config.check_device("abcdef1234567890", None).is_ok(), "id prefix");
+        assert!(
+            config.check_device("abcdef1234567890", None).is_ok(),
+            "id prefix"
+        );
         assert!(config.check_device("ffff", Some("Pixel")).is_ok(), "name");
         let error = config.check_device("ffff", Some("Redmi")).unwrap_err();
         assert_eq!(error.code, AppErrorCode::E_FORWARD_DISABLED);
         // Short prefixes don't match (avoid "a" granting everyone).
-        let short = ForwardingConfig { devices: vec!["ab".into()], ..config };
+        let short = ForwardingConfig {
+            devices: vec!["ab".into()],
+            ..config
+        };
         assert!(short.check_device("abcdef", None).is_err());
     }
 
     #[test]
     fn http_heuristic() {
         assert!(looks_http(5173, Some("node"), None));
-        assert!(looks_http(12345, Some("python3"), Some("python3 -m http.server 12345")));
+        assert!(looks_http(
+            12345,
+            Some("python3"),
+            Some("python3 -m http.server 12345")
+        ));
         assert!(looks_http(8080, None, None));
         assert!(!looks_http(22, Some("sshd"), Some("sshd: /usr/sbin/sshd")));
         assert!(!looks_http(5432, Some("postgres"), None));
         // Real false positives seen on a desktop: these aren't web apps.
-        assert!(!looks_http(21118, Some("rustdesk"), Some("/usr/share/rustdesk/rustdesk --server")));
-        assert!(!looks_http(5037, Some("adb"), Some("adb -L tcp:5037 fork-server server")));
-        assert!(!looks_http(22000, Some("syncthing"), Some("/usr/bin/syncthing serve --no-browser")));
+        assert!(!looks_http(
+            21118,
+            Some("rustdesk"),
+            Some("/usr/share/rustdesk/rustdesk --server")
+        ));
+        assert!(!looks_http(
+            5037,
+            Some("adb"),
+            Some("adb -L tcp:5037 fork-server server")
+        ));
+        assert!(!looks_http(
+            22000,
+            Some("syncthing"),
+            Some("/usr/bin/syncthing serve --no-browser")
+        ));
     }
 
     #[tokio::test]
@@ -572,7 +731,8 @@ mod tests {
         // "phone" side: an in-memory duplex standing in for the iroh stream.
         let (phone, host_side) = tokio::io::duplex(64);
         let (mut host_read, mut host_write) = tokio::io::split(host_side);
-        let piping = tokio::spawn(async move { pipe(&mut host_read, &mut host_write, socket).await });
+        let piping =
+            tokio::spawn(async move { pipe(&mut host_read, &mut host_write, socket).await });
         let (mut phone_read, mut phone_write) = tokio::io::split(phone);
         let payload = vec![7u8; 100_000];
         let writer = {
@@ -607,10 +767,18 @@ mod tests {
         let (mut read, _) = tokio::io::duplex(8);
         let mut sink = Vec::new();
         let off = ForwardingConfig::default();
-        let error = serve_forward(&off, "abc", None, &mut read, &mut sink, 80).await.unwrap_err();
+        let error = serve_forward(&off, "abc", None, &mut read, &mut sink, 80)
+            .await
+            .unwrap_err();
         assert_eq!(error.code, AppErrorCode::E_FORWARD_DISABLED);
-        let list = ForwardingConfig { enabled: true, ports: PortRule::List(vec![5173]), devices: vec![] };
-        let error = serve_forward(&list, "abc", None, &mut read, &mut sink, 80).await.unwrap_err();
+        let list = ForwardingConfig {
+            enabled: true,
+            ports: PortRule::List(vec![5173]),
+            devices: vec![],
+        };
+        let error = serve_forward(&list, "abc", None, &mut read, &mut sink, 80)
+            .await
+            .unwrap_err();
         assert_eq!(error.code, AppErrorCode::E_UNAUTHORIZED);
         assert!(sink.is_empty(), "nothing written before the gate passes");
     }

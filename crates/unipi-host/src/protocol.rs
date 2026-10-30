@@ -1,19 +1,18 @@
 use crate::{
     data_dir::HostPaths,
     devices::DeviceStore,
-    mux,
     pairing::{now_unix, PairingStore, VerifyOutcome},
 };
-use std::path::PathBuf;
 use iroh::{
     protocol::{AcceptError, ProtocolHandler},
     EndpointId,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use unipi_proto::{
     frame::{FrameKind, MAX_FRAME},
-    AppErrorCode, AppErrorDto, AttachTarget, Control, Request,
+    AppErrorCode, AppErrorDto, Control, Request,
 };
 
 /// UNI-229: the device id this PC's own local client (`app.sock`) acts as in
@@ -61,10 +60,6 @@ pub struct Handler {
     pub host_id: EndpointId,
     pub host_name: String,
     pub lock: Arc<tokio::sync::Mutex<()>>,
-    /// Session names (herdr or tmux) that refuse attach/focus.
-    pub protected: Arc<Vec<String>>,
-    /// Kanboard relay (`board_http`/`board_sse`).
-    pub board: crate::board::Board,
     /// UNI-317: the host-owned cron scheduler, shared with the CLI's
     /// `control.sock` handler so both reach the same jobs/runs.
     pub cron: crate::cron::Scheduler,
@@ -114,9 +109,6 @@ fn internal(e: impl std::fmt::Display) -> AppErrorDto {
 }
 
 impl Handler {
-    fn protected(&self, session: &str) -> bool {
-        self.protected.iter().any(|name| name == session)
-    }
     pub async fn handle<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         &self,
         mut read: R,
@@ -157,7 +149,7 @@ impl Handler {
         }
         let value: serde_json::Value = serde_json::from_slice(&bytes)
             .map_err(|e| error(AppErrorCode::E_SCHEMA, e.to_string()))?;
-        if value["proto"].as_str().and_then(|s| s.split('.').next()) != Some("1") {
+        if value["proto"].as_str().and_then(|s| s.split('.').next()) != Some("2") {
             return Err(error(
                 AppErrorCode::E_PROTO_VERSION,
                 "Update the host or app: incompatible protocol major version",
@@ -173,7 +165,10 @@ impl Handler {
         if let Request::Pair { code, name } = req {
             // Nothing to pair: the local client is this PC's owner already.
             let Peer::Iroh(remote) = peer else {
-                return Err(error(AppErrorCode::E_UNAUTHORIZED, "This computer doesn't need pairing"));
+                return Err(error(
+                    AppErrorCode::E_UNAUTHORIZED,
+                    "This computer doesn't need pairing",
+                ));
             };
             let pairing = PairingStore::new(self.paths.pairing());
             let previous = pairing.current().map_err(internal)?;
@@ -215,260 +210,64 @@ impl Handler {
         }
         let remote = peer.device_id();
         // UNI-232: managing this host is for this PC's own app only.
-        if matches!(req, Request::HostInfo | Request::PairBegin { .. } | Request::PairStatus { .. } | Request::DevicesList | Request::DeviceRevoke { .. })
-            && peer != Peer::Local
+        if matches!(
+            req,
+            Request::HostInfo
+                | Request::PairBegin { .. }
+                | Request::PairStatus { .. }
+                | Request::DevicesList
+                | Request::DeviceRevoke { .. }
+        ) && peer != Peer::Local
         {
-            return Err(error(AppErrorCode::E_UNAUTHORIZED, "Only this computer can manage its host"));
+            return Err(error(
+                AppErrorCode::E_UNAUTHORIZED,
+                "Only this computer can manage its host",
+            ));
         }
         let device_name = matches!(
             req,
-            Request::PortsList | Request::TcpForward { .. } | Request::FeatureRequest { .. } | Request::FeatureRequests | Request::FeatureLeave { .. } | Request::BrowserStatus | Request::BrowserOpen { .. } | Request::BrowserClose | Request::BrowserWindow { .. } | Request::BrowserProfiles | Request::BrowserTakeover { .. } | Request::DesktopStatus | Request::DesktopOpen { .. } | Request::PushList { .. } | Request::PushDone { .. } | Request::BlobGet { .. }
-            | Request::CronList | Request::CronShow { .. } | Request::CronRuns { .. } | Request::CronLog { .. } | Request::CronAdd(..) | Request::CronEdit { .. } | Request::CronRm { .. } | Request::CronEnable { .. } | Request::CronDisable { .. } | Request::CronRun { .. } | Request::CronStop { .. } | Request::CronPauseAll | Request::CronResumeAll | Request::CronStatus | Request::CronParse { .. } | Request::CronOpenSession { .. } | Request::CronSettingsGet | Request::CronSettingsSet(..)
+            Request::PortsList
+                | Request::TcpForward { .. }
+                | Request::FeatureRequest { .. }
+                | Request::FeatureRequests
+                | Request::FeatureLeave { .. }
+                | Request::BrowserStatus
+                | Request::BrowserOpen { .. }
+                | Request::BrowserClose
+                | Request::BrowserWindow { .. }
+                | Request::BrowserProfiles
+                | Request::BrowserTakeover { .. }
+                | Request::PushList { .. }
+                | Request::PushDone { .. }
+                | Request::BlobGet { .. }
+                | Request::CronList
+                | Request::CronShow { .. }
+                | Request::CronRuns { .. }
+                | Request::CronLog { .. }
+                | Request::CronAdd(..)
+                | Request::CronEdit { .. }
+                | Request::CronRm { .. }
+                | Request::CronEnable { .. }
+                | Request::CronDisable { .. }
+                | Request::CronRun { .. }
+                | Request::CronStop { .. }
+                | Request::CronPauseAll
+                | Request::CronResumeAll
+                | Request::CronStatus
+                | Request::CronParse { .. }
+                | Request::CronSettingsGet
+                | Request::CronSettingsSet(..)
         )
-            .then(|| match peer {
-                Peer::Local => Some(LOCAL_DEVICE_NAME.to_string()),
-                Peer::Iroh(_) => devices.list().ok().and_then(|list| list.into_iter().find(|d| d.id == remote).map(|d| d.name)),
-            })
-            .flatten();
+        .then(|| match peer {
+            Peer::Local => Some(LOCAL_DEVICE_NAME.to_string()),
+            Peer::Iroh(_) => devices
+                .list()
+                .ok()
+                .and_then(|list| list.into_iter().find(|d| d.id == remote).map(|d| d.name)),
+        })
+        .flatten();
         drop(_guard);
         match req {
-            Request::List { mux } => {
-                tracing::info!(op = "list", "request");
-                let data = mux::list(mux).await?;
-                write_control(
-                    write,
-                    &Control::Ok {
-                        data: Some(serde_json::to_value(data).map_err(internal)?),
-                    },
-                )
-                .await
-                .map_err(internal)?;
-            }
-            Request::MuxAction { action } => {
-                tracing::info!(op = "mux_action", action = action.session(), "request");
-                if self.protected(action.session()) {
-                    return Err(error(
-                        AppErrorCode::E_UNAUTHORIZED,
-                        "This session is protected on the host",
-                    ));
-                }
-                let data = mux::action(&action).await?;
-                write_control(write, &Control::Ok { data: Some(data) })
-                    .await
-                    .map_err(internal)?;
-            }
-            Request::Tree => {
-                let data = mux::tree(&self.protected).await?;
-                write_control(
-                    write,
-                    &Control::Ok {
-                        data: Some(serde_json::to_value(data).map_err(internal)?),
-                    },
-                )
-                .await
-                .map_err(internal)?;
-            }
-            Request::Shortcuts => {
-                let data = mux::shortcuts().await?;
-                write_control(
-                    write,
-                    &Control::Ok {
-                        data: Some(serde_json::to_value(data).map_err(internal)?),
-                    },
-                )
-                .await
-                .map_err(internal)?;
-            }
-            Request::Preview { target, lines } => {
-                tracing::info!(op = "preview", ?target, lines = lines.value(), "request");
-                let preview = match mux::preview(&target, lines.value()).await {
-                    Ok(preview) => preview,
-                    Err(error) => {
-                        tracing::warn!(op = "preview", ?target, error = %error.message, "preview failed");
-                        return Err(error);
-                    }
-                };
-                let text = preview.text;
-                write_control(
-                    write,
-                    &Control::Ok {
-                        data: Some(
-                            serde_json::to_value(unipi_proto::PreviewData { text })
-                                .map_err(internal)?,
-                        ),
-                    },
-                )
-                .await
-                .map_err(internal)?;
-            }
-            Request::Attach {
-                target,
-                cols,
-                rows,
-                size_policy,
-            } => {
-                if let AttachTarget::Herdr { session, .. } = &target {
-                    if self.protected(session.as_str()) {
-                        return Err(error(
-                            AppErrorCode::E_UNAUTHORIZED,
-                            "This session is protected on the host",
-                        ));
-                    }
-                }
-                if let AttachTarget::Tmux { session, .. } = &target {
-                    if self.protected(session.as_str()) {
-                        return Err(error(
-                            AppErrorCode::E_UNAUTHORIZED,
-                            "This session is protected on the host",
-                        ));
-                    }
-                }
-                let (effective, session_command, cleanup) = mux::attach_setup(
-                    &target,
-                    cols.value() as u16,
-                    rows.value() as u16,
-                    size_policy,
-                )
-                .await?;
-                let data = serde_json::json!({"effective_size_policy": effective});
-                write_control(write, &Control::Ok { data: Some(data) })
-                    .await
-                    .map_err(internal)?;
-                let stream_result = mux::attach_stream(
-                    read,
-                    write,
-                    session_command,
-                    cols.value() as u16,
-                    rows.value() as u16,
-                )
-                .await;
-                // Unconditional cleanup: the grouped tmux session must
-                // die even when the stream errored mid-session.
-                if let Some(grouped) = cleanup {
-                    mux::tmux::kill_grouped(&grouped).await;
-                }
-                stream_result?;
-            }
-            Request::Shell { cols, rows } => {
-                let command = mux::shell_command(cols.value() as u16, rows.value() as u16).await?;
-                let data = serde_json::json!({"effective_size_policy":"fit_phone"});
-                write_control(write, &Control::Ok { data: Some(data) })
-                    .await
-                    .map_err(internal)?;
-                mux::attach_stream(
-                    read,
-                    write,
-                    command,
-                    cols.value() as u16,
-                    rows.value() as u16,
-                )
-                .await?;
-            }
-            Request::BoardHttp {
-                method,
-                path,
-                content_type,
-                body_len,
-            } => {
-                tracing::info!(
-                    op = "board_http",
-                    method = method.as_str(),
-                    path = path.as_str(),
-                    body_len = body_len.value(),
-                    "request"
-                );
-                crate::board::serve_http(
-                    &self.board,
-                    read,
-                    write,
-                    method,
-                    &path,
-                    content_type.as_ref(),
-                    body_len,
-                )
-                .await?;
-            }
-            Request::BoardSse { project } => {
-                tracing::info!(op = "board_sse", project = project.as_str(), "request");
-                crate::board::serve_sse(&self.board, read, write, &project).await?;
-            }
-            Request::ChatList => {
-                tracing::info!(op = "chat_list", "request");
-                let mut herdr = mux::herdr::tree().await?;
-                let bridges = crate::chat::bridge_dir()
-                    .map(|dir| crate::chat::read_bridges(&dir))
-                    .unwrap_or_default();
-                let sockets = mux::herdr::session_sockets().await;
-                crate::chat::join_bridges(&mut herdr, &bridges, &sockets);
-                // UNI-260: pis in tmux too (a tmux-only PC can start chats).
-                let mut tmux = mux::tmux::tree().await.ok();
-                if let Some(tmux) = tmux.as_mut() {
-                    let taken = crate::chat::herdr_chat_pids(&herdr);
-                    crate::chat::join_tmux_bridges(tmux, &bridges, &taken);
-                }
-                let mut data = serde_json::json!({
-                    "herdr": herdr,
-                    "protected": self.protected.as_slice(),
-                });
-                if let Some(tmux) = tmux {
-                    data["tmux"] = serde_json::to_value(tmux).map_err(internal)?;
-                }
-                write_control(write, &Control::Ok { data: Some(data) })
-                    .await
-                    .map_err(internal)?;
-            }
-            Request::ChatOpen { pid } => {
-                tracing::info!(op = "chat_open", pid, "request");
-                crate::chat::open(read, write, pid).await?;
-            }
-            Request::ChatNew { target, cwd, outside } => {
-                tracing::info!(op = "chat_new", session = target.session(), "request");
-                if self.protected(target.session()) {
-                    return Err(error(AppErrorCode::E_UNAUTHORIZED, "This session is protected on the host"));
-                }
-                let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let raw = cwd.as_ref().map(|c| c.as_str()).unwrap_or("~");
-                let dir = crate::fs::scoped_for_request(raw, &scope, outside.unwrap_or(false))?;
-                if !dir.is_dir() {
-                    return Err(error(AppErrorCode::E_NOT_FOUND, format!("{} is not a folder", dir.display())));
-                }
-                let settings = crate::chat_ctl::ChatSettings::load(&self.paths.config()).map_err(internal)?;
-                let data = crate::chat_ctl::new_chat(&target, &dir, settings.launcher(), crate::chat_ctl::BRIDGE_WAIT).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
-            }
-            Request::ChatClose { pid, close_tab } => {
-                let pid = pid.get();
-                tracing::info!(op = "chat_close", pid, close_tab, "request");
-                let dir = crate::chat::bridge_dir().ok_or_else(|| internal("No home directory on the host"))?;
-                // Only a pi with a live app bridge can be closed (never an arbitrary pid).
-                let record = crate::chat::find_bridge(&dir, pid).ok_or_else(|| {
-                    error(AppErrorCode::E_NOT_FOUND, "That pi session is gone. Pull to refresh.")
-                })?;
-                let place = crate::chat_ctl::place_of(&record).await;
-                if place.session().is_some_and(|s| self.protected(s)) {
-                    return Err(error(AppErrorCode::E_UNAUTHORIZED, "This session is protected on the host"));
-                }
-                let data = crate::chat_ctl::close_chat(pid, &place, close_tab, crate::chat_ctl::STOP_WAIT).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
-            }
-            Request::ChatConfig => {
-                tracing::info!(op = "chat_config", "request");
-                let data = crate::chat_ctl::config(&self.paths.config()).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
-            }
-            Request::ChatConfigSet { launcher } => {
-                tracing::info!(op = "chat_config_set", "request");
-                let data = crate::chat_ctl::set_launcher(&self.paths.config(), launcher.as_str()).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
-            }
             Request::BlobPut {
                 sha256,
                 size,
@@ -476,7 +275,12 @@ impl Handler {
                 name,
                 offset,
             } => {
-                tracing::info!(op = "blob_put", sha256 = sha256.as_str(), size = size.value(), "request");
+                tracing::info!(
+                    op = "blob_put",
+                    sha256 = sha256.as_str(),
+                    size = size.value(),
+                    "request"
+                );
                 crate::blob::serve_put(
                     &self.paths.blobs(),
                     read,
@@ -495,22 +299,30 @@ impl Handler {
                 range,
             } => {
                 tracing::info!(op = "blob_get", "request");
-                let bridge_dir = crate::chat::bridge_dir();
                 // UNI-220: same scope as fs_read ($HOME + extra safe roots).
                 let scope = crate::fs::FsScope::load(&self.paths.config()).ok();
                 // UNI-214: a pending push's file is readable by the device
                 // it was pushed to (it may live outside $HOME), while the
                 // owner still has push switched on for that device.
                 let pushed = path.as_ref().and_then(|p| {
-                    let config = crate::forward::HostConfig::load(&self.paths.config()).ok()?.push;
+                    let config = crate::forward::HostConfig::load(&self.paths.config())
+                        .ok()?
+                        .push;
                     let id = remote.clone();
                     (config.device_allowed(&id, device_name.as_deref())
-                        && crate::push::PushHub::shared(&self.paths).authorize_fetch(&id, device_name.as_deref().unwrap_or("phone"), p.as_str()))
+                        && crate::push::PushHub::shared(&self.paths).authorize_fetch(
+                            &id,
+                            device_name.as_deref().unwrap_or("phone"),
+                            p.as_str(),
+                        ))
                     .then(|| std::path::PathBuf::from(p.as_str()))
                 });
                 crate::blob::serve_get_with(
                     &self.paths.blobs(),
-                    bridge_dir.as_deref(),
+                    // v2: the app-bridge attachment allow-list is gone with
+                    // the bridge; path access is scope-gated (plus pushed
+                    // files) until the hub registers attachments again.
+                    None,
                     scope.as_ref(),
                     pushed.as_deref(),
                     write,
@@ -524,27 +336,53 @@ impl Handler {
                 tracing::info!(op = "fs_roots", "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
                 let data = crate::fs::roots(&scope).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
-            Request::FsList { path, hidden, outside } => {
+            Request::FsList {
+                path,
+                hidden,
+                outside,
+            } => {
                 tracing::info!(op = "fs_list", path = path.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let resolved = crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
+                let resolved =
+                    crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
                 let data = crate::fs::list(&resolved, hidden.unwrap_or(false)).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
-            Request::FsRead { path, range: _range, outside, as_text } => {
+            Request::FsRead {
+                path,
+                range: _range,
+                outside,
+                as_text,
+            } => {
                 tracing::info!(op = "fs_read", path = path.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let resolved = crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
+                let resolved =
+                    crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
                 let (bytes, data) = crate::fs::read_text(&resolved, as_text.unwrap_or(false))?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(&data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(&data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
                 const CHUNK: usize = 256 * 1024;
                 for chunk in bytes.chunks(CHUNK) {
                     write
@@ -556,49 +394,100 @@ impl Handler {
                     .await
                     .map_err(internal)?;
             }
-            Request::FsWrite { path, text, base_hash, create, outside } => {
+            Request::FsWrite {
+                path,
+                text,
+                base_hash,
+                create,
+                outside,
+            } => {
                 tracing::info!(op = "fs_write", path = path.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let resolved = crate::fs::scoped_for_write(path.as_str(), &scope, outside.unwrap_or(false))?;
-                let data = crate::fs::write_text(&resolved, &text, base_hash.as_deref(), create.unwrap_or(false))?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                let resolved =
+                    crate::fs::scoped_for_write(path.as_str(), &scope, outside.unwrap_or(false))?;
+                let data = crate::fs::write_text(
+                    &resolved,
+                    &text,
+                    base_hash.as_deref(),
+                    create.unwrap_or(false),
+                )?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::FsStat { path, outside } => {
                 tracing::info!(op = "fs_stat", path = path.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let resolved = crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
+                let resolved =
+                    crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
                 let data = crate::fs::stat(&resolved).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
-            Request::FsSearch { root, query, kind, outside } => {
+            Request::FsSearch {
+                root,
+                query,
+                kind,
+                outside,
+            } => {
                 tracing::info!(op = "fs_search", root = root.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let resolved = crate::fs::scoped_for_request(root.as_str(), &scope, outside.unwrap_or(false))?;
+                let resolved =
+                    crate::fs::scoped_for_request(root.as_str(), &scope, outside.unwrap_or(false))?;
                 let data = crate::fs::search(&resolved, &query, kind).await?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::FsMkdir { path, outside } => {
                 tracing::info!(op = "fs_mkdir", path = path.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let resolved = crate::fs::scoped_for_write(path.as_str(), &scope, outside.unwrap_or(false))?;
+                let resolved =
+                    crate::fs::scoped_for_write(path.as_str(), &scope, outside.unwrap_or(false))?;
                 crate::fs::mkdir(&resolved)?;
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
+                write_control(write, &Control::Ok { data: None })
+                    .await
+                    .map_err(internal)?;
             }
             Request::FsRename { from, to, outside } => {
-                tracing::info!(op = "fs_rename", from = from.as_str(), to = to.as_str(), "request");
+                tracing::info!(
+                    op = "fs_rename",
+                    from = from.as_str(),
+                    to = to.as_str(),
+                    "request"
+                );
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
-                let resolved_from = crate::fs::scoped_for_request(from.as_str(), &scope, outside.unwrap_or(false))?;
-                let resolved_to = crate::fs::scoped_for_write(to.as_str(), &scope, outside.unwrap_or(false))?;
+                let resolved_from =
+                    crate::fs::scoped_for_request(from.as_str(), &scope, outside.unwrap_or(false))?;
+                let resolved_to =
+                    crate::fs::scoped_for_write(to.as_str(), &scope, outside.unwrap_or(false))?;
                 crate::fs::rename(&resolved_from, &resolved_to)?;
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
+                write_control(write, &Control::Ok { data: None })
+                    .await
+                    .map_err(internal)?;
             }
-            Request::FsImport { sha256, to, overwrite, outside } => {
+            Request::FsImport {
+                sha256,
+                to,
+                overwrite,
+                outside,
+            } => {
                 tracing::info!(op = "fs_import", to = to.as_str(), "request");
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
                 let home = scope.home.clone();
@@ -608,25 +497,51 @@ impl Handler {
                 if create_parent {
                     std::fs::create_dir_all(&default_uploads).map_err(internal)?;
                 }
-                let resolved_to = crate::fs::scoped_for_write(to.as_str(), &scope, outside.unwrap_or(false))?;
-                crate::fs::import_blob(&self.paths.blobs(), sha256.as_str(), &resolved_to, overwrite.unwrap_or(false), create_parent)?;
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
+                let resolved_to =
+                    crate::fs::scoped_for_write(to.as_str(), &scope, outside.unwrap_or(false))?;
+                crate::fs::import_blob(
+                    &self.paths.blobs(),
+                    sha256.as_str(),
+                    &resolved_to,
+                    overwrite.unwrap_or(false),
+                    create_parent,
+                )?;
+                write_control(write, &Control::Ok { data: None })
+                    .await
+                    .map_err(internal)?;
             }
-            Request::FsDelete { path, confirm, outside } => {
+            Request::FsDelete {
+                path,
+                confirm,
+                outside,
+            } => {
                 tracing::info!(op = "fs_delete", path = path.as_str(), "request");
                 if !confirm {
-                    return Err(error(AppErrorCode::E_SCHEMA, "fs_delete needs confirm:true"));
+                    return Err(error(
+                        AppErrorCode::E_SCHEMA,
+                        "fs_delete needs confirm:true",
+                    ));
                 }
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
                 let home = scope.home.clone();
-                let resolved = crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
-                let roots_data = crate::fs::roots(&scope).await.unwrap_or(unipi_proto::FsRootsData { roots: Vec::new() });
+                let resolved =
+                    crate::fs::scoped_for_request(path.as_str(), &scope, outside.unwrap_or(false))?;
+                let roots_data = crate::fs::roots(&scope)
+                    .await
+                    .unwrap_or(unipi_proto::FsRootsData { roots: Vec::new() });
                 let root_paths: Vec<PathBuf> = roots_data.roots.iter().map(PathBuf::from).collect();
                 crate::fs::delete(&resolved, &home, &root_paths)?;
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
+                write_control(write, &Control::Ok { data: None })
+                    .await
+                    .map_err(internal)?;
             }
             Request::Git { path, outside, cmd } => {
-                tracing::info!(op = "git", action = cmd.name(), path = path.as_str(), "request");
+                tracing::info!(
+                    op = "git",
+                    action = cmd.name(),
+                    path = path.as_str(),
+                    "request"
+                );
                 let scope = crate::fs::FsScope::load(&self.paths.config())?;
                 let outside = outside.unwrap_or(false);
                 let dir = crate::git::resolve_dir(path.as_str(), &scope, outside)?;
@@ -638,7 +553,8 @@ impl Handler {
             Request::NotifyConfig => {
                 tracing::info!(op = "notify_config", "request");
                 let key = crate::notify::notify_key_or_create(&self.paths).map_err(internal)?;
-                let connection = crate::notify::read_ntfy_config(&crate::notify::notify_config_json_path());
+                let connection =
+                    crate::notify::read_ntfy_config(&crate::notify::notify_config_json_path());
                 let data = unipi_proto::NotifyConfigData {
                     server: connection.server,
                     topic: connection.topic,
@@ -650,41 +566,63 @@ impl Handler {
                         unipi_proto::NotifyAppDetail::Minimal
                     },
                 };
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::NotifyRegister { endpoint } => {
                 tracing::info!(op = "notify_register", "request");
-                crate::notify::register_app_endpoint(&crate::notify::app_endpoints_path(), endpoint.as_str())
+                crate::notify::register_app_endpoint(
+                    &crate::notify::app_endpoints_path(),
+                    endpoint.as_str(),
+                )
+                .map_err(internal)?;
+                write_control(write, &Control::Ok { data: None })
+                    .await
                     .map_err(internal)?;
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
             }
             Request::NotifyTest => {
                 tracing::info!(op = "notify_test", "request");
                 let key = crate::notify::notify_key_or_create(&self.paths).map_err(internal)?;
-                let connection = crate::notify::read_ntfy_config(&crate::notify::notify_config_json_path());
-                crate::notify::send_test(&connection, &key).await.map_err(|e| {
-                    error(AppErrorCode::E_INTERNAL, e.to_string())
-                })?;
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
+                let connection =
+                    crate::notify::read_ntfy_config(&crate::notify::notify_config_json_path());
+                crate::notify::send_test(&connection, &key)
+                    .await
+                    .map_err(|e| error(AppErrorCode::E_INTERNAL, e.to_string()))?;
+                write_control(write, &Control::Ok { data: None })
+                    .await
+                    .map_err(internal)?;
             }
             Request::PortsList => {
                 tracing::info!(op = "ports_list", "request");
-                let config = crate::forward::HostConfig::load(&self.paths.config()).map_err(internal)?.forwarding;
+                let config = crate::forward::HostConfig::load(&self.paths.config())
+                    .map_err(internal)?
+                    .forwarding;
                 config.check_device(&remote.clone(), device_name.as_deref())?;
                 let data = tokio::task::spawn_blocking(move || {
                     crate::forward::list_ports(std::path::Path::new("/proc"), &config)
                 })
                 .await
                 .map_err(internal)?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::TcpForward { port } => {
                 tracing::info!(op = "tcp_forward", port = port.value(), "request");
-                let config = crate::forward::HostConfig::load(&self.paths.config()).map_err(internal)?.forwarding;
+                let config = crate::forward::HostConfig::load(&self.paths.config())
+                    .map_err(internal)?
+                    .forwarding;
                 crate::forward::serve_forward(
                     &config,
                     &remote.clone(),
@@ -696,8 +634,11 @@ impl Handler {
                 .await?;
             }
             Request::PushList { wait } => {
-                let config = crate::forward::HostConfig::load(&self.paths.config()).map_err(internal)?.push;
-                let wait = std::time::Duration::from_secs(wait.map(|w| w.value()).unwrap_or(0) as u64);
+                let config = crate::forward::HostConfig::load(&self.paths.config())
+                    .map_err(internal)?
+                    .push;
+                let wait =
+                    std::time::Duration::from_secs(wait.map(|w| w.value()).unwrap_or(0) as u64);
                 let data = crate::push::list_for_device(
                     &crate::push::PushHub::shared(&self.paths),
                     &config,
@@ -707,13 +648,29 @@ impl Handler {
                     wait,
                 )
                 .await;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
-            Request::PushDone { id, outcome, detail } => {
-                tracing::info!(op = "push_done", id = id.as_str(), outcome = outcome.as_str(), "request");
-                let config = crate::forward::HostConfig::load(&self.paths.config()).map_err(internal)?.push;
+            Request::PushDone {
+                id,
+                outcome,
+                detail,
+            } => {
+                tracing::info!(
+                    op = "push_done",
+                    id = id.as_str(),
+                    outcome = outcome.as_str(),
+                    "request"
+                );
+                let config = crate::forward::HostConfig::load(&self.paths.config())
+                    .map_err(internal)?
+                    .push;
                 let device = remote.clone();
                 if !config.device_allowed(&device, device_name.as_deref()) {
                     return Err(crate::push::not_allowed());
@@ -726,20 +683,50 @@ impl Handler {
                     outcome,
                     detail,
                 );
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
-            }
-            Request::BrowserStatus | Request::BrowserOpen { .. } | Request::BrowserClose | Request::BrowserWindow { .. } | Request::BrowserProfiles | Request::BrowserTakeover { .. } => {
-                crate::browser::serve_request(&self.paths, req, &remote.clone(), device_name.as_deref(), read, write).await?;
-            }
-            Request::DesktopStatus | Request::DesktopOpen { .. } => {
-                crate::desktop::serve_request(&self.paths, req, &remote.clone(), device_name.as_deref(), read, write).await?;
-            }
-            Request::FeatureRequest { feature, scope, note } => {
-                tracing::info!(op = "feature_request", feature = feature.as_str(), "request");
-                let name = device_name.clone().unwrap_or_else(|| "Phone".into());
-                let note = note.map(|n| n.as_str().trim().to_string()).filter(|n| !n.is_empty());
-                let asked = crate::sharing::ask(&self.paths, &remote.clone(), &name, feature, scope, note, crate::push::now_ms())
+                write_control(write, &Control::Ok { data: None })
+                    .await
                     .map_err(internal)?;
+            }
+            Request::BrowserStatus
+            | Request::BrowserOpen { .. }
+            | Request::BrowserClose
+            | Request::BrowserWindow { .. }
+            | Request::BrowserProfiles
+            | Request::BrowserTakeover { .. } => {
+                crate::browser::serve_request(
+                    &self.paths,
+                    req,
+                    &remote.clone(),
+                    device_name.as_deref(),
+                    read,
+                    write,
+                )
+                .await?;
+            }
+            Request::FeatureRequest {
+                feature,
+                scope,
+                note,
+            } => {
+                tracing::info!(
+                    op = "feature_request",
+                    feature = feature.as_str(),
+                    "request"
+                );
+                let name = device_name.clone().unwrap_or_else(|| "Phone".into());
+                let note = note
+                    .map(|n| n.as_str().trim().to_string())
+                    .filter(|n| !n.is_empty());
+                let asked = crate::sharing::ask(
+                    &self.paths,
+                    &remote.clone(),
+                    &name,
+                    feature,
+                    scope,
+                    note,
+                    crate::push::now_ms(),
+                )
+                .map_err(internal)?;
                 if asked.notify {
                     let paths = self.paths.clone();
                     let host_name = self.host_name.clone();
@@ -748,19 +735,36 @@ impl Handler {
                         crate::sharing::notify_owner(&paths, &host_name, &item).await;
                     });
                 }
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(&asked.item).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(&asked.item).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::FeatureRequests => {
-                let requests = crate::sharing::for_device(&self.paths, &remote.clone(), crate::push::now_ms()).map_err(internal)?;
+                let requests =
+                    crate::sharing::for_device(&self.paths, &remote.clone(), crate::push::now_ms())
+                        .map_err(internal)?;
                 let data = unipi_proto::FeatureRequestsData { requests };
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::FeatureLeave { feature, scope } => {
-                tracing::info!(op = "feature_leave", feature = feature.as_str(), scope = scope.as_str(), "request");
+                tracing::info!(
+                    op = "feature_leave",
+                    feature = feature.as_str(),
+                    scope = scope.as_str(),
+                    "request"
+                );
                 let data = crate::sharing::leave(
                     &self.paths,
                     feature,
@@ -769,13 +773,20 @@ impl Handler {
                     device_name.as_deref(),
                     crate::push::now_ms(),
                 )
-                .map_err(|e| match e.downcast_ref::<crate::sharing::Refused>() {
-                    Some(refused) => refused.error.clone(),
-                    None => internal(e),
+                .map_err(|e| {
+                    match e.downcast_ref::<crate::sharing::Refused>() {
+                        Some(refused) => refused.error.clone(),
+                        None => internal(e),
+                    }
                 })?;
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) })
-                    .await
-                    .map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::Pair { .. } => {}
             Request::HostInfo => {
@@ -783,11 +794,18 @@ impl Handler {
                     Ok(crate::instance::Status::Running { owner: Some(o) }) => Some(o),
                     _ => None,
                 };
-                let devices = DeviceStore::new(self.paths.devices()).list().map_err(internal)?.len() as u32;
+                let devices = DeviceStore::new(self.paths.devices())
+                    .list()
+                    .map_err(internal)?
+                    .len() as u32;
                 let data = unipi_proto::HostInfoData {
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     proto: unipi_proto::PROTO_VERSION.to_string(),
-                    mode: owner.as_ref().map(|o| o.mode.as_str()).unwrap_or("manual").to_string(),
+                    mode: owner
+                        .as_ref()
+                        .map(|o| o.mode.as_str())
+                        .unwrap_or("manual")
+                        .to_string(),
                     pid: std::process::id(),
                     started_at: owner.map(|o| o.started_at).unwrap_or(0),
                     host_id: self.host_id.to_string(),
@@ -796,62 +814,147 @@ impl Handler {
                     tools: crate::admin::tools(),
                     devices,
                 };
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) }).await.map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::PairBegin { ttl_secs } => {
-                let cache: Option<crate::endpoint::EndpointCache> = crate::data_dir::read_json(&self.paths.endpoint()).map_err(internal)?;
-                let cache = cache.ok_or_else(|| error(AppErrorCode::E_INTERNAL, "The host hasn't published its address yet — try again in a moment"))?;
-                let ttl = ttl_secs.map(|t| t.value()).unwrap_or(unipi_proto::admin::PAIR_TTL_DEFAULT) as u64;
-                let started = crate::pair_cli::start_in_serve(&self.paths, &cache.addr, ttl, &self.host_name).map_err(internal)?;
+                let cache: Option<crate::endpoint::EndpointCache> =
+                    crate::data_dir::read_json(&self.paths.endpoint()).map_err(internal)?;
+                let cache = cache.ok_or_else(|| {
+                    error(
+                        AppErrorCode::E_INTERNAL,
+                        "The host hasn't published its address yet — try again in a moment",
+                    )
+                })?;
+                let ttl = ttl_secs
+                    .map(|t| t.value())
+                    .unwrap_or(unipi_proto::admin::PAIR_TTL_DEFAULT)
+                    as u64;
+                let started =
+                    crate::pair_cli::start_in_serve(&self.paths, &cache.addr, ttl, &self.host_name)
+                        .map_err(internal)?;
                 tracing::info!(op = "pair_begin", ttl, "request");
-                let data = unipi_proto::PairBeginData { link: started.link, code: started.state.code, expires_at: started.state.expires_at, host_name: started.host };
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) }).await.map_err(internal)?;
+                let data = unipi_proto::PairBeginData {
+                    link: started.link,
+                    code: started.state.code,
+                    expires_at: started.state.expires_at,
+                    host_name: started.host,
+                };
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::PairStatus { code, cancel } => {
                 use crate::pair_cli::PairEvent;
-                let mut event = crate::pair_cli::status_for_code(&self.paths, code.as_str(), now_unix()).map_err(internal)?;
+                let mut event =
+                    crate::pair_cli::status_for_code(&self.paths, code.as_str(), now_unix())
+                        .map_err(internal)?;
                 if cancel {
                     if let PairEvent::Waiting { .. } = event {
-                        if let Some(current) = PairingStore::new(self.paths.pairing()).current().map_err(internal)? {
+                        if let Some(current) = PairingStore::new(self.paths.pairing())
+                            .current()
+                            .map_err(internal)?
+                        {
                             crate::pair_cli::cancel(&self.paths, &current).map_err(internal)?;
                         }
-                        event = PairEvent::Expired { reason: crate::pair_cli::ExpiredReason::Cancelled };
+                        event = PairEvent::Expired {
+                            reason: crate::pair_cli::ExpiredReason::Cancelled,
+                        };
                     }
                 }
                 let data = match event {
-                    PairEvent::Waiting { expires_at, .. } => unipi_proto::PairStatusData::Waiting { expires_at },
+                    PairEvent::Waiting { expires_at, .. } => {
+                        unipi_proto::PairStatusData::Waiting { expires_at }
+                    }
                     PairEvent::Paired { device } => unipi_proto::PairStatusData::Paired { device },
                     PairEvent::Expired { reason } => unipi_proto::PairStatusData::Expired {
                         reason: match reason {
-                            crate::pair_cli::ExpiredReason::Timeout => unipi_proto::PairExpiredReason::Timeout,
-                            crate::pair_cli::ExpiredReason::Replaced => unipi_proto::PairExpiredReason::Replaced,
-                            crate::pair_cli::ExpiredReason::Locked => unipi_proto::PairExpiredReason::Locked,
-                            crate::pair_cli::ExpiredReason::Cancelled => unipi_proto::PairExpiredReason::Cancelled,
+                            crate::pair_cli::ExpiredReason::Timeout => {
+                                unipi_proto::PairExpiredReason::Timeout
+                            }
+                            crate::pair_cli::ExpiredReason::Replaced => {
+                                unipi_proto::PairExpiredReason::Replaced
+                            }
+                            crate::pair_cli::ExpiredReason::Locked => {
+                                unipi_proto::PairExpiredReason::Locked
+                            }
+                            crate::pair_cli::ExpiredReason::Cancelled => {
+                                unipi_proto::PairExpiredReason::Cancelled
+                            }
                         },
                     },
-                    PairEvent::Error { message, .. } => return Err(error(AppErrorCode::E_INTERNAL, message)),
+                    PairEvent::Error { message, .. } => {
+                        return Err(error(AppErrorCode::E_INTERNAL, message))
+                    }
                 };
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(data).map_err(internal)?) }).await.map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(serde_json::to_value(data).map_err(internal)?),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::DevicesList => {
                 let devices = DeviceStore::new(self.paths.devices())
                     .list()
                     .map_err(internal)?
                     .into_iter()
-                    .map(|d| unipi_proto::DeviceItem { id: d.id, name: d.name, paired_at: d.paired_at, last_seen: d.last_seen })
+                    .map(|d| unipi_proto::DeviceItem {
+                        id: d.id,
+                        name: d.name,
+                        paired_at: d.paired_at,
+                        last_seen: d.last_seen,
+                    })
                     .collect();
-                write_control(write, &Control::Ok { data: Some(serde_json::to_value(unipi_proto::DevicesListData { devices }).map_err(internal)?) }).await.map_err(internal)?;
+                write_control(
+                    write,
+                    &Control::Ok {
+                        data: Some(
+                            serde_json::to_value(unipi_proto::DevicesListData { devices })
+                                .map_err(internal)?,
+                        ),
+                    },
+                )
+                .await
+                .map_err(internal)?;
             }
             Request::DeviceRevoke { id } => {
                 let store = DeviceStore::new(self.paths.devices());
-                let matches: Vec<_> = store.list().map_err(internal)?.into_iter().filter(|d| d.id == id.as_str() || d.id.starts_with(id.as_str())).collect();
+                let matches: Vec<_> = store
+                    .list()
+                    .map_err(internal)?
+                    .into_iter()
+                    .filter(|d| d.id == id.as_str() || d.id.starts_with(id.as_str()))
+                    .collect();
                 let [device] = matches.as_slice() else {
-                    return Err(error(AppErrorCode::E_NOT_FOUND, if matches.is_empty() { "No such phone" } else { "That id matches more than one phone" }));
+                    return Err(error(
+                        AppErrorCode::E_NOT_FOUND,
+                        if matches.is_empty() {
+                            "No such phone"
+                        } else {
+                            "That id matches more than one phone"
+                        },
+                    ));
                 };
                 let parsed: EndpointId = device.id.parse().map_err(internal)?;
                 store.revoke(&parsed).map_err(internal)?;
                 tracing::info!(op = "device_revoke", name = device.name.as_str(), "request");
-                write_control(write, &Control::Ok { data: None }).await.map_err(internal)?;
+                write_control(write, &Control::Ok { data: None })
+                    .await
+                    .map_err(internal)?;
             }
             Request::CronList
             | Request::CronShow { .. }
@@ -868,16 +971,17 @@ impl Handler {
             | Request::CronResumeAll
             | Request::CronStatus
             | Request::CronParse { .. }
-            | Request::CronOpenSession { .. }
             | Request::CronSettingsGet
             | Request::CronSettingsSet(..) => {
-                // Opening a run's session starts pi in a mux session, like chat_new.
-                if let Request::CronOpenSession { target, .. } = &req {
-                    if self.protected(target.session()) {
-                        return Err(error(AppErrorCode::E_UNAUTHORIZED, "This session is protected on the host"));
-                    }
-                }
-                crate::cron_serve::serve_request(&self.paths, &self.cron, req, &remote.clone(), device_name.as_deref(), write).await?;
+                crate::cron_serve::serve_request(
+                    &self.paths,
+                    &self.cron,
+                    req,
+                    &remote.clone(),
+                    device_name.as_deref(),
+                    write,
+                )
+                .await?;
             }
         }
         Ok(())

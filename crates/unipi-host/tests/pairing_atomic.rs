@@ -14,7 +14,7 @@ async fn pair(host: Handler, code: String) -> Control {
     });
     let (mut read, mut write) = tokio::io::split(client);
     let hello = Control::Hello {
-        proto: "1.0.0".to_owned().try_into().unwrap(),
+        proto: unipi_proto::PROTO_VERSION.to_owned().try_into().unwrap(),
         req: Request::Pair {
             code: code.try_into().unwrap(),
             name: None,
@@ -32,8 +32,6 @@ fn handler(paths: HostPaths) -> Handler {
         host_id: iroh::SecretKey::generate().public(),
         host_name: "Test".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        protected: std::sync::Arc::new(Vec::new()),
-        board: Default::default(),
     }
 }
 #[tokio::test]

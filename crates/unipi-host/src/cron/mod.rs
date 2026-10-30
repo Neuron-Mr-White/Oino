@@ -18,10 +18,9 @@
 pub mod exec;
 pub mod model;
 pub mod notify;
-pub mod scheduler;
 pub mod schedule;
+pub mod scheduler;
 pub mod store;
-pub mod wake;
 
 pub use model::{CronSettings, Job, Run, RunStatus};
 pub use scheduler::{CronControl, CronEvent, Scheduler};

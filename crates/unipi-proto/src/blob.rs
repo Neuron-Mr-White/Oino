@@ -46,7 +46,11 @@ impl TryFrom<String> for Sha256Hex {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+        if value.len() == 64
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
             Ok(Sha256Hex(value))
         } else {
             Err("sha256 must be 64 lowercase hex characters".to_string())

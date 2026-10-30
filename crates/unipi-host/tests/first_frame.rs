@@ -15,8 +15,6 @@ fn handler(dir: &std::path::Path) -> Handler {
         host_id: iroh::SecretKey::generate().public(),
         host_name: "Test".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        protected: std::sync::Arc::new(Vec::new()),
-        board: Default::default(),
     }
 }
 async fn rejected(bytes: Vec<u8>, expected: AppErrorCode) {

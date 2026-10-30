@@ -58,10 +58,19 @@ impl TryFrom<String> for GitRefName {
         if !(1..=255).contains(&len) {
             return Err(format!("ref must be 1..=255 characters, got {len}"));
         }
-        if value.starts_with('-') || value.starts_with('/') || value.ends_with('/') || value.ends_with('.') || value.ends_with(".lock") {
+        if value.starts_with('-')
+            || value.starts_with('/')
+            || value.ends_with('/')
+            || value.ends_with('.')
+            || value.ends_with(".lock")
+        {
             return Err("not a valid branch name".into());
         }
-        if value.contains("..") || value.contains("//") || value.contains("@{") || value.chars().any(invalid_ref_char) {
+        if value.contains("..")
+            || value.contains("//")
+            || value.contains("@{")
+            || value.chars().any(invalid_ref_char)
+        {
             return Err("not a valid branch name".into());
         }
         Ok(GitRefName(value))
@@ -91,7 +100,10 @@ impl TryFrom<String> for GitPath {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() || value.len() > 4096 {
-            return Err(format!("path must be 1..=4096 characters, got {}", value.len()));
+            return Err(format!(
+                "path must be 1..=4096 characters, got {}",
+                value.len()
+            ));
         }
         if value.bytes().any(|b| b == 0) {
             return Err("path must not contain NUL bytes".into());
@@ -250,7 +262,9 @@ impl GitCmd {
                     return Err(format!("discard needs 1..={GIT_PATHS_MAX} paths"));
                 }
             }
-            GitCmd::Log { limit: Some(limit), .. } if *limit == 0 || *limit > GIT_LOG_MAX => {
+            GitCmd::Log {
+                limit: Some(limit), ..
+            } if *limit == 0 || *limit > GIT_LOG_MAX => {
                 return Err(format!("limit must be 1..={GIT_LOG_MAX}"));
             }
             _ => {}
@@ -467,7 +481,9 @@ mod tests {
         for ok in ["main", "feat/x-1", "origin/main", "a1b2c3d", "v1.2"] {
             assert!(GitRefName::try_from(ok.to_string()).is_ok(), "{ok}");
         }
-        for bad in ["", "-x", "--force", "a b", "a..b", "a~1", "x.lock", "a/", "/a", "a:b", "x@{1}"] {
+        for bad in [
+            "", "-x", "--force", "a b", "a..b", "a~1", "x.lock", "a/", "/a", "a:b", "x@{1}",
+        ] {
             assert!(GitRefName::try_from(bad.to_string()).is_err(), "{bad}");
         }
     }
@@ -485,11 +501,36 @@ mod tests {
     fn messages_and_checks() {
         assert!(GitMessage::try_from("  \n".to_string()).is_err());
         assert!(GitMessage::try_from("fix".to_string()).is_ok());
-        assert!(GitCmd::Stage { paths: vec![], all: false }.check().is_err());
-        assert!(GitCmd::Stage { paths: vec![], all: true }.check().is_ok());
-        assert!(GitCmd::Discard { paths: vec![], confirm: true }.check().is_err());
-        assert!(GitCmd::Log { skip: 0, limit: Some(0) }.check().is_err());
-        assert!(GitCmd::Log { skip: 0, limit: Some(50) }.check().is_ok());
+        assert!(GitCmd::Stage {
+            paths: vec![],
+            all: false
+        }
+        .check()
+        .is_err());
+        assert!(GitCmd::Stage {
+            paths: vec![],
+            all: true
+        }
+        .check()
+        .is_ok());
+        assert!(GitCmd::Discard {
+            paths: vec![],
+            confirm: true
+        }
+        .check()
+        .is_err());
+        assert!(GitCmd::Log {
+            skip: 0,
+            limit: Some(0)
+        }
+        .check()
+        .is_err());
+        assert!(GitCmd::Log {
+            skip: 0,
+            limit: Some(50)
+        }
+        .check()
+        .is_ok());
         let cmd: GitCmd = serde_json::from_str(r#"{"action":"pull"}"#).unwrap();
         assert_eq!(cmd, GitCmd::Pull { rebase: false });
         assert!(cmd.is_network());

@@ -37,7 +37,8 @@ pub const WRAPPER_VERSION: &str = "0.6.2";
 /// Primary download origin.
 pub const DOWNLOAD_BASE_URL: &str = "https://cloakbrowser.dev";
 /// Mirror (GitHub Releases).
-pub const GITHUB_DOWNLOAD_BASE_URL: &str = "https://github.com/CloakHQ/cloakbrowser/releases/download";
+pub const GITHUB_DOWNLOAD_BASE_URL: &str =
+    "https://github.com/CloakHQ/cloakbrowser/releases/download";
 
 /// Ed25519 public keys (base64 of the raw 32 bytes) that sign `SHA256SUMS`.
 /// From the wrapper's `BINARY_SIGNING_PUBKEYS`; several allowed for rotation.
@@ -85,18 +86,28 @@ pub fn platform_tag() -> Option<&'static str> {
 
 /// The pinned free version for `tag`.
 pub fn pinned_version(tag: &str) -> Option<&'static str> {
-    PLATFORM_VERSIONS.iter().find(|(t, _)| *t == tag).map(|(_, v)| *v)
+    PLATFORM_VERSIONS
+        .iter()
+        .find(|(t, _)| *t == tag)
+        .map(|(_, v)| *v)
 }
 
 /// A full numeric Chromium version: `146.0.7680.177` or `146.0.7680.177.5`.
 pub fn valid_version(version: &str) -> bool {
     let parts: Vec<&str> = version.split('.').collect();
-    (4..=5).contains(&parts.len()) && parts.iter().all(|p| !p.is_empty() && p.len() <= 10 && p.bytes().all(|b| b.is_ascii_digit()))
+    (4..=5).contains(&parts.len())
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.len() <= 10 && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// `cloakbrowser-<tag>.tar.gz`, `.zip` for Windows.
 pub fn archive_name(tag: &str) -> String {
-    let ext = if tag.starts_with("windows") { ".zip" } else { ".tar.gz" };
+    let ext = if tag.starts_with("windows") {
+        ".zip"
+    } else {
+        ".tar.gz"
+    };
     format!("cloakbrowser-{tag}{ext}")
 }
 
@@ -108,7 +119,10 @@ pub fn release_url(base: &str, version: &str, file: &str) -> String {
 /// The executable inside an extracted build.
 pub fn binary_in(dir: &Path) -> PathBuf {
     if cfg!(target_os = "macos") {
-        dir.join("Chromium.app").join("Contents").join("MacOS").join("Chromium")
+        dir.join("Chromium.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("Chromium")
     } else if cfg!(windows) {
         dir.join("chrome.exe")
     } else {
@@ -117,7 +131,9 @@ pub fn binary_in(dir: &Path) -> PathBuf {
 }
 
 fn env_dir(key: &str) -> Option<PathBuf> {
-    std::env::var_os(key).filter(|v| !v.is_empty()).map(PathBuf::from)
+    std::env::var_os(key)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
 }
 
 /// `~/.cache/unipi/cloakbrowser` (`$XDG_CACHE_HOME`, macOS `~/Library/Caches`,
@@ -144,7 +160,9 @@ pub fn wrapper_cache_root() -> Option<PathBuf> {
 #[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    path.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+    path.metadata()
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
 }
 #[cfg(not(unix))]
 fn is_executable(path: &Path) -> bool {
@@ -156,19 +174,27 @@ fn is_executable(path: &Path) -> bool {
 /// Verifies the detached `SHA256SUMS.sig` (base64 text) over the exact
 /// manifest bytes with any of `keys` (base64 raw Ed25519 public keys).
 pub fn verify_signature(manifest: &[u8], sig_file: &[u8], keys: &[&str]) -> anyhow::Result<()> {
-    let text = std::str::from_utf8(sig_file).map_err(|_| anyhow::anyhow!("malformed SHA256SUMS.sig (not text)"))?.trim();
+    let text = std::str::from_utf8(sig_file)
+        .map_err(|_| anyhow::anyhow!("malformed SHA256SUMS.sig (not text)"))?
+        .trim();
     // Strict: padding required, invalid characters and non-zero trailing bits refused.
     let raw = base64::engine::general_purpose::STANDARD
         .decode(text)
         .map_err(|_| anyhow::anyhow!("malformed SHA256SUMS.sig (not valid base64)"))?;
-    let raw: [u8; 64] = raw
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("malformed SHA256SUMS.sig (not a 64-byte Ed25519 signature)"))?;
+    let raw: [u8; 64] = raw.try_into().map_err(|_| {
+        anyhow::anyhow!("malformed SHA256SUMS.sig (not a 64-byte Ed25519 signature)")
+    })?;
     let signature = ed25519_dalek::Signature::from_bytes(&raw);
     for key in keys {
-        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(key) else { continue };
-        let Ok(bytes) = <[u8; 32]>::try_from(bytes) else { continue };
-        let Ok(key) = ed25519_dalek::VerifyingKey::from_bytes(&bytes) else { continue };
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(key) else {
+            continue;
+        };
+        let Ok(bytes) = <[u8; 32]>::try_from(bytes) else {
+            continue;
+        };
+        let Ok(key) = ed25519_dalek::VerifyingKey::from_bytes(&bytes) else {
+            continue;
+        };
         if key.verify_strict(manifest, &signature).is_ok() {
             return Ok(());
         }
@@ -178,7 +204,10 @@ pub fn verify_signature(manifest: &[u8], sig_file: &[u8], keys: &[&str]) -> anyh
 
 /// The manifest's `version=<v>` line.
 pub fn parse_manifest_version(text: &str) -> Option<String> {
-    text.lines().map(str::trim).find_map(|l| l.strip_prefix("version=")).map(|v| v.trim().to_string())
+    text.lines()
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix("version="))
+        .map(|v| v.trim().to_string())
 }
 
 /// `<sha256 hex>  [*]<file name>` lines → (name, lowercase hex).
@@ -187,7 +216,9 @@ pub fn parse_checksums(text: &str) -> Vec<(String, String)> {
         .filter_map(|line| {
             let line = line.trim();
             let (hash, rest) = line.split_at_checked(64)?;
-            if !hash.bytes().all(|b| b.is_ascii_hexdigit()) || !rest.starts_with(char::is_whitespace) {
+            if !hash.bytes().all(|b| b.is_ascii_hexdigit())
+                || !rest.starts_with(char::is_whitespace)
+            {
                 return None;
             }
             let name = rest.trim_start();
@@ -200,7 +231,13 @@ pub fn parse_checksums(text: &str) -> Vec<(String, String)> {
 /// Checks a signed manifest for `version`/`archive` and returns the SHA-256
 /// (lowercase hex) the archive must have: signature first, then the version
 /// binding, then the entry.
-pub fn verified_checksum(manifest: &[u8], sig_file: &[u8], keys: &[&str], version: &str, archive: &str) -> anyhow::Result<String> {
+pub fn verified_checksum(
+    manifest: &[u8],
+    sig_file: &[u8],
+    keys: &[&str],
+    version: &str,
+    archive: &str,
+) -> anyhow::Result<String> {
     verify_signature(manifest, sig_file, keys)?;
     let text = String::from_utf8_lossy(manifest);
     let declared = parse_manifest_version(&text);
@@ -250,35 +287,62 @@ pub struct CloakBinary {
 
 /// The version to use: `browser.cloak_version`, else this platform's pin.
 pub fn wanted_version(configured: Option<&str>) -> anyhow::Result<(String, &'static str)> {
-    let tag = platform_tag().ok_or_else(|| anyhow::anyhow!("CloakBrowser has no build for this platform ({} {})", std::env::consts::OS, std::env::consts::ARCH))?;
+    let tag = platform_tag().ok_or_else(|| {
+        anyhow::anyhow!(
+            "CloakBrowser has no build for this platform ({} {})",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        )
+    })?;
     let version = match configured.map(str::trim).filter(|v| !v.is_empty()) {
         Some(v) => {
             anyhow::ensure!(valid_version(v), "browser.cloak_version {v:?} is not a full numeric Chromium version (e.g. 146.0.7680.177.5)");
             v.to_string()
         }
-        None => pinned_version(tag).ok_or_else(|| anyhow::anyhow!("no free CloakBrowser build is pinned for {tag}"))?.to_string(),
+        None => pinned_version(tag)
+            .ok_or_else(|| anyhow::anyhow!("no free CloakBrowser build is pinned for {tag}"))?
+            .to_string(),
     };
     Ok((version, tag))
 }
 
 /// A ready binary without downloading anything (status / `browser status`).
-pub fn locate(cloak_path: Option<&str>, cloak_version: Option<&str>) -> anyhow::Result<Option<CloakBinary>> {
+pub fn locate(
+    cloak_path: Option<&str>,
+    cloak_version: Option<&str>,
+) -> anyhow::Result<Option<CloakBinary>> {
     if let Some(path) = cloak_path.map(str::trim).filter(|p| !p.is_empty()) {
         let path = PathBuf::from(path);
-        anyhow::ensure!(is_executable(&path), "browser.cloak_path {} is not an executable file", path.display());
-        return Ok(Some(CloakBinary { path, version: None, source: Source::Configured }));
+        anyhow::ensure!(
+            is_executable(&path),
+            "browser.cloak_path {} is not an executable file",
+            path.display()
+        );
+        return Ok(Some(CloakBinary {
+            path,
+            version: None,
+            source: Source::Configured,
+        }));
     }
     let (version, _) = wanted_version(cloak_version)?;
     if let Some(root) = cache_root() {
         let bin = binary_in(&root.join(&version));
         if is_executable(&bin) {
-            return Ok(Some(CloakBinary { path: bin, version: Some(version), source: Source::Cached }));
+            return Ok(Some(CloakBinary {
+                path: bin,
+                version: Some(version),
+                source: Source::Cached,
+            }));
         }
     }
     if let Some(root) = wrapper_cache_root() {
         let bin = binary_in(&root.join(format!("chromium-{version}")));
         if is_executable(&bin) {
-            return Ok(Some(CloakBinary { path: bin, version: Some(version), source: Source::Wrapper }));
+            return Ok(Some(CloakBinary {
+                path: bin,
+                version: Some(version),
+                source: Source::Wrapper,
+            }));
         }
     }
     Ok(None)
@@ -291,7 +355,10 @@ fn lock() -> &'static tokio::sync::Mutex<()> {
 
 /// A ready CloakBrowser binary: configured, cached, the wrapper's, or
 /// downloaded + verified now (one download at a time per process).
-pub async fn ensure(cloak_path: Option<&str>, cloak_version: Option<&str>) -> anyhow::Result<CloakBinary> {
+pub async fn ensure(
+    cloak_path: Option<&str>,
+    cloak_version: Option<&str>,
+) -> anyhow::Result<CloakBinary> {
     if let Some(found) = locate(cloak_path, cloak_version)? {
         return Ok(found);
     }
@@ -300,12 +367,21 @@ pub async fn ensure(cloak_path: Option<&str>, cloak_version: Option<&str>) -> an
         return Ok(found);
     }
     let (version, tag) = wanted_version(cloak_version)?;
-    let root = cache_root().ok_or_else(|| anyhow::anyhow!("no cache directory ($HOME is not set)"))?;
+    let root =
+        cache_root().ok_or_else(|| anyhow::anyhow!("no cache directory ($HOME is not set)"))?;
     let dir = root.join(&version);
     download_and_install(&version, tag, &dir).await?;
     let bin = binary_in(&dir);
-    anyhow::ensure!(is_executable(&bin), "the CloakBrowser {version} archive has no browser at {}", bin.display());
-    Ok(CloakBinary { path: bin, version: Some(version), source: Source::Downloaded })
+    anyhow::ensure!(
+        is_executable(&bin),
+        "the CloakBrowser {version} archive has no browser at {}",
+        bin.display()
+    );
+    Ok(CloakBinary {
+        path: bin,
+        version: Some(version),
+        source: Source::Downloaded,
+    })
 }
 
 fn client() -> anyhow::Result<reqwest::Client> {
@@ -317,14 +393,21 @@ fn client() -> anyhow::Result<reqwest::Client> {
 }
 
 async fn get_bytes(client: &reqwest::Client, url: &str) -> anyhow::Result<Vec<u8>> {
-    let res = tokio::time::timeout(Duration::from_secs(30), client.get(url).send()).await.map_err(|_| anyhow::anyhow!("timed out"))??;
+    let res = tokio::time::timeout(Duration::from_secs(30), client.get(url).send())
+        .await
+        .map_err(|_| anyhow::anyhow!("timed out"))??;
     anyhow::ensure!(res.status().is_success(), "HTTP {}", res.status());
-    let bytes = tokio::time::timeout(Duration::from_secs(30), res.bytes()).await.map_err(|_| anyhow::anyhow!("timed out"))??;
+    let bytes = tokio::time::timeout(Duration::from_secs(30), res.bytes())
+        .await
+        .map_err(|_| anyhow::anyhow!("timed out"))??;
     Ok(bytes.to_vec())
 }
 
 /// `SHA256SUMS` + `SHA256SUMS.sig` from one origin (primary, then GitHub).
-async fn fetch_signed_manifest(client: &reqwest::Client, version: &str) -> anyhow::Result<(Vec<u8>, Vec<u8>, &'static str)> {
+async fn fetch_signed_manifest(
+    client: &reqwest::Client,
+    version: &str,
+) -> anyhow::Result<(Vec<u8>, Vec<u8>, &'static str)> {
     let mut errors = Vec::new();
     for base in [DOWNLOAD_BASE_URL, GITHUB_DOWNLOAD_BASE_URL] {
         let manifest = match get_bytes(client, &release_url(base, version, "SHA256SUMS")).await {
@@ -359,27 +442,54 @@ async fn download(client: &reqwest::Client, url: &str, dest: &Path) -> anyhow::R
         if let Some(pct) = (done * 100).checked_div(total) {
             if pct >= logged + 10 {
                 logged = pct - pct % 10;
-                tracing::info!(op = "cloakbrowser", "download {pct}% ({} / {} MB)", done >> 20, total >> 20);
+                tracing::info!(
+                    op = "cloakbrowser",
+                    "download {pct}% ({} / {} MB)",
+                    done >> 20,
+                    total >> 20
+                );
             }
         }
     }
     file.flush().await?;
     file.sync_all().await?;
-    anyhow::ensure!(total == 0 || done == total, "download ended early ({done} of {total} bytes)");
+    anyhow::ensure!(
+        total == 0 || done == total,
+        "download ended early ({done} of {total} bytes)"
+    );
     tracing::info!(op = "cloakbrowser", mb = done >> 20, "download complete");
-    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 async fn download_and_install(version: &str, tag: &str, dir: &Path) -> anyhow::Result<()> {
-    let parent = dir.parent().ok_or_else(|| anyhow::anyhow!("bad cache dir"))?.to_path_buf();
+    let parent = dir
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("bad cache dir"))?
+        .to_path_buf();
     tokio::fs::create_dir_all(&parent).await?;
     let client = client()?;
     let archive = archive_name(tag);
-    tracing::info!(op = "cloakbrowser", version, platform = tag, "CloakBrowser not cached: fetching the signed checksums");
+    tracing::info!(
+        op = "cloakbrowser",
+        version,
+        platform = tag,
+        "CloakBrowser not cached: fetching the signed checksums"
+    );
     let (manifest, sig, origin) = fetch_signed_manifest(&client, version).await?;
     let expected = verified_checksum(&manifest, &sig, SIGNING_PUBKEYS, version, &archive)?;
-    tracing::info!(op = "cloakbrowser", origin, "SHA256SUMS signature verified (Ed25519)");
-    let tmp = parent.join(format!("_download_{:016x}_{archive}", rand::random::<u64>()));
+    tracing::info!(
+        op = "cloakbrowser",
+        origin,
+        "SHA256SUMS signature verified (Ed25519)"
+    );
+    let tmp = parent.join(format!(
+        "_download_{:016x}_{archive}",
+        rand::random::<u64>()
+    ));
     struct Remove(PathBuf);
     impl Drop for Remove {
         fn drop(&mut self) {
@@ -401,9 +511,17 @@ async fn download_and_install(version: &str, tag: &str, dir: &Path) -> anyhow::R
             }
         }
     }
-    let got = got.ok_or_else(|| anyhow::anyhow!("could not download CloakBrowser {version} ({})", errors.join("; ")))?;
+    let got = got.ok_or_else(|| {
+        anyhow::anyhow!(
+            "could not download CloakBrowser {version} ({})",
+            errors.join("; ")
+        )
+    })?;
     check_archive_hash(&expected, &got)?;
-    tracing::info!(op = "cloakbrowser", "checksum verified (SHA-256): extracting");
+    tracing::info!(
+        op = "cloakbrowser",
+        "checksum verified (SHA-256): extracting"
+    );
     let (tmp2, dir2) = (tmp.clone(), dir.to_path_buf());
     tokio::task::spawn_blocking(move || install(&tmp2, &dir2)).await??;
     tracing::info!(op = "cloakbrowser", dir = %dir.display(), "CloakBrowser ready");
@@ -413,7 +531,9 @@ async fn download_and_install(version: &str, tag: &str, dir: &Path) -> anyhow::R
 /// Extracts a verified archive into a private staging dir next to `dir`,
 /// then renames it into place (an existing complete install wins).
 pub fn install(archive: &Path, dir: &Path) -> anyhow::Result<()> {
-    let parent = dir.parent().ok_or_else(|| anyhow::anyhow!("bad cache dir"))?;
+    let parent = dir
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("bad cache dir"))?;
     let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("build");
     let staging = parent.join(format!("{name}.partial-{:016x}", rand::random::<u64>()));
     std::fs::create_dir_all(&staging)?;
@@ -421,14 +541,21 @@ pub fn install(archive: &Path, dir: &Path) -> anyhow::Result<()> {
         extract(archive, &staging)?;
         flatten_single_subdir(&staging)?;
         let bin = binary_in(&staging);
-        anyhow::ensure!(bin.is_file(), "the archive has no {}", bin.strip_prefix(&staging).unwrap_or(&bin).display());
+        anyhow::ensure!(
+            bin.is_file(),
+            "the archive has no {}",
+            bin.strip_prefix(&staging).unwrap_or(&bin).display()
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755))?;
         }
         if cfg!(target_os = "macos") {
-            let _ = std::process::Command::new("xattr").arg("-cr").arg(&staging).status();
+            let _ = std::process::Command::new("xattr")
+                .arg("-cr")
+                .arg(&staging)
+                .status();
         }
         for _ in 0..3 {
             match std::fs::rename(&staging, dir) {
@@ -443,7 +570,10 @@ pub fn install(archive: &Path, dir: &Path) -> anyhow::Result<()> {
                 }
             }
         }
-        anyhow::bail!("could not move the CloakBrowser build into {}", dir.display())
+        anyhow::bail!(
+            "could not move the CloakBrowser build into {}",
+            dir.display()
+        )
     })();
     let _ = std::fs::remove_dir_all(&staging);
     result
@@ -452,7 +582,12 @@ pub fn install(archive: &Path, dir: &Path) -> anyhow::Result<()> {
 fn extract(archive: &Path, into: &Path) -> anyhow::Result<()> {
     if archive.extension().is_some_and(|e| e == "zip") {
         // Windows 10+ ships bsdtar, which reads zip.
-        let status = std::process::Command::new("tar").arg("-xf").arg(archive).arg("-C").arg(into).status()?;
+        let status = std::process::Command::new("tar")
+            .arg("-xf")
+            .arg(archive)
+            .arg("-C")
+            .arg(into)
+            .status()?;
         anyhow::ensure!(status.success(), "tar -xf failed ({status})");
         return Ok(());
     }
@@ -490,7 +625,12 @@ fn read_seed(file: &Path) -> std::io::Result<Option<u32>> {
         Err(e) => return Err(e),
     };
     match text.parse::<u32>() {
-        Ok(seed) if (SEED_MIN..=SEED_MAX).contains(&seed) && text.bytes().all(|b| b.is_ascii_digit()) => Ok(Some(seed)),
+        Ok(seed)
+            if (SEED_MIN..=SEED_MAX).contains(&seed)
+                && text.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            Ok(Some(seed))
+        }
         _ => {
             tracing::warn!(op = "cloakbrowser", file = %file.display(), "corrupt fingerprint seed file: generating a new seed (new identity)");
             match std::fs::remove_file(file) {
@@ -513,7 +653,10 @@ pub fn profile_seed(profile: &Path) -> std::io::Result<u32> {
     let content = format!("{}\n", rand::random_range(SEED_MIN..=SEED_MAX));
     let tmp = profile.join(format!("{SEED_FILE}.{:016x}.tmp", rand::random::<u64>()));
     let write_new = |path: &Path| -> std::io::Result<()> {
-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
         f.write_all(content.as_bytes())?;
         f.sync_all()
     };
@@ -527,7 +670,8 @@ pub fn profile_seed(profile: &Path) -> std::io::Result<u32> {
     });
     let _ = std::fs::remove_file(&tmp);
     published?;
-    read_seed(&file)?.ok_or_else(|| std::io::Error::other(format!("could not create {}", file.display())))
+    read_seed(&file)?
+        .ok_or_else(|| std::io::Error::other(format!("could not create {}", file.display())))
 }
 
 /// The wrapper's stealth flags for a headed persistent launch with `seed`:
@@ -535,7 +679,11 @@ pub fn profile_seed(profile: &Path) -> std::io::Result<u32> {
 /// Linux/Windows, native macOS on a Mac) and `--ignore-gpu-blocklist`
 /// (headed: lets SwiftShader serve WebGL on software GPUs).
 pub fn stealth_args(seed: u32) -> Vec<String> {
-    let platform = if cfg!(target_os = "macos") { "macos" } else { "windows" };
+    let platform = if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "windows"
+    };
     vec![
         "--no-sandbox".into(),
         format!("--fingerprint={seed}"),
@@ -567,22 +715,51 @@ mod tests {
     #[test]
     fn the_real_release_verifies_with_the_pinned_key() {
         verify_signature(MANIFEST.as_bytes(), SIG.as_bytes(), SIGNING_PUBKEYS).unwrap();
-        let hash = verified_checksum(MANIFEST.as_bytes(), SIG.as_bytes(), SIGNING_PUBKEYS, "146.0.7680.177.5", "cloakbrowser-linux-x64.tar.gz").unwrap();
-        assert_eq!(hash, "4a12bcde95fa1bb1beef2b41ab5e5c27c36be78e3be3d0dac8c64d705216670e");
+        let hash = verified_checksum(
+            MANIFEST.as_bytes(),
+            SIG.as_bytes(),
+            SIGNING_PUBKEYS,
+            "146.0.7680.177.5",
+            "cloakbrowser-linux-x64.tar.gz",
+        )
+        .unwrap();
+        assert_eq!(
+            hash,
+            "4a12bcde95fa1bb1beef2b41ab5e5c27c36be78e3be3d0dac8c64d705216670e"
+        );
     }
 
     #[test]
     fn a_tampered_manifest_is_refused() {
         let tampered = MANIFEST.replace("4a12bcde", "4a12bcdf");
         let e = verify_signature(tampered.as_bytes(), SIG.as_bytes(), SIGNING_PUBKEYS).unwrap_err();
-        assert!(e.to_string().contains("signature verification failed"), "{e}");
+        assert!(
+            e.to_string().contains("signature verification failed"),
+            "{e}"
+        );
         // One flipped bit of the signature, too.
-        let mut sig = base64::engine::general_purpose::STANDARD.decode(SIG.trim()).unwrap();
+        let mut sig = base64::engine::general_purpose::STANDARD
+            .decode(SIG.trim())
+            .unwrap();
         sig[10] ^= 1;
-        assert!(verify_signature(MANIFEST.as_bytes(), b64(&sig).as_bytes(), SIGNING_PUBKEYS).is_err());
+        assert!(
+            verify_signature(MANIFEST.as_bytes(), b64(&sig).as_bytes(), SIGNING_PUBKEYS).is_err()
+        );
         // Malformed signature files.
-        assert!(verify_signature(MANIFEST.as_bytes(), b"not base64!!", SIGNING_PUBKEYS).unwrap_err().to_string().contains("malformed"));
-        assert!(verify_signature(MANIFEST.as_bytes(), b64(&[1u8; 63]).as_bytes(), SIGNING_PUBKEYS).unwrap_err().to_string().contains("malformed"));
+        assert!(
+            verify_signature(MANIFEST.as_bytes(), b"not base64!!", SIGNING_PUBKEYS)
+                .unwrap_err()
+                .to_string()
+                .contains("malformed")
+        );
+        assert!(verify_signature(
+            MANIFEST.as_bytes(),
+            b64(&[1u8; 63]).as_bytes(),
+            SIGNING_PUBKEYS
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("malformed"));
     }
 
     #[test]
@@ -594,7 +771,12 @@ mod tests {
         let forged = sign(&test_key(), MANIFEST.as_bytes());
         assert!(verify_signature(MANIFEST.as_bytes(), forged.as_bytes(), SIGNING_PUBKEYS).is_err());
         // Any of several pinned keys may validate; garbage keys are skipped.
-        verify_signature(MANIFEST.as_bytes(), forged.as_bytes(), &["garbage", SIGNING_PUBKEYS[0], other.as_str()]).unwrap();
+        verify_signature(
+            MANIFEST.as_bytes(),
+            forged.as_bytes(),
+            &["garbage", SIGNING_PUBKEYS[0], other.as_str()],
+        )
+        .unwrap();
     }
 
     #[test]
@@ -605,13 +787,37 @@ mod tests {
         let old = "version=145.0.0.1\naaaa000000000000000000000000000000000000000000000000000000000000  cloakbrowser-linux-x64.tar.gz\n";
         let sig = sign(&key, old.as_bytes());
         // A genuinely signed OLDER release served for the version we asked for.
-        let e = verified_checksum(old.as_bytes(), sig.as_bytes(), &keys, "146.0.7680.177.5", "cloakbrowser-linux-x64.tar.gz").unwrap_err();
+        let e = verified_checksum(
+            old.as_bytes(),
+            sig.as_bytes(),
+            &keys,
+            "146.0.7680.177.5",
+            "cloakbrowser-linux-x64.tar.gz",
+        )
+        .unwrap_err();
         assert!(e.to_string().contains("possible downgrade"), "{e}");
-        let e = verified_checksum(old.as_bytes(), sig.as_bytes(), &keys, "145.0.0.1", "cloakbrowser-darwin-x64.tar.gz").unwrap_err();
+        let e = verified_checksum(
+            old.as_bytes(),
+            sig.as_bytes(),
+            &keys,
+            "145.0.0.1",
+            "cloakbrowser-darwin-x64.tar.gz",
+        )
+        .unwrap_err();
         assert!(e.to_string().contains("no entry"), "{e}");
-        let hash = verified_checksum(old.as_bytes(), sig.as_bytes(), &keys, "145.0.0.1", "cloakbrowser-linux-x64.tar.gz").unwrap();
+        let hash = verified_checksum(
+            old.as_bytes(),
+            sig.as_bytes(),
+            &keys,
+            "145.0.0.1",
+            "cloakbrowser-linux-x64.tar.gz",
+        )
+        .unwrap();
         check_archive_hash(&hash, &hash.to_uppercase()).unwrap();
-        assert!(check_archive_hash(&hash, &"b".repeat(64)).unwrap_err().to_string().contains("checksum mismatch"));
+        assert!(check_archive_hash(&hash, &"b".repeat(64))
+            .unwrap_err()
+            .to_string()
+            .contains("checksum mismatch"));
         // No version line at all.
         let bare = "aaaa000000000000000000000000000000000000000000000000000000000000  x\n";
         let sig = sign(&key, bare.as_bytes());
@@ -623,15 +829,28 @@ mod tests {
         let parsed = parse_checksums("version=1.2.3.4\nABCDEF0000000000000000000000000000000000000000000000000000000000 *a.zip\nzz  b\n\n0000000000000000000000000000000000000000000000000000000000000000  b.tar.gz\n");
         assert_eq!(
             parsed,
-            vec![("a.zip".to_string(), format!("abcdef{}", "0".repeat(58))), ("b.tar.gz".to_string(), "0".repeat(64))]
+            vec![
+                ("a.zip".to_string(), format!("abcdef{}", "0".repeat(58))),
+                ("b.tar.gz".to_string(), "0".repeat(64))
+            ]
         );
-        assert_eq!(parse_manifest_version(MANIFEST).as_deref(), Some("146.0.7680.177.5"));
+        assert_eq!(
+            parse_manifest_version(MANIFEST).as_deref(),
+            Some("146.0.7680.177.5")
+        );
     }
 
     #[test]
     fn versions_urls_and_names() {
         assert!(valid_version("146.0.7680.177.5") && valid_version("146.0.7680.177"));
-        for bad in ["146", "146.0.7680", "146.0.7680.177.5.1", "146.0.x.1", "", "1..2.3"] {
+        for bad in [
+            "146",
+            "146.0.7680",
+            "146.0.7680.177.5.1",
+            "146.0.x.1",
+            "",
+            "1..2.3",
+        ] {
             assert!(!valid_version(bad), "{bad}");
         }
         assert_eq!(pinned_version("linux-x64"), Some("146.0.7680.177.5"));
@@ -652,7 +871,10 @@ mod tests {
         let p = dir.path().join("profile");
         let seed = profile_seed(&p).unwrap();
         assert!((SEED_MIN..=SEED_MAX).contains(&seed));
-        assert_eq!(std::fs::read_to_string(p.join(SEED_FILE)).unwrap(), format!("{seed}\n"));
+        assert_eq!(
+            std::fs::read_to_string(p.join(SEED_FILE)).unwrap(),
+            format!("{seed}\n")
+        );
         assert_eq!(profile_seed(&p).unwrap(), seed);
         // Written by a wrapper (same format) → reused.
         std::fs::write(p.join(SEED_FILE), "54321\n").unwrap();
@@ -662,10 +884,17 @@ mod tests {
         let fresh = profile_seed(&p).unwrap();
         assert!((SEED_MIN..=SEED_MAX).contains(&fresh));
         // No temp files left behind.
-        let names: Vec<String> = std::fs::read_dir(&p).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = std::fs::read_dir(&p)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, [SEED_FILE]);
         let args = stealth_args(fresh);
-        assert!(args.contains(&format!("--fingerprint={fresh}")) && args.contains(&"--no-sandbox".to_string()));
+        assert!(
+            args.contains(&format!("--fingerprint={fresh}"))
+                && args.contains(&"--no-sandbox".to_string())
+        );
     }
 
     #[test]
@@ -674,7 +903,10 @@ mod tests {
         // A tarball like the release: one top-level dir with the binary.
         let archive = dir.path().join("cloakbrowser-test.tar.gz");
         {
-            let gz = flate2::write::GzEncoder::new(std::fs::File::create(&archive).unwrap(), flate2::Compression::fast());
+            let gz = flate2::write::GzEncoder::new(
+                std::fs::File::create(&archive).unwrap(),
+                flate2::Compression::fast(),
+            );
             let mut tar = tar::Builder::new(gz);
             let bin = binary_in(Path::new("cloakbrowser"));
             let mut header = tar::Header::new_gnu();
@@ -686,17 +918,25 @@ mod tests {
             h2.set_size(1);
             h2.set_mode(0o644);
             h2.set_cksum();
-            tar.append_data(&mut h2, "cloakbrowser/resources.pak", &b"x"[..]).unwrap();
+            tar.append_data(&mut h2, "cloakbrowser/resources.pak", &b"x"[..])
+                .unwrap();
             tar.into_inner().unwrap().finish().unwrap();
         }
         let target = dir.path().join("cache").join("1.2.3.4");
         std::fs::create_dir_all(target.parent().unwrap()).unwrap();
         install(&archive, &target).unwrap();
-        assert!(is_executable(&binary_in(&target)), "binary marked executable");
+        assert!(
+            is_executable(&binary_in(&target)),
+            "binary marked executable"
+        );
         assert!(target.join("resources.pak").is_file(), "flattened");
         // Again: the complete install stays.
         install(&archive, &target).unwrap();
-        let leftovers: Vec<_> = std::fs::read_dir(target.parent().unwrap()).unwrap().flatten().map(|e| e.file_name()).collect();
+        let leftovers: Vec<_> = std::fs::read_dir(target.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
         assert_eq!(leftovers.len(), 1, "{leftovers:?}");
     }
 }

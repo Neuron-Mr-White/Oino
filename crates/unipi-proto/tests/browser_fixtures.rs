@@ -13,8 +13,10 @@ struct Fixture {
 
 #[test]
 fn shared_browser_fixtures_agree() {
-    let fixtures: Vec<Fixture> =
-        serde_json::from_str(include_str!("../../../apps/unipi/protocol/fixtures/browser.json")).unwrap();
+    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
+        "../../../apps/unipi/protocol/fixtures/browser.json"
+    ))
+    .unwrap();
     assert!(fixtures.len() >= 30);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {
@@ -27,18 +29,27 @@ fn shared_browser_fixtures_agree() {
                         _ => Ok(()),
                     }
                 }),
-            "BrowserStatusData" => serde_json::from_value::<BrowserStatusData>(fixture.value.clone())
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
+            "BrowserStatusData" => {
+                serde_json::from_value::<BrowserStatusData>(fixture.value.clone())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }
             "BrowserOpenData" => serde_json::from_value::<BrowserOpenData>(fixture.value.clone())
                 .map(|_| ())
                 .map_err(|e| e.to_string()),
-            "BrowserProfilesData" => serde_json::from_value::<BrowserProfilesData>(fixture.value.clone())
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
+            "BrowserProfilesData" => {
+                serde_json::from_value::<BrowserProfilesData>(fixture.value.clone())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }
             other => panic!("unknown schema {other}"),
         };
-        assert_eq!(result.is_ok(), fixture.ok, "fixture `{}`: {result:?}", fixture.name);
+        assert_eq!(
+            result.is_ok(),
+            fixture.ok,
+            "fixture `{}`: {result:?}",
+            fixture.name
+        );
     }
 }
 

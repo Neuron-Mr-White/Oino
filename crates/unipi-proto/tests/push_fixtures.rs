@@ -13,8 +13,10 @@ struct Fixture {
 
 #[test]
 fn shared_push_fixtures_agree() {
-    let fixtures: Vec<Fixture> =
-        serde_json::from_str(include_str!("../../../apps/unipi/protocol/fixtures/push.json")).unwrap();
+    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
+        "../../../apps/unipi/protocol/fixtures/push.json"
+    ))
+    .unwrap();
     assert!(fixtures.len() >= 10);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {
@@ -26,6 +28,11 @@ fn shared_push_fixtures_agree() {
                 .map_err(|e| e.to_string()),
             other => panic!("unknown schema {other}"),
         };
-        assert_eq!(result.is_ok(), fixture.ok, "fixture `{}`: {result:?}", fixture.name);
+        assert_eq!(
+            result.is_ok(),
+            fixture.ok,
+            "fixture `{}`: {result:?}",
+            fixture.name
+        );
     }
 }

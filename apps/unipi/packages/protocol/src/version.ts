@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** The wire protocol version implemented by this package. */
-export const PROTO_VERSION = "1.20.0";
+export const PROTO_VERSION = "2.0.0";
 
 /**
  * Strict semver string: MAJOR.MINOR.PATCH with optional

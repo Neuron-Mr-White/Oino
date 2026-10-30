@@ -41,7 +41,11 @@ pub enum Stream {
 }
 
 impl AsyncRead for Stream {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         match &mut *self {
             #[cfg(unix)]
             Stream::Unix(stream) => Pin::new(stream).poll_read(cx, buf),
@@ -52,7 +56,11 @@ impl AsyncRead for Stream {
 }
 
 impl AsyncWrite for Stream {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
         match &mut *self {
             #[cfg(unix)]
             Stream::Unix(stream) => Pin::new(stream).poll_write(cx, buf),
@@ -120,6 +128,9 @@ mod tests {
             r"\\.\pipe\C:\Users\oi\AppData\Roaming\herdr\herdr.sock"
         );
         // Already a full pipe path: unchanged (no double prefix).
-        assert_eq!(pipe_path(r"\\.\pipe\unipi-bridge-42"), r"\\.\pipe\unipi-bridge-42");
+        assert_eq!(
+            pipe_path(r"\\.\pipe\unipi-bridge-42"),
+            r"\\.\pipe\unipi-bridge-42"
+        );
     }
 }

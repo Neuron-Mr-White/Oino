@@ -43,7 +43,11 @@ pub fn host_dir_from(
 
 /// This process's host data dir.
 pub fn default_host_dir() -> PathBuf {
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
     host_dir_from(
         cfg!(windows),
         env(UNIPI_HOST_DIR_ENV),
@@ -70,18 +74,49 @@ mod tests {
         let legacy = sub(&lad.join("UniPi"));
         let only_legacy = |d: &Path| d == legacy.as_path();
         // Only the legacy dir has an identity → use it (the bug: the app used the profile dir).
-        assert_eq!(host_dir_from(true, None, None, Some(profile.clone()), Some(lad.clone()), &only_legacy), legacy);
+        assert_eq!(
+            host_dir_from(
+                true,
+                None,
+                None,
+                Some(profile.clone()),
+                Some(lad.clone()),
+                &only_legacy
+            ),
+            legacy
+        );
         // Both have one → the preferred profile dir.
-        assert_eq!(host_dir_from(true, None, None, Some(profile.clone()), Some(lad.clone()), &|_| true), sub(&profile));
+        assert_eq!(
+            host_dir_from(
+                true,
+                None,
+                None,
+                Some(profile.clone()),
+                Some(lad.clone()),
+                &|_| true
+            ),
+            sub(&profile)
+        );
         // Neither → the profile dir (a fresh install).
-        assert_eq!(host_dir_from(true, None, None, Some(profile.clone()), Some(lad), &|_| false), sub(&profile));
+        assert_eq!(
+            host_dir_from(true, None, None, Some(profile.clone()), Some(lad), &|_| {
+                false
+            }),
+            sub(&profile)
+        );
     }
 
     #[test]
     fn unix_and_override() {
         let home = PathBuf::from("/home/u");
-        assert_eq!(host_dir_from(false, None, Some(home.clone()), None, None, &|_| false), sub(&home));
+        assert_eq!(
+            host_dir_from(false, None, Some(home.clone()), None, None, &|_| false),
+            sub(&home)
+        );
         let o = PathBuf::from("/tmp/x");
-        assert_eq!(host_dir_from(true, Some(o.clone()), None, None, None, &|_| false), o);
+        assert_eq!(
+            host_dir_from(true, Some(o.clone()), None, None, None, &|_| false),
+            o
+        );
     }
 }

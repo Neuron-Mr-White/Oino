@@ -13,7 +13,14 @@ fn bin() -> &'static str {
 
 fn serve(dir: &std::path::Path, extra: &[&str]) -> Child {
     Command::new(bin())
-        .args(["--data-dir", dir.to_str().unwrap(), "serve", "--relay", "https://127.0.0.1:9", "--relay-only"])
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "serve",
+            "--relay",
+            "https://127.0.0.1:9",
+            "--relay-only",
+        ])
         .args(extra)
         .env("HOME", dir) // keep herdr/tmux/bridge lookups away from the real home
         .env_remove("INVOCATION_ID")
@@ -24,8 +31,14 @@ fn serve(dir: &std::path::Path, extra: &[&str]) -> Child {
 }
 
 fn status_json(dir: &std::path::Path) -> (i32, serde_json::Value) {
-    let out = Command::new(bin()).args(["--data-dir", dir.to_str().unwrap(), "status", "--json"]).output().unwrap();
-    (out.status.code().unwrap_or(-1), serde_json::from_slice(&out.stdout).unwrap())
+    let out = Command::new(bin())
+        .args(["--data-dir", dir.to_str().unwrap(), "status", "--json"])
+        .output()
+        .unwrap();
+    (
+        out.status.code().unwrap_or(-1),
+        serde_json::from_slice(&out.stdout).unwrap(),
+    )
 }
 
 fn wait_running_for(dir: &std::path::Path, children: &mut [&mut Child]) -> serde_json::Value {
@@ -38,11 +51,18 @@ fn wait_running_for(dir: &std::path::Path, children: &mut [&mut Child]) -> serde
         for c in children.iter_mut() {
             if let Some(st) = c.try_wait().unwrap() {
                 let mut err = String::new();
-                if let Some(e) = c.stderr.as_mut() { let _ = std::io::Read::read_to_string(e, &mut err); }
-                if st.code() != Some(75) { panic!("serve exited early ({st}): {err}"); }
+                if let Some(e) = c.stderr.as_mut() {
+                    let _ = std::io::Read::read_to_string(e, &mut err);
+                }
+                if st.code() != Some(75) {
+                    panic!("serve exited early ({st}): {err}");
+                }
             }
         }
-        assert!(Instant::now() < deadline, "host never took the lock: {v} (code {code})");
+        assert!(
+            Instant::now() < deadline,
+            "host never took the lock: {v} (code {code})"
+        );
         std::thread::sleep(Duration::from_millis(100));
     }
 }
@@ -55,7 +75,10 @@ fn wait_running(dir: &std::path::Path) -> serde_json::Value {
         if code == 0 {
             return v;
         }
-        assert!(Instant::now() < deadline, "host never took the lock: {v} (code {code})");
+        assert!(
+            Instant::now() < deadline,
+            "host never took the lock: {v} (code {code})"
+        );
         std::thread::sleep(Duration::from_millis(100));
     }
 }
@@ -96,10 +119,16 @@ fn racing_serves_leave_exactly_one() {
     assert_eq!(loser_status.code(), Some(75));
     let mut err = String::new();
     std::io::Read::read_to_string(loser_child.stderr.as_mut().unwrap(), &mut err).unwrap();
-    assert!(err.contains("already running") && err.contains(&winner.id().to_string()), "{err}");
+    assert!(
+        err.contains("already running") && err.contains(&winner.id().to_string()),
+        "{err}"
+    );
     assert_eq!(v["state"], "running");
     assert_eq!(v["owner"]["pid"], winner.id());
-    assert!(winner.try_wait().unwrap().is_none(), "the winner keeps running");
+    assert!(
+        winner.try_wait().unwrap().is_none(),
+        "the winner keeps running"
+    );
     kill(&mut winner);
     let (code, after) = status_json(dir.path());
     assert_eq!(code, 3);
@@ -119,7 +148,15 @@ fn exit_with_parent_follows_the_parent() {
     let dir = tempfile::tempdir().unwrap();
     // A stand-in parent that we can kill: `sleep`.
     let mut parent = Command::new("sleep").arg("60").spawn().unwrap();
-    let mut host = serve(dir.path(), &["--mode", "app", "--exit-with-parent", &parent.id().to_string()]);
+    let mut host = serve(
+        dir.path(),
+        &[
+            "--mode",
+            "app",
+            "--exit-with-parent",
+            &parent.id().to_string(),
+        ],
+    );
     let v = wait_running_for(dir.path(), &mut [&mut host]);
     assert_eq!(v["owner"]["mode"], "app");
     parent.kill().unwrap();
@@ -129,7 +166,10 @@ fn exit_with_parent_follows_the_parent() {
         if host.try_wait().unwrap().is_some() {
             break;
         }
-        assert!(Instant::now() < deadline, "host outlived its parent by > 3 s");
+        assert!(
+            Instant::now() < deadline,
+            "host outlived its parent by > 3 s"
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(status_json(dir.path()).0, 3);

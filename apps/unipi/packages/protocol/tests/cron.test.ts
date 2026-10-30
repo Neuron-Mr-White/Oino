@@ -14,7 +14,7 @@ const schemas: Record<Schema, z.ZodTypeAny> = {
 };
 
 describe('cron_* contract fixtures (UNI-317/UNI-318)', () => {
-  it('proto is 1.19.0+ (cron; 1.20.0 adds cron_open_session + notify/wake)', () => expect(atLeast(PROTO_VERSION, '1.19.0')).toBe(true));
+  it('proto is 2.0.0 (v2: mux/board/desktop/chat layer removed)', () => expect(PROTO_VERSION).toBe('2.0.0'));
   for (const fixture of fixtures) {
     it(fixture.name, () => {
       const result = schemas[fixture.schema].safeParse(fixture.value);

@@ -80,11 +80,14 @@ impl UpdateConfig {
             #[serde(default)]
             update: UpdateConfig,
         }
-        Ok(crate::data_dir::read_json::<File>(path)?.unwrap_or_default().update)
+        Ok(crate::data_dir::read_json::<File>(path)?
+            .unwrap_or_default()
+            .update)
     }
     /// Writes the block back, keeping every other key of `config.json`.
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
-        let mut value: serde_json::Value = crate::data_dir::read_json(path)?.unwrap_or_else(|| serde_json::json!({}));
+        let mut value: serde_json::Value =
+            crate::data_dir::read_json(path)?.unwrap_or_else(|| serde_json::json!({}));
         if !value.is_object() {
             value = serde_json::json!({});
         }
@@ -146,13 +149,27 @@ pub fn feed_url() -> (String, bool) {
 /// Parses `latest.json` and validates the host block. With the default feed,
 /// binaries must come from `https://unipi.nrn.one/`.
 pub fn parse_feed(bytes: &[u8], strict_origin: bool) -> anyhow::Result<HostRelease> {
-    let feed: Feed = serde_json::from_slice(bytes).map_err(|e| anyhow::anyhow!("the update feed is not valid JSON: {e}"))?;
-    let host = feed.host.ok_or_else(|| anyhow::anyhow!("the update feed has no host block"))?;
-    anyhow::ensure!(parse_version(&host.version).is_some(), "the update feed has a bad host version {:?}", host.version);
+    let feed: Feed = serde_json::from_slice(bytes)
+        .map_err(|e| anyhow::anyhow!("the update feed is not valid JSON: {e}"))?;
+    let host = feed
+        .host
+        .ok_or_else(|| anyhow::anyhow!("the update feed has no host block"))?;
+    anyhow::ensure!(
+        parse_version(&host.version).is_some(),
+        "the update feed has a bad host version {:?}",
+        host.version
+    );
     for (plat, file) in &host.files {
-        anyhow::ensure!(file.sha256.len() == 64 && file.sha256.bytes().all(|b| b.is_ascii_hexdigit()), "bad sha256 for {plat}");
+        anyhow::ensure!(
+            file.sha256.len() == 64 && file.sha256.bytes().all(|b| b.is_ascii_hexdigit()),
+            "bad sha256 for {plat}"
+        );
         if strict_origin {
-            anyhow::ensure!(file.url.starts_with("https://unipi.nrn.one/"), "refusing {plat} binary from {}", file.url);
+            anyhow::ensure!(
+                file.url.starts_with("https://unipi.nrn.one/"),
+                "refusing {plat} binary from {}",
+                file.url
+            );
         }
     }
     Ok(host)
@@ -181,42 +198,87 @@ pub async fn fetch_feed() -> anyhow::Result<HostRelease> {
 /// The outcome of a check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
-    UpToDate { current: String, latest: String },
-    Available { current: String, latest: String, file: HostFile },
-    NoBuild { latest: String, platform: String },
+    UpToDate {
+        current: String,
+        latest: String,
+    },
+    Available {
+        current: String,
+        latest: String,
+        file: HostFile,
+    },
+    NoBuild {
+        latest: String,
+        platform: String,
+    },
 }
 
 pub fn decide(release: &HostRelease, current: &str, platform: Option<&str>) -> Check {
     if !is_newer(&release.version, current) {
-        return Check::UpToDate { current: current.into(), latest: release.version.clone() };
+        return Check::UpToDate {
+            current: current.into(),
+            latest: release.version.clone(),
+        };
     }
     match platform.and_then(|p| release.files.get(p)) {
-        Some(file) => Check::Available { current: current.into(), latest: release.version.clone(), file: file.clone() },
-        None => Check::NoBuild { latest: release.version.clone(), platform: platform.unwrap_or("unknown").into() },
+        Some(file) => Check::Available {
+            current: current.into(),
+            latest: release.version.clone(),
+            file: file.clone(),
+        },
+        None => Check::NoBuild {
+            latest: release.version.clone(),
+            platform: platform.unwrap_or("unknown").into(),
+        },
     }
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    sha2::Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Downloads `file` next to `exe`, checks it, swaps it in (on Windows the
 /// old exe stays as `<exe>.old` until the next run removes it).
-pub async fn download_and_replace(file: &HostFile, expect_version: &str, exe: &Path) -> anyhow::Result<()> {
-    let res = client()?.get(&file.url).send().await.map_err(|e| anyhow::anyhow!("download failed: {e}"))?;
-    anyhow::ensure!(res.status().is_success(), "download failed: HTTP {}", res.status());
+pub async fn download_and_replace(
+    file: &HostFile,
+    expect_version: &str,
+    exe: &Path,
+) -> anyhow::Result<()> {
+    let res = client()?
+        .get(&file.url)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("download failed: {e}"))?;
+    anyhow::ensure!(
+        res.status().is_success(),
+        "download failed: HTTP {}",
+        res.status()
+    );
     let bytes = res.bytes().await?;
     let got = sha256_hex(&bytes);
-    anyhow::ensure!(got.eq_ignore_ascii_case(&file.sha256), "checksum mismatch (expected {}, got {got}) — nothing changed", file.sha256);
+    anyhow::ensure!(
+        got.eq_ignore_ascii_case(&file.sha256),
+        "checksum mismatch (expected {}, got {got}) — nothing changed",
+        file.sha256
+    );
     install_bytes(&bytes, expect_version, exe)
 }
 
 /// Writes `bytes` as a sibling of `exe`, verifies `--version`, then replaces `exe`.
 pub fn install_bytes(bytes: &[u8], expect_version: &str, exe: &Path) -> anyhow::Result<()> {
-    let dir = exe.parent().ok_or_else(|| anyhow::anyhow!("can't tell where {} lives", exe.display()))?;
-    let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or("unipi-host");
+    let dir = exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("can't tell where {} lives", exe.display()))?;
+    let name = exe
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unipi-host");
     let tmp = dir.join(format!(".{name}.new-{}", std::process::id()));
-    std::fs::write(&tmp, bytes).map_err(|e| anyhow::anyhow!("can't write {}: {e}", tmp.display()))?;
+    std::fs::write(&tmp, bytes)
+        .map_err(|e| anyhow::anyhow!("can't write {}: {e}", tmp.display()))?;
     let cleanup = |e: anyhow::Error| {
         let _ = std::fs::remove_file(&tmp);
         e
@@ -224,13 +286,19 @@ pub fn install_bytes(bytes: &[u8], expect_version: &str, exe: &Path) -> anyhow::
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).map_err(|e| cleanup(e.into()))?;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| cleanup(e.into()))?;
     }
-    let out = std::process::Command::new(&tmp).arg("--version").output().map_err(|e| cleanup(anyhow::anyhow!("the new binary doesn't run here: {e}")))?;
+    let out = std::process::Command::new(&tmp)
+        .arg("--version")
+        .output()
+        .map_err(|e| cleanup(anyhow::anyhow!("the new binary doesn't run here: {e}")))?;
     let said = String::from_utf8_lossy(&out.stdout);
     let said = said.split_whitespace().nth(1).unwrap_or("").to_string();
     if said != expect_version {
-        return Err(cleanup(anyhow::anyhow!("the new binary says {said:?}, expected {expect_version} — nothing changed")));
+        return Err(cleanup(anyhow::anyhow!(
+            "the new binary says {said:?}, expected {expect_version} — nothing changed"
+        )));
     }
     #[cfg(windows)]
     {
@@ -238,15 +306,19 @@ pub fn install_bytes(bytes: &[u8], expect_version: &str, exe: &Path) -> anyhow::
         let old = dir.join(format!("{name}.old"));
         let _ = std::fs::remove_file(&old);
         if exe.exists() {
-            std::fs::rename(exe, &old).map_err(|e| cleanup(anyhow::anyhow!("can't move the old binary aside: {e}")))?;
+            std::fs::rename(exe, &old)
+                .map_err(|e| cleanup(anyhow::anyhow!("can't move the old binary aside: {e}")))?;
         }
         if let Err(e) = std::fs::rename(&tmp, exe) {
             let _ = std::fs::rename(&old, exe);
-            return Err(cleanup(anyhow::anyhow!("can't put the new binary in place: {e}")));
+            return Err(cleanup(anyhow::anyhow!(
+                "can't put the new binary in place: {e}"
+            )));
         }
     }
     #[cfg(not(windows))]
-    std::fs::rename(&tmp, exe).map_err(|e| cleanup(anyhow::anyhow!("can't replace {}: {e}", exe.display())))?;
+    std::fs::rename(&tmp, exe)
+        .map_err(|e| cleanup(anyhow::anyhow!("can't replace {}: {e}", exe.display())))?;
     Ok(())
 }
 
@@ -269,7 +341,11 @@ pub fn detect_service() -> Option<Service> {
     }
     if cfg!(target_os = "macos") {
         let home = std::env::var_os("HOME").map(PathBuf::from)?;
-        return home.join("Library/LaunchAgents").join(format!("{LAUNCH_AGENT}.plist")).exists().then_some(Service::LaunchAgent);
+        return home
+            .join("Library/LaunchAgents")
+            .join(format!("{LAUNCH_AGENT}.plist"))
+            .exists()
+            .then_some(Service::LaunchAgent);
     }
     if cfg!(windows) {
         let ok = std::process::Command::new("schtasks")
@@ -292,15 +368,25 @@ pub fn service_runs(service: Service, exe: &Path) -> bool {
             .output()
             .ok()
             .map(|o| String::from_utf8_lossy(&o.stdout).into_owned()),
-        Service::LaunchAgent => std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .and_then(|h| std::fs::read_to_string(h.join("Library/LaunchAgents").join(format!("{LAUNCH_AGENT}.plist"))).ok()),
+        Service::LaunchAgent => std::env::var_os("HOME").map(PathBuf::from).and_then(|h| {
+            std::fs::read_to_string(
+                h.join("Library/LaunchAgents")
+                    .join(format!("{LAUNCH_AGENT}.plist")),
+            )
+            .ok()
+        }),
         Service::ScheduledTask => std::process::Command::new("schtasks")
             .args(["/Query", "/TN", WINDOWS_TASK, "/XML"])
             .output()
             .ok()
-            .map(|o| String::from_utf16_lossy(&o.stdout.chunks(2).map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect::<Vec<_>>())
-                + &String::from_utf8_lossy(&o.stdout)),
+            .map(|o| {
+                String::from_utf16_lossy(
+                    &o.stdout
+                        .chunks(2)
+                        .map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)]))
+                        .collect::<Vec<_>>(),
+                ) + &String::from_utf8_lossy(&o.stdout)
+            }),
     };
     definition.is_some_and(|d| definition_runs(&d, exe))
 }
@@ -335,20 +421,39 @@ pub fn restart_argv_for(service: Service, uid: Option<u32>, exe: &Path) -> Vec<S
              ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}; \
              Start-Sleep -Milliseconds 500; schtasks /Run /TN '{WINDOWS_TASK}' | Out-Null; exit $LASTEXITCODE"
         );
-        return vec!["powershell.exe".into(), "-NoProfile".into(), "-NonInteractive".into(), "-Command".into(), script];
+        return vec![
+            "powershell.exe".into(),
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            script,
+        ];
     }
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
     match service {
         Service::Systemd => s(&["systemctl", "--user", "restart", SERVICE_UNIT]),
-        Service::LaunchAgent => vec!["launchctl".into(), "kickstart".into(), "-k".into(), format!("gui/{}/{LAUNCH_AGENT}", uid.unwrap_or(0))],
+        Service::LaunchAgent => vec![
+            "launchctl".into(),
+            "kickstart".into(),
+            "-k".into(),
+            format!("gui/{}/{LAUNCH_AGENT}", uid.unwrap_or(0)),
+        ],
         // /End then /Run: the task action starts the new exe.
-        Service::ScheduledTask => s(&["cmd", "/C", &format!("schtasks /End /TN \"{WINDOWS_TASK}\" & schtasks /Run /TN \"{WINDOWS_TASK}\"")]),
+        Service::ScheduledTask => s(&[
+            "cmd",
+            "/C",
+            &format!("schtasks /End /TN \"{WINDOWS_TASK}\" & schtasks /Run /TN \"{WINDOWS_TASK}\""),
+        ]),
     }
 }
 
 #[cfg(unix)]
 fn current_uid() -> Option<u32> {
-    std::process::Command::new("id").arg("-u").output().ok().and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
+    std::process::Command::new("id")
+        .arg("-u")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
 }
 #[cfg(not(unix))]
 fn current_uid() -> Option<u32> {
@@ -360,7 +465,9 @@ fn current_uid() -> Option<u32> {
 pub fn restart_service(service: Service) -> anyhow::Result<()> {
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("unipi-host.exe"));
     let argv = restart_argv_for(service, current_uid(), &exe);
-    let status = std::process::Command::new(&argv[0]).args(&argv[1..]).status()
+    let status = std::process::Command::new(&argv[0])
+        .args(&argv[1..])
+        .status()
         .map_err(|e| anyhow::anyhow!("couldn't run {}: {e}", argv[0]))?;
     anyhow::ensure!(status.success(), "`{}` failed", argv.join(" "));
     Ok(())
@@ -369,10 +476,21 @@ pub fn restart_service(service: Service) -> anyhow::Result<()> {
 /// Records a check in `update.json` (errors are kept so the app can say why).
 pub fn record(paths: &HostPaths, now: u64, result: &anyhow::Result<HostRelease>) {
     let state = match result {
-        Ok(r) => UpdateState { checked_at: now, latest: Some(r.version.clone()), error: None },
+        Ok(r) => UpdateState {
+            checked_at: now,
+            latest: Some(r.version.clone()),
+            error: None,
+        },
         Err(e) => {
-            let prev = crate::data_dir::read_json::<UpdateState>(&state_path(paths)).ok().flatten().unwrap_or_default();
-            UpdateState { checked_at: now, latest: prev.latest, error: Some(e.to_string()) }
+            let prev = crate::data_dir::read_json::<UpdateState>(&state_path(paths))
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            UpdateState {
+                checked_at: now,
+                latest: prev.latest,
+                error: Some(e.to_string()),
+            }
         }
     };
     let _ = crate::data_dir::write_json(&state_path(paths), &state);
@@ -392,12 +510,18 @@ pub struct UpdateStatus {
 }
 
 pub fn status(paths: &HostPaths) -> UpdateStatus {
-    let mode = UpdateConfig::load(&paths.config()).map(|c| c.mode).unwrap_or_default();
-    let state = crate::data_dir::read_json::<UpdateState>(&state_path(paths)).ok().flatten();
+    let mode = UpdateConfig::load(&paths.config())
+        .map(|c| c.mode)
+        .unwrap_or_default();
+    let state = crate::data_dir::read_json::<UpdateState>(&state_path(paths))
+        .ok()
+        .flatten();
     let latest = state.as_ref().and_then(|s| s.latest.clone());
     UpdateStatus {
         mode,
-        available: latest.as_deref().is_some_and(|l| is_newer(l, env!("CARGO_PKG_VERSION"))),
+        available: latest
+            .as_deref()
+            .is_some_and(|l| is_newer(l, env!("CARGO_PKG_VERSION"))),
         latest,
         checked_at: state.as_ref().map(|s| s.checked_at),
         error: state.and_then(|s| s.error),
@@ -441,7 +565,11 @@ mod tests {
 
     #[test]
     fn feed_parses_and_checks_origin() {
-        let ok = parse_feed(feed("https://unipi.nrn.one/releases/host/0.4.4/unipi-host-linux-x64").as_bytes(), true).unwrap();
+        let ok = parse_feed(
+            feed("https://unipi.nrn.one/releases/host/0.4.4/unipi-host-linux-x64").as_bytes(),
+            true,
+        )
+        .unwrap();
         assert_eq!(ok.version, "0.4.4");
         assert!(parse_feed(feed("https://evil.example/x").as_bytes(), true).is_err());
         assert!(parse_feed(feed("http://127.0.0.1:1/x").as_bytes(), false).is_ok());
@@ -454,31 +582,70 @@ mod tests {
     #[test]
     fn decide_picks_platform_and_never_downgrades() {
         let r = parse_feed(feed("https://unipi.nrn.one/x").as_bytes(), true).unwrap();
-        assert!(matches!(decide(&r, "0.4.3", Some("linux-x64")), Check::Available { .. }));
-        assert!(matches!(decide(&r, "0.4.4", Some("linux-x64")), Check::UpToDate { .. }));
-        assert!(matches!(decide(&r, "0.5.0", Some("linux-x64")), Check::UpToDate { .. }));
-        assert!(matches!(decide(&r, "0.4.3", Some("darwin-arm64")), Check::NoBuild { .. }));
+        assert!(matches!(
+            decide(&r, "0.4.3", Some("linux-x64")),
+            Check::Available { .. }
+        ));
+        assert!(matches!(
+            decide(&r, "0.4.4", Some("linux-x64")),
+            Check::UpToDate { .. }
+        ));
+        assert!(matches!(
+            decide(&r, "0.5.0", Some("linux-x64")),
+            Check::UpToDate { .. }
+        ));
+        assert!(matches!(
+            decide(&r, "0.4.3", Some("darwin-arm64")),
+            Check::NoBuild { .. }
+        ));
     }
 
     #[test]
     fn service_match_is_by_exe_path() {
         let unit = "[Service]\nExecStart=/home/u/.local/bin/unipi-host serve\n";
-        assert!(definition_runs(unit, Path::new("/home/u/.local/bin/unipi-host")));
+        assert!(definition_runs(
+            unit,
+            Path::new("/home/u/.local/bin/unipi-host")
+        ));
         assert!(!definition_runs(unit, Path::new("/tmp/qa/unipi-host")));
     }
 
     #[test]
     fn restart_commands() {
-        assert_eq!(restart_argv(Service::Systemd, None).join(" "), "systemctl --user restart unipi-host.service");
-        assert_eq!(restart_argv(Service::LaunchAgent, Some(501)).join(" "), "launchctl kickstart -k gui/501/dev.unipi.host");
-        let win = restart_argv_for(Service::ScheduledTask, None, Path::new(r"C:\Users\o'i\AppData\Local\UniPi\unipi-host.exe"));
+        assert_eq!(
+            restart_argv(Service::Systemd, None).join(" "),
+            "systemctl --user restart unipi-host.service"
+        );
+        assert_eq!(
+            restart_argv(Service::LaunchAgent, Some(501)).join(" "),
+            "launchctl kickstart -k gui/501/dev.unipi.host"
+        );
+        let win = restart_argv_for(
+            Service::ScheduledTask,
+            None,
+            Path::new(r"C:\Users\o'i\AppData\Local\UniPi\unipi-host.exe"),
+        );
         assert_eq!(win[0], "powershell.exe");
         let script = &win[4];
         // Ends the task, stops that exe's `serve` (not this `update` CLI), runs the task again.
-        assert!(script.starts_with("schtasks /End /TN 'UniPi Host'"), "{script}");
-        assert!(script.contains(r"$_.ExecutablePath -eq 'C:\Users\o''i\AppData\Local\UniPi\unipi-host.exe'"), "{script}");
-        assert!(script.contains("serve(") && script.contains("schtasks /Run /TN 'UniPi Host'"), "{script}");
-        assert!(!script.contains('"'), "no double quotes (Windows argv quoting strips them): {script}");
+        assert!(
+            script.starts_with("schtasks /End /TN 'UniPi Host'"),
+            "{script}"
+        );
+        assert!(
+            script.contains(
+                r"$_.ExecutablePath -eq 'C:\Users\o''i\AppData\Local\UniPi\unipi-host.exe'"
+            ),
+            "{script}"
+        );
+        assert!(
+            script.contains("serve(") && script.contains("schtasks /Run /TN 'UniPi Host'"),
+            "{script}"
+        );
+        assert!(
+            !script.contains('"'),
+            "no double quotes (Windows argv quoting strips them): {script}"
+        );
     }
 
     #[test]
@@ -487,7 +654,11 @@ mod tests {
         let path = dir.path().join("config.json");
         std::fs::write(&path, r#"{"forwarding":{"enabled":true}}"#).unwrap();
         assert_eq!(UpdateConfig::load(&path).unwrap().mode, UpdateMode::Prompt);
-        UpdateConfig { mode: UpdateMode::Auto }.save(&path).unwrap();
+        UpdateConfig {
+            mode: UpdateMode::Auto,
+        }
+        .save(&path)
+        .unwrap();
         assert_eq!(UpdateConfig::load(&path).unwrap().mode, UpdateMode::Auto);
         let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(v["forwarding"]["enabled"], true);
@@ -498,7 +669,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = HostPaths::from_dir(dir.path());
         assert!(!status(&paths).available);
-        record(&paths, 5, &Ok(HostRelease { version: "999.0.0".into(), files: Default::default() }));
+        record(
+            &paths,
+            5,
+            &Ok(HostRelease {
+                version: "999.0.0".into(),
+                files: Default::default(),
+            }),
+        );
         let s = status(&paths);
         assert!(s.available);
         assert_eq!(s.latest.as_deref(), Some("999.0.0"));
@@ -515,11 +693,17 @@ mod tests {
         let exe = dir.path().join("unipi-host");
         std::fs::write(&exe, "old").unwrap();
         let script = b"#!/bin/sh\necho unipi-host 9.9.9\n";
-        let err = install_bytes(script, "1.0.0", &exe).unwrap_err().to_string();
+        let err = install_bytes(script, "1.0.0", &exe)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("expected 1.0.0"), "{err}");
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "old");
         install_bytes(script, "9.9.9", &exe).unwrap();
         assert_eq!(std::fs::read(&exe).unwrap(), script);
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1, "no temp files left");
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "no temp files left"
+        );
     }
 }

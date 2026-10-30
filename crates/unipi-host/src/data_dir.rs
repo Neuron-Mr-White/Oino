@@ -97,8 +97,19 @@ impl HostPaths {
 /// platforms, but we never panic over it).
 fn default_data_dir() -> PathBuf {
     // UNI-298: the shared rule (also used by the desktop app).
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    unipi_proto::paths::host_dir_from(cfg!(windows), None, env("HOME"), env("USERPROFILE"), env("LOCALAPPDATA"), &|d| d.join("secret.key").exists())
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    unipi_proto::paths::host_dir_from(
+        cfg!(windows),
+        None,
+        env("HOME"),
+        env("USERPROFILE"),
+        env("LOCALAPPDATA"),
+        &|d| d.join("secret.key").exists(),
+    )
 }
 
 /// UNI-266: Windows has no `HOME` outside ssh/Git Bash, so the logon task's
@@ -106,7 +117,12 @@ fn default_data_dir() -> PathBuf {
 /// used to resolve *different* relative dirs. Windows now falls back to
 /// `%USERPROFILE%`; an identity already created in the old place
 /// (`%LOCALAPPDATA%\UniPi\.unipi\app-host`) is kept so paired phones stay paired.
-pub fn default_data_dir_from(windows: bool, home: Option<PathBuf>, profile: Option<PathBuf>, local_app_data: Option<PathBuf>) -> PathBuf {
+pub fn default_data_dir_from(
+    windows: bool,
+    home: Option<PathBuf>,
+    profile: Option<PathBuf>,
+    local_app_data: Option<PathBuf>,
+) -> PathBuf {
     let sub = |p: PathBuf| p.join(".unipi").join("app-host");
     if !windows {
         return home.map(sub).unwrap_or_else(|| sub(PathBuf::new()));
@@ -244,20 +260,40 @@ mod tests {
         let lad = tmp.path().join("lad");
         let sub = |p: &Path| p.join(".unipi").join("app-host");
         // Unix: HOME only.
-        assert_eq!(default_data_dir_from(false, Some(profile.clone()), None, Some(lad.clone())), sub(&profile));
+        assert_eq!(
+            default_data_dir_from(false, Some(profile.clone()), None, Some(lad.clone())),
+            sub(&profile)
+        );
         // Windows, no HOME: USERPROFILE.
-        assert_eq!(default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())), sub(&profile));
+        assert_eq!(
+            default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())),
+            sub(&profile)
+        );
         // …unless the old logon-task dir already holds the identity.
         let legacy = sub(&lad.join("UniPi"));
         std::fs::create_dir_all(&legacy).unwrap();
         std::fs::write(legacy.join("secret.key"), [0u8; 32]).unwrap();
-        assert_eq!(default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())), legacy);
+        assert_eq!(
+            default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())),
+            legacy
+        );
         // ssh sets HOME = the profile: same answer.
-        assert_eq!(default_data_dir_from(true, Some(profile.clone()), Some(profile.clone()), Some(lad.clone())), legacy);
+        assert_eq!(
+            default_data_dir_from(
+                true,
+                Some(profile.clone()),
+                Some(profile.clone()),
+                Some(lad.clone())
+            ),
+            legacy
+        );
         // Once the profile dir has its own identity it wins.
         std::fs::create_dir_all(sub(&profile)).unwrap();
         std::fs::write(sub(&profile).join("secret.key"), [0u8; 32]).unwrap();
-        assert_eq!(default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())), sub(&profile));
+        assert_eq!(
+            default_data_dir_from(true, None, Some(profile.clone()), Some(lad.clone())),
+            sub(&profile)
+        );
     }
 
     #[test]

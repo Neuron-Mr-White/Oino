@@ -31,7 +31,10 @@ impl TryFrom<String> for FsPath {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() || value.len() > 4096 {
-            return Err(format!("path must be 1..=4096 characters, got {}", value.len()));
+            return Err(format!(
+                "path must be 1..=4096 characters, got {}",
+                value.len()
+            ));
         }
         if value.bytes().any(|b| b == 0) {
             return Err("path must not contain NUL bytes".to_string());

@@ -58,7 +58,8 @@ impl Backend {
 /// lock file for it? Linux/Unix only (X11 doesn't exist elsewhere, and
 /// hidden-display mode is unavailable there anyway).
 pub fn display_free(n: u32) -> bool {
-    !Path::new(&format!("/tmp/.X11-unix/X{n}")).exists() && !Path::new(&format!("/tmp/.X{n}-lock")).exists()
+    !Path::new(&format!("/tmp/.X11-unix/X{n}")).exists()
+        && !Path::new(&format!("/tmp/.X{n}-lock")).exists()
 }
 
 /// The first free display number from `start`, trying at most `tries`.
@@ -76,7 +77,9 @@ fn find_on_path(dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
 #[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    path.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+    path.metadata()
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
 }
 #[cfg(not(unix))]
 fn is_executable(_path: &Path) -> bool {
@@ -87,7 +90,9 @@ fn is_executable(_path: &Path) -> bool {
 /// touches a real compositor), then `Xwayland` (ships with most Wayland
 /// desktops already). `None` = no hidden display is possible on this PC.
 pub fn detect_backend(path_var: Option<&std::ffi::OsStr>) -> Option<Backend> {
-    let dirs: Vec<PathBuf> = path_var.map(|p| std::env::split_paths(p).collect()).unwrap_or_default();
+    let dirs: Vec<PathBuf> = path_var
+        .map(|p| std::env::split_paths(p).collect())
+        .unwrap_or_default();
     // Only Xvfb is truly invisible. Xwayland started on its own is *rootful*:
     // it opens a visible black window on the user's Wayland desktop to draw
     // the X screen in (seen 2026-10-16) — the opposite of "only in the app".
@@ -106,12 +111,29 @@ pub fn detect_backend_here() -> Option<Backend> {
 pub fn args_for(backend: Backend, n: u32, displayfd: Option<i32>) -> Vec<String> {
     match (backend, displayfd) {
         (Backend::Xvfb, Some(fd)) => {
-            vec!["-displayfd".into(), fd.to_string(), "-screen".into(), "0".into(), "1920x1080x24".into(), "-nolisten".into(), "tcp".into()]
+            vec![
+                "-displayfd".into(),
+                fd.to_string(),
+                "-screen".into(),
+                "0".into(),
+                "1920x1080x24".into(),
+                "-nolisten".into(),
+                "tcp".into(),
+            ]
         }
         (Backend::Xvfb, None) => {
-            vec![format!(":{n}"), "-screen".into(), "0".into(), "1920x1080x24".into(), "-nolisten".into(), "tcp".into()]
+            vec![
+                format!(":{n}"),
+                "-screen".into(),
+                "0".into(),
+                "1920x1080x24".into(),
+                "-nolisten".into(),
+                "tcp".into(),
+            ]
         }
-        (Backend::Xwayland, Some(fd)) => vec!["-displayfd".into(), fd.to_string(), "-noreset".into()],
+        (Backend::Xwayland, Some(fd)) => {
+            vec!["-displayfd".into(), fd.to_string(), "-noreset".into()]
+        }
         (Backend::Xwayland, None) => vec![format!(":{n}"), "-noreset".into()],
     }
 }
@@ -153,29 +175,42 @@ impl Display {
     async fn start(backend: Backend) -> anyhow::Result<Display> {
         use std::os::fd::AsRawFd;
         let (read_fd, write_fd) = nix_pipe()?;
-        let guess = first_free(FIRST_DISPLAY, MAX_TRIES, &display_free)
-            .ok_or_else(|| anyhow::anyhow!("no free X display number found from :{FIRST_DISPLAY}"))?;
+        let guess = first_free(FIRST_DISPLAY, MAX_TRIES, &display_free).ok_or_else(|| {
+            anyhow::anyhow!("no free X display number found from :{FIRST_DISPLAY}")
+        })?;
         let args = args_for(backend, guess, Some(write_fd.as_raw_fd()));
         let mut command = tokio::process::Command::new(backend.program());
-        command.args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).kill_on_drop(true);
+        command
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
         #[cfg(unix)]
         command.process_group(0);
         // `write_fd` has no FD_CLOEXEC (cleared in `nix_pipe`), so it survives
         // the fork+exec below without any extra plumbing; our own copy is
         // dropped right after spawn.
-        let mut child = command.spawn().map_err(|e| anyhow::anyhow!("could not start {}: {e}", backend.program()))?;
+        let mut child = command
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("could not start {}: {e}", backend.program()))?;
         drop(write_fd);
         let pid = child.id();
         let stderr = child.stderr.take();
         // Read the real display number back from the fd the server wrote to.
         let mut fd_file = tokio::fs::File::from_std(std::fs::File::from(read_fd));
-        let number = tokio::time::timeout(Duration::from_secs(10), read_display_number(&mut fd_file)).await;
+        let number =
+            tokio::time::timeout(Duration::from_secs(10), read_display_number(&mut fd_file)).await;
         let number = match number {
             Ok(Ok(n)) => n,
             _ => {
                 let _ = child.start_kill();
                 let tail = stderr_tail(stderr).await;
-                anyhow::bail!("{} did not report a display number — {}", backend.program(), tail.join("; "));
+                anyhow::bail!(
+                    "{} did not report a display number — {}",
+                    backend.program(),
+                    tail.join("; ")
+                );
             }
         };
         // Drain stderr forever so the server never blocks on a full pipe.
@@ -185,28 +220,54 @@ impl Display {
                 while let Ok(Some(_)) = lines.next_line().await {}
             });
         }
-        tracing::info!(op = "browser_display", backend = backend.program(), display = number, pid, "hidden X server started");
-        Ok(Display { number, backend, child: tokio::sync::Mutex::new(child), pid })
+        tracing::info!(
+            op = "browser_display",
+            backend = backend.program(),
+            display = number,
+            pid,
+            "hidden X server started"
+        );
+        Ok(Display {
+            number,
+            backend,
+            child: tokio::sync::Mutex::new(child),
+            pid,
+        })
     }
 
     async fn stop(&self) {
         let mut child = self.child.lock().await;
         let _ = child.start_kill();
-        if tokio::time::timeout(Duration::from_secs(3), child.wait()).await.is_err() {
+        if tokio::time::timeout(Duration::from_secs(3), child.wait())
+            .await
+            .is_err()
+        {
             if let Some(pid) = self.pid {
-                let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).status();
+                let _ = std::process::Command::new("kill")
+                    .args(["-KILL", "--", &format!("-{pid}")])
+                    .status();
             }
             let _ = child.kill().await;
         }
-        tracing::info!(op = "browser_display", backend = self.backend.program(), display = self.number, "hidden X server stopped");
+        tracing::info!(
+            op = "browser_display",
+            backend = self.backend.program(),
+            display = self.number,
+            "hidden X server stopped"
+        );
     }
 }
 
 async fn stderr_tail(stderr: Option<tokio::process::ChildStderr>) -> Vec<String> {
-    let Some(stderr) = stderr else { return Vec::new() };
+    let Some(stderr) = stderr else {
+        return Vec::new();
+    };
     let mut lines = BufReader::new(stderr).lines();
     let mut tail = Vec::new();
-    while let Ok(Some(line)) = tokio::time::timeout(Duration::from_millis(200), lines.next_line()).await.unwrap_or(Ok(None)) {
+    while let Ok(Some(line)) = tokio::time::timeout(Duration::from_millis(200), lines.next_line())
+        .await
+        .unwrap_or(Ok(None))
+    {
         tail.push(line);
         if tail.len() > 8 {
             tail.remove(0);
@@ -231,7 +292,9 @@ async fn read_display_number(file: &mut tokio::fs::File) -> anyhow::Result<u32> 
         }
     }
     let text = String::from_utf8_lossy(&got);
-    text.trim().parse::<u32>().map_err(|_| anyhow::anyhow!("bad displayfd output {text:?}"))
+    text.trim()
+        .parse::<u32>()
+        .map_err(|_| anyhow::anyhow!("bad displayfd output {text:?}"))
 }
 
 /// A `pipe()` pair as owned fds (no extra crate: a thin libc wrapper).
@@ -251,7 +314,6 @@ fn nix_pipe() -> anyhow::Result<(std::os::fd::OwnedFd, std::os::fd::OwnedFd)> {
     Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
 }
 
-
 /// How many running browsers use the shared hidden display right now.
 pub struct Displays {
     display: tokio::sync::Mutex<Option<Arc<Display>>>,
@@ -259,7 +321,9 @@ pub struct Displays {
 
 impl Displays {
     pub fn new() -> Displays {
-        Displays { display: tokio::sync::Mutex::new(None) }
+        Displays {
+            display: tokio::sync::Mutex::new(None),
+        }
     }
 
     /// The shared hidden display, starting it if needed. `Err` carries why
@@ -273,10 +337,15 @@ impl Displays {
             }
             // It died (Xwayland quits after its last client): start a fresh one
             // rather than handing a dead :N to the browser.
-            tracing::info!(op = "browser_display", display = d.number, "hidden X server is gone; starting a new one");
+            tracing::info!(
+                op = "browser_display",
+                display = d.number,
+                "hidden X server is gone; starting a new one"
+            );
             *guard = None;
         }
-        let backend = detect_backend_here().ok_or_else(|| anyhow::anyhow!("no Xvfb or Xwayland found on this PC"))?;
+        let backend = detect_backend_here()
+            .ok_or_else(|| anyhow::anyhow!("no Xvfb or Xwayland found on this PC"))?;
         let display = Arc::new(Display::start(backend).await?);
         *guard = Some(display.clone());
         Ok(display)
@@ -307,7 +376,9 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_dead_display_is_replaced() {
-        let Some(backend) = detect_backend_here() else { return }; // no X server binary here
+        let Some(backend) = detect_backend_here() else {
+            return;
+        }; // no X server binary here
         let displays = Displays::new();
         let first = displays.ensure().await.unwrap();
         // Kill it behind the manager's back, as Xwayland quitting would.
@@ -360,7 +431,14 @@ mod tests {
         let args = args_for(Backend::Xwayland, 55, None);
         assert_eq!(args, vec![":55".to_string(), "-noreset".to_string()]);
         let args = args_for(Backend::Xwayland, 55, Some(9));
-        assert_eq!(args, vec!["-displayfd".to_string(), "9".to_string(), "-noreset".to_string()]);
+        assert_eq!(
+            args,
+            vec![
+                "-displayfd".to_string(),
+                "9".to_string(),
+                "-noreset".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -378,7 +456,11 @@ mod tests {
         let path_var = std::ffi::OsString::from(dir.path());
         assert_eq!(detect_backend(Some(&path_var)), None);
         exe("Xwayland");
-        assert_eq!(detect_backend(Some(&path_var)), None, "standalone Xwayland opens a visible window: never used");
+        assert_eq!(
+            detect_backend(Some(&path_var)),
+            None,
+            "standalone Xwayland opens a visible window: never used"
+        );
         exe("Xvfb");
         assert_eq!(detect_backend(Some(&path_var)), Some(Backend::Xvfb));
     }

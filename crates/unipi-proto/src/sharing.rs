@@ -51,7 +51,13 @@ pub enum FeatureKind {
 }
 
 impl FeatureKind {
-    pub const ALL: [FeatureKind; 5] = [FeatureKind::Forward, FeatureKind::Browser, FeatureKind::Desktop, FeatureKind::Push, FeatureKind::Cron];
+    pub const ALL: [FeatureKind; 5] = [
+        FeatureKind::Forward,
+        FeatureKind::Browser,
+        FeatureKind::Desktop,
+        FeatureKind::Push,
+        FeatureKind::Cron,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -120,7 +126,12 @@ impl TryFrom<RawScope> for FeatureScope {
         if raw.ports.contains(&0) {
             return Err("port must be 1..=65535".into());
         }
-        Ok(FeatureScope { any_port: raw.any_port, ports: raw.ports, view_only: raw.view_only, headed: raw.headed })
+        Ok(FeatureScope {
+            any_port: raw.any_port,
+            ports: raw.ports,
+            view_only: raw.view_only,
+            headed: raw.headed,
+        })
     }
 }
 
@@ -136,10 +147,20 @@ impl FeatureScope {
             FeatureKind::Forward if !self.ports.is_empty() => Some(format!(
                 "port{} {}",
                 if self.ports.len() == 1 { "" } else { "s" },
-                self.ports.iter().map(u16::to_string).collect::<Vec<_>>().join(", ")
+                self.ports
+                    .iter()
+                    .map(u16::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )),
-            FeatureKind::Desktop => Some(if self.view_only == Some(true) { "watch only".into() } else { "mouse and keyboard".into() }),
-            FeatureKind::Browser if self.headed == Some(true) => Some("window shown on the PC".into()),
+            FeatureKind::Desktop => Some(if self.view_only == Some(true) {
+                "watch only".into()
+            } else {
+                "mouse and keyboard".into()
+            }),
+            FeatureKind::Browser if self.headed == Some(true) => {
+                Some("window shown on the PC".into())
+            }
             _ => None,
         }
     }
@@ -160,7 +181,9 @@ impl TryFrom<String> for FeatureNote {
     type Error = String;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.chars().count() > FEATURE_NOTE_MAX {
-            return Err(format!("note must be at most {FEATURE_NOTE_MAX} characters"));
+            return Err(format!(
+                "note must be at most {FEATURE_NOTE_MAX} characters"
+            ));
         }
         Ok(FeatureNote(value))
     }
@@ -275,15 +298,26 @@ mod tests {
         assert!(serde_json::from_str::<FeatureScope>(r#"{"ports":[0]}"#).is_err());
         assert!(serde_json::from_str::<FeatureScope>(r#"{"bogus":1}"#).is_err());
         let many: Vec<u16> = (1..=17).collect();
-        assert!(serde_json::from_value::<FeatureScope>(serde_json::json!({ "ports": many })).is_err());
+        assert!(
+            serde_json::from_value::<FeatureScope>(serde_json::json!({ "ports": many })).is_err()
+        );
         let ok: FeatureScope = serde_json::from_str(r#"{"ports":[5173]}"#).unwrap();
-        assert_eq!(ok.describe(FeatureKind::Forward).as_deref(), Some("port 5173"));
-        assert_eq!(serde_json::to_string(&FeatureScope::default()).unwrap(), "{}");
+        assert_eq!(
+            ok.describe(FeatureKind::Forward).as_deref(),
+            Some("port 5173")
+        );
+        assert_eq!(
+            serde_json::to_string(&FeatureScope::default()).unwrap(),
+            "{}"
+        );
     }
 
     #[test]
     fn kinds_and_notes() {
-        assert_eq!(serde_json::to_string(&FeatureKind::Desktop).unwrap(), "\"desktop\"");
+        assert_eq!(
+            serde_json::to_string(&FeatureKind::Desktop).unwrap(),
+            "\"desktop\""
+        );
         assert!(serde_json::from_str::<FeatureKind>("\"shell\"").is_err());
         assert_eq!(FeatureKind::parse("push"), Some(FeatureKind::Push));
         assert!(serde_json::from_value::<FeatureNote>(serde_json::json!("x".repeat(201))).is_err());
@@ -291,10 +325,18 @@ mod tests {
 
     #[test]
     fn leave_scope_and_data_round_trip() {
-        assert_eq!(serde_json::to_string(&FeatureLeaveScope::OnlySelf).unwrap(), "\"self\"");
-        assert_eq!(serde_json::to_string(&FeatureLeaveScope::All).unwrap(), "\"all\"");
+        assert_eq!(
+            serde_json::to_string(&FeatureLeaveScope::OnlySelf).unwrap(),
+            "\"self\""
+        );
+        assert_eq!(
+            serde_json::to_string(&FeatureLeaveScope::All).unwrap(),
+            "\"all\""
+        );
         assert_eq!(FeatureLeaveScope::default(), FeatureLeaveScope::OnlySelf);
-        assert!(serde_json::from_str::<FeatureLeaveScope>("\"self\"").unwrap().is_self());
+        assert!(serde_json::from_str::<FeatureLeaveScope>("\"self\"")
+            .unwrap()
+            .is_self());
         assert!(serde_json::from_str::<FeatureLeaveScope>("\"everyone\"").is_err());
         let left = FeatureLeaveData {
             feature: FeatureKind::Forward,
@@ -307,7 +349,10 @@ mod tests {
         assert_eq!(json["left"], true);
         assert_eq!(json["now_enabled"], false);
         assert_eq!(json["devices"][0], "Pixel 8");
-        assert_eq!(serde_json::from_value::<FeatureLeaveData>(json).unwrap(), left);
+        assert_eq!(
+            serde_json::from_value::<FeatureLeaveData>(json).unwrap(),
+            left
+        );
         // `devices` may be omitted (no allow-list left).
         let bare: FeatureLeaveData =
             serde_json::from_str(r#"{"feature":"push","left":false,"now_enabled":true}"#).unwrap();

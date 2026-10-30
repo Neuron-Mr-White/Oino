@@ -41,7 +41,10 @@ impl TryFrom<String> for PushId {
         if value.is_empty() || value.len() > 64 {
             return Err(format!("id must be 1..=64 characters, got {}", value.len()));
         }
-        if !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+        if !value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
             return Err("id must be [A-Za-z0-9_-]".into());
         }
         Ok(PushId(value))
@@ -76,7 +79,9 @@ impl TryFrom<u32> for PushWait {
         if value <= PUSH_WAIT_MAX {
             Ok(PushWait(value))
         } else {
-            Err(format!("wait must be 0..={PUSH_WAIT_MAX} seconds, got {value}"))
+            Err(format!(
+                "wait must be 0..={PUSH_WAIT_MAX} seconds, got {value}"
+            ))
         }
     }
 }
@@ -161,7 +166,10 @@ mod tests {
 
     #[test]
     fn outcome_is_snake_case() {
-        assert_eq!(serde_json::to_string(&PushOutcome::Installed).unwrap(), "\"installed\"");
+        assert_eq!(
+            serde_json::to_string(&PushOutcome::Installed).unwrap(),
+            "\"installed\""
+        );
         assert!(serde_json::from_str::<PushOutcome>("\"exploded\"").is_err());
     }
 }

@@ -218,7 +218,10 @@ pub fn ease_in_out(t: f64) -> f64 {
 fn bezier(p: [(f64, f64); 4], t: f64) -> (f64, f64) {
     let u = 1.0 - t;
     let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
-    (a * p[0].0 + b * p[1].0 + c * p[2].0 + d * p[3].0, a * p[0].1 + b * p[1].1 + c * p[2].1 + d * p[3].1)
+    (
+        a * p[0].0 + b * p[1].0 + c * p[2].0 + d * p[3].0,
+        a * p[0].1 + b * p[1].1 + c * p[2].1 + d * p[3].1,
+    )
 }
 
 /// One `mouseMoved` of a path: dispatched `wait_ms` after the previous one.
@@ -237,11 +240,24 @@ pub struct MoveStep {
 /// unipi: points are dispatched 2–6 ms apart inside a burst (a ~200 Hz mouse,
 /// not back-to-back), a move never has more steps than pixels, and the last
 /// point is exactly `to` (the click point was already randomised).
-pub fn mouse_path<R: Rng + ?Sized>(from: (f64, f64), to: (f64, f64), cfg: &HumanConfig, rng: &mut R) -> Vec<MoveStep> {
+pub fn mouse_path<R: Rng + ?Sized>(
+    from: (f64, f64),
+    to: (f64, f64),
+    cfg: &HumanConfig,
+    rng: &mut R,
+) -> Vec<MoveStep> {
     let (dx, dy) = (to.0 - from.0, to.1 - from.1);
     let dist = dx.hypot(dy);
     if dist < 1.0 {
-        return if dist > 0.0 { vec![MoveStep { x: to.0, y: to.1, wait_ms: 0.0 }] } else { Vec::new() };
+        return if dist > 0.0 {
+            vec![MoveStep {
+                x: to.0,
+                y: to.1,
+                wait_ms: 0.0,
+            }]
+        } else {
+            Vec::new()
+        };
     }
     let steps = ((dist / cfg.mouse_steps_divisor).round() as u32)
         .clamp(cfg.mouse_min_steps, cfg.mouse_max_steps)
@@ -250,8 +266,14 @@ pub fn mouse_path<R: Rng + ?Sized>(from: (f64, f64), to: (f64, f64), cfg: &Human
     let (px, py) = (-dy / dist, dx / dist);
     let bias1 = rng.random_range(-0.3..=0.3) * dist;
     let bias2 = rng.random_range(-0.3..=0.3) * dist;
-    let cp1 = (from.0 + dx * 0.25 + px * bias1, from.1 + dy * 0.25 + py * bias1);
-    let cp2 = (from.0 + dx * 0.75 + px * bias2, from.1 + dy * 0.75 + py * bias2);
+    let cp1 = (
+        from.0 + dx * 0.25 + px * bias1,
+        from.1 + dy * 0.25 + py * bias1,
+    );
+    let cp2 = (
+        from.0 + dx * 0.75 + px * bias2,
+        from.1 + dy * 0.75 + py * bias2,
+    );
     let burst = rand_int(rng, cfg.mouse_burst_size).max(1);
     let mut out = Vec::with_capacity(steps as usize + 2);
     let mut in_burst = 0;
@@ -262,7 +284,10 @@ pub fn mouse_path<R: Rng + ?Sized>(from: (f64, f64), to: (f64, f64), cfg: &Human
         let (x, y) = if i == steps {
             to
         } else {
-            ((x + rng.random_range(-1.0..=1.0) * amp).round(), (y + rng.random_range(-1.0..=1.0) * amp).round())
+            (
+                (x + rng.random_range(-1.0..=1.0) * amp).round(),
+                (y + rng.random_range(-1.0..=1.0) * amp).round(),
+            )
         };
         let mut wait = rng.random_range(2.0..=6.0);
         if in_burst >= burst {
@@ -270,14 +295,26 @@ pub fn mouse_path<R: Rng + ?Sized>(from: (f64, f64), to: (f64, f64), cfg: &Human
             in_burst = 0;
         }
         in_burst += 1;
-        out.push(MoveStep { x, y, wait_ms: wait });
+        out.push(MoveStep {
+            x,
+            y,
+            wait_ms: wait,
+        });
     }
     if rng.random_bool(cfg.mouse_overshoot_chance.clamp(0.0, 1.0)) {
         let over = rand_range(rng, cfg.mouse_overshoot_px);
         let angle = dy.atan2(dx);
         let last = out.pop().expect("at least one step");
-        out.push(MoveStep { x: (to.0 + angle.cos() * over).round(), y: (to.1 + angle.sin() * over).round(), wait_ms: last.wait_ms });
-        out.push(MoveStep { x: to.0, y: to.1, wait_ms: rng.random_range(30.0..=70.0) });
+        out.push(MoveStep {
+            x: (to.0 + angle.cos() * over).round(),
+            y: (to.1 + angle.sin() * over).round(),
+            wait_ms: last.wait_ms,
+        });
+        out.push(MoveStep {
+            x: to.0,
+            y: to.1,
+            wait_ms: rng.random_range(30.0..=70.0),
+        });
     }
     out
 }
@@ -299,9 +336,20 @@ impl BoxRect {
         }
         let xs = [quad[0], quad[2], quad[4], quad[6]];
         let ys = [quad[1], quad[3], quad[5], quad[7]];
-        let (x0, x1) = (xs.iter().cloned().fold(f64::MAX, f64::min), xs.iter().cloned().fold(f64::MIN, f64::max));
-        let (y0, y1) = (ys.iter().cloned().fold(f64::MAX, f64::min), ys.iter().cloned().fold(f64::MIN, f64::max));
-        Some(BoxRect { x: x0, y: y0, width: x1 - x0, height: y1 - y0 })
+        let (x0, x1) = (
+            xs.iter().cloned().fold(f64::MAX, f64::min),
+            xs.iter().cloned().fold(f64::MIN, f64::max),
+        );
+        let (y0, y1) = (
+            ys.iter().cloned().fold(f64::MAX, f64::min),
+            ys.iter().cloned().fold(f64::MIN, f64::max),
+        );
+        Some(BoxRect {
+            x: x0,
+            y: y0,
+            width: x1 - x0,
+            height: y1 - y0,
+        })
     }
     pub fn center(&self) -> (f64, f64) {
         (self.x + self.width / 2.0, self.y + self.height / 2.0)
@@ -311,13 +359,24 @@ impl BoxRect {
 /// Where a person clicks in `rect` (the wrapper's `clickTarget`): text
 /// fields near their left (where the text starts), anything else somewhere
 /// around the middle — never the exact centre.
-pub fn click_target<R: Rng + ?Sized>(rect: &BoxRect, is_input: bool, cfg: &HumanConfig, rng: &mut R) -> (f64, f64) {
+pub fn click_target<R: Rng + ?Sized>(
+    rect: &BoxRect,
+    is_input: bool,
+    cfg: &HumanConfig,
+    rng: &mut R,
+) -> (f64, f64) {
     let (fx, fy) = if is_input {
-        (rand_range(rng, cfg.click_input_x_range), rng.random_range(0.30..=0.70))
+        (
+            rand_range(rng, cfg.click_input_x_range),
+            rng.random_range(0.30..=0.70),
+        )
     } else {
         (rng.random_range(0.35..=0.65), rng.random_range(0.35..=0.65))
     };
-    ((rect.x + rect.width * fx).round(), (rect.y + rect.height * fy).round())
+    (
+        (rect.x + rect.width * fx).round(),
+        (rect.y + rect.height * fy).round(),
+    )
 }
 
 // --------------------------------------------------------------- keyboard
@@ -328,14 +387,42 @@ pub const SHIFT_SYMBOLS: &str = "@#!$%^&*()_+{}|:\"<>?~";
 /// Neighbouring keys for a mistype (letters/digits only, as in the wrapper).
 fn nearby(c: char) -> Option<&'static str> {
     Some(match c.to_ascii_lowercase() {
-        'a' => "sqwz", 'b' => "vghn", 'c' => "xdfv", 'd' => "sfecx", 'e' => "wrsdf",
-        'f' => "dgrtcv", 'g' => "fhtyb", 'h' => "gjybn", 'i' => "ujko", 'j' => "hkunm",
-        'k' => "jloi", 'l' => "kop", 'm' => "njk", 'n' => "bhjm", 'o' => "iklp",
-        'p' => "ol", 'q' => "wa", 'r' => "edft", 's' => "awedxz", 't' => "rfgy",
-        'u' => "yhji", 'v' => "cfgb", 'w' => "qase", 'x' => "zsdc", 'y' => "tghu",
+        'a' => "sqwz",
+        'b' => "vghn",
+        'c' => "xdfv",
+        'd' => "sfecx",
+        'e' => "wrsdf",
+        'f' => "dgrtcv",
+        'g' => "fhtyb",
+        'h' => "gjybn",
+        'i' => "ujko",
+        'j' => "hkunm",
+        'k' => "jloi",
+        'l' => "kop",
+        'm' => "njk",
+        'n' => "bhjm",
+        'o' => "iklp",
+        'p' => "ol",
+        'q' => "wa",
+        'r' => "edft",
+        's' => "awedxz",
+        't' => "rfgy",
+        'u' => "yhji",
+        'v' => "cfgb",
+        'w' => "qase",
+        'x' => "zsdc",
+        'y' => "tghu",
         'z' => "asx",
-        '1' => "2", '2' => "13", '3' => "24", '4' => "35", '5' => "46",
-        '6' => "57", '7' => "68", '8' => "79", '9' => "80", '0' => "9",
+        '1' => "2",
+        '2' => "13",
+        '3' => "24",
+        '4' => "35",
+        '5' => "46",
+        '6' => "57",
+        '7' => "68",
+        '8' => "79",
+        '9' => "80",
+        '0' => "9",
         _ => return None,
     })
 }
@@ -345,7 +432,11 @@ pub fn key_of(c: char) -> Option<(String, u32, bool)> {
     let shifted = |code: &str, vk: u32| Some((code.to_string(), vk, true));
     let plain = |code: &str, vk: u32| Some((code.to_string(), vk, false));
     match c {
-        'a'..='z' => Some((format!("Key{}", c.to_ascii_uppercase()), c.to_ascii_uppercase() as u32, false)),
+        'a'..='z' => Some((
+            format!("Key{}", c.to_ascii_uppercase()),
+            c.to_ascii_uppercase() as u32,
+            false,
+        )),
         'A'..='Z' => Some((format!("Key{c}"), c as u32, true)),
         '0'..='9' => Some((format!("Digit{c}"), c as u32, false)),
         ' ' => plain("Space", 32),
@@ -448,15 +539,44 @@ pub fn inter_key_delay<R: Rng + ?Sized>(cfg: &HumanConfig, rng: &mut R) -> f64 {
     }
 }
 
-fn push_char<R: Rng + ?Sized>(out: &mut Vec<KeyStep>, c: char, code: &str, vk: u32, shift: bool, first_wait: f64, cfg: &HumanConfig, rng: &mut R) {
+// v2 H1: pre-existing key-synthesis helper (browser port keeps it)
+#[allow(clippy::too_many_arguments)]
+fn push_char<R: Rng + ?Sized>(
+    out: &mut Vec<KeyStep>,
+    c: char,
+    code: &str,
+    vk: u32,
+    shift: bool,
+    first_wait: f64,
+    cfg: &HumanConfig,
+    rng: &mut R,
+) {
     if shift {
-        out.push(KeyStep::Key { params: shift_event("rawKeyDown"), wait_ms: first_wait });
-        out.push(KeyStep::Key { params: char_down(c, code, vk, true), wait_ms: rand_range(rng, cfg.shift_down_delay) });
-        out.push(KeyStep::Key { params: char_up(c, code, vk, true), wait_ms: rand_range(rng, cfg.key_hold) });
-        out.push(KeyStep::Key { params: shift_event("keyUp"), wait_ms: rand_range(rng, cfg.shift_up_delay) });
+        out.push(KeyStep::Key {
+            params: shift_event("rawKeyDown"),
+            wait_ms: first_wait,
+        });
+        out.push(KeyStep::Key {
+            params: char_down(c, code, vk, true),
+            wait_ms: rand_range(rng, cfg.shift_down_delay),
+        });
+        out.push(KeyStep::Key {
+            params: char_up(c, code, vk, true),
+            wait_ms: rand_range(rng, cfg.key_hold),
+        });
+        out.push(KeyStep::Key {
+            params: shift_event("keyUp"),
+            wait_ms: rand_range(rng, cfg.shift_up_delay),
+        });
     } else {
-        out.push(KeyStep::Key { params: char_down(c, code, vk, false), wait_ms: first_wait });
-        out.push(KeyStep::Key { params: char_up(c, code, vk, false), wait_ms: rand_range(rng, cfg.key_hold) });
+        out.push(KeyStep::Key {
+            params: char_down(c, code, vk, false),
+            wait_ms: first_wait,
+        });
+        out.push(KeyStep::Key {
+            params: char_up(c, code, vk, false),
+            wait_ms: rand_range(rng, cfg.key_hold),
+        });
     }
 }
 
@@ -470,21 +590,41 @@ fn push_char<R: Rng + ?Sized>(out: &mut Vec<KeyStep>, c: char, code: &str, vk: u
 pub fn typing_plan<R: Rng + ?Sized>(text: &str, cfg: &HumanConfig, rng: &mut R) -> Vec<KeyStep> {
     let mut out = Vec::new();
     for (i, c) in text.chars().enumerate() {
-        let wait = if i == 0 { 0.0 } else { inter_key_delay(cfg, rng) };
+        let wait = if i == 0 {
+            0.0
+        } else {
+            inter_key_delay(cfg, rng)
+        };
         let Some((code, vk, shift)) = key_of(c) else {
-            out.push(KeyStep::Text { text: c.to_string(), wait_ms: wait + rand_range(rng, cfg.key_hold) });
+            out.push(KeyStep::Text {
+                text: c.to_string(),
+                wait_ms: wait + rand_range(rng, cfg.key_hold),
+            });
             continue;
         };
         let mut wait = wait;
         if c.is_ascii_alphanumeric() && rng.random_bool(cfg.mistype_chance.clamp(0.0, 1.0)) {
             if let Some(near) = nearby(c) {
-                let pick = near.chars().nth(rng.random_range(0..near.chars().count())).unwrap_or(c);
-                let wrong = if c.is_ascii_uppercase() { pick.to_ascii_uppercase() } else { pick };
+                let pick = near
+                    .chars()
+                    .nth(rng.random_range(0..near.chars().count()))
+                    .unwrap_or(c);
+                let wrong = if c.is_ascii_uppercase() {
+                    pick.to_ascii_uppercase()
+                } else {
+                    pick
+                };
                 if let Some((wcode, wvk, wshift)) = key_of(wrong) {
                     push_char(&mut out, wrong, &wcode, wvk, wshift, wait, cfg, rng);
                     let (down, up) = named_key("Backspace").expect("backspace");
-                    out.push(KeyStep::Key { params: down, wait_ms: rand_range(rng, cfg.mistype_delay_notice) });
-                    out.push(KeyStep::Key { params: up, wait_ms: rand_range(rng, cfg.key_hold) });
+                    out.push(KeyStep::Key {
+                        params: down,
+                        wait_ms: rand_range(rng, cfg.mistype_delay_notice),
+                    });
+                    out.push(KeyStep::Key {
+                        params: up,
+                        wait_ms: rand_range(rng, cfg.key_hold),
+                    });
                     wait = rand_range(rng, cfg.mistype_delay_correct);
                 }
             }
@@ -523,13 +663,25 @@ pub fn wheel_plan<R: Rng + ?Sized>(delta: f64, cfg: &HumanConfig, rng: &mut R) -
     let mut notches: Vec<(f64, f64)> = (0..clicks)
         .map(|i| {
             let (size, pause) = if i < accel {
-                (rng.random_range(80.0..=100.0), rand_range(rng, cfg.scroll_pause_slow))
+                (
+                    rng.random_range(80.0..=100.0),
+                    rand_range(rng, cfg.scroll_pause_slow),
+                )
             } else if i + decel >= clicks {
-                (rng.random_range(60.0..=90.0), rand_range(rng, cfg.scroll_pause_slow))
+                (
+                    rng.random_range(60.0..=90.0),
+                    rand_range(rng, cfg.scroll_pause_slow),
+                )
             } else {
-                (rand_range(rng, cfg.scroll_delta_base), rand_range(rng, cfg.scroll_pause_fast))
+                (
+                    rand_range(rng, cfg.scroll_delta_base),
+                    rand_range(rng, cfg.scroll_pause_fast),
+                )
             };
-            (size * (1.0 + rng.random_range(-1.0..=1.0) * cfg.scroll_delta_variance), pause)
+            (
+                size * (1.0 + rng.random_range(-1.0..=1.0) * cfg.scroll_delta_variance),
+                pause,
+            )
         })
         .collect();
     let sum: f64 = notches.iter().map(|n| n.0).sum();
@@ -542,7 +694,11 @@ pub fn wheel_plan<R: Rng + ?Sized>(delta: f64, cfg: &HumanConfig, rng: &mut R) -
     let mut target = 0.0;
     for (n, (size, pause)) in notches.iter().enumerate() {
         target += size;
-        let goal = if n + 1 == notches.len() { total } else { target.round() };
+        let goal = if n + 1 == notches.len() {
+            total
+        } else {
+            target.round()
+        };
         let mut first = true;
         while sent < goal {
             let left = goal - sent;
@@ -550,9 +706,18 @@ pub fn wheel_plan<R: Rng + ?Sized>(delta: f64, cfg: &HumanConfig, rng: &mut R) -
             if left - chunk < 1.0 {
                 chunk = left;
             }
-            let wait = if first && n > 0 { *pause } else if out.is_empty() { 0.0 } else { rng.random_range(8.0..=20.0) };
+            let wait = if first && n > 0 {
+                *pause
+            } else if out.is_empty() {
+                0.0
+            } else {
+                rng.random_range(8.0..=20.0)
+            };
             first = false;
-            out.push(WheelStep { delta: chunk * sign, wait_ms: wait });
+            out.push(WheelStep {
+                delta: chunk * sign,
+                wait_ms: wait,
+            });
             sent += chunk;
         }
     }
@@ -578,7 +743,10 @@ impl Humanizer {
     }
 
     pub fn with_rng(cfg: HumanConfig, mut rng: StdRng) -> Humanizer {
-        let pointer = (rand_range(&mut rng, cfg.initial_cursor_x), rand_range(&mut rng, cfg.initial_cursor_y));
+        let pointer = (
+            rand_range(&mut rng, cfg.initial_cursor_x),
+            rand_range(&mut rng, cfg.initial_cursor_y),
+        );
         Humanizer { cfg, rng, pointer }
     }
 
@@ -614,7 +782,11 @@ impl Humanizer {
 
 /// Sometimes, when scrolling to an element, a person scrolls past it and
 /// back (the wrapper's scroll overshoot): extra steps to append, or none.
-pub fn overshoot_plan<R: Rng + ?Sized>(direction: f64, cfg: &HumanConfig, rng: &mut R) -> Vec<WheelStep> {
+pub fn overshoot_plan<R: Rng + ?Sized>(
+    direction: f64,
+    cfg: &HumanConfig,
+    rng: &mut R,
+) -> Vec<WheelStep> {
     if !rng.random_bool(cfg.scroll_overshoot_chance.clamp(0.0, 1.0)) {
         return Vec::new();
     }
@@ -622,7 +794,11 @@ pub fn overshoot_plan<R: Rng + ?Sized>(direction: f64, cfg: &HumanConfig, rng: &
     let mut out = wheel_plan(over, cfg, rng);
     let mut back = 0.0;
     for k in 0..rand_int(rng, (1, 2)) {
-        let corr = if k == 0 { rng.random_range(40.0..=80.0_f64).round() } else { (over.abs() - back).max(10.0) };
+        let corr = if k == 0 {
+            rng.random_range(40.0..=80.0_f64).round()
+        } else {
+            (over.abs() - back).max(10.0)
+        };
         back += corr;
         let mut steps = wheel_plan(-corr * direction.signum(), cfg, rng);
         if let Some(first) = steps.first_mut() {
@@ -650,12 +826,19 @@ mod tests {
             let from = (100.0, 80.0);
             let to = (612.0, 431.0);
             let path = mouse_path(from, to, &cfg, &mut rng);
-            assert!(path.len() >= cfg.mouse_min_steps as usize, "{} steps", path.len());
+            assert!(
+                path.len() >= cfg.mouse_min_steps as usize,
+                "{} steps",
+                path.len()
+            );
             let last = path.last().unwrap();
             assert_eq!((last.x, last.y), to, "ends exactly at the target");
             let first = path[0];
             let step = (to.0 - from.0).hypot(to.1 - from.1) / cfg.mouse_min_steps as f64;
-            assert!((first.x - from.0).hypot(first.y - from.1) < step + 3.0, "first step leaves from the start: {first:?}");
+            assert!(
+                (first.x - from.0).hypot(first.y - from.1) < step + 3.0,
+                "first step leaves from the start: {first:?}"
+            );
         }
     }
 
@@ -664,10 +847,23 @@ mod tests {
         let cfg = HumanConfig::default_preset();
         let mut rng = seeded(7);
         let path = mouse_path((0.0, 0.0), (800.0, 300.0), &cfg, &mut rng);
-        assert!(path.iter().all(|s| s.wait_ms >= 0.0 && s.wait_ms.is_finite()), "never goes back in time");
+        assert!(
+            path.iter()
+                .all(|s| s.wait_ms >= 0.0 && s.wait_ms.is_finite()),
+            "never goes back in time"
+        );
         let total: f64 = path.iter().map(|s| s.wait_ms).sum();
-        assert!(total > 150.0 && total < 2000.0, "a ~850 px move takes a human time, not 0 ms: {total}");
-        assert!(path.iter().filter(|s| s.wait_ms >= cfg.mouse_burst_pause.0).count() >= 5, "moves in bursts");
+        assert!(
+            total > 150.0 && total < 2000.0,
+            "a ~850 px move takes a human time, not 0 ms: {total}"
+        );
+        assert!(
+            path.iter()
+                .filter(|s| s.wait_ms >= cfg.mouse_burst_pause.0)
+                .count()
+                >= 5,
+            "moves in bursts"
+        );
     }
 
     #[test]
@@ -685,15 +881,28 @@ mod tests {
                 let along = (rx * dx + ry * dy) / dist;
                 let side = (rx * -dy + ry * dx).abs() / dist;
                 // Control points ≤ 30 % of the distance sideways → the curve stays within that, plus wobble/rounding.
-                assert!(side <= 0.3 * dist + cfg.mouse_wobble_max + 1.0, "sideways {side}");
+                assert!(
+                    side <= 0.3 * dist + cfg.mouse_wobble_max + 1.0,
+                    "sideways {side}"
+                );
                 // Never more than the overshoot past the target, never behind the start.
-                assert!(along >= -cfg.mouse_wobble_max - 1.0 && along <= dist + cfg.mouse_overshoot_px.1 + 1.0, "along {along}");
+                assert!(
+                    along >= -cfg.mouse_wobble_max - 1.0
+                        && along <= dist + cfg.mouse_overshoot_px.1 + 1.0,
+                    "along {along}"
+                );
             }
-            if path.iter().any(|s| (s.x - from.0) * dx + (s.y - from.1) * dy > dist * dist + 1.0) {
+            if path
+                .iter()
+                .any(|s| (s.x - from.0) * dx + (s.y - from.1) * dy > dist * dist + 1.0)
+            {
                 overshoots += 1;
             }
         }
-        assert!(overshoots > 20 && overshoots < 150, "overshoots ~15 % of the time: {overshoots}/500");
+        assert!(
+            overshoots > 20 && overshoots < 150,
+            "overshoots ~15 % of the time: {overshoots}/500"
+        );
     }
 
     #[test]
@@ -709,21 +918,34 @@ mod tests {
     #[test]
     fn click_target_is_inside_and_off_centre() {
         let cfg = HumanConfig::default_preset();
-        let rect = BoxRect { x: 300.0, y: 200.0, width: 160.0, height: 50.0 };
+        let rect = BoxRect {
+            x: 300.0,
+            y: 200.0,
+            width: 160.0,
+            height: 50.0,
+        };
         let mut off_centre = 0;
         for seed in 0..200 {
             let mut rng = seeded(seed);
             let (x, y) = click_target(&rect, false, &cfg, &mut rng);
             assert!(x >= rect.x + rect.width * 0.35 - 1.0 && x <= rect.x + rect.width * 0.65 + 1.0);
-            assert!(y >= rect.y + rect.height * 0.35 - 1.0 && y <= rect.y + rect.height * 0.65 + 1.0);
+            assert!(
+                y >= rect.y + rect.height * 0.35 - 1.0 && y <= rect.y + rect.height * 0.65 + 1.0
+            );
             let (cx, cy) = rect.center();
             if (x - cx).abs() > 3.0 || (y - cy).abs() > 3.0 {
                 off_centre += 1;
             }
             let (ix, _) = click_target(&rect, true, &cfg, &mut rng);
-            assert!(ix <= rect.x + rect.width * 0.30 + 1.0, "text fields are clicked near the left");
+            assert!(
+                ix <= rect.x + rect.width * 0.30 + 1.0,
+                "text fields are clicked near the left"
+            );
         }
-        assert!(off_centre > 150, "rarely within 3 px of the centre: {off_centre}/200");
+        assert!(
+            off_centre > 150,
+            "rarely within 3 px of the centre: {off_centre}/200"
+        );
     }
 
     /// Replays a typing plan into a text field model.
@@ -744,7 +966,11 @@ mod tests {
                         ("keyDown", _) => {
                             let text = params["text"].as_str().unwrap();
                             let shifted = params["modifiers"].as_u64() == Some(8);
-                            assert_eq!(shifted, shift_depth > 0, "Shift is held exactly for shifted keys ({key})");
+                            assert_eq!(
+                                shifted,
+                                shift_depth > 0,
+                                "Shift is held exactly for shifted keys ({key})"
+                            );
                             value.push_str(text);
                         }
                         _ => {}
@@ -757,7 +983,10 @@ mod tests {
 
     #[test]
     fn typing_plan_types_exactly_the_text() {
-        let cfg = HumanConfig { mistype_chance: 0.3, ..HumanConfig::default_preset() };
+        let cfg = HumanConfig {
+            mistype_chance: 0.3,
+            ..HumanConfig::default_preset()
+        };
         let text = "Hello, World! jane.doe+x@example.com ~ héllo 日本 😀\nline2\t";
         for seed in 0..50 {
             let plan = typing_plan(text, &cfg, &mut seeded(seed));
@@ -769,7 +998,11 @@ mod tests {
 
     #[test]
     fn typing_schedule_is_human() {
-        let cfg = HumanConfig { mistype_chance: 0.0, typing_pause_chance: 0.0, ..HumanConfig::default_preset() };
+        let cfg = HumanConfig {
+            mistype_chance: 0.0,
+            typing_pause_chance: 0.0,
+            ..HumanConfig::default_preset()
+        };
         let plan = typing_plan("abcdefghij", &cfg, &mut seeded(3));
         // Each char: keyDown, keyUp held 15–35 ms; 30–110 ms between chars.
         assert_eq!(plan.len(), 20);
@@ -784,20 +1017,49 @@ mod tests {
             }
         }
         // Capitals and shifted symbols hold Shift; non-ASCII is inserted.
-        let plan = typing_plan("A@é", &HumanConfig { mistype_chance: 0.0, ..HumanConfig::default_preset() }, &mut seeded(4));
+        let plan = typing_plan(
+            "A@é",
+            &HumanConfig {
+                mistype_chance: 0.0,
+                ..HumanConfig::default_preset()
+            },
+            &mut seeded(4),
+        );
         let kinds: Vec<String> = plan
             .iter()
             .map(|s| match s {
-                KeyStep::Key { params, .. } => format!("{}:{}", params["type"].as_str().unwrap(), params["key"].as_str().unwrap()),
+                KeyStep::Key { params, .. } => format!(
+                    "{}:{}",
+                    params["type"].as_str().unwrap(),
+                    params["key"].as_str().unwrap()
+                ),
                 KeyStep::Text { text, .. } => format!("text:{text}"),
             })
             .collect();
         assert_eq!(
             kinds,
-            ["rawKeyDown:Shift", "keyDown:A", "keyUp:A", "keyUp:Shift", "rawKeyDown:Shift", "keyDown:@", "keyUp:@", "keyUp:Shift", "text:é"]
+            [
+                "rawKeyDown:Shift",
+                "keyDown:A",
+                "keyUp:A",
+                "keyUp:Shift",
+                "rawKeyDown:Shift",
+                "keyDown:@",
+                "keyUp:@",
+                "keyUp:Shift",
+                "text:é"
+            ]
         );
-        let KeyStep::Key { params, .. } = &plan[5] else { panic!() };
-        assert_eq!((params["code"].as_str(), params["windowsVirtualKeyCode"].as_u64()), (Some("Digit2"), Some(50)));
+        let KeyStep::Key { params, .. } = &plan[5] else {
+            panic!()
+        };
+        assert_eq!(
+            (
+                params["code"].as_str(),
+                params["windowsVirtualKeyCode"].as_u64()
+            ),
+            (Some("Digit2"), Some(50))
+        );
     }
 
     #[test]
@@ -816,19 +1078,37 @@ mod tests {
             let plan = wheel_plan(delta, &cfg, &mut seeded(seed));
             let sum: f64 = plan.iter().map(|s| s.delta).sum();
             assert_eq!(sum, delta, "exact total");
-            assert!(plan.iter().all(|s| s.delta != 0.0 && s.delta.signum() == delta.signum() && s.delta.abs() <= 40.0));
+            assert!(plan.iter().all(|s| s.delta != 0.0
+                && s.delta.signum() == delta.signum()
+                && s.delta.abs() <= 40.0));
             assert!(plan.iter().all(|s| s.wait_ms >= 0.0));
-            assert!(plan.iter().all(|s| s.delta.fract() == 0.0), "whole pixels like a wheel");
+            assert!(
+                plan.iter().all(|s| s.delta.fract() == 0.0),
+                "whole pixels like a wheel"
+            );
         }
         let plan = wheel_plan(1000.0, &cfg, &mut seeded(8));
-        assert!(plan.len() >= 25, "split in many small events: {}", plan.len());
-        assert!(plan.iter().filter(|s| s.wait_ms >= cfg.scroll_pause_fast.0).count() >= 5, "pauses between notches");
+        assert!(
+            plan.len() >= 25,
+            "split in many small events: {}",
+            plan.len()
+        );
+        assert!(
+            plan.iter()
+                .filter(|s| s.wait_ms >= cfg.scroll_pause_fast.0)
+                .count()
+                >= 5,
+            "pauses between notches"
+        );
         assert!(wheel_plan(0.2, &cfg, &mut seeded(1)).is_empty());
     }
 
     #[test]
     fn presets_parse() {
-        assert_eq!(serde_json::from_str::<Humanize>("\"careful\"").unwrap(), Humanize::Careful);
+        assert_eq!(
+            serde_json::from_str::<Humanize>("\"careful\"").unwrap(),
+            Humanize::Careful
+        );
         assert_eq!(Humanize::default(), Humanize::Default);
         assert!(Humanize::Off.config().is_none());
         assert_eq!(Humanize::Careful.config().unwrap().typing_delay, 100.0);

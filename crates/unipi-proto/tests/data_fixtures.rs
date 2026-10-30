@@ -1,11 +1,11 @@
 //! Contract test: the shared JSON fixtures in `protocol/fixtures/`
-//! for the typed `ok.data` payloads (`ListData`, `PairData`,
-//! `AttachData`) must be accepted/rejected identically by `serde`
-//! here and by zod in `packages/protocol`.
+//! for the typed `ok.data` payloads (`PairData`) must be
+//! accepted/rejected identically by `serde` here and by zod in
+//! `packages/protocol`.
 
 use serde::Deserialize;
 use serde_json::Value;
-use unipi_proto::{AttachData, ListData, PairData};
+use unipi_proto::PairData;
 
 #[derive(Debug, Deserialize)]
 struct ValidFixture {
@@ -48,13 +48,7 @@ fn load_invalid() -> Vec<InvalidFixture> {
 
 fn parses_as(schema: &str, value: &Value) -> Result<(), String> {
     match schema {
-        "ListData" => serde_json::from_value::<ListData>(value.clone())
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
         "PairData" => serde_json::from_value::<PairData>(value.clone())
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
-        "AttachData" => serde_json::from_value::<AttachData>(value.clone())
             .map(|_| ())
             .map_err(|e| e.to_string()),
         other => panic!("unknown schema in fixture: {other}"),
@@ -64,19 +58,15 @@ fn parses_as(schema: &str, value: &Value) -> Result<(), String> {
 #[test]
 fn has_at_least_2_valid_fixtures_per_schema() {
     let valid = load_valid();
-    for schema in ["ListData", "PairData", "AttachData"] {
-        let count = valid.iter().filter(|f| f.schema == schema).count();
-        assert!(count >= 2, "expected >=2 valid fixtures for {schema}");
-    }
+    let count = valid.iter().filter(|f| f.schema == "PairData").count();
+    assert!(count >= 2, "expected >=2 valid fixtures for PairData");
 }
 
 #[test]
 fn has_at_least_2_invalid_fixtures_per_schema() {
     let invalid = load_invalid();
-    for schema in ["ListData", "PairData", "AttachData"] {
-        let count = invalid.iter().filter(|f| f.schema == schema).count();
-        assert!(count >= 2, "expected >=2 invalid fixtures for {schema}");
-    }
+    let count = invalid.iter().filter(|f| f.schema == "PairData").count();
+    assert!(count >= 2, "expected >=2 invalid fixtures for PairData");
 }
 
 #[test]

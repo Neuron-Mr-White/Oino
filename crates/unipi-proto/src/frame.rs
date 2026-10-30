@@ -1,4 +1,4 @@
-//! Frame encoding for `unipi/app/1`: `u8 kind · u32BE length · payload`.
+//! Frame encoding for `unipi/oino/1`: `u8 kind · u32BE length · payload`.
 //!
 //! Kinds:
 //! - 0: JSON control (UTF-8)

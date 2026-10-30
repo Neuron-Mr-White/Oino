@@ -18,8 +18,8 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use unipi_proto::{
     frame::{encode, FrameKind, MAX_FRAME},
-    AppErrorCode, AppErrorDto, BrowserCmd, BrowserEvent, BrowserFrameMeta, BrowserOpenData, BrowserTab,
-    BrowserViewport, Control,
+    AppErrorCode, AppErrorDto, BrowserCmd, BrowserEvent, BrowserFrameMeta, BrowserOpenData,
+    BrowserTab, BrowserViewport, Control,
 };
 
 use super::cdp::{Cdp, CdpEvent};
@@ -42,7 +42,12 @@ pub struct Adapt {
 
 impl Default for Adapt {
     fn default() -> Self {
-        Adapt { quality: 70, every_nth: 1, rtt_ms: 0.0, last_change: None }
+        Adapt {
+            quality: 70,
+            every_nth: 1,
+            rtt_ms: 0.0,
+            last_change: None,
+        }
     }
 }
 
@@ -54,16 +59,32 @@ impl Adapt {
     /// screencast must be restarted with the new settings).
     pub fn sample(&mut self, latency: Duration, now: Instant) -> bool {
         let ms = latency.as_secs_f64() * 1000.0;
-        self.rtt_ms = if self.rtt_ms == 0.0 { ms } else { self.rtt_ms * 0.8 + ms * 0.2 };
-        if self.last_change.is_some_and(|t| now.duration_since(t) < Duration::from_secs(3)) {
+        self.rtt_ms = if self.rtt_ms == 0.0 {
+            ms
+        } else {
+            self.rtt_ms * 0.8 + ms * 0.2
+        };
+        if self
+            .last_change
+            .is_some_and(|t| now.duration_since(t) < Duration::from_secs(3))
+        {
             return false;
         }
         let (quality, every_nth) = if self.rtt_ms > 700.0 {
-            (self.quality.saturating_sub(15).max(Self::MIN_QUALITY), (self.every_nth + 1).min(4))
+            (
+                self.quality.saturating_sub(15).max(Self::MIN_QUALITY),
+                (self.every_nth + 1).min(4),
+            )
         } else if self.rtt_ms > 350.0 {
-            (self.quality.saturating_sub(10).max(Self::MIN_QUALITY), self.every_nth)
+            (
+                self.quality.saturating_sub(10).max(Self::MIN_QUALITY),
+                self.every_nth,
+            )
         } else if self.rtt_ms < 120.0 {
-            ((self.quality + 5).min(Self::MAX_QUALITY), self.every_nth.saturating_sub(1).max(1))
+            (
+                (self.quality + 5).min(Self::MAX_QUALITY),
+                self.every_nth.saturating_sub(1).max(1),
+            )
         } else {
             (self.quality, self.every_nth)
         };
@@ -119,7 +140,16 @@ pub fn key_code(key: &str) -> Option<u32> {
 pub fn input_calls(cmd: &BrowserCmd) -> Vec<(&'static str, Value)> {
     use unipi_proto::browser::{KeyKind, MouseButton, MouseKind, TouchKind};
     match cmd {
-        BrowserCmd::Mouse { kind, x, y, button, clicks, dx, dy, modifiers } => {
+        BrowserCmd::Mouse {
+            kind,
+            x,
+            y,
+            button,
+            clicks,
+            dx,
+            dy,
+            modifiers,
+        } => {
             let kind = match kind {
                 MouseKind::Pressed => "mousePressed",
                 MouseKind::Released => "mouseReleased",
@@ -149,13 +179,22 @@ pub fn input_calls(cmd: &BrowserCmd) -> Vec<(&'static str, Value)> {
                 .iter()
                 .map(|p| json!({ "x": p.x, "y": p.y, "id": p.id, "radiusX": 4, "radiusY": 4, "force": 1 }))
                 .collect();
-            vec![("Input.dispatchTouchEvent", json!({ "type": kind, "touchPoints": points }))]
+            vec![(
+                "Input.dispatchTouchEvent",
+                json!({ "type": kind, "touchPoints": points }),
+            )]
         }
         BrowserCmd::Pinch { x, y, scale } => vec![(
             "Input.synthesizePinchGesture",
             json!({ "x": x, "y": y, "scaleFactor": scale, "relativeSpeed": 1200, "gestureSourceType": "touch" }),
         )],
-        BrowserCmd::Key { kind, key, code, text, modifiers } => {
+        BrowserCmd::Key {
+            kind,
+            key,
+            code,
+            text,
+            modifiers,
+        } => {
             let text = text.clone().or_else(|| match key.as_str() {
                 "Enter" => Some("\r".into()),
                 k if k.chars().count() == 1 => Some(k.to_string()),
@@ -186,7 +225,10 @@ pub fn input_calls(cmd: &BrowserCmd) -> Vec<(&'static str, Value)> {
             match kind {
                 KeyKind::Down => vec![("Input.dispatchKeyEvent", down)],
                 KeyKind::Up => vec![("Input.dispatchKeyEvent", up)],
-                KeyKind::Press => vec![("Input.dispatchKeyEvent", down), ("Input.dispatchKeyEvent", up)],
+                KeyKind::Press => vec![
+                    ("Input.dispatchKeyEvent", down),
+                    ("Input.dispatchKeyEvent", up),
+                ],
             }
         }
         BrowserCmd::Text { text } => vec![("Input.insertText", json!({ "text": text }))],
@@ -210,12 +252,26 @@ pub fn metrics(viewport: &BrowserViewport) -> Value {
 pub fn normalize_url(raw: &str) -> String {
     let text = raw.trim();
     let lower = text.to_ascii_lowercase();
-    if lower.contains("://") || ["about:", "data:", "chrome:", "edge:", "view-source:", "file:"].iter().any(|p| lower.starts_with(p)) {
+    if lower.contains("://")
+        || [
+            "about:",
+            "data:",
+            "chrome:",
+            "edge:",
+            "view-source:",
+            "file:",
+        ]
+        .iter()
+        .any(|p| lower.starts_with(p))
+    {
         return text.to_string();
     }
     let host = lower.split(['/', '?', '#']).next().unwrap_or("");
-    let local = host.starts_with("localhost") || host.starts_with("127.") || host.starts_with("[::1]")
-        || host.starts_with("0.0.0.0") || host.ends_with(".local");
+    let local = host.starts_with("localhost")
+        || host.starts_with("127.")
+        || host.starts_with("[::1]")
+        || host.starts_with("0.0.0.0")
+        || host.ends_with(".local");
     if local {
         return format!("http://{text}");
     }
@@ -226,7 +282,9 @@ pub fn normalize_url(raw: &str) -> String {
         let query: String = text
             .bytes()
             .map(|b| match b {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    (b as char).to_string()
+                }
                 b' ' => "+".into(),
                 other => format!("%{other:02X}"),
             })
@@ -291,7 +349,11 @@ pub struct VisualViewport {
 
 impl Default for VisualViewport {
     fn default() -> Self {
-        Self { offset_x: 0.0, offset_y: 0.0, scale: 1.0 }
+        Self {
+            offset_x: 0.0,
+            offset_y: 0.0,
+            scale: 1.0,
+        }
     }
 }
 
@@ -299,7 +361,10 @@ impl VisualViewport {
     /// From `Page.getLayoutMetrics`.
     pub fn from_metrics(metrics: &Value) -> Option<Self> {
         let v = metrics.get("cssVisualViewport")?;
-        let scale = v.get("scale").and_then(Value::as_f64).filter(|s| s.is_finite() && *s > 0.0)?;
+        let scale = v
+            .get("scale")
+            .and_then(Value::as_f64)
+            .filter(|s| s.is_finite() && *s > 0.0)?;
         Some(Self {
             offset_x: v.get("offsetX").and_then(Value::as_f64).unwrap_or(0.0),
             offset_y: v.get("offsetY").and_then(Value::as_f64).unwrap_or(0.0),
@@ -311,29 +376,63 @@ impl VisualViewport {
     /// point `Input.dispatchMouseEvent` hit-tests (it ignores the page scale: on a 0.4-scale
     /// page a tap on a link landed 2.5× too far up-left and missed).
     pub fn to_layout(&self, x: f64, y: f64) -> (f64, f64) {
-        (self.offset_x + x / self.scale, self.offset_y + y / self.scale)
+        (
+            self.offset_x + x / self.scale,
+            self.offset_y + y / self.scale,
+        )
     }
 }
 
 /// Maps a mouse command's point through the visual viewport (other commands unchanged).
 pub fn map_input(cmd: &BrowserCmd, visual: &VisualViewport) -> BrowserCmd {
     match cmd {
-        BrowserCmd::Mouse { kind, x, y, button, clicks, dx, dy, modifiers } => {
+        BrowserCmd::Mouse {
+            kind,
+            x,
+            y,
+            button,
+            clicks,
+            dx,
+            dy,
+            modifiers,
+        } => {
             let (x, y) = visual.to_layout(*x, *y);
-            BrowserCmd::Mouse { kind: *kind, x, y, button: *button, clicks: *clicks, dx: *dx, dy: *dy, modifiers: *modifiers }
+            BrowserCmd::Mouse {
+                kind: *kind,
+                x,
+                y,
+                button: *button,
+                clicks: *clicks,
+                dx: *dx,
+                dy: *dy,
+                modifiers: *modifiers,
+            }
         }
         other => other.clone(),
     }
 }
 
-async fn send_event<W: AsyncWrite + Unpin>(write: &mut W, event: BrowserEvent) -> Result<(), AppErrorDto> {
-    write_control(write, &Control::BrowserEvent { event }).await.map_err(transport)
+async fn send_event<W: AsyncWrite + Unpin>(
+    write: &mut W,
+    event: BrowserEvent,
+) -> Result<(), AppErrorDto> {
+    write_control(write, &Control::BrowserEvent { event })
+        .await
+        .map_err(transport)
 }
 
 impl State {
-    async fn attach(cdp: &Cdp, target: &str, viewport: &BrowserViewport) -> Result<Tab, AppErrorDto> {
+    async fn attach(
+        cdp: &Cdp,
+        target: &str,
+        viewport: &BrowserViewport,
+    ) -> Result<Tab, AppErrorDto> {
         let result = cdp
-            .call("Target.attachToTarget", json!({ "targetId": target, "flatten": true }), None)
+            .call(
+                "Target.attachToTarget",
+                json!({ "targetId": target, "flatten": true }),
+                None,
+            )
             .await
             .map_err(cdp_error)?;
         let session = result
@@ -346,22 +445,40 @@ impl State {
             cdp.call(method, json!({}), s).await.map_err(cdp_error)?;
         }
         Self::apply_viewport(cdp, &session, viewport).await?;
-        let _ = cdp.call("Target.activateTarget", json!({ "targetId": target }), None).await;
-        Ok(Tab { target: target.to_string(), session })
+        let _ = cdp
+            .call("Target.activateTarget", json!({ "targetId": target }), None)
+            .await;
+        Ok(Tab {
+            target: target.to_string(),
+            session,
+        })
     }
 
-    async fn apply_viewport(cdp: &Cdp, session: &str, viewport: &BrowserViewport) -> Result<(), AppErrorDto> {
+    async fn apply_viewport(
+        cdp: &Cdp,
+        session: &str,
+        viewport: &BrowserViewport,
+    ) -> Result<(), AppErrorDto> {
         let s = Some(session);
-        cdp.call("Emulation.setDeviceMetricsOverride", metrics(viewport), s).await.map_err(cdp_error)?;
+        cdp.call("Emulation.setDeviceMetricsOverride", metrics(viewport), s)
+            .await
+            .map_err(cdp_error)?;
         let _ = cdp
-            .call("Emulation.setTouchEmulationEnabled", json!({ "enabled": viewport.mobile, "maxTouchPoints": 5 }), s)
+            .call(
+                "Emulation.setTouchEmulationEnabled",
+                json!({ "enabled": viewport.mobile, "maxTouchPoints": 5 }),
+                s,
+            )
             .await;
         Ok(())
     }
 
     async fn start_screencast(&mut self) {
         let v = &self.viewport;
-        let _ = self.cdp.call("Page.bringToFront", json!({}), Some(&self.tab.session)).await;
+        let _ = self
+            .cdp
+            .call("Page.bringToFront", json!({}), Some(&self.tab.session))
+            .await;
         let result = self
             .cdp
             .call(
@@ -383,7 +500,11 @@ impl State {
     }
 
     async fn refresh_visual(&mut self) {
-        if let Ok(metrics) = self.cdp.call("Page.getLayoutMetrics", json!({}), Some(&self.tab.session)).await {
+        if let Ok(metrics) = self
+            .cdp
+            .call("Page.getLayoutMetrics", json!({}), Some(&self.tab.session))
+            .await
+        {
             if let Some(v) = VisualViewport::from_metrics(&metrics) {
                 self.visual = v;
             }
@@ -391,7 +512,10 @@ impl State {
     }
 
     async fn restart_screencast(&mut self) {
-        let _ = self.cdp.call("Page.stopScreencast", json!({}), Some(&self.tab.session)).await;
+        let _ = self
+            .cdp
+            .call("Page.stopScreencast", json!({}), Some(&self.tab.session))
+            .await;
         self.held = None;
         self.start_screencast().await;
         self.kick_at = Some(Instant::now());
@@ -411,22 +535,47 @@ impl State {
         else {
             return Ok(());
         };
-        let Some(data) = shot.get("data").and_then(Value::as_str) else { return Ok(()) };
-        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) else { return Ok(()) };
+        let Some(data) = shot.get("data").and_then(Value::as_str) else {
+            return Ok(());
+        };
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) else {
+            return Ok(());
+        };
         let (w, h) = (self.viewport.width as f64, self.viewport.height as f64);
         self.send_jpeg(write, bytes, w, h).await
     }
 
-    async fn send_jpeg<W: AsyncWrite + Unpin>(&mut self, write: &mut W, bytes: Vec<u8>, css_width: f64, css_height: f64) -> Result<(), AppErrorDto> {
+    async fn send_jpeg<W: AsyncWrite + Unpin>(
+        &mut self,
+        write: &mut W,
+        bytes: Vec<u8>,
+        css_width: f64,
+        css_height: f64,
+    ) -> Result<(), AppErrorDto> {
         if bytes.len() > MAX_FRAME {
             self.adapt.oversize(Instant::now());
             self.restart_screencast().await;
             return Ok(());
         }
         self.seq += 1;
-        let frame = BrowserFrameMeta { seq: self.seq, css_width, css_height, quality: self.adapt.quality };
-        write_control(write, &Control::BrowserEvent { event: BrowserEvent::Frame(frame) }).await.map_err(transport)?;
-        write.write_all(&encode(FrameKind::Output, &bytes)).await.map_err(transport)?;
+        let frame = BrowserFrameMeta {
+            seq: self.seq,
+            css_width,
+            css_height,
+            quality: self.adapt.quality,
+        };
+        write_control(
+            write,
+            &Control::BrowserEvent {
+                event: BrowserEvent::Frame(frame),
+            },
+        )
+        .await
+        .map_err(transport)?;
+        write
+            .write_all(&encode(FrameKind::Output, &bytes))
+            .await
+            .map_err(transport)?;
         write.flush().await.map_err(transport)?;
         self.in_flight.push_back((self.seq, Instant::now()));
         // A kick scheduled for later (after input) still runs: the frame we
@@ -439,9 +588,24 @@ impl State {
 
     async fn page_event(&mut self) -> BrowserEvent {
         let (mut can_back, mut can_forward) = (false, false);
-        if let Ok(history) = self.cdp.call("Page.getNavigationHistory", json!({}), Some(&self.tab.session)).await {
-            let index = history.get("currentIndex").and_then(Value::as_i64).unwrap_or(0);
-            let count = history.get("entries").and_then(Value::as_array).map(|e| e.len() as i64).unwrap_or(0);
+        if let Ok(history) = self
+            .cdp
+            .call(
+                "Page.getNavigationHistory",
+                json!({}),
+                Some(&self.tab.session),
+            )
+            .await
+        {
+            let index = history
+                .get("currentIndex")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let count = history
+                .get("entries")
+                .and_then(Value::as_array)
+                .map(|e| e.len() as i64)
+                .unwrap_or(0);
             can_back = index > 0;
             can_forward = index + 1 < count;
             if let Some(entry) = history.get("entries").and_then(|e| e.get(index as usize)) {
@@ -454,28 +618,69 @@ impl State {
             }
         }
         // The target's title follows `document.title` (history entries don't).
-        if let Ok(info) = self.cdp.call("Target.getTargetInfo", json!({ "targetId": self.tab.target }), None).await {
+        if let Ok(info) = self
+            .cdp
+            .call(
+                "Target.getTargetInfo",
+                json!({ "targetId": self.tab.target }),
+                None,
+            )
+            .await
+        {
             if let Some(title) = info.pointer("/targetInfo/title").and_then(Value::as_str) {
                 self.title = title.to_string();
             }
         }
-        BrowserEvent::Page { url: self.url.clone(), title: self.title.clone(), loading: self.loading, can_back, can_forward }
+        BrowserEvent::Page {
+            url: self.url.clone(),
+            title: self.title.clone(),
+            loading: self.loading,
+            can_back,
+            can_forward,
+        }
     }
 
     async fn history_step(&self, delta: i64) {
         let s = Some(self.tab.session.as_str());
-        let Ok(history) = self.cdp.call("Page.getNavigationHistory", json!({}), s).await else { return };
-        let index = history.get("currentIndex").and_then(Value::as_i64).unwrap_or(0) + delta;
-        if let Some(id) = history.get("entries").and_then(|e| e.get(index.max(0) as usize)).and_then(|e| e.get("id")) {
+        let Ok(history) = self
+            .cdp
+            .call("Page.getNavigationHistory", json!({}), s)
+            .await
+        else {
+            return;
+        };
+        let index = history
+            .get("currentIndex")
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            + delta;
+        if let Some(id) = history
+            .get("entries")
+            .and_then(|e| e.get(index.max(0) as usize))
+            .and_then(|e| e.get("id"))
+        {
             if index >= 0 {
-                let _ = self.cdp.call("Page.navigateToHistoryEntry", json!({ "entryId": id }), s).await;
+                let _ = self
+                    .cdp
+                    .call("Page.navigateToHistoryEntry", json!({ "entryId": id }), s)
+                    .await;
             }
         }
     }
 
     async fn switch_to(&mut self, target: &str) -> Result<(), AppErrorDto> {
-        let _ = self.cdp.call("Page.stopScreencast", json!({}), Some(&self.tab.session)).await;
-        let _ = self.cdp.call("Target.detachFromTarget", json!({ "sessionId": self.tab.session }), None).await;
+        let _ = self
+            .cdp
+            .call("Page.stopScreencast", json!({}), Some(&self.tab.session))
+            .await;
+        let _ = self
+            .cdp
+            .call(
+                "Target.detachFromTarget",
+                json!({ "sessionId": self.tab.session }),
+                None,
+            )
+            .await;
         self.tab = Self::attach(&self.cdp, target, &self.viewport).await?;
         self.in_flight.clear();
         self.held = None;
@@ -486,16 +691,34 @@ impl State {
     }
 
     /// Sends one CDP screencast frame to the phone (and acks CDP).
-    async fn push_frame<W: AsyncWrite + Unpin>(&mut self, write: &mut W, event: &CdpEvent) -> Result<(), AppErrorDto> {
+    async fn push_frame<W: AsyncWrite + Unpin>(
+        &mut self,
+        write: &mut W,
+        event: &CdpEvent,
+    ) -> Result<(), AppErrorDto> {
         let params = &event.params;
         if let Some(ack) = params.get("sessionId") {
-            self.cdp.fire("Page.screencastFrameAck", json!({ "sessionId": ack }), Some(&self.tab.session));
+            self.cdp.fire(
+                "Page.screencastFrameAck",
+                json!({ "sessionId": ack }),
+                Some(&self.tab.session),
+            );
         }
-        let Some(data) = params.get("data").and_then(Value::as_str) else { return Ok(()) };
-        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) else { return Ok(()) };
+        let Some(data) = params.get("data").and_then(Value::as_str) else {
+            return Ok(());
+        };
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(data) else {
+            return Ok(());
+        };
         let meta = params.get("metadata").cloned().unwrap_or(Value::Null);
-        let css_width = meta.get("deviceWidth").and_then(Value::as_f64).unwrap_or(self.viewport.width as f64);
-        let css_height = meta.get("deviceHeight").and_then(Value::as_f64).unwrap_or(self.viewport.height as f64);
+        let css_width = meta
+            .get("deviceWidth")
+            .and_then(Value::as_f64)
+            .unwrap_or(self.viewport.width as f64);
+        let css_height = meta
+            .get("deviceHeight")
+            .and_then(Value::as_f64)
+            .unwrap_or(self.viewport.height as f64);
         // A frame rendered before the viewport override took effect: skip it.
         if (css_width - self.viewport.width as f64).abs() > 1.0 {
             self.kick_at.get_or_insert_with(Instant::now);
@@ -507,13 +730,27 @@ impl State {
 
 async fn tabs_event(running: &Running, active: &str) -> (Vec<BrowserTab>, BrowserEvent) {
     let tabs = running.tabs().await;
-    (tabs.clone(), BrowserEvent::Tabs { tabs, active: active.to_string() })
+    (
+        tabs.clone(),
+        BrowserEvent::Tabs {
+            tabs,
+            active: active.to_string(),
+        },
+    )
 }
 
 /// Picks the tab to show: requested → last used → first page → a new one.
-async fn pick_target(running: &Running, manager: &Instance, requested: Option<&str>) -> Result<String, AppErrorDto> {
+async fn pick_target(
+    running: &Running,
+    manager: &Instance,
+    requested: Option<&str>,
+) -> Result<String, AppErrorDto> {
     let tabs = running.tabs().await;
-    let last = manager.last_target.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let last = manager
+        .last_target
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     for wanted in [requested.map(str::to_string), last].into_iter().flatten() {
         if tabs.iter().any(|t| t.id == wanted) {
             return Ok(wanted);
@@ -557,7 +794,10 @@ where
     let mut events = cdp.subscribe();
     let target = pick_target(&running, &manager, target.as_deref()).await?;
     let tab = State::attach(&cdp, &target, &viewport).await?;
-    *manager.last_target.lock().unwrap_or_else(|e| e.into_inner()) = Some(target.clone());
+    *manager
+        .last_target
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(target.clone());
     let mut state = State {
         cdp: cdp.clone(),
         tab,
@@ -574,7 +814,13 @@ where
         visual: VisualViewport::default(),
     };
     if let Some(url) = url {
-        let _ = cdp.call("Page.navigate", json!({ "url": normalize_url(&url) }), Some(&state.tab.session)).await;
+        let _ = cdp
+            .call(
+                "Page.navigate",
+                json!({ "url": normalize_url(&url) }),
+                Some(&state.tab.session),
+            )
+            .await;
     }
     let (tabs, tabs_ev) = tabs_event(&running, &state.tab.target).await;
     let open = BrowserOpenData {
@@ -590,9 +836,14 @@ where
         agent: Some(manager.agent(Some(&running))),
         display: Some(running.placement.as_str().into()),
     };
-    write_control(write, &Control::Ok { data: Some(serde_json::to_value(&open).map_err(transport)?) })
-        .await
-        .map_err(transport)?;
+    write_control(
+        write,
+        &Control::Ok {
+            data: Some(serde_json::to_value(&open).map_err(transport)?),
+        },
+    )
+    .await
+    .map_err(transport)?;
     send_event(write, tabs_ev).await?;
     let page = state.page_event().await;
     send_event(write, page.clone()).await?;
@@ -820,14 +1071,34 @@ where
     tracing::info!(op = "browser_open", outcome, frames = state.seq, "closed");
     match outcome {
         "phone" => {
-            let _ = cdp.call("Page.stopScreencast", json!({}), Some(&state.tab.session)).await;
-            let _ = cdp.call("Target.detachFromTarget", json!({ "sessionId": state.tab.session }), None).await;
+            let _ = cdp
+                .call("Page.stopScreencast", json!({}), Some(&state.tab.session))
+                .await;
+            let _ = cdp
+                .call(
+                    "Target.detachFromTarget",
+                    json!({ "sessionId": state.tab.session }),
+                    None,
+                )
+                .await;
         }
         "browser" => {
-            let _ = send_event(write, BrowserEvent::Crashed { message: "The browser on the PC quit.".into() }).await;
+            let _ = send_event(
+                write,
+                BrowserEvent::Crashed {
+                    message: "The browser on the PC quit.".into(),
+                },
+            )
+            .await;
         }
         reason => {
-            let _ = send_event(write, BrowserEvent::Closed { reason: reason.to_string() }).await;
+            let _ = send_event(
+                write,
+                BrowserEvent::Closed {
+                    reason: reason.to_string(),
+                },
+            )
+            .await;
         }
     }
     Ok(())
@@ -866,18 +1137,39 @@ mod tests {
     #[test]
     fn mouse_and_touch_map_to_cdp() {
         let calls = input_calls(&BrowserCmd::Mouse {
-            kind: MouseKind::Pressed, x: 10.0, y: 20.0, button: MouseButton::Left, clicks: 1, dx: 0.0, dy: 0.0, modifiers: 0,
+            kind: MouseKind::Pressed,
+            x: 10.0,
+            y: 20.0,
+            button: MouseButton::Left,
+            clicks: 1,
+            dx: 0.0,
+            dy: 0.0,
+            modifiers: 0,
         });
         assert_eq!(calls[0].0, "Input.dispatchMouseEvent");
         assert_eq!(calls[0].1["type"], "mousePressed");
         assert_eq!(calls[0].1["button"], "left");
         assert_eq!(calls[0].1["clickCount"], 1);
-        let calls = input_calls(&BrowserCmd::Touch { kind: TouchKind::Move, points: vec![TouchPoint { x: 1.0, y: 2.0, id: 3 }] });
+        let calls = input_calls(&BrowserCmd::Touch {
+            kind: TouchKind::Move,
+            points: vec![TouchPoint {
+                x: 1.0,
+                y: 2.0,
+                id: 3,
+            }],
+        });
         assert_eq!(calls[0].1["type"], "touchMove");
         assert_eq!(calls[0].1["touchPoints"][0]["id"], 3);
-        let calls = input_calls(&BrowserCmd::Touch { kind: TouchKind::End, points: vec![] });
+        let calls = input_calls(&BrowserCmd::Touch {
+            kind: TouchKind::End,
+            points: vec![],
+        });
         assert_eq!(calls[0].1["touchPoints"], json!([]));
-        let calls = input_calls(&BrowserCmd::Pinch { x: 1.0, y: 2.0, scale: 2.0 });
+        let calls = input_calls(&BrowserCmd::Pinch {
+            x: 1.0,
+            y: 2.0,
+            scale: 2.0,
+        });
         assert_eq!(calls[0].0, "Input.synthesizePinchGesture");
     }
 
@@ -890,16 +1182,39 @@ mod tests {
             "cssVisualViewport": { "offsetX": 0, "offsetY": 0, "pageX": 0, "pageY": 0, "clientWidth": 980, "clientHeight": 1665.75, "scale": 0.4010204, "zoom": 1 }
         }))
         .unwrap();
-        let tap = BrowserCmd::Mouse { kind: MouseKind::Pressed, x: 25.0, y: 72.0, button: MouseButton::Left, clicks: 1, dx: 0.0, dy: 0.0, modifiers: 0 };
-        let BrowserCmd::Mouse { x, y, .. } = map_input(&tap, &v) else { panic!() };
-        assert!((8.0..119.0).contains(&x) && (153.0..198.0).contains(&y), "({x},{y})");
+        let tap = BrowserCmd::Mouse {
+            kind: MouseKind::Pressed,
+            x: 25.0,
+            y: 72.0,
+            button: MouseButton::Left,
+            clicks: 1,
+            dx: 0.0,
+            dy: 0.0,
+            modifiers: 0,
+        };
+        let BrowserCmd::Mouse { x, y, .. } = map_input(&tap, &v) else {
+            panic!()
+        };
+        assert!(
+            (8.0..119.0).contains(&x) && (153.0..198.0).contains(&y),
+            "({x},{y})"
+        );
         // Pinch-zoomed and panned.
-        let zoomed = VisualViewport { offset_x: 100.0, offset_y: 50.0, scale: 2.0 };
+        let zoomed = VisualViewport {
+            offset_x: 100.0,
+            offset_y: 50.0,
+            scale: 2.0,
+        };
         assert_eq!(zoomed.to_layout(10.0, 20.0), (105.0, 60.0));
         // Scale 1 (a mobile page): unchanged.
-        assert_eq!(VisualViewport::default().to_layout(10.0, 20.0), (10.0, 20.0));
+        assert_eq!(
+            VisualViewport::default().to_layout(10.0, 20.0),
+            (10.0, 20.0)
+        );
         // Bad metrics are ignored.
-        assert!(VisualViewport::from_metrics(&json!({ "cssVisualViewport": { "scale": 0 } })).is_none());
+        assert!(
+            VisualViewport::from_metrics(&json!({ "cssVisualViewport": { "scale": 0 } })).is_none()
+        );
         assert!(VisualViewport::from_metrics(&json!({})).is_none());
         // Non-mouse commands pass through.
         let text = BrowserCmd::Text { text: "hi".into() };
@@ -908,7 +1223,13 @@ mod tests {
 
     #[test]
     fn keys_map_to_cdp() {
-        let key = |key: &str, modifiers| BrowserCmd::Key { kind: KeyKind::Press, key: key.into(), code: None, text: None, modifiers };
+        let key = |key: &str, modifiers| BrowserCmd::Key {
+            kind: KeyKind::Press,
+            key: key.into(),
+            code: None,
+            text: None,
+            modifiers,
+        };
         let enter = input_calls(&key("Enter", 0));
         assert_eq!(enter.len(), 2);
         assert_eq!(enter[0].1["type"], "keyDown");
@@ -923,7 +1244,9 @@ mod tests {
         assert_eq!(ctrl_a[0].1["type"], "rawKeyDown");
         assert_eq!(ctrl_a[0].1["windowsVirtualKeyCode"], 65);
         assert_eq!(ctrl_a[0].1["modifiers"], 2);
-        let text = input_calls(&BrowserCmd::Text { text: "héllo".into() });
+        let text = input_calls(&BrowserCmd::Text {
+            text: "héllo".into(),
+        });
         assert_eq!(text, vec![("Input.insertText", json!({ "text": "héllo" }))]);
         assert_eq!(key_code("F5"), Some(116));
         assert_eq!(key_code("ArrowDown"), Some(40));
@@ -937,12 +1260,20 @@ mod tests {
         assert_eq!(normalize_url("127.0.0.1:8000"), "http://127.0.0.1:8000");
         assert_eq!(normalize_url("https://a.b/c"), "https://a.b/c");
         assert_eq!(normalize_url("about:blank"), "about:blank");
-        assert_eq!(normalize_url("rust async book"), "https://duckduckgo.com/?q=rust+async+book");
+        assert_eq!(
+            normalize_url("rust async book"),
+            "https://duckduckgo.com/?q=rust+async+book"
+        );
     }
 
     #[test]
     fn metrics_carry_scale_and_mobile() {
-        let m = metrics(&BrowserViewport { width: 412, height: 780, scale: 2.625, mobile: true });
+        let m = metrics(&BrowserViewport {
+            width: 412,
+            height: 780,
+            scale: 2.625,
+            mobile: true,
+        });
         assert_eq!(m["width"], 412);
         assert_eq!(m["deviceScaleFactor"], 2.625);
         assert_eq!(m["mobile"], true);

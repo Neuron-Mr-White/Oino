@@ -21,9 +21,10 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use unipi_proto::{
-    AppErrorCode, AppErrorDto, GitArea, GitBranch, GitBranchesData, GitCmd, GitCommitData, GitCommitInfo,
-    GitDiffData, GitFileChange, GitLogData, GitPath, GitRepoData, GitShowData, GitShowFile, GitStatusData,
-    GitShortstatData, GitSyncData, GIT_DIFF_CAP, GIT_SHORTSTAT_UNTRACKED_MAX,
+    AppErrorCode, AppErrorDto, GitArea, GitBranch, GitBranchesData, GitCmd, GitCommitData,
+    GitCommitInfo, GitDiffData, GitFileChange, GitLogData, GitPath, GitRepoData, GitShortstatData,
+    GitShowData, GitShowFile, GitStatusData, GitSyncData, GIT_DIFF_CAP,
+    GIT_SHORTSTAT_UNTRACKED_MAX,
 };
 
 use crate::fs::FsScope;
@@ -69,9 +70,19 @@ pub struct Git {
 
 impl Git {
     fn command(&self, args: &[&str]) -> Command {
-        let mut cmd = Command::new(std::env::var_os("UNIPI_GIT_BIN").unwrap_or_else(|| "git".into()));
+        let mut cmd =
+            Command::new(std::env::var_os("UNIPI_GIT_BIN").unwrap_or_else(|| "git".into()));
         cmd.arg("--no-optional-locks")
-            .args(["-c", "color.ui=false", "-c", "core.quotepath=false", "-c", "core.pager=cat", "-c", "advice.detachedHead=false"])
+            .args([
+                "-c",
+                "color.ui=false",
+                "-c",
+                "core.quotepath=false",
+                "-c",
+                "core.pager=cat",
+                "-c",
+                "advice.detachedHead=false",
+            ])
             .arg("-C")
             .arg(&self.dir)
             .args(args)
@@ -94,7 +105,10 @@ impl Git {
         if std::env::var_os("GIT_SSH_COMMAND").is_none() && std::env::var_os("GIT_SSH").is_none() {
             // Keep a configured core.sshCommand working: it is only the
             // default when no env override is set.
-            cmd.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=15");
+            cmd.env(
+                "GIT_SSH_COMMAND",
+                "ssh -o BatchMode=yes -o ConnectTimeout=15",
+            );
         }
         cmd
     }
@@ -104,7 +118,11 @@ impl Git {
     pub async fn run(&self, args: &[&str], limit: Duration) -> Result<Out, AppErrorDto> {
         let mut child = self.command(args).spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                err(AppErrorCode::E_UNSUPPORTED, "git isn't installed on this PC").with_hint("Install git on the PC, then try again.")
+                err(
+                    AppErrorCode::E_UNSUPPORTED,
+                    "git isn't installed on this PC",
+                )
+                .with_hint("Install git on the PC, then try again.")
             } else {
                 err(AppErrorCode::E_INTERNAL, format!("couldn't start git: {e}"))
             }
@@ -167,13 +185,24 @@ fn kill_group(pid: Option<u32>) {
 /// git's failure as one plain `E_GIT` error: its last meaningful lines plus
 /// a hint for the usual suspects (auth, identity, diverged, dirty tree).
 pub fn git_error(out: &Out) -> AppErrorDto {
-    let raw = if out.stderr.trim().is_empty() { String::from_utf8_lossy(&out.stdout).into_owned() } else { out.stderr.clone() };
+    let raw = if out.stderr.trim().is_empty() {
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    } else {
+        out.stderr.clone()
+    };
     let lines: Vec<&str> = raw
         .lines()
         .map(str::trim_end)
         .filter(|l| !l.trim().is_empty() && !l.starts_with("hint:"))
         .collect();
-    let mut message = lines.iter().rev().take(6).rev().copied().collect::<Vec<_>>().join("\n");
+    let mut message = lines
+        .iter()
+        .rev()
+        .take(6)
+        .rev()
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
     if message.chars().count() > 800 {
         message = message.chars().take(800).collect::<String>() + "…";
     }
@@ -190,13 +219,21 @@ pub fn git_error(out: &Out) -> AppErrorDto {
 fn hint_for(text: &str) -> Option<&'static str> {
     let t = text.to_lowercase();
     let has = |s: &str| t.contains(s);
-    if has("could not read username") || has("could not read password") || has("authentication failed") || has("terminal prompts disabled")
-        || has("permission denied (publickey") || has("host key verification failed") || has("invalid username or password")
+    if has("could not read username")
+        || has("could not read password")
+        || has("authentication failed")
+        || has("terminal prompts disabled")
+        || has("permission denied (publickey")
+        || has("host key verification failed")
+        || has("invalid username or password")
         || has("http basic: access denied")
     {
         return Some("Auth needed: this PC has no credentials for the remote that work without a prompt. Set up an SSH key or a git credential helper on the PC, then try again.");
     }
-    if has("please tell me who you are") || has("unable to auto-detect email") || has("empty ident name") {
+    if has("please tell me who you are")
+        || has("unable to auto-detect email")
+        || has("empty ident name")
+    {
         return Some("Set your name and email on the PC first: git config --global user.name \"…\" and git config --global user.email \"…\".");
     }
     if has("not possible to fast-forward") || has("diverging branches") || has("have diverged") {
@@ -205,17 +242,29 @@ fn hint_for(text: &str) -> Option<&'static str> {
     if has("[rejected]") || has("non-fast-forward") || has("fetch first") {
         return Some("The remote has commits you don't have yet. Pull first, then push.");
     }
-    if has("would be overwritten") || has("please commit your changes or stash them") || has("commit or stash them") {
+    if has("would be overwritten")
+        || has("please commit your changes or stash them")
+        || has("commit or stash them")
+    {
         return Some("Commit or stash your changes first.");
     }
-    if has("could not resolve host") || has("network is unreachable") || has("connection timed out") || has("connection refused") {
+    if has("could not resolve host")
+        || has("network is unreachable")
+        || has("connection timed out")
+        || has("connection refused")
+    {
         return Some("The PC can't reach the remote right now.");
     }
     if has("nothing to commit") || has("no changes added to commit") {
         return Some("Stage some changes first.");
     }
-    if has("no configured push destination") || has("does not appear to be a git repository") || has("no remote repository specified") {
-        return Some("This repo has no remote to talk to. Add one on the PC: git remote add origin <url>.");
+    if has("no configured push destination")
+        || has("does not appear to be a git repository")
+        || has("no remote repository specified")
+    {
+        return Some(
+            "This repo has no remote to talk to. Add one on the PC: git remote add origin <url>.",
+        );
     }
     if has("there is no tracking information") {
         return Some("This branch doesn't track a remote branch yet. Push it once to set that up.");
@@ -232,19 +281,32 @@ fn hint_for(text: &str) -> Option<&'static str> {
 /// Resolves the request path (scope-checked) to a folder git can run in.
 pub fn resolve_dir(raw: &str, scope: &FsScope, outside: bool) -> Result<PathBuf, AppErrorDto> {
     let canon = crate::fs::scoped_for_request(raw, scope, outside)?;
-    Ok(if canon.is_dir() { canon } else { canon.parent().map(Path::to_path_buf).unwrap_or(canon) })
+    Ok(if canon.is_dir() {
+        canon
+    } else {
+        canon.parent().map(Path::to_path_buf).unwrap_or(canon)
+    })
 }
 
 /// Work tree root + git dir, or `None` outside a repo.
 async fn locate(dir: &Path) -> Result<Option<(PathBuf, PathBuf)>, AppErrorDto> {
-    let git = Git { dir: dir.to_path_buf() };
-    let out = git.run(&["rev-parse", "--show-toplevel", "--absolute-git-dir"], LOCAL_TIMEOUT).await?;
+    let git = Git {
+        dir: dir.to_path_buf(),
+    };
+    let out = git
+        .run(
+            &["rev-parse", "--show-toplevel", "--absolute-git-dir"],
+            LOCAL_TIMEOUT,
+        )
+        .await?;
     if !out.ok() {
         return Ok(None); // not a repo (or a bare one / inside .git): nothing to show
     }
     let text = out.text();
     let mut lines = text.lines();
-    let (Some(root), Some(gitdir)) = (lines.next(), lines.next()) else { return Ok(None) };
+    let (Some(root), Some(gitdir)) = (lines.next(), lines.next()) else {
+        return Ok(None);
+    };
     if root.is_empty() {
         return Ok(None);
     }
@@ -255,25 +317,47 @@ async fn locate(dir: &Path) -> Result<Option<(PathBuf, PathBuf)>, AppErrorDto> {
 async fn repo_info(git: &Git, gitdir: &Path) -> Result<GitRepoData, AppErrorDto> {
     let (branch, head, remotes) = tokio::join!(
         git.run(&["symbolic-ref", "-q", "--short", "HEAD"], LOCAL_TIMEOUT),
-        git.run(&["rev-parse", "-q", "--verify", "--short", "HEAD"], LOCAL_TIMEOUT),
+        git.run(
+            &["rev-parse", "-q", "--verify", "--short", "HEAD"],
+            LOCAL_TIMEOUT
+        ),
         git.run(&["remote"], LOCAL_TIMEOUT),
     );
     let (branch, head, remotes) = (branch?, head?, remotes?);
-    let branch_name = branch.ok().then(|| branch.text().trim().to_string()).filter(|b| !b.is_empty());
-    let head = head.ok().then(|| head.text().trim().to_string()).filter(|h| !h.is_empty());
+    let branch_name = branch
+        .ok()
+        .then(|| branch.text().trim().to_string())
+        .filter(|b| !b.is_empty());
+    let head = head
+        .ok()
+        .then(|| head.text().trim().to_string())
+        .filter(|h| !h.is_empty());
     let mut data = GitRepoData {
         repo: true,
         root: Some(git.dir.to_string_lossy().into_owned()),
         detached: branch_name.is_none(),
         branch: branch_name.clone(),
         head,
-        remotes: remotes.text().lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect(),
+        remotes: remotes
+            .text()
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect(),
         ..Default::default()
     };
     if let Some(branch) = &branch_name {
         let refname = format!("refs/heads/{branch}");
         let out = git
-            .run(&["for-each-ref", "--format=%(upstream:short)%1f%(upstream:track,nobracket)", &refname], LOCAL_TIMEOUT)
+            .run(
+                &[
+                    "for-each-ref",
+                    "--format=%(upstream:short)%1f%(upstream:track,nobracket)",
+                    &refname,
+                ],
+                LOCAL_TIMEOUT,
+            )
             .await?;
         if let Some(line) = out.text().lines().next() {
             let mut parts = line.split('\u{1f}');
@@ -286,8 +370,11 @@ async fn repo_info(git: &Git, gitdir: &Path) -> Result<GitRepoData, AppErrorDto>
             }
         }
     }
-    data.stashes = std::fs::read_to_string(gitdir.join("logs/refs/stash")).map(|s| s.lines().count() as u32).unwrap_or(0);
-    data.operation = if gitdir.join("rebase-merge").exists() || gitdir.join("rebase-apply").exists() {
+    data.stashes = std::fs::read_to_string(gitdir.join("logs/refs/stash"))
+        .map(|s| s.lines().count() as u32)
+        .unwrap_or(0);
+    data.operation = if gitdir.join("rebase-merge").exists() || gitdir.join("rebase-apply").exists()
+    {
         Some("rebase".into())
     } else if gitdir.join("MERGE_HEAD").exists() {
         Some("merge".into())
@@ -319,7 +406,9 @@ pub fn parse_track(track: &str) -> (u32, u32) {
 /// Parses `git status --porcelain=v2 -z` entries (no branch headers).
 pub fn parse_status_v2(bytes: &[u8]) -> Vec<GitFileChange> {
     let mut files = Vec::new();
-    let mut records = bytes.split(|b| *b == 0).map(|r| String::from_utf8_lossy(r).into_owned());
+    let mut records = bytes
+        .split(|b| *b == 0)
+        .map(|r| String::from_utf8_lossy(r).into_owned());
     let change = |path: &str, orig: Option<String>, area: GitArea, status: char| GitFileChange {
         path: path.to_string(),
         orig,
@@ -371,14 +460,18 @@ pub fn parse_status_v2(bytes: &[u8]) -> Vec<GitFileChange> {
 /// Parses `git diff --numstat -z` into path → (add, del) (None = binary).
 pub fn parse_numstat(bytes: &[u8]) -> std::collections::HashMap<String, Option<(u32, u32)>> {
     let mut map = std::collections::HashMap::new();
-    let mut records = bytes.split(|b| *b == 0).map(|r| String::from_utf8_lossy(r).into_owned());
+    let mut records = bytes
+        .split(|b| *b == 0)
+        .map(|r| String::from_utf8_lossy(r).into_owned());
     while let Some(rec) = records.next() {
         let rec = rec.trim_start_matches('\n').to_string();
         if rec.is_empty() {
             continue;
         }
         let mut parts = rec.splitn(3, '\t');
-        let (Some(a), Some(d), Some(path)) = (parts.next(), parts.next(), parts.next()) else { continue };
+        let (Some(a), Some(d), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
         let counts = match (a.parse::<u32>(), d.parse::<u32>()) {
             (Ok(a), Ok(d)) => Some((a, d)),
             _ => None,
@@ -433,7 +526,9 @@ fn cap(text: String) -> (String, bool) {
 }
 
 fn is_binary_diff(text: &str) -> bool {
-    text.lines().any(|l| l.starts_with("Binary files ") && l.ends_with(" differ")) || text.contains("\nGIT binary patch")
+    text.lines()
+        .any(|l| l.starts_with("Binary files ") && l.ends_with(" differ"))
+        || text.contains("\nGIT binary patch")
 }
 
 /// Splits a `%x1f`-separated log line into a commit.
@@ -448,14 +543,21 @@ fn parse_commit(line: &str) -> Option<GitCommitInfo> {
         subject: p[2].to_string(),
         author: p[3].to_string(),
         time: p[4].parse().unwrap_or(0),
-        refs: p[5].split(", ").map(str::trim).filter(|r| !r.is_empty()).map(String::from).collect(),
+        refs: p[5]
+            .split(", ")
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(String::from)
+            .collect(),
     })
 }
 
 const LOG_FORMAT: &str = "--format=%H%x1f%h%x1f%s%x1f%an%x1f%at%x1f%D%x1e";
 
 fn trimmed_output(out: &Out) -> String {
-    let mut text = format!("{}\n{}", out.text().trim(), out.stderr.trim()).trim().to_string();
+    let mut text = format!("{}\n{}", out.text().trim(), out.stderr.trim())
+        .trim()
+        .to_string();
     if text.chars().count() > 4000 {
         text = text.chars().take(4000).collect::<String>() + "…";
     }
@@ -466,7 +568,12 @@ fn trimmed_output(out: &Out) -> String {
 }
 
 /// Runs one `git` request: `dir` is the scope-checked folder.
-pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> Result<serde_json::Value, AppErrorDto> {
+pub async fn handle(
+    dir: &Path,
+    scope: &FsScope,
+    outside: bool,
+    cmd: GitCmd,
+) -> Result<serde_json::Value, AppErrorDto> {
     cmd.check().map_err(|m| err(AppErrorCode::E_SCHEMA, m))?;
     let located = locate(dir).await?;
     let Some((root, gitdir)) = located else {
@@ -476,7 +583,10 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
         if matches!(cmd, GitCmd::Shortstat) {
             return json(GitShortstatData::default());
         }
-        return Err(err(AppErrorCode::E_GIT, format!("{} is not inside a git repository", dir.display())));
+        return Err(err(
+            AppErrorCode::E_GIT,
+            format!("{} is not inside a git repository", dir.display()),
+        ));
     };
     // The work tree itself must be in scope (a repo at / or /etc is not).
     let root = crate::fs::canonicalize_scoped(&root, scope, outside)?;
@@ -485,7 +595,11 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
         GitCmd::Repo => json(repo_info(&git, &gitdir).await?),
         GitCmd::Status => json(status(&git, &gitdir).await?),
         GitCmd::Shortstat => json(shortstat(&git).await?),
-        GitCmd::Diff { file, staged, untracked } => json(diff(&git, &file, staged, untracked).await?),
+        GitCmd::Diff {
+            file,
+            staged,
+            untracked,
+        } => json(diff(&git, &file, staged, untracked).await?),
         GitCmd::Stage { paths, all } => {
             let mut args = vec!["add", "-A", "--"];
             let specs: Vec<String> = paths.iter().map(literal).collect();
@@ -498,9 +612,16 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
             Ok(serde_json::Value::Null)
         }
         GitCmd::Unstage { paths, all } => {
-            let has_head = git.run(&["rev-parse", "-q", "--verify", "HEAD"], LOCAL_TIMEOUT).await?.ok();
+            let has_head = git
+                .run(&["rev-parse", "-q", "--verify", "HEAD"], LOCAL_TIMEOUT)
+                .await?
+                .ok();
             let specs: Vec<String> = paths.iter().map(literal).collect();
-            let mut args: Vec<&str> = if has_head { vec!["reset", "-q", "--"] } else { vec!["rm", "--cached", "-r", "-q", "--"] };
+            let mut args: Vec<&str> = if has_head {
+                vec!["reset", "-q", "--"]
+            } else {
+                vec!["rm", "--cached", "-r", "-q", "--"]
+            };
             if all {
                 args.push(":/");
             } else {
@@ -526,21 +647,38 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
                 args.push("--amend");
             }
             git.ok(&args, COMMIT_TIMEOUT).await?;
-            let out = git.ok(&["log", "-1", "--format=%h%x1f%s"], LOCAL_TIMEOUT).await?;
+            let out = git
+                .ok(&["log", "-1", "--format=%h%x1f%s"], LOCAL_TIMEOUT)
+                .await?;
             let text = out.text();
             let (hash, subject) = text.trim_end().split_once('\u{1f}').unwrap_or(("", ""));
-            json(GitCommitData { hash: hash.to_string(), subject: subject.to_string() })
+            json(GitCommitData {
+                hash: hash.to_string(),
+                subject: subject.to_string(),
+            })
         }
         GitCmd::Log { skip, limit } => {
             let limit = limit.unwrap_or(LOG_DEFAULT);
-            if !git.run(&["rev-parse", "-q", "--verify", "HEAD"], LOCAL_TIMEOUT).await?.ok() {
-                return json(GitLogData { commits: vec![], more: false });
+            if !git
+                .run(&["rev-parse", "-q", "--verify", "HEAD"], LOCAL_TIMEOUT)
+                .await?
+                .ok()
+            {
+                return json(GitLogData {
+                    commits: vec![],
+                    more: false,
+                });
             }
             let skip_arg = format!("--skip={skip}");
             let n_arg = format!("--max-count={}", limit + 1);
-            let out = git.ok(&["log", LOG_FORMAT, &skip_arg, &n_arg], LOCAL_TIMEOUT).await?;
+            let out = git
+                .ok(&["log", LOG_FORMAT, &skip_arg, &n_arg], LOCAL_TIMEOUT)
+                .await?;
             let text = out.text();
-            let mut commits: Vec<GitCommitInfo> = text.split('\u{1e}').filter_map(|l| parse_commit(l.trim_start_matches('\n'))).collect();
+            let mut commits: Vec<GitCommitInfo> = text
+                .split('\u{1e}')
+                .filter_map(|l| parse_commit(l.trim_start_matches('\n')))
+                .collect();
             let more = commits.len() > limit as usize;
             commits.truncate(limit as usize);
             json(GitLogData { commits, more })
@@ -554,13 +692,24 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
             } else {
                 let remote_ref = format!("refs/remotes/{name}");
                 let local_ref = format!("refs/heads/{name}");
-                let is_local = git.run(&["show-ref", "-q", "--verify", &local_ref], LOCAL_TIMEOUT).await?.ok();
-                let is_remote = !is_local && git.run(&["show-ref", "-q", "--verify", &remote_ref], LOCAL_TIMEOUT).await?.ok();
+                let is_local = git
+                    .run(&["show-ref", "-q", "--verify", &local_ref], LOCAL_TIMEOUT)
+                    .await?
+                    .ok();
+                let is_remote = !is_local
+                    && git
+                        .run(&["show-ref", "-q", "--verify", &remote_ref], LOCAL_TIMEOUT)
+                        .await?
+                        .ok();
                 if is_remote {
                     // origin/feat → a local `feat` tracking it (or that branch if it exists).
                     let short = name.split_once('/').map(|(_, b)| b).unwrap_or(name);
                     let short_ref = format!("refs/heads/{short}");
-                    if git.run(&["show-ref", "-q", "--verify", &short_ref], LOCAL_TIMEOUT).await?.ok() {
+                    if git
+                        .run(&["show-ref", "-q", "--verify", &short_ref], LOCAL_TIMEOUT)
+                        .await?
+                        .ok()
+                    {
                         git.ok(&["switch", short], LOCAL_TIMEOUT).await?;
                     } else {
                         git.ok(&["switch", "--track", name], LOCAL_TIMEOUT).await?;
@@ -573,12 +722,20 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
         }
         GitCmd::Fetch => {
             let out = git.ok(&["fetch", "--prune"], NETWORK_TIMEOUT).await?;
-            json(GitSyncData { output: trimmed_output(&out) })
+            json(GitSyncData {
+                output: trimmed_output(&out),
+            })
         }
         GitCmd::Pull { rebase } => {
-            let args: &[&str] = if rebase { &["pull", "--rebase", "--autostash"] } else { &["pull", "--no-rebase", "--ff-only"] };
+            let args: &[&str] = if rebase {
+                &["pull", "--rebase", "--autostash"]
+            } else {
+                &["pull", "--no-rebase", "--ff-only"]
+            };
             let out = git.ok(args, NETWORK_TIMEOUT).await?;
-            json(GitSyncData { output: trimmed_output(&out) })
+            json(GitSyncData {
+                output: trimmed_output(&out),
+            })
         }
         GitCmd::Push => {
             let info = repo_info(&git, &gitdir).await?;
@@ -592,13 +749,21 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
                     None
                 };
                 match remote {
-                    Some(remote) => git.ok(&["push", "--set-upstream", &remote, "HEAD"], NETWORK_TIMEOUT).await?,
+                    Some(remote) => {
+                        git.ok(
+                            &["push", "--set-upstream", &remote, "HEAD"],
+                            NETWORK_TIMEOUT,
+                        )
+                        .await?
+                    }
                     None => git.ok(&["push"], NETWORK_TIMEOUT).await?,
                 }
             } else {
                 git.ok(&["push"], NETWORK_TIMEOUT).await?
             };
-            json(GitSyncData { output: trimmed_output(&out) })
+            json(GitSyncData {
+                output: trimmed_output(&out),
+            })
         }
         GitCmd::StashPush { message } => {
             let mut args = vec!["stash", "push", "--include-untracked"];
@@ -606,11 +771,15 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
                 args.extend(["-m", m.as_str()]);
             }
             let out = git.ok(&args, LOCAL_TIMEOUT).await?;
-            json(GitSyncData { output: trimmed_output(&out) })
+            json(GitSyncData {
+                output: trimmed_output(&out),
+            })
         }
         GitCmd::StashPop => {
             let out = git.ok(&["stash", "pop"], LOCAL_TIMEOUT).await?;
-            json(GitSyncData { output: trimmed_output(&out) })
+            json(GitSyncData {
+                output: trimmed_output(&out),
+            })
         }
     }
 }
@@ -618,8 +787,14 @@ pub async fn handle(dir: &Path, scope: &FsScope, outside: bool, cmd: GitCmd) -> 
 async fn status(git: &Git, gitdir: &Path) -> Result<GitStatusData, AppErrorDto> {
     let (info, st, staged, unstaged) = tokio::join!(
         repo_info(git, gitdir),
-        git.run(&["status", "--porcelain=v2", "-z", "--untracked-files=all"], LOCAL_TIMEOUT),
-        git.run(&["diff", "--cached", "-M", "--numstat", "-z", "--no-ext-diff"], LOCAL_TIMEOUT),
+        git.run(
+            &["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+            LOCAL_TIMEOUT
+        ),
+        git.run(
+            &["diff", "--cached", "-M", "--numstat", "-z", "--no-ext-diff"],
+            LOCAL_TIMEOUT
+        ),
         git.run(&["diff", "--numstat", "-z", "--no-ext-diff"], LOCAL_TIMEOUT),
     );
     let (info, st) = (info?, st?);
@@ -627,7 +802,9 @@ async fn status(git: &Git, gitdir: &Path) -> Result<GitStatusData, AppErrorDto> 
         return Err(git_error(&st));
     }
     let staged = staged.map(|o| parse_numstat(&o.stdout)).unwrap_or_default();
-    let unstaged = unstaged.map(|o| parse_numstat(&o.stdout)).unwrap_or_default();
+    let unstaged = unstaged
+        .map(|o| parse_numstat(&o.stdout))
+        .unwrap_or_default();
     let mut files = parse_status_v2(&st.stdout);
     let more = files.len() > STATUS_CAP;
     files.truncate(STATUS_CAP);
@@ -646,23 +823,59 @@ async fn status(git: &Git, gitdir: &Path) -> Result<GitStatusData, AppErrorDto> 
             None => {}
         }
     }
-    Ok(GitStatusData { repo: info, files, more })
+    Ok(GitStatusData {
+        repo: info,
+        files,
+        more,
+    })
 }
 
 /// UNI-257: total +/- of the work tree vs HEAD (staged + unstaged) plus
 /// untracked files' lines (capped). Cheap: two git runs + reading at most
 /// GIT_SHORTSTAT_UNTRACKED_MAX small files.
 async fn shortstat(git: &Git) -> Result<GitShortstatData, AppErrorDto> {
-    let has_head = git.run(&["rev-parse", "-q", "--verify", "HEAD"], LOCAL_TIMEOUT).await?.ok();
+    let has_head = git
+        .run(&["rev-parse", "-q", "--verify", "HEAD"], LOCAL_TIMEOUT)
+        .await?
+        .ok();
     let mut tracked = std::collections::HashMap::new();
     if has_head {
-        let out = git.ok(&["diff", "HEAD", "--numstat", "-z", "--no-ext-diff", "--no-renames"], LOCAL_TIMEOUT).await?;
+        let out = git
+            .ok(
+                &[
+                    "diff",
+                    "HEAD",
+                    "--numstat",
+                    "-z",
+                    "--no-ext-diff",
+                    "--no-renames",
+                ],
+                LOCAL_TIMEOUT,
+            )
+            .await?;
         tracked = parse_numstat(&out.stdout);
     } else {
         // Before the first commit everything staged is new.
-        let out = git.ok(&["diff", "--cached", "--numstat", "-z", "--no-ext-diff", "--no-renames"], LOCAL_TIMEOUT).await?;
+        let out = git
+            .ok(
+                &[
+                    "diff",
+                    "--cached",
+                    "--numstat",
+                    "-z",
+                    "--no-ext-diff",
+                    "--no-renames",
+                ],
+                LOCAL_TIMEOUT,
+            )
+            .await?;
         tracked.extend(parse_numstat(&out.stdout));
-        let out = git.ok(&["diff", "--numstat", "-z", "--no-ext-diff", "--no-renames"], LOCAL_TIMEOUT).await?;
+        let out = git
+            .ok(
+                &["diff", "--numstat", "-z", "--no-ext-diff", "--no-renames"],
+                LOCAL_TIMEOUT,
+            )
+            .await?;
         for (path, counts) in parse_numstat(&out.stdout) {
             let entry = tracked.entry(path).or_insert(Some((0, 0)));
             if let (Some(e), Some(c)) = (entry.as_mut(), counts) {
@@ -672,7 +885,10 @@ async fn shortstat(git: &Git) -> Result<GitShortstatData, AppErrorDto> {
         }
     }
     let untracked = git
-        .ok(&["ls-files", "--others", "--exclude-standard", "-z"], LOCAL_TIMEOUT)
+        .ok(
+            &["ls-files", "--others", "--exclude-standard", "-z"],
+            LOCAL_TIMEOUT,
+        )
         .await?;
     Ok(sum_shortstat(&git.dir, &tracked, &untracked.stdout))
 }
@@ -684,7 +900,10 @@ pub fn sum_shortstat(
     tracked: &std::collections::HashMap<String, Option<(u32, u32)>>,
     untracked_z: &[u8],
 ) -> GitShortstatData {
-    let mut data = GitShortstatData { repo: true, ..Default::default() };
+    let mut data = GitShortstatData {
+        repo: true,
+        ..Default::default()
+    };
     for counts in tracked.values() {
         data.files += 1;
         if let Some((a, d)) = counts {
@@ -692,7 +911,10 @@ pub fn sum_shortstat(
             data.del = data.del.saturating_add(*d);
         }
     }
-    let paths: Vec<&[u8]> = untracked_z.split(|b| *b == 0).filter(|p| !p.is_empty()).collect();
+    let paths: Vec<&[u8]> = untracked_z
+        .split(|b| *b == 0)
+        .filter(|p| !p.is_empty())
+        .collect();
     data.files = data.files.saturating_add(paths.len() as u32);
     data.capped = paths.len() > GIT_SHORTSTAT_UNTRACKED_MAX;
     for path in paths.into_iter().take(GIT_SHORTSTAT_UNTRACKED_MAX) {
@@ -704,24 +926,50 @@ pub fn sum_shortstat(
     data
 }
 
-async fn diff(git: &Git, file: &GitPath, staged: bool, untracked: bool) -> Result<GitDiffData, AppErrorDto> {
+async fn diff(
+    git: &Git,
+    file: &GitPath,
+    staged: bool,
+    untracked: bool,
+) -> Result<GitDiffData, AppErrorDto> {
     let spec = literal(file);
     let out = if untracked {
         // Exit 1 = "they differ" for --no-index.
-        let out = git.run(&["diff", "--no-index", "--no-ext-diff", "--", "/dev/null", file.as_str()], LOCAL_TIMEOUT).await?;
+        let out = git
+            .run(
+                &[
+                    "diff",
+                    "--no-index",
+                    "--no-ext-diff",
+                    "--",
+                    "/dev/null",
+                    file.as_str(),
+                ],
+                LOCAL_TIMEOUT,
+            )
+            .await?;
         if out.code > 1 {
             return Err(git_error(&out));
         }
         out
     } else if staged {
-        git.ok(&["diff", "--cached", "-M", "--no-ext-diff", "--", &spec], LOCAL_TIMEOUT).await?
+        git.ok(
+            &["diff", "--cached", "-M", "--no-ext-diff", "--", &spec],
+            LOCAL_TIMEOUT,
+        )
+        .await?
     } else {
-        git.ok(&["diff", "--no-ext-diff", "--", &spec], LOCAL_TIMEOUT).await?
+        git.ok(&["diff", "--no-ext-diff", "--", &spec], LOCAL_TIMEOUT)
+            .await?
     };
     let text = out.text();
     let binary = is_binary_diff(&text);
     let (text, truncated) = cap(text);
-    Ok(GitDiffData { text, truncated, binary })
+    Ok(GitDiffData {
+        text,
+        truncated,
+        binary,
+    })
 }
 
 async fn discard(git: &Git, root: &Path, paths: &[GitPath]) -> Result<(), AppErrorDto> {
@@ -729,9 +977,17 @@ async fn discard(git: &Git, root: &Path, paths: &[GitPath]) -> Result<(), AppErr
     let mut args = vec!["ls-files", "-z", "--others", "--exclude-standard", "--"];
     args.extend(specs.iter().map(String::as_str));
     let out = git.ok(&args, LOCAL_TIMEOUT).await?;
-    let untracked: std::collections::HashSet<String> =
-        out.stdout.split(|b| *b == 0).filter(|r| !r.is_empty()).map(|r| String::from_utf8_lossy(r).into_owned()).collect();
-    let tracked: Vec<String> = paths.iter().filter(|p| !untracked.contains(p.as_str())).map(literal).collect();
+    let untracked: std::collections::HashSet<String> = out
+        .stdout
+        .split(|b| *b == 0)
+        .filter(|r| !r.is_empty())
+        .map(|r| String::from_utf8_lossy(r).into_owned())
+        .collect();
+    let tracked: Vec<String> = paths
+        .iter()
+        .filter(|p| !untracked.contains(p.as_str()))
+        .map(literal)
+        .collect();
     if !tracked.is_empty() {
         let mut args = vec!["restore", "--worktree", "--"];
         args.extend(tracked.iter().map(String::as_str));
@@ -742,11 +998,24 @@ async fn discard(git: &Git, root: &Path, paths: &[GitPath]) -> Result<(), AppErr
         // Never follow a symlinked parent out of the work tree.
         let parent = target.parent().and_then(|p| dunce::canonicalize(p).ok());
         if !parent.is_some_and(|p| p.starts_with(root)) {
-            return Err(err(AppErrorCode::E_SCOPE, format!("{rel} is outside the repository")));
+            return Err(err(
+                AppErrorCode::E_SCOPE,
+                format!("{rel} is outside the repository"),
+            ));
         }
-        let meta = std::fs::symlink_metadata(&target).map_err(|e| err(AppErrorCode::E_NOT_FOUND, format!("{rel}: {e}")))?;
-        let result = if meta.is_dir() { std::fs::remove_dir_all(&target) } else { std::fs::remove_file(&target) };
-        result.map_err(|e| err(AppErrorCode::E_INTERNAL, format!("couldn't delete {rel}: {e}")))?;
+        let meta = std::fs::symlink_metadata(&target)
+            .map_err(|e| err(AppErrorCode::E_NOT_FOUND, format!("{rel}: {e}")))?;
+        let result = if meta.is_dir() {
+            std::fs::remove_dir_all(&target)
+        } else {
+            std::fs::remove_file(&target)
+        };
+        result.map_err(|e| {
+            err(
+                AppErrorCode::E_INTERNAL,
+                format!("couldn't delete {rel}: {e}"),
+            )
+        })?;
     }
     Ok(())
 }
@@ -754,14 +1023,52 @@ async fn discard(git: &Git, root: &Path, paths: &[GitPath]) -> Result<(), AppErr
 async fn show(git: &Git, rev: &str) -> Result<GitShowData, AppErrorDto> {
     let commitish = format!("{rev}^{{commit}}");
     let fmt = "--format=%H%x1f%h%x1f%s%x1f%an%x1f%at%x1f%D%x1f%b";
-    let head = git.ok(&["show", "-s", fmt, "--end-of-options", &commitish], LOCAL_TIMEOUT).await?;
+    let head = git
+        .ok(
+            &["show", "-s", fmt, "--end-of-options", &commitish],
+            LOCAL_TIMEOUT,
+        )
+        .await?;
     let text = head.text();
-    let commit = parse_commit(&text).ok_or_else(|| err(AppErrorCode::E_GIT, format!("unexpected git show output for {rev}")))?;
-    let body = text.splitn(7, '\u{1f}').nth(6).unwrap_or("").trim().to_string();
+    let commit = parse_commit(&text).ok_or_else(|| {
+        err(
+            AppErrorCode::E_GIT,
+            format!("unexpected git show output for {rev}"),
+        )
+    })?;
+    let body = text
+        .splitn(7, '\u{1f}')
+        .nth(6)
+        .unwrap_or("")
+        .trim()
+        .to_string();
     let hash = commit.hash.clone();
-    let names_args = ["show", "--format=", "-M", "--diff-merges=first-parent", "--name-status", "-z", hash.as_str()];
-    let nums_args = ["show", "--format=", "-M", "--diff-merges=first-parent", "--numstat", "-z", hash.as_str()];
-    let patch_args = ["show", "--format=", "-M", "--diff-merges=first-parent", "--no-ext-diff", hash.as_str()];
+    let names_args = [
+        "show",
+        "--format=",
+        "-M",
+        "--diff-merges=first-parent",
+        "--name-status",
+        "-z",
+        hash.as_str(),
+    ];
+    let nums_args = [
+        "show",
+        "--format=",
+        "-M",
+        "--diff-merges=first-parent",
+        "--numstat",
+        "-z",
+        hash.as_str(),
+    ];
+    let patch_args = [
+        "show",
+        "--format=",
+        "-M",
+        "--diff-merges=first-parent",
+        "--no-ext-diff",
+        hash.as_str(),
+    ];
     let (names, nums, patch) = tokio::join!(
         git.ok(&names_args, LOCAL_TIMEOUT),
         git.ok(&nums_args, LOCAL_TIMEOUT),
@@ -770,7 +1077,10 @@ async fn show(git: &Git, rev: &str) -> Result<GitShowData, AppErrorDto> {
     let (names, nums, patch) = (names?, nums?, patch?);
     let counts = parse_numstat(&nums.stdout);
     let mut files = Vec::new();
-    let mut recs = names.stdout.split(|b| *b == 0).map(|r| String::from_utf8_lossy(r).into_owned());
+    let mut recs = names
+        .stdout
+        .split(|b| *b == 0)
+        .map(|r| String::from_utf8_lossy(r).into_owned());
     while let Some(status) = recs.next() {
         let status = status.trim_start_matches('\n').to_string();
         if status.is_empty() {
@@ -784,10 +1094,21 @@ async fn show(git: &Git, rev: &str) -> Result<GitShowData, AppErrorDto> {
             recs.next().unwrap_or_default()
         };
         let c = counts.get(&path).copied().flatten();
-        files.push(GitShowFile { path, status: letter.to_string(), add: c.map(|c| c.0), del: c.map(|c| c.1) });
+        files.push(GitShowFile {
+            path,
+            status: letter.to_string(),
+            add: c.map(|c| c.0),
+            del: c.map(|c| c.1),
+        });
     }
     let (diff, truncated) = cap(patch.text());
-    Ok(GitShowData { commit, body, files, diff, truncated })
+    Ok(GitShowData {
+        commit,
+        body,
+        files,
+        diff,
+        truncated,
+    })
 }
 
 async fn branches(git: &Git) -> Result<GitBranchesData, AppErrorDto> {
@@ -846,14 +1167,21 @@ mod tests {
     fn status_v2_parsing() {
         let raw = b"1 M. N... 100644 100644 100644 aaa bbb a.txt\x001 .M N... 100644 100644 100644 aaa bbb b c.txt\x002 R. N... 100644 100644 100644 aaa bbb R100 new.txt\x00old.txt\x00u UU N... 100644 100644 100644 100644 a b c conf.rs\x00? new dir/x.md\x00";
         let files = parse_status_v2(raw);
-        let summary: Vec<(String, GitArea, String, Option<String>)> =
-            files.iter().map(|f| (f.path.clone(), f.area, f.status.clone(), f.orig.clone())).collect();
+        let summary: Vec<(String, GitArea, String, Option<String>)> = files
+            .iter()
+            .map(|f| (f.path.clone(), f.area, f.status.clone(), f.orig.clone()))
+            .collect();
         assert_eq!(
             summary,
             vec![
                 ("a.txt".into(), GitArea::Staged, "M".into(), None),
                 ("b c.txt".into(), GitArea::Unstaged, "M".into(), None),
-                ("new.txt".into(), GitArea::Staged, "R".into(), Some("old.txt".into())),
+                (
+                    "new.txt".into(),
+                    GitArea::Staged,
+                    "R".into(),
+                    Some("old.txt".into())
+                ),
                 ("conf.rs".into(), GitArea::Conflict, "U".into(), None),
                 ("new dir/x.md".into(), GitArea::Untracked, "?".into(), None),
             ]
@@ -871,12 +1199,26 @@ mod tests {
 
     #[test]
     fn hints() {
-        assert!(hint_for("fatal: could not read Username for 'https://github.com': terminal prompts disabled").unwrap().starts_with("Auth needed"));
-        assert!(hint_for("git@github.com: Permission denied (publickey).").unwrap().starts_with("Auth needed"));
-        assert!(hint_for("*** Please tell me who you are.").unwrap().contains("user.email"));
-        assert!(hint_for("fatal: Not possible to fast-forward, aborting.").unwrap().contains("rebase"));
-        assert!(hint_for(" ! [rejected]        main -> main (fetch first)").unwrap().contains("Pull first"));
-        assert!(hint_for("error: Please commit or stash them.").unwrap().contains("stash"));
+        assert!(hint_for(
+            "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+        )
+        .unwrap()
+        .starts_with("Auth needed"));
+        assert!(hint_for("git@github.com: Permission denied (publickey).")
+            .unwrap()
+            .starts_with("Auth needed"));
+        assert!(hint_for("*** Please tell me who you are.")
+            .unwrap()
+            .contains("user.email"));
+        assert!(hint_for("fatal: Not possible to fast-forward, aborting.")
+            .unwrap()
+            .contains("rebase"));
+        assert!(hint_for(" ! [rejected]        main -> main (fetch first)")
+            .unwrap()
+            .contains("Pull first"));
+        assert!(hint_for("error: Please commit or stash them.")
+            .unwrap()
+            .contains("stash"));
         assert!(hint_for("all good").is_none());
     }
 
@@ -891,7 +1233,11 @@ mod tests {
 
     #[test]
     fn error_message_drops_hints_and_keeps_tail() {
-        let out = Out { code: 128, stdout: vec![], stderr: "hint: one\nhint: two\nfatal: bad thing\n".into() };
+        let out = Out {
+            code: 128,
+            stdout: vec![],
+            stderr: "hint: one\nhint: two\nfatal: bad thing\n".into(),
+        };
         let e = git_error(&out);
         assert_eq!(e.code, AppErrorCode::E_GIT);
         assert_eq!(e.message.as_str(), "fatal: bad thing");

@@ -53,7 +53,11 @@ pub fn filter(gate: &AgentGate, text: &str) -> Option<String> {
     match gate.check(method) {
         Ok(()) => None,
         Err(message) => {
-            tracing::info!(op = "browser_gate", method, "refused: the user has taken over");
+            tracing::info!(
+                op = "browser_gate",
+                method,
+                "refused: the user has taken over"
+            );
             refusal(&command, message).map(|r| r.to_string())
         }
     }
@@ -61,8 +65,14 @@ pub fn filter(gate: &AgentGate, text: &str) -> Option<String> {
 
 /// `/json*` replies name the browser's own port: point them at the gate.
 pub fn rewrite_ports(body: &str, upstream: u16, ours: u16) -> String {
-    body.replace(&format!("127.0.0.1:{upstream}"), &format!("127.0.0.1:{ours}"))
-        .replace(&format!("localhost:{upstream}"), &format!("127.0.0.1:{ours}"))
+    body.replace(
+        &format!("127.0.0.1:{upstream}"),
+        &format!("127.0.0.1:{ours}"),
+    )
+    .replace(
+        &format!("localhost:{upstream}"),
+        &format!("127.0.0.1:{ours}"),
+    )
 }
 
 // ------------------------------------------------------------- humanizing
@@ -91,7 +101,10 @@ pub enum Rewrite {
     Forward,
     /// Send `synthetic` in order (each a fire-and-wait-for-reply command,
     /// its reply dropped, not forwarded to the client), then `finish`.
-    Replace { synthetic: Vec<Timed>, finish: Finish },
+    Replace {
+        synthetic: Vec<Timed>,
+        finish: Finish,
+    },
 }
 
 fn with_session(mut value: Value, session: Option<&Value>) -> Value {
@@ -106,8 +119,14 @@ fn with_session(mut value: Value, session: Option<&Value>) -> Value {
 /// everything through), and this connection's own targets (for scoping
 /// `Browser.close`). No I/O, so it's unit-tested directly; [`Relay::run`]
 /// executes the decision over the real websockets.
-pub fn rewrite(command: &Value, human: Option<&mut humanize::Humanizer>, own_targets: &[String]) -> Rewrite {
-    let Some(method) = command.get("method").and_then(Value::as_str) else { return Rewrite::Forward };
+pub fn rewrite(
+    command: &Value,
+    human: Option<&mut humanize::Humanizer>,
+    own_targets: &[String],
+) -> Rewrite {
+    let Some(method) = command.get("method").and_then(Value::as_str) else {
+        return Rewrite::Forward;
+    };
     let id = command.get("id").cloned().unwrap_or(Value::Null);
     let session = command.get("sessionId");
     let params = command.get("params").cloned().unwrap_or_else(|| json!({}));
@@ -119,10 +138,15 @@ pub fn rewrite(command: &Value, human: Option<&mut humanize::Humanizer>, own_tar
             .iter()
             .map(|target| Timed { command: json!({ "method": "Target.closeTarget", "params": { "targetId": target } }), wait_ms: 0.0 })
             .collect();
-        return Rewrite::Replace { synthetic, finish: Finish::Reply(json!({ "id": id, "result": {} })) };
+        return Rewrite::Replace {
+            synthetic,
+            finish: Finish::Reply(json!({ "id": id, "result": {} })),
+        };
     }
 
-    let Some(human) = human else { return Rewrite::Forward };
+    let Some(human) = human else {
+        return Rewrite::Forward;
+    };
 
     match method {
         "Input.dispatchMouseEvent" => {
@@ -134,59 +158,119 @@ pub fn rewrite(command: &Value, human: Option<&mut humanize::Humanizer>, own_tar
                 let n = steps_x.len().max(steps_y.len());
                 let synthetic = (0..n)
                     .map(|i| {
-                        let (ddx, wx) = steps_x.get(i).map(|s| (s.delta, s.wait_ms)).unwrap_or((0.0, 0.0));
-                        let (ddy, wy) = steps_y.get(i).map(|s| (s.delta, s.wait_ms)).unwrap_or((0.0, 0.0));
+                        let (ddx, wx) = steps_x
+                            .get(i)
+                            .map(|s| (s.delta, s.wait_ms))
+                            .unwrap_or((0.0, 0.0));
+                        let (ddy, wy) = steps_y
+                            .get(i)
+                            .map(|s| (s.delta, s.wait_ms))
+                            .unwrap_or((0.0, 0.0));
                         let mut p = params.clone();
                         p["deltaX"] = json!(ddx);
                         p["deltaY"] = json!(ddy);
-                        Timed { command: with_session(json!({ "method": method, "params": p }), session), wait_ms: wx.max(wy) }
+                        Timed {
+                            command: with_session(
+                                json!({ "method": method, "params": p }),
+                                session,
+                            ),
+                            wait_ms: wx.max(wy),
+                        }
                     })
                     .collect();
-                return Rewrite::Replace { synthetic, finish: Finish::Reply(json!({ "id": id, "result": {} })) };
+                return Rewrite::Replace {
+                    synthetic,
+                    finish: Finish::Reply(json!({ "id": id, "result": {} })),
+                };
             }
-            let (Some(x), Some(y)) = (params.get("x").and_then(Value::as_f64), params.get("y").and_then(Value::as_f64)) else {
+            let (Some(x), Some(y)) = (
+                params.get("x").and_then(Value::as_f64),
+                params.get("y").and_then(Value::as_f64),
+            ) else {
                 return Rewrite::Forward;
             };
             match kind {
                 "mouseMoved" => {
                     let synthetic = move_steps(human, x, y, session);
-                    Rewrite::Replace { synthetic, finish: Finish::Forward { command: command.clone(), wait_ms: 0.0 } }
+                    Rewrite::Replace {
+                        synthetic,
+                        finish: Finish::Forward {
+                            command: command.clone(),
+                            wait_ms: 0.0,
+                        },
+                    }
                 }
                 "mousePressed" => {
                     let moved = (human.pointer().0 - x).hypot(human.pointer().1 - y) > 0.5;
-                    let synthetic = if moved { move_steps(human, x, y, session) } else { Vec::new() };
+                    let synthetic = if moved {
+                        move_steps(human, x, y, session)
+                    } else {
+                        Vec::new()
+                    };
                     let wait = human.rand_range(human.cfg.click_aim_delay_button);
-                    Rewrite::Replace { synthetic, finish: Finish::Forward { command: command.clone(), wait_ms: wait } }
+                    Rewrite::Replace {
+                        synthetic,
+                        finish: Finish::Forward {
+                            command: command.clone(),
+                            wait_ms: wait,
+                        },
+                    }
                 }
                 "mouseReleased" => {
                     human.set_pointer((x, y));
                     let wait = human.rand_range(human.cfg.click_hold_button);
-                    Rewrite::Replace { synthetic: Vec::new(), finish: Finish::Forward { command: command.clone(), wait_ms: wait } }
+                    Rewrite::Replace {
+                        synthetic: Vec::new(),
+                        finish: Finish::Forward {
+                            command: command.clone(),
+                            wait_ms: wait,
+                        },
+                    }
                 }
                 _ => Rewrite::Forward,
             }
         }
         "Input.insertText" => {
-            let text = params.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+            let text = params
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             let plan = human.typing(&text);
             let synthetic = plan
                 .into_iter()
                 .map(|step| match step {
-                    KeyStep::Key { params, wait_ms } => {
-                        Timed { command: with_session(json!({ "method": "Input.dispatchKeyEvent", "params": params }), session), wait_ms }
-                    }
-                    KeyStep::Text { text, wait_ms } => {
-                        Timed { command: with_session(json!({ "method": "Input.insertText", "params": { "text": text } }), session), wait_ms }
-                    }
+                    KeyStep::Key { params, wait_ms } => Timed {
+                        command: with_session(
+                            json!({ "method": "Input.dispatchKeyEvent", "params": params }),
+                            session,
+                        ),
+                        wait_ms,
+                    },
+                    KeyStep::Text { text, wait_ms } => Timed {
+                        command: with_session(
+                            json!({ "method": "Input.insertText", "params": { "text": text } }),
+                            session,
+                        ),
+                        wait_ms,
+                    },
                 })
                 .collect();
-            Rewrite::Replace { synthetic, finish: Finish::Reply(json!({ "id": id, "result": {} })) }
+            Rewrite::Replace {
+                synthetic,
+                finish: Finish::Reply(json!({ "id": id, "result": {} })),
+            }
         }
         _ => Rewrite::Forward,
     }
 }
 
-fn move_steps(human: &mut humanize::Humanizer, x: f64, y: f64, session: Option<&Value>) -> Vec<Timed> {
+fn move_steps(
+    human: &mut humanize::Humanizer,
+    x: f64,
+    y: f64,
+    session: Option<&Value>,
+) -> Vec<Timed> {
     human
         .move_to((x, y))
         .into_iter()
@@ -248,8 +332,15 @@ impl Relay {
         let id = self.next_id();
         command["id"] = json!(id);
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.waiters.lock().unwrap_or_else(|e| e.into_inner()).insert(id, tx);
-        if self.write_tx.send(Message::Text(command.to_string().into())).is_err() {
+        self.waiters
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, tx);
+        if self
+            .write_tx
+            .send(Message::Text(command.to_string().into()))
+            .is_err()
+        {
             return;
         }
         self.gate.note_input();
@@ -262,10 +353,15 @@ impl Relay {
     fn forward(&mut self, command: &Value) {
         if command.get("method").and_then(Value::as_str) == Some("Target.createTarget") {
             if let Some(id) = command.get("id").and_then(Value::as_u64) {
-                self.create_ids.lock().unwrap_or_else(|e| e.into_inner()).insert(id);
+                self.create_ids
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(id);
             }
         }
-        let _ = self.write_tx.send(Message::Text(command.to_string().into()));
+        let _ = self
+            .write_tx
+            .send(Message::Text(command.to_string().into()));
     }
 
     fn reply(&self, value: Value) {
@@ -347,10 +443,19 @@ fn is_upgrade(head: &str) -> bool {
     })
 }
 
-async fn connection(gate: Arc<AgentGate>, stream: TcpStream, upstream: u16, ours: u16, humanize: Humanize) -> anyhow::Result<()> {
+async fn connection(
+    gate: Arc<AgentGate>,
+    stream: TcpStream,
+    upstream: u16,
+    ours: u16,
+    humanize: Humanize,
+) -> anyhow::Result<()> {
     let head = peek_head(&stream).await?;
     let mut first = head.lines().next().unwrap_or("").split_whitespace();
-    let (method, path) = (first.next().unwrap_or("GET").to_string(), first.next().unwrap_or("/").to_string());
+    let (method, path) = (
+        first.next().unwrap_or("GET").to_string(),
+        first.next().unwrap_or("/").to_string(),
+    );
     if !path.starts_with('/') {
         anyhow::bail!("bad request path");
     }
@@ -361,24 +466,48 @@ async fn connection(gate: Arc<AgentGate>, stream: TcpStream, upstream: u16, ours
     }
 }
 
-async fn http(mut stream: TcpStream, head: &str, method: &str, path: &str, upstream: u16, ours: u16) -> anyhow::Result<()> {
+async fn http(
+    mut stream: TcpStream,
+    head: &str,
+    method: &str,
+    path: &str,
+    upstream: u16,
+    ours: u16,
+) -> anyhow::Result<()> {
     // Consume the head we peeked (DevTools requests carry no body).
     let mut sink = vec![0u8; head.len()];
     stream.read_exact(&mut sink).await?;
     let mut up = TcpStream::connect(("127.0.0.1", upstream)).await?;
-    up.write_all(format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{upstream}\r\nConnection: close\r\n\r\n").as_bytes()).await?;
+    up.write_all(
+        format!(
+            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{upstream}\r\nConnection: close\r\n\r\n"
+        )
+        .as_bytes(),
+    )
+    .await?;
     let mut reply = Vec::new();
     let _ = tokio::time::timeout(Duration::from_secs(10), read_response(&mut up, &mut reply)).await;
-    let split = reply.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4).unwrap_or(reply.len());
+    let split = reply
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| i + 4)
+        .unwrap_or(reply.len());
     let (up_head, body) = reply.split_at(split);
-    let status = String::from_utf8_lossy(up_head).lines().next().unwrap_or("HTTP/1.1 502 Bad Gateway").to_string();
+    let status = String::from_utf8_lossy(up_head)
+        .lines()
+        .next()
+        .unwrap_or("HTTP/1.1 502 Bad Gateway")
+        .to_string();
     let body = rewrite_ports(&String::from_utf8_lossy(body), upstream, ours);
     let content_type = String::from_utf8_lossy(up_head)
         .lines()
         .find(|l| l.to_ascii_lowercase().starts_with("content-type:"))
         .map(|l| l.to_string())
         .unwrap_or_else(|| "Content-Type: application/json; charset=UTF-8".into());
-    let out = format!("{status}\r\n{content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    let out = format!(
+        "{status}\r\n{content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
     stream.write_all(out.as_bytes()).await?;
     stream.shutdown().await?;
     Ok(())
@@ -395,7 +524,10 @@ async fn read_response(up: &mut TcpStream, out: &mut Vec<u8>) -> std::io::Result
         out.extend_from_slice(&buf[..n]);
         if let Some(end) = out.windows(4).position(|w| w == b"\r\n\r\n") {
             let head = String::from_utf8_lossy(&out[..end]).to_ascii_lowercase();
-            if let Some(len) = head.lines().find_map(|l| l.strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok())) {
+            if let Some(len) = head.lines().find_map(|l| {
+                l.strip_prefix("content-length:")
+                    .and_then(|v| v.trim().parse::<usize>().ok())
+            }) {
                 if out.len() >= end + 4 + len {
                     out.truncate(end + 4 + len);
                     return Ok(());
@@ -405,12 +537,23 @@ async fn read_response(up: &mut TcpStream, out: &mut Vec<u8>) -> std::io::Result
     }
 }
 
-async fn websocket(gate: Arc<AgentGate>, stream: TcpStream, upstream: u16, path: &str, humanize_setting: Humanize) -> anyhow::Result<()> {
+async fn websocket(
+    gate: Arc<AgentGate>,
+    stream: TcpStream,
+    upstream: u16,
+    path: &str,
+    humanize_setting: Humanize,
+) -> anyhow::Result<()> {
     let mut config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default();
     config.max_message_size = Some(256 << 20);
     config.max_frame_size = Some(256 << 20);
     let client = tokio_tungstenite::accept_async_with_config(stream, Some(config)).await?;
-    let (browser, _) = tokio_tungstenite::connect_async_with_config(format!("ws://127.0.0.1:{upstream}{path}"), Some(config), true).await?;
+    let (browser, _) = tokio_tungstenite::connect_async_with_config(
+        format!("ws://127.0.0.1:{upstream}{path}"),
+        Some(config),
+        true,
+    )
+    .await?;
     let _agent = gate.client();
     tracing::info!(op = "browser_gate", path, "agent connected");
     let (mut client_tx, mut client_rx) = client.split();
@@ -453,14 +596,28 @@ async fn websocket(gate: Arc<AgentGate>, stream: TcpStream, upstream: u16, path:
                 continue;
             };
             if let Some(id) = value.get("id").and_then(Value::as_u64) {
-                let waiter = reader_waiters.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+                let waiter = reader_waiters
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id);
                 if let Some(waiter) = waiter {
                     let _ = waiter.send(value);
                     continue;
                 }
-                if reader_create_ids.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
-                    if let Some(target) = value.get("result").and_then(|r| r.get("targetId")).and_then(Value::as_str) {
-                        reader_own_targets.lock().unwrap_or_else(|e| e.into_inner()).insert(target.to_string());
+                if reader_create_ids
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&id)
+                {
+                    if let Some(target) = value
+                        .get("result")
+                        .and_then(|r| r.get("targetId"))
+                        .and_then(Value::as_str)
+                    {
+                        reader_own_targets
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .insert(target.to_string());
                     }
                 }
             }
@@ -478,7 +635,16 @@ async fn websocket(gate: Arc<AgentGate>, stream: TcpStream, upstream: u16, path:
     };
 
     let human = humanize_setting.config().map(humanize::Humanizer::new);
-    let mut relay = Relay { write_tx, reply_tx: reply_tx.clone(), waiters, create_ids, own_targets: own_targets.clone(), gate: gate.clone(), human, next_synthetic: 0 };
+    let mut relay = Relay {
+        write_tx,
+        reply_tx: reply_tx.clone(),
+        waiters,
+        create_ids,
+        own_targets: own_targets.clone(),
+        gate: gate.clone(),
+        human,
+        next_synthetic: 0,
+    };
 
     let up = async move {
         while let Some(Ok(message)) = client_rx.next().await {
@@ -488,19 +654,48 @@ async fn websocket(gate: Arc<AgentGate>, stream: TcpStream, upstream: u16, path:
                 }
                 continue;
             };
-            let Ok(command) = serde_json::from_str::<Value>(text.as_str()) else { continue };
-            let Some(method) = command.get("method").and_then(Value::as_str).map(str::to_string) else { continue };
+            let Ok(command) = serde_json::from_str::<Value>(text.as_str()) else {
+                continue;
+            };
+            let Some(method) = command
+                .get("method")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+            else {
+                continue;
+            };
             if let Err(message) = relay.gate.check(&method) {
-                tracing::info!(op = "browser_gate", method = method.as_str(), "refused: the user has taken over");
+                tracing::info!(
+                    op = "browser_gate",
+                    method = method.as_str(),
+                    "refused: the user has taken over"
+                );
                 if let Some(reply) = refusal(&command, message) {
                     relay.reply(reply);
                 }
                 continue;
             }
-            let targets: Vec<String> = relay.own_targets.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
+            let targets: Vec<String> = relay
+                .own_targets
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .cloned()
+                .collect();
             let decision = rewrite(&command, relay.human.as_mut(), &targets);
-            if matches!(decision, Rewrite::Replace { finish: Finish::Reply(_), .. }) && method == "Browser.close" {
-                relay.own_targets.lock().unwrap_or_else(|e| e.into_inner()).clear();
+            if matches!(
+                decision,
+                Rewrite::Replace {
+                    finish: Finish::Reply(_),
+                    ..
+                }
+            ) && method == "Browser.close"
+            {
+                relay
+                    .own_targets
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
             }
             relay.apply(decision, &command).await;
         }
@@ -523,21 +718,28 @@ mod tests {
     use unipi_proto::BrowserAgent;
 
     fn humanizer() -> humanize::Humanizer {
-        humanize::Humanizer::with_rng(humanize::HumanConfig::default_preset(), StdRng::seed_from_u64(7))
+        humanize::Humanizer::with_rng(
+            humanize::HumanConfig::default_preset(),
+            StdRng::seed_from_u64(7),
+        )
     }
 
     #[test]
     fn refusal_keeps_id_and_session() {
         let cmd = json!({ "id": 7, "method": "Input.dispatchMouseEvent", "sessionId": "S1", "params": {} });
         let r = refusal(&cmd, TAKEN_OVER_MESSAGE).unwrap();
-        assert_eq!(r, json!({ "id": 7, "sessionId": "S1", "error": { "code": -32000, "message": TAKEN_OVER_MESSAGE } }));
+        assert_eq!(
+            r,
+            json!({ "id": 7, "sessionId": "S1", "error": { "code": -32000, "message": TAKEN_OVER_MESSAGE } })
+        );
         assert!(refusal(&json!({ "method": "x" }), "m").is_none());
     }
 
     #[test]
     fn filter_passes_until_taken_over() {
         let gate = AgentGate::new();
-        let click = r#"{"id":1,"method":"Input.dispatchMouseEvent","params":{"type":"mousePressed"}}"#;
+        let click =
+            r#"{"id":1,"method":"Input.dispatchMouseEvent","params":{"type":"mousePressed"}}"#;
         assert!(filter(&gate, click).is_none());
         assert!(gate.snapshot(0).driving);
         gate.set_takeover(true);
@@ -555,7 +757,11 @@ mod tests {
         let text = json!({ "id": 2, "method": "Input.insertText", "params": { "text": "hi" } });
         assert_eq!(rewrite(&text, None, &[]), Rewrite::Forward);
         let close = json!({ "id": 3, "method": "Browser.close", "params": {} });
-        let Rewrite::Replace { synthetic, finish } = rewrite(&close, None, &["T1".into(), "T2".into()]) else { panic!() };
+        let Rewrite::Replace { synthetic, finish } =
+            rewrite(&close, None, &["T1".into(), "T2".into()])
+        else {
+            panic!()
+        };
         assert_eq!(synthetic.len(), 2, "one Target.closeTarget per own target");
         assert_eq!(finish, Finish::Reply(json!({ "id": 3, "result": {} })));
     }
@@ -564,17 +770,34 @@ mod tests {
     fn mouse_move_becomes_a_path_then_the_original() {
         let mut human = humanizer();
         let cmd = json!({ "id": 5, "method": "Input.dispatchMouseEvent", "sessionId": "S1", "params": { "type": "mouseMoved", "x": 300.0, "y": 300.0 } });
-        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else { panic!() };
+        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else {
+            panic!()
+        };
         assert!(synthetic.len() > 5, "{} steps", synthetic.len());
         for step in &synthetic {
             assert_eq!(step.command["method"], "Input.dispatchMouseEvent");
             assert_eq!(step.command["params"]["type"], "mouseMoved");
             assert_eq!(step.command["sessionId"], "S1");
-            assert!(step.command.get("id").is_none(), "the executor assigns synthetic ids");
+            assert!(
+                step.command.get("id").is_none(),
+                "the executor assigns synthetic ids"
+            );
         }
         let last = synthetic.last().unwrap();
-        assert_eq!((last.command["params"]["x"].as_f64(), last.command["params"]["y"].as_f64()), (Some(300.0), Some(300.0)));
-        assert_eq!(finish, Finish::Forward { command: cmd, wait_ms: 0.0 });
+        assert_eq!(
+            (
+                last.command["params"]["x"].as_f64(),
+                last.command["params"]["y"].as_f64()
+            ),
+            (Some(300.0), Some(300.0))
+        );
+        assert_eq!(
+            finish,
+            Finish::Forward {
+                command: cmd,
+                wait_ms: 0.0
+            }
+        );
     }
 
     #[test]
@@ -582,9 +805,13 @@ mod tests {
         let mut human = humanizer();
         human.move_to((300.0, 300.0)); // position the tracked pointer where we'll press
         let cmd = json!({ "id": 9, "method": "Input.dispatchMouseEvent", "params": { "type": "mousePressed", "x": 300.0, "y": 300.0, "button": "left" } });
-        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else { panic!() };
+        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else {
+            panic!()
+        };
         assert!(synthetic.is_empty(), "already at the point: no extra path");
-        let Finish::Forward { command, wait_ms } = finish else { panic!() };
+        let Finish::Forward { command, wait_ms } = finish else {
+            panic!()
+        };
         assert_eq!(command, cmd, "kept exactly, including its id");
         assert!(wait_ms > 0.0);
     }
@@ -593,9 +820,14 @@ mod tests {
     fn wheel_becomes_steps_and_the_id_is_answered_directly() {
         let mut human = humanizer();
         let cmd = json!({ "id": 11, "method": "Input.dispatchMouseEvent", "params": { "type": "mouseWheel", "x": 0, "y": 0, "deltaX": 0.0, "deltaY": 500.0 } });
-        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else { panic!() };
+        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else {
+            panic!()
+        };
         assert!(synthetic.len() > 5);
-        let sum: f64 = synthetic.iter().map(|s| s.command["params"]["deltaY"].as_f64().unwrap()).sum();
+        let sum: f64 = synthetic
+            .iter()
+            .map(|s| s.command["params"]["deltaY"].as_f64().unwrap())
+            .sum();
         assert_eq!(sum, 500.0, "the total scroll is exact");
         assert_eq!(finish, Finish::Reply(json!({ "id": 11, "result": {} })));
     }
@@ -604,14 +836,20 @@ mod tests {
     fn insert_text_becomes_key_events_answered_directly() {
         let mut human = humanizer();
         let cmd = json!({ "id": 13, "method": "Input.insertText", "params": { "text": "hi" } });
-        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else { panic!() };
+        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else {
+            panic!()
+        };
         assert_eq!(synthetic.len(), 4, "keyDown/keyUp for 'h' and 'i'");
-        assert!(synthetic.iter().all(|s| s.command["method"] == "Input.dispatchKeyEvent"));
+        assert!(synthetic
+            .iter()
+            .all(|s| s.command["method"] == "Input.dispatchKeyEvent"));
         assert_eq!(finish, Finish::Reply(json!({ "id": 13, "result": {} })));
 
         // Non-ASCII falls back to insertText for that character.
         let cmd = json!({ "id": 14, "method": "Input.insertText", "params": { "text": "é" } });
-        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else { panic!() };
+        let Rewrite::Replace { synthetic, finish } = rewrite(&cmd, Some(&mut human), &[]) else {
+            panic!()
+        };
         assert_eq!(synthetic.len(), 1);
         assert_eq!(synthetic[0].command["method"], "Input.insertText");
         assert_eq!(synthetic[0].command["params"]["text"], "é");
@@ -627,7 +865,9 @@ mod tests {
         let log = seen.clone();
         tokio::spawn(async move {
             loop {
-                let Ok((mut stream, _)) = listener.accept().await else { return };
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
                 let log = log.clone();
                 tokio::spawn(async move {
                     let head = peek_head(&stream).await.unwrap();
@@ -638,12 +878,16 @@ mod tests {
                             let method = v["method"].as_str().unwrap_or("").to_string();
                             log.lock().unwrap().push(method.clone());
                             let reply = json!({ "id": v["id"], "result": { "method": method } });
-                            ws.send(Message::Text(reply.to_string().into())).await.unwrap();
+                            ws.send(Message::Text(reply.to_string().into()))
+                                .await
+                                .unwrap();
                         }
                     } else {
                         let mut sink = vec![0u8; head.len()];
                         stream.read_exact(&mut sink).await.unwrap();
-                        let body = format!(r#"{{"Browser":"Fake/1","webSocketDebuggerUrl":"ws://127.0.0.1:{port}/devtools/browser/abc"}}"#);
+                        let body = format!(
+                            r#"{{"Browser":"Fake/1","webSocketDebuggerUrl":"ws://127.0.0.1:{port}/devtools/browser/abc"}}"#
+                        );
                         let out = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len());
                         stream.write_all(out.as_bytes()).await.unwrap();
                     }
@@ -653,10 +897,26 @@ mod tests {
         (port, seen)
     }
 
-    async fn call(ws: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>, id: u64, method: &str) -> Value {
-        ws.send(Message::Text(json!({ "id": id, "method": method, "params": {} }).to_string().into())).await.unwrap();
+    async fn call(
+        ws: &mut tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+        id: u64,
+        method: &str,
+    ) -> Value {
+        ws.send(Message::Text(
+            json!({ "id": id, "method": method, "params": {} })
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
         loop {
-            let Some(Ok(Message::Text(text))) = tokio::time::timeout(Duration::from_secs(5), ws.next()).await.unwrap() else { panic!("closed") };
+            let Some(Ok(Message::Text(text))) =
+                tokio::time::timeout(Duration::from_secs(5), ws.next())
+                    .await
+                    .unwrap()
+            else {
+                panic!("closed")
+            };
             let v: Value = serde_json::from_str(text.as_str()).unwrap();
             if v["id"] == id {
                 return v;
@@ -669,11 +929,17 @@ mod tests {
         let (upstream, seen) = fake_browser().await;
         let gate = AgentGate::new();
         let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
-        let port = serve(gate.clone(), upstream, Humanize::Off, async move { let _ = stop_rx.await; }).await.unwrap();
+        let port = serve(gate.clone(), upstream, Humanize::Off, async move {
+            let _ = stop_rx.await;
+        })
+        .await
+        .unwrap();
 
         // Discovery over HTTP stays on the gate.
         let mut http = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-        http.write_all(b"GET /json/version HTTP/1.1\r\nHost: x\r\n\r\n").await.unwrap();
+        http.write_all(b"GET /json/version HTTP/1.1\r\nHost: x\r\n\r\n")
+            .await
+            .unwrap();
         let mut body = String::new();
         http.read_to_string(&mut body).await.unwrap();
         assert!(body.starts_with("HTTP/1.1 200"), "{body}");
@@ -684,32 +950,71 @@ mod tests {
         // An agent connects: connected, not driving yet.
         let (mut agent, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
         for _ in 0..50 {
-            if gate.snapshot(0).connected { break }
+            if gate.snapshot(0).connected {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        assert_eq!(gate.snapshot(0), BrowserAgent { connected: true, driving: false, taken_over: false });
+        assert_eq!(
+            gate.snapshot(0),
+            BrowserAgent {
+                connected: true,
+                driving: false,
+                taken_over: false
+            }
+        );
         // A read passes and doesn't drive.
-        assert_eq!(call(&mut agent, 1, "Runtime.evaluate").await["result"]["method"], "Runtime.evaluate");
+        assert_eq!(
+            call(&mut agent, 1, "Runtime.evaluate").await["result"]["method"],
+            "Runtime.evaluate"
+        );
         assert!(!gate.snapshot(0).driving);
         // Input passes and marks it driving.
-        assert_eq!(call(&mut agent, 2, "Input.dispatchMouseEvent").await["result"]["method"], "Input.dispatchMouseEvent");
+        assert_eq!(
+            call(&mut agent, 2, "Input.dispatchMouseEvent").await["result"]["method"],
+            "Input.dispatchMouseEvent"
+        );
         assert!(gate.snapshot(0).driving);
 
         // The user takes over: input and navigation are refused with the message, reads still pass.
         gate.set_takeover(true);
         let refused = call(&mut agent, 3, "Input.insertText").await;
-        assert_eq!(refused["error"]["message"], crate::browser::agent::TAKEN_OVER_MESSAGE);
+        assert_eq!(
+            refused["error"]["message"],
+            crate::browser::agent::TAKEN_OVER_MESSAGE
+        );
         assert_eq!(refused["error"]["code"], TAKEN_OVER_CODE);
-        assert_eq!(call(&mut agent, 4, "Page.navigate").await["error"]["message"], crate::browser::agent::TAKEN_OVER_MESSAGE);
-        assert_eq!(call(&mut agent, 5, "DOM.getDocument").await["result"]["method"], "DOM.getDocument");
-        assert_eq!(gate.snapshot(0), BrowserAgent { connected: true, driving: false, taken_over: true });
+        assert_eq!(
+            call(&mut agent, 4, "Page.navigate").await["error"]["message"],
+            crate::browser::agent::TAKEN_OVER_MESSAGE
+        );
+        assert_eq!(
+            call(&mut agent, 5, "DOM.getDocument").await["result"]["method"],
+            "DOM.getDocument"
+        );
+        assert_eq!(
+            gate.snapshot(0),
+            BrowserAgent {
+                connected: true,
+                driving: false,
+                taken_over: true
+            }
+        );
 
         // Give back: input flows again.
         gate.set_takeover(false);
-        assert_eq!(call(&mut agent, 6, "Input.dispatchKeyEvent").await["result"]["method"], "Input.dispatchKeyEvent");
+        assert_eq!(
+            call(&mut agent, 6, "Input.dispatchKeyEvent").await["result"]["method"],
+            "Input.dispatchKeyEvent"
+        );
         assert_eq!(
             *seen.lock().unwrap(),
-            vec!["Runtime.evaluate", "Input.dispatchMouseEvent", "DOM.getDocument", "Input.dispatchKeyEvent"],
+            vec![
+                "Runtime.evaluate",
+                "Input.dispatchMouseEvent",
+                "DOM.getDocument",
+                "Input.dispatchKeyEvent"
+            ],
             "refused commands never reached the browser"
         );
 
@@ -717,7 +1022,9 @@ mod tests {
         agent.close(None).await.unwrap();
         drop(agent);
         for _ in 0..50 {
-            if !gate.snapshot(0).connected { break }
+            if !gate.snapshot(0).connected {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         assert!(!gate.snapshot(0).connected);
@@ -729,18 +1036,39 @@ mod tests {
         let (upstream, seen) = fake_browser().await;
         let gate = AgentGate::new();
         let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
-        let port = serve(gate.clone(), upstream, Humanize::Default, async move { let _ = stop_rx.await; }).await.unwrap();
-        let (mut agent, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}/devtools/browser/abc")).await.unwrap();
+        let port = serve(gate.clone(), upstream, Humanize::Default, async move {
+            let _ = stop_rx.await;
+        })
+        .await
+        .unwrap();
+        let (mut agent, _) =
+            tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}/devtools/browser/abc"))
+                .await
+                .unwrap();
 
         // The fake browser just echoes {id, result:{method}} — it has no
         // targetId, so this checks only that Browser.close never reaches it.
-        agent.send(Message::Text(json!({ "id": 1, "method": "Browser.close", "params": {} }).to_string().into())).await.unwrap();
-        let reply = tokio::time::timeout(Duration::from_secs(5), agent.next()).await.unwrap().unwrap().unwrap();
+        agent
+            .send(Message::Text(
+                json!({ "id": 1, "method": "Browser.close", "params": {} })
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        let reply = tokio::time::timeout(Duration::from_secs(5), agent.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
         let Message::Text(text) = reply else { panic!() };
         let v: Value = serde_json::from_str(text.as_str()).unwrap();
         assert_eq!(v, json!({ "id": 1, "result": {} }));
         tokio::time::sleep(Duration::from_millis(50)).await;
-        assert!(!seen.lock().unwrap().contains(&"Browser.close".to_string()), "never forwarded to the browser");
+        assert!(
+            !seen.lock().unwrap().contains(&"Browser.close".to_string()),
+            "never forwarded to the browser"
+        );
         let _ = stop_tx.send(());
     }
 

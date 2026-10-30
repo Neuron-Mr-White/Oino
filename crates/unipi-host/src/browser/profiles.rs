@@ -26,7 +26,11 @@ pub const LEGACY_DIR: &str = "browser-profile";
 
 /// `[a-z0-9_-]{1,40}`.
 pub fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= MAX_NAME && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+    !name.is_empty()
+        && name.len() <= MAX_NAME
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
 /// [`valid_name`] with the error people see.
@@ -65,7 +69,10 @@ pub fn snap_dir(home: &Path, snap: &str, host_dir: &Path, name: &str) -> PathBuf
     if name == DEFAULT && host_dir == home.join(".unipi").join("app-host") {
         common.join(super::SNAP_PROFILE_NAME)
     } else {
-        common.join("unipi-browser-profiles").join(host_key(host_dir)).join(name)
+        common
+            .join("unipi-browser-profiles")
+            .join(host_key(host_dir))
+            .join(name)
     }
 }
 
@@ -105,10 +112,20 @@ pub struct CookieDomain {
 }
 
 /// Records (or bumps) `domain` as imported at `now_ms`; moves it to the end.
-pub fn record_cookie_domain(host_dir: &Path, name: &str, domain: &str, now_ms: u64) -> anyhow::Result<()> {
-    let Some(mut meta) = load(host_dir, name)? else { return Ok(()) };
+pub fn record_cookie_domain(
+    host_dir: &Path,
+    name: &str,
+    domain: &str,
+    now_ms: u64,
+) -> anyhow::Result<()> {
+    let Some(mut meta) = load(host_dir, name)? else {
+        return Ok(());
+    };
     meta.cookie_domains.retain(|d| d.domain != domain);
-    meta.cookie_domains.push(CookieDomain { domain: domain.to_string(), imported_at: now_ms });
+    meta.cookie_domains.push(CookieDomain {
+        domain: domain.to_string(),
+        imported_at: now_ms,
+    });
     save(host_dir, name, &meta)
 }
 
@@ -122,10 +139,15 @@ pub fn load(host_dir: &Path, name: &str) -> anyhow::Result<Option<Meta>> {
     if !d.is_dir() {
         return Ok(None);
     }
-    Ok(Some(crate::data_dir::read_json::<Meta>(&d.join(META_FILE)).ok().flatten().unwrap_or_else(|| Meta {
-        created: created_of(&d),
-        ..Meta::default()
-    })))
+    Ok(Some(
+        crate::data_dir::read_json::<Meta>(&d.join(META_FILE))
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| Meta {
+                created: created_of(&d),
+                ..Meta::default()
+            }),
+    ))
 }
 
 pub fn save(host_dir: &Path, name: &str, meta: &Meta) -> anyhow::Result<()> {
@@ -147,7 +169,10 @@ pub fn create(host_dir: &Path, name: &str, now_ms: u64) -> anyhow::Result<Meta> 
     let d = dir(host_dir, name);
     anyhow::ensure!(!d.exists(), "profile {name:?} already exists");
     std::fs::create_dir_all(&d)?;
-    let meta = Meta { created: now_ms, ..Meta::default() };
+    let meta = Meta {
+        created: now_ms,
+        ..Meta::default()
+    };
     save(host_dir, name, &meta)?;
     Ok(meta)
 }
@@ -159,14 +184,24 @@ pub fn ensure(host_dir: &Path, name: &str, now_ms: u64) -> anyhow::Result<PathBu
     if d.is_dir() {
         return Ok(d);
     }
-    anyhow::ensure!(name == DEFAULT, "no browser profile {name:?} (create it: unipi-host browser profile create {name})");
+    anyhow::ensure!(
+        name == DEFAULT,
+        "no browser profile {name:?} (create it: unipi-host browser profile create {name})"
+    );
     create(host_dir, name, now_ms)?;
     Ok(d)
 }
 
 /// Stamps `last_used` (and `last_session` when given).
-pub fn touch(host_dir: &Path, name: &str, now_ms: u64, session: Option<&str>) -> anyhow::Result<()> {
-    let Some(mut meta) = load(host_dir, name)? else { return Ok(()) };
+pub fn touch(
+    host_dir: &Path,
+    name: &str,
+    now_ms: u64,
+    session: Option<&str>,
+) -> anyhow::Result<()> {
+    let Some(mut meta) = load(host_dir, name)? else {
+        return Ok(());
+    };
     meta.last_used = Some(now_ms);
     if let Some(session) = session.map(str::trim).filter(|s| !s.is_empty()) {
         meta.last_session = Some(session.chars().take(200).collect());
@@ -200,7 +235,12 @@ pub fn remove(host_dir: &Path, name: &str, home: Option<&Path>) -> anyhow::Resul
     if let Some(home) = home {
         if let Ok(snaps) = std::fs::read_dir(home.join("snap")) {
             for snap in snaps.flatten() {
-                let twin = snap.path().join("common").join("unipi-browser-profiles").join(host_key(host_dir)).join(name);
+                let twin = snap
+                    .path()
+                    .join("common")
+                    .join("unipi-browser-profiles")
+                    .join(host_key(host_dir))
+                    .join(name);
                 if twin.is_dir() {
                     let _ = std::fs::remove_dir_all(twin);
                 }
@@ -225,9 +265,19 @@ pub fn migrate(host_dir: &Path, now_ms: u64) -> anyhow::Result<bool> {
     std::fs::create_dir_all(root(host_dir))?;
     std::fs::rename(&legacy, &target)?;
     if !target.join(META_FILE).exists() {
-        save(host_dir, DEFAULT, &Meta { created: created_of(&target).min(now_ms).max(1), ..Meta::default() })?;
+        save(
+            host_dir,
+            DEFAULT,
+            &Meta {
+                created: created_of(&target).min(now_ms).max(1),
+                ..Meta::default()
+            },
+        )?;
     }
-    tracing::info!(op = "browser", "moved the old browser-profile to browser-profiles/default");
+    tracing::info!(
+        op = "browser",
+        "moved the old browser-profile to browser-profiles/default"
+    );
     Ok(true)
 }
 
@@ -261,7 +311,11 @@ pub fn pick_eviction(running: &[Slot], starting: &str, max: usize) -> Result<Vec
             if idle.is_empty() { "all are".to_string() } else { format!("{} of them are", others.len() - idle.len()) },
         ));
     }
-    Ok(idle.into_iter().take(need).map(|s| s.name.clone()).collect())
+    Ok(idle
+        .into_iter()
+        .take(need)
+        .map(|s| s.name.clone())
+        .collect())
 }
 
 #[cfg(test)]
@@ -273,7 +327,17 @@ mod tests {
         for ok in ["default", "a", "work-2", "x_y", &"a".repeat(40)] {
             assert!(valid_name(ok), "{ok}");
         }
-        for bad in ["", "Work", "a b", "a/b", "..", ".x", "é", &"a".repeat(41), "a.b"] {
+        for bad in [
+            "",
+            "Work",
+            "a b",
+            "a/b",
+            "..",
+            ".x",
+            "é",
+            &"a".repeat(41),
+            "a.b",
+        ] {
             assert!(!valid_name(bad), "{bad}");
             assert!(check_name(bad).is_err());
         }
@@ -282,11 +346,22 @@ mod tests {
     #[test]
     fn layout() {
         let host = Path::new("/h");
-        assert_eq!(dir(host, "default"), Path::new("/h/browser-profiles/default"));
+        assert_eq!(
+            dir(host, "default"),
+            Path::new("/h/browser-profiles/default")
+        );
         assert_eq!(dir(host, "test1"), Path::new("/h/browser-profiles/test1"));
         let home = Path::new("/home/me");
         let real = Path::new("/home/me/.unipi/app-host");
-        assert_eq!(chrome_dir(Path::new("/usr/bin/google-chrome"), host, "test1", Some(home)), Path::new("/h/browser-profiles/test1"));
+        assert_eq!(
+            chrome_dir(
+                Path::new("/usr/bin/google-chrome"),
+                host,
+                "test1",
+                Some(home)
+            ),
+            Path::new("/h/browser-profiles/test1")
+        );
         // The standard host dir's default keeps the UNI-287 snap path …
         assert_eq!(
             chrome_dir(Path::new("/snap/bin/chromium"), real, "default", Some(home)),
@@ -298,13 +373,20 @@ mod tests {
         assert_ne!(key, host_key(real));
         assert_eq!(
             chrome_dir(Path::new("/snap/bin/chromium"), host, "default", Some(home)),
-            Path::new("/home/me/snap/chromium/common/unipi-browser-profiles").join(&key).join("default")
+            Path::new("/home/me/snap/chromium/common/unipi-browser-profiles")
+                .join(&key)
+                .join("default")
         );
         assert_eq!(
             chrome_dir(Path::new("/snap/bin/chromium"), real, "test1", Some(home)),
-            Path::new("/home/me/snap/chromium/common/unipi-browser-profiles").join(host_key(real)).join("test1")
+            Path::new("/home/me/snap/chromium/common/unipi-browser-profiles")
+                .join(host_key(real))
+                .join("test1")
         );
-        assert_eq!(chrome_dir(Path::new("/snap/bin/chromium"), host, "test1", None), Path::new("/h/browser-profiles/test1"));
+        assert_eq!(
+            chrome_dir(Path::new("/snap/bin/chromium"), host, "test1", None),
+            Path::new("/h/browser-profiles/test1")
+        );
     }
 
     #[test]
@@ -312,7 +394,10 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let h = t.path();
         assert!(list(h).is_empty());
-        assert!(ensure(h, "nope", 1).unwrap_err().to_string().contains("profile create nope"));
+        assert!(ensure(h, "nope", 1)
+            .unwrap_err()
+            .to_string()
+            .contains("profile create nope"));
         assert_eq!(ensure(h, DEFAULT, 5).unwrap(), dir(h, DEFAULT));
         create(h, "zeta", 10).unwrap();
         create(h, "alpha", 11).unwrap();
@@ -322,18 +407,27 @@ mod tests {
         assert_eq!(list(h), ["default", "alpha", "zeta"]);
         touch(h, "alpha", 99, Some("sess-1")).unwrap();
         let meta = load(h, "alpha").unwrap().unwrap();
-        assert_eq!((meta.created, meta.last_used, meta.last_session.as_deref()), (11, Some(99), Some("sess-1")));
+        assert_eq!(
+            (meta.created, meta.last_used, meta.last_session.as_deref()),
+            (11, Some(99), Some("sess-1"))
+        );
         assert!(meta.cookie_domains.is_empty());
         // The cookie field round-trips (the cookie import writes it).
         record_cookie_domain(h, "alpha", "x.com", 100).unwrap();
         let domains = load(h, "alpha").unwrap().unwrap().cookie_domains;
-        assert_eq!((domains[0].domain.as_str(), domains[0].imported_at), ("x.com", 100));
+        assert_eq!(
+            (domains[0].domain.as_str(), domains[0].imported_at),
+            ("x.com", 100)
+        );
         // Importing again for the same domain bumps it instead of duplicating.
         record_cookie_domain(h, "alpha", "x.com", 200).unwrap();
         let domains = load(h, "alpha").unwrap().unwrap().cookie_domains;
         assert_eq!(domains.len(), 1);
         assert_eq!(domains[0].imported_at, 200);
-        assert!(remove(h, DEFAULT, None).unwrap_err().to_string().contains("default"));
+        assert!(remove(h, DEFAULT, None)
+            .unwrap_err()
+            .to_string()
+            .contains("default"));
         remove(h, "alpha", None).unwrap();
         assert!(load(h, "alpha").unwrap().is_none());
         assert!(remove(h, "alpha", None).is_err());
@@ -348,7 +442,10 @@ mod tests {
         std::fs::write(h.join(LEGACY_DIR).join("Default").join("Cookies"), "c").unwrap();
         assert!(migrate(h, 1_000).unwrap());
         assert!(!h.join(LEGACY_DIR).exists());
-        assert_eq!(std::fs::read_to_string(dir(h, DEFAULT).join("Default/Cookies")).unwrap(), "c");
+        assert_eq!(
+            std::fs::read_to_string(dir(h, DEFAULT).join("Default/Cookies")).unwrap(),
+            "c"
+        );
         assert!(load(h, DEFAULT).unwrap().unwrap().created > 0);
         // An old dir showing up again never replaces the new default.
         std::fs::create_dir_all(h.join(LEGACY_DIR)).unwrap();
@@ -358,25 +455,53 @@ mod tests {
 
     #[test]
     fn cap_stops_the_least_recently_used_idle_one() {
-        let s = |name: &str, busy, last_active| Slot { name: name.into(), busy, last_active };
+        let s = |name: &str, busy, last_active| Slot {
+            name: name.into(),
+            busy,
+            last_active,
+        };
         let none: Vec<String> = Vec::new();
         // Room left.
         assert_eq!(pick_eviction(&[s("a", true, 1)], "b", 3), Ok(none.clone()));
         // Already running: never counts against itself.
-        assert_eq!(pick_eviction(&[s("a", false, 1), s("b", false, 2), s("c", false, 3)], "b", 3), Ok(none.clone()));
+        assert_eq!(
+            pick_eviction(
+                &[s("a", false, 1), s("b", false, 2), s("c", false, 3)],
+                "b",
+                3
+            ),
+            Ok(none.clone())
+        );
         // Full: the oldest idle one goes, busy ones are kept.
         let full = [s("a", true, 1), s("b", false, 5), s("c", false, 3)];
         assert_eq!(pick_eviction(&full, "d", 3), Ok(vec!["c".to_string()]));
         // Cap 1.
-        assert_eq!(pick_eviction(&[s("default", false, 9)], "x", 1), Ok(vec!["default".to_string()]));
-        assert_eq!(pick_eviction(&[s("default", false, 9)], "x", 0), Ok(vec!["default".to_string()]), "0 acts as 1");
+        assert_eq!(
+            pick_eviction(&[s("default", false, 9)], "x", 1),
+            Ok(vec!["default".to_string()])
+        );
+        assert_eq!(
+            pick_eviction(&[s("default", false, 9)], "x", 0),
+            Ok(vec!["default".to_string()]),
+            "0 acts as 1"
+        );
         // The cap was lowered under what runs: as many as needed, oldest first.
-        assert_eq!(pick_eviction(&[s("a", false, 7), s("b", false, 2), s("c", false, 5)], "d", 1), Ok(vec!["b".to_string(), "c".to_string(), "a".to_string()]));
+        assert_eq!(
+            pick_eviction(
+                &[s("a", false, 7), s("b", false, 2), s("c", false, 5)],
+                "d",
+                1
+            ),
+            Ok(vec!["b".to_string(), "c".to_string(), "a".to_string()])
+        );
         // Not enough idle ones: refused, nothing stopped.
         let e = pick_eviction(&[s("a", true, 1), s("b", false, 2)], "c", 1).unwrap_err();
         assert!(e.contains("1 of them are in use"), "{e}");
         // All busy: refused with a clear error.
         let e = pick_eviction(&[s("a", true, 1), s("b", true, 2)], "c", 2).unwrap_err();
-        assert!(e.contains("all are in use") && e.contains("(a, b)") && e.contains("max_running"), "{e}");
+        assert!(
+            e.contains("all are in use") && e.contains("(a, b)") && e.contains("max_running"),
+            "{e}"
+        );
     }
 }

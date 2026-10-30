@@ -27,21 +27,29 @@ use unipi_proto::{AppErrorCode, Control, PushListData, PushOutcome};
 
 fn hello(req: serde_json::Value) -> Vec<u8> {
     let value = serde_json::json!({"type":"hello","proto":unipi_proto::PROTO_VERSION,"req":req});
-    unipi_proto::frame::encode(unipi_proto::FrameKind::Control, &serde_json::to_vec(&value).unwrap())
+    unipi_proto::frame::encode(
+        unipi_proto::FrameKind::Control,
+        &serde_json::to_vec(&value).unwrap(),
+    )
 }
 
 async fn request(conn: &Connection, req: serde_json::Value) -> Control {
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
     send.write_all(&hello(req)).await.unwrap();
     send.finish().unwrap();
-    let (_, bytes) = tokio::time::timeout(Duration::from_secs(40), read_frame(&mut recv)).await.unwrap().unwrap();
+    let (_, bytes) = tokio::time::timeout(Duration::from_secs(40), read_frame(&mut recv))
+        .await
+        .unwrap()
+        .unwrap();
     serde_json::from_slice(&bytes).unwrap()
 }
 
 /// `blob_get{path}`: the reply plus every output byte.
 async fn blob_get(conn: &Connection, path: &str) -> (Control, Vec<u8>) {
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
-    send.write_all(&hello(serde_json::json!({"op":"blob_get","path":path}))).await.unwrap();
+    send.write_all(&hello(serde_json::json!({"op":"blob_get","path":path})))
+        .await
+        .unwrap();
     send.finish().unwrap();
     let (_, bytes) = read_frame(&mut recv).await.unwrap();
     let reply: Control = serde_json::from_slice(&bytes).unwrap();
@@ -60,7 +68,9 @@ async fn blob_get(conn: &Connection, path: &str) -> (Control, Vec<u8>) {
 }
 
 fn list(reply: Control) -> PushListData {
-    let Control::Ok { data: Some(data) } = reply else { panic!("{reply:?}") };
+    let Control::Ok { data: Some(data) } = reply else {
+        panic!("{reply:?}")
+    };
     serde_json::from_value(data).unwrap()
 }
 
@@ -74,7 +84,10 @@ fn write_config(paths: &HostPaths, mut value: serde_json::Value) {
 }
 
 fn sha(bytes: &[u8]) -> String {
-    sha2::Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 struct Host {
@@ -101,8 +114,6 @@ async fn setup() -> Host {
         host_id: host.id(),
         host_name: "push-test-pc".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        protected: std::sync::Arc::new(vec![]),
-        board: Default::default(),
         cron: unipi_host::cron::Scheduler::new(paths.clone()),
     };
     let control = unipi_host::push::serve_control(ControlContext {
@@ -114,28 +125,54 @@ async fn setup() -> Host {
     })
     .await
     .unwrap();
-    let router = iroh::protocol::Router::builder(host.clone()).accept(ALPN, handler).spawn();
-    let phone = Endpoint::builder(presets::N0).relay_mode(RelayMode::Disabled).clear_address_lookup().bind().await.unwrap();
+    let router = iroh::protocol::Router::builder(host.clone())
+        .accept(ALPN, handler)
+        .spawn();
+    let phone = Endpoint::builder(presets::N0)
+        .relay_mode(RelayMode::Disabled)
+        .clear_address_lookup()
+        .bind()
+        .await
+        .unwrap();
     let conn = phone.connect(host.addr(), ALPN).await.unwrap();
-    Host { _temp: temp, paths, _router: router, _phone: phone, conn, _control: control }
+    Host {
+        _temp: temp,
+        paths,
+        _router: router,
+        _phone: phone,
+        conn,
+        _control: control,
+    }
 }
 
 async fn pair(conn: &Connection, paths: &HostPaths, name: &str) {
-    let state = PairingStore::new(paths.pairing()).start(now_unix()).unwrap();
-    let reply = request(conn, serde_json::json!({"op":"pair","code":state.code,"name":name})).await;
+    let state = PairingStore::new(paths.pairing())
+        .start(now_unix())
+        .unwrap();
+    let reply = request(
+        conn,
+        serde_json::json!({"op":"pair","code":state.code,"name":name}),
+    )
+    .await;
     assert!(matches!(reply, Control::Ok { .. }), "{reply:?}");
 }
 
 /// The CLI side: sends one request, returns a reader of events.
 async fn cli(paths: &HostPaths, request: ControlRequest) -> unipi_host::push::ControlLines {
-    let (lines, write) = unipi_host::push::connect_control(paths, &request).await.unwrap();
+    let (lines, write) = unipi_host::push::connect_control(paths, &request)
+        .await
+        .unwrap();
     // Keep the write half alive for the stream's lifetime (closing it = Ctrl+C).
     std::mem::forget(write);
     lines
 }
 
 async fn next_event(lines: &mut unipi_host::push::ControlLines) -> ControlEvent {
-    let line = tokio::time::timeout(Duration::from_secs(20), lines.next_line()).await.unwrap().unwrap().expect("event");
+    let line = tokio::time::timeout(Duration::from_secs(20), lines.next_line())
+        .await
+        .unwrap()
+        .unwrap()
+        .expect("event");
     serde_json::from_str(&line).unwrap()
 }
 
@@ -159,7 +196,9 @@ async fn push_lifecycle_cli_to_phone_and_back() {
 
     // Unpaired: refused like every op.
     let reply = request(conn, serde_json::json!({"op":"push_list"})).await;
-    assert!(matches!(reply, Control::Err { ref error } if error.code == AppErrorCode::E_UNAUTHORIZED));
+    assert!(
+        matches!(reply, Control::Err { ref error } if error.code == AppErrorCode::E_UNAUTHORIZED)
+    );
     pair(conn, paths, "Pixel").await;
 
     // A file outside $HOME-ish places (tempdir): only reachable as a push.
@@ -193,24 +232,43 @@ async fn push_lifecycle_cli_to_phone_and_back() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     // Before the push: the file is NOT readable by the phone.
     let (denied, _) = blob_get(conn, &apk_str).await;
-    assert!(matches!(denied, Control::Err { ref error } if error.code == AppErrorCode::E_UNAUTHORIZED), "{denied:?}");
+    assert!(
+        matches!(denied, Control::Err { ref error } if error.code == AppErrorCode::E_UNAUTHORIZED),
+        "{denied:?}"
+    );
 
     // …the CLI pushes; the phone is live, so no notification is attempted.
     let mut lines = cli(paths, push_request(&apk, &bytes, vec![])).await;
     let id = match next_event(&mut lines).await {
-        ControlEvent::Queued { id, devices, notified } => {
+        ControlEvent::Queued {
+            id,
+            devices,
+            notified,
+        } => {
             assert_eq!(devices, vec!["Pixel".to_string()]);
             assert!(!notified);
             id
         }
         other => panic!("{other:?}"),
     };
-    let woke = list(tokio::time::timeout(Duration::from_secs(5), poll).await.unwrap().unwrap());
+    let woke = list(
+        tokio::time::timeout(Duration::from_secs(5), poll)
+            .await
+            .unwrap()
+            .unwrap(),
+    );
     assert!(woke.enabled);
     assert_eq!(woke.pushes.len(), 1);
     let item = &woke.pushes[0];
     assert_eq!(item.id.as_str(), id);
-    assert_eq!((item.name.as_str(), item.size, item.mime.as_str()), ("app.apk", bytes.len() as u64, "application/vnd.android.package-archive"));
+    assert_eq!(
+        (item.name.as_str(), item.size, item.mime.as_str()),
+        (
+            "app.apk",
+            bytes.len() as u64,
+            "application/vnd.android.package-archive"
+        )
+    );
     assert_eq!(item.sha256.as_str(), sha(&bytes));
     assert_eq!(item.note.as_deref(), Some("fresh build"));
 
@@ -218,28 +276,44 @@ async fn push_lifecycle_cli_to_phone_and_back() {
     let (ok, body) = blob_get(conn, &item.path).await;
     assert!(matches!(ok, Control::Ok { .. }), "{ok:?}");
     assert_eq!(sha(&body), item.sha256.as_str());
-    assert!(matches!(next_event(&mut lines).await, ControlEvent::Fetching { ref device, .. } if device == "Pixel"));
+    assert!(
+        matches!(next_event(&mut lines).await, ControlEvent::Fetching { ref device, .. } if device == "Pixel")
+    );
 
     // Disabling push mid-way closes the file again (gate re-read each time).
     write_config(paths, serde_json::json!({"push":{"enabled":false}}));
     let (closed, _) = blob_get(conn, &item.path).await;
     assert!(matches!(closed, Control::Err { .. }), "{closed:?}");
-    let reply = request(conn, serde_json::json!({"op":"push_done","id":id,"outcome":"installed"})).await;
-    assert!(matches!(reply, Control::Err { ref error } if error.code == AppErrorCode::E_UNAUTHORIZED));
+    let reply = request(
+        conn,
+        serde_json::json!({"op":"push_done","id":id,"outcome":"installed"}),
+    )
+    .await;
+    assert!(
+        matches!(reply, Control::Err { ref error } if error.code == AppErrorCode::E_UNAUTHORIZED)
+    );
     write_config(paths, serde_json::json!({"push":{"enabled":true}}));
 
     // The phone answers; the CLI prints the outcome and finishes.
     let reply = request(conn, serde_json::json!({"op":"push_done","id":id,"outcome":"installed","detail":"system installer opened"})).await;
     assert!(matches!(reply, Control::Ok { .. }), "{reply:?}");
     match next_event(&mut lines).await {
-        ControlEvent::Done { outcome, device, detail, .. } => {
+        ControlEvent::Done {
+            outcome,
+            device,
+            detail,
+            ..
+        } => {
             assert_eq!(outcome, PushOutcome::Installed);
             assert_eq!(device, "Pixel");
             assert_eq!(detail.as_deref(), Some("system installer opened"));
         }
         other => panic!("{other:?}"),
     }
-    assert!(matches!(next_event(&mut lines).await, ControlEvent::Finished { .. }));
+    assert!(matches!(
+        next_event(&mut lines).await,
+        ControlEvent::Finished { .. }
+    ));
 
     // Done: no longer pending, the file is closed to the phone again.
     let after = list(request(conn, serde_json::json!({"op":"push_list"})).await);
@@ -247,7 +321,11 @@ async fn push_lifecycle_cli_to_phone_and_back() {
     let (closed, _) = blob_get(conn, &apk_str).await;
     assert!(matches!(closed, Control::Err { .. }));
     // A stale answer is harmless.
-    let reply = request(conn, serde_json::json!({"op":"push_done","id":id,"outcome":"dismissed"})).await;
+    let reply = request(
+        conn,
+        serde_json::json!({"op":"push_done","id":id,"outcome":"dismissed"}),
+    )
+    .await;
     assert!(matches!(reply, Control::Ok { .. }));
 }
 
@@ -262,14 +340,22 @@ async fn per_device_grant_device_filter_and_changed_file() {
     let bytes = std::fs::read(&file).unwrap();
 
     // Push is on, but only for a phone that isn't this one.
-    write_config(paths, serde_json::json!({"push":{"enabled":true,"devices":["Redmi"]}}));
+    write_config(
+        paths,
+        serde_json::json!({"push":{"enabled":true,"devices":["Redmi"]}}),
+    );
     let off = list(request(&host.conn, serde_json::json!({"op":"push_list"})).await);
     assert!(!off.enabled, "not granted to Pixel");
     let mut lines = cli(paths, push_request(&file, &bytes, vec![])).await;
-    assert!(matches!(next_event(&mut lines).await, ControlEvent::Error { ref message, .. } if message.contains("None of the paired phones")));
+    assert!(
+        matches!(next_event(&mut lines).await, ControlEvent::Error { ref message, .. } if message.contains("None of the paired phones"))
+    );
 
     // Granted; --device that matches nobody is explained.
-    write_config(paths, serde_json::json!({"push":{"enabled":true,"devices":["Pixel"]}}));
+    write_config(
+        paths,
+        serde_json::json!({"push":{"enabled":true,"devices":["Pixel"]}}),
+    );
     let mut lines = cli(paths, push_request(&file, &bytes, vec!["Galaxy".into()])).await;
     match next_event(&mut lines).await {
         ControlEvent::Error { message, hint } => {
@@ -285,7 +371,9 @@ async fn per_device_grant_device_filter_and_changed_file() {
         *sha256 = "0".repeat(64);
     }
     let mut lines = cli(paths, stale).await;
-    assert!(matches!(next_event(&mut lines).await, ControlEvent::Error { ref message, .. } if message.contains("changed")));
+    assert!(
+        matches!(next_event(&mut lines).await, ControlEvent::Error { ref message, .. } if message.contains("changed"))
+    );
 
     // --no-wait style (follow:false): queued, then the socket closes; list/cancel work.
     let mut quick = push_request(&file, &bytes, vec!["Pixel".into()]);
@@ -293,24 +381,48 @@ async fn per_device_grant_device_filter_and_changed_file() {
         *follow = false;
     }
     let mut lines = cli(paths, quick).await;
-    assert!(matches!(next_event(&mut lines).await, ControlEvent::Queued { .. }));
-    assert!(tokio::time::timeout(Duration::from_secs(5), lines.next_line()).await.unwrap().unwrap().is_none());
+    assert!(matches!(
+        next_event(&mut lines).await,
+        ControlEvent::Queued { .. }
+    ));
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), lines.next_line())
+            .await
+            .unwrap()
+            .unwrap()
+            .is_none()
+    );
     let pending = list(request(&host.conn, serde_json::json!({"op":"push_list"})).await);
     assert_eq!(pending.pushes[0].mime, "application/pdf");
     let mut lines = cli(paths, ControlRequest::List).await;
-    assert!(matches!(next_event(&mut lines).await, ControlEvent::Pending { ref pushes } if pushes.len() == 1));
+    assert!(
+        matches!(next_event(&mut lines).await, ControlEvent::Pending { ref pushes } if pushes.len() == 1)
+    );
     let mut lines = cli(paths, ControlRequest::Cancel { id: None }).await;
-    assert!(matches!(next_event(&mut lines).await, ControlEvent::Cancelled { ref ids } if ids.len() == 1));
-    assert!(list(request(&host.conn, serde_json::json!({"op":"push_list"})).await).pushes.is_empty());
+    assert!(
+        matches!(next_event(&mut lines).await, ControlEvent::Cancelled { ref ids } if ids.len() == 1)
+    );
+    assert!(
+        list(request(&host.conn, serde_json::json!({"op":"push_list"})).await)
+            .pushes
+            .is_empty()
+    );
 }
 
 #[tokio::test]
 async fn second_serve_refuses_the_same_control_socket_and_stale_socket_is_replaced() {
     let temp = tempfile::tempdir().unwrap();
     let paths = HostPaths::from_dir(temp.path());
-    let ctx = ControlContext { paths: paths.clone(), hub: PushHub::default(), host_name: "x".into(), notify: false, cron: unipi_host::cron::Scheduler::new(paths.clone()) };
+    let ctx = ControlContext {
+        paths: paths.clone(),
+        hub: PushHub::default(),
+        host_name: "x".into(),
+        notify: false,
+        cron: unipi_host::cron::Scheduler::new(paths.clone()),
+    };
     // A stale socket file from a crashed serve is replaced.
-    let stale = std::os::unix::net::UnixListener::bind(unipi_host::push::socket_path(&paths)).unwrap();
+    let stale =
+        std::os::unix::net::UnixListener::bind(unipi_host::push::socket_path(&paths)).unwrap();
     drop(stale);
     let first = unipi_host::push::serve_control(ctx.clone()).await.unwrap();
     let second = unipi_host::push::serve_control(ctx).await;
@@ -318,7 +430,13 @@ async fn second_serve_refuses_the_same_control_socket_and_stale_socket_is_replac
     first.abort();
     // CLI without a running serve: a clear message.
     let other = tempfile::tempdir().unwrap();
-    let err = unipi_host::push::connect_control(&HostPaths::from_dir(other.path()), &ControlRequest::List).await.err().expect("no serve: an error");
+    let err = unipi_host::push::connect_control(
+        &HostPaths::from_dir(other.path()),
+        &ControlRequest::List,
+    )
+    .await
+    .err()
+    .expect("no serve: an error");
     assert!(err.to_string().contains("isn't running"), "{err}");
 }
 
@@ -331,13 +449,23 @@ async fn second_serve_refuses_the_same_control_socket_and_stale_socket_is_replac
 async fn external_serve_push() {
     let dir = std::env::var("PUSH_HOST_DIR").unwrap_or_else(|_| "/tmp/pushhost".into());
     let paths = HostPaths::from_dir(&dir);
-    let cache: unipi_host::endpoint::EndpointCache = unipi_host::data_dir::read_json(&paths.endpoint()).unwrap().expect("serve running");
+    let cache: unipi_host::endpoint::EndpointCache =
+        unipi_host::data_dir::read_json(&paths.endpoint())
+            .unwrap()
+            .expect("serve running");
     let phone = Endpoint::builder(presets::N0).bind().await.unwrap();
     let conn = phone.connect(cache.addr.clone(), ALPN).await.unwrap();
     pair(&conn, &paths, "external-test-phone").await;
     let data = list(request(&conn, serde_json::json!({"op":"push_list","wait":25})).await);
-    assert!(data.enabled, "run `UNIPI_HOST_DIR={dir} unipi-host push enable`");
-    let item = data.pushes.first().expect("run `unipi-host push <file>` within 25 s").clone();
+    assert!(
+        data.enabled,
+        "run `UNIPI_HOST_DIR={dir} unipi-host push enable`"
+    );
+    let item = data
+        .pushes
+        .first()
+        .expect("run `unipi-host push <file>` within 25 s")
+        .clone();
     let (ok, body) = blob_get(&conn, &item.path).await;
     assert!(matches!(ok, Control::Ok { .. }));
     assert_eq!(sha(&body), item.sha256.as_str());

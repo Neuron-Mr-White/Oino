@@ -15,8 +15,10 @@ struct Fixture {
 
 #[test]
 fn shared_notify_fixtures_agree() {
-    let fixtures: Vec<Fixture> =
-        serde_json::from_str(include_str!("../../../apps/unipi/protocol/fixtures/notify.json")).unwrap();
+    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
+        "../../../apps/unipi/protocol/fixtures/notify.json"
+    ))
+    .unwrap();
     assert!(fixtures.len() >= 8);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {

@@ -77,12 +77,19 @@ impl JsonStream {
         match value.get("type").and_then(Value::as_str) {
             Some("session") => {
                 self.session_id = value.get("id").and_then(Value::as_str).map(str::to_string);
-                self.session_timestamp = value.get("timestamp").and_then(Value::as_str).map(str::to_string);
+                self.session_timestamp = value
+                    .get("timestamp")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
                 self.session_cwd = value.get("cwd").and_then(Value::as_str).map(str::to_string);
             }
             Some("turn_end") => {
                 self.add_cost(value.get("message").and_then(|m| m.get("usage")));
-                if let Some(content) = value.get("message").and_then(|m| m.get("content")).and_then(Value::as_array) {
+                if let Some(content) = value
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(Value::as_array)
+                {
                     let text: String = content
                         .iter()
                         .filter(|c| c.get("type").and_then(Value::as_str) == Some("text"))
@@ -95,13 +102,19 @@ impl JsonStream {
                 }
             }
             Some("usage") => self.add_cost(value.get("usage")),
-            Some("compaction_end") => self.add_cost(value.get("result").and_then(|r| r.get("usage"))),
+            Some("compaction_end") => {
+                self.add_cost(value.get("result").and_then(|r| r.get("usage")))
+            }
             _ => {}
         }
     }
 
     fn add_cost(&mut self, usage: Option<&Value>) {
-        if let Some(total) = usage.and_then(|u| u.get("cost")).and_then(|c| c.get("total")).and_then(Value::as_f64) {
+        if let Some(total) = usage
+            .and_then(|u| u.get("cost"))
+            .and_then(|c| c.get("total"))
+            .and_then(Value::as_f64)
+        {
             self.cost_usd += total;
         }
     }
@@ -123,11 +136,26 @@ impl JsonStream {
             .or_else(|| dirs_home().map(|h| h.join(".pi").join("agent")))?;
         let safe_cwd = {
             let stripped = cwd.trim_start_matches(['/', '\\']);
-            let replaced: String = stripped.chars().map(|c| if c == '/' || c == '\\' || c == ':' { '-' } else { c }).collect();
+            let replaced: String = stripped
+                .chars()
+                .map(|c| {
+                    if c == '/' || c == '\\' || c == ':' {
+                        '-'
+                    } else {
+                        c
+                    }
+                })
+                .collect();
             format!("--{replaced}--")
         };
-        let file_timestamp: String = timestamp.chars().map(|c| if c == ':' || c == '.' { '-' } else { c }).collect();
-        let path = agent_dir.join("sessions").join(safe_cwd).join(format!("{file_timestamp}_{id}.jsonl"));
+        let file_timestamp: String = timestamp
+            .chars()
+            .map(|c| if c == ':' || c == '.' { '-' } else { c })
+            .collect();
+        let path = agent_dir
+            .join("sessions")
+            .join(safe_cwd)
+            .join(format!("{file_timestamp}_{id}.jsonl"));
         path.is_file().then_some(path)
     }
 }
@@ -174,7 +202,11 @@ pub fn resolve_pi(path_list: &str) -> Option<std::path::PathBuf> {
 /// The paths to search for `pi`, in order: `path_list`, then (Windows only)
 /// npm's global prefix `%APPDATA%\npm` — a plain `npm i -g` there is not on
 /// PATH in a logon session.
-fn pi_search_dirs(path_list: &str, is_windows: bool, appdata: Option<&Path>) -> Vec<std::path::PathBuf> {
+fn pi_search_dirs(
+    path_list: &str,
+    is_windows: bool,
+    appdata: Option<&Path>,
+) -> Vec<std::path::PathBuf> {
     // The real platform splits with the stdlib (`;` on Windows); a caller
     // simulating the other platform gets the matching separator.
     let mut dirs: Vec<std::path::PathBuf> = if is_windows == cfg!(windows) {
@@ -220,14 +252,21 @@ pub fn resolve_pi_command(
             .iter()
             .map(|dir| dir.join("pi"))
             .find(|candidate| candidate.is_file())
-            .map(|program| PiCommand { program, args: Vec::new() });
+            .map(|program| PiCommand {
+                program,
+                args: Vec::new(),
+            });
     }
     for dir in &dirs {
         let exe = dir.join("pi.exe");
         if exe.is_file() {
-            return Some(PiCommand { program: exe, args: Vec::new() });
+            return Some(PiCommand {
+                program: exe,
+                args: Vec::new(),
+            });
         }
-        let cli = dir.join("node_modules")
+        let cli = dir
+            .join("node_modules")
             .join("@earendil-works")
             .join("pi-coding-agent")
             .join("dist")
@@ -250,7 +289,10 @@ pub fn resolve_pi_command(
 }
 
 /// `node.exe` on the same search list, else `%ProgramFiles%\nodejs\node.exe`.
-fn resolve_node_exe(dirs: &[std::path::PathBuf], program_files: Option<&Path>) -> Option<std::path::PathBuf> {
+fn resolve_node_exe(
+    dirs: &[std::path::PathBuf],
+    program_files: Option<&Path>,
+) -> Option<std::path::PathBuf> {
     if let Some(found) = dirs
         .iter()
         .map(|dir| dir.join("node.exe"))
@@ -300,17 +342,46 @@ pub struct RunSpec<'a> {
 /// capturing output into the run's log and returning the outcome.
 /// `paths`/`job_id`/`run_id` are where the log is appended as it streams
 /// in, so `cron runs`/`cron show` can tail a run while it's in progress.
-pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'_>, on_spawned: impl FnOnce(u32)) -> Outcome {
-    let RunSpec { prompt, cwd, model, thinking, time_limit_s, cost_cap_usd } = *spec;
+pub async fn run(
+    paths: &HostPaths,
+    job_id: &str,
+    run_id: &str,
+    spec: &RunSpec<'_>,
+    on_spawned: impl FnOnce(u32),
+) -> Outcome {
+    let RunSpec {
+        prompt,
+        cwd,
+        model,
+        thinking,
+        time_limit_s,
+        cost_cap_usd,
+    } = *spec;
     let raw_path = host_path(paths);
     let is_windows = cfg!(windows);
-    let appdata = std::env::var_os("APPDATA").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
-    let program_files = std::env::var_os("ProgramFiles").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
+    let appdata = std::env::var_os("APPDATA")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from);
+    let program_files = std::env::var_os("ProgramFiles")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from);
     let path_list = child_path(&raw_path, is_windows, appdata.as_deref());
-    let Some(pi_cmd) = resolve_pi_command(&raw_path, is_windows, appdata.as_deref(), program_files.as_deref()) else {
+    let Some(pi_cmd) = resolve_pi_command(
+        &raw_path,
+        is_windows,
+        appdata.as_deref(),
+        program_files.as_deref(),
+    ) else {
         let message = format!("pi not found on PATH ({raw_path})");
         let _ = store::append_log(paths, job_id, run_id, message.as_bytes());
-        return Outcome { status: RunStatus::Failed, exit_code: None, summary: None, reason: Some(message), session_path: None, cost_usd: None };
+        return Outcome {
+            status: RunStatus::Failed,
+            exit_code: None,
+            summary: None,
+            reason: Some(message),
+            session_path: None,
+            cost_usd: None,
+        };
     };
     let pi_bin = pi_cmd.program.clone();
 
@@ -343,7 +414,14 @@ pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'
         Err(e) => {
             let message = format!("couldn't start pi ({}): {e}", pi_bin.display());
             let _ = store::append_log(paths, job_id, run_id, message.as_bytes());
-            return Outcome { status: RunStatus::Failed, exit_code: None, summary: None, reason: Some(message), session_path: None, cost_usd: None };
+            return Outcome {
+                status: RunStatus::Failed,
+                exit_code: None,
+                summary: None,
+                reason: Some(message),
+                session_path: None,
+                cost_usd: None,
+            };
         }
     };
 
@@ -354,7 +432,11 @@ pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'
     let stderr = child.stderr.take().expect("piped");
     let json_stream = std::sync::Arc::new(tokio::sync::Mutex::new(JsonStream::default()));
 
-    let pump = |mut reader: tokio::process::ChildStdout, paths: HostPaths, job_id: String, run_id: String, stream: std::sync::Arc<tokio::sync::Mutex<JsonStream>>| async move {
+    let pump = |mut reader: tokio::process::ChildStdout,
+                paths: HostPaths,
+                job_id: String,
+                run_id: String,
+                stream: std::sync::Arc<tokio::sync::Mutex<JsonStream>>| async move {
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf).await {
@@ -366,7 +448,10 @@ pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'
             }
         }
     };
-    let pump_err = |mut reader: tokio::process::ChildStderr, paths: HostPaths, job_id: String, run_id: String| async move {
+    let pump_err = |mut reader: tokio::process::ChildStderr,
+                    paths: HostPaths,
+                    job_id: String,
+                    run_id: String| async move {
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf).await {
@@ -377,8 +462,19 @@ pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'
             }
         }
     };
-    let out_task = tokio::spawn(pump(stdout, paths.clone(), job_id.to_string(), run_id.to_string(), json_stream.clone()));
-    let err_task = tokio::spawn(pump_err(stderr, paths.clone(), job_id.to_string(), run_id.to_string()));
+    let out_task = tokio::spawn(pump(
+        stdout,
+        paths.clone(),
+        job_id.to_string(),
+        run_id.to_string(),
+        json_stream.clone(),
+    ));
+    let err_task = tokio::spawn(pump_err(
+        stderr,
+        paths.clone(),
+        job_id.to_string(),
+        run_id.to_string(),
+    ));
 
     let limit = Duration::from_secs(time_limit_s.max(1));
     let wait = tokio::time::timeout(limit, child.wait()).await;
@@ -395,7 +491,9 @@ pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'
     let (summary, session_path, cost_usd) = {
         let stream = json_stream.lock().await;
         let summary = stream.summary.clone().filter(|s| !s.is_empty());
-        let session_path = stream.session_path().map(|p| p.to_string_lossy().into_owned());
+        let session_path = stream
+            .session_path()
+            .map(|p| p.to_string_lossy().into_owned());
         let cost_usd = Some(stream.cost_usd);
         (summary, session_path, cost_usd)
     };
@@ -406,7 +504,14 @@ pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'
     if let (Some(cap), Some(cost)) = (cost_cap_usd, cost_usd) {
         if cost > cap {
             let reason = format!("cost cap: ${cost:.4} > ${cap:.4}");
-            return Outcome { status: RunStatus::Failed, exit_code: None, summary, reason: Some(reason), session_path, cost_usd };
+            return Outcome {
+                status: RunStatus::Failed,
+                exit_code: None,
+                summary,
+                reason: Some(reason),
+                session_path,
+                cost_usd,
+            };
         }
     }
 
@@ -414,13 +519,41 @@ pub async fn run(paths: &HostPaths, job_id: &str, run_id: &str, spec: &RunSpec<'
         Ok(Ok(status)) => {
             let code = status.code();
             if status.success() {
-                Outcome { status: RunStatus::Ok, exit_code: code, summary, reason: None, session_path, cost_usd }
+                Outcome {
+                    status: RunStatus::Ok,
+                    exit_code: code,
+                    summary,
+                    reason: None,
+                    session_path,
+                    cost_usd,
+                }
             } else {
-                Outcome { status: RunStatus::Failed, exit_code: code, summary, reason: Some(format!("pi exited with status {status}")), session_path, cost_usd }
+                Outcome {
+                    status: RunStatus::Failed,
+                    exit_code: code,
+                    summary,
+                    reason: Some(format!("pi exited with status {status}")),
+                    session_path,
+                    cost_usd,
+                }
             }
         }
-        Ok(Err(e)) => Outcome { status: RunStatus::Failed, exit_code: None, summary, reason: Some(format!("couldn't wait for pi: {e}")), session_path, cost_usd },
-        Err(_) => Outcome { status: RunStatus::Timeout, exit_code: None, summary, reason: Some(format!("exceeded the {time_limit_s}s time limit")), session_path, cost_usd },
+        Ok(Err(e)) => Outcome {
+            status: RunStatus::Failed,
+            exit_code: None,
+            summary,
+            reason: Some(format!("couldn't wait for pi: {e}")),
+            session_path,
+            cost_usd,
+        },
+        Err(_) => Outcome {
+            status: RunStatus::Timeout,
+            exit_code: None,
+            summary,
+            reason: Some(format!("exceeded the {time_limit_s}s time limit")),
+            session_path,
+            cost_usd,
+        },
     }
 }
 
@@ -486,7 +619,10 @@ mod tests {
         let list = format!("{};{}", dir_a.display(), dir_b.display());
         assert_eq!(
             resolve_pi_command(&list, true, None, None),
-            Some(PiCommand { program: exe, args: vec![] })
+            Some(PiCommand {
+                program: exe,
+                args: vec![]
+            })
         );
     }
 
@@ -519,7 +655,10 @@ mod tests {
         touch(&dir.join("pi.cmd"));
         touch(&dir.join("node.exe"));
         // A `pi.cmd` with no pi-coding-agent next to it is some other pi.
-        assert_eq!(resolve_pi_command(&dir.display().to_string(), true, None, None), None);
+        assert_eq!(
+            resolve_pi_command(&dir.display().to_string(), true, None, None),
+            None
+        );
     }
 
     #[test]
@@ -537,7 +676,9 @@ mod tests {
         let program_files = tmp.path().join("pf");
         let node = program_files.join("nodejs").join("node.exe");
         touch(&node);
-        let found = resolve_pi_command(&dir.display().to_string(), true, None, Some(&program_files)).unwrap();
+        let found =
+            resolve_pi_command(&dir.display().to_string(), true, None, Some(&program_files))
+                .unwrap();
         assert_eq!(found.program, node);
         assert_eq!(found.args, vec![cli.display().to_string()]);
     }
@@ -552,7 +693,10 @@ mod tests {
         let list = format!("/does/not/exist:{}", tmp.path().display());
         assert_eq!(
             resolve_pi_command(&list, false, None, None),
-            Some(PiCommand { program: exe, args: vec![] })
+            Some(PiCommand {
+                program: exe,
+                args: vec![]
+            })
         );
     }
 
@@ -592,7 +736,11 @@ mod tests {
         s.feed(br#"{"type":"turn_end","message":{"content":[{"type":"text","text":"final answer"}],"usage":{"cost":{"total":0.005}}}}"#);
         s.feed(b"\n");
         assert_eq!(s.summary.as_deref(), Some("final answer"));
-        assert!((s.cost_usd - 0.035).abs() < 1e-9, "cost_usd: {}", s.cost_usd);
+        assert!(
+            (s.cost_usd - 0.035).abs() < 1e-9,
+            "cost_usd: {}",
+            s.cost_usd
+        );
         assert_eq!(s.session_id.as_deref(), Some("abc"));
     }
 

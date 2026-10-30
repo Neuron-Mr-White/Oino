@@ -3,6 +3,8 @@
 //! UnifiedPush endpoint into app-endpoints.json in the shape notify's
 //! fan-out already reads.
 
+// v2 H1: env-mutating tests serialize on a std Mutex across awaits (test-only; no contention on the guard).
+#![allow(clippy::await_holding_lock)]
 use unipi_host::{
     data_dir::HostPaths,
     devices::DeviceStore,
@@ -21,8 +23,6 @@ fn handler(paths: HostPaths) -> Handler {
         host_id: iroh::SecretKey::generate().public(),
         host_name: "Test".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        protected: std::sync::Arc::new(Vec::new()),
-        board: Default::default(),
     }
 }
 
@@ -34,7 +34,7 @@ async fn request(host: Handler, remote: iroh::EndpointId, req: Request) -> Contr
     });
     let (mut read, mut write) = tokio::io::split(client);
     let hello = Control::Hello {
-        proto: "1.0.0".to_owned().try_into().unwrap(),
+        proto: unipi_proto::PROTO_VERSION.to_owned().try_into().unwrap(),
         req,
     };
     write_control(&mut write, &hello).await.unwrap();
@@ -74,19 +74,28 @@ async fn notify_config_returns_key_and_ntfy_connection() {
     assert_eq!(data["app_detail"], "full");
     let key_b64 = data["key"].as_str().unwrap();
     use base64::Engine;
-    let key_bytes = base64::engine::general_purpose::STANDARD.decode(key_b64).unwrap();
+    let key_bytes = base64::engine::general_purpose::STANDARD
+        .decode(key_b64)
+        .unwrap();
     assert_eq!(key_bytes.len(), 32);
 
     // The key is persisted in the host's data dir, same bytes next time.
     let persisted = unipi_host::notify::notify_key_or_create(&paths).unwrap();
-    assert_eq!(base64::engine::general_purpose::STANDARD.encode(persisted), key_b64);
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD.encode(persisted),
+        key_b64
+    );
 }
 
 #[tokio::test]
 async fn notify_config_without_config_json_omits_server_but_still_returns_a_key() {
     let _lock = NOTIFY_ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let data_dir = tempfile::tempdir().unwrap();
-    let missing = tempfile::tempdir().unwrap().path().join("nope").join("config.json");
+    let missing = tempfile::tempdir()
+        .unwrap()
+        .path()
+        .join("nope")
+        .join("config.json");
     std::env::set_var(unipi_host::notify::UNIPI_NOTIFY_CONFIG_ENV, &missing);
 
     let paths = HostPaths::from_dir(data_dir.path());
@@ -112,7 +121,10 @@ async fn notify_register_writes_app_endpoints_json() {
     let data_dir = tempfile::tempdir().unwrap();
     let endpoints_dir = tempfile::tempdir().unwrap();
     let endpoints_path = endpoints_dir.path().join("app-endpoints.json");
-    std::env::set_var(unipi_host::notify::UNIPI_NOTIFY_ENDPOINTS_ENV, &endpoints_path);
+    std::env::set_var(
+        unipi_host::notify::UNIPI_NOTIFY_ENDPOINTS_ENV,
+        &endpoints_path,
+    );
 
     let paths = HostPaths::from_dir(data_dir.path());
     let host = handler(paths.clone());
@@ -120,8 +132,10 @@ async fn notify_register_writes_app_endpoints_json() {
     let remote = iroh::SecretKey::generate().public();
     devices.add(&remote, "Phone".into()).unwrap();
 
-    let endpoint: unipi_proto::NotifyEndpoint =
-        "https://ntfy.sh/unipi-phone-endpoint-abc".to_string().try_into().unwrap();
+    let endpoint: unipi_proto::NotifyEndpoint = "https://ntfy.sh/unipi-phone-endpoint-abc"
+        .to_string()
+        .try_into()
+        .unwrap();
     let reply = request(host, remote, Request::NotifyRegister { endpoint }).await;
     std::env::remove_var(unipi_host::notify::UNIPI_NOTIFY_ENDPOINTS_ENV);
 
@@ -130,7 +144,10 @@ async fn notify_register_writes_app_endpoints_json() {
     let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let endpoints = parsed["endpoints"].as_array().unwrap();
     assert_eq!(endpoints.len(), 1);
-    assert_eq!(endpoints[0]["url"], "https://ntfy.sh/unipi-phone-endpoint-abc");
+    assert_eq!(
+        endpoints[0]["url"],
+        "https://ntfy.sh/unipi-phone-endpoint-abc"
+    );
 }
 
 #[tokio::test]

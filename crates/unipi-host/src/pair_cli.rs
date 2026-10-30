@@ -27,10 +27,23 @@ use crate::pairing::{now_unix, PairingState, PairingStore};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum PairEvent {
-    Waiting { link: String, code: String, expires_at: u64, host: String },
-    Paired { device: String },
-    Expired { reason: ExpiredReason },
-    Error { message: String, #[serde(skip_serializing_if = "Option::is_none")] hint: Option<String> },
+    Waiting {
+        link: String,
+        code: String,
+        expires_at: u64,
+        host: String,
+    },
+    Paired {
+        device: String,
+    },
+    Expired {
+        reason: ExpiredReason,
+    },
+    Error {
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hint: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -56,19 +69,32 @@ pub struct Started {
 
 impl Started {
     pub fn event(&self) -> PairEvent {
-        PairEvent::Waiting { link: self.link.clone(), code: self.state.code.clone(), expires_at: self.state.expires_at, host: self.host.clone() }
+        PairEvent::Waiting {
+            link: self.link.clone(),
+            code: self.state.code.clone(),
+            expires_at: self.state.expires_at,
+            host: self.host.clone(),
+        }
     }
 }
 
 /// `10m`, `90s`, `90` → seconds (1 s … 1 h).
 pub fn parse_ttl(ttl: &str) -> anyhow::Result<u64> {
     let t = ttl.trim();
-    let seconds = if let Some(m) = t.strip_suffix('m') { m.parse::<u64>()? * 60 } else { t.trim_end_matches('s').parse::<u64>()? };
-    anyhow::ensure!((1..=3600).contains(&seconds), "--ttl must be between 1s and 60m");
+    let seconds = if let Some(m) = t.strip_suffix('m') {
+        m.parse::<u64>()? * 60
+    } else {
+        t.trim_end_matches('s').parse::<u64>()?
+    };
+    anyhow::ensure!(
+        (1..=3600).contains(&seconds),
+        "--ttl must be between 1s and 60m"
+    );
     Ok(seconds)
 }
 
-pub const NOT_RUNNING: &str = "`unipi-host serve` isn't running on this PC — start unipi-host serve first";
+pub const NOT_RUNNING: &str =
+    "`unipi-host serve` isn't running on this PC — start unipi-host serve first";
 
 /// The hint for "serve isn't running": the command for this OS.
 pub fn start_hint() -> &'static str {
@@ -83,14 +109,23 @@ pub fn start_hint() -> &'static str {
 
 /// Is a `serve` answering on this data dir's control channel?
 pub async fn serve_running(paths: &HostPaths) -> bool {
-    let Ok((mut lines, _write)) = crate::push::connect_control(paths, &crate::push::ControlRequest::List).await else { return false };
-    matches!(tokio::time::timeout(Duration::from_secs(5), lines.next_line()).await, Ok(Ok(Some(_))))
+    let Ok((mut lines, _write)) =
+        crate::push::connect_control(paths, &crate::push::ControlRequest::List).await
+    else {
+        return false;
+    };
+    matches!(
+        tokio::time::timeout(Duration::from_secs(5), lines.next_line()).await,
+        Ok(Ok(Some(_)))
+    )
 }
 
 /// Starts a new attempt (replacing any previous one) and builds its link.
 pub async fn start(paths: &HostPaths, ttl_secs: u64, host: &str) -> anyhow::Result<Started> {
     let cache: Option<EndpointCache> = crate::data_dir::read_json(&paths.endpoint())?;
-    let Some(cache) = cache else { anyhow::bail!(NOT_RUNNING) };
+    let Some(cache) = cache else {
+        anyhow::bail!(NOT_RUNNING)
+    };
     anyhow::ensure!(serve_running(paths).await, NOT_RUNNING);
     let store = PairingStore::new(paths.pairing());
     let mut state = store.start(now_unix())?;
@@ -98,19 +133,32 @@ pub async fn start(paths: &HostPaths, ttl_secs: u64, host: &str) -> anyhow::Resu
     crate::data_dir::write_json(&paths.pairing(), &state)?;
     let ticket = crate::pair_link::pairing_ticket(&cache.addr);
     let link = crate::pair_link::pairing_link(&ticket, &state.code, host)?;
-    Ok(Started { state, link, host: host.to_string() })
+    Ok(Started {
+        state,
+        link,
+        host: host.to_string(),
+    })
 }
 
 /// UNI-232: start an attempt from inside `serve` (the `pair_begin` op): the
 /// running endpoint's address is passed in, so no control-socket check.
-pub fn start_in_serve(paths: &HostPaths, addr: &iroh::EndpointAddr, ttl_secs: u64, host: &str) -> anyhow::Result<Started> {
+pub fn start_in_serve(
+    paths: &HostPaths,
+    addr: &iroh::EndpointAddr,
+    ttl_secs: u64,
+    host: &str,
+) -> anyhow::Result<Started> {
     let store = PairingStore::new(paths.pairing());
     let mut state = store.start(now_unix())?;
     state.expires_at = state.created_at + ttl_secs;
     crate::data_dir::write_json(&paths.pairing(), &state)?;
     let ticket = crate::pair_link::pairing_ticket(addr);
     let link = crate::pair_link::pairing_link(&ticket, &state.code, host)?;
-    Ok(Started { state, link, host: host.to_string() })
+    Ok(Started {
+        state,
+        link,
+        host: host.to_string(),
+    })
 }
 
 /// UNI-232: `pair_status` for a code (the app only knows the code): the
@@ -118,17 +166,34 @@ pub fn start_in_serve(paths: &HostPaths, addr: &iroh::EndpointAddr, ttl_secs: u6
 pub fn status_for_code(paths: &HostPaths, code: &str, now: u64) -> anyhow::Result<PairEvent> {
     let current = PairingStore::new(paths.pairing()).current()?;
     let Some(current) = current.filter(|c| c.code == code) else {
-        return Ok(PairEvent::Expired { reason: ExpiredReason::Replaced });
+        return Ok(PairEvent::Expired {
+            reason: ExpiredReason::Replaced,
+        });
     };
-    Ok(check(paths, &current, now)?.unwrap_or(PairEvent::Waiting { link: String::new(), code: current.code.clone(), expires_at: current.expires_at, host: String::new() }))
+    Ok(check(paths, &current, now)?.unwrap_or(PairEvent::Waiting {
+        link: String::new(),
+        code: current.code.clone(),
+        expires_at: current.expires_at,
+        host: String::new(),
+    }))
 }
 
 /// One look at `pairing.json`: `None` = still waiting.
-pub fn check(paths: &HostPaths, ours: &PairingState, now: u64) -> anyhow::Result<Option<PairEvent>> {
+pub fn check(
+    paths: &HostPaths,
+    ours: &PairingState,
+    now: u64,
+) -> anyhow::Result<Option<PairEvent>> {
     let current = PairingStore::new(paths.pairing()).current()?;
-    let Some(current) = current else { return Ok(Some(PairEvent::Expired { reason: ExpiredReason::Replaced })) };
+    let Some(current) = current else {
+        return Ok(Some(PairEvent::Expired {
+            reason: ExpiredReason::Replaced,
+        }));
+    };
     if current.code != ours.code {
-        return Ok(Some(PairEvent::Expired { reason: ExpiredReason::Replaced }));
+        return Ok(Some(PairEvent::Expired {
+            reason: ExpiredReason::Replaced,
+        }));
     }
     if current.used {
         // The device this code added: paired at or after the attempt began.
@@ -137,13 +202,19 @@ pub fn check(paths: &HostPaths, ours: &PairingState, now: u64) -> anyhow::Result
             .into_iter()
             .filter(|d| d.paired_at >= ours.created_at)
             .max_by_key(|d| d.paired_at);
-        return Ok(Some(PairEvent::Paired { device: device.map(|d| d.name).unwrap_or_else(|| "Phone".into()) }));
+        return Ok(Some(PairEvent::Paired {
+            device: device.map(|d| d.name).unwrap_or_else(|| "Phone".into()),
+        }));
     }
     if current.is_locked_out() {
-        return Ok(Some(PairEvent::Expired { reason: ExpiredReason::Locked }));
+        return Ok(Some(PairEvent::Expired {
+            reason: ExpiredReason::Locked,
+        }));
     }
     if current.is_expired(now) {
-        return Ok(Some(PairEvent::Expired { reason: ExpiredReason::Timeout }));
+        return Ok(Some(PairEvent::Expired {
+            reason: ExpiredReason::Timeout,
+        }));
     }
     Ok(None)
 }
@@ -152,14 +223,21 @@ pub fn check(paths: &HostPaths, ours: &PairingState, now: u64) -> anyhow::Result
 /// screen stops working at once. Leaves a newer attempt alone.
 pub fn cancel(paths: &HostPaths, ours: &PairingState) -> anyhow::Result<()> {
     let store = PairingStore::new(paths.pairing());
-    if store.current()?.is_some_and(|c| c.code == ours.code && !c.used) {
+    if store
+        .current()?
+        .is_some_and(|c| c.code == ours.code && !c.used)
+    {
         store.clear()?;
     }
     Ok(())
 }
 
 /// Polls until paired / expired; `cancelled` resolving ends it as Cancelled.
-pub async fn wait(paths: &HostPaths, ours: &PairingState, cancelled: impl std::future::Future<Output = ()>) -> anyhow::Result<PairEvent> {
+pub async fn wait(
+    paths: &HostPaths,
+    ours: &PairingState,
+    cancelled: impl std::future::Future<Output = ()>,
+) -> anyhow::Result<PairEvent> {
     tokio::pin!(cancelled);
     loop {
         if let Some(event) = check(paths, ours, now_unix())? {
@@ -185,8 +263,12 @@ pub fn stdin_is_pipe() -> bool {
     {
         use std::os::fd::AsFd;
         use std::os::unix::fs::FileTypeExt;
-        let Ok(fd) = std::io::stdin().as_fd().try_clone_to_owned() else { return false };
-        std::fs::File::from(fd).metadata().is_ok_and(|m| m.file_type().is_fifo() || m.file_type().is_socket())
+        let Ok(fd) = std::io::stdin().as_fd().try_clone_to_owned() else {
+            return false;
+        };
+        std::fs::File::from(fd)
+            .metadata()
+            .is_ok_and(|m| m.file_type().is_fifo() || m.file_type().is_socket())
     }
     #[cfg(windows)]
     {
@@ -226,11 +308,38 @@ mod tests {
 
     #[test]
     fn json_lines_shape() {
-        let w = PairEvent::Waiting { link: "unipi://pair?t=x&c=AB&n=pc".into(), code: "AB".into(), expires_at: 5, host: "pc".into() };
-        assert_eq!(serde_json::to_string(&w).unwrap(), r#"{"state":"waiting","link":"unipi://pair?t=x&c=AB&n=pc","code":"AB","expires_at":5,"host":"pc"}"#);
-        assert_eq!(serde_json::to_string(&PairEvent::Paired { device: "Pixel 9".into() }).unwrap(), r#"{"state":"paired","device":"Pixel 9"}"#);
-        assert_eq!(serde_json::to_string(&PairEvent::Expired { reason: ExpiredReason::Timeout }).unwrap(), r#"{"state":"expired","reason":"timeout"}"#);
-        assert_eq!(serde_json::to_string(&PairEvent::Error { message: "m".into(), hint: None }).unwrap(), r#"{"state":"error","message":"m"}"#);
+        let w = PairEvent::Waiting {
+            link: "unipi://pair?t=x&c=AB&n=pc".into(),
+            code: "AB".into(),
+            expires_at: 5,
+            host: "pc".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&w).unwrap(),
+            r#"{"state":"waiting","link":"unipi://pair?t=x&c=AB&n=pc","code":"AB","expires_at":5,"host":"pc"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&PairEvent::Paired {
+                device: "Pixel 9".into()
+            })
+            .unwrap(),
+            r#"{"state":"paired","device":"Pixel 9"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&PairEvent::Expired {
+                reason: ExpiredReason::Timeout
+            })
+            .unwrap(),
+            r#"{"state":"expired","reason":"timeout"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&PairEvent::Error {
+                message: "m".into(),
+                hint: None
+            })
+            .unwrap(),
+            r#"{"state":"error","message":"m"}"#
+        );
     }
 
     #[test]
@@ -250,16 +359,31 @@ mod tests {
         let store = PairingStore::new(paths.pairing());
         let ours = store.start(1000).unwrap();
         assert_eq!(check(&paths, &ours, 1001).unwrap(), None);
-        assert_eq!(check(&paths, &ours, ours.expires_at).unwrap(), Some(PairEvent::Expired { reason: ExpiredReason::Timeout }));
+        assert_eq!(
+            check(&paths, &ours, ours.expires_at).unwrap(),
+            Some(PairEvent::Expired {
+                reason: ExpiredReason::Timeout
+            })
+        );
         // Wrong codes until locked out.
         for _ in 0..crate::pairing::MAX_ATTEMPTS {
             store.verify("WRONGWRONG", 1001).unwrap();
         }
-        assert_eq!(check(&paths, &ours, 1001).unwrap(), Some(PairEvent::Expired { reason: ExpiredReason::Locked }));
+        assert_eq!(
+            check(&paths, &ours, 1001).unwrap(),
+            Some(PairEvent::Expired {
+                reason: ExpiredReason::Locked
+            })
+        );
         // A newer attempt replaces ours.
         let ours = store.start(1000).unwrap();
         let _newer = store.start(1000).unwrap();
-        assert_eq!(check(&paths, &ours, 1001).unwrap(), Some(PairEvent::Expired { reason: ExpiredReason::Replaced }));
+        assert_eq!(
+            check(&paths, &ours, 1001).unwrap(),
+            Some(PairEvent::Expired {
+                reason: ExpiredReason::Replaced
+            })
+        );
         // Cancel leaves the newer one alone; cancelling the current one removes it.
         cancel(&paths, &ours).unwrap();
         assert!(store.current().unwrap().is_some());

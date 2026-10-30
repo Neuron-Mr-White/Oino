@@ -2,7 +2,7 @@
 name = "unipi-host"
 version = "1.0.0"
 edition = "2021"
-description = "unipi-host daemon + CLI: iroh endpoint, pairing, herdr/tmux session list and attach (unipi/app/1)"
+description = "unipi-host daemon + CLI: iroh endpoint, pairing, host services (unipi/oino/1)"
 license = "MIT"
 
 [[bin]]
@@ -14,8 +14,8 @@ unipi-proto = { path = "../unipi-proto" }
 
 tokio = { version = "1", features = ["full"] }
 dunce = "1"
-iroh = "1.3"
-iroh-tickets = "1.0"
+iroh.workspace = true
+iroh-tickets.workspace = true
 clap = { version = "4", features = ["derive"] }
 portable-pty = "0.9"
 qrcode = "0.14"
@@ -54,8 +54,6 @@ sha1 = "0.10"
 tempfile = "3"
 tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-# UNI-216 desktop streaming: H.264 encoder (built from source, static — musl ok).
-openh264 = "0.9"
 croner = "4.0.1"
 chrono-tz = "0.10.4"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
@@ -67,31 +65,9 @@ iana-time-zone = "0.1.65"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# Linux desktop capture backends (optional; on by default via features).
-[target.'cfg(target_os = "linux")'.dependencies]
-x11rb = { version = "0.13", optional = true, features = ["xtest"] }
-ashpd = { version = "0.13", optional = true, default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
-# UNI-252: GNOME's own org.gnome.Mutter.{ScreenCast,RemoteDesktop} (pure-Rust D-Bus).
-zbus = { version = "5", optional = true, default-features = false, features = ["tokio"] }
-
-# UNI-247: Windows host — GDI capture + SendInput.
+# UNI-247: Windows — named-pipe detection in `pair_cli`.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Graphics_Gdi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }
-
-# UNI-246 H4: macOS host — CGDisplay capture + CGEvent input.
-[target.'cfg(target_os = "macos")'.dependencies]
-core-graphics = { version = "0.25", features = ["highsierra"] }
-
-[features]
-# X11 capture/input (pure Rust) and the Wayland portal (pure-Rust D-Bus; the
-# PipeWire stream is read through `gst-launch-1.0 pipewiresrc`, so nothing
-# links libpipewire) are on by default and build static/musl.
-# `desktop-mutter` (GNOME, no share dialog) likewise. All three are Linux-only
-# and compile to nothing on macOS/Windows, which use their native capture.
-default = ["desktop-x11", "desktop-portal", "desktop-mutter"]
-desktop-x11 = ["dep:x11rb"]
-desktop-portal = ["dep:ashpd"]
-desktop-mutter = ["dep:zbus"]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -99,8 +75,3 @@ tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 base64 = "0.22"
 aes-gcm = "0.11"
-
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-# UNI-216: the fake xdg-desktop-portal in tests/desktop_portal.rs.
-zbus = { version = "5", default-features = false, features = ["tokio"] }
-x11rb = { version = "0.13", features = ["xtest"] }

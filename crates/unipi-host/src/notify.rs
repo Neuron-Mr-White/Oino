@@ -34,7 +34,10 @@ pub fn notify_key_or_create(paths: &HostPaths) -> anyhow::Result<[u8; KEY_LEN]> 
     match std::fs::read(&path) {
         Ok(bytes) => {
             let array: [u8; KEY_LEN] = bytes.as_slice().try_into().map_err(|_| {
-                anyhow::anyhow!("notify-key must be exactly {KEY_LEN} bytes, got {}", bytes.len())
+                anyhow::anyhow!(
+                    "notify-key must be exactly {KEY_LEN} bytes, got {}",
+                    bytes.len()
+                )
             })?;
             Ok(array)
         }
@@ -148,8 +151,15 @@ pub fn notify_config_json_path() -> PathBuf {
         }
     }
     match crate::fs::home_dir_opt() {
-        Some(home) => home.join(".unipi").join("config").join("notify").join("config.json"),
-        None => PathBuf::from(".unipi").join("config").join("notify").join("config.json"),
+        Some(home) => home
+            .join(".unipi")
+            .join("config")
+            .join("notify")
+            .join("config.json"),
+        None => PathBuf::from(".unipi")
+            .join("config")
+            .join("notify")
+            .join("config.json"),
     }
 }
 
@@ -180,7 +190,11 @@ pub fn read_gotify_config(path: &Path) -> GotifyConnection {
     let Ok(parsed) = serde_json::from_str::<NotifyConfigJson>(&raw) else {
         return GotifyConnection::default();
     };
-    GotifyConnection { server_url: parsed.gotify.server_url, app_token: parsed.gotify.app_token, enabled: parsed.gotify.enabled }
+    GotifyConnection {
+        server_url: parsed.gotify.server_url,
+        app_token: parsed.gotify.app_token,
+        enabled: parsed.gotify.enabled,
+    }
 }
 
 /// Reads the Telegram connection details from `path` (missing/corrupt file
@@ -192,13 +206,21 @@ pub fn read_telegram_config(path: &Path) -> TelegramConnection {
     let Ok(parsed) = serde_json::from_str::<NotifyConfigJson>(&raw) else {
         return TelegramConnection::default();
     };
-    TelegramConnection { bot_token: parsed.telegram.bot_token, chat_id: parsed.telegram.chat_id, enabled: parsed.telegram.enabled }
+    TelegramConnection {
+        bot_token: parsed.telegram.bot_token,
+        chat_id: parsed.telegram.chat_id,
+        enabled: parsed.telegram.enabled,
+    }
 }
 
 /// Which notify channels the user has enabled in their own config
 /// (UNI-316): `cron add/edit`'s default when `--notify` isn't given.
 /// Order: ntfy, gotify, telegram.
-pub fn default_channels(ntfy: &NtfyConnection, gotify: &GotifyConnection, telegram: &TelegramConnection) -> Vec<String> {
+pub fn default_channels(
+    ntfy: &NtfyConnection,
+    gotify: &GotifyConnection,
+    telegram: &TelegramConnection,
+) -> Vec<String> {
     let mut out = Vec::new();
     if ntfy.enabled {
         out.push("ntfy".to_string());
@@ -216,11 +238,24 @@ pub fn default_channels(ntfy: &NtfyConnection, gotify: &GotifyConnection, telegr
 /// header `X-Gotify-Key: <app token>` — same shape as
 /// `packages/notify/platforms/gotify.ts`'s `sendGotifyNotification`.
 /// Never logs `title`/`message` (they may carry the job's summary).
-pub async fn send_gotify(connection: &GotifyConnection, title: &str, message: &str, priority: u32) -> anyhow::Result<()> {
-    let server = connection.server_url.as_deref().ok_or_else(|| anyhow::anyhow!("no gotify server configured"))?;
-    let token = connection.app_token.as_deref().ok_or_else(|| anyhow::anyhow!("no gotify app token configured"))?;
+pub async fn send_gotify(
+    connection: &GotifyConnection,
+    title: &str,
+    message: &str,
+    priority: u32,
+) -> anyhow::Result<()> {
+    let server = connection
+        .server_url
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("no gotify server configured"))?;
+    let token = connection
+        .app_token
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("no gotify app token configured"))?;
     let url = format!("{}/message", server.trim_end_matches('/'));
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
     let response = client
         .post(url)
         .header("X-Gotify-Key", token)
@@ -238,13 +273,29 @@ pub async fn send_gotify(connection: &GotifyConnection, title: &str, message: &s
 /// `packages/notify/platforms/telegram.ts`'s `sendTelegramNotification`
 /// (plain text here, not MarkdownV2, so the job name/summary never needs
 /// escaping). Never logs the bot token.
-pub async fn send_telegram(connection: &TelegramConnection, title: &str, message: &str) -> anyhow::Result<()> {
-    let token = connection.bot_token.as_deref().ok_or_else(|| anyhow::anyhow!("no telegram bot token configured"))?;
-    let chat_id = connection.chat_id.as_deref().ok_or_else(|| anyhow::anyhow!("no telegram chat id configured"))?;
+pub async fn send_telegram(
+    connection: &TelegramConnection,
+    title: &str,
+    message: &str,
+) -> anyhow::Result<()> {
+    let token = connection
+        .bot_token
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("no telegram bot token configured"))?;
+    let chat_id = connection
+        .chat_id
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("no telegram chat id configured"))?;
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
     let text = format!("{title}\n{message}");
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?;
-    let response = client.post(url).json(&serde_json::json!({ "chat_id": chat_id, "text": text })).send().await?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let response = client
+        .post(url)
+        .json(&serde_json::json!({ "chat_id": chat_id, "text": text }))
+        .send()
+        .await?;
     if !response.status().is_success() {
         anyhow::bail!("telegram: HTTP {}", response.status());
     }
@@ -278,8 +329,15 @@ pub fn app_endpoints_path() -> PathBuf {
         }
     }
     match crate::fs::home_dir_opt() {
-        Some(home) => home.join(".unipi").join("config").join("notify").join("app-endpoints.json"),
-        None => PathBuf::from(".unipi").join("config").join("notify").join("app-endpoints.json"),
+        Some(home) => home
+            .join(".unipi")
+            .join("config")
+            .join("notify")
+            .join("app-endpoints.json"),
+        None => PathBuf::from(".unipi")
+            .join("config")
+            .join("notify")
+            .join("app-endpoints.json"),
     }
 }
 
@@ -297,7 +355,10 @@ pub fn register_app_endpoint(path: &Path, url: &str) -> anyhow::Result<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    file.endpoints.push(AppEndpointEntry { url: trimmed.to_string(), added_at });
+    file.endpoints.push(AppEndpointEntry {
+        url: trimmed.to_string(),
+        added_at,
+    });
     let bytes = serde_json::to_vec_pretty(&file)?;
     write_atomic(path, &bytes)?;
     Ok(())
@@ -321,10 +382,16 @@ pub fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> anyhow::Result<Vec<u8>>
 
 /// `unipi1:` + base64(iv || ciphertext+tag) of a JSON payload, matching
 /// the pi-side `packages/notify/platforms/ntfy-crypto.ts` format exactly.
-pub fn encrypt_envelope(key: &[u8; KEY_LEN], payload: &serde_json::Value) -> anyhow::Result<String> {
+pub fn encrypt_envelope(
+    key: &[u8; KEY_LEN],
+    payload: &serde_json::Value,
+) -> anyhow::Result<String> {
     let plaintext = serde_json::to_vec(payload)?;
     let bytes = encrypt(key, &plaintext)?;
-    Ok(format!("unipi1:{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+    Ok(format!(
+        "unipi1:{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
 }
 
 /// Builds and POSTs one encrypted test notification straight to the
@@ -332,8 +399,14 @@ pub fn encrypt_envelope(key: &[u8; KEY_LEN], payload: &serde_json::Value) -> any
 /// "UniPi"; `message` is the ciphertext envelope. Best-effort HTTP errors
 /// surface as `anyhow::Error` for the caller to report.
 pub async fn send_test(connection: &NtfyConnection, key: &[u8; KEY_LEN]) -> anyhow::Result<()> {
-    let server = connection.server.as_deref().ok_or_else(|| anyhow::anyhow!("no ntfy server configured"))?;
-    let topic = connection.topic.as_deref().ok_or_else(|| anyhow::anyhow!("no ntfy topic configured"))?;
+    let server = connection
+        .server
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("no ntfy server configured"))?;
+    let topic = connection
+        .topic
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("no ntfy topic configured"))?;
     let payload = serde_json::json!({
         "title": "UniPi",
         "body": "Test notification from the PC.",
@@ -341,9 +414,9 @@ pub async fn send_test(connection: &NtfyConnection, key: &[u8; KEY_LEN]) -> anyh
     });
     let message = encrypt_envelope(key, &payload)?;
     let client = reqwest::Client::new();
-    let mut req = client
-        .post(server.trim_end_matches('/'))
-        .json(&serde_json::json!({ "topic": topic, "title": "UniPi", "message": message, "priority": 3 }));
+    let mut req = client.post(server.trim_end_matches('/')).json(
+        &serde_json::json!({ "topic": topic, "title": "UniPi", "message": message, "priority": 3 }),
+    );
     if let Some(token) = &connection.token {
         req = req.bearer_auth(token);
     }
@@ -365,7 +438,11 @@ pub fn read_app_endpoints(path: &Path) -> Vec<String> {
 
 /// The ntfy JSON publish body for one encrypted payload (`topic` omitted
 /// for UnifiedPush endpoints, whose URL already names it).
-pub fn publish_body(topic: Option<&str>, key: &[u8; KEY_LEN], payload: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+pub fn publish_body(
+    topic: Option<&str>,
+    key: &[u8; KEY_LEN],
+    payload: &serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
     let mut body = serde_json::json!({ "title": "UniPi", "message": encrypt_envelope(key, payload)?, "priority": 4 });
     if let Some(topic) = topic {
         body["topic"] = serde_json::Value::String(topic.to_string());
@@ -383,11 +460,16 @@ pub async fn send_payload(
     key: &[u8; KEY_LEN],
     payload: &serde_json::Value,
 ) -> anyhow::Result<usize> {
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build()?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
     let mut sent = 0usize;
     let mut last_error = None;
-    if let (Some(server), Some(topic)) = (connection.server.as_deref(), connection.topic.as_deref()) {
-        let mut req = client.post(server.trim_end_matches('/')).json(&publish_body(Some(topic), key, payload)?);
+    if let (Some(server), Some(topic)) = (connection.server.as_deref(), connection.topic.as_deref())
+    {
+        let mut req = client
+            .post(server.trim_end_matches('/'))
+            .json(&publish_body(Some(topic), key, payload)?);
         if let Some(token) = &connection.token {
             req = req.bearer_auth(token);
         }
@@ -398,7 +480,12 @@ pub async fn send_payload(
         }
     }
     for url in endpoints {
-        match client.post(url).json(&publish_body(None, key, payload)?).send().await {
+        match client
+            .post(url)
+            .json(&publish_body(None, key, payload)?)
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => sent += 1,
             Ok(r) => last_error = Some(anyhow::anyhow!("endpoint: HTTP {}", r.status())),
             Err(e) => last_error = Some(e.into()),
@@ -431,7 +518,11 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let paths = HostPaths::from_dir(tmp.path());
         notify_key_or_create(&paths).expect("key");
-        let mode = std::fs::metadata(paths.notify_key()).expect("meta").permissions().mode() & 0o777;
+        let mode = std::fs::metadata(paths.notify_key())
+            .expect("meta")
+            .permissions()
+            .mode()
+            & 0o777;
         assert_eq!(mode, 0o600);
     }
 
@@ -506,18 +597,25 @@ mod tests {
         let path = tmp.path().join("app-endpoints.json");
         assert!(read_app_endpoints(&path).is_empty());
         register_app_endpoint(&path, "https://ntfy.sh/up1").expect("register");
-        assert_eq!(read_app_endpoints(&path), vec!["https://ntfy.sh/up1".to_string()]);
+        assert_eq!(
+            read_app_endpoints(&path),
+            vec!["https://ntfy.sh/up1".to_string()]
+        );
     }
 
     #[test]
     fn publish_body_hides_the_payload() {
         let key = [9u8; KEY_LEN];
-        let payload = serde_json::json!({"title":"Incoming from coffee","body":"secret.apk","kind":"push"});
+        let payload =
+            serde_json::json!({"title":"Incoming from coffee","body":"secret.apk","kind":"push"});
         let body = publish_body(Some("t"), &key, &payload).expect("body");
         assert_eq!(body["topic"], "t");
         assert_eq!(body["title"], "UniPi");
         assert!(!body.to_string().contains("secret.apk"));
-        assert!(publish_body(None, &key, &payload).expect("body").get("topic").is_none());
+        assert!(publish_body(None, &key, &payload)
+            .expect("body")
+            .get("topic")
+            .is_none());
     }
 
     #[test]
@@ -530,7 +628,10 @@ mod tests {
         )
         .expect("write");
         let gotify = read_gotify_config(&path);
-        assert_eq!(gotify.server_url, Some("https://gotify.example".to_string()));
+        assert_eq!(
+            gotify.server_url,
+            Some("https://gotify.example".to_string())
+        );
         assert_eq!(gotify.app_token, Some("tok_g".to_string()));
         assert!(gotify.enabled);
         let telegram = read_telegram_config(&path);
@@ -541,18 +642,42 @@ mod tests {
 
     #[test]
     fn default_channels_reflects_the_users_enabled_platforms() {
-        let ntfy = NtfyConnection { enabled: true, ..Default::default() };
-        let gotify = GotifyConnection { enabled: false, ..Default::default() };
-        let telegram = TelegramConnection { enabled: true, ..Default::default() };
-        assert_eq!(default_channels(&ntfy, &gotify, &telegram), vec!["ntfy".to_string(), "telegram".to_string()]);
-        assert!(default_channels(&NtfyConnection::default(), &GotifyConnection::default(), &TelegramConnection::default()).is_empty());
+        let ntfy = NtfyConnection {
+            enabled: true,
+            ..Default::default()
+        };
+        let gotify = GotifyConnection {
+            enabled: false,
+            ..Default::default()
+        };
+        let telegram = TelegramConnection {
+            enabled: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            default_channels(&ntfy, &gotify, &telegram),
+            vec!["ntfy".to_string(), "telegram".to_string()]
+        );
+        assert!(default_channels(
+            &NtfyConnection::default(),
+            &GotifyConnection::default(),
+            &TelegramConnection::default()
+        )
+        .is_empty());
     }
 
     /// A one-shot fake HTTP server: replies `status` to the first request
     /// on 127.0.0.1, and hands back the raw request bytes it received (so
     /// a test can check headers/body without a real gotify/telegram).
-    async fn fake_http_server(status: &'static str) -> (std::net::SocketAddr, tokio::sync::oneshot::Receiver<Vec<u8>>) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    async fn fake_http_server(
+        status: &'static str,
+    ) -> (
+        std::net::SocketAddr,
+        tokio::sync::oneshot::Receiver<Vec<u8>>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
         let addr = listener.local_addr().expect("addr");
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
@@ -561,7 +686,8 @@ mod tests {
             let mut buf = vec![0u8; 8192];
             let n = socket.read(&mut buf).await.unwrap_or(0);
             buf.truncate(n);
-            let body = format!("HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
+            let body =
+                format!("HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
             let _ = socket.write_all(body.as_bytes()).await;
             let _ = socket.shutdown().await;
             let _ = tx.send(buf);
@@ -572,57 +698,92 @@ mod tests {
     #[tokio::test]
     async fn send_gotify_posts_message_with_key_header() {
         let (addr, rx) = fake_http_server("200 OK").await;
-        let connection = GotifyConnection { server_url: Some(format!("http://{addr}")), app_token: Some("tok_g".to_string()), enabled: true };
-        send_gotify(&connection, "Cron: digest ok", "Secret summary text", 5).await.expect("send");
+        let connection = GotifyConnection {
+            server_url: Some(format!("http://{addr}")),
+            app_token: Some("tok_g".to_string()),
+            enabled: true,
+        };
+        send_gotify(&connection, "Cron: digest ok", "Secret summary text", 5)
+            .await
+            .expect("send");
         let request = String::from_utf8_lossy(&rx.await.expect("request")).to_string();
         assert!(request.contains("POST /message"), "request: {request}");
-        assert!(request.to_lowercase().contains("x-gotify-key: tok_g"), "request: {request}");
-        assert!(request.contains("Secret summary text"), "request: {request}");
+        assert!(
+            request.to_lowercase().contains("x-gotify-key: tok_g"),
+            "request: {request}"
+        );
+        assert!(
+            request.contains("Secret summary text"),
+            "request: {request}"
+        );
     }
 
     #[tokio::test]
     async fn send_gotify_reports_http_errors() {
         let (addr, _rx) = fake_http_server("500 Internal Server Error").await;
-        let connection = GotifyConnection { server_url: Some(format!("http://{addr}")), app_token: Some("tok_g".to_string()), enabled: true };
-        let error = send_gotify(&connection, "t", "m", 5).await.expect_err("should fail");
+        let connection = GotifyConnection {
+            server_url: Some(format!("http://{addr}")),
+            app_token: Some("tok_g".to_string()),
+            enabled: true,
+        };
+        let error = send_gotify(&connection, "t", "m", 5)
+            .await
+            .expect_err("should fail");
         assert!(error.to_string().contains("500"), "error: {error}");
     }
 
     #[tokio::test]
     async fn send_telegram_posts_chat_id_and_text() {
         let (addr, rx) = fake_http_server("200 OK").await;
-        let connection = TelegramConnection { bot_token: Some("tok_t".to_string()), chat_id: Some("42".to_string()), enabled: true };
+        let connection = TelegramConnection {
+            bot_token: Some("tok_t".to_string()),
+            chat_id: Some("42".to_string()),
+            enabled: true,
+        };
         // send_telegram always builds api.telegram.org's URL internally; we
         // can't redirect that without touching DNS, so exercise the HTTP
         // framing itself against the fake server by sending a telegram-shaped
         // body straight through the same client pattern used by send_telegram
         // (chat_id + text as JSON), confirming the fake server sees it.
         let client = reqwest::Client::new();
-        let text = format!("Cron: digest ok\nSecret summary text");
+        let text = "Cron: digest ok\nSecret summary text".to_string();
         let response = client
-            .post(format!("http://{addr}/bot{}/sendMessage", connection.bot_token.as_deref().unwrap()))
+            .post(format!(
+                "http://{addr}/bot{}/sendMessage",
+                connection.bot_token.as_deref().unwrap()
+            ))
             .json(&serde_json::json!({ "chat_id": connection.chat_id, "text": text }))
             .send()
             .await
             .expect("send");
         assert!(response.status().is_success());
         let request = String::from_utf8_lossy(&rx.await.expect("request")).to_string();
-        assert!(request.contains("/bottok_t/sendMessage"), "request: {request}");
-        assert!(request.contains("Secret summary text"), "request: {request}");
+        assert!(
+            request.contains("/bottok_t/sendMessage"),
+            "request: {request}"
+        );
+        assert!(
+            request.contains("Secret summary text"),
+            "request: {request}"
+        );
         assert!(request.contains("\"chat_id\":\"42\""), "request: {request}");
     }
 
     #[tokio::test]
     async fn send_gotify_without_config_fails_clearly() {
         let connection = GotifyConnection::default();
-        let error = send_gotify(&connection, "t", "m", 5).await.expect_err("should fail");
+        let error = send_gotify(&connection, "t", "m", 5)
+            .await
+            .expect_err("should fail");
         assert!(error.to_string().contains("no gotify"), "error: {error}");
     }
 
     #[tokio::test]
     async fn send_telegram_without_config_fails_clearly() {
         let connection = TelegramConnection::default();
-        let error = send_telegram(&connection, "t", "m").await.expect_err("should fail");
+        let error = send_telegram(&connection, "t", "m")
+            .await
+            .expect_err("should fail");
         assert!(error.to_string().contains("no telegram"), "error: {error}");
     }
 }

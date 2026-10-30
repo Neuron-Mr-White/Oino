@@ -48,7 +48,9 @@ impl Mode {
     }
     /// The mode when `--mode` isn't given: a systemd unit sets INVOCATION_ID.
     pub fn detect() -> Mode {
-        if std::env::var_os("INVOCATION_ID").is_some() || std::env::var_os("UNIPI_HOST_SERVICE").is_some() {
+        if std::env::var_os("INVOCATION_ID").is_some()
+            || std::env::var_os("UNIPI_HOST_SERVICE").is_some()
+        {
             Mode::Service
         } else {
             Mode::Manual
@@ -90,7 +92,13 @@ pub enum AcquireError {
 impl std::fmt::Display for AcquireError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AcquireError::Held(Some(o)) => write!(f, "unipi-host is already running (pid {}, mode {}, version {})", o.pid, o.mode.as_str(), o.version),
+            AcquireError::Held(Some(o)) => write!(
+                f,
+                "unipi-host is already running (pid {}, mode {}, version {})",
+                o.pid,
+                o.mode.as_str(),
+                o.version
+            ),
             AcquireError::Held(None) => write!(f, "unipi-host is already running"),
             AcquireError::Io(e) => write!(f, "can't lock the host data dir: {e}"),
         }
@@ -134,11 +142,18 @@ pub fn acquire(paths: &HostPaths, mode: Mode) -> Result<InstanceLock, AcquireErr
         }
         Err(std::fs::TryLockError::Error(e)) => return Err(AcquireError::Io(e)),
     }
-    let owner = Owner { pid: std::process::id(), version: env!("CARGO_PKG_VERSION").to_string(), mode, started_at: crate::pairing::now_unix() };
+    let owner = Owner {
+        pid: std::process::id(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        mode,
+        started_at: crate::pairing::now_unix(),
+    };
     let body = serde_json::to_string(&owner).expect("owner serializes");
     file.set_len(0).map_err(AcquireError::Io)?;
     file.seek(SeekFrom::Start(0)).map_err(AcquireError::Io)?;
-    file.write_all(body.as_bytes()).and_then(|_| file.flush()).map_err(AcquireError::Io)?;
+    file.write_all(body.as_bytes())
+        .and_then(|_| file.flush())
+        .map_err(AcquireError::Io)?;
     Ok(InstanceLock { _file: file, owner })
 }
 
@@ -152,7 +167,9 @@ pub enum Status {
         #[serde(skip_serializing_if = "Option::is_none")]
         last: Option<Owner>,
     },
-    Running { owner: Option<Owner> },
+    Running {
+        owner: Option<Owner>,
+    },
 }
 
 /// Probe the lock without keeping it.
@@ -195,14 +212,12 @@ pub fn exit_with_parent(pid: u32, on_exit: impl FnOnce() + Send + 'static) {
             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
         }
     }
-    std::thread::spawn(move || {
-        loop {
-            if !alive(pid) {
-                on_exit();
-                std::process::exit(0);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(500));
+    std::thread::spawn(move || loop {
+        if !alive(pid) {
+            on_exit();
+            std::process::exit(0);
         }
+        std::thread::sleep(std::time::Duration::from_millis(500));
     });
 }
 
@@ -241,7 +256,15 @@ mod tests {
             }
             other => panic!("expected Held, got {other:?}"),
         }
-        assert!(matches!(status(&paths).unwrap(), Status::Running { owner: Some(Owner { mode: Mode::App, .. }) }));
+        assert!(matches!(
+            status(&paths).unwrap(),
+            Status::Running {
+                owner: Some(Owner {
+                    mode: Mode::App,
+                    ..
+                })
+            }
+        ));
         drop(first);
         // Released: the leftover file reports the last owner, not "running".
         // (Parallel tests that fork can hold a copy of the fd until their exec — wait it out.)
@@ -261,7 +284,10 @@ mod tests {
     #[test]
     fn status_without_a_lock_file() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(status(&HostPaths::from_dir(dir.path())).unwrap(), Status::NotRunning { last: None });
+        assert_eq!(
+            status(&HostPaths::from_dir(dir.path())).unwrap(),
+            Status::NotRunning { last: None }
+        );
     }
 
     #[test]

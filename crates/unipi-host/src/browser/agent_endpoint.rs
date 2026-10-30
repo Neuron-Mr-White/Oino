@@ -64,7 +64,8 @@ fn write(root: &Path, endpoint: &AgentEndpoint) -> std::io::Result<()> {
 /// the port; works whether or not the serve runs (it re-reads the file).
 pub fn set_profile(root: &Path, profile: &str) -> anyhow::Result<AgentEndpoint> {
     profiles::check_name(profile)?;
-    let mut endpoint = read(root).ok_or_else(|| anyhow::anyhow!("the host isn't running (no {FILE}); start it first"))?;
+    let mut endpoint = read(root)
+        .ok_or_else(|| anyhow::anyhow!("the host isn't running (no {FILE}); start it first"))?;
     endpoint.profile = profile.to_string();
     write(root, &endpoint)?;
     Ok(endpoint)
@@ -85,13 +86,24 @@ async fn bind(root: &Path) -> std::io::Result<TcpListener> {
 pub async fn serve(paths: HostPaths) -> anyhow::Result<u16> {
     let listener = bind(&paths.root).await?;
     let port = listener.local_addr()?.port();
-    let profile = read(&paths.root).map(|e| e.profile).unwrap_or_else(|| profiles::DEFAULT.to_string());
-    write(&paths.root, &AgentEndpoint { port, profile, pid: Some(std::process::id()) })?;
+    let profile = read(&paths.root)
+        .map(|e| e.profile)
+        .unwrap_or_else(|| profiles::DEFAULT.to_string());
+    write(
+        &paths.root,
+        &AgentEndpoint {
+            port,
+            profile,
+            pid: Some(std::process::id()),
+        },
+    )?;
     tracing::info!(op = "browser_agent", port, "stable agent endpoint ready");
     let paths = Arc::new(paths);
     tokio::spawn(async move {
         loop {
-            let Ok((stream, _)) = listener.accept().await else { continue };
+            let Ok((stream, _)) = listener.accept().await else {
+                continue;
+            };
             let paths = paths.clone();
             tokio::spawn(async move {
                 if let Err(error) = connection(&paths, stream, port).await {
@@ -113,20 +125,34 @@ pub fn forget(root: &Path) {
 async fn connection(paths: &HostPaths, mut client: TcpStream, ours: u16) -> anyhow::Result<()> {
     let config = BrowserConfig::load(&paths.config())?;
     if config.explicit_off {
-        refuse(&mut client, "The browser is off on this PC. Ask the user to turn it on in the UniPi app.").await;
+        refuse(
+            &mut client,
+            "The browser is off on this PC. Ask the user to turn it on in the UniPi app.",
+        )
+        .await;
         return Ok(());
     }
-    let profile = read(&paths.root).map(|e| e.profile).unwrap_or_else(|| profiles::DEFAULT.to_string());
+    let profile = read(&paths.root)
+        .map(|e| e.profile)
+        .unwrap_or_else(|| profiles::DEFAULT.to_string());
     let manager = Manager::for_paths(paths);
     let running = match manager.start(&profile, &config, None).await {
         Ok((_, running)) => running,
         Err(error) => {
-            refuse(&mut client, &format!("The browser could not start: {}", error.message.as_str())).await;
+            refuse(
+                &mut client,
+                &format!("The browser could not start: {}", error.message.as_str()),
+            )
+            .await;
             return Ok(());
         }
     };
     let Some(gate) = running.gate_port() else {
-        refuse(&mut client, "The browser's agent endpoint isn't ready yet; try again in a moment.").await;
+        refuse(
+            &mut client,
+            "The browser's agent endpoint isn't ready yet; try again in a moment.",
+        )
+        .await;
         return Ok(());
     };
     let upstream = TcpStream::connect(("127.0.0.1", gate)).await?;
@@ -137,10 +163,17 @@ async fn connection(paths: &HostPaths, mut client: TcpStream, ours: u16) -> anyh
 /// (it only appears in `/json*` bodies and their `Content-Length` changes
 /// with it — so rewrite whole HTTP replies, and pass websocket frames as
 /// they are).
-async fn splice(client: TcpStream, upstream: TcpStream, gate: u16, ours: u16) -> anyhow::Result<()> {
+async fn splice(
+    client: TcpStream,
+    upstream: TcpStream,
+    gate: u16,
+    ours: u16,
+) -> anyhow::Result<()> {
     let mut head = vec![0u8; 16 * 1024];
     let n = client.peek(&mut head).await?;
-    let is_ws = String::from_utf8_lossy(&head[..n]).to_ascii_lowercase().contains("upgrade: websocket");
+    let is_ws = String::from_utf8_lossy(&head[..n])
+        .to_ascii_lowercase()
+        .contains("upgrade: websocket");
     let (mut client_rx, mut client_tx) = client.into_split();
     let (mut up_rx, mut up_tx) = upstream.into_split();
     let to_gate = tokio::spawn(async move {
@@ -152,7 +185,9 @@ async fn splice(client: TcpStream, upstream: TcpStream, gate: u16, ours: u16) ->
     } else {
         let mut reply = Vec::new();
         up_rx.read_to_end(&mut reply).await?;
-        client_tx.write_all(&rewrite_reply(&reply, gate, ours)).await?;
+        client_tx
+            .write_all(&rewrite_reply(&reply, gate, ours))
+            .await?;
     }
     let _ = client_tx.shutdown().await;
     to_gate.abort();
@@ -162,7 +197,13 @@ async fn splice(client: TcpStream, upstream: TcpStream, gate: u16, ours: u16) ->
 /// An HTTP reply with `127.0.0.1:<gate>` swapped for ours and the
 /// `Content-Length` fixed to match.
 pub fn rewrite_reply(reply: &[u8], gate: u16, ours: u16) -> Vec<u8> {
-    let Some(split) = reply.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4) else { return reply.to_vec() };
+    let Some(split) = reply
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| i + 4)
+    else {
+        return reply.to_vec();
+    };
     let (head, body) = reply.split_at(split);
     let body = super::gate::rewrite_ports(&String::from_utf8_lossy(body), gate, ours);
     let head = String::from_utf8_lossy(head);
@@ -202,18 +243,32 @@ mod tests {
     #[test]
     fn replies_point_at_the_stable_port_with_a_fixed_length() {
         let body = r#"{"webSocketDebuggerUrl":"ws://127.0.0.1:41234/devtools/browser/x"}"#;
-        let reply = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len());
+        let reply = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
         let out = String::from_utf8(rewrite_reply(reply.as_bytes(), 41234, 9)).unwrap();
         assert!(out.contains("ws://127.0.0.1:9/devtools/browser/x"), "{out}");
         let (head, new_body) = out.split_once("\r\n\r\n").unwrap();
-        assert!(head.contains(&format!("Content-Length: {}", new_body.len())), "{head}");
+        assert!(
+            head.contains(&format!("Content-Length: {}", new_body.len())),
+            "{head}"
+        );
     }
 
     #[test]
     fn the_file_round_trips_and_profile_switches_keep_the_port() {
         let dir = tempfile::tempdir().unwrap();
         assert!(set_profile(dir.path(), "shop").is_err(), "no host yet");
-        write(dir.path(), &AgentEndpoint { port: 4242, profile: "default".into(), pid: Some(1) }).unwrap();
+        write(
+            dir.path(),
+            &AgentEndpoint {
+                port: 4242,
+                profile: "default".into(),
+                pid: Some(1),
+            },
+        )
+        .unwrap();
         let switched = set_profile(dir.path(), "shop").unwrap();
         assert_eq!((switched.port, switched.profile.as_str()), (4242, "shop"));
         assert!(set_profile(dir.path(), "Bad Name!").is_err());
@@ -226,7 +281,15 @@ mod tests {
         let first = bind(dir.path()).await.unwrap();
         let port = first.local_addr().unwrap().port();
         drop(first);
-        write(dir.path(), &AgentEndpoint { port, profile: "default".into(), pid: None }).unwrap();
+        write(
+            dir.path(),
+            &AgentEndpoint {
+                port,
+                profile: "default".into(),
+                pid: None,
+            },
+        )
+        .unwrap();
         let again = bind(dir.path()).await.unwrap();
         assert_eq!(again.local_addr().unwrap().port(), port);
     }

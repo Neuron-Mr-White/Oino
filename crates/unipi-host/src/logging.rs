@@ -74,14 +74,22 @@ fn serve_to_file(paths: &HostPaths, serve: bool) -> bool {
 fn open_log(paths: &HostPaths) -> Option<TeeWriter> {
     let path = log_path(paths);
     std::fs::create_dir_all(path.parent()?).ok()?;
-    let rotate = std::fs::metadata(&path).map(|meta| meta.len() > MAX_BYTES).unwrap_or(false);
+    let rotate = std::fs::metadata(&path)
+        .map(|meta| meta.len() > MAX_BYTES)
+        .unwrap_or(false);
     if rotate {
         let old = path.with_extension("log.1");
         let _ = std::fs::remove_file(&old);
         let _ = std::fs::rename(&path, &old);
     }
-    let file = std::fs::OpenOptions::new().create(true).append(true).open(&path).ok()?;
-    Some(TeeWriter { inner: Arc::new(Mutex::new(file)) })
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok()?;
+    Some(TeeWriter {
+        inner: Arc::new(Mutex::new(file)),
+    })
 }
 
 /// Writes every line to the log file *and* stderr (a manual run in a console
@@ -103,7 +111,9 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for TeeWriter {
     type Writer = TeeGuard;
 
     fn make_writer(&'a self) -> Self::Writer {
-        TeeGuard { inner: self.inner.clone() }
+        TeeGuard {
+            inner: self.inner.clone(),
+        }
     }
 }
 
@@ -132,6 +142,9 @@ mod tests {
     #[test]
     fn log_path_sits_under_the_data_dir() {
         let paths = HostPaths::from_dir("/tmp/unipi-test-host");
-        assert_eq!(log_path(&paths), std::path::Path::new("/tmp/unipi-test-host/logs/host.log"));
+        assert_eq!(
+            log_path(&paths),
+            std::path::Path::new("/tmp/unipi-test-host/logs/host.log")
+        );
     }
 }

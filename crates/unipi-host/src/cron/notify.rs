@@ -33,7 +33,10 @@ pub fn event_for_status(status: RunStatus) -> Option<&'static str> {
 
 /// `notify.channels` if set, else the user's enabled channels.
 pub fn resolve_channels(job: &Job, default_channels: &[String]) -> Vec<String> {
-    job.notify.as_ref().and_then(|n| n.channels.clone()).unwrap_or_else(|| default_channels.to_vec())
+    job.notify
+        .as_ref()
+        .and_then(|n| n.channels.clone())
+        .unwrap_or_else(|| default_channels.to_vec())
 }
 
 /// `notify.events` if set, else `["failed"]`.
@@ -60,8 +63,12 @@ pub fn should_notify(job: &Job, status: RunStatus) -> bool {
 }
 
 pub fn should_notify_with(job: &Job, status: RunStatus, defaults: &[String]) -> bool {
-    let Some(event) = event_for_status(status) else { return false };
-    resolve_events_with(job, defaults).iter().any(|e| e == event)
+    let Some(event) = event_for_status(status) else {
+        return false;
+    };
+    resolve_events_with(job, defaults)
+        .iter()
+        .any(|e| e == event)
 }
 
 const SUMMARY_CHARS: usize = 500;
@@ -72,16 +79,27 @@ const SUMMARY_CHARS: usize = 500;
 /// `status` fields for the app's deep link.
 pub fn build_message(job: &Job, run: &Run) -> (String, String) {
     let title = format!("Cron: {} {}", job.name, run.status.as_str());
-    let body_text = run.summary.as_deref().or(run.reason.as_deref()).unwrap_or("(no summary)");
+    let body_text = run
+        .summary
+        .as_deref()
+        .or(run.reason.as_deref())
+        .unwrap_or("(no summary)");
     let clipped: String = body_text.chars().take(SUMMARY_CHARS).collect();
     let mut extras = Vec::new();
     if let Some(cost) = run.cost_usd {
         extras.push(format!("cost ${cost:.4}"));
     }
     if let (Some(started), Some(ended)) = (run.started_at, run.ended_at) {
-        extras.push(format!("duration {}s", ended.saturating_sub(started) / 1000));
+        extras.push(format!(
+            "duration {}s",
+            ended.saturating_sub(started) / 1000
+        ));
     }
-    let body = if extras.is_empty() { clipped } else { format!("{clipped}\n\n{}", extras.join(" · ")) };
+    let body = if extras.is_empty() {
+        clipped
+    } else {
+        format!("{clipped}\n\n{}", extras.join(" · "))
+    };
     (title, body)
 }
 
@@ -149,12 +167,24 @@ pub async fn dispatch(job: &Job, run: &Run, channels: &Channels) -> Vec<String> 
     errors
 }
 
-async fn send_ntfy(job: &Job, run: &Run, channels: &Channels, title: &str, body: &str) -> anyhow::Result<()> {
+async fn send_ntfy(
+    job: &Job,
+    run: &Run,
+    channels: &Channels,
+    title: &str,
+    body: &str,
+) -> anyhow::Result<()> {
     let Some(key) = channels.key else {
         anyhow::bail!("no notify key");
     };
-    let topic = channels.ntfy_topic.as_deref().or(channels.ntfy.topic.as_deref());
-    let connection = NtfyConnection { topic: topic.map(str::to_string), ..channels.ntfy.clone() };
+    let topic = channels
+        .ntfy_topic
+        .as_deref()
+        .or(channels.ntfy.topic.as_deref());
+    let connection = NtfyConnection {
+        topic: topic.map(str::to_string),
+        ..channels.ntfy.clone()
+    };
     let payload = serde_json::json!({
         "title": title,
         "body": body,
@@ -237,9 +267,18 @@ mod tests {
     #[test]
     fn channels_fall_back_to_the_users_enabled_set() {
         let j = job(None);
-        assert_eq!(resolve_channels(&j, &["ntfy".to_string(), "telegram".to_string()]), vec!["ntfy".to_string(), "telegram".to_string()]);
-        let j2 = job(Some(crate::cron::model::NotifySpec { channels: Some(vec!["gotify".to_string()]), events: None }));
-        assert_eq!(resolve_channels(&j2, &["ntfy".to_string()]), vec!["gotify".to_string()]);
+        assert_eq!(
+            resolve_channels(&j, &["ntfy".to_string(), "telegram".to_string()]),
+            vec!["ntfy".to_string(), "telegram".to_string()]
+        );
+        let j2 = job(Some(crate::cron::model::NotifySpec {
+            channels: Some(vec!["gotify".to_string()]),
+            events: None,
+        }));
+        assert_eq!(
+            resolve_channels(&j2, &["ntfy".to_string()]),
+            vec!["gotify".to_string()]
+        );
     }
 
     #[test]
@@ -292,15 +331,30 @@ mod tests {
     #[test]
     fn the_pc_default_events_apply_when_a_job_sets_none() {
         let j = job(None);
-        assert!(!should_notify_with(&j, RunStatus::Ok, &[]), "built-in default: failed only");
-        assert!(should_notify_with(&j, RunStatus::Ok, &["done".to_string()]), "the PC's notify_default_events wins");
-        let own = job(Some(crate::cron::model::NotifySpec { channels: None, events: Some(vec!["failed".to_string()]) }));
-        assert!(!should_notify_with(&own, RunStatus::Ok, &["done".to_string()]), "a job's own events win over the default");
+        assert!(
+            !should_notify_with(&j, RunStatus::Ok, &[]),
+            "built-in default: failed only"
+        );
+        assert!(
+            should_notify_with(&j, RunStatus::Ok, &["done".to_string()]),
+            "the PC's notify_default_events wins"
+        );
+        let own = job(Some(crate::cron::model::NotifySpec {
+            channels: None,
+            events: Some(vec!["failed".to_string()]),
+        }));
+        assert!(
+            !should_notify_with(&own, RunStatus::Ok, &["done".to_string()]),
+            "a job's own events win over the default"
+        );
     }
 
     #[tokio::test]
     async fn dispatch_records_a_failing_channel_without_panicking() {
-        let j = job(Some(crate::cron::model::NotifySpec { channels: Some(vec!["gotify".to_string()]), events: Some(vec!["done".to_string()]) }));
+        let j = job(Some(crate::cron::model::NotifySpec {
+            channels: Some(vec!["gotify".to_string()]),
+            events: Some(vec!["done".to_string()]),
+        }));
         let r = run(RunStatus::Ok);
         let channels = Channels {
             ntfy: NtfyConnection::default(),

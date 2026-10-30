@@ -38,8 +38,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use aes::Aes128;
 use aes::cipher::{block_padding::Pkcs7, BlockModeDecrypt, KeyIvInit};
+use aes::Aes128;
 use pbkdf2::pbkdf2_hmac;
 use sha1::Sha1;
 
@@ -133,7 +133,12 @@ fn has_cookies_db(profile_dir: &Path) -> bool {
 
 /// `<profile>/Network/Cookies` (modern Chrome) or `<profile>/Cookies` (older).
 pub fn cookies_db_path(profile_dir: &Path) -> Option<PathBuf> {
-    [profile_dir.join("Network").join("Cookies"), profile_dir.join("Cookies")].into_iter().find(|c| c.is_file())
+    [
+        profile_dir.join("Network").join("Cookies"),
+        profile_dir.join("Cookies"),
+    ]
+    .into_iter()
+    .find(|c| c.is_file())
 }
 
 /// Profile directory names (`Default`, `Profile 1`, …) inside a `User Data`
@@ -144,7 +149,10 @@ pub fn profiles_in(user_data_dir: &Path) -> Vec<String> {
             rd.flatten()
                 .filter(|e| e.path().is_dir())
                 .filter_map(|e| e.file_name().to_str().map(str::to_string))
-                .filter(|n| (n == "Default" || n.starts_with("Profile ")) && has_cookies_db(&user_data_dir.join(n)))
+                .filter(|n| {
+                    (n == "Default" || n.starts_with("Profile "))
+                        && has_cookies_db(&user_data_dir.join(n))
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -164,8 +172,12 @@ pub struct ResolvedSource {
 /// standard `User Data` dir (newest that exists) + the named or newest
 /// profile. `None` profile = the first of [`profiles_in`] (`Default` first).
 pub fn resolve_from(spec: &str, home: &Path) -> Result<ResolvedSource, String> {
-    let (name, profile) = spec.split_once(':').map(|(n, p)| (n, Some(p))).unwrap_or((spec, None));
-    let browser = Source::parse(name).ok_or_else(|| format!("unknown browser {name:?} (chrome, chromium, brave)"))?;
+    let (name, profile) = spec
+        .split_once(':')
+        .map(|(n, p)| (n, Some(p)))
+        .unwrap_or((spec, None));
+    let browser = Source::parse(name)
+        .ok_or_else(|| format!("unknown browser {name:?} (chrome, chromium, brave)"))?;
     let user_data_dir = browser
         .user_data_dirs(home)
         .into_iter()
@@ -173,29 +185,52 @@ pub fn resolve_from(spec: &str, home: &Path) -> Result<ResolvedSource, String> {
         .ok_or_else(|| format!("no {name} profile directory found on this PC"))?;
     let profile = match profile {
         Some(p) => p.to_string(),
-        None => profiles_in(&user_data_dir).into_iter().next().ok_or_else(|| format!("no importable {name} profile (no Cookies database)"))?,
+        None => profiles_in(&user_data_dir)
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("no importable {name} profile (no Cookies database)"))?,
     };
-    let db_path = cookies_db_path(&user_data_dir.join(&profile))
-        .ok_or_else(|| format!("no Cookies database in {} profile {profile:?}", user_data_dir.display()))?;
-    Ok(ResolvedSource { db_path, browser: Some(browser) })
+    let db_path = cookies_db_path(&user_data_dir.join(&profile)).ok_or_else(|| {
+        format!(
+            "no Cookies database in {} profile {profile:?}",
+            user_data_dir.display()
+        )
+    })?;
+    Ok(ResolvedSource {
+        db_path,
+        browser: Some(browser),
+    })
 }
 
 /// `<user data dir>[:<profile dir>]`. No browser guess (and so no `v11`
 /// keyring secret attempt) — meant for a throwaway/test Chromium profile
 /// without one, or a non-standard install.
 pub fn resolve_from_dir(spec: &str) -> Result<ResolvedSource, String> {
-    let (dir, profile) = spec.split_once(':').map(|(d, p)| (d, Some(p))).unwrap_or((spec, None));
+    let (dir, profile) = spec
+        .split_once(':')
+        .map(|(d, p)| (d, Some(p)))
+        .unwrap_or((spec, None));
     let user_data_dir = PathBuf::from(dir);
     if !user_data_dir.is_dir() {
         return Err(format!("{} is not a directory", user_data_dir.display()));
     }
     let profile = match profile {
         Some(p) => p.to_string(),
-        None => profiles_in(&user_data_dir).into_iter().next().ok_or_else(|| format!("no importable profile under {}", user_data_dir.display()))?,
+        None => profiles_in(&user_data_dir)
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("no importable profile under {}", user_data_dir.display()))?,
     };
-    let db_path = cookies_db_path(&user_data_dir.join(&profile))
-        .ok_or_else(|| format!("no Cookies database in {} profile {profile:?}", user_data_dir.display()))?;
-    Ok(ResolvedSource { db_path, browser: None })
+    let db_path = cookies_db_path(&user_data_dir.join(&profile)).ok_or_else(|| {
+        format!(
+            "no Cookies database in {} profile {profile:?}",
+            user_data_dir.display()
+        )
+    })?;
+    Ok(ResolvedSource {
+        db_path,
+        browser: None,
+    })
 }
 
 /// Every Chrome-family browser with at least one importable profile on this
@@ -204,11 +239,18 @@ pub fn detect_sources(home: &Path) -> Vec<DetectedSource> {
     [Source::Chrome, Source::Chromium, Source::Brave]
         .into_iter()
         .filter_map(|browser| {
-            browser.user_data_dirs(home).into_iter().find(|d| d.is_dir()).and_then(|dir| {
-                let profiles = profiles_in(&dir);
-                (!profiles.is_empty())
-                    .then(|| DetectedSource { browser, user_data_dir: dir.display().to_string(), profiles })
-            })
+            browser
+                .user_data_dirs(home)
+                .into_iter()
+                .find(|d| d.is_dir())
+                .and_then(|dir| {
+                    let profiles = profiles_in(&dir);
+                    (!profiles.is_empty()).then(|| DetectedSource {
+                        browser,
+                        user_data_dir: dir.display().to_string(),
+                        profiles,
+                    })
+                })
         })
         .collect()
 }
@@ -261,12 +303,18 @@ pub fn decrypt_cookie_value(
     let secret: &[u8] = match prefix {
         b"v10" => b"peanuts",
         b"v11" => keyring_secret.ok_or("v11 cookie but no keyring secret available")?,
-        other => return Err(format!("unsupported encryption prefix {:?}", String::from_utf8_lossy(other))),
+        other => {
+            return Err(format!(
+                "unsupported encryption prefix {:?}",
+                String::from_utf8_lossy(other)
+            ))
+        }
     };
     let key = derive_key(secret, iterations);
     let plaintext = aes_cbc_decrypt(&key, body)?;
     let plaintext = strip_meta_prefix(plaintext, meta_version);
-    String::from_utf8(plaintext).map_err(|_| "decrypted value is not UTF-8 (wrong key?)".to_string())
+    String::from_utf8(plaintext)
+        .map_err(|_| "decrypted value is not UTF-8 (wrong key?)".to_string())
 }
 
 /// Reads the Secret Service secret with `secret-tool` (Linux). Run in the
@@ -292,7 +340,9 @@ pub fn keychain_lookup(service: &str) -> Result<Vec<u8>, String> {
         .output()
         .map_err(|e| format!("could not run security: {e}"))?;
     if !output.status.success() {
-        return Err(format!("no Keychain item {service:?} (denied, or not this account's Chrome)"));
+        return Err(format!(
+            "no Keychain item {service:?} (denied, or not this account's Chrome)"
+        ));
     }
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
     while text.ends_with('\n') {
@@ -353,7 +403,10 @@ pub fn chrome_time_to_unix(expires_utc: i64) -> Option<i64> {
 pub fn host_matches(host_key: &str, domain: &str) -> bool {
     let host = host_key.trim_start_matches('.');
     let domain = domain.trim_start_matches('.');
-    host.eq_ignore_ascii_case(domain) || host.to_ascii_lowercase().ends_with(&format!(".{}", domain.to_ascii_lowercase()))
+    host.eq_ignore_ascii_case(domain)
+        || host
+            .to_ascii_lowercase()
+            .ends_with(&format!(".{}", domain.to_ascii_lowercase()))
 }
 
 /// One row straight off the `cookies` table.
@@ -373,10 +426,13 @@ struct RawRow {
 /// `domain` (itself or a subdomain) from a sqlite file at `path` (meant to
 /// be a private copy, never the live db).
 fn read_rows(path: &Path, domain: &str) -> Result<(i64, Vec<RawRow>), String> {
-    let conn = rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("could not open the cookie database: {e}"))?;
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("could not open the cookie database: {e}"))?;
     let meta_version: i64 = conn
-        .query_row("SELECT value FROM meta WHERE key = 'version'", [], |r| r.get::<_, String>(0))
+        .query_row("SELECT value FROM meta WHERE key = 'version'", [], |r| {
+            r.get::<_, String>(0)
+        })
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
@@ -415,10 +471,15 @@ pub struct ImportedCookies {
 /// dir, reads the rows for `domain`, decrypts them (v10 always; v11 needs
 /// `keyring_secret`), and removes the temp copy. Never touches the live db
 /// beyond the initial copy.
-pub fn import_from_db(db_path: &Path, domain: &str, keyring_secret: Option<&[u8]>) -> Result<ImportedCookies, String> {
+pub fn import_from_db(
+    db_path: &Path,
+    domain: &str,
+    keyring_secret: Option<&[u8]>,
+) -> Result<ImportedCookies, String> {
     let dir = tempfile::tempdir().map_err(|e| format!("could not create a temp dir: {e}"))?;
     let copy = dir.path().join("Cookies");
-    std::fs::copy(db_path, &copy).map_err(|e| format!("could not copy the cookie database: {e}"))?;
+    std::fs::copy(db_path, &copy)
+        .map_err(|e| format!("could not copy the cookie database: {e}"))?;
     for ext in ["-wal", "-shm"] {
         let side = PathBuf::from(format!("{}{ext}", db_path.display()));
         if side.is_file() {
@@ -436,7 +497,12 @@ pub fn import_from_db(db_path: &Path, domain: &str, keyring_secret: Option<&[u8]
             skipped += 1;
             continue;
         } else {
-            match decrypt_cookie_value(&row.encrypted_value, meta_version, iterations, keyring_secret) {
+            match decrypt_cookie_value(
+                &row.encrypted_value,
+                meta_version,
+                iterations,
+                keyring_secret,
+            ) {
                 Ok(v) => v,
                 Err(_) => {
                     skipped += 1;
@@ -448,7 +514,11 @@ pub fn import_from_db(db_path: &Path, domain: &str, keyring_secret: Option<&[u8]
             name: row.name,
             value,
             domain: row.host_key,
-            path: if row.path.is_empty() { "/".to_string() } else { row.path },
+            path: if row.path.is_empty() {
+                "/".to_string()
+            } else {
+                row.path
+            },
             secure: row.is_secure != 0,
             http_only: row.is_httponly != 0,
             same_site: Some(map_samesite(row.samesite)),
@@ -478,7 +548,11 @@ pub fn keyring_secret(browser: Source) -> Option<Vec<u8>> {
 
 /// Resolves the keyring secret (when `browser` is known) and imports
 /// `domain`'s cookies from `db_path`.
-pub fn run_import(db_path: &Path, browser: Option<Source>, domain: &str) -> Result<ImportedCookies, String> {
+pub fn run_import(
+    db_path: &Path,
+    browser: Option<Source>,
+    domain: &str,
+) -> Result<ImportedCookies, String> {
     let secret = browser.and_then(keyring_secret);
     import_from_db(db_path, domain, secret.as_deref())
 }
@@ -517,7 +591,11 @@ mod tests {
                 value TEXT, encrypted_value BLOB);",
         )
         .unwrap();
-        conn.execute("INSERT INTO meta VALUES ('version', ?1)", [meta_version.to_string()]).unwrap();
+        conn.execute(
+            "INSERT INTO meta VALUES ('version', ?1)",
+            [meta_version.to_string()],
+        )
+        .unwrap();
         path
     }
 
@@ -535,7 +613,9 @@ mod tests {
         use aes::cipher::BlockModeEncrypt;
         let mut buf = vec![0u8; prefixed.len() + 16];
         buf[..prefixed.len()].copy_from_slice(&prefixed);
-        let ct = encryptor.encrypt_padded::<Pkcs7>(&mut buf, prefixed.len()).unwrap();
+        let ct = encryptor
+            .encrypt_padded::<Pkcs7>(&mut buf, prefixed.len())
+            .unwrap();
         let mut out = b"v10".to_vec();
         out.extend_from_slice(ct);
         out
@@ -619,7 +699,12 @@ mod tests {
             .unwrap();
         };
         // v10 cookie for the domain, meta 24 prefix.
-        insert("example.com", "sid", &encrypt_v10(b"peanuts", 1, b"tok1", 24), "");
+        insert(
+            "example.com",
+            "sid",
+            &encrypt_v10(b"peanuts", 1, b"tok1", 24),
+            "",
+        );
         // v11 cookie for a subdomain, same meta version.
         let mut v11 = encrypt_v10(keyring_secret, 1, b"tok2", 24);
         v11[..3].copy_from_slice(b"v11");
@@ -627,7 +712,12 @@ mod tests {
         // A plaintext cookie (no decryption needed).
         insert(".example.com", "plain", b"", "plainvalue");
         // A cookie for a different domain: not selected.
-        insert("other.com", "ignored", &encrypt_v10(b"peanuts", 1, b"nope", 24), "");
+        insert(
+            "other.com",
+            "ignored",
+            &encrypt_v10(b"peanuts", 1, b"nope", 24),
+            "",
+        );
         // A v11 cookie we can't decrypt without the secret: counted as skipped.
         let mut v11_locked = encrypt_v10(b"not-the-secret", 1, b"locked", 24);
         v11_locked[..3].copy_from_slice(b"v11");
@@ -639,7 +729,15 @@ mod tests {
         assert_eq!(names, ["auth", "plain", "sid"]);
         assert_eq!(imported.skipped, 1, "the wrong-secret v11 cookie");
         let sid = imported.cookies.iter().find(|c| c.name == "sid").unwrap();
-        assert_eq!((sid.value.as_str(), sid.domain.as_str(), sid.secure, sid.same_site), ("tok1", "example.com", true, Some("Strict")));
+        assert_eq!(
+            (
+                sid.value.as_str(),
+                sid.domain.as_str(),
+                sid.secure,
+                sid.same_site
+            ),
+            ("tok1", "example.com", true, Some("Strict"))
+        );
 
         // Without the keyring secret: the v11 cookie is skipped too, the rest import.
         let imported = import_from_db(&db, "example.com", None).unwrap();

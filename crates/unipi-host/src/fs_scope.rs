@@ -21,17 +21,43 @@ use serde_json::json;
 
 /// Extra roots on by default (only those that exist are used).
 /// `$USER` is replaced with the host user's name.
-pub const DEFAULT_SAFE_ROOTS: &[&str] = &["/tmp", "/var/tmp", "/mnt", "/media", "/run/media/$USER", "/srv", "/opt"];
+pub const DEFAULT_SAFE_ROOTS: &[&str] = &[
+    "/tmp",
+    "/var/tmp",
+    "/mnt",
+    "/media",
+    "/run/media/$USER",
+    "/srv",
+    "/opt",
+];
 
 /// System folders that may never be (or contain, or sit under) an extra root.
 const FORBIDDEN: &[&str] = &[
-    "/etc", "/usr", "/proc", "/sys", "/dev", "/boot", "/root", "/bin", "/sbin", "/lib", "/lib32", "/lib64",
-    "/libx32", "/var", "/run", "/snap", "/lost+found",
+    "/etc",
+    "/usr",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/boot",
+    "/root",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib32",
+    "/lib64",
+    "/libx32",
+    "/var",
+    "/run",
+    "/snap",
+    "/lost+found",
 ];
 
 /// Exceptions inside [`FORBIDDEN`] folders (exact roots and what's under them).
 fn exceptions(user: &str) -> Vec<PathBuf> {
-    vec![PathBuf::from("/var/tmp"), PathBuf::from(format!("/run/media/{user}"))]
+    vec![
+        PathBuf::from("/var/tmp"),
+        PathBuf::from(format!("/run/media/{user}")),
+    ]
 }
 
 /// The `fs` block of `config.json`.
@@ -56,12 +82,15 @@ impl FsAccessConfig {
     /// `config.json`'s `fs` block; a missing file/block (or an unreadable
     /// one) is the default: just the built-in safe roots.
     pub fn load(path: &Path) -> anyhow::Result<FsAccessConfig> {
-        Ok(crate::data_dir::read_json::<ConfigFile>(path)?.unwrap_or_default().fs)
+        Ok(crate::data_dir::read_json::<ConfigFile>(path)?
+            .unwrap_or_default()
+            .fs)
     }
 
     /// Writes the block back, keeping every other key of `config.json`.
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
-        let mut value: serde_json::Value = crate::data_dir::read_json(path)?.unwrap_or_else(|| json!({}));
+        let mut value: serde_json::Value =
+            crate::data_dir::read_json(path)?.unwrap_or_else(|| json!({}));
         if !value.is_object() {
             value = json!({});
         }
@@ -149,7 +178,11 @@ pub struct FsScope {
 impl FsScope {
     /// Just `$HOME` (tests, and callers without a host config).
     pub fn home_only(home: impl Into<PathBuf>) -> FsScope {
-        FsScope { home: home.into(), extra: Vec::new(), deny: Vec::new() }
+        FsScope {
+            home: home.into(),
+            extra: Vec::new(),
+            deny: Vec::new(),
+        }
     }
 
     /// Defaults + `config` resolved on this machine (see module doc).
@@ -168,7 +201,11 @@ impl FsScope {
             .map(|d| canon(d).unwrap_or_else(|| lexical_normalize(Path::new(d))))
             .collect();
         let mut extra: Vec<PathBuf> = Vec::new();
-        for raw in DEFAULT_SAFE_ROOTS.iter().copied().chain(config.allow.iter().map(String::as_str)) {
+        for raw in DEFAULT_SAFE_ROOTS
+            .iter()
+            .copied()
+            .chain(config.allow.iter().map(String::as_str))
+        {
             let Some(root) = canon(raw) else { continue };
             if !root.is_dir() || forbidden_reason(&root, &home, &user).is_some() {
                 continue;
@@ -199,7 +236,8 @@ impl FsScope {
         if canon.starts_with(&self.home) {
             return true;
         }
-        self.extra.iter().any(|r| canon.starts_with(r)) && !self.deny.iter().any(|d| canon.starts_with(d))
+        self.extra.iter().any(|r| canon.starts_with(r))
+            && !self.deny.iter().any(|d| canon.starts_with(d))
     }
 }
 
@@ -242,7 +280,9 @@ pub fn allow(config: &mut FsAccessConfig, raw: &Path, home: &Path) -> anyhow::Re
     }
     Ok(if *config == before {
         Edit::Unchanged(match covered_by {
-            Some(by) if by != root => format!("{root_str} is already allowed (under {})", by.display()),
+            Some(by) if by != root => {
+                format!("{root_str} is already allowed (under {})", by.display())
+            }
             _ => format!("{root_str} is already allowed"),
         })
     } else {
@@ -255,7 +295,11 @@ pub fn allow(config: &mut FsAccessConfig, raw: &Path, home: &Path) -> anyhow::Re
 /// owner allowed), records it as a carve-out instead.
 pub fn deny(config: &mut FsAccessConfig, raw: &Path, home: &Path) -> anyhow::Result<Edit> {
     let root = dunce::canonicalize(raw).unwrap_or_else(|_| lexical_normalize(raw));
-    anyhow::ensure!(root.is_absolute(), "{} must be an absolute path", raw.display());
+    anyhow::ensure!(
+        root.is_absolute(),
+        "{} must be an absolute path",
+        raw.display()
+    );
     let canon_home = dunce::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
     anyhow::ensure!(
         !canon_home.starts_with(&root) && !root.starts_with(&canon_home),
@@ -269,7 +313,10 @@ pub fn deny(config: &mut FsAccessConfig, raw: &Path, home: &Path) -> anyhow::Res
         a != root && !a.starts_with(&root)
     });
     let still = FsScope::resolve(home.to_path_buf(), config);
-    let reachable = still.extra.iter().any(|r| root.starts_with(r) || r.starts_with(&root));
+    let reachable = still
+        .extra
+        .iter()
+        .any(|r| root.starts_with(r) || r.starts_with(&root));
     if reachable && !config.deny.contains(&root_str) {
         config.deny.push(root_str.clone());
     }
@@ -293,11 +340,32 @@ mod tests {
     fn forbidden_covers_system_folders_root_and_other_homes() {
         let h = home();
         for bad in [
-            "/", "/etc", "/etc/ssh", "/usr", "/usr/local", "/proc", "/sys", "/dev", "/boot", "/root", "/var",
-            "/var/lib", "/var/log", "/run", "/run/user/1000", "/run/media/other", "/home", "/home/bob",
-            "/home/bob/x", "/bin", "/lib64",
+            "/",
+            "/etc",
+            "/etc/ssh",
+            "/usr",
+            "/usr/local",
+            "/proc",
+            "/sys",
+            "/dev",
+            "/boot",
+            "/root",
+            "/var",
+            "/var/lib",
+            "/var/log",
+            "/run",
+            "/run/user/1000",
+            "/run/media/other",
+            "/home",
+            "/home/bob",
+            "/home/bob/x",
+            "/bin",
+            "/lib64",
         ] {
-            assert!(forbidden_reason(Path::new(bad), &h, "me").is_some(), "{bad} must be forbidden");
+            assert!(
+                forbidden_reason(Path::new(bad), &h, "me").is_some(),
+                "{bad} must be forbidden"
+            );
         }
         // Containing a system folder is refused too ("/" handled above).
         assert!(forbidden_reason(Path::new("/var/.."), &h, "me").is_some());
@@ -307,8 +375,27 @@ mod tests {
     #[test]
     fn forbidden_lets_safe_roots_through() {
         let h = home();
-        for ok in ["/tmp", "/tmp/x", "/var/tmp", "/var/tmp/a", "/mnt", "/mnt/usb", "/media", "/run/media/me", "/run/media/me/USB", "/srv", "/opt", "/data", "/home/me", "/home/me/proj"] {
-            assert_eq!(forbidden_reason(Path::new(ok), &h, "me"), None, "{ok} must be allowed");
+        for ok in [
+            "/tmp",
+            "/tmp/x",
+            "/var/tmp",
+            "/var/tmp/a",
+            "/mnt",
+            "/mnt/usb",
+            "/media",
+            "/run/media/me",
+            "/run/media/me/USB",
+            "/srv",
+            "/opt",
+            "/data",
+            "/home/me",
+            "/home/me/proj",
+        ] {
+            assert_eq!(
+                forbidden_reason(Path::new(ok), &h, "me"),
+                None,
+                "{ok} must be allowed"
+            );
         }
     }
 
@@ -318,14 +405,23 @@ mod tests {
         let tmp = Path::new("/tmp").canonicalize().unwrap();
         assert!(scope.extra.contains(&tmp), "{:?}", scope.extra);
         assert!(scope.extra.iter().all(|r| r.is_dir()));
-        let denied = FsScope::resolve(home(), &FsAccessConfig { allow: vec![], deny: vec!["/tmp".into()] });
+        let denied = FsScope::resolve(
+            home(),
+            &FsAccessConfig {
+                allow: vec![],
+                deny: vec!["/tmp".into()],
+            },
+        );
         assert!(!denied.extra.contains(&tmp));
         assert!(!denied.allows(&tmp.join("x")));
     }
 
     #[test]
     fn resolve_drops_forbidden_allow_entries_even_if_hand_edited() {
-        let config = FsAccessConfig { allow: vec!["/etc".into(), "/".into(), "/home".into(), "relative".into()], deny: vec![] };
+        let config = FsAccessConfig {
+            allow: vec!["/etc".into(), "/".into(), "/home".into(), "relative".into()],
+            deny: vec![],
+        };
         let scope = FsScope::resolve(home(), &config);
         for p in ["/etc", "/", "/home"] {
             assert!(!scope.extra.contains(&PathBuf::from(p)), "{p}");
@@ -339,11 +435,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let link = tmp.path().join("sneaky");
         std::os::unix::fs::symlink("/etc", &link).unwrap();
-        let config = FsAccessConfig { allow: vec![link.to_string_lossy().into()], deny: vec![] };
+        let config = FsAccessConfig {
+            allow: vec![link.to_string_lossy().into()],
+            deny: vec![],
+        };
         let scope = FsScope::resolve(home(), &config);
         assert!(!scope.extra.iter().any(|r| r.starts_with("/etc")));
         let mut cfg = FsAccessConfig::default();
-        assert!(allow(&mut cfg, &link, &home()).unwrap_err().to_string().contains("system folder"));
+        assert!(allow(&mut cfg, &link, &home())
+            .unwrap_err()
+            .to_string()
+            .contains("system folder"));
     }
 
     #[test]
@@ -370,7 +472,10 @@ mod tests {
         assert!(allow(&mut cfg, &tmp.path().join("nope"), &home()).is_err());
         assert!(cfg.allow.is_empty());
         // A folder under /tmp is already covered by the default root.
-        assert!(matches!(allow(&mut cfg, tmp.path(), &home()).unwrap(), Edit::Unchanged(_)));
+        assert!(matches!(
+            allow(&mut cfg, tmp.path(), &home()).unwrap(),
+            Edit::Unchanged(_)
+        ));
         assert!(cfg.allow.is_empty());
     }
 
@@ -378,11 +483,20 @@ mod tests {
     fn deny_then_allow_round_trips_a_default_root() {
         let mut cfg = FsAccessConfig::default();
         let tmp = Path::new("/tmp").canonicalize().unwrap();
-        assert!(matches!(deny(&mut cfg, &tmp, &home()).unwrap(), Edit::Changed(_)));
+        assert!(matches!(
+            deny(&mut cfg, &tmp, &home()).unwrap(),
+            Edit::Changed(_)
+        ));
         assert_eq!(cfg.deny, vec![tmp.to_string_lossy().to_string()]);
         assert!(!FsScope::resolve(home(), &cfg).extra.contains(&tmp));
-        assert!(matches!(deny(&mut cfg, &tmp, &home()).unwrap(), Edit::Unchanged(_)));
-        assert!(matches!(allow(&mut cfg, &tmp, &home()).unwrap(), Edit::Changed(_)));
+        assert!(matches!(
+            deny(&mut cfg, &tmp, &home()).unwrap(),
+            Edit::Unchanged(_)
+        ));
+        assert!(matches!(
+            allow(&mut cfg, &tmp, &home()).unwrap(),
+            Edit::Changed(_)
+        ));
         assert_eq!(cfg, FsAccessConfig::default());
         assert!(FsScope::resolve(home(), &cfg).extra.contains(&tmp));
     }
@@ -414,8 +528,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
         fs::write(&path, r#"{"forwarding":{"enabled":true,"ports":"any"}}"#).unwrap();
-        assert_eq!(FsAccessConfig::load(&path).unwrap(), FsAccessConfig::default());
-        let cfg = FsAccessConfig { allow: vec!["/data".into()], deny: vec!["/opt".into()] };
+        assert_eq!(
+            FsAccessConfig::load(&path).unwrap(),
+            FsAccessConfig::default()
+        );
+        let cfg = FsAccessConfig {
+            allow: vec!["/data".into()],
+            deny: vec!["/opt".into()],
+        };
         cfg.save(&path).unwrap();
         assert_eq!(FsAccessConfig::load(&path).unwrap(), cfg);
         let raw: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();

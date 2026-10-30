@@ -22,7 +22,10 @@ use unipi_proto::{AppErrorCode, Control, PortsListData};
 
 fn hello(req: serde_json::Value) -> Vec<u8> {
     let value = serde_json::json!({"type":"hello","proto":unipi_proto::PROTO_VERSION,"req":req});
-    unipi_proto::frame::encode(unipi_proto::FrameKind::Control, &serde_json::to_vec(&value).unwrap())
+    unipi_proto::frame::encode(
+        unipi_proto::FrameKind::Control,
+        &serde_json::to_vec(&value).unwrap(),
+    )
 }
 
 async fn request(conn: &Connection, req: serde_json::Value) -> Control {
@@ -45,14 +48,23 @@ async fn forward(
     conn: &Connection,
     port: u16,
     pipelined: &[u8],
-) -> (Control, iroh::endpoint::SendStream, iroh::endpoint::RecvStream) {
+) -> (
+    Control,
+    iroh::endpoint::SendStream,
+    iroh::endpoint::RecvStream,
+) {
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
-    send.write_all(&hello(serde_json::json!({"op":"tcp_forward","port":port}))).await.unwrap();
+    send.write_all(&hello(serde_json::json!({"op":"tcp_forward","port":port})))
+        .await
+        .unwrap();
     // Pipelined: raw bytes right behind the hello, before the ok arrives.
     if !pipelined.is_empty() {
         send.write_all(pipelined).await.unwrap();
     }
-    let (_, bytes) = tokio::time::timeout(Duration::from_secs(10), read_frame(&mut recv)).await.unwrap().unwrap();
+    let (_, bytes) = tokio::time::timeout(Duration::from_secs(10), read_frame(&mut recv))
+        .await
+        .unwrap()
+        .unwrap();
     (serde_json::from_slice(&bytes).unwrap(), send, recv)
 }
 
@@ -61,8 +73,14 @@ fn write_config(paths: &HostPaths, value: serde_json::Value) {
 }
 
 async fn pair(conn: &Connection, paths: &HostPaths) {
-    let state = PairingStore::new(paths.pairing()).start(now_unix()).unwrap();
-    let reply = request(conn, serde_json::json!({"op":"pair","code":state.code,"name":"Test phone"})).await;
+    let state = PairingStore::new(paths.pairing())
+        .start(now_unix())
+        .unwrap();
+    let reply = request(
+        conn,
+        serde_json::json!({"op":"pair","code":state.code,"name":"Test phone"}),
+    )
+    .await;
     assert!(matches!(reply, Control::Ok { .. }), "{reply:?}");
 }
 
@@ -75,12 +93,19 @@ impl Drop for Child {
 }
 
 fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
 }
 
 async fn wait_listening(port: u16) -> bool {
     for _ in 0..100 {
-        if tokio::net::TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
+        if tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .is_ok()
+        {
             return true;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -95,7 +120,13 @@ async fn http_get(conn: &Connection, port: u16, path: &str) -> String {
     assert!(matches!(reply, Control::Ok { .. }), "{reply:?}");
     send.finish().unwrap();
     let mut body = Vec::new();
-    tokio::time::timeout(Duration::from_secs(10), AsyncReadExt::read_to_end(&mut recv, &mut body)).await.unwrap().unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        AsyncReadExt::read_to_end(&mut recv, &mut body),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     String::from_utf8_lossy(&body).into_owned()
 }
 
@@ -108,7 +139,14 @@ fn ws_text(payload: &[u8]) -> Vec<u8> {
     frame
 }
 
-async fn setup() -> (tempfile::TempDir, HostPaths, Endpoint, iroh::protocol::Router, Endpoint, Connection) {
+async fn setup() -> (
+    tempfile::TempDir,
+    HostPaths,
+    Endpoint,
+    iroh::protocol::Router,
+    Endpoint,
+    Connection,
+) {
     let temp = tempfile::tempdir().unwrap();
     let paths = HostPaths::from_dir(temp.path());
     let host = Endpoint::builder(presets::N0)
@@ -123,11 +161,11 @@ async fn setup() -> (tempfile::TempDir, HostPaths, Endpoint, iroh::protocol::Rou
         host_id: host.id(),
         host_name: "Forward test host".into(),
         lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-        protected: std::sync::Arc::new(vec![]),
-        board: Default::default(),
         cron: unipi_host::cron::Scheduler::new(paths.clone()),
     };
-    let router = iroh::protocol::Router::builder(host.clone()).accept(ALPN, handler).spawn();
+    let router = iroh::protocol::Router::builder(host.clone())
+        .accept(ALPN, handler)
+        .spawn();
     let phone = Endpoint::builder(presets::N0)
         .relay_mode(RelayMode::Disabled)
         .clear_address_lookup()
@@ -152,7 +190,9 @@ async fn forwarding_gates_and_pipes_tcp_http_and_websocket() {
     let echo_port = echo.local_addr().unwrap().port();
     tokio::spawn(async move {
         loop {
-            let Ok((mut socket, _)) = echo.accept().await else { break };
+            let Ok((mut socket, _)) = echo.accept().await else {
+                break;
+            };
             tokio::spawn(async move {
                 let (mut r, mut w) = socket.split();
                 let _ = tokio::io::copy(&mut r, &mut w).await;
@@ -161,22 +201,38 @@ async fn forwarding_gates_and_pipes_tcp_http_and_websocket() {
     });
 
     // Off by default: both ops say so, with the enable hint.
-    for req in [serde_json::json!({"op":"ports_list"}), serde_json::json!({"op":"tcp_forward","port":echo_port})] {
+    for req in [
+        serde_json::json!({"op":"ports_list"}),
+        serde_json::json!({"op":"tcp_forward","port":echo_port}),
+    ] {
         let reply = request(&conn, req).await;
-        assert_eq!(err_code(&reply), Some(AppErrorCode::E_FORWARD_DISABLED), "{reply:?}");
+        assert_eq!(
+            err_code(&reply),
+            Some(AppErrorCode::E_FORWARD_DISABLED),
+            "{reply:?}"
+        );
         if let Control::Err { error } = reply {
             assert!(error.hint.unwrap().contains("unipi-host forward enable"));
         }
     }
 
     // Allow-list: only the echo port. Read fresh, no restart.
-    write_config(&paths, serde_json::json!({"forwarding":{"enabled":true,"ports":[echo_port]}}));
+    write_config(
+        &paths,
+        serde_json::json!({"forwarding":{"enabled":true,"ports":[echo_port]}}),
+    );
     let reply = request(&conn, serde_json::json!({"op":"ports_list"})).await;
-    let Control::Ok { data: Some(data) } = reply else { panic!("{reply:?}") };
+    let Control::Ok { data: Some(data) } = reply else {
+        panic!("{reply:?}")
+    };
     let list: PortsListData = serde_json::from_value(data).unwrap();
     assert!(!list.any);
     assert_eq!(list.allowed, vec![echo_port]);
-    let mine = list.ports.iter().find(|p| p.port == echo_port).expect("our listener is listed");
+    let mine = list
+        .ports
+        .iter()
+        .find(|p| p.port == echo_port)
+        .expect("our listener is listed");
     assert!(mine.allowed);
     assert_eq!(mine.bind, "127.0.0.1");
     // Our own process owns it, so its name is readable.
@@ -199,7 +255,13 @@ async fn forwarding_gates_and_pipes_tcp_http_and_websocket() {
         })
     };
     let mut back = Vec::new();
-    tokio::time::timeout(Duration::from_secs(20), AsyncReadExt::read_to_end(&mut recv, &mut back)).await.unwrap().unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(20),
+        AsyncReadExt::read_to_end(&mut recv, &mut back),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     writer.await.unwrap();
     assert_eq!(&back[..6], b"hello ");
     assert_eq!(back.len(), 6 + big.len());
@@ -214,7 +276,9 @@ async fn forwarding_gates_and_pipes_tcp_http_and_websocket() {
             assert!(matches!(reply, Control::Ok { .. }));
             send.finish().unwrap();
             let mut got = Vec::new();
-            AsyncReadExt::read_to_end(&mut recv, &mut got).await.unwrap();
+            AsyncReadExt::read_to_end(&mut recv, &mut got)
+                .await
+                .unwrap();
             assert_eq!(got, vec![i; 3]);
         }));
     }
@@ -223,16 +287,29 @@ async fn forwarding_gates_and_pipes_tcp_http_and_websocket() {
     }
 
     // "any loopback" + a closed port → E_NOT_FOUND.
-    write_config(&paths, serde_json::json!({"forwarding":{"enabled":true,"ports":"any"}}));
+    write_config(
+        &paths,
+        serde_json::json!({"forwarding":{"enabled":true,"ports":"any"}}),
+    );
     let (reply, _, _) = forward(&conn, free_port(), b"").await;
-    assert_eq!(err_code(&reply), Some(AppErrorCode::E_NOT_FOUND), "{reply:?}");
+    assert_eq!(
+        err_code(&reply),
+        Some(AppErrorCode::E_NOT_FOUND),
+        "{reply:?}"
+    );
 
     // Real HTTP: python3 -m http.server serving a temp dir.
     let www = tempfile::tempdir().unwrap();
     std::fs::write(www.path().join("index.html"), "<h1>forward-ok</h1>").unwrap();
     let http_port = free_port();
     let python = std::process::Command::new("python3")
-        .args(["-m", "http.server", &http_port.to_string(), "--bind", "127.0.0.1"])
+        .args([
+            "-m",
+            "http.server",
+            &http_port.to_string(),
+            "--bind",
+            "127.0.0.1",
+        ])
         .current_dir(www.path())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -252,9 +329,18 @@ async fn forwarding_gates_and_pipes_tcp_http_and_websocket() {
     let script = format!(
         "import asyncio,websockets\nasync def e(ws):\n  async for m in ws: await ws.send('echo:'+m)\nasync def main():\n  async with websockets.serve(e,'127.0.0.1',{ws_port}): await asyncio.Future()\nasyncio.run(main())\n"
     );
-    let has_ws = std::process::Command::new("python3").args(["-c", "import websockets"]).status().map(|s| s.success()).unwrap_or(false);
+    let has_ws = std::process::Command::new("python3")
+        .args(["-c", "import websockets"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
     if has_ws {
-        let _guard = Child(std::process::Command::new("python3").args(["-c", &script]).spawn().unwrap());
+        let _guard = Child(
+            std::process::Command::new("python3")
+                .args(["-c", &script])
+                .spawn()
+                .unwrap(),
+        );
         assert!(wait_listening(ws_port).await, "ws echo did not start");
         let upgrade = format!(
             "GET / HTTP/1.1\r\nHost: 127.0.0.1:{ws_port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
@@ -272,22 +358,34 @@ async fn forwarding_gates_and_pipes_tcp_http_and_websocket() {
         assert!(head.contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{head}");
         send.write_all(&ws_text(b"ping-1")).await.unwrap();
         let mut frame = [0u8; 2 + 11];
-        tokio::time::timeout(Duration::from_secs(5), recv.read_exact(&mut frame)).await.unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(5), recv.read_exact(&mut frame))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(frame[0], 0x81);
         assert_eq!(&frame[2..], b"echo:ping-1");
         // A second message on the same long-lived stream (HMR-style).
         send.write_all(&ws_text(b"ping-2")).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(5), recv.read_exact(&mut frame)).await.unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(5), recv.read_exact(&mut frame))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(&frame[2..], b"echo:ping-2");
     } else {
         eprintln!("python websockets missing: skipped websocket leg");
     }
 
     // Per-device gate: a list that doesn't name this phone.
-    write_config(&paths, serde_json::json!({"forwarding":{"enabled":true,"ports":"any","devices":["Someone else"]}}));
+    write_config(
+        &paths,
+        serde_json::json!({"forwarding":{"enabled":true,"ports":"any","devices":["Someone else"]}}),
+    );
     let reply = request(&conn, serde_json::json!({"op":"ports_list"})).await;
     assert_eq!(err_code(&reply), Some(AppErrorCode::E_FORWARD_DISABLED));
-    write_config(&paths, serde_json::json!({"forwarding":{"enabled":true,"ports":"any","devices":["Test phone"]}}));
+    write_config(
+        &paths,
+        serde_json::json!({"forwarding":{"enabled":true,"ports":"any","devices":["Test phone"]}}),
+    );
     let reply = request(&conn, serde_json::json!({"op":"ports_list"})).await;
     assert!(matches!(reply, Control::Ok { .. }), "{reply:?}");
 
@@ -307,19 +405,32 @@ async fn external_serve_forward() {
     assert!(!dir.contains(".unipi/app-host"), "never the real host dir");
     let paths = HostPaths::from_dir(&dir);
     let cache: unipi_host::endpoint::EndpointCache =
-        unipi_host::data_dir::read_json(&paths.endpoint()).unwrap().expect("serve running?");
+        unipi_host::data_dir::read_json(&paths.endpoint())
+            .unwrap()
+            .expect("serve running?");
     let phone = Endpoint::builder(presets::N0).bind().await.unwrap();
-    let conn = tokio::time::timeout(Duration::from_secs(20), phone.connect(cache.addr.clone(), ALPN))
-        .await
-        .unwrap()
-        .unwrap();
+    let conn = tokio::time::timeout(
+        Duration::from_secs(20),
+        phone.connect(cache.addr.clone(), ALPN),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     pair(&conn, &paths).await;
     let reply = request(&conn, serde_json::json!({"op":"ports_list"})).await;
-    let Control::Ok { data: Some(data) } = reply else { panic!("{reply:?}") };
+    let Control::Ok { data: Some(data) } = reply else {
+        panic!("{reply:?}")
+    };
     let list: PortsListData = serde_json::from_value(data).unwrap();
     eprintln!("ports_list: {}", serde_json::to_string(&list).unwrap());
-    let http_port: u16 = std::env::var("UNIPI_FWD_E2E_HTTP").unwrap_or("8799".into()).parse().unwrap();
-    assert!(list.ports.iter().any(|p| p.port == http_port && p.http), "http.server listed with http hint");
+    let http_port: u16 = std::env::var("UNIPI_FWD_E2E_HTTP")
+        .unwrap_or("8799".into())
+        .parse()
+        .unwrap();
+    assert!(
+        list.ports.iter().any(|p| p.port == http_port && p.http),
+        "http.server listed with http hint"
+    );
     let page = http_get(&conn, http_port, "/").await;
     eprintln!("GET / → {}", page.lines().next().unwrap_or(""));
     assert!(page.starts_with("HTTP/1.0 200"));

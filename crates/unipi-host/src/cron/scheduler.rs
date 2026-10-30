@@ -35,7 +35,14 @@ pub struct DueFire {
 /// `tolerance_s` in the past by the time we notice it — ordinary tick
 /// cadence keeps on-time fires under that, so only a real gap (host
 /// down, system sleep) is flagged.
-pub fn next_due_fire(schedule: &Schedule, tz: chrono_tz::Tz, last_known_ms: u64, now_ms: u64, missed_window_s: u64, tolerance_s: u64) -> Option<DueFire> {
+pub fn next_due_fire(
+    schedule: &Schedule,
+    tz: chrono_tz::Tz,
+    last_known_ms: u64,
+    now_ms: u64,
+    missed_window_s: u64,
+    tolerance_s: u64,
+) -> Option<DueFire> {
     let last_known = ms_to_dt(last_known_ms);
     let now = ms_to_dt(now_ms);
     // Walk backward from `now` (inclusive) to find the latest occurrence
@@ -52,7 +59,10 @@ pub fn next_due_fire(schedule: &Schedule, tz: chrono_tz::Tz, last_known_ms: u64,
     if missed && age_s > missed_window_s {
         return None;
     }
-    Some(DueFire { at_ms: dt_to_ms(due), missed })
+    Some(DueFire {
+        at_ms: dt_to_ms(due),
+        missed,
+    })
 }
 
 fn ms_to_dt(ms: u64) -> DateTime<Utc> {
@@ -73,7 +83,11 @@ pub struct ConcurrencyGate {
 
 impl ConcurrencyGate {
     pub fn new(capacity: usize) -> Self {
-        ConcurrencyGate { capacity: capacity.max(1), in_flight: 0, queue: VecDeque::new() }
+        ConcurrencyGate {
+            capacity: capacity.max(1),
+            in_flight: 0,
+            queue: VecDeque::new(),
+        }
     }
 
     pub fn set_capacity(&mut self, capacity: usize) {
@@ -177,7 +191,9 @@ pub struct Scheduler {
 impl std::fmt::Debug for Scheduler {
     // `Clock` wraps an `Arc<dyn Fn>`, which isn't `Debug`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Scheduler").field("paths", &self.paths).finish_non_exhaustive()
+        f.debug_struct("Scheduler")
+            .field("paths", &self.paths)
+            .finish_non_exhaustive()
     }
 }
 
@@ -190,7 +206,10 @@ impl Scheduler {
         Scheduler {
             paths,
             clock,
-            state: Arc::new(Mutex::new(SchedulerState { active: HashMap::new(), gate: ConcurrencyGate::new(2) })),
+            state: Arc::new(Mutex::new(SchedulerState {
+                active: HashMap::new(),
+                gate: ConcurrencyGate::new(2),
+            })),
             run_seq: Arc::new(AtomicU32::new(0)),
             tick_interval: Duration::from_secs(1),
         }
@@ -214,18 +233,37 @@ impl Scheduler {
         if settings.paused {
             return;
         }
-        let Ok(jobs) = store::load_jobs(&self.paths) else { return };
+        let Ok(jobs) = store::load_jobs(&self.paths) else {
+            return;
+        };
         let now_ms = self.clock.now_ms();
         for job in jobs {
             if !job.enabled {
                 continue;
             }
-            let Ok(tz) = resolve_tz(&job.tz) else { continue };
-            let Ok(schedule) = Schedule::parse(&job.schedule) else { continue };
-            let last_known = store::load_runs(&self.paths, &job.id).ok().and_then(|r| r.first().map(|r| r.fired_at)).unwrap_or(job.created);
+            let Ok(tz) = resolve_tz(&job.tz) else {
+                continue;
+            };
+            let Ok(schedule) = Schedule::parse(&job.schedule) else {
+                continue;
+            };
+            let last_known = store::load_runs(&self.paths, &job.id)
+                .ok()
+                .and_then(|r| r.first().map(|r| r.fired_at))
+                .unwrap_or(job.created);
             let tolerance_s = self.tick_interval.as_secs().max(1) * 3;
-            let Some(due) = next_due_fire(&schedule, tz, last_known, now_ms, settings.missed_window_s, tolerance_s) else { continue };
-            self.consider_fire(&job, due.at_ms, due.missed, settings.concurrency as usize).await;
+            let Some(due) = next_due_fire(
+                &schedule,
+                tz,
+                last_known,
+                now_ms,
+                settings.missed_window_s,
+                tolerance_s,
+            ) else {
+                continue;
+            };
+            self.consider_fire(&job, due.at_ms, due.missed, settings.concurrency as usize)
+                .await;
         }
     }
 
@@ -253,11 +291,23 @@ impl Scheduler {
                 wake: None,
             };
             let _ = store::save_run(&self.paths, &run);
-            tracing::info!(op = "cron_fire", job = job.id, run = run.id, status = "skipped", "overlap");
+            tracing::info!(
+                op = "cron_fire",
+                job = job.id,
+                run = run.id,
+                status = "skipped",
+                "overlap"
+            );
             return;
         }
         let run_id = self.new_run_id();
-        state.active.insert(job.id.clone(), Active { run_id: run_id.clone(), pid: None });
+        state.active.insert(
+            job.id.clone(),
+            Active {
+                run_id: run_id.clone(),
+                pid: None,
+            },
+        );
         let go = state.gate.try_start(&job.id);
         drop(state);
         if go {
@@ -290,7 +340,13 @@ impl Scheduler {
     /// Boxed: this is part of a `start_run` → `release` → `start_queued` →
     /// `start_run` cycle (the next queued job starts as soon as a slot
     /// frees up), which would otherwise make an infinitely-sized future.
-    fn start_run<'a>(&'a self, job: Job, run_id: String, fired_at: u64, missed: bool) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    fn start_run<'a>(
+        &'a self,
+        job: Job,
+        run_id: String,
+        fired_at: u64,
+        missed: bool,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
         Box::pin(self.start_run_inner(job, run_id, fired_at, missed))
     }
 
@@ -313,15 +369,33 @@ impl Scheduler {
             wake: None,
         };
         if store::save_run(&self.paths, &run).is_err() {
-            tracing::warn!(job = job.id, run = run_id, "couldn't record the run starting");
+            tracing::warn!(
+                job = job.id,
+                run = run_id,
+                "couldn't record the run starting"
+            );
         }
-        tracing::info!(op = "cron_fire", job = job.id, run = run_id, status = "running", missed, "start");
+        tracing::info!(
+            op = "cron_fire",
+            job = job.id,
+            run = run_id,
+            status = "running",
+            missed,
+            "start"
+        );
 
         let this = self.clone();
         let job2 = job.clone();
         let run_id2 = run_id.clone();
         tokio::spawn(async move {
-            let spec = exec::RunSpec { prompt: &job2.prompt, cwd: &job2.cwd, model: job2.model.as_deref(), thinking: job2.thinking.as_deref(), time_limit_s: job2.time_limit_s, cost_cap_usd: job2.cost_cap_usd };
+            let spec = exec::RunSpec {
+                prompt: &job2.prompt,
+                cwd: &job2.cwd,
+                model: job2.model.as_deref(),
+                thinking: job2.thinking.as_deref(),
+                time_limit_s: job2.time_limit_s,
+                cost_cap_usd: job2.cost_cap_usd,
+            };
             let pid_recorder = this.clone();
             let pid_job_id = job2.id.clone();
             let outcome = exec::run(&this.paths, &job2.id, &run_id2, &spec, move |pid| {
@@ -331,10 +405,18 @@ impl Scheduler {
             })
             .await;
             let ended_at = this.clock.now_ms();
-            let mut run = store::load_run(&this.paths, &job2.id, &run_id2).unwrap_or(None).unwrap_or(run);
+            let mut run = store::load_run(&this.paths, &job2.id, &run_id2)
+                .unwrap_or(None)
+                .unwrap_or(run);
             exec::finish(&mut run, outcome, started_at, ended_at);
             let _ = store::save_run(&this.paths, &run);
-            tracing::info!(op = "cron_fire", job = job2.id, run = run_id2, status = run.status.as_str(), "finished");
+            tracing::info!(
+                op = "cron_fire",
+                job = job2.id,
+                run = run_id2,
+                status = run.status.as_str(),
+                "finished"
+            );
 
             // A one-time `at` job disables itself once it has run.
             if let Ok(schedule) = Schedule::parse(&job2.schedule) {
@@ -350,12 +432,17 @@ impl Scheduler {
             // into a failure, both are just recorded on it.
             let channels = super::notify::Channels::load(&this.paths, &settings);
             run.notify_errors = super::notify::dispatch(&job2, &run, &channels).await;
-            if let Some(dir) = crate::chat::bridge_dir() {
-                run.wake = super::wake::wake_if_linked(&dir, &job2, &run).await;
-            }
+            // v2: bridge-poking wake is gone; the hub wake link lands with
+            // WP-H8 (host.md §9.8). `run.wake` stays in the wire model.
             let _ = store::save_run(&this.paths, &run);
 
-            let _ = store::prune_runs(&this.paths, &job2.id, settings.retention_runs, settings.retention_days, ended_at);
+            let _ = store::prune_runs(
+                &this.paths,
+                &job2.id,
+                settings.retention_runs,
+                settings.retention_days,
+                ended_at,
+            );
 
             this.release(&job2.id).await;
         });
@@ -374,13 +461,27 @@ impl Scheduler {
     }
 
     async fn start_queued(&self, job_id: &str) {
-        let Ok(jobs) = store::load_jobs(&self.paths) else { return };
-        let Some(job) = jobs.into_iter().find(|j| j.id == job_id) else { return };
+        let Ok(jobs) = store::load_jobs(&self.paths) else {
+            return;
+        };
+        let Some(job) = jobs.into_iter().find(|j| j.id == job_id) else {
+            return;
+        };
         let state = self.state.lock().await;
-        let Some(run_id) = state.active.get(job_id).map(|a| a.run_id.clone()) else { return };
+        let Some(run_id) = state.active.get(job_id).map(|a| a.run_id.clone()) else {
+            return;
+        };
         drop(state);
-        let fired_at = store::load_run(&self.paths, job_id, &run_id).ok().flatten().map(|r| r.fired_at).unwrap_or_else(|| self.clock.now_ms());
-        let missed = store::load_run(&self.paths, job_id, &run_id).ok().flatten().map(|r| r.missed).unwrap_or(false);
+        let fired_at = store::load_run(&self.paths, job_id, &run_id)
+            .ok()
+            .flatten()
+            .map(|r| r.fired_at)
+            .unwrap_or_else(|| self.clock.now_ms());
+        let missed = store::load_run(&self.paths, job_id, &run_id)
+            .ok()
+            .flatten()
+            .map(|r| r.missed)
+            .unwrap_or(false);
         self.start_run(job, run_id, fired_at, missed).await;
     }
 
@@ -396,7 +497,9 @@ impl Scheduler {
     /// Kills a running job's process group (UNIX) or process (Windows).
     pub async fn stop(&self, job_id: &str) -> bool {
         let state = self.state.lock().await;
-        let Some(pid) = state.active.get(job_id).and_then(|a| a.pid) else { return false };
+        let Some(pid) = state.active.get(job_id).and_then(|a| a.pid) else {
+            return false;
+        };
         drop(state);
         #[cfg(unix)]
         {
@@ -433,14 +536,36 @@ impl Scheduler {
             return Err("already running".into());
         }
         let run_id = self.new_run_id();
-        state.active.insert(job.id.clone(), Active { run_id: run_id.clone(), pid: None });
+        state.active.insert(
+            job.id.clone(),
+            Active {
+                run_id: run_id.clone(),
+                pid: None,
+            },
+        );
         let go = state.gate.try_start(&job.id);
         drop(state);
         let fired_at = self.clock.now_ms();
         if go {
-            self.start_run(job.clone(), run_id.clone(), fired_at, false).await;
+            self.start_run(job.clone(), run_id.clone(), fired_at, false)
+                .await;
         } else {
-            let run = Run { id: run_id.clone(), job_id: job.id.clone(), status: RunStatus::Queued, fired_at, started_at: None, ended_at: None, exit_code: None, summary: None, reason: None, session_path: None, cost_usd: None, missed: false, notify_errors: Vec::new(), wake: None };
+            let run = Run {
+                id: run_id.clone(),
+                job_id: job.id.clone(),
+                status: RunStatus::Queued,
+                fired_at,
+                started_at: None,
+                ended_at: None,
+                exit_code: None,
+                summary: None,
+                reason: None,
+                session_path: None,
+                cost_usd: None,
+                missed: false,
+                notify_errors: Vec::new(),
+                wake: None,
+            };
             let _ = store::save_run(&self.paths, &run);
         }
         Ok(run_id)
@@ -454,24 +579,48 @@ impl Scheduler {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum CronControl {
     List,
-    Show { id: String },
+    Show {
+        id: String,
+    },
     Add(NewJob),
-    Edit { id: String, patch: EditJob },
-    Rm { id: String },
-    Enable { id: String },
-    Disable { id: String },
-    RunNow { id: String },
-    Stop { id: String },
-    Runs { #[serde(default)] job_id: Option<String>, #[serde(default)] limit: Option<usize> },
+    Edit {
+        id: String,
+        patch: EditJob,
+    },
+    Rm {
+        id: String,
+    },
+    Enable {
+        id: String,
+    },
+    Disable {
+        id: String,
+    },
+    RunNow {
+        id: String,
+    },
+    Stop {
+        id: String,
+    },
+    Runs {
+        #[serde(default)]
+        job_id: Option<String>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
     /// A run's captured output (stdout+stderr, capped at 64 KB) — the run
     /// id alone is enough; its job is found by scanning run records.
-    Log { run_id: String },
+    Log {
+        run_id: String,
+    },
     PauseAll,
     ResumeAll,
     Status,
     /// UNI-316: sends one real test notification for `id`'s channels
     /// (`notify.channels`, or the user's default set).
-    TestNotify { id: String },
+    TestNotify {
+        id: String,
+    },
 }
 
 /// Fields for `cron add`; `id` is optional (a slug is made from `name`).
@@ -590,9 +739,14 @@ impl Scheduler {
             }
             CronControl::Show { id } => {
                 let jobs = store::load_jobs(&self.paths).map_err(|e| e.to_string())?;
-                let job = jobs.iter().find(|j| j.id == id).ok_or_else(|| format!("no job {id:?}"))?;
+                let job = jobs
+                    .iter()
+                    .find(|j| j.id == id)
+                    .ok_or_else(|| format!("no job {id:?}"))?;
                 let runs = store::load_runs(&self.paths, &id).map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({ "job": job_json(job), "runs": runs.iter().map(run_json).collect::<Vec<_>>() }))
+                Ok(
+                    serde_json::json!({ "job": job_json(job), "runs": runs.iter().map(run_json).collect::<Vec<_>>() }),
+                )
             }
             CronControl::Add(new) => {
                 let mut jobs = store::load_jobs(&self.paths).map_err(|e| e.to_string())?;
@@ -618,7 +772,9 @@ impl Scheduler {
                     model: new.model,
                     thinking: new.thinking,
                     enabled: new.enabled.unwrap_or(true),
-                    time_limit_s: new.time_limit_s.unwrap_or(super::model::DEFAULT_TIME_LIMIT_S),
+                    time_limit_s: new
+                        .time_limit_s
+                        .unwrap_or(super::model::DEFAULT_TIME_LIMIT_S),
                     cost_cap_usd: new.cost_cap_usd,
                     notify: new.notify,
                     session_link: new.session_link,
@@ -632,7 +788,10 @@ impl Scheduler {
             }
             CronControl::Edit { id, patch } => {
                 let mut jobs = store::load_jobs(&self.paths).map_err(|e| e.to_string())?;
-                let job = jobs.iter_mut().find(|j| j.id == id).ok_or_else(|| format!("no job {id:?}"))?;
+                let job = jobs
+                    .iter_mut()
+                    .find(|j| j.id == id)
+                    .ok_or_else(|| format!("no job {id:?}"))?;
                 if let Some(v) = patch.name {
                     job.name = v;
                 }
@@ -687,16 +846,23 @@ impl Scheduler {
                 Ok(serde_json::json!({ "removed": id }))
             }
             CronControl::Enable { id } => {
-                self.set_enabled(&id, true).await.map_err(|e| e.to_string())?;
+                self.set_enabled(&id, true)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 Ok(serde_json::json!({ "id": id, "enabled": true }))
             }
             CronControl::Disable { id } => {
-                self.set_enabled(&id, false).await.map_err(|e| e.to_string())?;
+                self.set_enabled(&id, false)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 Ok(serde_json::json!({ "id": id, "enabled": false }))
             }
             CronControl::RunNow { id } => {
                 let jobs = store::load_jobs(&self.paths).map_err(|e| e.to_string())?;
-                let job = jobs.iter().find(|j| j.id == id).ok_or_else(|| format!("no job {id:?}"))?;
+                let job = jobs
+                    .iter()
+                    .find(|j| j.id == id)
+                    .ok_or_else(|| format!("no job {id:?}"))?;
                 let run_id = self.run_now(job).await?;
                 Ok(serde_json::json!({ "id": id, "run_id": run_id }))
             }
@@ -715,7 +881,9 @@ impl Scheduler {
                 Ok(serde_json::json!({ "runs": runs.iter().map(run_json).collect::<Vec<_>>() }))
             }
             CronControl::Log { run_id } => {
-                let Some((job_id, run)) = store::find_run(&self.paths, &run_id).map_err(|e| e.to_string())? else {
+                let Some((job_id, run)) =
+                    store::find_run(&self.paths, &run_id).map_err(|e| e.to_string())?
+                else {
                     return Err(format!("no run {run_id:?}"));
                 };
                 let log = store::read_log(&self.paths, &job_id, &run_id).unwrap_or_default();
@@ -746,7 +914,11 @@ impl Scheduler {
                     .iter()
                     .map(|job| {
                         let next = if job.enabled {
-                            resolve_tz(&job.tz).ok().zip(Schedule::parse(&job.schedule).ok()).and_then(|(tz, sched)| sched.next_after(tz, now, false)).map(|dt| dt.to_rfc3339())
+                            resolve_tz(&job.tz)
+                                .ok()
+                                .zip(Schedule::parse(&job.schedule).ok())
+                                .and_then(|(tz, sched)| sched.next_after(tz, now, false))
+                                .map(|dt| dt.to_rfc3339())
                         } else {
                             None
                         };
@@ -758,14 +930,20 @@ impl Scheduler {
                         })
                     })
                     .collect();
-                Ok(serde_json::json!({ "paused": settings.paused, "concurrency": settings.concurrency, "jobs": jobs_status }))
+                Ok(
+                    serde_json::json!({ "paused": settings.paused, "concurrency": settings.concurrency, "jobs": jobs_status }),
+                )
             }
             CronControl::TestNotify { id } => {
                 let jobs = store::load_jobs(&self.paths).map_err(|e| e.to_string())?;
-                let job = jobs.iter().find(|j| j.id == id).ok_or_else(|| format!("no job {id:?}"))?;
+                let job = jobs
+                    .iter()
+                    .find(|j| j.id == id)
+                    .ok_or_else(|| format!("no job {id:?}"))?;
                 let settings = self.settings();
                 let channels_cfg = super::notify::Channels::load(&self.paths, &settings);
-                let selected = super::notify::resolve_channels(job, &channels_cfg.default_channels());
+                let selected =
+                    super::notify::resolve_channels(job, &channels_cfg.default_channels());
                 if selected.is_empty() {
                     return Err("no notify channels configured for this job (and none of the user's channels are enabled)".to_string());
                 }
@@ -777,7 +955,10 @@ impl Scheduler {
                     started_at: Some(self.clock.now_ms()),
                     ended_at: Some(self.clock.now_ms()),
                     exit_code: Some(0),
-                    summary: Some("This is a test notification from `unipi-host cron test-notify`.".to_string()),
+                    summary: Some(
+                        "This is a test notification from `unipi-host cron test-notify`."
+                            .to_string(),
+                    ),
                     reason: None,
                     session_path: None,
                     cost_usd: None,
@@ -852,7 +1033,11 @@ mod tests {
         let now = dt_to_ms(dt("2023-12-03T02:00:00Z"));
         let due = next_due_fire(&sched, tz, last, now, 21_600, 3).unwrap();
         assert!(due.missed);
-        assert_eq!(due.at_ms, dt_to_ms(dt("2023-12-03T00:00:00Z")), "collapses to the single latest missed fire, not every one");
+        assert_eq!(
+            due.at_ms,
+            dt_to_ms(dt("2023-12-03T00:00:00Z")),
+            "collapses to the single latest missed fire, not every one"
+        );
         // Beyond the window (8h since the latest missed midnight): nothing runs.
         let far_now = dt_to_ms(dt("2023-12-03T08:00:05Z"));
         assert!(next_due_fire(&sched, tz, last, far_now, 21_600, 3).is_none());
@@ -899,7 +1084,13 @@ mod tests {
         // Reserve the job as if already running (no execution).
         {
             let mut state = scheduler.state.lock().await;
-            state.active.insert("j".into(), Active { run_id: "running-one".into(), pid: None });
+            state.active.insert(
+                "j".into(),
+                Active {
+                    run_id: "running-one".into(),
+                    pid: None,
+                },
+            );
         }
         scheduler.consider_fire(&job, 1000, false, 2).await;
         let runs = store::load_runs(&paths, "j").unwrap();

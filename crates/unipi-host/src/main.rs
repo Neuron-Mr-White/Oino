@@ -1,13 +1,13 @@
 use clap::{Parser, Subcommand};
 use unipi_host::{
-    data_dir::HostPaths,
-    devices::DeviceStore,
-    endpoint::ALPN,
-    pairing::now_unix,
-    protocol::Handler,
+    data_dir::HostPaths, devices::DeviceStore, endpoint::ALPN, pairing::now_unix, protocol::Handler,
 };
 #[derive(Parser)]
-#[command(name = "unipi-host", version, about = "UniPi host: lets the UniPi app reach herdr/tmux sessions and pi chats on this machine")]
+#[command(
+    name = "unipi-host",
+    version,
+    about = "UniPi host: lets the UniPi app reach herdr/tmux sessions and pi chats on this machine"
+)]
 struct Cli {
     #[arg(long, global = true)]
     data_dir: Option<std::path::PathBuf>,
@@ -21,9 +21,6 @@ enum Command {
         relay: String,
         #[arg(long)]
         relay_only: bool,
-        /// Session names (herdr or tmux) that refuse attach/focus.
-        #[arg(long)]
-        protect: Vec<String>,
         /// Who runs this host (shown by `status` and the desktop app):
         /// service | app | manual. Default: service under systemd, else manual.
         #[arg(long, value_parser = ["service", "app", "manual"])]
@@ -63,12 +60,6 @@ enum Command {
     Browser {
         #[command(subcommand)]
         action: BrowserAction,
-    },
-    /// Stream this PC's desktop to the phone with mouse/keyboard control
-    /// (off by default; the PC asks for consent the first time on Wayland).
-    Desktop {
-        #[command(subcommand)]
-        action: DesktopAction,
     },
     /// Which folders the app's Files screen and file links may open besides
     /// $HOME and live session folders. Defaults (only those that exist):
@@ -318,9 +309,15 @@ enum CronAction {
         json: bool,
     },
     /// Remove a job (and its run history).
-    Rm { id: String },
-    Enable { id: String },
-    Disable { id: String },
+    Rm {
+        id: String,
+    },
+    Enable {
+        id: String,
+    },
+    Disable {
+        id: String,
+    },
     /// Run a job now, bypassing its schedule (still subject to overlap/concurrency).
     Run {
         id: String,
@@ -328,7 +325,9 @@ enum CronAction {
         json: bool,
     },
     /// Kill a job's running process.
-    Stop { id: String },
+    Stop {
+        id: String,
+    },
     /// Run history, newest first.
     Runs {
         /// Only this job's runs (default: every job's).
@@ -494,30 +493,6 @@ enum ProfileAction {
     Rm { name: String },
 }
 #[derive(Subcommand)]
-enum DesktopAction {
-    /// Turn desktop streaming on (no restart of `serve` needed).
-    Enable {
-        /// Phones may only watch (no mouse/keyboard).
-        #[arg(long, conflicts_with = "control")]
-        view_only: bool,
-        /// Allow mouse/keyboard again after `--view-only`.
-        #[arg(long)]
-        control: bool,
-        /// Only these paired devices (id, id prefix ≥ 8 chars, or name). Replaces the list.
-        #[arg(long)]
-        device: Vec<String>,
-        /// Capture backend: auto (default), mutter (GNOME, no dialog), portal (Wayland), x11, test-card (synthetic, shares nothing).
-        #[arg(long)]
-        backend: Option<String>,
-    },
-    /// Turn it off (a live stream ends at its next request; use `revoke` to cut a device).
-    Disable,
-    /// Show the settings, the detected display and which backend would be used.
-    Status,
-    /// Forget the stored screen-share consent (the PC asks again next time).
-    Forget,
-}
-#[derive(Subcommand)]
 enum ForwardAction {
     /// Turn forwarding on. Pick `--any` (any loopback port) or `--port` (repeatable).
     Enable {
@@ -555,12 +530,14 @@ async fn main() -> anyhow::Result<()> {
         Command::Serve {
             relay,
             relay_only,
-            protect,
             mode,
             exit_with_parent,
         } => {
             // UNI-228: one host per data dir (two on one secret.key make phones flap).
-            let mode = mode.as_deref().and_then(unipi_host::instance::Mode::parse).unwrap_or_else(unipi_host::instance::Mode::detect);
+            let mode = mode
+                .as_deref()
+                .and_then(unipi_host::instance::Mode::parse)
+                .unwrap_or_else(unipi_host::instance::Mode::detect);
             let _instance = match unipi_host::instance::acquire(&paths, mode) {
                 Ok(lock) => lock,
                 Err(error @ unipi_host::instance::AcquireError::Held(_)) => {
@@ -600,17 +577,16 @@ async fn main() -> anyhow::Result<()> {
             // CLI's control.sock (`unipi-host cron ...`).
             let cron_scheduler = unipi_host::cron::Scheduler::new(paths.clone());
             let handler = Handler {
-                protected: std::sync::Arc::new(protect),
                 paths,
                 host_id: endpoint.id(),
                 host_name: hostname(),
                 lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
-                board: unipi_host::board::Board::default(),
                 cron: cron_scheduler.clone(),
             };
-            unipi_host::mux::tmux::sweep_orphans().await;
             // UNI-303: the stable agent address (AGENT_BROWSER_CDP) for this host.
-            if let Err(error) = unipi_host::browser::agent_endpoint::serve(handler.paths.clone()).await {
+            if let Err(error) =
+                unipi_host::browser::agent_endpoint::serve(handler.paths.clone()).await
+            {
                 tracing::warn!(op = "browser_agent", %error, "no stable agent endpoint");
             }
             let cron_ticker = {
@@ -642,7 +618,12 @@ async fn main() -> anyhow::Result<()> {
                         match unipi_host::sharing::sweep(&paths, unipi_host::push::now_ms()) {
                             Ok(changed) => {
                                 for item in changed {
-                                    tracing::info!(id = item.id, feature = item.feature.as_str(), status = item.status.as_str(), "feature request");
+                                    tracing::info!(
+                                        id = item.id,
+                                        feature = item.feature.as_str(),
+                                        status = item.status.as_str(),
+                                        "feature request"
+                                    );
                                 }
                             }
                             Err(error) => tracing::warn!(%error, "feature request sweep failed"),
@@ -692,9 +673,17 @@ async fn main() -> anyhow::Result<()> {
                 println!("{}", serde_json::to_string(&status)?);
             } else {
                 match &status {
-                    unipi_host::instance::Status::Running { owner: Some(o) } => println!("running — pid {}, mode {}, version {}, since {}", o.pid, o.mode.as_str(), o.version, o.started_at),
+                    unipi_host::instance::Status::Running { owner: Some(o) } => println!(
+                        "running — pid {}, mode {}, version {}, since {}",
+                        o.pid,
+                        o.mode.as_str(),
+                        o.version,
+                        o.started_at
+                    ),
                     unipi_host::instance::Status::Running { owner: None } => println!("running"),
-                    unipi_host::instance::Status::NotRunning { .. } => println!("not running ({})", paths.root.display()),
+                    unipi_host::instance::Status::NotRunning { .. } => {
+                        println!("not running ({})", paths.root.display())
+                    }
                 }
             }
             if matches!(status, unipi_host::instance::Status::NotRunning { .. }) {
@@ -725,74 +714,91 @@ async fn main() -> anyhow::Result<()> {
         Command::Forward { action } => forward_command(&paths, action)?,
         Command::Fs { action } => fs_command(&paths, action)?,
         Command::Browser { action } => browser_command(&paths, action).await?,
-        Command::Desktop { action } => desktop_command(&paths, action)?,
-        Command::Requests { action } => requests_command(&paths, action.unwrap_or(RequestsAction::List { json: false }))?,
-        Command::Sharing { action: SharingAction::Status { json } } => sharing_status(&paths, json)?,
+        Command::Requests { action } => requests_command(
+            &paths,
+            action.unwrap_or(RequestsAction::List { json: false }),
+        )?,
+        Command::Sharing {
+            action: SharingAction::Status { json },
+        } => sharing_status(&paths, json)?,
         Command::Linger { action } => linger_command(action)?,
-        Command::Update { check, no_restart, exe, mode, json } => update_command(&paths, check, no_restart, exe, mode, json).await?,
-        Command::Push { action: Some(action), .. } => push_admin(&paths, action).await?,
-        Command::Push { action: None, file, device, note, name, no_wait } => {
-            let code = push_file(&paths, file.expect("clap requires FILE"), device, note, name, no_wait).await?;
+        Command::Update {
+            check,
+            no_restart,
+            exe,
+            mode,
+            json,
+        } => update_command(&paths, check, no_restart, exe, mode, json).await?,
+        Command::Push {
+            action: Some(action),
+            ..
+        } => push_admin(&paths, action).await?,
+        Command::Push {
+            action: None,
+            file,
+            device,
+            note,
+            name,
+            no_wait,
+        } => {
+            let code = push_file(
+                &paths,
+                file.expect("clap requires FILE"),
+                device,
+                note,
+                name,
+                no_wait,
+            )
+            .await?;
             std::process::exit(code);
         }
         Command::Cron { action } => cron_command(&paths, action).await?,
     }
     Ok(())
 }
-fn desktop_command(paths: &HostPaths, action: DesktopAction) -> anyhow::Result<()> {
-    use unipi_host::desktop::{config, BackendPref, DesktopConfig};
-    use unipi_host::sharing::{self, DesktopEnable};
-    let path = paths.config();
-    match action {
-        DesktopAction::Enable { view_only, control, device, backend } => {
-            let backend = backend
-                .map(|b| BackendPref::parse(&b).ok_or_else(|| anyhow::anyhow!("unknown backend {b:?} (auto, mutter, portal, x11, test-card)")))
-                .transpose()?;
-            let view_only = if view_only { Some(true) } else if control { Some(false) } else { None };
-            sharing::desktop_enable(paths, DesktopEnable { view_only, backend, devices: (!device.is_empty()).then_some(device) })?;
-        }
-        DesktopAction::Disable => sharing::disable(paths, unipi_proto::FeatureKind::Desktop)?,
-        DesktopAction::Forget => {
-            for view in [false, true] {
-                let _ = std::fs::remove_file(config::restore_token_path(&paths.root, view));
-            }
-            println!("Forgot the stored screen-share consent.");
-        }
-        DesktopAction::Status => {}
-    }
-    let settings = DesktopConfig::load(&path)?;
-    let status = unipi_host::desktop::status(paths, &settings);
-    let devices = if settings.devices.is_empty() { "all paired devices".to_string() } else { settings.devices.join(", ") };
-    println!(
-        "Desktop streaming: {}\nControl: {}\nDevices: {devices}\nDisplay: {:?}\nBackend: {} (setting: {})\nCompiled in: {}\nConsent: {:?}\nLog: {}\nConfig: {} (read on every request, no restart needed)",
-        if settings.enabled { "on" } else { "off" },
-        if settings.view_only { "view only" } else { "mouse + keyboard" },
-        status.display,
-        status.backend.clone().unwrap_or_else(|| format!("none — {}", status.reason.clone().unwrap_or_default())),
-        settings.backend.as_str(),
-        if status.compiled.is_empty() { "nothing (desktop streaming not compiled in this build)".to_string() } else { status.compiled.join(", ") },
-        status.consent,
-        paths.root.join("desktop.log").display(),
-        path.display(),
-    );
-    if let Some(hint) = status.hint {
-        println!("Hint: {hint}");
-    }
-    Ok(())
-}
 async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Result<()> {
-    use unipi_host::browser::{profiles, would_use, BrowserConfig, BrowserControl, Engine, INSTALL_HINT};
+    use unipi_host::browser::{
+        profiles, would_use, BrowserConfig, BrowserControl, Engine, INSTALL_HINT,
+    };
     use unipi_host::sharing::{self, BrowserEnable};
     let path = paths.config();
     match action {
-        BrowserAction::Enable { headed, headless, idle_minutes, path: binary, device, engine, max_running } => {
-            let headless = if headed { Some(false) } else if headless { Some(true) } else { None };
+        BrowserAction::Enable {
+            headed,
+            headless,
+            idle_minutes,
+            path: binary,
+            device,
+            engine,
+            max_running,
+        } => {
+            let headless = if headed {
+                Some(false)
+            } else if headless {
+                Some(true)
+            } else {
+                None
+            };
             let engine = engine.as_deref().and_then(Engine::parse);
-            sharing::browser_enable(paths, BrowserEnable { headless, idle_minutes, path: binary, devices: (!device.is_empty()).then_some(device), engine, max_running })?;
+            sharing::browser_enable(
+                paths,
+                BrowserEnable {
+                    headless,
+                    idle_minutes,
+                    path: binary,
+                    devices: (!device.is_empty()).then_some(device),
+                    engine,
+                    max_running,
+                },
+            )?;
         }
         BrowserAction::Disable => sharing::disable(paths, unipi_proto::FeatureKind::Browser)?,
         BrowserAction::Status => {}
-        BrowserAction::Start { profile, session, json } => {
+        BrowserAction::Start {
+            profile,
+            session,
+            json,
+        } => {
             if let Some(name) = &profile {
                 profiles::check_name(name)?;
             }
@@ -817,13 +823,21 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
                 // UNI-296: agents use the take-over aware endpoint (falls back to the raw port).
                 if let Some(http) = started.agent_http.as_ref().or(started.http.as_ref()) {
                     if let Some(ws) = &started.agent_ws {
-                        println!("Agent endpoint: {ws}  (pauses while the user takes over in the app)");
+                        println!(
+                            "Agent endpoint: {ws}  (pauses while the user takes over in the app)"
+                        );
                     }
-                    println!("Connect: agent-browser --cdp {} …   (or {http}/json/version)", http.rsplit(':').next().unwrap_or(""));
+                    println!(
+                        "Connect: agent-browser --cdp {} …   (or {http}/json/version)",
+                        http.rsplit(':').next().unwrap_or("")
+                    );
                 }
                 // UNI-303: the stable address agents get as AGENT_BROWSER_CDP.
                 if let Some(stable) = unipi_host::browser::agent_endpoint::read(&paths.root) {
-                    println!("Stable agent address: 127.0.0.1:{} (profile {}) — AGENT_BROWSER_CDP", stable.port, stable.profile);
+                    println!(
+                        "Stable agent address: 127.0.0.1:{} (profile {}) — AGENT_BROWSER_CDP",
+                        stable.port, stable.profile
+                    );
                 }
             }
             return Ok(());
@@ -832,8 +846,12 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
             use unipi_host::browser::agent_endpoint;
             let endpoint = match profile {
                 Some(name) => agent_endpoint::set_profile(&paths.root, &name)?,
-                None => agent_endpoint::read(&paths.root)
-                    .ok_or_else(|| anyhow::anyhow!("the host isn't running (no {}); start it first", agent_endpoint::FILE))?,
+                None => agent_endpoint::read(&paths.root).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "the host isn't running (no {}); start it first",
+                        agent_endpoint::FILE
+                    )
+                })?,
             };
             if json {
                 println!("{}", serde_json::to_string(&endpoint)?);
@@ -857,10 +875,11 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
         }
         BrowserAction::Profiles { json } => {
             // From the serve when it runs (pids, viewers, agents), else from disk.
-            let list: Vec<unipi_host::browser::ProfileInfo> = match browser_control(paths, BrowserControl::Profiles).await {
-                Ok(data) => serde_json::from_value(data)?,
-                Err(_) => unipi_host::browser::local_profiles(&paths.root),
-            };
+            let list: Vec<unipi_host::browser::ProfileInfo> =
+                match browser_control(paths, BrowserControl::Profiles).await {
+                    Ok(data) => serde_json::from_value(data)?,
+                    Err(_) => unipi_host::browser::local_profiles(&paths.root),
+                };
             if json {
                 println!("{}", serde_json::to_string(&list)?);
                 return Ok(());
@@ -870,15 +889,37 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
             }
             let when = |ms: u64| {
                 let ago = unipi_host::push::now_ms().saturating_sub(ms) / 60_000;
-                if ago < 1 { "just now".to_string() } else if ago < 120 { format!("{ago} min ago") } else if ago < 48 * 60 { format!("{} h ago", ago / 60) } else { format!("{} days ago", ago / 1440) }
+                if ago < 1 {
+                    "just now".to_string()
+                } else if ago < 120 {
+                    format!("{ago} min ago")
+                } else if ago < 48 * 60 {
+                    format!("{} h ago", ago / 60)
+                } else {
+                    format!("{} days ago", ago / 1440)
+                }
             };
             for p in &list {
                 let state = match (p.running, p.pid) {
                     (true, Some(pid)) => format!(
                         "running (pid {pid}{}{}{})",
-                        p.engine.as_deref().map(|e| format!(", {e}")).unwrap_or_default(),
-                        if p.stealth == Some(false) { ", NOT stealthy" } else { "" },
-                        if p.viewers + p.cdp_clients > 0 { format!(", in use: {} viewer(s), {} agent(s)", p.viewers, p.cdp_clients) } else { String::new() }
+                        p.engine
+                            .as_deref()
+                            .map(|e| format!(", {e}"))
+                            .unwrap_or_default(),
+                        if p.stealth == Some(false) {
+                            ", NOT stealthy"
+                        } else {
+                            ""
+                        },
+                        if p.viewers + p.cdp_clients > 0 {
+                            format!(
+                                ", in use: {} viewer(s), {} agent(s)",
+                                p.viewers, p.cdp_clients
+                            )
+                        } else {
+                            String::new()
+                        }
                     ),
                     (true, None) => "running".to_string(),
                     _ => "stopped".to_string(),
@@ -889,22 +930,40 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
                     "",
                     when(p.created),
                     p.last_used.map(when).unwrap_or_else(|| "never".into()),
-                    p.last_session.as_deref().map(|s| format!(" (session {s})")).unwrap_or_default(),
+                    p.last_session
+                        .as_deref()
+                        .map(|s| format!(" (session {s})"))
+                        .unwrap_or_default(),
                     "",
-                    if p.cookie_domains.is_empty() { "none".to_string() } else { p.cookie_domains.iter().map(|d| d.domain.as_str()).collect::<Vec<_>>().join(", ") },
+                    if p.cookie_domains.is_empty() {
+                        "none".to_string()
+                    } else {
+                        p.cookie_domains
+                            .iter()
+                            .map(|d| d.domain.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    },
                 );
             }
             return Ok(());
         }
-        BrowserAction::Profile { action: ProfileAction::Create { name } } => {
+        BrowserAction::Profile {
+            action: ProfileAction::Create { name },
+        } => {
             let _ = profiles::migrate(&paths.root, unipi_host::push::now_ms());
             profiles::create(&paths.root, &name, unipi_host::push::now_ms())?;
             println!("Created browser profile {name} ({}).\nStart it: unipi-host browser start --profile {name}", profiles::dir(&paths.root, &name).display());
             return Ok(());
         }
-        BrowserAction::Profile { action: ProfileAction::Rm { name } } => {
+        BrowserAction::Profile {
+            action: ProfileAction::Rm { name },
+        } => {
             profiles::check_name(&name)?;
-            anyhow::ensure!(name != profiles::DEFAULT, "the default profile can't be removed");
+            anyhow::ensure!(
+                name != profiles::DEFAULT,
+                "the default profile can't be removed"
+            );
             let running = match browser_control(paths, BrowserControl::Profiles).await {
                 Ok(data) => serde_json::from_value::<Vec<unipi_host::browser::ProfileInfo>>(data)?,
                 Err(_) => unipi_host::browser::local_profiles(&paths.root),
@@ -917,31 +976,57 @@ async fn browser_command(paths: &HostPaths, action: BrowserAction) -> anyhow::Re
             println!("Removed browser profile {name}.");
             return Ok(());
         }
-        BrowserAction::Cookies { from, from_dir, domain, into, list_sources, json } => {
+        BrowserAction::Cookies {
+            from,
+            from_dir,
+            domain,
+            into,
+            list_sources,
+            json,
+        } => {
             cookies_command(paths, from, from_dir, domain, into, list_sources, json).await?;
             return Ok(());
         }
     }
     let config = BrowserConfig::load(&path)?;
     let (found, engine, stealth, reason) = would_use(&config);
-    let devices = if config.devices.is_empty() { "all paired devices".to_string() } else { config.devices.join(", ") };
+    let devices = if config.devices.is_empty() {
+        "all paired devices".to_string()
+    } else {
+        config.devices.join(", ")
+    };
     let mode = match engine {
         Engine::Cloak => {
             let x = match unipi_host::browser::display::detect_backend_here() {
-                Some(b) => format!("hidden display ({}) — shown only in the UniPi app", b.program()),
+                Some(b) => format!(
+                    "hidden display ({}) — shown only in the UniPi app",
+                    b.program()
+                ),
                 None => format!("headless — {}", unipi_host::browser::HEADLESS_NOTE),
             };
-            match unipi_host::browser::wanted_placement(&config, unipi_host::browser::can_show_window()) {
-                unipi_host::browser::Placement::Window => "window shown on this PC (Show window is on)".to_string(),
+            match unipi_host::browser::wanted_placement(
+                &config,
+                unipi_host::browser::can_show_window(),
+            ) {
+                unipi_host::browser::Placement::Window => {
+                    "window shown on this PC (Show window is on)".to_string()
+                }
                 _ => x,
             }
         }
         _ if config.headless => "headless (no window on this PC)".to_string(),
-        _ if unipi_host::browser::can_show_window() => "headed (window visible on this PC)".to_string(),
+        _ if unipi_host::browser::can_show_window() => {
+            "headed (window visible on this PC)".to_string()
+        }
         _ => "headed, but this session has no screen — runs headless".to_string(),
     };
     let binary = match (&found, engine) {
-        (Some(b), Engine::Cloak) if !std::path::Path::new(&b.path).exists() => format!("{} {} — downloaded on first start to {}", b.name, b.version.as_deref().unwrap_or(""), b.path),
+        (Some(b), Engine::Cloak) if !std::path::Path::new(&b.path).exists() => format!(
+            "{} {} — downloaded on first start to {}",
+            b.name,
+            b.version.as_deref().unwrap_or(""),
+            b.path
+        ),
         (Some(b), _) => format!("{} ({})", b.name, b.path),
         (None, _) => format!("none found — {INSTALL_HINT}"),
     };
@@ -975,7 +1060,8 @@ async fn cookies_command(
     use unipi_host::browser::cookies::{self, DetectedSource};
     use unipi_host::browser::{profiles, BrowserControl, CookieWire};
     if list_sources {
-        let home = unipi_host::fs::home_dir().map_err(|e| anyhow::anyhow!(e.message.as_str().to_string()))?;
+        let home = unipi_host::fs::home_dir()
+            .map_err(|e| anyhow::anyhow!(e.message.as_str().to_string()))?;
         let sources: Vec<DetectedSource> = cookies::detect_sources(&home);
         if json {
             println!("{}", serde_json::to_string(&sources)?);
@@ -985,16 +1071,27 @@ async fn cookies_command(
             println!("No Chrome-family browser with a cookie database was found on this PC.");
         }
         for s in &sources {
-            println!("{:<10} {}\n{:<10} profiles: {}", s.browser.as_str(), s.user_data_dir, "", s.profiles.join(", "));
+            println!(
+                "{:<10} {}\n{:<10} profiles: {}",
+                s.browser.as_str(),
+                s.user_data_dir,
+                "",
+                s.profiles.join(", ")
+            );
         }
         return Ok(());
     }
-    let domain = domain.ok_or_else(|| anyhow::anyhow!("--domain is required (or pass --list-sources)"))?;
-    anyhow::ensure!(!domain.trim().is_empty() && !domain.contains(char::is_whitespace), "bad --domain {domain:?}");
+    let domain =
+        domain.ok_or_else(|| anyhow::anyhow!("--domain is required (or pass --list-sources)"))?;
+    anyhow::ensure!(
+        !domain.trim().is_empty() && !domain.contains(char::is_whitespace),
+        "bad --domain {domain:?}"
+    );
     let into = into.unwrap_or_else(|| profiles::DEFAULT.into());
     profiles::check_name(&into)?;
 
-    let home = unipi_host::fs::home_dir().map_err(|e| anyhow::anyhow!(e.message.as_str().to_string()))?;
+    let home =
+        unipi_host::fs::home_dir().map_err(|e| anyhow::anyhow!(e.message.as_str().to_string()))?;
     let resolved = match (&from, &from_dir) {
         (Some(spec), None) => cookies::resolve_from(spec, &home),
         (None, Some(spec)) => cookies::resolve_from_dir(spec),
@@ -1002,10 +1099,15 @@ async fn cookies_command(
     }
     .map_err(|e| anyhow::anyhow!(e))?;
 
-    let imported = cookies::run_import(&resolved.db_path, resolved.browser, &domain).map_err(|e| anyhow::anyhow!(e))?;
+    let imported = cookies::run_import(&resolved.db_path, resolved.browser, &domain)
+        .map_err(|e| anyhow::anyhow!(e))?;
     let count = imported.cookies.len();
     if count == 0 {
-        println!("No cookies found for {domain} in {} (skipped {}).", resolved.db_path.display(), imported.skipped);
+        println!(
+            "No cookies found for {domain} in {} (skipped {}).",
+            resolved.db_path.display(),
+            imported.skipped
+        );
         return Ok(());
     }
 
@@ -1023,9 +1125,22 @@ async fn cookies_command(
             expires: c.expires,
         })
         .collect();
-    let data = browser_control(paths, BrowserControl::Cookies { profile: into.clone(), domain: domain.clone(), cookies: wire }).await?;
+    let data = browser_control(
+        paths,
+        BrowserControl::Cookies {
+            profile: into.clone(),
+            domain: domain.clone(),
+            cookies: wire,
+        },
+    )
+    .await?;
     if json {
-        println!("{}", serde_json::to_string(&serde_json::json!({ "imported": count, "skipped": imported.skipped, "profile": into, "domain": domain }))?);
+        println!(
+            "{}",
+            serde_json::to_string(
+                &serde_json::json!({ "imported": count, "skipped": imported.skipped, "profile": into, "domain": domain })
+            )?
+        );
     } else {
         println!(
             "Imported {count} cookie(s) for {domain} into profile {into} ({} skipped, undecryptable or unsupported).",
@@ -1036,9 +1151,13 @@ async fn cookies_command(
     Ok(())
 }
 /// One `browser` request to the running serve over control.sock.
-async fn browser_control(paths: &HostPaths, request: unipi_host::browser::BrowserControl) -> anyhow::Result<serde_json::Value> {
+async fn browser_control(
+    paths: &HostPaths,
+    request: unipi_host::browser::BrowserControl,
+) -> anyhow::Result<serde_json::Value> {
     use unipi_host::push::{ControlEvent, ControlRequest};
-    let (mut lines, _w) = unipi_host::push::connect_control(paths, &ControlRequest::Browser { request }).await?;
+    let (mut lines, _w) =
+        unipi_host::push::connect_control(paths, &ControlRequest::Browser { request }).await?;
     // A first start may download CloakBrowser (~200 MB): no timeout here.
     match lines.next_line().await? {
         Some(line) => match serde_json::from_str::<ControlEvent>(&line)? {
@@ -1050,13 +1169,20 @@ async fn browser_control(paths: &HostPaths, request: unipi_host::browser::Browse
     }
 }
 /// One `cron` request to the running serve over control.sock.
-async fn cron_control(paths: &HostPaths, request: unipi_host::cron::CronControl) -> anyhow::Result<serde_json::Value> {
+async fn cron_control(
+    paths: &HostPaths,
+    request: unipi_host::cron::CronControl,
+) -> anyhow::Result<serde_json::Value> {
     use unipi_host::push::{ControlEvent, ControlRequest};
-    let (mut lines, _w) = unipi_host::push::connect_control(paths, &ControlRequest::Cron { request }).await?;
+    let (mut lines, _w) =
+        unipi_host::push::connect_control(paths, &ControlRequest::Cron { request }).await?;
     match lines.next_line().await? {
         Some(line) => match serde_json::from_str::<ControlEvent>(&line)? {
             ControlEvent::Cron { data } => Ok(data),
-            ControlEvent::Error { message, hint } => anyhow::bail!("{message}{}", hint.map(|h| format!("\n{h}")).unwrap_or_default()),
+            ControlEvent::Error { message, hint } => anyhow::bail!(
+                "{message}{}",
+                hint.map(|h| format!("\n{h}")).unwrap_or_default()
+            ),
             other => anyhow::bail!("unexpected reply from serve: {other:?}"),
         },
         None => anyhow::bail!("`unipi-host serve` closed the connection"),
@@ -1068,7 +1194,11 @@ async fn cron_control(paths: &HostPaths, request: unipi_host::cron::CronControl)
 /// `add`/`edit` use server-side) and the current time. `for_at` means
 /// the result must be one-time: a bare RFC3339 instant with no `at:`
 /// prefix is accepted too (the common case for `--at`).
-fn resolve_schedule_input(input: &str, for_at: bool, tz_input: Option<&str>) -> anyhow::Result<String> {
+fn resolve_schedule_input(
+    input: &str,
+    for_at: bool,
+    tz_input: Option<&str>,
+) -> anyhow::Result<String> {
     use unipi_host::cron::schedule::{parse_human, resolve_tz, Schedule};
     let tz = resolve_tz(tz_input.unwrap_or_default()).map_err(|e| anyhow::anyhow!("{e}"))?;
     let now = chrono::Utc::now();
@@ -1092,13 +1222,25 @@ fn resolve_schedule_input(input: &str, for_at: bool, tz_input: Option<&str>) -> 
 /// The schedule + next-3-fires line shown after `add`/`edit` (human mode).
 fn schedule_summary(schedule: &str, tz_input: &str) -> String {
     use unipi_host::cron::schedule::{next_fires, resolve_tz, Schedule};
-    let Ok(tz) = resolve_tz(tz_input) else { return format!("schedule: {schedule}") };
-    let Ok(parsed) = Schedule::parse(schedule) else { return format!("schedule: {schedule}") };
+    let Ok(tz) = resolve_tz(tz_input) else {
+        return format!("schedule: {schedule}");
+    };
+    let Ok(parsed) = Schedule::parse(schedule) else {
+        return format!("schedule: {schedule}");
+    };
     let fires = next_fires(&parsed, tz, chrono::Utc::now(), 3);
     if fires.is_empty() {
         return format!("schedule: {schedule} (no upcoming fire — already run, or in the past)");
     }
-    let times = fires.iter().map(|dt| dt.with_timezone(&tz).format("%Y-%m-%d %H:%M %Z").to_string()).collect::<Vec<_>>().join(", ");
+    let times = fires
+        .iter()
+        .map(|dt| {
+            dt.with_timezone(&tz)
+                .format("%Y-%m-%d %H:%M %Z")
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("schedule: {schedule}\nnext: {times}")
 }
 
@@ -1108,7 +1250,10 @@ fn schedule_summary(schedule: &str, tz_input: &str) -> String {
 /// i.e. default). `None` overall only when both lists are empty (the CLI
 /// caller decides whether to even call this for `edit`, where "untouched"
 /// and "cleared" are different).
-fn notify_spec_from_flags(notify: &[String], notify_on: &[String]) -> anyhow::Result<Option<unipi_host::cron::model::NotifySpec>> {
+fn notify_spec_from_flags(
+    notify: &[String],
+    notify_on: &[String],
+) -> anyhow::Result<Option<unipi_host::cron::model::NotifySpec>> {
     let channels: Option<Vec<String>> = match notify {
         [] => None,
         v if v.iter().any(|c| c.eq_ignore_ascii_case("none")) => None,
@@ -1122,34 +1267,49 @@ fn notify_spec_from_flags(notify: &[String], notify_on: &[String]) -> anyhow::Re
     if channels.is_none() && events.is_none() {
         return Ok(None);
     }
-    Ok(Some(unipi_host::cron::model::NotifySpec { channels, events }))
+    Ok(Some(unipi_host::cron::model::NotifySpec {
+        channels,
+        events,
+    }))
 }
 
 /// Builds an `Option<SessionLink>` from `--wake-session`/`--wake-here`.
 /// `--wake-here` reads `$PI_SESSION_FILE` (pi's bash tool exports it —
 /// `resolveSpawnContext` in pi's `bash.js`); `--wake-session none` (or
 /// neither flag) clears the link.
-fn session_link_from_flags(wake_session: Option<&str>, wake_here: bool) -> anyhow::Result<Option<unipi_host::cron::model::SessionLink>> {
+fn session_link_from_flags(
+    wake_session: Option<&str>,
+    wake_here: bool,
+) -> anyhow::Result<Option<unipi_host::cron::model::SessionLink>> {
     if wake_here {
         let file = std::env::var("PI_SESSION_FILE").map_err(|_| {
             anyhow::anyhow!("--wake-here needs $PI_SESSION_FILE, which pi's bash tool sets — run this from inside a pi session")
         })?;
         anyhow::ensure!(!file.is_empty(), "$PI_SESSION_FILE is empty");
-        return Ok(Some(unipi_host::cron::model::SessionLink { session_file: Some(file), session_id: None }));
+        return Ok(Some(unipi_host::cron::model::SessionLink {
+            session_file: Some(file),
+            session_id: None,
+        }));
     }
     match wake_session {
         None => Ok(None),
         Some(v) if v.eq_ignore_ascii_case("none") => Ok(None),
         Some(v) if v.ends_with(".jsonl") || v.contains('/') || v.contains('\\') => {
-            Ok(Some(unipi_host::cron::model::SessionLink { session_file: Some(v.to_string()), session_id: None }))
+            Ok(Some(unipi_host::cron::model::SessionLink {
+                session_file: Some(v.to_string()),
+                session_id: None,
+            }))
         }
-        Some(v) => Ok(Some(unipi_host::cron::model::SessionLink { session_file: None, session_id: Some(v.to_string()) })),
+        Some(v) => Ok(Some(unipi_host::cron::model::SessionLink {
+            session_file: None,
+            session_id: Some(v.to_string()),
+        })),
     }
 }
 
 async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<()> {
-    use unipi_host::cron::CronControl;
     use unipi_host::cron::scheduler::{EditJob, NewJob};
+    use unipi_host::cron::CronControl;
     let print_or = |json: bool, value: &serde_json::Value, text: String| {
         if json {
             println!("{}", serde_json::to_string(value).unwrap_or_default());
@@ -1174,7 +1334,11 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                 println!(
                     "{:<20} {:<8} {}  {}  {}",
                     job["id"].as_str().unwrap_or(""),
-                    if job["enabled"].as_bool().unwrap_or(false) { "enabled" } else { "disabled" },
+                    if job["enabled"].as_bool().unwrap_or(false) {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    },
                     job["schedule"].as_str().unwrap_or(""),
                     job["tz"].as_str().unwrap_or(""),
                     job["name"].as_str().unwrap_or(""),
@@ -1190,11 +1354,26 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
             let job = &data["job"];
             let tz = job["tz"].as_str().unwrap_or("UTC");
             let mut lines = vec![
-                format!("{} — {}", job["id"].as_str().unwrap_or(""), job["name"].as_str().unwrap_or("")),
-                format!("  {}", if job["enabled"].as_bool().unwrap_or(false) { "enabled" } else { "disabled" }),
+                format!(
+                    "{} — {}",
+                    job["id"].as_str().unwrap_or(""),
+                    job["name"].as_str().unwrap_or("")
+                ),
+                format!(
+                    "  {}",
+                    if job["enabled"].as_bool().unwrap_or(false) {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                ),
                 format!("  prompt: {}", job["prompt"].as_str().unwrap_or("")),
                 format!("  cwd: {}", job["cwd"].as_str().unwrap_or("")),
-                schedule_summary(job["schedule"].as_str().unwrap_or(""), tz).lines().map(|l| format!("  {l}")).collect::<Vec<_>>().join("\n"),
+                schedule_summary(job["schedule"].as_str().unwrap_or(""), tz)
+                    .lines()
+                    .map(|l| format!("  {l}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             ];
             if let Some(model) = job["model"].as_str() {
                 lines.push(format!("  model: {model}"));
@@ -1213,18 +1392,42 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                     "  {:<8} {:<8} {}",
                     run["id"].as_str().unwrap_or(""),
                     run["status"].as_str().unwrap_or(""),
-                    run["summary"].as_str().unwrap_or(run["reason"].as_str().unwrap_or("")),
+                    run["summary"]
+                        .as_str()
+                        .unwrap_or(run["reason"].as_str().unwrap_or("")),
                 ));
             }
             println!("{}", lines.join("\n"));
         }
-        CronAction::Add { id, name, prompt, schedule, at, tz, cwd, model, thinking, disabled, time_limit_s, cost_cap, notify, notify_on, wake_session, wake_here, json } => {
+        CronAction::Add {
+            id,
+            name,
+            prompt,
+            schedule,
+            at,
+            tz,
+            cwd,
+            model,
+            thinking,
+            disabled,
+            time_limit_s,
+            cost_cap,
+            notify,
+            notify_on,
+            wake_session,
+            wake_here,
+            json,
+        } => {
             let raw_schedule = schedule.or(at.clone()).ok_or_else(|| {
                 anyhow::anyhow!("cron add needs --schedule (a recurring schedule) or --at (one-time) — example: --schedule \"every day at 9:00\" or --at \"in 2 hours\"")
             })?;
-            let resolved_schedule = resolve_schedule_input(&raw_schedule, at.is_some(), tz.as_deref())?;
+            let resolved_schedule =
+                resolve_schedule_input(&raw_schedule, at.is_some(), tz.as_deref())?;
             let cwd = cwd.unwrap_or_else(|| ".".to_string());
-            let cwd = std::fs::canonicalize(&cwd).map_err(|e| anyhow::anyhow!("--cwd {cwd:?}: {e}"))?.to_string_lossy().into_owned();
+            let cwd = std::fs::canonicalize(&cwd)
+                .map_err(|e| anyhow::anyhow!("--cwd {cwd:?}: {e}"))?
+                .to_string_lossy()
+                .into_owned();
             let notify_spec = notify_spec_from_flags(&notify, &notify_on)?;
             let session_link = session_link_from_flags(wake_session.as_deref(), wake_here)?;
             let data = cron_control(
@@ -1249,21 +1452,86 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
             let job_id = data["id"].as_str().unwrap_or("").to_string();
             let job_tz = data["tz"].as_str().unwrap_or("UTC").to_string();
             let job_schedule = data["schedule"].as_str().unwrap_or("").to_string();
-            print_or(json, &data, format!("Added job {job_id}.\n{}", schedule_summary(&job_schedule, &job_tz)));
+            print_or(
+                json,
+                &data,
+                format!(
+                    "Added job {job_id}.\n{}",
+                    schedule_summary(&job_schedule, &job_tz)
+                ),
+            );
         }
-        CronAction::Edit { id, name, prompt, schedule, at, tz, cwd, model, thinking, time_limit_s, cost_cap, notify, notify_on, wake_session, wake_here, json } => {
+        CronAction::Edit {
+            id,
+            name,
+            prompt,
+            schedule,
+            at,
+            tz,
+            cwd,
+            model,
+            thinking,
+            time_limit_s,
+            cost_cap,
+            notify,
+            notify_on,
+            wake_session,
+            wake_here,
+            json,
+        } => {
             let resolved_schedule = match schedule.or(at.clone()) {
                 Some(raw) => Some(resolve_schedule_input(&raw, at.is_some(), tz.as_deref())?),
                 None => None,
             };
-            let cwd = cwd.map(|c| std::fs::canonicalize(&c).map(|p| p.to_string_lossy().into_owned()).map_err(|e| anyhow::anyhow!("--cwd {c:?}: {e}"))).transpose()?;
-            let notify_patch = if notify.is_empty() && notify_on.is_empty() { None } else { Some(notify_spec_from_flags(&notify, &notify_on)?) };
-            let session_link_patch = if wake_session.is_none() && !wake_here { None } else { Some(session_link_from_flags(wake_session.as_deref(), wake_here)?) };
-            let patch = EditJob { name, prompt, schedule: resolved_schedule, tz, cwd, model, thinking, enabled: None, time_limit_s, cost_cap_usd: cost_cap, notify: notify_patch, session_link: session_link_patch };
-            let data = cron_control(paths, CronControl::Edit { id: id.clone(), patch }).await?;
+            let cwd = cwd
+                .map(|c| {
+                    std::fs::canonicalize(&c)
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .map_err(|e| anyhow::anyhow!("--cwd {c:?}: {e}"))
+                })
+                .transpose()?;
+            let notify_patch = if notify.is_empty() && notify_on.is_empty() {
+                None
+            } else {
+                Some(notify_spec_from_flags(&notify, &notify_on)?)
+            };
+            let session_link_patch = if wake_session.is_none() && !wake_here {
+                None
+            } else {
+                Some(session_link_from_flags(wake_session.as_deref(), wake_here)?)
+            };
+            let patch = EditJob {
+                name,
+                prompt,
+                schedule: resolved_schedule,
+                tz,
+                cwd,
+                model,
+                thinking,
+                enabled: None,
+                time_limit_s,
+                cost_cap_usd: cost_cap,
+                notify: notify_patch,
+                session_link: session_link_patch,
+            };
+            let data = cron_control(
+                paths,
+                CronControl::Edit {
+                    id: id.clone(),
+                    patch,
+                },
+            )
+            .await?;
             let job_tz = data["tz"].as_str().unwrap_or("UTC").to_string();
             let job_schedule = data["schedule"].as_str().unwrap_or("").to_string();
-            print_or(json, &data, format!("Updated job {id}.\n{}", schedule_summary(&job_schedule, &job_tz)));
+            print_or(
+                json,
+                &data,
+                format!(
+                    "Updated job {id}.\n{}",
+                    schedule_summary(&job_schedule, &job_tz)
+                ),
+            );
         }
         CronAction::TestNotify { id, json } => {
             let data = cron_control(paths, CronControl::TestNotify { id: id.clone() }).await?;
@@ -1272,7 +1540,10 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                 return Ok(());
             }
             let channels = data["channels"].as_array().cloned().unwrap_or_default();
-            let names: Vec<String> = channels.iter().filter_map(|c| c.as_str().map(str::to_string)).collect();
+            let names: Vec<String> = channels
+                .iter()
+                .filter_map(|c| c.as_str().map(str::to_string))
+                .collect();
             let errors = data["errors"].as_array().cloned().unwrap_or_default();
             if errors.is_empty() {
                 println!("Sent a test notification on: {}", names.join(", "));
@@ -1297,11 +1568,22 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
         }
         CronAction::Run { id, json } => {
             let data = cron_control(paths, CronControl::RunNow { id }).await?;
-            print_or(json, &data, format!("Started run {}", data["run_id"].as_str().unwrap_or("")));
+            print_or(
+                json,
+                &data,
+                format!("Started run {}", data["run_id"].as_str().unwrap_or("")),
+            );
         }
         CronAction::Stop { id } => {
             let data = cron_control(paths, CronControl::Stop { id }).await?;
-            println!("{}", if data["stopped"].as_bool() == Some(true) { "Stopped." } else { "Nothing was running." });
+            println!(
+                "{}",
+                if data["stopped"].as_bool() == Some(true) {
+                    "Stopped."
+                } else {
+                    "Nothing was running."
+                }
+            );
         }
         CronAction::Runs { id, limit, json } => {
             let data = cron_control(paths, CronControl::Runs { job_id: id, limit }).await?;
@@ -1319,7 +1601,9 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                     run["job_id"].as_str().unwrap_or(""),
                     run["id"].as_str().unwrap_or(""),
                     run["status"].as_str().unwrap_or(""),
-                    run["summary"].as_str().unwrap_or(run["reason"].as_str().unwrap_or("")),
+                    run["summary"]
+                        .as_str()
+                        .unwrap_or(run["reason"].as_str().unwrap_or("")),
                 );
             }
         }
@@ -1335,9 +1619,15 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                 run["id"].as_str().unwrap_or(""),
                 run["status"].as_str().unwrap_or(""),
                 data["job_id"].as_str().unwrap_or(""),
-                run["exit_code"].as_i64().map(|c| c.to_string()).unwrap_or_else(|| "-".to_string()),
+                run["exit_code"]
+                    .as_i64()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
                 run["session_path"].as_str().unwrap_or("-"),
-                run["cost_usd"].as_f64().map(|c| format!("${c:.4}")).unwrap_or_else(|| "-".to_string()),
+                run["cost_usd"]
+                    .as_f64()
+                    .map(|c| format!("${c:.4}"))
+                    .unwrap_or_else(|| "-".to_string()),
             );
             println!("{}", data["log"].as_str().unwrap_or(""));
         }
@@ -1357,22 +1647,35 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
             }
             let mut lines = vec![format!(
                 "{}  concurrency {}",
-                if data["paused"].as_bool().unwrap_or(false) { "paused" } else { "running" },
+                if data["paused"].as_bool().unwrap_or(false) {
+                    "paused"
+                } else {
+                    "running"
+                },
                 data["concurrency"].as_i64().unwrap_or(0),
             )];
             for job in data["jobs"].as_array().cloned().unwrap_or_default() {
                 lines.push(format!(
                     "  {:<20} {}  next {}  {}",
                     job["id"].as_str().unwrap_or(""),
-                    if job["enabled"].as_bool().unwrap_or(false) { "enabled " } else { "disabled" },
+                    if job["enabled"].as_bool().unwrap_or(false) {
+                        "enabled "
+                    } else {
+                        "disabled"
+                    },
                     job["next_fire"].as_str().unwrap_or("-"),
-                    if job["running"].as_bool().unwrap_or(false) { "(running)" } else { "" },
+                    if job["running"].as_bool().unwrap_or(false) {
+                        "(running)"
+                    } else {
+                        ""
+                    },
                 ));
             }
             println!("{}", lines.join("\n"));
         }
         CronAction::Share { device } => {
-            let settings = unipi_host::sharing::cron_enable(paths, (!device.is_empty()).then_some(device))?;
+            let settings =
+                unipi_host::sharing::cron_enable(paths, (!device.is_empty()).then_some(device))?;
             print_cron_settings(&settings);
         }
         CronAction::Unshare => {
@@ -1408,10 +1711,15 @@ async fn cron_command(paths: &HostPaths, action: CronAction) -> anyhow::Result<(
                     default_time_limit_s,
                     paused,
                     ntfy_topic,
-                    notify_default_events: notify_default_events
-                        .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()),
+                    notify_default_events: notify_default_events.map(|s| {
+                        s.split(',')
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect()
+                    }),
                 };
-                unipi_host::cron_serve::apply_settings_patch(paths, patch).map_err(|e| anyhow::anyhow!(e))?
+                unipi_host::cron_serve::apply_settings_patch(paths, patch)
+                    .map_err(|e| anyhow::anyhow!(e))?
             } else {
                 unipi_host::cron::store::load_settings(&paths.config())?
             };
@@ -1429,20 +1737,38 @@ fn print_cron_settings(settings: &unipi_host::cron::CronSettings) {
         "concurrency {}  missed_window_s {}  retention_runs {}  retention_days {}  default_time_limit_s {}",
         settings.concurrency, settings.missed_window_s, settings.retention_runs, settings.retention_days, settings.default_time_limit_s,
     );
-    println!("paused {}  cron shared with phones: {}", settings.paused, settings.enabled);
+    println!(
+        "paused {}  cron shared with phones: {}",
+        settings.paused, settings.enabled
+    );
     if settings.enabled {
-        println!("  devices: {}", if settings.devices.is_empty() { "all paired devices".to_string() } else { settings.devices.join(", ") });
+        println!(
+            "  devices: {}",
+            if settings.devices.is_empty() {
+                "all paired devices".to_string()
+            } else {
+                settings.devices.join(", ")
+            }
+        );
     }
-    println!("ntfy_topic {}", settings.ntfy_topic.as_deref().unwrap_or("-"));
+    println!(
+        "ntfy_topic {}",
+        settings.ntfy_topic.as_deref().unwrap_or("-")
+    );
     println!(
         "notify_default_events {}",
-        if settings.notify_default_events.is_empty() { "-".to_string() } else { settings.notify_default_events.join(",") }
+        if settings.notify_default_events.is_empty() {
+            "-".to_string()
+        } else {
+            settings.notify_default_events.join(",")
+        }
     );
 }
 fn fs_command(paths: &HostPaths, action: FsAction) -> anyhow::Result<()> {
     use unipi_host::fs_scope::{allow, deny, Edit, FsAccessConfig, FsScope};
     let path = paths.config();
-    let home = unipi_host::fs::home_dir().map_err(|e| anyhow::anyhow!(e.message.as_str().to_string()))?;
+    let home =
+        unipi_host::fs::home_dir().map_err(|e| anyhow::anyhow!(e.message.as_str().to_string()))?;
     let mut config = FsAccessConfig::load(&path)?;
     let edit = match &action {
         FsAction::Allow { path: p } => Some(allow(&mut config, p, &home)?),
@@ -1458,7 +1784,13 @@ fn fs_command(paths: &HostPaths, action: FsAction) -> anyhow::Result<()> {
         None => {}
     }
     let scope = FsScope::resolve(home.clone(), &config);
-    let list = |v: &[String]| if v.is_empty() { "none".to_string() } else { v.join(", ") };
+    let list = |v: &[String]| {
+        if v.is_empty() {
+            "none".to_string()
+        } else {
+            v.join(", ")
+        }
+    };
     println!(
         "The app can open: {} (home), session folders{}\nAllowed (fs allow): {}\nDenied (fs deny): {}\nConfig: {} (read on every request, no restart needed)",
         home.display(),
@@ -1474,8 +1806,21 @@ fn forward_command(paths: &HostPaths, action: ForwardAction) -> anyhow::Result<(
     use unipi_host::sharing::{self, ForwardEnable};
     let path = paths.config();
     match action {
-        ForwardAction::Enable { any, port, only, device } => {
-            sharing::forward_enable(paths, ForwardEnable { any, ports: port, replace: only, devices: (!device.is_empty()).then_some(device) })?;
+        ForwardAction::Enable {
+            any,
+            port,
+            only,
+            device,
+        } => {
+            sharing::forward_enable(
+                paths,
+                ForwardEnable {
+                    any,
+                    ports: port,
+                    replace: only,
+                    devices: (!device.is_empty()).then_some(device),
+                },
+            )?;
         }
         ForwardAction::Disable => sharing::disable(paths, unipi_proto::FeatureKind::Forward)?,
         ForwardAction::Status => {}
@@ -1485,9 +1830,17 @@ fn forward_command(paths: &HostPaths, action: ForwardAction) -> anyhow::Result<(
     let ports = match &f.ports {
         PortRule::Any => "any loopback port".to_string(),
         PortRule::None => "none".to_string(),
-        PortRule::List(list) => list.iter().map(u16::to_string).collect::<Vec<_>>().join(", "),
+        PortRule::List(list) => list
+            .iter()
+            .map(u16::to_string)
+            .collect::<Vec<_>>()
+            .join(", "),
     };
-    let devices = if f.devices.is_empty() { "all paired devices".to_string() } else { f.devices.join(", ") };
+    let devices = if f.devices.is_empty() {
+        "all paired devices".to_string()
+    } else {
+        f.devices.join(", ")
+    };
     println!(
         "Port forwarding: {}\nPorts: {ports}\nDevices: {devices}\nConfig: {} (read on every request, no restart needed)",
         if f.enabled { "on" } else { "off" },
@@ -1512,11 +1865,14 @@ async fn pair_command(paths: &HostPaths, ttl: &str, json: bool) -> anyhow::Resul
         Ok(started) => started,
         Err(error) if json => {
             let message = error.to_string();
-            let hint = (message == pair_cli::NOT_RUNNING).then(|| pair_cli::start_hint().to_string());
+            let hint =
+                (message == pair_cli::NOT_RUNNING).then(|| pair_cli::start_hint().to_string());
             emit(&PairEvent::Error { message, hint });
             return Ok(1);
         }
-        Err(error) if error.to_string() == pair_cli::NOT_RUNNING => anyhow::bail!("{error}\n{}", pair_cli::start_hint()),
+        Err(error) if error.to_string() == pair_cli::NOT_RUNNING => {
+            anyhow::bail!("{error}\n{}", pair_cli::start_hint())
+        }
         Err(error) => return Err(error),
     };
     if json {
@@ -1562,7 +1918,11 @@ async fn shutdown_signal() -> std::io::Result<()> {
     tokio::signal::ctrl_c().await
 }
 fn print_push_status(paths: &HostPaths, config: &unipi_host::push::PushConfig) {
-    let devices = if config.devices.is_empty() { "all paired devices".to_string() } else { config.devices.join(", ") };
+    let devices = if config.devices.is_empty() {
+        "all paired devices".to_string()
+    } else {
+        config.devices.join(", ")
+    };
     println!(
         "Push to phone: {}\nDevices: {devices}\nConfig: {} (read on every request, no restart needed)",
         if config.enabled { "on" } else { "off" },
@@ -1576,7 +1936,8 @@ async fn push_admin(paths: &HostPaths, action: PushAction) -> anyhow::Result<()>
     let mut config = HostConfig::load(&path)?;
     match action {
         PushAction::Enable { device } => {
-            let push = unipi_host::sharing::push_enable(paths, (!device.is_empty()).then_some(device))?;
+            let push =
+                unipi_host::sharing::push_enable(paths, (!device.is_empty()).then_some(device))?;
             print_push_status(paths, &push);
         }
         PushAction::Disable => {
@@ -1609,10 +1970,19 @@ async fn push_admin(paths: &HostPaths, action: PushAction) -> anyhow::Result<()>
             }
         }
         PushAction::Cancel { id } => {
-            let (mut lines, _w) = unipi_host::push::connect_control(paths, &ControlRequest::Cancel { id }).await?;
+            let (mut lines, _w) =
+                unipi_host::push::connect_control(paths, &ControlRequest::Cancel { id }).await?;
             if let Some(line) = lines.next_line().await? {
                 if let Ok(ControlEvent::Cancelled { ids }) = serde_json::from_str(&line) {
-                    println!("Cancelled {} push(es){}", ids.len(), if ids.is_empty() { String::new() } else { format!(": {}", ids.join(", ")) });
+                    println!(
+                        "Cancelled {} push(es){}",
+                        ids.len(),
+                        if ids.is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {}", ids.join(", "))
+                        }
+                    );
                 }
             }
         }
@@ -1631,12 +2001,16 @@ async fn push_file(
 ) -> anyhow::Result<i32> {
     use unipi_host::push::{human_size, ControlEvent, ControlRequest};
     use unipi_proto::PushOutcome;
-    let file = std::fs::canonicalize(&file).map_err(|e| anyhow::anyhow!("can't read {}: {e}", file.display()))?;
+    let file = std::fs::canonicalize(&file)
+        .map_err(|e| anyhow::anyhow!("can't read {}: {e}", file.display()))?;
     anyhow::ensure!(file.is_file(), "{} is not a file", file.display());
     // Explain the gate before hashing a big file.
     let config = unipi_host::forward::HostConfig::load(&paths.config())?.push;
     if !config.enabled {
-        eprintln!("Push is off on this PC (the default).\n{}", unipi_host::push::ENABLE_HINT);
+        eprintln!(
+            "Push is off on this PC (the default).\n{}",
+            unipi_host::push::ENABLE_HINT
+        );
         eprintln!("Then run this command again.");
         return Ok(1);
     }
@@ -1650,7 +2024,8 @@ async fn push_file(
         human_size(unipi_proto::BLOB_MAX_SIZE)
     );
     let hashed = file.clone();
-    let (sha256, size) = tokio::task::spawn_blocking(move || unipi_host::push::sha256_file(&hashed)).await??;
+    let (sha256, size) =
+        tokio::task::spawn_blocking(move || unipi_host::push::sha256_file(&hashed)).await??;
     {
         let request = ControlRequest::Push {
             path: file.to_string_lossy().into_owned(),
@@ -1662,12 +2037,17 @@ async fn push_file(
             follow: !no_wait,
         };
         let (mut lines, _keep_open) = unipi_host::push::connect_control(paths, &request).await?;
-        let shown = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let shown = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let mut code = 1;
         let mut answered = 0usize;
         let mut targets = 0usize;
         while let Some(line) = lines.next_line().await? {
-            let Ok(event) = serde_json::from_str::<ControlEvent>(&line) else { continue };
+            let Ok(event) = serde_json::from_str::<ControlEvent>(&line) else {
+                continue;
+            };
             match event {
                 ControlEvent::Error { message, hint } => {
                     eprintln!("{message}");
@@ -1676,9 +2056,17 @@ async fn push_file(
                     }
                     return Ok(1);
                 }
-                ControlEvent::Queued { id, devices, notified } => {
+                ControlEvent::Queued {
+                    id,
+                    devices,
+                    notified,
+                } => {
                     targets = devices.len();
-                    println!("Sent {shown} ({}) to {} — id {id}", human_size(size), devices.join(", "));
+                    println!(
+                        "Sent {shown} ({}) to {} — id {id}",
+                        human_size(size),
+                        devices.join(", ")
+                    );
                     if notified {
                         println!("The phone wasn't open, so a notification was sent too.");
                     }
@@ -1689,7 +2077,12 @@ async fn push_file(
                     println!("Waiting for the phone… (Ctrl+C stops waiting; the push stays pending for 24 h)");
                 }
                 ControlEvent::Fetching { device, .. } => println!("{device}: downloading…"),
-                ControlEvent::Done { device, outcome, detail, .. } => {
+                ControlEvent::Done {
+                    device,
+                    outcome,
+                    detail,
+                    ..
+                } => {
                     answered += 1;
                     let what = match outcome {
                         PushOutcome::Installed => "opened the installer",
@@ -1698,7 +2091,10 @@ async fn push_file(
                         PushOutcome::Dismissed => "dismissed it",
                         PushOutcome::Failed => "couldn't use it",
                     };
-                    println!("{device}: {what}{}", detail.map(|d| format!(" ({d})")).unwrap_or_default());
+                    println!(
+                        "{device}: {what}{}",
+                        detail.map(|d| format!(" ({d})")).unwrap_or_default()
+                    );
                     code = match outcome {
                         PushOutcome::Installed | PushOutcome::Saved | PushOutcome::Opened => 0,
                         PushOutcome::Dismissed if code != 0 => 2,
@@ -1727,42 +2123,80 @@ fn requests_command(paths: &HostPaths, action: RequestsAction) -> anyhow::Result
         RequestsAction::List { json } => {
             let mut list = sharing::all(paths, now)?;
             if json {
-                println!("{}", serde_json::to_string_pretty(&sharing::status(paths, now)?.requests)?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&sharing::status(paths, now)?.requests)?
+                );
                 return Ok(());
             }
-            list.sort_by_key(|r| (r.item.status != FeatureRequestStatus::Pending, std::cmp::Reverse(r.item.created_at)));
+            list.sort_by_key(|r| {
+                (
+                    r.item.status != FeatureRequestStatus::Pending,
+                    std::cmp::Reverse(r.item.created_at),
+                )
+            });
             if list.is_empty() {
-                println!("No requests. Phones can ask from Preview when a feature is off on this PC.");
+                println!(
+                    "No requests. Phones can ask from Preview when a feature is off on this PC."
+                );
             }
             for r in &list {
                 let age = now.saturating_sub(r.item.created_at) / 60_000;
-                let when = if age < 1 { "just now".to_string() } else if age < 60 { format!("{age} min ago") } else { format!("{} h ago", age / 60) };
-                let until = r.item.until.map(|u| format!(" until {} min from now", u.saturating_sub(now) / 60_000)).unwrap_or_default();
-                println!("{}  {:<8}  {}  ({when}){until}", r.item.id, r.item.status.as_str(), sharing::describe(&r.item));
+                let when = if age < 1 {
+                    "just now".to_string()
+                } else if age < 60 {
+                    format!("{age} min ago")
+                } else {
+                    format!("{} h ago", age / 60)
+                };
+                let until = r
+                    .item
+                    .until
+                    .map(|u| format!(" until {} min from now", u.saturating_sub(now) / 60_000))
+                    .unwrap_or_default();
+                println!(
+                    "{}  {:<8}  {}  ({when}){until}",
+                    r.item.id,
+                    r.item.status.as_str(),
+                    sharing::describe(&r.item)
+                );
                 if let Some(note) = &r.item.note {
                     println!("{:>12}  \"{note}\"", "");
                 }
             }
-            if list.iter().any(|r| r.item.status == FeatureRequestStatus::Pending) {
+            if list
+                .iter()
+                .any(|r| r.item.status == FeatureRequestStatus::Pending)
+            {
                 println!("\nApprove: unipi-host requests approve <id> [--for 1h]   Deny: unipi-host requests deny <id>");
             }
         }
         RequestsAction::Approve { id, for_ } => {
             let until = match for_.as_deref() {
                 None | Some("off") | Some("forever") => None,
-                Some(text) => Some(now + sharing::parse_duration_ms(text).ok_or_else(|| anyhow::anyhow!("--for takes a duration like 1h, 30m or 2d"))?),
+                Some(text) => Some(
+                    now + sharing::parse_duration_ms(text).ok_or_else(|| {
+                        anyhow::anyhow!("--for takes a duration like 1h, 30m or 2d")
+                    })?,
+                ),
             };
             let item = sharing::approve(paths, &id, until, now)?;
             println!(
                 "Approved: {} is on for {}{}. No restart needed.",
                 item.feature.label(),
                 item.device_name,
-                until.map(|u| format!(" for the next {} min", (u - now) / 60_000)).unwrap_or_else(|| " until you turn it off".into())
+                until
+                    .map(|u| format!(" for the next {} min", (u - now) / 60_000))
+                    .unwrap_or_else(|| " until you turn it off".into())
             );
         }
         RequestsAction::Deny { id } => {
             let item = sharing::deny(paths, &id, now)?;
-            println!("Denied {}'s request for {}.", item.device_name, item.feature.label());
+            println!(
+                "Denied {}'s request for {}.",
+                item.device_name,
+                item.feature.label()
+            );
         }
     }
     Ok(())
@@ -1775,21 +2209,34 @@ fn sharing_status(paths: &HostPaths, json: bool) -> anyhow::Result<()> {
     }
     let onoff = |b: bool| if b { "on" } else { "off" };
     println!(
-        "Web apps (forward): {}{}\nBrowser: {}{}\nDesktop: {}{}\nPush: {}\nPending requests: {}",
+        "Web apps (forward): {}{}\nBrowser: {}{}\nPush: {}\nPending requests: {}",
         onoff(status.forward.enabled),
-        if status.forward.any { " · any port".to_string() } else if status.forward.ports.is_empty() { String::new() } else { format!(" · ports {:?}", status.forward.ports) },
+        if status.forward.any {
+            " · any port".to_string()
+        } else if status.forward.ports.is_empty() {
+            String::new()
+        } else {
+            format!(" · ports {:?}", status.forward.ports)
+        },
         onoff(status.browser.enabled),
-        if status.browser.headless { " · headless" } else { " · window shown" },
-        onoff(status.desktop.enabled),
-        if status.desktop.view_only { " · view only" } else { "" },
+        if status.browser.headless {
+            " · headless"
+        } else {
+            " · window shown"
+        },
         onoff(status.push.enabled),
-        status.requests.iter().filter(|r| r.item.status == unipi_proto::FeatureRequestStatus::Pending).count()
+        status
+            .requests
+            .iter()
+            .filter(|r| r.item.status == unipi_proto::FeatureRequestStatus::Pending)
+            .count()
     );
     Ok(())
 }
 fn linger_command(action: LingerAction) -> anyhow::Result<()> {
     use unipi_host::sharing;
-    let user = sharing::current_user().ok_or_else(|| anyhow::anyhow!("can't tell who you are ($USER is empty)"))?;
+    let user = sharing::current_user()
+        .ok_or_else(|| anyhow::anyhow!("can't tell who you are ($USER is empty)"))?;
     match action {
         LingerAction::Status => match sharing::linger_enabled(&user) {
             Some(true) => println!("Linger: on — unipi-host keeps running after you log out and starts at boot."),
@@ -1818,15 +2265,26 @@ async fn background_update(paths: &HostPaths) {
     let result = update::fetch_feed().await;
     update::record(paths, now_unix(), &result);
     let Ok(release) = result else { return };
-    let mode = update::UpdateConfig::load(&paths.config()).map(|c| c.mode).unwrap_or_default();
+    let mode = update::UpdateConfig::load(&paths.config())
+        .map(|c| c.mode)
+        .unwrap_or_default();
     if mode != update::UpdateMode::Auto {
         return;
     }
-    let update::Check::Available { latest, file, .. } = update::decide(&release, env!("CARGO_PKG_VERSION"), update::platform()) else { return };
+    let update::Check::Available { latest, file, .. } =
+        update::decide(&release, env!("CARGO_PKG_VERSION"), update::platform())
+    else {
+        return;
+    };
     // Only a service can bring us back after the restart.
-    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
     let Some(service) = update::detect_service().filter(|s| update::service_runs(*s, &exe)) else {
-        tracing::info!(latest, "update available; this host isn't run by a service, leaving it to the owner");
+        tracing::info!(
+            latest,
+            "update available; this host isn't run by a service, leaving it to the owner"
+        );
         return;
     };
     match update::download_and_replace(&file, &latest, &exe).await {
@@ -1850,7 +2308,11 @@ async fn update_command(
 ) -> anyhow::Result<()> {
     use unipi_host::update;
     if let Some(mode) = mode {
-        let mode = if mode == "auto" { update::UpdateMode::Auto } else { update::UpdateMode::Prompt };
+        let mode = if mode == "auto" {
+            update::UpdateMode::Auto
+        } else {
+            update::UpdateMode::Prompt
+        };
         update::UpdateConfig { mode }.save(&paths.config())?;
         match mode {
             update::UpdateMode::Auto => println!("Updates: automatic — `unipi-host serve` installs a newer version by itself and restarts."),
@@ -1865,13 +2327,22 @@ async fn update_command(
     let decision = update::decide(&release, current, update::platform());
     let say = |state: &str, text: String| {
         if json {
-            println!("{}", serde_json::json!({ "state": state, "current": current, "latest": release.version, "message": text }));
+            println!(
+                "{}",
+                serde_json::json!({ "state": state, "current": current, "latest": release.version, "message": text })
+            );
         } else {
             println!("{text}");
         }
     };
     match decision {
-        update::Check::UpToDate { .. } => say("current", format!("unipi-host {current} is up to date (latest {}).", release.version)),
+        update::Check::UpToDate { .. } => say(
+            "current",
+            format!(
+                "unipi-host {current} is up to date (latest {}).",
+                release.version
+            ),
+        ),
         update::Check::NoBuild { latest, platform } => {
             anyhow::bail!("unipi-host {latest} is out, but there is no {platform} build of it");
         }
@@ -1890,15 +2361,27 @@ async fn update_command(
                 println!("Downloading unipi-host {latest}…");
             }
             update::download_and_replace(&file, &latest, &target).await?;
-            let service = if no_restart || explicit { None } else { update::detect_service().filter(|s| update::service_runs(*s, &target)) };
+            let service = if no_restart || explicit {
+                None
+            } else {
+                update::detect_service().filter(|s| update::service_runs(*s, &target))
+            };
             let restarted = match service {
                 Some(service) => match update::restart_service(service) {
                     Ok(()) => " and restarted the service".to_string(),
-                    Err(e) => format!("; restarting the service failed ({e}) — restart it yourself"),
+                    Err(e) => {
+                        format!("; restarting the service failed ({e}) — restart it yourself")
+                    }
                 },
                 None => "; restart `unipi-host serve` to use it".to_string(),
             };
-            say("updated", format!("Updated unipi-host {current} → {latest} ({}){restarted}.", target.display()));
+            say(
+                "updated",
+                format!(
+                    "Updated unipi-host {current} → {latest} ({}){restarted}.",
+                    target.display()
+                ),
+            );
         }
     }
     Ok(())

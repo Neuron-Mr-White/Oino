@@ -1,7 +1,10 @@
 //! UNI-217 contract fixtures: same file as the vitest suite
 //! (`packages/protocol/tests/git.test.ts`).
 use serde_json::Value;
-use unipi_proto::{Control, GitBranchesData, GitDiffData, GitLogData, GitRepoData, GitShortstatData, GitShowData, GitStatusData, GitSyncData};
+use unipi_proto::{
+    Control, GitBranchesData, GitDiffData, GitLogData, GitRepoData, GitShortstatData, GitShowData,
+    GitStatusData, GitSyncData,
+};
 
 #[derive(Debug, serde::Deserialize)]
 struct Fixture {
@@ -12,12 +15,17 @@ struct Fixture {
 }
 
 fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<(), String> {
-    serde_json::from_value::<T>(value).map(|_| ()).map_err(|e| e.to_string())
+    serde_json::from_value::<T>(value)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[test]
 fn shared_git_fixtures_agree() {
-    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!("../../../apps/unipi/protocol/fixtures/git.json")).unwrap();
+    let fixtures: Vec<Fixture> = serde_json::from_str(include_str!(
+        "../../../apps/unipi/protocol/fixtures/git.json"
+    ))
+    .unwrap();
     assert!(fixtures.len() >= 25);
     for fixture in fixtures {
         let result: Result<(), String> = match fixture.schema.as_str() {
@@ -34,6 +42,11 @@ fn shared_git_fixtures_agree() {
             "GitShortstatData" => parse::<GitShortstatData>(fixture.value.clone()),
             other => panic!("unknown schema {other}"),
         };
-        assert_eq!(result.is_ok(), fixture.ok, "fixture `{}`: {result:?}", fixture.name);
+        assert_eq!(
+            result.is_ok(),
+            fixture.ok,
+            "fixture `{}`: {result:?}",
+            fixture.name
+        );
     }
 }

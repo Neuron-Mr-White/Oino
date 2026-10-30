@@ -66,7 +66,10 @@ impl TryFrom<String> for CronJobId {
         if value.is_empty() || value.len() > 64 {
             return Err(format!("id must be 1..=64 characters, got {}", value.len()));
         }
-        if !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+        if !value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
             return Err("id must be [A-Za-z0-9_-]".into());
         }
         Ok(CronJobId(value))
@@ -94,9 +97,15 @@ impl TryFrom<String> for CronRunId {
     type Error = String;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.is_empty() || value.len() > 64 {
-            return Err(format!("run id must be 1..=64 characters, got {}", value.len()));
+            return Err(format!(
+                "run id must be 1..=64 characters, got {}",
+                value.len()
+            ));
         }
-        if !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+        if !value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
             return Err("run id must be [A-Za-z0-9_-]".into());
         }
         Ok(CronRunId(value))
@@ -125,7 +134,9 @@ impl TryFrom<String> for CronName {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let len = value.chars().count();
         if !(1..=CRON_NAME_MAX).contains(&len) {
-            return Err(format!("name must be 1..={CRON_NAME_MAX} characters, got {len}"));
+            return Err(format!(
+                "name must be 1..={CRON_NAME_MAX} characters, got {len}"
+            ));
         }
         Ok(CronName(value))
     }
@@ -152,7 +163,9 @@ impl TryFrom<String> for CronPrompt {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let len = value.chars().count();
         if !(1..=CRON_PROMPT_MAX).contains(&len) {
-            return Err(format!("prompt must be 1..={CRON_PROMPT_MAX} characters, got {len}"));
+            return Err(format!(
+                "prompt must be 1..={CRON_PROMPT_MAX} characters, got {len}"
+            ));
         }
         Ok(CronPrompt(value))
     }
@@ -181,7 +194,9 @@ impl TryFrom<usize> for CronRunsLimit {
         if (1..=CRON_RUNS_LIMIT_MAX).contains(&value) {
             Ok(CronRunsLimit(value))
         } else {
-            Err(format!("limit must be 1..={CRON_RUNS_LIMIT_MAX}, got {value}"))
+            Err(format!(
+                "limit must be 1..={CRON_RUNS_LIMIT_MAX}, got {value}"
+            ))
         }
     }
 }
@@ -268,19 +283,6 @@ pub struct CronWake {
     pub pid: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_name: Option<String>,
-}
-
-/// `ok.data` for `cron_open_session` (UNI-319): the chat now on the run's
-/// session — one that already had it open, or one just started.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CronOpenSessionData {
-    pub pid: u32,
-    /// A pi already had this session open; nothing was started.
-    #[serde(default)]
-    pub already_open: bool,
-    /// Where the new pi runs (absent when `already_open`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub started: Option<crate::chat::ChatNewData>,
 }
 
 /// One run record, as the wire sees it.
@@ -542,8 +544,16 @@ mod tests {
             next_fire: Some("2025-01-01T09:00:00Z".into()),
             running: false,
             last_run_status: Some(CronRunStatus::Ok),
-            notify: Some(CronNotify { channels: None, events: Some(vec!["done".into()]) }),
-            wake: Some(CronWake { session_file: Some("/s.jsonl".into()), session_id: None, pid: Some(7), session_name: None }),
+            notify: Some(CronNotify {
+                channels: None,
+                events: Some(vec!["done".into()]),
+            }),
+            wake: Some(CronWake {
+                session_file: Some("/s.jsonl".into()),
+                session_id: None,
+                pid: Some(7),
+                session_name: None,
+            }),
         };
         let json = serde_json::to_value(&job).unwrap();
         assert_eq!(json["last_run_status"], "ok");

@@ -2,7 +2,7 @@
 name = "unipi-proto"
 version = "1.0.0"
 edition = "2021"
-description = "Wire protocol types and framing for UniPi App (unipi/app/1)"
+description = "Wire protocol types and framing for the UniPi host and app (unipi/oino/1, proto v2)"
 license = "MIT"
 
 [dependencies]

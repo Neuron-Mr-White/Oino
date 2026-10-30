@@ -78,13 +78,22 @@ struct RawViewport {
 impl TryFrom<RawViewport> for BrowserViewport {
     type Error = String;
     fn try_from(raw: RawViewport) -> Result<Self, Self::Error> {
-        if !(50..=BROWSER_MAX_SIDE).contains(&raw.width) || !(50..=BROWSER_MAX_SIDE).contains(&raw.height) {
-            return Err(format!("viewport must be 50..={BROWSER_MAX_SIDE} px per side"));
+        if !(50..=BROWSER_MAX_SIDE).contains(&raw.width)
+            || !(50..=BROWSER_MAX_SIDE).contains(&raw.height)
+        {
+            return Err(format!(
+                "viewport must be 50..={BROWSER_MAX_SIDE} px per side"
+            ));
         }
         if !(raw.scale.is_finite() && (0.5..=4.0).contains(&raw.scale)) {
             return Err("viewport scale must be 0.5..=4".into());
         }
-        Ok(BrowserViewport { width: raw.width, height: raw.height, scale: raw.scale, mobile: raw.mobile })
+        Ok(BrowserViewport {
+            width: raw.width,
+            height: raw.height,
+            scale: raw.scale,
+            mobile: raw.mobile,
+        })
     }
 }
 
@@ -107,9 +116,13 @@ impl TryFrom<String> for BrowserProfile {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let ok = !value.is_empty()
             && value.len() <= BROWSER_PROFILE_MAX
-            && value.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
         if !ok {
-            return Err(format!("profile must be 1..={BROWSER_PROFILE_MAX} of a-z, 0-9, - and _"));
+            return Err(format!(
+                "profile must be 1..={BROWSER_PROFILE_MAX} of a-z, 0-9, - and _"
+            ));
         }
         Ok(BrowserProfile(value))
     }
@@ -349,7 +362,9 @@ pub enum KeyKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum BrowserCmd {
-    Navigate { url: BrowserUrl },
+    Navigate {
+        url: BrowserUrl,
+    },
     Back,
     Forward,
     Reload,
@@ -358,9 +373,15 @@ pub enum BrowserCmd {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         url: Option<BrowserUrl>,
     },
-    TabClose { id: String },
-    TabActivate { id: String },
-    Viewport { viewport: BrowserViewport },
+    TabClose {
+        id: String,
+    },
+    TabActivate {
+        id: String,
+    },
+    Viewport {
+        viewport: BrowserViewport,
+    },
     Mouse {
         kind: MouseKind,
         x: f64,
@@ -382,7 +403,11 @@ pub enum BrowserCmd {
         points: Vec<TouchPoint>,
     },
     /// Pinch zoom around (x, y); `scale` > 1 zooms in.
-    Pinch { x: f64, y: f64, scale: f64 },
+    Pinch {
+        x: f64,
+        y: f64,
+        scale: f64,
+    },
     Key {
         kind: KeyKind,
         /// DOM `key` (`Enter`, `Backspace`, `a` …).
@@ -395,9 +420,13 @@ pub enum BrowserCmd {
         modifiers: u32,
     },
     /// Type text as if committed by an IME (`Input.insertText`).
-    Text { text: String },
+    Text {
+        text: String,
+    },
     /// The phone drew frame `seq`.
-    Ack { seq: u64 },
+    Ack {
+        seq: u64,
+    },
 }
 
 impl BrowserCmd {
@@ -405,15 +434,25 @@ impl BrowserCmd {
     pub fn check(&self) -> Result<(), String> {
         let finite = |v: &[f64]| v.iter().all(|n| n.is_finite());
         match self {
-            BrowserCmd::Mouse { x, y, dx, dy, .. } if !finite(&[*x, *y, *dx, *dy]) => Err("mouse coordinates must be finite".into()),
-            BrowserCmd::Touch { points, .. } if points.len() > 10 || !points.iter().all(|p| finite(&[p.x, p.y])) => {
+            BrowserCmd::Mouse { x, y, dx, dy, .. } if !finite(&[*x, *y, *dx, *dy]) => {
+                Err("mouse coordinates must be finite".into())
+            }
+            BrowserCmd::Touch { points, .. }
+                if points.len() > 10 || !points.iter().all(|p| finite(&[p.x, p.y])) =>
+            {
                 Err("touch needs ≤ 10 finite points".into())
             }
-            BrowserCmd::Pinch { x, y, scale } if !finite(&[*x, *y, *scale]) || *scale <= 0.0 || *scale > 10.0 => {
+            BrowserCmd::Pinch { x, y, scale }
+                if !finite(&[*x, *y, *scale]) || *scale <= 0.0 || *scale > 10.0 =>
+            {
                 Err("pinch scale must be 0..10".into())
             }
-            BrowserCmd::Text { text } if text.len() > BROWSER_MAX_TEXT => Err("text too long".into()),
-            BrowserCmd::Key { key, .. } if key.is_empty() || key.len() > 64 => Err("key must be 1..=64 bytes".into()),
+            BrowserCmd::Text { text } if text.len() > BROWSER_MAX_TEXT => {
+                Err("text too long".into())
+            }
+            BrowserCmd::Key { key, .. } if key.is_empty() || key.len() > 64 => {
+                Err("key must be 1..=64 bytes".into())
+            }
             _ => Ok(()),
         }
     }
@@ -435,7 +474,10 @@ pub struct BrowserFrameMeta {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BrowserEvent {
     /// The tab list changed (or the active tab did).
-    Tabs { tabs: Vec<BrowserTab>, active: String },
+    Tabs {
+        tabs: Vec<BrowserTab>,
+        active: String,
+    },
     /// The active tab's page state.
     Page {
         url: String,
@@ -446,10 +488,16 @@ pub enum BrowserEvent {
     },
     Frame(BrowserFrameMeta),
     /// The page's renderer or the whole browser crashed.
-    Crashed { message: String },
+    Crashed {
+        message: String,
+    },
     /// The browser was shut down (`idle`, `closed` = `browser_close`,
     /// `host_exit`, `relaunch` = restarted to show/hide its window: reopen).
-    Closed { reason: String },
+    Closed {
+        reason: String,
+    },
     /// UNI-296: what agents are doing with this browser changed.
-    Agent { agent: BrowserAgent },
+    Agent {
+        agent: BrowserAgent,
+    },
 }

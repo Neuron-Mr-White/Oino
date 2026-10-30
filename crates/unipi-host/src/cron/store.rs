@@ -91,7 +91,9 @@ pub fn find_run(paths: &HostPaths, run_id: &str) -> anyhow::Result<Option<(Strin
         if !entry.file_type()?.is_dir() {
             continue;
         }
-        let Some(job_id) = entry.file_name().to_str().map(str::to_string) else { continue };
+        let Some(job_id) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
         if let Some(run) = load_run(paths, &job_id, run_id)? {
             return Ok(Some((job_id, run)));
         }
@@ -121,7 +123,12 @@ pub fn load_all_runs(paths: &HostPaths) -> anyhow::Result<Vec<Run>> {
 }
 
 /// Appends to a run's log, keeping only the last [`LOG_CAP_BYTES`].
-pub fn append_log(paths: &HostPaths, job_id: &str, run_id: &str, chunk: &[u8]) -> anyhow::Result<()> {
+pub fn append_log(
+    paths: &HostPaths,
+    job_id: &str,
+    run_id: &str,
+    chunk: &[u8],
+) -> anyhow::Result<()> {
     let path = run_log_path(paths, job_id, run_id);
     let mut existing = std::fs::read(&path).unwrap_or_default();
     existing.extend_from_slice(chunk);
@@ -141,13 +148,18 @@ pub fn read_log(paths: &HostPaths, job_id: &str, run_id: &str) -> Option<Vec<u8>
 /// block so callers that only touch cron don't need `HostConfig`.
 pub fn load_settings(config_path: &Path) -> anyhow::Result<CronSettings> {
     let raw: Option<serde_json::Value> = read_json(config_path)?;
-    let settings = raw.and_then(|v| v.get("cron").cloned()).map(serde_json::from_value).transpose()?.unwrap_or_default();
+    let settings = raw
+        .and_then(|v| v.get("cron").cloned())
+        .map(serde_json::from_value)
+        .transpose()?
+        .unwrap_or_default();
     Ok(settings)
 }
 
 /// Writes the `cron` settings block, preserving every other top-level key.
 pub fn save_settings(config_path: &Path, settings: &CronSettings) -> anyhow::Result<()> {
-    let mut raw: serde_json::Value = read_json(config_path)?.unwrap_or_else(|| serde_json::json!({}));
+    let mut raw: serde_json::Value =
+        read_json(config_path)?.unwrap_or_else(|| serde_json::json!({}));
     if !raw.is_object() {
         raw = serde_json::json!({});
     }
@@ -158,7 +170,13 @@ pub fn save_settings(config_path: &Path, settings: &CronSettings) -> anyhow::Res
 /// Deletes every run (`.json` + `.log`) for a job beyond `retention_runs`
 /// (newest kept) or older than `retention_days`. Returns how many were
 /// removed.
-pub fn prune_runs(paths: &HostPaths, job_id: &str, retention_runs: u32, retention_days: u32, now_ms: u64) -> anyhow::Result<usize> {
+pub fn prune_runs(
+    paths: &HostPaths,
+    job_id: &str,
+    retention_runs: u32,
+    retention_days: u32,
+    now_ms: u64,
+) -> anyhow::Result<usize> {
     let mut runs = load_runs(paths, job_id)?; // newest first
     let cutoff = now_ms.saturating_sub(u64::from(retention_days) * 24 * 60 * 60 * 1000);
     let mut removed = 0usize;
@@ -166,7 +184,10 @@ pub fn prune_runs(paths: &HostPaths, job_id: &str, retention_runs: u32, retentio
         let keep_by_count = i < retention_runs as usize;
         let keep_by_age = run.fired_at >= cutoff;
         // Never prune a run that is still in progress.
-        if matches!(run.status, super::model::RunStatus::Running | super::model::RunStatus::Queued) {
+        if matches!(
+            run.status,
+            super::model::RunStatus::Running | super::model::RunStatus::Queued
+        ) {
             continue;
         }
         if !(keep_by_count && keep_by_age) {
@@ -205,7 +226,22 @@ mod tests {
     }
 
     fn run(job_id: &str, id: &str, fired_at: u64, status: RunStatus) -> Run {
-        Run { id: id.into(), job_id: job_id.into(), status, fired_at, started_at: None, ended_at: None, exit_code: None, summary: None, reason: None, session_path: None, cost_usd: None, missed: false, notify_errors: Vec::new(), wake: None }
+        Run {
+            id: id.into(),
+            job_id: job_id.into(),
+            status,
+            fired_at,
+            started_at: None,
+            ended_at: None,
+            exit_code: None,
+            summary: None,
+            reason: None,
+            session_path: None,
+            cost_usd: None,
+            missed: false,
+            notify_errors: Vec::new(),
+            wake: None,
+        }
     }
 
     #[test]
@@ -217,7 +253,11 @@ mod tests {
         let back = load_jobs(&paths).unwrap();
         assert_eq!(back, jobs);
         // No stray tmp files left behind.
-        let leftover: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with(".tmp-")).collect();
+        let leftover: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".tmp-"))
+            .collect();
         assert!(leftover.is_empty());
     }
 
@@ -264,9 +304,15 @@ mod tests {
         save_run(&paths, &run("j1", "r2", 300, RunStatus::Ok)).unwrap();
         save_run(&paths, &run("j2", "r3", 200, RunStatus::Ok)).unwrap();
         let all = load_all_runs(&paths).unwrap();
-        assert_eq!(all.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), vec!["r2", "r3", "r1"]);
+        assert_eq!(
+            all.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["r2", "r3", "r1"]
+        );
         let j1 = load_runs(&paths, "j1").unwrap();
-        assert_eq!(j1.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), vec!["r2", "r1"]);
+        assert_eq!(
+            j1.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["r2", "r1"]
+        );
     }
 
     #[test]
@@ -279,7 +325,8 @@ mod tests {
         settings.paused = true;
         settings.concurrency = 5;
         save_settings(&path, &settings).unwrap();
-        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(raw["forwarding"]["enabled"], true);
         assert_eq!(raw["cron"]["paused"], true);
         let back = load_settings(&path).unwrap();
@@ -294,14 +341,21 @@ mod tests {
         let now = 100 * day_ms;
         for i in 0..5 {
             // Each older by 10 days.
-            save_run(&paths, &run("j", &format!("r{i}"), now - i * 10 * day_ms, RunStatus::Ok)).unwrap();
+            save_run(
+                &paths,
+                &run("j", &format!("r{i}"), now - i * 10 * day_ms, RunStatus::Ok),
+            )
+            .unwrap();
         }
         // Keep at most 3 by count.
         let removed = prune_runs(&paths, "j", 3, 1000, now).unwrap();
         assert_eq!(removed, 2);
         let left = load_runs(&paths, "j").unwrap();
         assert_eq!(left.len(), 3);
-        assert_eq!(left.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), vec!["r0", "r1", "r2"]);
+        assert_eq!(
+            left.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["r0", "r1", "r2"]
+        );
     }
 
     #[test]

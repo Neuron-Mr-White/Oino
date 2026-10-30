@@ -43,7 +43,8 @@ impl Cdp {
         // Screencast frames arrive base64'd in one text message.
         config.max_message_size = Some(64 << 20);
         config.max_frame_size = Some(64 << 20);
-        let (socket, _) = tokio_tungstenite::connect_async_with_config(ws_url, Some(config), true).await?;
+        let (socket, _) =
+            tokio_tungstenite::connect_async_with_config(ws_url, Some(config), true).await?;
         let (mut sink, mut stream) = socket.split();
         let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
         let pending: Pending = Arc::default();
@@ -70,9 +71,14 @@ impl Cdp {
                     Ok(Message::Close(_)) | Err(_) => break,
                     Ok(_) => continue,
                 };
-                let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else { continue };
+                let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else {
+                    continue;
+                };
                 if let Some(id) = value.get("id").and_then(Value::as_u64) {
-                    let sender = reader_pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+                    let sender = reader_pending
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&id);
                     if let Some(sender) = sender {
                         let result = match value.get("error") {
                             Some(error) => Err(error
@@ -88,18 +94,32 @@ impl Cdp {
                     let _ = reader_events.send(Arc::new(CdpEvent {
                         method: method.to_string(),
                         params: value.get("params").cloned().unwrap_or(Value::Null),
-                        session_id: value.get("sessionId").and_then(Value::as_str).map(str::to_string),
+                        session_id: value
+                            .get("sessionId")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
                     }));
                 }
             }
             reader_closed.store(true, Ordering::SeqCst);
-            for (_, sender) in reader_pending.lock().unwrap_or_else(|e| e.into_inner()).drain() {
+            for (_, sender) in reader_pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .drain()
+            {
                 let _ = sender.send(Err("The browser connection closed".into()));
             }
             let _ = closed_tx.send(true);
         });
 
-        Ok(Cdp { tx, pending, next: Arc::new(AtomicU64::new(1)), events, closed, closed_rx })
+        Ok(Cdp {
+            tx,
+            pending,
+            next: Arc::new(AtomicU64::new(1)),
+            events,
+            closed,
+            closed_rx,
+        })
     }
 
     pub fn is_closed(&self) -> bool {
@@ -120,7 +140,12 @@ impl Cdp {
         self.events.subscribe()
     }
 
-    fn post(&self, method: &str, params: Value, session: Option<&str>) -> Result<oneshot::Receiver<Result<Value, String>>, String> {
+    fn post(
+        &self,
+        method: &str,
+        params: Value,
+        session: Option<&str>,
+    ) -> Result<oneshot::Receiver<Result<Value, String>>, String> {
         if self.is_closed() {
             return Err("The browser connection closed".into());
         }
@@ -130,7 +155,10 @@ impl Cdp {
             message["sessionId"] = Value::String(session.to_string());
         }
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().unwrap_or_else(|e| e.into_inner()).insert(id, tx);
+        self.pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, tx);
         self.tx
             .send(Message::Text(message.to_string().into()))
             .map_err(|_| "The browser connection closed".to_string())?;
@@ -138,7 +166,12 @@ impl Cdp {
     }
 
     /// Sends a command and waits for its result.
-    pub async fn call(&self, method: &str, params: Value, session: Option<&str>) -> Result<Value, String> {
+    pub async fn call(
+        &self,
+        method: &str,
+        params: Value,
+        session: Option<&str>,
+    ) -> Result<Value, String> {
         let rx = self.post(method, params, session)?;
         match tokio::time::timeout(CALL_TIMEOUT, rx).await {
             Ok(Ok(result)) => result,

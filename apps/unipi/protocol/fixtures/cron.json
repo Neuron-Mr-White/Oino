@@ -424,37 +424,6 @@
     }
   },
   {
-    "name": "cron_open_session (UNI-319)",
-    "schema": "Control",
-    "ok": true,
-    "value": {
-      "type": "hello",
-      "proto": "1.20.0",
-      "req": {
-        "op": "cron_open_session",
-        "run_id": "r1a2b3",
-        "target": {
-          "kind": "herdr_new_workspace",
-          "session": "main",
-          "label": "digest"
-        }
-      }
-    }
-  },
-  {
-    "name": "cron_open_session needs a target",
-    "schema": "Control",
-    "ok": false,
-    "value": {
-      "type": "hello",
-      "proto": "1.20.0",
-      "req": {
-        "op": "cron_open_session",
-        "run_id": "r1a2b3"
-      }
-    }
-  },
-  {
     "name": "CronJob with notify + wake (UNI-319)",
     "schema": "CronJob",
     "ok": true,

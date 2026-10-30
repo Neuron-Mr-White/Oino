@@ -101,7 +101,11 @@ impl PairCodeRef {
 impl<'de> Deserialize<'de> for PairCodeRef {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        if !(4..=64).contains(&s.len()) || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        if !(4..=64).contains(&s.len())
+            || !s
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(serde::de::Error::custom("code must be 4–64 letters/digits"));
         }
         Ok(PairCodeRef(s))
