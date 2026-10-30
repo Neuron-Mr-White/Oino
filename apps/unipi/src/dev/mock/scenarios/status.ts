@@ -157,10 +157,10 @@ function seedNoPane(): void {
   localStorage.setItem('unipi.shell.last', JSON.stringify({ hostId: HOST, sessionId: 's001' }));
 }
 
+/** The app's `/` route reopens the last session (`unipi.shell.last`). */
 function seedSessionRoute(): void {
   if (desktopShell()) seedPane();
   else seedNoPane();
-  window.history.replaceState({}, '', `#/s/${HOST}/s001`);
 }
 
 export const statusLhGraph: MockScenario = {
@@ -235,8 +235,5 @@ export const capsuleScenario: MockScenario = {
       { '_oino/extensions': () => ({ extensions: LH_EXTENSIONS }) },
     ),
   ],
-  setup: () => {
-    seedNoPane();
-    window.history.replaceState({}, '', `#/s/${HOST}/s001`);
-  },
+  setup: seedNoPane,
 };
