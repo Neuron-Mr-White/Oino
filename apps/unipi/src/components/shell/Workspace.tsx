@@ -25,8 +25,10 @@ import { sessionCwd, sessionTitle, shortCwd } from '../../lib/session/selectors'
 import { Conversation } from '../conversation/Conversation';
 import { BottomPanel } from '../panes/BottomPanel';
 import { SidePane } from '../panes/SidePane';
-import { Capsule } from '../status/Capsule';
+import { Capsule, capsuleVisible } from '../status/Capsule';
 import { ConversationHeader } from './ConversationHeader';
+import { PhonePanesGroup } from '../../ui/slots/paneTabs';
+import { sessionUi } from '../../ui/registries';
 import { ResizeHandle } from './ResizeHandle';
 import { StatusStrip } from './StatusStrip';
 
@@ -129,12 +131,17 @@ export function Workspace(props: { hostId: string; sessionId?: string; cwd?: str
           hostName={localHost() ? undefined : host()?.name}
           ctx={ctx()}
           desktop={desktop()}
+          extraMenu={
+            !desktop() && props.sessionId
+              ? (close) => <PhonePanesGroup registry={sessionUi(props.hostId, props.sessionId!)} onOpen={close} />
+              : undefined
+          }
           onBack={desktop() ? undefined : () => navigate('/chat')}
           onNewChat={newChat}
         />
         {/* §3.10: the collapsed-pane capsule — top-right of the timeline, visible while the
             pane is closed or overlaying (a pushing pane owns the status). */}
-        <Show when={!desktop() || !sideShown() || mode() === 'overlay'}>
+        <Show when={capsuleVisible(desktop(), sideShown(), mode())}>
           <Capsule hostId={props.hostId} sessionId={props.sessionId} cwd={cwd() || undefined} />
         </Show>
         {/* §3.10: on the phone the strip sits under the header (≤ 4 segments); on the desktop it is the bottom row. */}

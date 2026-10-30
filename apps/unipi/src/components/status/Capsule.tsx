@@ -19,6 +19,12 @@ import './status.css';
 
 type Branch = { name: string; add?: number; del?: number };
 
+/** §3.10: the capsule shows while the pane is closed or overlaying — a pane
+ *  that *pushes* the chat owns the status (the desktop's side modes). */
+export function capsuleVisible(desktop: boolean, sideShown: boolean, mode: 'push' | 'overlay' | 'full'): boolean {
+  return !desktop || !sideShown || mode === 'overlay';
+}
+
 export function Capsule(props: { hostId: string; sessionId?: string; cwd?: string }) {
   const [branch, setBranch] = createSignal<Branch | undefined>(undefined);
   const [watchedRoot, setWatchedRoot] = createSignal<string | undefined>(undefined);

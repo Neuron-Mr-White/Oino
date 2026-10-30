@@ -15,7 +15,7 @@ import { setDesktopOverride, resetLayout } from '../../lib/layout';
 import { createMockHost, type MockScenario } from '../../dev/mock/host';
 import { SCENARIOS } from '../../dev/mock/scenarios';
 import { StatusSections } from './StatusPane';
-import { Capsule } from './Capsule';
+import { Capsule, capsuleVisible } from './Capsule';
 import { fetchRunning } from '../session/RunningTab';
 import { openSessionModal, sessionModal } from '../session/modalTarget';
 import { runningCounts, runningTotal } from '../../lib/status/running';
@@ -137,6 +137,17 @@ describe('Running summary ≡ Session modal', () => {
 });
 
 describe('capsule', () => {
+  it('visible when the pane is closed or overlaying, hidden when it pushes (Z-95)', () => {
+    // desktop, pane open, pushing (≥ 1280 px): the pane owns the status
+    expect(capsuleVisible(true, true, 'push')).toBe(false);
+    // desktop, pane open, overlaying (< 1280 px): the capsule stays (QA#12)
+    expect(capsuleVisible(true, true, 'overlay')).toBe(true);
+    // desktop, pane closed
+    expect(capsuleVisible(true, false, 'push')).toBe(true);
+    // the phone always has the capsule (the pane there is a layer)
+    expect(capsuleVisible(false, false, 'push')).toBe(true);
+    expect(capsuleVisible(false, true, 'full')).toBe(true);
+  });
   it('shows branch ±, LH progress and the running count; opens the pane', async () => {
     const world = await boot('capsule');
     // the workspace's conversation holds the session open; do the same here
