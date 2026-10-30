@@ -11,6 +11,7 @@
 //! |---|---|---|
 //! | [`services`] | `agent-session-services.ts` | [`services::Services`] per cwd, [`services::ExtensionLoader`], [`services::HostRouter`] |
 //! | [`runtime`] | `agent-session-runtime.ts`, `sdk.ts` | [`runtime::AgentSessionRuntime`]: create, new/switch/fork/clone/import |
+//! | [`safe_mode`] | — (X-SAFE) | [`safe_mode::SafeMode`]: failed-start counter, suspects, `-ne` plan |
 //! | [`session`] | `agent-session.ts` | [`session::AgentSession`]: prompts, queues (+ single-item edits), models, tools, compaction, retry, bash (+ detach), tree, stats, export, file checkpoints |
 //! | [`extensions`] | `extensions/runner.ts` | instance contract, host operations, registries, pi-composition dispatch, turn arbiter |
 //! | [`agents`] | — (D8) | nested `AgentSession`s behind `agents.spawn`: [`agents::ChildAgent`], [`agents::AgentSpec`] |
@@ -44,6 +45,7 @@ pub mod extensions;
 pub mod hub;
 pub mod provider;
 pub mod runtime;
+pub mod safe_mode;
 pub mod services;
 pub mod session;
 #[cfg(feature = "testing")]

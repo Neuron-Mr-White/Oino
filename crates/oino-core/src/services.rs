@@ -21,6 +21,7 @@ use crate::extensions::host::{HostApi, HostError, HostOp};
 use crate::extensions::runner::{ExtensionSet, LoadedExtension};
 use crate::extensions::settings::{ExtensionSettings, ExtensionSettingsError, SettingsChange};
 use crate::provider::ProviderStream;
+use crate::safe_mode::{SafeModePlan, banner as safe_mode_banner};
 use crate::session::{AgentSession, Inner, lock};
 
 /// Loads extension instances (WASM host, bundled components, test doubles).
@@ -93,6 +94,9 @@ pub struct ResourceFlags {
     pub append_system_prompt: Option<Vec<String>>,
     /// `-ne`: disable `kind: "extension"` discovery (providers stay).
     pub no_extensions: bool,
+    /// Safe-mode plan (X-SAFE): set by the embedding from [`crate::safe_mode::SafeMode::load`].
+    /// `disable_extensions` ORs into `-ne` (providers stay) and adds the banner diagnostic.
+    pub safe_mode: Option<SafeModePlan>,
     /// `--offline` / `OINO_OFFLINE`: no startup network operations (dynamic model lists).
     pub offline: bool,
 }
@@ -499,6 +503,10 @@ pub struct Services {
     pub stream: Arc<ProviderStream>,
     /// Host router.
     pub host: Arc<HostRouter>,
+    /// Safe-mode plan of this start (X-SAFE; `None` when the embedding does not participate).
+    /// [`SafeModePlan::disable_extensions`] is what the `_oino/hello` reply reports as
+    /// `safeMode`.
+    pub safe_mode: Option<SafeModePlan>,
     /// CLI extension flag values.
     pub flag_values: IndexMap<String, JsonValue>,
     /// Startup diagnostics.
@@ -545,6 +553,18 @@ impl Services {
     /// Trust store failures.
     pub async fn create(mut options: ServicesOptions) -> Result<Arc<Self>, ServicesError> {
         let mut diagnostics = Vec::new();
+        // X-SAFE: a tripped plan disables `kind: "extension"` packages like `-ne` (providers
+        // stay) and surfaces the suspects banner as a startup diagnostic.
+        let safe_mode = options.flags.safe_mode.clone();
+        let no_extensions = options.flags.no_extensions
+            || safe_mode
+                .as_ref()
+                .is_some_and(|plan| plan.disable_extensions);
+        if let Some(plan) = &safe_mode
+            && plan.disable_extensions
+        {
+            diagnostics.push(safe_mode_banner(plan));
+        }
         let mut settings = options
             .settings
             .take()
@@ -608,7 +628,7 @@ impl Services {
             &cx,
             &models,
             &extension_settings,
-            options.flags.no_extensions,
+            no_extensions,
             &mut diagnostics,
         )
         .await;
@@ -636,6 +656,7 @@ impl Services {
             stream: Arc::new(ProviderStream::new(Arc::clone(&extensions))),
             extensions,
             host,
+            safe_mode,
             flag_values: options.extension_flag_values,
             diagnostics,
         }))
