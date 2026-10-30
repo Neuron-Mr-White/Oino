@@ -1080,6 +1080,42 @@ mod tests {
     }
 
     #[test]
+    fn list_and_dict_templates_need_no_key() {
+        // §7 `FieldWithoutKey`: the row templates carry no `key`.
+        let raw = json!({
+            "namespace": "mcp", "title": "MCP", "extensionId": "unipi.mcp",
+            "sections": [{"id": "s", "title": "S", "fields": [
+                {"key": "servers", "type": "list", "label": "Servers",
+                 "item": {"type": "string", "label": "URL"}},
+                {"key": "env", "type": "dict", "label": "Env",
+                 "value": {"type": "number", "label": "Value", "min": 0}}
+            ]}]
+        });
+        let namespace: SettingsNamespace =
+            serde_json::from_value(raw.clone()).expect("templates parse without keys");
+        let list = namespace.field("servers").unwrap();
+        assert_eq!(
+            list.props.item.as_ref().map(|item| item.key.as_str()),
+            Some("")
+        );
+        assert!(
+            check_value(list, &json!(["a"])).is_ok(),
+            "the item template validates rows"
+        );
+        let dict = namespace.field("env").unwrap();
+        assert!(check_value(dict, &json!({"A": 1})).is_ok());
+        let resolved = resolve(
+            &namespace,
+            Layers {
+                defaults: &Json::Null,
+                global: &json!({"servers": ["a"], "env": {"A": 1}}),
+                project: &Json::Null,
+            },
+        );
+        assert_eq!(resolved.values["servers"], json!(["a"]));
+    }
+
+    #[test]
     fn v1_namespaces_parse_unchanged() {
         // The shape `unipi_kit::settings::schema` (v1 §6.6) emits: bare props, `order.items`
         // as `{value, label}` objects, `dynamic` from a service, `allowCustom`, `clearable`.

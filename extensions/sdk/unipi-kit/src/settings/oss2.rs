@@ -128,6 +128,51 @@ pub trait Oss2Field: Sized {
     /// List add-row label (`list { addLabel }`).
     #[must_use]
     fn add_label(self, label: &str) -> Self;
+    /// Minimum rows for `list` / minimum selections for `multiselect`.
+    #[must_use]
+    fn min_items(self, min: usize) -> Self;
+    /// Maximum rows for `list` / maximum selections for `multiselect`.
+    #[must_use]
+    fn max_items(self, max: usize) -> Self;
+    /// `dict` key validation pattern.
+    #[must_use]
+    fn key_pattern(self, pattern: &str) -> Self;
+    /// `dict` key column label.
+    #[must_use]
+    fn key_label(self, label: &str) -> Self;
+    /// `json` editor schema (completion and validation).
+    #[must_use]
+    fn json_schema(self, schema: Json) -> Self;
+    /// `number` bounds.
+    #[must_use]
+    fn range(self, min: f64, max: f64) -> Self;
+    /// `number` increment.
+    #[must_use]
+    fn step(self, step: f64) -> Self;
+    /// `number` unit suffix (`ms`, `tokens`, …).
+    #[must_use]
+    fn unit(self, unit: &str) -> Self;
+    /// `number` integers only.
+    #[must_use]
+    fn integer(self) -> Self;
+    /// `string` placeholder.
+    #[must_use]
+    fn placeholder(self, text: &str) -> Self;
+    /// `string` validation pattern.
+    #[must_use]
+    fn pattern(self, pattern: &str) -> Self;
+    /// `string` multi-line editor.
+    #[must_use]
+    fn multiline(self) -> Self;
+    /// `string` minimum length.
+    #[must_use]
+    fn min_length(self, min: u32) -> Self;
+    /// `string` maximum length.
+    #[must_use]
+    fn max_length(self, max: u32) -> Self;
+    /// `enum` accepts values outside `options`.
+    #[must_use]
+    fn allow_custom(self) -> Self;
 }
 
 impl Oss2Field for Field {
@@ -181,6 +226,86 @@ impl Oss2Field for Field {
 
     fn add_label(mut self, label: &str) -> Self {
         self.props.add_label = Some(label.to_owned());
+        self
+    }
+
+    fn min_items(mut self, min: usize) -> Self {
+        self.props.min = Some(serde_json::Number::from(
+            u64::try_from(min).unwrap_or(u64::MAX),
+        ));
+        self
+    }
+
+    fn max_items(mut self, max: usize) -> Self {
+        self.props.max = Some(serde_json::Number::from(
+            u64::try_from(max).unwrap_or(u64::MAX),
+        ));
+        self
+    }
+
+    fn key_pattern(mut self, pattern: &str) -> Self {
+        self.props.key_pattern = Some(pattern.to_owned());
+        self
+    }
+
+    fn key_label(mut self, label: &str) -> Self {
+        self.props.key_label = Some(label.to_owned());
+        self
+    }
+
+    fn json_schema(mut self, schema: Json) -> Self {
+        self.props.schema = Some(schema);
+        self
+    }
+
+    fn range(mut self, min: f64, max: f64) -> Self {
+        self.props.min = serde_json::Number::from_f64(min);
+        self.props.max = serde_json::Number::from_f64(max);
+        self
+    }
+
+    fn step(mut self, step: f64) -> Self {
+        self.props.step = serde_json::Number::from_f64(step);
+        self
+    }
+
+    fn unit(mut self, unit: &str) -> Self {
+        self.props.unit = Some(unit.to_owned());
+        self
+    }
+
+    fn integer(mut self) -> Self {
+        self.props.integer = Some(true);
+        self
+    }
+
+    fn placeholder(mut self, text: &str) -> Self {
+        self.props.placeholder = Some(text.to_owned());
+        self
+    }
+
+    fn pattern(mut self, pattern: &str) -> Self {
+        self.props.pattern = Some(pattern.to_owned());
+        self
+    }
+
+    fn multiline(mut self) -> Self {
+        self.props.multiline = Some(true);
+        self
+    }
+
+    fn min_length(mut self, min: u32) -> Self {
+        self.props.min_length = Some(min);
+        self
+    }
+
+    fn max_length(mut self, max: u32) -> Self {
+        self.props.max_length = Some(max);
+        self
+    }
+
+    fn allow_custom(mut self) -> Self {
+        self.props.allow_custom = Some(true);
         self
     }
 }
@@ -526,5 +651,192 @@ mod tests {
             })
         );
         assert_eq!(field.disabled_if.and_then(|c| c.eq), Some(json!(false)));
+    }
+
+    #[test]
+    fn prop_setters_cover_the_oss2_field_types() {
+        let field = list("servers", "Servers", Field::string("url", "URL"))
+            .min_items(1)
+            .max_items(8);
+        assert_eq!(field.props.min, Some(serde_json::Number::from(1u64)));
+        assert_eq!(field.props.max, Some(serde_json::Number::from(8u64)));
+        let field = dict("env", "Env", Field::string("value", "Value"))
+            .key_pattern("^[A-Z_]+$")
+            .key_label("Name");
+        assert_eq!(field.props.key_pattern.as_deref(), Some("^[A-Z_]+$"));
+        assert_eq!(field.props.key_label.as_deref(), Some("Name"));
+        assert_eq!(
+            json("raw", "Raw")
+                .json_schema(json!({"type": "object"}))
+                .props
+                .schema,
+            Some(json!({"type": "object"}))
+        );
+        let number = Field::number("timeout", "Timeout")
+            .range(1.0, 10.0)
+            .step(1.0)
+            .unit("s")
+            .integer();
+        assert_eq!(number.props.unit.as_deref(), Some("s"));
+        assert_eq!(number.props.integer, Some(true));
+        assert_eq!(number.props.step.and_then(|step| step.as_f64()), Some(1.0));
+        let text = Field::string("root", "Root")
+            .placeholder("/srv")
+            .pattern("^/")
+            .multiline()
+            .min_length(2)
+            .max_length(64);
+        assert_eq!(text.props.placeholder.as_deref(), Some("/srv"));
+        assert_eq!(text.props.pattern.as_deref(), Some("^/"));
+        assert_eq!(text.props.multiline, Some(true));
+        assert_eq!(text.props.min_length, Some(2));
+        assert_eq!(text.props.max_length, Some(64));
+        assert_eq!(
+            enumeration("mode", "Mode", vec![choice("a", "A")], None)
+                .allow_custom()
+                .props
+                .allow_custom,
+            Some(true)
+        );
+        // All of it round-trips through the OSS-2 wire type core reads.
+        let raw = Namespace::new("n", "N", "n")
+            .section(Section::new("s", "S").field(list(
+                "servers",
+                "Servers",
+                Field::string("url", "URL"),
+            )))
+            .to_json();
+        let typed: SettingsNamespace =
+            serde_json::from_value(raw.clone()).unwrap_or_else(|error| panic!("{error}: {raw}"));
+        assert_eq!(typed.fields().len(), 1);
+    }
+
+    #[test]
+    fn v1_builder_namespaces_load_unchanged_in_oss2() {
+        use super::super::schema::{
+            Choice as V1Choice, Field as V1Field, Kind, Namespace as V1, Scope,
+            Section as V1Section, Unit,
+        };
+        use oino_ui::settings::{Layers, resolve};
+
+        // One v1 namespace touching every v1 field kind and prop (what the unipi extensions
+        // register through `cx.settings_namespace`).
+        let v1 = V1::new("notify", "Notify", "unipi.notify")
+            .defaults(json!({"events": {"agentEnd": true}, "platform": "native"}))
+            .section(
+                V1Section::new("events", "Events")
+                    .field(V1Field::boolean("events.agentEnd", "Agent end"))
+                    .field(V1Field::enumeration(
+                        "platform",
+                        "Platform",
+                        vec![
+                            V1Choice {
+                                value: "native".into(),
+                                label: "Native".into(),
+                                description: None,
+                            },
+                            V1Choice {
+                                value: "ntfy".into(),
+                                label: "ntfy".into(),
+                                description: None,
+                            },
+                        ],
+                    ))
+                    .field(V1Field::multiselect(
+                        "tags",
+                        "Tags",
+                        vec![V1Choice {
+                            value: "a".into(),
+                            label: "A".into(),
+                            description: None,
+                        }],
+                    ))
+                    .field(V1Field::string("root", "Root"))
+                    .field(V1Field::number("timeout", "Timeout").with_kind(|kind| {
+                        if let Kind::Number {
+                            min,
+                            max,
+                            unit,
+                            zero_label,
+                            step,
+                        } = kind
+                        {
+                            *min = Some(0.0);
+                            *max = Some(10.0);
+                            *step = Some(1.0);
+                            *unit = Some(Unit::Ms);
+                            *zero_label = Some("off".into());
+                        }
+                    }))
+                    .field(V1Field::secret("token", "Token").scope(Scope::Global))
+                    .field(V1Field::order(
+                        "columns",
+                        "Columns",
+                        vec![
+                            V1Choice {
+                                value: "a".into(),
+                                label: "A".into(),
+                                description: None,
+                            },
+                            V1Choice {
+                                value: "b".into(),
+                                label: "B".into(),
+                                description: None,
+                            },
+                        ],
+                    ))
+                    .field(V1Field::model("model", "Model"))
+                    .field(V1Field::action("test", "Test", "notify-test"))
+                    .field(V1Field::page(
+                        "advanced",
+                        "Advanced",
+                        vec![
+                            V1Section::new("retry", "Retry")
+                                .field(V1Field::number("retry.count", "Retries").advanced()),
+                        ],
+                    )),
+            );
+        let raw = v1.to_json();
+        let typed: SettingsNamespace =
+            serde_json::from_value(raw.clone()).expect("v1 namespaces parse as OSS-2");
+        assert_eq!(typed.namespace, "notify");
+        assert_eq!(
+            typed.fields().len(),
+            10,
+            "every v1 field (pages inlined): {raw}"
+        );
+        // `order.items` v1 objects keep their values; bare strings in `options` work too.
+        assert_eq!(
+            typed
+                .field("columns")
+                .map(|field| field.props.items.clone()),
+            Some(vec!["a".to_owned(), "b".to_owned()])
+        );
+        // The v1 namespace resolves over its layers with the OSS-2 rules and no diagnostics.
+        let resolved = resolve(
+            &typed,
+            Layers {
+                defaults: &raw["defaults"],
+                global: &json!({"platform": "ntfy"}),
+                project: &json!({"timeout": 5}),
+            },
+        );
+        assert_eq!(resolved.diagnostics, vec![]);
+        assert_eq!(resolved.values["platform"], "ntfy");
+        assert_eq!(resolved.values["timeout"], 5);
+        assert_eq!(resolved.values["events"]["agentEnd"], true);
+        // v1 `Values`-style writes validate against the same types.
+        for (field, value) in [
+            ("events.agentEnd", json!(false)),
+            ("platform", json!("ntfy")),
+            ("tags", json!(["a"])),
+            ("root", json!("/srv")),
+            ("timeout", json!(3)),
+            ("columns", json!(["b", "a"])),
+            ("model", json!("a/b")),
+        ] {
+            let field = typed.field(field).expect("field exists");
+            oino_ui::settings::check_value(field, &value).expect("v1 values validate");
+        }
     }
 }

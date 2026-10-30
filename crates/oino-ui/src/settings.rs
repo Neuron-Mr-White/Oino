@@ -297,7 +297,9 @@ pub struct FieldProps {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Field {
-    /// Dot path into the namespace object.
+    /// Dot path into the namespace object. Empty inside `list.item` / `dict.value`
+    /// templates (`FieldWithoutKey`, §7), so it is optional on the wire.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub key: String,
     /// Field type.
     #[serde(rename = "type")]

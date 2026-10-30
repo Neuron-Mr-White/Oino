@@ -181,6 +181,52 @@ fn extension_and_core_settings_round_trip() {
     assert_eq!(value, json!({"value": true}));
     let all = rpc.ok(json!({"type": "_oino/get_settings"}));
     assert_eq!(all["settings"]["tui"]["inline"], true);
+
+    // Core `oino.*` namespaces (pi settings groups, ui-protocol §7.5) ride the same commands.
+    let compaction = schema["namespaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["namespace"] == "oino.compaction")
+        .expect("core namespaces are in the schema");
+    assert_eq!(compaction["extensionId"], "oino");
+    assert_eq!(compaction["order"], 20);
+    let defaults =
+        rpc.ok(json!({"type": "_oino/get_extension_settings", "namespace": "oino.compaction"}));
+    assert_eq!(defaults["values"]["enabled"], true);
+    assert_eq!(defaults["values"]["reserveTokens"], 16_384);
+    assert_eq!(defaults["diagnostics"], json!([]));
+    rpc.ok(json!({"type": "_oino/set_extension_setting", "namespace": "oino.compaction", "key": "enabled", "value": false, "scope": "global"}));
+    let stored: Value = serde_json::from_str(
+        &std::fs::read_to_string(sandbox.agent().join("settings.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        stored["compaction"]["enabled"], false,
+        "core namespace writes are top-level pi settings: {stored:#}"
+    );
+    assert!(stored["extensionSettings"].get("oino.compaction").is_none());
+    let values =
+        rpc.ok(json!({"type": "_oino/get_extension_settings", "namespace": "oino.compaction"}));
+    assert_eq!(values["values"]["enabled"], false);
+    // Writing the default back unsets the key (OSS-2 simplify, §7.2).
+    rpc.ok(json!({"type": "_oino/set_extension_setting", "namespace": "oino.compaction", "key": "enabled", "value": true, "scope": "global"}));
+    let stored: Value = serde_json::from_str(
+        &std::fs::read_to_string(sandbox.agent().join("settings.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        stored["compaction"].get("enabled").is_none(),
+        "a default write unsets: {stored:#}"
+    );
+    // An invalid stored value resolves to the layer below and is reported.
+    rpc.ok(
+        json!({"type": "_oino/set_setting", "key": "compaction.reserveTokens", "value": "lots", "scope": "global"}),
+    );
+    let values =
+        rpc.ok(json!({"type": "_oino/get_extension_settings", "namespace": "oino.compaction"}));
+    assert_eq!(values["values"]["reserveTokens"], 16_384);
+    assert_eq!(values["diagnostics"][0]["key"], "reserveTokens");
     assert_eq!(rpc.close(), Some(0));
 }
 
