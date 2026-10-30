@@ -1,0 +1,7737 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden — desktop shell > BarChart-horizontal.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/BarChart-horizontal"
+  data-mode="auto"
+>
+  <div
+    aria-label="Bar chart"
+    class="ui-barchart"
+    data-dir="h"
+    role="group"
+    style="--ui-group-gap: calc(1 * var(--ui-col)); --ui-bar-gap: calc(1 * var(--ui-col));"
+  >
+    <div
+      class="ui-bars-h"
+    >
+      <div
+        class="ui-bar-group"
+      >
+        
+        <div
+          class="ui-bar-row"
+        >
+          <span
+            class="ui-bar-label"
+          >
+            <span>
+              score
+            </span>
+          </span>
+          <div
+            class="ui-bar-track"
+          >
+            <div
+              class="ui-bar"
+              style="width: 100%; background: var(--ui-accent);"
+            />
+          </div>
+          <span
+            class="ui-bar-value"
+          >
+            9
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > BarChart-vertical.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/BarChart-vertical"
+  data-mode="auto"
+>
+  <div
+    aria-label="Bar chart"
+    class="ui-barchart"
+    data-dir="v"
+    role="group"
+    style="--ui-group-gap: calc(1 * var(--ui-col)); --ui-bar-gap: calc(1 * var(--ui-col));"
+  >
+    <div
+      class="ui-bars-v"
+    >
+      <div
+        class="ui-bar-group"
+      >
+        <div
+          class="ui-bar-cols"
+        >
+          <button
+            aria-label="Mon 4"
+            class="ui-bar-hit"
+            type="button"
+          >
+            <div
+              class="ui-bar-col"
+              style="width: max(calc(2 * var(--ui-col)), 10px);"
+            >
+              <span
+                class="ui-bar-value"
+                style="color: var(--ui-text);"
+              >
+                4
+              </span>
+              <div
+                class="ui-bar"
+                style="height: 40%; background: var(--ui-c1);"
+              />
+              <span
+                class="ui-bar-label"
+              >
+                <span>
+                  Mon
+                </span>
+              </span>
+            </div>
+          </button>
+          <button
+            aria-label="Tue 7"
+            class="ui-bar-hit"
+            type="button"
+          >
+            <div
+              class="ui-bar-col"
+              style="width: max(calc(2 * var(--ui-col)), 10px);"
+            >
+              <span
+                class="ui-bar-value"
+                style="color: var(--ui-text);"
+              >
+                7
+              </span>
+              <div
+                class="ui-bar"
+                style="height: 70%; background: var(--ui-accent);"
+              />
+              <span
+                class="ui-bar-label"
+              >
+                <span>
+                  Tue
+                </span>
+              </span>
+            </div>
+          </button>
+        </div>
+        <span
+          class="ui-bar-group-label"
+        >
+          <span>
+            Builds
+          </span>
+        </span>
+      </div>
+      <div
+        class="ui-bar-group"
+      >
+        <div
+          class="ui-bar-cols"
+        >
+          <button
+            aria-label="2"
+            class="ui-bar-hit"
+            type="button"
+          >
+            <div
+              class="ui-bar-col"
+              style="width: max(calc(2 * var(--ui-col)), 10px);"
+            >
+              <span
+                class="ui-bar-value"
+                style="color: var(--ui-text);"
+              >
+                2
+              </span>
+              <div
+                class="ui-bar"
+                style="height: 20%; background: var(--ui-accent);"
+              />
+              
+            </div>
+          </button>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Block-bordered-title.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-bordered-title"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-bordered=""
+    data-mode="auto"
+    data-type="rounded"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      >
+        <span>
+          <span>
+            Tasks
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-center"
+      />
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            inside
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    
+  </section>
+</div>
+`;
+
+exports[`golden — desktop shell > Block-collapsible-collapsed.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-collapsible-collapsed"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-collapsed=""
+    data-mode="auto"
+    data-type="plain"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      <button
+        aria-expanded="false"
+        aria-label="Expand"
+        class="ui-block-toggle"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon ui-block-chevron"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      <span
+        class="ui-block-t ui-block-t-left"
+      >
+        <span>
+          <span>
+            Details
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-center"
+      />
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    
+    
+  </section>
+</div>
+`;
+
+exports[`golden — desktop shell > Block-rail-padding-titles.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-rail-padding-titles"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-bordered=""
+    data-mode="auto"
+    data-rail=""
+    data-type="double"
+    style="border-style: double; border-color: var(--ui-border-accent); border-width: 3px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      />
+      <span
+        class="ui-block-t ui-block-t-center"
+      >
+        <span
+          class="ui-m-bold"
+        >
+          <span>
+            Panel
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    />
+    <div
+      class="ui-block-title ui-block-title-bottom"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      />
+      <span
+        class="ui-block-t ui-block-t-center"
+      >
+        <span
+          class="ui-m-bold"
+        >
+          <span>
+            source
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+  </section>
+</div>
+`;
+
+exports[`golden — desktop shell > Block-style-child.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-style-child"
+  data-mode="auto"
+>
+  <section
+    class="ui-block"
+    data-mode="auto"
+    data-type="plain"
+    style="color: var(--ui-muted); border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    
+    <div
+      class="ui-block-body"
+    >
+      <section
+        class="ui-block"
+        data-mode="auto"
+        data-type="plain"
+        style="border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+      >
+        
+        <div
+          class="ui-block-body"
+        >
+          <span
+            aria-label="…"
+            class="ui-spinner"
+            role="status"
+          >
+            <span
+              aria-hidden="true"
+              class="ui-spinner-ring"
+            />
+            <span
+              class="ui-spinner-label"
+            >
+              <span>
+                …
+              </span>
+            </span>
+          </span>
+        </div>
+        
+      </section>
+    </div>
+    
+  </section>
+</div>
+`;
+
+exports[`golden — desktop shell > Block-title-alignment.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-title-alignment"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-mode="auto"
+    data-type="plain"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      />
+      <span
+        class="ui-block-t ui-block-t-center"
+      >
+        <span>
+          <span>
+            Centered
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    />
+    
+  </section>
+</div>
+`;
+
+exports[`golden — desktop shell > Button.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Button"
+  data-mode="auto"
+>
+  <span
+    class="ui-button-wrap"
+  >
+    <button
+      aria-expanded="false"
+      aria-haspopup="dialog"
+      class="btn ui-btn btn-primary"
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-play lucide-icon ui-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"
+          key="10ikf1"
+        />
+      </svg>
+      <span>
+        <span>
+          Deploy
+        </span>
+      </span>
+    </button>
+    
+  </span>
+</div>
+`;
+
+exports[`golden — desktop shell > Button-danger-confirm.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Button-danger-confirm"
+  data-mode="auto"
+>
+  <span
+    class="ui-button-wrap"
+  >
+    <button
+      class="btn ui-btn btn-danger"
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-trash lucide-trash-2 lucide-icon ui-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M10 11v6"
+          key="nco0om"
+        />
+        <path
+          d="M14 11v6"
+          key="outv1u"
+        />
+        <path
+          d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"
+          key="miytrc"
+        />
+        <path
+          d="M3 6h18"
+          key="d0wm0j"
+        />
+        <path
+          d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+          key="e791ji"
+        />
+      </svg>
+      <span>
+        <span
+          style="color: var(--ui-error);"
+        >
+          Delete
+        </span>
+      </span>
+    </button>
+    
+  </span>
+</div>
+`;
+
+exports[`golden — desktop shell > Chart-line-legend-NULL.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Chart-line-legend-NULL"
+  data-mode="auto"
+>
+  <div
+    aria-label="Chart: ctx (2 points)"
+    class="ui-chart"
+    role="img"
+  >
+    
+    <svg
+      aria-hidden="true"
+      class="ui-chart-svg"
+      height="240"
+      viewBox="0 0 480 240"
+      width="100%"
+    >
+      <g
+        class="ui-chart-axes"
+      >
+        <line
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <line
+          x1="44"
+          x2="44"
+          y1="10"
+          y2="214"
+        />
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="214"
+        >
+          0
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="112"
+          y2="112"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="112"
+        >
+          0.5
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="10"
+          y2="10"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="10"
+        >
+          1
+        </text>
+        <text
+          text-anchor="start"
+          x="44"
+          y="230"
+        >
+          0
+        </text>
+        <text
+          text-anchor="middle"
+          x="256"
+          y="230"
+        >
+          0.5
+        </text>
+        <text
+          text-anchor="end"
+          x="468"
+          y="230"
+        >
+          1
+        </text>
+      </g>
+      <polyline
+        fill="none"
+        points="44.0,112.0 468.0,30.4"
+        stroke="var(--ui-c1)"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        vector-effect="non-scaling-stroke"
+      />
+    </svg>
+    
+    
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Chart-scatter.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Chart-scatter"
+  data-mode="auto"
+>
+  <div
+    aria-label="Chart: tok/s (3 points)"
+    class="ui-chart"
+    role="img"
+  >
+    <div
+      class="ui-chart-legend"
+      data-pos="TopRight"
+    >
+      <span
+        class="ui-chart-key"
+      >
+        <span
+          class="ui-chart-swatch"
+          style="background: var(--ui-c2);"
+        />
+        <span>
+          <span>
+            tok/s
+          </span>
+        </span>
+      </span>
+    </div>
+    <svg
+      aria-hidden="true"
+      class="ui-chart-svg"
+      height="240"
+      viewBox="0 0 480 240"
+      width="100%"
+    >
+      <g
+        class="ui-chart-axes"
+      >
+        <line
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <line
+          x1="44"
+          x2="44"
+          y1="10"
+          y2="214"
+        />
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="214"
+        >
+          0
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="112"
+          y2="112"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="112"
+        >
+          2.5
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="10"
+          y2="10"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="10"
+        >
+          5
+        </text>
+        <text
+          text-anchor="start"
+          x="44"
+          y="230"
+        >
+          0
+        </text>
+        <text
+          text-anchor="end"
+          x="468"
+          y="230"
+        >
+          2
+        </text>
+      </g>
+      <circle
+        cx="44"
+        cy="173.2"
+        fill="var(--ui-c2)"
+        r="2.5"
+      />
+      <circle
+        cx="256"
+        cy="50.79999999999998"
+        fill="var(--ui-c2)"
+        r="2.5"
+      />
+      <circle
+        cx="468"
+        cy="71.20000000000002"
+        fill="var(--ui-c2)"
+        r="2.5"
+      />
+    </svg>
+    <div
+      class="ui-chart-titles"
+    >
+      
+      <span
+        class="ui-chart-xtitle"
+      >
+        <span>
+          min
+        </span>
+      </span>
+    </div>
+    
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Code.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Code"
+  data-mode="auto"
+>
+  <div
+    class="md ui-code"
+    data-mode="auto"
+  >
+    <div
+      class="cb line-numbers"
+    >
+      <div
+        class="cb-head"
+      >
+        <span
+          class="cb-lang"
+        >
+          rust
+        </span>
+        <span
+          class="cb-head-actions"
+        >
+          <button
+            class="cb-copy"
+            type="button"
+          >
+            Copy
+          </button>
+        </span>
+      </div>
+      <pre
+        style="counter-reset: cb-line 9;"
+      >
+        <code
+          data-lang="rust"
+        >
+          <span
+            class="cb-line ui-code-line"
+          >
+            let x = 1;
+          </span>
+          <span
+            class="cb-line ui-code-line"
+            data-hl=""
+          >
+            let y = 2;
+          </span>
+        </code>
+      </pre>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Code-plain.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Code-plain"
+  data-mode="auto"
+>
+  <div
+    class="md ui-code"
+    data-mode="auto"
+  >
+    <div
+      class="cb"
+    >
+      <div
+        class="cb-head"
+      >
+        <span
+          class="cb-lang"
+        >
+          text
+        </span>
+        <span
+          class="cb-head-actions"
+        >
+          <button
+            class="cb-copy"
+            type="button"
+          >
+            Copy
+          </button>
+        </span>
+      </div>
+      <pre
+        style="counter-reset: cb-line 0;"
+      >
+        <code
+          data-lang="text"
+        >
+          <span
+            class="cb-line ui-code-line"
+          >
+            echo hi
+          </span>
+        </code>
+      </pre>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Diff-oldnew.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Diff-oldnew"
+  data-mode="auto"
+>
+  <div
+    class="ui-diff"
+    data-mode="auto"
+  >
+    <div
+      aria-label="Diff: 1 added, 1 removed"
+      class="diffview"
+      role="group"
+    >
+      <div
+        class="diff-file-block"
+      >
+        
+        <div
+          class="diff-hunk"
+        >
+          <div
+            class="diff-hunk-head"
+          >
+            @@ -1,2 +1,2 @@
+          </div>
+          <div
+            class="diff-row diff-ctx"
+          >
+            <span
+              class="diff-no diff-no-old"
+            >
+              1
+            </span>
+            <span
+              class="diff-no diff-no-new"
+            >
+              1
+            </span>
+            <span
+              class="diff-mark"
+            >
+               
+            </span>
+            <span
+              class="diff-text"
+            >
+              one
+            </span>
+          </div>
+          <div
+            class="diff-row diff-del"
+          >
+            <span
+              class="diff-no diff-no-old"
+            >
+              2
+            </span>
+            <span
+              class="diff-no diff-no-new"
+            />
+            <span
+              class="diff-mark"
+            >
+              −
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                two
+              </mark>
+            </span>
+          </div>
+          <div
+            class="diff-row diff-add"
+          >
+            <span
+              class="diff-no diff-no-old"
+            />
+            <span
+              class="diff-no diff-no-new"
+            >
+              2
+            </span>
+            <span
+              class="diff-mark"
+            >
+              +
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                2
+              </mark>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Diff-patch.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Diff-patch"
+  data-mode="auto"
+>
+  <div
+    class="ui-diff"
+    data-mode="auto"
+  >
+    <div
+      aria-label="Diff of f.rs: 1 added, 1 removed"
+      class="diffview"
+      role="group"
+    >
+      <div
+        class="diff-file-block"
+      >
+        <div
+          class="diff-file"
+        >
+          f
+          <span
+            class="ui-diff-counts"
+          >
+            <span
+              class="ui-diff-add"
+            >
+              +
+              1
+            </span>
+             
+            <span
+              class="ui-diff-del"
+            >
+              −
+              1
+            </span>
+          </span>
+        </div>
+        <div
+          class="diff-hunk"
+        >
+          <div
+            class="diff-hunk-head"
+          >
+            @@ -1 +1 @@
+          </div>
+          <div
+            class="diff-row diff-del"
+          >
+            <span
+              class="diff-no diff-no-old"
+            >
+              1
+            </span>
+            <span
+              class="diff-no diff-no-new"
+            />
+            <span
+              class="diff-mark"
+            >
+              −
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                old
+              </mark>
+            </span>
+          </div>
+          <div
+            class="diff-row diff-add"
+          >
+            <span
+              class="diff-no diff-no-old"
+            />
+            <span
+              class="diff-no diff-no-new"
+            >
+              1
+            </span>
+            <span
+              class="diff-mark"
+            >
+              +
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                new
+              </mark>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Empty.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Empty"
+  data-mode="auto"
+>
+  <div
+    class="ui-empty"
+    data-mode="auto"
+  >
+    <div
+      class="empty-state"
+      data-compact=""
+      data-testid="ui-empty"
+      role="status"
+    >
+      <span
+        class="empty-state-icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-search lucide-icon ui-icon"
+          fill="none"
+          height="20"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="20"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m21 21-4.34-4.34"
+            key="14j7rj"
+          />
+          <circle
+            cx="11"
+            cy="11"
+            key="4ej97u"
+            r="8"
+          />
+        </svg>
+      </span>
+      <h2>
+        Nothing here
+      </h2>
+      <p>
+        Try adding an item.
+      </p>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Empty-action.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Empty-action"
+  data-mode="auto"
+>
+  <div
+    class="ui-empty"
+    data-mode="auto"
+  >
+    <div
+      class="empty-state"
+      data-compact=""
+      data-testid="ui-empty"
+      role="status"
+    >
+      <span
+        class="empty-state-icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-square-kanban lucide-kanban-square lucide-icon ui-icon"
+          fill="none"
+          height="20"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="20"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            height="18"
+            key="afitv7"
+            rx="2"
+            width="18"
+            x="3"
+            y="3"
+          />
+          <path
+            d="M8 7v7"
+            key="1x2jlm"
+          />
+          <path
+            d="M12 7v4"
+            key="xawao1"
+          />
+          <path
+            d="M16 7v9"
+            key="1hp2iy"
+          />
+        </svg>
+      </span>
+      <h2>
+        No tasks
+      </h2>
+      
+      <div
+        class="empty-state-actions"
+      >
+        <span
+          class="ui-button-wrap"
+        >
+          <button
+            class="btn ui-btn btn-secondary"
+            type="button"
+          >
+            
+            <span>
+              <span>
+                New task
+              </span>
+            </span>
+          </button>
+          
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Gauge-percent.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Gauge-percent"
+  data-mode="auto"
+>
+  <div
+    aria-valuemax="100"
+    aria-valuemin="0"
+    aria-valuenow="72"
+    aria-valuetext="72%"
+    class="ui-gauge"
+    role="progressbar"
+  >
+    <div
+      class="ui-gauge-label"
+    >
+      <span>
+        72%
+      </span>
+    </div>
+    <div
+      class="ui-gauge-track"
+      style="background: var(--ui-surface3);"
+    >
+      <div
+        class="ui-gauge-fill"
+        style="width: 72%; background: var(--ui-accent);"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Gauge-ratio.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Gauge-ratio"
+  data-mode="auto"
+>
+  <div
+    aria-valuemax="100"
+    aria-valuemin="0"
+    aria-valuenow="40"
+    aria-valuetext="40%"
+    class="ui-gauge"
+    role="progressbar"
+  >
+    <div
+      class="ui-gauge-label"
+    >
+      <span>
+        40%
+      </span>
+    </div>
+    <div
+      class="ui-gauge-track"
+      style="background: var(--ui-surface3);"
+    >
+      <div
+        class="ui-gauge-fill"
+        style="width: 40%; background: var(--ui-success);"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Image-blob.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Image-blob"
+  data-mode="auto"
+>
+  <div
+    class="ui-image"
+    data-fit="contain"
+    style="max-width: 100%; max-height: calc(20 * var(--ui-row));"
+  >
+    <div
+      aria-label="preview"
+      class="ui-image-ph"
+      role="img"
+    >
+      
+      <span>
+        preview
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Image-data.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Image-data"
+  data-mode="auto"
+>
+  <div
+    class="ui-image"
+    data-fit="contain"
+    style="max-width: min(100%, calc(40 * var(--ui-col))); max-height: calc(10 * var(--ui-row));"
+  >
+    <button
+      aria-label="Open image: shot"
+      class="ui-image-btn"
+      type="button"
+    >
+      <img
+        alt="shot"
+        decoding="async"
+        loading="lazy"
+        src="data:image/png;base64,aGVsbG8="
+      />
+    </button>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Image-path.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Image-path"
+  data-mode="auto"
+>
+  <div
+    class="ui-image"
+    data-fit="cover"
+    style="max-width: 100%; max-height: calc(20 * var(--ui-row));"
+  >
+    <div
+      aria-label="logo"
+      class="ui-image-ph"
+      role="img"
+    >
+      
+      <span>
+        logo
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Input.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Input"
+  data-mode="auto"
+>
+  <div
+    class="ui-field"
+  >
+    <label
+      class="ui-field-label"
+      for="id0"
+    >
+      <span>
+        <span>
+          Name
+        </span>
+      </span>
+    </label>
+    <input
+      class="ui-input"
+      id="id0"
+      maxlength="32"
+      placeholder="your name"
+      type="text"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Input-multiline-secret.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Input-multiline-secret"
+  data-mode="auto"
+>
+  <div
+    class="ui-field"
+  >
+    
+    <textarea
+      aria-label="token"
+      class="ui-input ui-textarea"
+      data-secret=""
+      id="id0"
+      rows="3"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > KeyHints.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/KeyHints"
+  data-mode="auto"
+>
+  <div
+    aria-label="Keys"
+    class="ui-keyhints"
+    role="group"
+  >
+    <span
+      class="ui-hint"
+    >
+      <span
+        class="ui-keys"
+      >
+        <kbd
+          class="kbd"
+        >
+          Enter
+        </kbd>
+      </span>
+      <span
+        class="ui-hint-label"
+      >
+        open
+      </span>
+    </span>
+    <button
+      class="ui-hint ui-hint-action"
+      type="button"
+    >
+      <span
+        class="ui-keys"
+      >
+        <kbd
+          class="kbd"
+        >
+          N
+        </kbd>
+      </span>
+      <span
+        class="ui-hint-label"
+      >
+        new
+      </span>
+    </button>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Layout-collapse.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-collapse"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="h"
+    data-mode="auto"
+    style="flex-direction: row; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            left
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            right
+          </span>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Layout-default.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-default"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="v"
+    data-mode="auto"
+    style="flex-direction: column; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            header
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            body
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            footer
+          </span>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Layout-horizontal.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-horizontal"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="h"
+    data-mode="auto"
+    style="flex-direction: row; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 calc(20 * var(--ui-col));"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 50%;"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 25.0000%;"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px; min-width: calc(5 * var(--ui-col));"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 1 calc(10 * var(--ui-col)); max-width: calc(10 * var(--ui-col));"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px;"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Layout-margin-spacing-flex.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-margin-spacing-flex"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="h"
+    data-mode="auto"
+    style="flex-direction: row; padding: calc(2 * var(--ui-row)) calc(1 * var(--ui-col)); gap: calc(2 * var(--ui-col)); justify-content: space-between;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 calc(3 * var(--ui-col));"
+    >
+      <span
+        class="ui-button-wrap"
+      >
+        <button
+          class="btn ui-btn btn-secondary"
+          type="button"
+        >
+          
+          <span>
+            <span>
+              OK
+            </span>
+          </span>
+        </button>
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 calc(3 * var(--ui-col));"
+    >
+      <span
+        class="ui-button-wrap"
+      >
+        <button
+          class="btn ui-btn btn-secondary"
+          type="button"
+        >
+          
+          <span>
+            <span>
+              Cancel
+            </span>
+          </span>
+        </button>
+        
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Layout-nested.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-nested"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="v"
+    data-mode="auto"
+    style="flex-direction: column; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-layout"
+        data-dir="h"
+        data-mode="auto"
+        style="flex-direction: row; justify-content: flex-start;"
+      >
+        <div
+          class="ui-layout-item"
+          data-mode="auto"
+          style="flex: 1 1 0px;"
+        >
+          <div
+            class="ui-empty"
+            data-mode="auto"
+          >
+            <div
+              class="empty-state"
+              data-compact=""
+              data-testid="ui-empty"
+              role="status"
+            >
+              <img
+                alt=""
+                class="crab"
+                src="/src/assets/unicrab-pixel.png"
+              />
+              <h2>
+                Nested
+              </h2>
+              
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > LineGauge.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/LineGauge"
+  data-mode="auto"
+>
+  <div
+    aria-valuemax="100"
+    aria-valuemin="0"
+    aria-valuenow="25"
+    aria-valuetext="done"
+    class="ui-linegauge"
+    data-set="thick"
+    role="progressbar"
+  >
+    <span
+      class="ui-linegauge-label"
+    >
+      <span>
+        <span>
+          done
+        </span>
+      </span>
+    </span>
+    <div
+      class="ui-linegauge-track"
+      style="background: var(--ui-border);"
+    >
+      <div
+        class="ui-linegauge-fill"
+        style="width: 25%; background: var(--ui-success);"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > List-basic.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-basic"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-basic::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              alpha
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="1"
+      id="gallery/List-basic::#1"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              beta
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > List-direction-scrollpad.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-direction-scrollpad"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-direction="btt"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-direction-scrollpad::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              x
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > List-full-items.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-full-items"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-detail=""
+      data-index="0"
+      id="gallery/List-full-items::t-1"
+      role="option"
+      style="color: var(--ui-text);"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-row-symbol"
+      />
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-zap lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"
+          key="1v7up4"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              First task
+            </span>
+            
+          </div>
+        </div>
+        <span
+          class="ui-row-detail"
+        >
+          <span
+            style="color: var(--ui-muted);"
+          >
+            open
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-row-badge"
+      >
+        <span
+          class="ui-chip"
+          style="color: var(--ui-error); background-color: var(--ui-error-bg);"
+        >
+           P1 
+        </span>
+      </span>
+    </div>
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="1"
+      id="gallery/List-full-items::t-2"
+      role="option"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-row-symbol"
+      />
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              Second
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > List-multi-state.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-multi-state"
+  data-mode="auto"
+>
+  <div
+    aria-activedescendant="gallery/List-multi-state::a"
+    aria-multiselectable="true"
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="true"
+      class="ui-row"
+      data-cursor=""
+      data-index="0"
+      data-selected=""
+      id="gallery/List-multi-state::a"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              A
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+    <div
+      aria-selected="true"
+      class="ui-row"
+      data-index="1"
+      data-selected=""
+      id="gallery/List-multi-state::b"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              B
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > List-scrollbar.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-scrollbar"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-mode="auto"
+    data-scrollbar=""
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-scrollbar::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              a
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > List-state-selected.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-state-selected"
+  data-mode="auto"
+>
+  <div
+    aria-activedescendant="gallery/List-state-selected::b"
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-state-selected::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              a
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="1"
+      id="gallery/List-state-selected::#1"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              b
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Log.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Log"
+  data-mode="auto"
+>
+  <div
+    class="ui-log"
+    data-mode="auto"
+  >
+    <div
+      aria-live="off"
+      class="ui-log-scroll"
+      role="log"
+      tabindex="0"
+    >
+      <div
+        class="ui-virtual"
+        style="position: relative; height: 40px;"
+      >
+        <div
+          class="ui-virtual-row"
+          data-index="0"
+          style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(0px);"
+        >
+          <div
+            class="ui-log-row"
+          >
+            
+            <div
+              class="ui-line ui-log-line"
+            >
+              <span>
+                boot
+              </span>
+              
+            </div>
+          </div>
+        </div>
+        <div
+          class="ui-virtual-row"
+          data-index="1"
+          style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(20px);"
+        >
+          <div
+            class="ui-log-row"
+          >
+            
+            <div
+              class="ui-line ui-log-line"
+            >
+              <span>
+                ready
+              </span>
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Log-ring-wrap.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Log-ring-wrap"
+  data-mode="auto"
+>
+  <div
+    class="ui-log"
+    data-mode="auto"
+    data-wrap=""
+  >
+    <div
+      aria-live="off"
+      class="ui-log-scroll"
+      role="log"
+      tabindex="0"
+    >
+      <div
+        class="ui-virtual"
+        style="position: relative; height: 20px;"
+      >
+        <div
+          class="ui-virtual-row"
+          data-index="0"
+          style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(0px);"
+        >
+          <div
+            class="ui-log-row"
+          >
+            <span
+              aria-hidden="true"
+              class="ui-log-no"
+            >
+              1
+            </span>
+            <div
+              class="ui-line ui-log-line"
+            >
+              <span
+                style="color: var(--ui-dim);"
+              >
+                2026-11-01 
+              </span>
+              <span
+                style="color: var(--ui-success);"
+              >
+                started
+              </span>
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button
+      class="ui-log-live"
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-arrow-down lucide-icon"
+        fill="none"
+        height="14"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="14"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5v14"
+          key="s699le"
+        />
+        <path
+          d="m19 12-7 7-7-7"
+          key="1idqje"
+        />
+      </svg>
+       live
+    </button>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Markdown.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Markdown"
+  data-mode="auto"
+>
+  <div
+    class="md ui-md"
+    data-mode="auto"
+  >
+    <div>
+      <h1>
+        Title
+      </h1>
+      
+
+      <p>
+        <strong>
+          bold
+        </strong>
+         body
+      </p>
+      
+
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Paragraph-block-prop.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-block-prop"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-bordered=""
+    data-mode="auto"
+    data-type="plain"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(1 * var(--ui-row)); --ui-pad-b: calc(1 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      >
+        <span>
+          <span>
+            Framed
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-center"
+      />
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+        style="color: var(--ui-dim);"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            framed text
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    
+  </section>
+</div>
+`;
+
+exports[`golden — desktop shell > Paragraph-lines-array.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-lines-array"
+  data-mode="auto"
+>
+  <div
+    class="ui-p"
+    data-mode="auto"
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        one 
+      </span>
+      <span>
+        two
+      </span>
+      
+    </div>
+    <div
+      class="ui-line"
+    >
+      <span>
+        three
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Paragraph-nowrap.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-nowrap"
+  data-mode="auto"
+>
+  <div
+    class="ui-p ui-nowrap"
+    data-mode="auto"
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        a very long line
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Paragraph-object-alignment.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-object-alignment"
+  data-mode="auto"
+>
+  <div
+    class="ui-p ui-al-center"
+    data-mode="auto"
+    style="color: var(--ui-text);"
+  >
+    <div
+      class="ui-line ui-al-center ui-m-italic"
+    >
+      <span
+        style="color: var(--ui-accent);"
+      >
+        hey
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Paragraph-string.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-string"
+  data-mode="auto"
+>
+  <div
+    class="ui-p"
+    data-mode="auto"
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        just a string
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Paragraph-wrap-trim-scroll.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-wrap-trim-scroll"
+  data-mode="auto"
+>
+  <div
+    class="ui-p ui-notrim"
+    data-mode="auto"
+    data-scrollbar=""
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        wrapped
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Scrollbar-horizontal.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Scrollbar-horizontal"
+  data-mode="auto"
+>
+  <div
+    aria-orientation="horizontal"
+    aria-valuemax="199"
+    aria-valuemin="0"
+    aria-valuenow="0"
+    class="ui-scrollbar"
+    data-orientation="h"
+    data-side="bottom"
+    role="scrollbar"
+    style="background: var(--ui-scroll-track);"
+  >
+    <div
+      class="ui-scrollbar-thumb"
+      style="left: 0%; width: 0.5%; background: var(--ui-scroll-thumb);"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Scrollbar-vertical.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Scrollbar-vertical"
+  data-mode="auto"
+>
+  <div
+    aria-orientation="vertical"
+    aria-valuemax="499"
+    aria-valuemin="0"
+    aria-valuenow="120"
+    class="ui-scrollbar"
+    data-orientation="v"
+    data-side="right"
+    role="scrollbar"
+    style="background: var(--ui-border);"
+  >
+    <div
+      class="ui-scrollbar-thumb"
+      style="top: 22.124248496993985%; height: 8%; background: var(--ui-muted);"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Select.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Select"
+  data-mode="auto"
+>
+  <div
+    class="ui-select"
+  >
+    <div
+      data-closed=""
+      id="select-id0"
+      role="group"
+    >
+      <button
+        aria-expanded="false"
+        aria-haspopup="listbox"
+        aria-label="pick"
+        aria-labelledby="select-id0-trigger select-id0-value"
+        class="ui-select-trigger"
+        data-closed=""
+        id="select-id0-trigger"
+        type="button"
+      >
+        <span
+          class="ui-select-value"
+          id="select-id0-value"
+        >
+          <span>
+            <span>
+              Fast
+            </span>
+          </span>
+        </span>
+        <span
+          aria-hidden="true"
+          class="ui-select-icon"
+          data-closed=""
+        >
+          <svg
+            aria-hidden="true"
+            class="lucide lucide-chevrons-up-down lucide-icon"
+            fill="none"
+            height="16"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="16"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="m7 15 5 5 5-5"
+              key="1hf1tw"
+            />
+            <path
+              d="m7 9 5-5 5 5"
+              key="sgt6xg"
+            />
+          </svg>
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Select-empty.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Select-empty"
+  data-mode="auto"
+>
+  <div
+    class="ui-select"
+  >
+    <div
+      data-closed=""
+      id="select-id0"
+      role="group"
+    >
+      <button
+        aria-expanded="false"
+        aria-haspopup="listbox"
+        aria-label="model"
+        aria-labelledby="select-id0-trigger select-id0-value"
+        class="ui-select-trigger"
+        data-closed=""
+        id="select-id0-trigger"
+        type="button"
+      >
+        <span
+          class="ui-select-value"
+          data-placeholder-shown=""
+          id="select-id0-value"
+        >
+          Choose…
+        </span>
+        <span
+          aria-hidden="true"
+          class="ui-select-icon"
+          data-closed=""
+        >
+          <svg
+            aria-hidden="true"
+            class="lucide lucide-chevrons-up-down lucide-icon"
+            fill="none"
+            height="16"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="16"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="m7 15 5 5 5-5"
+              key="1hf1tw"
+            />
+            <path
+              d="m7 9 5-5 5 5"
+              key="sgt6xg"
+            />
+          </svg>
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Sparkline.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Sparkline"
+  data-mode="auto"
+>
+  <div
+    aria-label="Sparkline, 3 values, last 5, max 5"
+    class="ui-sparkline"
+    role="img"
+  >
+    <svg
+      aria-hidden="true"
+      height="100%"
+      preserveAspectRatio="none"
+      viewBox="0 0 5 100"
+      width="100%"
+    >
+      <rect
+        fill="var(--ui-accent)"
+        height="10"
+        rx="0"
+        width="0.76"
+        x="0.12"
+        y="90"
+      />
+      <rect
+        fill="var(--ui-dim)"
+        height="2"
+        width="0.4"
+        x="1.3"
+        y="98"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="30"
+        rx="0"
+        width="0.76"
+        x="2.12"
+        y="70"
+      />
+      <rect
+        fill="var(--ui-dim)"
+        height="2"
+        width="0.4"
+        x="3.3"
+        y="98"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="50"
+        rx="0"
+        width="0.76"
+        x="4.12"
+        y="50"
+      />
+    </svg>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Sparkline-rtl-three.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Sparkline-rtl-three"
+  data-mode="auto"
+>
+  <div
+    aria-label="Sparkline, 3 values, last 2, max 8"
+    class="ui-sparkline"
+    role="img"
+  >
+    <svg
+      aria-hidden="true"
+      height="100%"
+      preserveAspectRatio="none"
+      viewBox="0 0 3 100"
+      width="100%"
+    >
+      <rect
+        fill="var(--ui-accent)"
+        height="100"
+        rx="0"
+        width="0.76"
+        x="0.12"
+        y="0"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="0"
+        rx="0"
+        width="0.76"
+        x="1.12"
+        y="100"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="25"
+        rx="0"
+        width="0.76"
+        x="2.12"
+        y="75"
+      />
+    </svg>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Spinner.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Spinner"
+  data-mode="auto"
+>
+  <span
+    aria-label="thinking"
+    class="ui-spinner"
+    role="status"
+  >
+    <span
+      aria-hidden="true"
+      class="ui-spinner-ring"
+    />
+    <span
+      class="ui-spinner-label"
+    >
+      <span>
+        thinking
+      </span>
+    </span>
+  </span>
+</div>
+`;
+
+exports[`golden — desktop shell > Spinner-bare.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Spinner-bare"
+  data-mode="auto"
+>
+  <span
+    aria-label="Working"
+    class="ui-spinner"
+    role="status"
+  >
+    <span
+      aria-hidden="true"
+      class="ui-spinner-ring"
+    />
+    
+  </span>
+</div>
+`;
+
+exports[`golden — desktop shell > Table-basic.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Table-basic"
+  data-mode="auto"
+>
+  <div
+    class="ui-table"
+    data-mode="auto"
+  >
+    <div
+      aria-rowcount="2"
+      class="ui-table-scroll"
+      role="grid"
+      tabindex="0"
+    >
+      <div
+        class="ui-table-inner"
+      >
+        
+        <div
+          aria-selected="false"
+          class="ui-trow"
+          data-index="0"
+          role="row"
+          style="grid-template-columns: calc(10 * var(--ui-col)) 1fr; column-gap: calc(1 * var(--ui-col)); min-height: 32px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  a
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  b
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          aria-selected="false"
+          class="ui-trow"
+          data-index="1"
+          role="row"
+          style="grid-template-columns: calc(10 * var(--ui-col)) 1fr; column-gap: calc(1 * var(--ui-col)); min-height: 32px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  c
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  d
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Table-header-footer.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Table-header-footer"
+  data-mode="auto"
+>
+  <div
+    class="ui-table"
+    data-mode="auto"
+  >
+    <div
+      aria-rowcount="1"
+      class="ui-table-scroll"
+      role="grid"
+      tabindex="0"
+    >
+      <div
+        class="ui-table-inner"
+      >
+        <div
+          class="ui-trow ui-thead"
+          role="row"
+          style="grid-template-columns: minmax(0, calc(24 * var(--ui-col))) 1fr; column-gap: calc(2 * var(--ui-col));"
+        >
+          <div
+            class="ui-cell"
+            role="columnheader"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span
+                  class="ui-m-bold"
+                >
+                  Name
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="columnheader"
+            style="color: var(--ui-muted);"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  Size
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          aria-selected="false"
+          class="ui-trow"
+          data-index="0"
+          role="row"
+          style="grid-template-columns: minmax(0, calc(24 * var(--ui-col))) 1fr; column-gap: calc(2 * var(--ui-col)); color: var(--ui-text); min-height: 32px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  notes.md
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  1 KB
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          class="ui-trow ui-tfoot"
+          role="row"
+          style="grid-template-columns: minmax(0, calc(24 * var(--ui-col))) 1fr; column-gap: calc(2 * var(--ui-col));"
+        >
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  total
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  1 KB
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Table-state-sticky.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Table-state-sticky"
+  data-mode="auto"
+>
+  <div
+    class="ui-table"
+    data-mode="auto"
+    data-scrollbar=""
+    data-sticky=""
+  >
+    <div
+      aria-rowcount="1"
+      class="ui-table-scroll"
+      role="grid"
+      tabindex="0"
+    >
+      <div
+        class="ui-table-inner"
+      >
+        
+        <div
+          aria-selected="true"
+          class="ui-trow"
+          data-index="0"
+          data-selected=""
+          role="row"
+          style="grid-template-columns: calc(4 * var(--ui-col)) calc(4 * var(--ui-col)); column-gap: calc(1 * var(--ui-col)); min-height: 32px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  x
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  y
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Tabs-basic.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tabs-basic"
+  data-mode="auto"
+>
+  <div
+    class="ui-tabs"
+    data-mode="auto"
+  >
+    <div
+      class="ui-tabs-strip"
+      role="tablist"
+    >
+      <button
+        aria-selected="false"
+        class="ui-tab"
+        data-key="one"
+        id="gallery/Tabs-basic::tab:one"
+        role="tab"
+        tabindex="-1"
+        type="button"
+      >
+        <span>
+          <span>
+            One
+          </span>
+        </span>
+        
+      </button>
+      <span
+        aria-hidden="true"
+        class="ui-tabs-divider"
+      >
+        <span>
+          │
+        </span>
+      </span>
+      <button
+        aria-selected="true"
+        class="ui-tab ui-m-bold"
+        data-key="two"
+        id="gallery/Tabs-basic::tab:two"
+        role="tab"
+        tabindex="0"
+        type="button"
+      >
+        <span>
+          <span>
+            Two
+          </span>
+        </span>
+        <span
+          class="ui-tab-badge"
+        >
+          <span
+            style="color: var(--ui-accent);"
+          >
+            2
+          </span>
+        </span>
+      </button>
+    </div>
+    
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Tabs-panes.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tabs-panes"
+  data-mode="auto"
+>
+  <div
+    class="ui-tabs"
+    data-mode="auto"
+  >
+    <div
+      class="ui-tabs-strip"
+      role="tablist"
+    >
+      <button
+        aria-selected="true"
+        class="ui-tab"
+        data-key="log"
+        id="gallery/Tabs-panes::tab:log"
+        role="tab"
+        tabindex="0"
+        type="button"
+      >
+        <span>
+          <span>
+            Log
+          </span>
+        </span>
+        
+      </button>
+      <button
+        aria-selected="false"
+        class="ui-tab"
+        data-key="graph"
+        id="gallery/Tabs-panes::tab:graph"
+        role="tab"
+        tabindex="-1"
+        type="button"
+      >
+        <span>
+          <span>
+            Graph
+          </span>
+        </span>
+        
+      </button>
+    </div>
+    <div
+      aria-labelledby="gallery/Tabs-panes::tab:log"
+      class="ui-tabs-pane"
+      data-mode="auto"
+      role="tabpanel"
+    >
+      <div
+        class="ui-log"
+        data-mode="auto"
+      >
+        <div
+          aria-live="off"
+          class="ui-log-scroll"
+          role="log"
+          tabindex="0"
+        >
+          <div
+            class="ui-virtual"
+            style="position: relative; height: 20px;"
+          >
+            <div
+              class="ui-virtual-row"
+              data-index="0"
+              style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(0px);"
+            >
+              <div
+                class="ui-log-row"
+              >
+                
+                <div
+                  class="ui-line ui-log-line"
+                >
+                  <span>
+                    tail
+                  </span>
+                  
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Toggle.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Toggle"
+  data-mode="auto"
+>
+  <div
+    class="ui-toggle"
+  >
+    <span
+      class="ui-toggle-label"
+    >
+      <span>
+        <span>
+          Verbose
+        </span>
+      </span>
+    </span>
+    <div
+      aria-label="Verbose"
+      class="inline-flex items-center data-[disabled]:opacity-50"
+      data-checked=""
+      id="switch-id0"
+      role="group"
+    >
+      <input
+        aria-checked="true"
+        data-checked=""
+        id="switch-id0-input"
+        name="switch-cl-19"
+        role="switch"
+        style="border: 0px; clip: rect(0px); clip-path: inset(50%); height: 1px; margin: 0px -1px -1px 0px; overflow: hidden; padding: 0px; position: absolute; width: 1px; white-space: nowrap;"
+        type="checkbox"
+        value="on"
+      />
+      <div
+        class="relative flex h-[26px] w-11 shrink-0 items-center rounded-pill bg-surface-3 transition-colors data-[checked]:bg-shell"
+        data-checked=""
+        id="switch-id0-control"
+      >
+        <div
+          class="block h-5 w-5 shrink-0 rounded-pill bg-text translate-x-[3px] transition-transform data-[checked]:translate-x-[21px]"
+          data-checked=""
+          id="switch-id0-thumb"
+        />
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Tree.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tree"
+  data-mode="auto"
+>
+  <div
+    aria-activedescendant="gallery/Tree::lib"
+    class="ui-list ui-tree"
+    data-mode="auto"
+    role="tree"
+    tabindex="0"
+  >
+    <div
+      aria-expanded="true"
+      aria-level="1"
+      aria-posinset="1"
+      aria-selected="false"
+      aria-setsize="1"
+      class="ui-row ui-tree-row"
+      data-index="0"
+      id="gallery/Tree::src"
+      role="treeitem"
+      style="--ui-depth: 0;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <button
+        aria-label="Collapse"
+        class="ui-tree-twisty"
+        data-open=""
+        tabindex="-1"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-folder lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+          key="1kt360"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span>
+            src
+          </span>
+        </span>
+      </span>
+      
+    </div>
+    <div
+      aria-level="2"
+      aria-posinset="1"
+      aria-selected="true"
+      aria-setsize="2"
+      class="ui-row ui-tree-row"
+      data-index="1"
+      data-selected=""
+      id="gallery/Tree::lib"
+      role="treeitem"
+      style="--ui-depth: 1;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <span
+        aria-hidden="true"
+        class="ui-tree-twisty"
+      />
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-file lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
+          key="1oefj6"
+        />
+        <path
+          d="M14 2v5a1 1 0 0 0 1 1h5"
+          key="wfsgrz"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span
+            style="color: var(--ui-text);"
+          >
+            lib.rs
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-row-badge"
+      >
+        <span>
+          1K
+        </span>
+      </span>
+    </div>
+    <div
+      aria-expanded="false"
+      aria-level="2"
+      aria-posinset="2"
+      aria-selected="false"
+      aria-setsize="2"
+      class="ui-row ui-tree-row"
+      data-index="2"
+      id="gallery/Tree::tests"
+      role="treeitem"
+      style="--ui-depth: 1;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <button
+        aria-label="Expand"
+        class="ui-tree-twisty"
+        tabindex="-1"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-folder lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+          key="1kt360"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span>
+            tests
+          </span>
+        </span>
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — desktop shell > Tree-lazy.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tree-lazy"
+  data-mode="auto"
+>
+  <div
+    class="ui-list ui-tree"
+    data-mode="auto"
+    role="tree"
+    tabindex="0"
+  >
+    <div
+      aria-expanded="false"
+      aria-level="1"
+      aria-posinset="1"
+      aria-selected="false"
+      aria-setsize="1"
+      class="ui-row ui-tree-row"
+      data-index="0"
+      id="gallery/Tree-lazy::a"
+      role="treeitem"
+      style="--ui-depth: 0;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <button
+        aria-label="Expand"
+        class="ui-tree-twisty"
+        tabindex="-1"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span>
+            A
+          </span>
+        </span>
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > BarChart-horizontal.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/BarChart-horizontal"
+  data-mode="auto"
+>
+  <div
+    aria-label="Bar chart"
+    class="ui-barchart"
+    data-dir="h"
+    role="group"
+    style="--ui-group-gap: calc(1 * var(--ui-col)); --ui-bar-gap: calc(1 * var(--ui-col));"
+  >
+    <div
+      class="ui-bars-h"
+    >
+      <div
+        class="ui-bar-group"
+      >
+        
+        <div
+          class="ui-bar-row"
+        >
+          <span
+            class="ui-bar-label"
+          >
+            <span>
+              score
+            </span>
+          </span>
+          <div
+            class="ui-bar-track"
+          >
+            <div
+              class="ui-bar"
+              style="width: 100%; background: var(--ui-accent);"
+            />
+          </div>
+          <span
+            class="ui-bar-value"
+          >
+            9
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > BarChart-vertical.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/BarChart-vertical"
+  data-mode="auto"
+>
+  <div
+    aria-label="Bar chart"
+    class="ui-barchart"
+    data-dir="v"
+    role="group"
+    style="--ui-group-gap: calc(1 * var(--ui-col)); --ui-bar-gap: calc(1 * var(--ui-col));"
+  >
+    <div
+      class="ui-bars-v"
+    >
+      <div
+        class="ui-bar-group"
+      >
+        <div
+          class="ui-bar-cols"
+        >
+          <button
+            aria-label="Mon 4"
+            class="ui-bar-hit"
+            type="button"
+          >
+            <div
+              class="ui-bar-col"
+              style="width: max(calc(2 * var(--ui-col)), 10px);"
+            >
+              <span
+                class="ui-bar-value"
+                style="color: var(--ui-text);"
+              >
+                4
+              </span>
+              <div
+                class="ui-bar"
+                style="height: 40%; background: var(--ui-c1);"
+              />
+              <span
+                class="ui-bar-label"
+              >
+                <span>
+                  Mon
+                </span>
+              </span>
+            </div>
+          </button>
+          <button
+            aria-label="Tue 7"
+            class="ui-bar-hit"
+            type="button"
+          >
+            <div
+              class="ui-bar-col"
+              style="width: max(calc(2 * var(--ui-col)), 10px);"
+            >
+              <span
+                class="ui-bar-value"
+                style="color: var(--ui-text);"
+              >
+                7
+              </span>
+              <div
+                class="ui-bar"
+                style="height: 70%; background: var(--ui-accent);"
+              />
+              <span
+                class="ui-bar-label"
+              >
+                <span>
+                  Tue
+                </span>
+              </span>
+            </div>
+          </button>
+        </div>
+        <span
+          class="ui-bar-group-label"
+        >
+          <span>
+            Builds
+          </span>
+        </span>
+      </div>
+      <div
+        class="ui-bar-group"
+      >
+        <div
+          class="ui-bar-cols"
+        >
+          <button
+            aria-label="2"
+            class="ui-bar-hit"
+            type="button"
+          >
+            <div
+              class="ui-bar-col"
+              style="width: max(calc(2 * var(--ui-col)), 10px);"
+            >
+              <span
+                class="ui-bar-value"
+                style="color: var(--ui-text);"
+              >
+                2
+              </span>
+              <div
+                class="ui-bar"
+                style="height: 20%; background: var(--ui-accent);"
+              />
+              
+            </div>
+          </button>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Block-bordered-title.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-bordered-title"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-bordered=""
+    data-mode="auto"
+    data-type="rounded"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      >
+        <span>
+          <span>
+            Tasks
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-center"
+      />
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            inside
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    
+  </section>
+</div>
+`;
+
+exports[`golden — phone shell > Block-collapsible-collapsed.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-collapsible-collapsed"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-collapsed=""
+    data-mode="auto"
+    data-type="plain"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      <button
+        aria-expanded="false"
+        aria-label="Expand"
+        class="ui-block-toggle"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon ui-block-chevron"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      <span
+        class="ui-block-t ui-block-t-left"
+      >
+        <span>
+          <span>
+            Details
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-center"
+      />
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    
+    
+  </section>
+</div>
+`;
+
+exports[`golden — phone shell > Block-rail-padding-titles.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-rail-padding-titles"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-bordered=""
+    data-mode="auto"
+    data-rail=""
+    data-type="double"
+    style="border-style: double; border-color: var(--ui-border-accent); border-width: 3px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row)); --ui-rail: var(--ui-harness);"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      />
+      <span
+        class="ui-block-t ui-block-t-center"
+      >
+        <span
+          class="ui-m-bold"
+        >
+          <span>
+            Panel
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    />
+    <div
+      class="ui-block-title ui-block-title-bottom"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      />
+      <span
+        class="ui-block-t ui-block-t-center"
+      >
+        <span
+          class="ui-m-bold"
+        >
+          <span>
+            source
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+  </section>
+</div>
+`;
+
+exports[`golden — phone shell > Block-style-child.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-style-child"
+  data-mode="auto"
+>
+  <section
+    class="ui-block"
+    data-mode="auto"
+    data-type="plain"
+    style="color: var(--ui-muted); border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    
+    <div
+      class="ui-block-body"
+    >
+      <section
+        class="ui-block"
+        data-mode="auto"
+        data-type="plain"
+        style="border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+      >
+        
+        <div
+          class="ui-block-body"
+        >
+          <span
+            aria-label="…"
+            class="ui-spinner"
+            role="status"
+          >
+            <span
+              aria-hidden="true"
+              class="ui-spinner-ring"
+            />
+            <span
+              class="ui-spinner-label"
+            >
+              <span>
+                …
+              </span>
+            </span>
+          </span>
+        </div>
+        
+      </section>
+    </div>
+    
+  </section>
+</div>
+`;
+
+exports[`golden — phone shell > Block-title-alignment.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Block-title-alignment"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-mode="auto"
+    data-type="plain"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 0px; --ui-pad-l: calc(0 * var(--ui-col)); --ui-pad-r: calc(0 * var(--ui-col)); --ui-pad-t: calc(0 * var(--ui-row)); --ui-pad-b: calc(0 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      />
+      <span
+        class="ui-block-t ui-block-t-center"
+      >
+        <span>
+          <span>
+            Centered
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    />
+    
+  </section>
+</div>
+`;
+
+exports[`golden — phone shell > Button.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Button"
+  data-mode="auto"
+>
+  <span
+    class="ui-button-wrap"
+  >
+    <button
+      aria-expanded="false"
+      aria-haspopup="dialog"
+      class="btn ui-btn btn-primary"
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-play lucide-icon ui-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"
+          key="10ikf1"
+        />
+      </svg>
+      <span>
+        <span>
+          Deploy
+        </span>
+      </span>
+    </button>
+    
+  </span>
+</div>
+`;
+
+exports[`golden — phone shell > Button-danger-confirm.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Button-danger-confirm"
+  data-mode="auto"
+>
+  <span
+    class="ui-button-wrap"
+  >
+    <button
+      class="btn ui-btn btn-danger"
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-trash lucide-trash-2 lucide-icon ui-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M10 11v6"
+          key="nco0om"
+        />
+        <path
+          d="M14 11v6"
+          key="outv1u"
+        />
+        <path
+          d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"
+          key="miytrc"
+        />
+        <path
+          d="M3 6h18"
+          key="d0wm0j"
+        />
+        <path
+          d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+          key="e791ji"
+        />
+      </svg>
+      <span>
+        <span
+          style="color: var(--ui-error);"
+        >
+          Delete
+        </span>
+      </span>
+    </button>
+    
+  </span>
+</div>
+`;
+
+exports[`golden — phone shell > Chart-line-legend-NULL.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Chart-line-legend-NULL"
+  data-mode="auto"
+>
+  <div
+    aria-label="Chart: ctx (2 points)"
+    class="ui-chart"
+    role="img"
+  >
+    
+    <svg
+      aria-hidden="true"
+      class="ui-chart-svg"
+      height="240"
+      viewBox="0 0 480 240"
+      width="100%"
+    >
+      <g
+        class="ui-chart-axes"
+      >
+        <line
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <line
+          x1="44"
+          x2="44"
+          y1="10"
+          y2="214"
+        />
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="214"
+        >
+          0
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="112"
+          y2="112"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="112"
+        >
+          0.5
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="10"
+          y2="10"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="10"
+        >
+          1
+        </text>
+        <text
+          text-anchor="start"
+          x="44"
+          y="230"
+        >
+          0
+        </text>
+        <text
+          text-anchor="middle"
+          x="256"
+          y="230"
+        >
+          0.5
+        </text>
+        <text
+          text-anchor="end"
+          x="468"
+          y="230"
+        >
+          1
+        </text>
+      </g>
+      <polyline
+        fill="none"
+        points="44.0,112.0 468.0,30.4"
+        stroke="var(--ui-c1)"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        vector-effect="non-scaling-stroke"
+      />
+    </svg>
+    
+    
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Chart-scatter.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Chart-scatter"
+  data-mode="auto"
+>
+  <div
+    aria-label="Chart: tok/s (3 points)"
+    class="ui-chart"
+    role="img"
+  >
+    <div
+      class="ui-chart-legend"
+      data-pos="TopRight"
+    >
+      <span
+        class="ui-chart-key"
+      >
+        <span
+          class="ui-chart-swatch"
+          style="background: var(--ui-c2);"
+        />
+        <span>
+          <span>
+            tok/s
+          </span>
+        </span>
+      </span>
+    </div>
+    <svg
+      aria-hidden="true"
+      class="ui-chart-svg"
+      height="240"
+      viewBox="0 0 480 240"
+      width="100%"
+    >
+      <g
+        class="ui-chart-axes"
+      >
+        <line
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <line
+          x1="44"
+          x2="44"
+          y1="10"
+          y2="214"
+        />
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="214"
+          y2="214"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="214"
+        >
+          0
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="112"
+          y2="112"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="112"
+        >
+          2.5
+        </text>
+        <line
+          class="ui-chart-grid"
+          x1="44"
+          x2="468"
+          y1="10"
+          y2="10"
+        />
+        <text
+          dominant-baseline="middle"
+          text-anchor="end"
+          x="38"
+          y="10"
+        >
+          5
+        </text>
+        <text
+          text-anchor="start"
+          x="44"
+          y="230"
+        >
+          0
+        </text>
+        <text
+          text-anchor="end"
+          x="468"
+          y="230"
+        >
+          2
+        </text>
+      </g>
+      <circle
+        cx="44"
+        cy="173.2"
+        fill="var(--ui-c2)"
+        r="2.5"
+      />
+      <circle
+        cx="256"
+        cy="50.79999999999998"
+        fill="var(--ui-c2)"
+        r="2.5"
+      />
+      <circle
+        cx="468"
+        cy="71.20000000000002"
+        fill="var(--ui-c2)"
+        r="2.5"
+      />
+    </svg>
+    <div
+      class="ui-chart-titles"
+    >
+      
+      <span
+        class="ui-chart-xtitle"
+      >
+        <span>
+          min
+        </span>
+      </span>
+    </div>
+    
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Code.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Code"
+  data-mode="auto"
+>
+  <div
+    class="md ui-code"
+    data-mode="auto"
+  >
+    <div
+      class="cb line-numbers"
+    >
+      <div
+        class="cb-head"
+      >
+        <span
+          class="cb-lang"
+        >
+          rust
+        </span>
+        <span
+          class="cb-head-actions"
+        >
+          <button
+            class="cb-copy"
+            type="button"
+          >
+            Copy
+          </button>
+        </span>
+      </div>
+      <pre
+        style="counter-reset: cb-line 9;"
+      >
+        <code
+          data-lang="rust"
+        >
+          <span
+            class="cb-line ui-code-line"
+          >
+            let x = 1;
+          </span>
+          <span
+            class="cb-line ui-code-line"
+            data-hl=""
+          >
+            let y = 2;
+          </span>
+        </code>
+      </pre>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Code-plain.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Code-plain"
+  data-mode="auto"
+>
+  <div
+    class="md ui-code"
+    data-mode="auto"
+  >
+    <div
+      class="cb"
+    >
+      <div
+        class="cb-head"
+      >
+        <span
+          class="cb-lang"
+        >
+          text
+        </span>
+        <span
+          class="cb-head-actions"
+        >
+          <button
+            class="cb-copy"
+            type="button"
+          >
+            Copy
+          </button>
+        </span>
+      </div>
+      <pre
+        style="counter-reset: cb-line 0;"
+      >
+        <code
+          data-lang="text"
+        >
+          <span
+            class="cb-line ui-code-line"
+          >
+            echo hi
+          </span>
+        </code>
+      </pre>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Diff-oldnew.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Diff-oldnew"
+  data-mode="auto"
+>
+  <div
+    class="ui-diff"
+    data-mode="auto"
+  >
+    <div
+      aria-label="Diff: 1 added, 1 removed"
+      class="diffview"
+      role="group"
+    >
+      <div
+        class="diff-file-block"
+      >
+        
+        <div
+          class="diff-hunk"
+        >
+          <div
+            class="diff-hunk-head"
+          >
+            @@ -1,2 +1,2 @@
+          </div>
+          <div
+            class="diff-row diff-ctx"
+          >
+            <span
+              class="diff-no diff-no-old"
+            >
+              1
+            </span>
+            <span
+              class="diff-no diff-no-new"
+            >
+              1
+            </span>
+            <span
+              class="diff-mark"
+            >
+               
+            </span>
+            <span
+              class="diff-text"
+            >
+              one
+            </span>
+          </div>
+          <div
+            class="diff-row diff-del"
+          >
+            <span
+              class="diff-no diff-no-old"
+            >
+              2
+            </span>
+            <span
+              class="diff-no diff-no-new"
+            />
+            <span
+              class="diff-mark"
+            >
+              −
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                two
+              </mark>
+            </span>
+          </div>
+          <div
+            class="diff-row diff-add"
+          >
+            <span
+              class="diff-no diff-no-old"
+            />
+            <span
+              class="diff-no diff-no-new"
+            >
+              2
+            </span>
+            <span
+              class="diff-mark"
+            >
+              +
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                2
+              </mark>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Diff-patch.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Diff-patch"
+  data-mode="auto"
+>
+  <div
+    class="ui-diff"
+    data-mode="auto"
+  >
+    <div
+      aria-label="Diff of f.rs: 1 added, 1 removed"
+      class="diffview"
+      role="group"
+    >
+      <div
+        class="diff-file-block"
+      >
+        <div
+          class="diff-file"
+        >
+          f
+          <span
+            class="ui-diff-counts"
+          >
+            <span
+              class="ui-diff-add"
+            >
+              +
+              1
+            </span>
+             
+            <span
+              class="ui-diff-del"
+            >
+              −
+              1
+            </span>
+          </span>
+        </div>
+        <div
+          class="diff-hunk"
+        >
+          <div
+            class="diff-hunk-head"
+          >
+            @@ -1 +1 @@
+          </div>
+          <div
+            class="diff-row diff-del"
+          >
+            <span
+              class="diff-no diff-no-old"
+            >
+              1
+            </span>
+            <span
+              class="diff-no diff-no-new"
+            />
+            <span
+              class="diff-mark"
+            >
+              −
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                old
+              </mark>
+            </span>
+          </div>
+          <div
+            class="diff-row diff-add"
+          >
+            <span
+              class="diff-no diff-no-old"
+            />
+            <span
+              class="diff-no diff-no-new"
+            >
+              1
+            </span>
+            <span
+              class="diff-mark"
+            >
+              +
+            </span>
+            <span
+              class="diff-text"
+            >
+              <mark>
+                new
+              </mark>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Empty.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Empty"
+  data-mode="auto"
+>
+  <div
+    class="ui-empty"
+    data-mode="auto"
+  >
+    <div
+      class="empty-state"
+      data-compact=""
+      data-testid="ui-empty"
+      role="status"
+    >
+      <span
+        class="empty-state-icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-search lucide-icon ui-icon"
+          fill="none"
+          height="20"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="20"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m21 21-4.34-4.34"
+            key="14j7rj"
+          />
+          <circle
+            cx="11"
+            cy="11"
+            key="4ej97u"
+            r="8"
+          />
+        </svg>
+      </span>
+      <h2>
+        Nothing here
+      </h2>
+      <p>
+        Try adding an item.
+      </p>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Empty-action.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Empty-action"
+  data-mode="auto"
+>
+  <div
+    class="ui-empty"
+    data-mode="auto"
+  >
+    <div
+      class="empty-state"
+      data-compact=""
+      data-testid="ui-empty"
+      role="status"
+    >
+      <span
+        class="empty-state-icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-square-kanban lucide-kanban-square lucide-icon ui-icon"
+          fill="none"
+          height="20"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="20"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            height="18"
+            key="afitv7"
+            rx="2"
+            width="18"
+            x="3"
+            y="3"
+          />
+          <path
+            d="M8 7v7"
+            key="1x2jlm"
+          />
+          <path
+            d="M12 7v4"
+            key="xawao1"
+          />
+          <path
+            d="M16 7v9"
+            key="1hp2iy"
+          />
+        </svg>
+      </span>
+      <h2>
+        No tasks
+      </h2>
+      
+      <div
+        class="empty-state-actions"
+      >
+        <span
+          class="ui-button-wrap"
+        >
+          <button
+            class="btn ui-btn btn-secondary"
+            type="button"
+          >
+            
+            <span>
+              <span>
+                New task
+              </span>
+            </span>
+          </button>
+          
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Gauge-percent.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Gauge-percent"
+  data-mode="auto"
+>
+  <div
+    aria-valuemax="100"
+    aria-valuemin="0"
+    aria-valuenow="72"
+    aria-valuetext="72%"
+    class="ui-gauge"
+    role="progressbar"
+  >
+    <div
+      class="ui-gauge-label"
+    >
+      <span>
+        72%
+      </span>
+    </div>
+    <div
+      class="ui-gauge-track"
+      style="background: var(--ui-surface3);"
+    >
+      <div
+        class="ui-gauge-fill"
+        style="width: 72%; background: var(--ui-accent);"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Gauge-ratio.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Gauge-ratio"
+  data-mode="auto"
+>
+  <div
+    aria-valuemax="100"
+    aria-valuemin="0"
+    aria-valuenow="40"
+    aria-valuetext="40%"
+    class="ui-gauge"
+    role="progressbar"
+  >
+    <div
+      class="ui-gauge-label"
+    >
+      <span>
+        40%
+      </span>
+    </div>
+    <div
+      class="ui-gauge-track"
+      style="background: var(--ui-surface3);"
+    >
+      <div
+        class="ui-gauge-fill"
+        style="width: 40%; background: var(--ui-success);"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Image-blob.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Image-blob"
+  data-mode="auto"
+>
+  <div
+    class="ui-image"
+    data-fit="contain"
+    style="max-width: 100%; max-height: calc(20 * var(--ui-row));"
+  >
+    <div
+      aria-label="preview"
+      class="ui-image-ph"
+      role="img"
+    >
+      
+      <span>
+        preview
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Image-data.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Image-data"
+  data-mode="auto"
+>
+  <div
+    class="ui-image"
+    data-fit="contain"
+    style="max-width: min(100%, calc(40 * var(--ui-col))); max-height: calc(10 * var(--ui-row));"
+  >
+    <button
+      aria-label="Open image: shot"
+      class="ui-image-btn"
+      type="button"
+    >
+      <img
+        alt="shot"
+        decoding="async"
+        loading="lazy"
+        src="data:image/png;base64,aGVsbG8="
+      />
+    </button>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Image-path.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Image-path"
+  data-mode="auto"
+>
+  <div
+    class="ui-image"
+    data-fit="cover"
+    style="max-width: 100%; max-height: calc(20 * var(--ui-row));"
+  >
+    <div
+      aria-label="logo"
+      class="ui-image-ph"
+      role="img"
+    >
+      
+      <span>
+        logo
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Input.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Input"
+  data-mode="auto"
+>
+  <div
+    class="ui-field"
+  >
+    <label
+      class="ui-field-label"
+      for="id0"
+    >
+      <span>
+        <span>
+          Name
+        </span>
+      </span>
+    </label>
+    <input
+      class="ui-input"
+      id="id0"
+      maxlength="32"
+      placeholder="your name"
+      type="text"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Input-multiline-secret.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Input-multiline-secret"
+  data-mode="auto"
+>
+  <div
+    class="ui-field"
+  >
+    
+    <textarea
+      aria-label="token"
+      class="ui-input ui-textarea"
+      data-secret=""
+      id="id0"
+      rows="3"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > KeyHints.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/KeyHints"
+  data-mode="auto"
+>
+  <div
+    aria-label="Keys"
+    class="ui-keyhints"
+    role="group"
+  >
+    <button
+      class="ui-hint ui-hint-action"
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-keys"
+      >
+        <kbd
+          class="kbd"
+        >
+          N
+        </kbd>
+      </span>
+      <span
+        class="ui-hint-label"
+      >
+        new
+      </span>
+    </button>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Layout-collapse.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-collapse"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="h"
+    data-mode="auto"
+    style="flex-direction: row; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            left
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            right
+          </span>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Layout-default.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-default"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="v"
+    data-mode="auto"
+    style="flex-direction: column; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            header
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            body
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            footer
+          </span>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Layout-horizontal.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-horizontal"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="h"
+    data-mode="auto"
+    style="flex-direction: row; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 calc(20 * var(--ui-col));"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 50%;"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 25.0000%;"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px; min-width: calc(5 * var(--ui-col));"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 1 calc(10 * var(--ui-col)); max-width: calc(10 * var(--ui-col));"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 1 1 0px;"
+    >
+      <span
+        aria-label="Working"
+        class="ui-spinner"
+        role="status"
+      >
+        <span
+          aria-hidden="true"
+          class="ui-spinner-ring"
+        />
+        
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Layout-margin-spacing-flex.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-margin-spacing-flex"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="h"
+    data-mode="auto"
+    style="flex-direction: row; padding: calc(2 * var(--ui-row)) calc(1 * var(--ui-col)); gap: calc(2 * var(--ui-col)); justify-content: space-between;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 calc(3 * var(--ui-col));"
+    >
+      <span
+        class="ui-button-wrap"
+      >
+        <button
+          class="btn ui-btn btn-secondary"
+          type="button"
+        >
+          
+          <span>
+            <span>
+              OK
+            </span>
+          </span>
+        </button>
+        
+      </span>
+    </div>
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 calc(3 * var(--ui-col));"
+    >
+      <span
+        class="ui-button-wrap"
+      >
+        <button
+          class="btn ui-btn btn-secondary"
+          type="button"
+        >
+          
+          <span>
+            <span>
+              Cancel
+            </span>
+          </span>
+        </button>
+        
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Layout-nested.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Layout-nested"
+  data-mode="auto"
+>
+  <div
+    class="ui-layout"
+    data-dir="v"
+    data-mode="auto"
+    style="flex-direction: column; justify-content: flex-start;"
+  >
+    <div
+      class="ui-layout-item"
+      data-mode="auto"
+      style="flex: 0 0 auto;"
+    >
+      <div
+        class="ui-layout"
+        data-dir="h"
+        data-mode="auto"
+        style="flex-direction: row; justify-content: flex-start;"
+      >
+        <div
+          class="ui-layout-item"
+          data-mode="auto"
+          style="flex: 1 1 0px;"
+        >
+          <div
+            class="ui-empty"
+            data-mode="auto"
+          >
+            <div
+              class="empty-state"
+              data-compact=""
+              data-testid="ui-empty"
+              role="status"
+            >
+              <img
+                alt=""
+                class="crab"
+                src="/src/assets/unicrab-pixel.png"
+              />
+              <h2>
+                Nested
+              </h2>
+              
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > LineGauge.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/LineGauge"
+  data-mode="auto"
+>
+  <div
+    aria-valuemax="100"
+    aria-valuemin="0"
+    aria-valuenow="25"
+    aria-valuetext="done"
+    class="ui-linegauge"
+    data-set="thick"
+    role="progressbar"
+  >
+    <span
+      class="ui-linegauge-label"
+    >
+      <span>
+        <span>
+          done
+        </span>
+      </span>
+    </span>
+    <div
+      class="ui-linegauge-track"
+      style="background: var(--ui-border);"
+    >
+      <div
+        class="ui-linegauge-fill"
+        style="width: 25%; background: var(--ui-success);"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > List-basic.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-basic"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-basic::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              alpha
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="1"
+      id="gallery/List-basic::#1"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              beta
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > List-direction-scrollpad.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-direction-scrollpad"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-direction="btt"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-direction-scrollpad::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              x
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > List-full-items.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-full-items"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-detail=""
+      data-index="0"
+      id="gallery/List-full-items::t-1"
+      role="option"
+      style="color: var(--ui-text);"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-row-symbol"
+      />
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-zap lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"
+          key="1v7up4"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              First task
+            </span>
+            
+          </div>
+        </div>
+        <span
+          class="ui-row-detail"
+        >
+          <span
+            style="color: var(--ui-muted);"
+          >
+            open
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-row-badge"
+      >
+        <span
+          class="ui-chip"
+          style="color: var(--ui-error); background-color: var(--ui-error-bg);"
+        >
+           P1 
+        </span>
+      </span>
+    </div>
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="1"
+      id="gallery/List-full-items::t-2"
+      role="option"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-row-symbol"
+      />
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              Second
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > List-multi-state.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-multi-state"
+  data-mode="auto"
+>
+  <div
+    aria-activedescendant="gallery/List-multi-state::a"
+    aria-multiselectable="true"
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="true"
+      class="ui-row"
+      data-cursor=""
+      data-index="0"
+      data-selected=""
+      id="gallery/List-multi-state::a"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              A
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+    <div
+      aria-selected="true"
+      class="ui-row"
+      data-index="1"
+      data-selected=""
+      id="gallery/List-multi-state::b"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              B
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > List-scrollbar.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-scrollbar"
+  data-mode="auto"
+>
+  <div
+    class="ui-list"
+    data-mode="auto"
+    data-scrollbar=""
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-scrollbar::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              a
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > List-state-selected.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/List-state-selected"
+  data-mode="auto"
+>
+  <div
+    aria-activedescendant="gallery/List-state-selected::b"
+    class="ui-list"
+    data-mode="auto"
+    role="listbox"
+    tabindex="0"
+  >
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="0"
+      id="gallery/List-state-selected::#0"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              a
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+    <div
+      aria-selected="false"
+      class="ui-row"
+      data-index="1"
+      id="gallery/List-state-selected::#1"
+      role="option"
+    >
+      
+      
+      <span
+        class="ui-row-main"
+      >
+        <div
+          class="ui-row-content"
+        >
+          <div
+            class="ui-line"
+          >
+            <span>
+              b
+            </span>
+            
+          </div>
+        </div>
+        
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Log.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Log"
+  data-mode="auto"
+>
+  <div
+    class="ui-log"
+    data-mode="auto"
+  >
+    <div
+      aria-live="off"
+      class="ui-log-scroll"
+      role="log"
+      tabindex="0"
+    >
+      <div
+        class="ui-virtual"
+        style="position: relative; height: 40px;"
+      >
+        <div
+          class="ui-virtual-row"
+          data-index="0"
+          style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(0px);"
+        >
+          <div
+            class="ui-log-row"
+          >
+            
+            <div
+              class="ui-line ui-log-line"
+            >
+              <span>
+                boot
+              </span>
+              
+            </div>
+          </div>
+        </div>
+        <div
+          class="ui-virtual-row"
+          data-index="1"
+          style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(20px);"
+        >
+          <div
+            class="ui-log-row"
+          >
+            
+            <div
+              class="ui-line ui-log-line"
+            >
+              <span>
+                ready
+              </span>
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Log-ring-wrap.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Log-ring-wrap"
+  data-mode="auto"
+>
+  <div
+    class="ui-log"
+    data-mode="auto"
+    data-wrap=""
+  >
+    <div
+      aria-live="off"
+      class="ui-log-scroll"
+      role="log"
+      tabindex="0"
+    >
+      <div
+        class="ui-virtual"
+        style="position: relative; height: 20px;"
+      >
+        <div
+          class="ui-virtual-row"
+          data-index="0"
+          style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(0px);"
+        >
+          <div
+            class="ui-log-row"
+          >
+            <span
+              aria-hidden="true"
+              class="ui-log-no"
+            >
+              1
+            </span>
+            <div
+              class="ui-line ui-log-line"
+            >
+              <span
+                style="color: var(--ui-dim);"
+              >
+                2026-11-01 
+              </span>
+              <span
+                style="color: var(--ui-success);"
+              >
+                started
+              </span>
+              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button
+      class="ui-log-live"
+      type="button"
+    >
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-arrow-down lucide-icon"
+        fill="none"
+        height="14"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="14"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M12 5v14"
+          key="s699le"
+        />
+        <path
+          d="m19 12-7 7-7-7"
+          key="1idqje"
+        />
+      </svg>
+       live
+    </button>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Markdown.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Markdown"
+  data-mode="auto"
+>
+  <div
+    class="md ui-md"
+    data-mode="auto"
+  >
+    <div>
+      <h1>
+        Title
+      </h1>
+      
+
+      <p>
+        <strong>
+          bold
+        </strong>
+         body
+      </p>
+      
+
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Paragraph-block-prop.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-block-prop"
+  data-mode="auto"
+>
+  <section
+    aria-labelledby="id0"
+    class="ui-block"
+    data-bordered=""
+    data-mode="auto"
+    data-type="plain"
+    style="border-style: solid; border-color: var(--ui-border); border-width: 1px; --ui-pad-l: calc(1 * var(--ui-col)); --ui-pad-r: calc(1 * var(--ui-col)); --ui-pad-t: calc(1 * var(--ui-row)); --ui-pad-b: calc(1 * var(--ui-row));"
+  >
+    <div
+      class="ui-block-title"
+      id="id0"
+    >
+      
+      <span
+        class="ui-block-t ui-block-t-left"
+      >
+        <span>
+          <span>
+            Framed
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-block-t ui-block-t-center"
+      />
+      <span
+        class="ui-block-t ui-block-t-right"
+      />
+    </div>
+    <div
+      class="ui-block-body"
+    >
+      <div
+        class="ui-p"
+        data-mode="auto"
+        style="color: var(--ui-dim);"
+      >
+        <div
+          class="ui-line"
+        >
+          <span>
+            framed text
+          </span>
+          
+        </div>
+      </div>
+    </div>
+    
+  </section>
+</div>
+`;
+
+exports[`golden — phone shell > Paragraph-lines-array.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-lines-array"
+  data-mode="auto"
+>
+  <div
+    class="ui-p"
+    data-mode="auto"
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        one 
+      </span>
+      <span>
+        two
+      </span>
+      
+    </div>
+    <div
+      class="ui-line"
+    >
+      <span>
+        three
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Paragraph-nowrap.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-nowrap"
+  data-mode="auto"
+>
+  <div
+    class="ui-p ui-nowrap"
+    data-mode="auto"
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        a very long line
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Paragraph-object-alignment.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-object-alignment"
+  data-mode="auto"
+>
+  <div
+    class="ui-p ui-al-center"
+    data-mode="auto"
+    style="color: var(--ui-text);"
+  >
+    <div
+      class="ui-line ui-al-center ui-m-italic"
+    >
+      <span
+        style="color: var(--ui-accent);"
+      >
+        hey
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Paragraph-string.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-string"
+  data-mode="auto"
+>
+  <div
+    class="ui-p"
+    data-mode="auto"
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        just a string
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Paragraph-wrap-trim-scroll.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Paragraph-wrap-trim-scroll"
+  data-mode="auto"
+>
+  <div
+    class="ui-p ui-notrim"
+    data-mode="auto"
+    data-scrollbar=""
+  >
+    <div
+      class="ui-line"
+    >
+      <span>
+        wrapped
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Scrollbar-horizontal.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Scrollbar-horizontal"
+  data-mode="auto"
+>
+  <div
+    aria-orientation="horizontal"
+    aria-valuemax="199"
+    aria-valuemin="0"
+    aria-valuenow="0"
+    class="ui-scrollbar"
+    data-orientation="h"
+    data-side="bottom"
+    role="scrollbar"
+    style="background: var(--ui-scroll-track);"
+  >
+    <div
+      class="ui-scrollbar-thumb"
+      style="left: 0%; width: 0.5%; background: var(--ui-scroll-thumb);"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Scrollbar-vertical.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Scrollbar-vertical"
+  data-mode="auto"
+>
+  <div
+    aria-orientation="vertical"
+    aria-valuemax="499"
+    aria-valuemin="0"
+    aria-valuenow="120"
+    class="ui-scrollbar"
+    data-orientation="v"
+    data-side="right"
+    role="scrollbar"
+    style="background: var(--ui-border);"
+  >
+    <div
+      class="ui-scrollbar-thumb"
+      style="top: 22.124248496993985%; height: 8%; background: var(--ui-muted);"
+    />
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Select.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Select"
+  data-mode="auto"
+>
+  <div
+    class="ui-select"
+  >
+    <div
+      data-closed=""
+      id="select-id0"
+      role="group"
+    >
+      <button
+        aria-expanded="false"
+        aria-haspopup="listbox"
+        aria-label="pick"
+        aria-labelledby="select-id0-trigger select-id0-value"
+        class="ui-select-trigger"
+        data-closed=""
+        id="select-id0-trigger"
+        type="button"
+      >
+        <span
+          class="ui-select-value"
+          id="select-id0-value"
+        >
+          <span>
+            <span>
+              Fast
+            </span>
+          </span>
+        </span>
+        <span
+          aria-hidden="true"
+          class="ui-select-icon"
+          data-closed=""
+        >
+          <svg
+            aria-hidden="true"
+            class="lucide lucide-chevrons-up-down lucide-icon"
+            fill="none"
+            height="16"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="16"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="m7 15 5 5 5-5"
+              key="1hf1tw"
+            />
+            <path
+              d="m7 9 5-5 5 5"
+              key="sgt6xg"
+            />
+          </svg>
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Select-empty.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Select-empty"
+  data-mode="auto"
+>
+  <div
+    class="ui-select"
+  >
+    <div
+      data-closed=""
+      id="select-id0"
+      role="group"
+    >
+      <button
+        aria-expanded="false"
+        aria-haspopup="listbox"
+        aria-label="model"
+        aria-labelledby="select-id0-trigger select-id0-value"
+        class="ui-select-trigger"
+        data-closed=""
+        id="select-id0-trigger"
+        type="button"
+      >
+        <span
+          class="ui-select-value"
+          data-placeholder-shown=""
+          id="select-id0-value"
+        >
+          Choose…
+        </span>
+        <span
+          aria-hidden="true"
+          class="ui-select-icon"
+          data-closed=""
+        >
+          <svg
+            aria-hidden="true"
+            class="lucide lucide-chevrons-up-down lucide-icon"
+            fill="none"
+            height="16"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="16"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="m7 15 5 5 5-5"
+              key="1hf1tw"
+            />
+            <path
+              d="m7 9 5-5 5 5"
+              key="sgt6xg"
+            />
+          </svg>
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Sparkline.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Sparkline"
+  data-mode="auto"
+>
+  <div
+    aria-label="Sparkline, 3 values, last 5, max 5"
+    class="ui-sparkline"
+    role="img"
+  >
+    <svg
+      aria-hidden="true"
+      height="100%"
+      preserveAspectRatio="none"
+      viewBox="0 0 5 100"
+      width="100%"
+    >
+      <rect
+        fill="var(--ui-accent)"
+        height="10"
+        rx="0"
+        width="0.76"
+        x="0.12"
+        y="90"
+      />
+      <rect
+        fill="var(--ui-dim)"
+        height="2"
+        width="0.4"
+        x="1.3"
+        y="98"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="30"
+        rx="0"
+        width="0.76"
+        x="2.12"
+        y="70"
+      />
+      <rect
+        fill="var(--ui-dim)"
+        height="2"
+        width="0.4"
+        x="3.3"
+        y="98"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="50"
+        rx="0"
+        width="0.76"
+        x="4.12"
+        y="50"
+      />
+    </svg>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Sparkline-rtl-three.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Sparkline-rtl-three"
+  data-mode="auto"
+>
+  <div
+    aria-label="Sparkline, 3 values, last 2, max 8"
+    class="ui-sparkline"
+    role="img"
+  >
+    <svg
+      aria-hidden="true"
+      height="100%"
+      preserveAspectRatio="none"
+      viewBox="0 0 3 100"
+      width="100%"
+    >
+      <rect
+        fill="var(--ui-accent)"
+        height="100"
+        rx="0"
+        width="0.76"
+        x="0.12"
+        y="0"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="0"
+        rx="0"
+        width="0.76"
+        x="1.12"
+        y="100"
+      />
+      <rect
+        fill="var(--ui-accent)"
+        height="25"
+        rx="0"
+        width="0.76"
+        x="2.12"
+        y="75"
+      />
+    </svg>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Spinner.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Spinner"
+  data-mode="auto"
+>
+  <span
+    aria-label="thinking"
+    class="ui-spinner"
+    role="status"
+  >
+    <span
+      aria-hidden="true"
+      class="ui-spinner-ring"
+    />
+    <span
+      class="ui-spinner-label"
+    >
+      <span>
+        thinking
+      </span>
+    </span>
+  </span>
+</div>
+`;
+
+exports[`golden — phone shell > Spinner-bare.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Spinner-bare"
+  data-mode="auto"
+>
+  <span
+    aria-label="Working"
+    class="ui-spinner"
+    role="status"
+  >
+    <span
+      aria-hidden="true"
+      class="ui-spinner-ring"
+    />
+    
+  </span>
+</div>
+`;
+
+exports[`golden — phone shell > Table-basic.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Table-basic"
+  data-mode="auto"
+>
+  <div
+    class="ui-table"
+    data-mode="auto"
+    data-sticky=""
+  >
+    <div
+      aria-rowcount="2"
+      class="ui-table-scroll"
+      role="grid"
+      style="--ui-table-min: calc(23 * var(--ui-col));"
+      tabindex="0"
+    >
+      <div
+        class="ui-table-inner"
+      >
+        
+        <div
+          aria-selected="false"
+          class="ui-trow"
+          data-index="0"
+          role="row"
+          style="grid-template-columns: 80px 96px; column-gap: calc(1 * var(--ui-col)); min-height: 44px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  a
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  b
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          aria-selected="false"
+          class="ui-trow"
+          data-index="1"
+          role="row"
+          style="grid-template-columns: 80px 96px; column-gap: calc(1 * var(--ui-col)); min-height: 44px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  c
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  d
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Table-header-footer.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Table-header-footer"
+  data-mode="auto"
+>
+  <div
+    class="ui-table"
+    data-mode="auto"
+    data-sticky=""
+  >
+    <div
+      aria-rowcount="1"
+      class="ui-table-scroll"
+      role="grid"
+      style="--ui-table-min: calc(38 * var(--ui-col));"
+      tabindex="0"
+    >
+      <div
+        class="ui-table-inner"
+      >
+        <div
+          class="ui-trow ui-thead"
+          role="row"
+          style="grid-template-columns: 192px 96px; column-gap: calc(2 * var(--ui-col));"
+        >
+          <div
+            class="ui-cell"
+            role="columnheader"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span
+                  class="ui-m-bold"
+                >
+                  Name
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="columnheader"
+            style="color: var(--ui-muted);"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  Size
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          aria-selected="false"
+          class="ui-trow"
+          data-index="0"
+          role="row"
+          style="grid-template-columns: 192px 96px; column-gap: calc(2 * var(--ui-col)); color: var(--ui-text); min-height: 44px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  notes.md
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  1 KB
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          class="ui-trow ui-tfoot"
+          role="row"
+          style="grid-template-columns: 192px 96px; column-gap: calc(2 * var(--ui-col));"
+        >
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  total
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  1 KB
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Table-state-sticky.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Table-state-sticky"
+  data-mode="auto"
+>
+  <div
+    class="ui-table"
+    data-mode="auto"
+    data-scrollbar=""
+    data-sticky=""
+  >
+    <div
+      aria-rowcount="1"
+      class="ui-table-scroll"
+      role="grid"
+      style="--ui-table-min: calc(9 * var(--ui-col));"
+      tabindex="0"
+    >
+      <div
+        class="ui-table-inner"
+      >
+        
+        <div
+          aria-selected="true"
+          class="ui-trow"
+          data-index="0"
+          data-selected=""
+          role="row"
+          style="grid-template-columns: 32px 32px; column-gap: calc(1 * var(--ui-col)); min-height: 44px;"
+        >
+          
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  x
+                </span>
+                
+              </div>
+            </div>
+          </div>
+          <div
+            class="ui-cell"
+            role="gridcell"
+          >
+            <div>
+              <div
+                class="ui-line"
+              >
+                <span>
+                  y
+                </span>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Tabs-basic.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tabs-basic"
+  data-mode="auto"
+>
+  <div
+    class="ui-tabs"
+    data-mode="auto"
+  >
+    <div
+      class="ui-tabs-strip"
+      role="tablist"
+    >
+      <button
+        aria-selected="false"
+        class="ui-tab"
+        data-key="one"
+        id="gallery/Tabs-basic::tab:one"
+        role="tab"
+        tabindex="-1"
+        type="button"
+      >
+        <span>
+          <span>
+            One
+          </span>
+        </span>
+        
+      </button>
+      <span
+        aria-hidden="true"
+        class="ui-tabs-divider"
+      >
+        <span>
+          │
+        </span>
+      </span>
+      <button
+        aria-selected="true"
+        class="ui-tab ui-m-bold"
+        data-key="two"
+        id="gallery/Tabs-basic::tab:two"
+        role="tab"
+        tabindex="0"
+        type="button"
+      >
+        <span>
+          <span>
+            Two
+          </span>
+        </span>
+        <span
+          class="ui-tab-badge"
+        >
+          <span
+            style="color: var(--ui-accent);"
+          >
+            2
+          </span>
+        </span>
+      </button>
+    </div>
+    
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Tabs-panes.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tabs-panes"
+  data-mode="auto"
+>
+  <div
+    class="ui-tabs"
+    data-mode="auto"
+  >
+    <div
+      class="ui-tabs-strip"
+      role="tablist"
+    >
+      <button
+        aria-selected="true"
+        class="ui-tab"
+        data-key="log"
+        id="gallery/Tabs-panes::tab:log"
+        role="tab"
+        tabindex="0"
+        type="button"
+      >
+        <span>
+          <span>
+            Log
+          </span>
+        </span>
+        
+      </button>
+      <button
+        aria-selected="false"
+        class="ui-tab"
+        data-key="graph"
+        id="gallery/Tabs-panes::tab:graph"
+        role="tab"
+        tabindex="-1"
+        type="button"
+      >
+        <span>
+          <span>
+            Graph
+          </span>
+        </span>
+        
+      </button>
+    </div>
+    <div
+      aria-labelledby="gallery/Tabs-panes::tab:log"
+      class="ui-tabs-pane"
+      data-mode="auto"
+      role="tabpanel"
+    >
+      <div
+        class="ui-log"
+        data-mode="auto"
+      >
+        <div
+          aria-live="off"
+          class="ui-log-scroll"
+          role="log"
+          tabindex="0"
+        >
+          <div
+            class="ui-virtual"
+            style="position: relative; height: 20px;"
+          >
+            <div
+              class="ui-virtual-row"
+              data-index="0"
+              style="position: absolute; top: 0px; left: 0px; right: 0px; transform: translateY(0px);"
+            >
+              <div
+                class="ui-log-row"
+              >
+                
+                <div
+                  class="ui-line ui-log-line"
+                >
+                  <span>
+                    tail
+                  </span>
+                  
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Toggle.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Toggle"
+  data-mode="auto"
+>
+  <div
+    class="ui-toggle"
+  >
+    <span
+      class="ui-toggle-label"
+    >
+      <span>
+        <span>
+          Verbose
+        </span>
+      </span>
+    </span>
+    <div
+      aria-label="Verbose"
+      class="inline-flex items-center data-[disabled]:opacity-50"
+      data-checked=""
+      id="switch-id0"
+      role="group"
+    >
+      <input
+        aria-checked="true"
+        data-checked=""
+        id="switch-id0-input"
+        name="switch-cl-40"
+        role="switch"
+        style="border: 0px; clip: rect(0px); clip-path: inset(50%); height: 1px; margin: 0px -1px -1px 0px; overflow: hidden; padding: 0px; position: absolute; width: 1px; white-space: nowrap;"
+        type="checkbox"
+        value="on"
+      />
+      <div
+        class="relative flex h-[26px] w-11 shrink-0 items-center rounded-pill bg-surface-3 transition-colors data-[checked]:bg-shell"
+        data-checked=""
+        id="switch-id0-control"
+      >
+        <div
+          class="block h-5 w-5 shrink-0 rounded-pill bg-text translate-x-[3px] transition-transform data-[checked]:translate-x-[21px]"
+          data-checked=""
+          id="switch-id0-thumb"
+        />
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Tree.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tree"
+  data-mode="auto"
+>
+  <div
+    aria-activedescendant="gallery/Tree::lib"
+    class="ui-list ui-tree"
+    data-mode="auto"
+    role="tree"
+    tabindex="0"
+  >
+    <div
+      aria-expanded="true"
+      aria-level="1"
+      aria-posinset="1"
+      aria-selected="false"
+      aria-setsize="1"
+      class="ui-row ui-tree-row"
+      data-index="0"
+      id="gallery/Tree::src"
+      role="treeitem"
+      style="--ui-depth: 0;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <button
+        aria-label="Collapse"
+        class="ui-tree-twisty"
+        data-open=""
+        tabindex="-1"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-folder lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+          key="1kt360"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span>
+            src
+          </span>
+        </span>
+      </span>
+      
+    </div>
+    <div
+      aria-level="2"
+      aria-posinset="1"
+      aria-selected="true"
+      aria-setsize="2"
+      class="ui-row ui-tree-row"
+      data-index="1"
+      data-selected=""
+      id="gallery/Tree::lib"
+      role="treeitem"
+      style="--ui-depth: 1;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <span
+        aria-hidden="true"
+        class="ui-tree-twisty"
+      />
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-file lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
+          key="1oefj6"
+        />
+        <path
+          d="M14 2v5a1 1 0 0 0 1 1h5"
+          key="wfsgrz"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span
+            style="color: var(--ui-text);"
+          >
+            lib.rs
+          </span>
+        </span>
+      </span>
+      <span
+        class="ui-row-badge"
+      >
+        <span>
+          1K
+        </span>
+      </span>
+    </div>
+    <div
+      aria-expanded="false"
+      aria-level="2"
+      aria-posinset="2"
+      aria-selected="false"
+      aria-setsize="2"
+      class="ui-row ui-tree-row"
+      data-index="2"
+      id="gallery/Tree::tests"
+      role="treeitem"
+      style="--ui-depth: 1;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <button
+        aria-label="Expand"
+        class="ui-tree-twisty"
+        tabindex="-1"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      <svg
+        aria-hidden="true"
+        class="lucide lucide-folder lucide-icon ui-row-icon"
+        fill="none"
+        height="16"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="16"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+          key="1kt360"
+        />
+      </svg>
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span>
+            tests
+          </span>
+        </span>
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
+
+exports[`golden — phone shell > Tree-lazy.json 1`] = `
+<div
+  class="ui-entry"
+  data-entry="gallery/Tree-lazy"
+  data-mode="auto"
+>
+  <div
+    class="ui-list ui-tree"
+    data-mode="auto"
+    role="tree"
+    tabindex="0"
+  >
+    <div
+      aria-expanded="false"
+      aria-level="1"
+      aria-posinset="1"
+      aria-selected="false"
+      aria-setsize="1"
+      class="ui-row ui-tree-row"
+      data-index="0"
+      id="gallery/Tree-lazy::a"
+      role="treeitem"
+      style="--ui-depth: 0;"
+    >
+      <span
+        aria-hidden="true"
+        class="ui-tree-indent"
+      />
+      <button
+        aria-label="Expand"
+        class="ui-tree-twisty"
+        tabindex="-1"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="lucide lucide-chevron-right lucide-icon"
+          fill="none"
+          height="14"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="14"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="m9 18 6-6-6-6"
+            key="mthhwq"
+          />
+        </svg>
+      </button>
+      
+      <span
+        class="ui-row-main"
+      >
+        <span
+          class="ui-row-content"
+        >
+          <span>
+            A
+          </span>
+        </span>
+      </span>
+      
+    </div>
+  </div>
+</div>
+`;
