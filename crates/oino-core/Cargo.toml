@@ -17,6 +17,7 @@ ignore.workspace = true
 indexmap.workspace = true
 oino-agent = { path = "../oino-agent" }
 oino-ai = { path = "../oino-ai" }
+oino-extension-api = { path = "../oino-extension-api" }
 oino-models = { path = "../oino-models" }
 oino-resources = { path = "../oino-resources" }
 oino-session = { path = "../oino-session" }

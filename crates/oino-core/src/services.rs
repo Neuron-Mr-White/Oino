@@ -114,7 +114,8 @@ pub struct ServicesOptions {
     pub cwd: PathBuf,
     /// Agent dir.
     pub agent_dir: PathBuf,
-    /// Bundled docs root (system prompt docs section).
+    /// Docs root (system prompt docs section). Empty = absent: the section is omitted
+    /// instead of pointing at a missing path (P-DOCS).
     pub docs_root: PathBuf,
     /// Run mode.
     pub mode: ExtensionMode,

@@ -251,7 +251,11 @@ fn insert_default_sections(
             &options.prompt_guidelines,
         ),
     );
-    raw.insert("docs".into(), docs_section(docs_root));
+    // P-DOCS: an empty docs root means "absent" (nothing was bundled or staged) — omit the
+    // section instead of pointing the model at a missing path.
+    if !docs_root.as_os_str().is_empty() {
+        raw.insert("docs".into(), docs_section(docs_root));
+    }
 }
 
 /// pi `buildSystemPromptSections` (ignores `force_system_prompt`).
@@ -417,5 +421,18 @@ mod tests {
         let state = build_system_prompt_state(&options, Path::new("/d")).unwrap();
         assert_eq!(state.sections, None);
         assert_eq!(state.render(), "forced");
+    }
+
+    #[test]
+    fn absent_docs_root_omits_the_docs_section() {
+        // P-DOCS: an empty docs root (nothing bundled or staged) omits the section instead
+        // of pointing at a missing path.
+        let options = BuildSystemPromptOptions::default();
+        let with_root = build_system_prompt_sections(&options, Path::new("/d")).unwrap();
+        assert!(with_root.contains_key("docs"));
+        assert!(with_root["docs"].contains("/d/README.md"));
+        let absent = build_system_prompt_sections(&options, Path::new("")).unwrap();
+        assert!(!absent.contains_key("docs"));
+        assert!(absent.contains_key("preamble"));
     }
 }
